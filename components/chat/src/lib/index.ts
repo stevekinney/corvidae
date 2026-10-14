@@ -12,14 +12,17 @@ export {
 export * from './components/chat/index.ts';
 export {
   ChatRunFailureError,
+  type ChatElicitationActivity,
   type ChatExecutionOwner,
   type ChatHistoryToken,
+  type ChatRunAbortedNotice,
   type ChatSessionController,
   type ChatSessionControllerOptions,
   type ChatSessionHooks,
   type ChatSessionRequest,
   type ChatSessionTransport,
   type ChatSessionTransportResult,
+  type ChatToolActivity,
 } from './session/session-controller-support.ts';
 export {
   createChatSession,

@@ -1,0 +1,1597 @@
+{
+  "schema": "cin-585-playground-measurements/1",
+  "label": "candidate",
+  "startedAt": "2026-10-14T08:13:16.596Z",
+  "finishedAt": "2026-10-14T08:34:33.832Z",
+  "environment": {
+    "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+    "dirtyPaths": [
+      "applications/playground/scripts/static-export.ts",
+      "applications/playground/src/page-bundle.ts",
+      "applications/playground/src/playground-server.ts"
+    ],
+    "untrackedPaths": [],
+    "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7",
+    "lockfileSha256": "727e5e3f8e0cf7de983a273e4583a57913dc0d35fd73d005cf17f757e73f2a33",
+    "versions": {
+      "bun": "1.4.2",
+      "svelte": "5.57.0",
+      "playwright": "1.63.0"
+    },
+    "operatingSystem": {
+      "platform": "darwin",
+      "release": "27.0.0",
+      "architecture": "arm64",
+      "cpuModel": "Apple M1 Max"
+    },
+    "logicalProcessors": 10,
+    "totalMemoryBytes": 68719476736,
+    "containerMemoryLimit": "none detected (no /sys/fs/cgroup/memory.max on darwin)"
+  },
+  "routeInventory": [
+    "/",
+    "/page/access-gate",
+    "/page/accordion",
+    "/page/accordion-item",
+    "/page/action-row",
+    "/page/alert",
+    "/page/alert-dialog",
+    "/page/approval-card",
+    "/page/area-chart",
+    "/page/aspect-ratio",
+    "/page/autocomplete",
+    "/page/avatar",
+    "/page/avatar-group",
+    "/page/backdrop",
+    "/page/badge",
+    "/page/banner",
+    "/page/bar-chart",
+    "/page/breadcrumbs",
+    "/page/button",
+    "/page/button-group",
+    "/page/calendar",
+    "/page/callout",
+    "/page/capability-gate",
+    "/page/card",
+    "/page/carousel",
+    "/page/chat",
+    "/page/chat-composer-popover",
+    "/page/chat-conversation-header",
+    "/page/chat-conversation-list",
+    "/page/chat-navigation-rail",
+    "/page/chat-sub-session",
+    "/page/checkbox",
+    "/page/checkbox-group",
+    "/page/chip",
+    "/page/choice-grid",
+    "/page/choice-grid-item",
+    "/page/citation",
+    "/page/click-away-listener",
+    "/page/code-block",
+    "/page/code-location",
+    "/page/collapsible",
+    "/page/color-field",
+    "/page/color-picker",
+    "/page/color-swatch-picker",
+    "/page/combobox",
+    "/page/command-item",
+    "/page/command-menu",
+    "/page/command-palette",
+    "/page/confirm-dialog",
+    "/page/connection-indicator",
+    "/page/container",
+    "/page/context-menu",
+    "/page/context-menu-trigger",
+    "/page/copy-button",
+    "/page/data-grid",
+    "/page/data-list",
+    "/page/data-table",
+    "/page/date-picker",
+    "/page/date-range-field",
+    "/page/description-list",
+    "/page/diff-review",
+    "/page/diff-review-comments",
+    "/page/diff-statistics",
+    "/page/diff-viewer",
+    "/page/divider",
+    "/page/donut-chart",
+    "/page/drawer",
+    "/page/dropdown",
+    "/page/dropdown-group",
+    "/page/dropdown-item",
+    "/page/dropdown-label",
+    "/page/dropdown-menu",
+    "/page/dropdown-separator",
+    "/page/dropdown-trigger",
+    "/page/empty-state",
+    "/page/feed",
+    "/page/feed-boundary",
+    "/page/feed-event",
+    "/page/file-upload",
+    "/page/filter-bar",
+    "/page/find-bar",
+    "/page/floating-action",
+    "/page/focus-trap",
+    "/page/footer",
+    "/page/form",
+    "/page/form-field",
+    "/page/form-section",
+    "/page/grid",
+    "/page/grid-item",
+    "/page/grid-list",
+    "/page/grid-list-item",
+    "/page/guidance-region",
+    "/page/host-provider",
+    "/page/hover-card",
+    "/page/image",
+    "/page/inline-confirm",
+    "/page/inline-loading",
+    "/page/input",
+    "/page/invocation-rule-builder",
+    "/page/json-editor",
+    "/page/json-schema-editor",
+    "/page/json-viewer",
+    "/page/kanban-board",
+    "/page/kbd",
+    "/page/key-value-editor",
+    "/page/keyboard-shortcuts",
+    "/page/label",
+    "/page/line-chart",
+    "/page/link",
+    "/page/load-more",
+    "/page/locale-provider",
+    "/page/markdown-editor",
+    "/page/marquee",
+    "/page/masonry",
+    "/page/matrix-chart",
+    "/page/media-controls",
+    "/page/mega-menu",
+    "/page/menu-bar",
+    "/page/message",
+    "/page/meter",
+    "/page/modal",
+    "/page/modal-region",
+    "/page/multi-select",
+    "/page/navigation-bar",
+    "/page/navigation-item",
+    "/page/number-input",
+    "/page/page-header",
+    "/page/pagination",
+    "/page/parameter-field",
+    "/page/payload-inspector",
+    "/page/permission-matrix",
+    "/page/phone-input",
+    "/page/pin-input",
+    "/page/policy-lock",
+    "/page/popover",
+    "/page/portal",
+    "/page/preview-panel",
+    "/page/pricing-card",
+    "/page/progress",
+    "/page/qr-code",
+    "/page/quota-meter",
+    "/page/radio-group",
+    "/page/rating",
+    "/page/relative-time",
+    "/page/resizable-panels",
+    "/page/review-editor",
+    "/page/run-step-timeline",
+    "/page/schedule-builder",
+    "/page/schema-form",
+    "/page/scroll-area",
+    "/page/search-field",
+    "/page/secret-value-field",
+    "/page/section-heading",
+    "/page/segment",
+    "/page/segmented-control",
+    "/page/select",
+    "/page/selectable-row",
+    "/page/selection-popover",
+    "/page/setting-row",
+    "/page/share-card",
+    "/page/shortcut-field",
+    "/page/shortcut-hint",
+    "/page/side-navigation",
+    "/page/side-navigation-group",
+    "/page/side-navigation-item",
+    "/page/sidebar",
+    "/page/skeleton",
+    "/page/skip-link",
+    "/page/slider",
+    "/page/sortable-list",
+    "/page/source-diff-viewer",
+    "/page/sparkbar",
+    "/page/spectrogram",
+    "/page/spectrum-chart",
+    "/page/speed-dial",
+    "/page/speed-dial-action",
+    "/page/spinner",
+    "/page/stack",
+    "/page/stacked-list-item",
+    "/page/statistic",
+    "/page/statistic-group",
+    "/page/status-dot",
+    "/page/steps",
+    "/page/surface",
+    "/page/tab",
+    "/page/tab-list",
+    "/page/tab-panel",
+    "/page/table",
+    "/page/table-body",
+    "/page/table-cell",
+    "/page/table-header",
+    "/page/table-header-cell",
+    "/page/table-of-contents",
+    "/page/table-row",
+    "/page/tabs",
+    "/page/tag-input",
+    "/page/terminal-frame",
+    "/page/terminal-output",
+    "/page/textarea",
+    "/page/time-field",
+    "/page/timeline",
+    "/page/toast-region",
+    "/page/toggle",
+    "/page/toolbar",
+    "/page/tooltip",
+    "/page/transfer-list",
+    "/page/tree",
+    "/page/tree-item",
+    "/page/virtual-list",
+    "/page/visually-hidden",
+    "/page/waveform",
+    "/page/zoom-pan-viewer"
+  ],
+  "definitions": {
+    "cold": "This checkout's applications/playground/.tmp removed and BUN_RUNTIME_TRANSPILER_CACHE_PATH set to a new empty run-owned directory; the exporter clears build/ itself; no OS cache flush.",
+    "warm": "Immediately after the cold sample, a new process with the same transpiler cache directory and the same disk inputs.",
+    "childMaxResidentBytes": "Bun.Subprocess.resourceUsage().maxRSS, bytes on every platform: one process's own high-water mark.",
+    "treePeakResidentBytes": "Largest sum of ps rss (KiB x 1024) across the child and its descendants, sampled every 100 ms by one observer for baseline and candidate.",
+    "spawnToReadyMilliseconds": "Spawn of bun src/playground-server.ts to the first GET /ready answering 200 \"ready\", polled every 100 ms.",
+    "jsHeap": "Chromium JS heap through CDP Runtime.getHeapUsage after HeapProfiler.collectGarbage; never summed with RSS.",
+    "hostLoad": "uptime load averages and os.availableParallelism() captured before and after every sample."
+  },
+  "prerequisites": [],
+  "staticExport": [
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 6.032791000000003,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:13:16.697Z",
+          "uptime": "2:13  up 12 days,  9:38, 1 user, load averages: 11.79 13.49 20.79",
+          "loadAverages": {
+            "oneMinute": 11.79,
+            "fiveMinutes": 13.49,
+            "fifteenMinutes": 20.79
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:13:16.704Z",
+        "uptime": "2:13  up 12 days,  9:38, 1 user, load averages: 11.79 13.49 20.79",
+        "loadAverages": {
+          "oneMinute": 11.79,
+          "fiveMinutes": 13.49,
+          "fifteenMinutes": 20.79
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:16:34.188Z",
+        "uptime": "2:16  up 12 days,  9:41, 1 user, load averages: 9.01 11.19 18.26",
+        "loadAverages": {
+          "oneMinute": 9.01,
+          "fiveMinutes": 11.19,
+          "fifteenMinutes": 18.26
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 197359.76404200002,
+        "childMaxResidentBytes": 4464345088,
+        "userCpuMicroseconds": 314528724,
+        "systemCpuMicroseconds": 189569606,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1950,
+          "skippedTicks": 0,
+          "peakResidentBytes": 5180080128,
+          "peakProcessCount": 2,
+          "observedPids": [
+            71328, 71882, 72062, 72108, 72118, 72162, 72177, 72223, 72356, 72370, 72421, 72443,
+            72489, 72501, 72548, 72559, 72604, 72622, 72672, 72691, 72733, 72749, 72791, 72809,
+            72856, 72872, 72917, 72930, 72977, 72990, 73038, 73064, 73106, 73120, 73132, 73174,
+            73184, 73230, 73247, 73296, 73309, 73353, 73367, 73412, 73428, 73472, 73485, 73531,
+            73542, 73588, 73601, 73614, 73920, 74412, 74632, 74643, 74687, 74700, 74747, 74762,
+            74877, 74900, 74947, 74957, 75005, 75017, 75059, 75071, 75198, 75272, 75292, 75337,
+            75352, 75440, 75451, 75497, 75510, 75553, 75565, 75611, 75626, 75677, 75687, 75734,
+            75745, 75791, 75807, 75819, 75863, 75877, 75919, 75934, 75978, 75992, 76051, 76062,
+            76106, 76119, 76161, 76172, 76188, 76235, 76254, 76298, 76311, 76546, 76559, 76616,
+            76688, 76764, 76778, 76821, 76835, 76881, 76893, 76984, 76997, 77069, 77141, 77201,
+            77214, 77260, 77280, 77294, 77336, 77350, 77393, 77408, 77453, 77463, 77509, 77524,
+            77572, 77582, 77630, 77649, 77702, 77714, 77761, 77774, 78090, 78436, 78500, 78553,
+            78566, 78608, 78624, 78669, 78684, 78728, 78740, 78784, 78799, 78844, 78856, 78870,
+            78918, 78942, 78984, 78999, 79041, 79051, 79096, 79182, 79257, 79270, 79385, 79401,
+            79444, 79461, 79505, 79519, 79563, 79578, 79592, 79634, 79648, 79698, 79718, 79764,
+            79778, 79823
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/static-export-1-cold.log"
+      },
+      "inventory": {
+        "fileCount": 2895,
+        "totalBytes": 63709938,
+        "uniqueContentCount": 2881,
+        "uniqueContentBytes": 62447924,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 1577,
+            "bytes": 21483646
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005226
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 2895,
+        "sidebarComponents": 181,
+        "reportedSeconds": 196.6
+      }
+    },
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.826958999998169,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:16:34.268Z",
+          "uptime": "2:16  up 12 days,  9:41, 1 user, load averages: 9.01 11.19 18.26",
+          "loadAverages": {
+            "oneMinute": 9.01,
+            "fiveMinutes": 11.19,
+            "fifteenMinutes": 18.26
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:16:34.272Z",
+        "uptime": "2:16  up 12 days,  9:41, 1 user, load averages: 9.01 11.19 18.26",
+        "loadAverages": {
+          "oneMinute": 9.01,
+          "fiveMinutes": 11.19,
+          "fifteenMinutes": 18.26
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:19:52.453Z",
+        "uptime": "2:19  up 12 days,  9:45, 1 user, load averages: 10.20 11.47 16.94",
+        "loadAverages": {
+          "oneMinute": 10.2,
+          "fiveMinutes": 11.47,
+          "fifteenMinutes": 16.94
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 198072.16504200004,
+        "childMaxResidentBytes": 4322426880,
+        "userCpuMicroseconds": 315101784,
+        "systemCpuMicroseconds": 189535879,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1957,
+          "skippedTicks": 0,
+          "peakResidentBytes": 5017190400,
+          "peakProcessCount": 2,
+          "observedPids": [
+            80406, 80680, 80914, 80962, 80972, 81018, 81109, 81154, 81181, 81273, 81294, 81340,
+            81355, 81403, 81426, 81468, 81483, 81493, 81536, 81548, 81596, 81616, 81660, 81672,
+            81721, 81733, 81783, 81796, 81841, 81854, 81899, 81913, 81955, 81970, 82029, 82039,
+            82085, 82098, 82142, 82152, 82167, 82211, 82317, 82852, 83260, 83305, 83318, 83367,
+            83377, 83422, 83437, 83482, 83497, 83544, 83559, 83618, 83629, 83751, 83765, 83813,
+            83851, 83897, 83916, 83961, 83973, 83987, 84030, 84136, 84235, 84306, 84402, 84446,
+            84488, 84502, 84549, 84613, 84683, 84743, 84851, 84915, 84989, 85010, 85054, 85074,
+            85117, 85130, 85144, 85187, 85257, 85302, 85315, 85360, 85375, 85421, 85432, 85479,
+            85505, 85548, 85562, 85608, 85620, 85663, 85677, 85721, 85742, 85755, 85798, 85812,
+            86098, 86116, 86158, 86170, 86213, 86227, 86271, 86414, 86464, 86493, 86545, 86596,
+            86697, 86778, 86865, 86879, 86898, 86951, 86962, 87005, 87019, 87064, 87082, 87234,
+            87249, 87299, 87312, 87358, 87372, 87416, 87443, 87517, 87534, 87580, 87595, 87640,
+            87655, 87740, 87758, 87771, 87817, 87827, 87870, 87975, 88020, 88035, 88082, 88100,
+            88146, 88160, 88210, 88230, 88298, 88312, 88355, 88370, 88415, 88429, 88450, 88497,
+            88507, 88554, 88564, 88608, 88626, 88670, 88682, 88729, 88844, 88894, 88910, 88959,
+            88982, 88992
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/static-export-1-warm.log"
+      },
+      "inventory": {
+        "fileCount": 2895,
+        "totalBytes": 63709938,
+        "uniqueContentCount": 2881,
+        "uniqueContentBytes": 62447924,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 1577,
+            "bytes": 21483646
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005226
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 2895,
+        "sidebarComponents": 181,
+        "reportedSeconds": 197.5
+      }
+    },
+    {
+      "pair": 2,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 5.805499999958556,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:19:52.553Z",
+          "uptime": "2:19  up 12 days,  9:45, 1 user, load averages: 10.20 11.47 16.94",
+          "loadAverages": {
+            "oneMinute": 10.2,
+            "fiveMinutes": 11.47,
+            "fifteenMinutes": 16.94
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:19:52.560Z",
+        "uptime": "2:19  up 12 days,  9:45, 1 user, load averages: 10.20 11.47 16.94",
+        "loadAverages": {
+          "oneMinute": 10.2,
+          "fiveMinutes": 11.47,
+          "fifteenMinutes": 16.94
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:23:23.444Z",
+        "uptime": "2:23  up 12 days,  9:48, 1 user, load averages: 18.71 14.94 17.14",
+        "loadAverages": {
+          "oneMinute": 18.71,
+          "fiveMinutes": 14.94,
+          "fifteenMinutes": 17.14
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 210774.60341699992,
+        "childMaxResidentBytes": 4758700032,
+        "userCpuMicroseconds": 323157079,
+        "systemCpuMicroseconds": 194560851,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 2077,
+          "skippedTicks": 3,
+          "peakResidentBytes": 5479825408,
+          "peakProcessCount": 2,
+          "observedPids": [
+            89935, 90125, 90345, 90397, 90409, 90456, 90466, 90478, 90527, 90540, 90584, 90599,
+            90642, 90657, 90701, 90790, 90906, 90985, 91095, 91107, 91152, 91164, 91210, 91229,
+            91277, 91289, 91336, 91409, 91459, 91469, 91514, 91527, 91596, 91609, 91625, 91672,
+            91699, 91745, 91755, 91804, 91815, 91857, 91871, 91916, 91938, 91980, 92028, 92075,
+            92087, 92137, 92150, 92195, 92210, 92254, 92269, 92317, 92337, 92387, 92398, 92445,
+            92456, 92501, 92518, 92561, 92584, 92628, 92642, 92688, 92701, 92751, 92763, 92808,
+            92823, 92866, 92880, 92927, 92953, 92998, 93011, 93064, 93078, 93090, 93140, 93151,
+            93216, 93230, 93275, 93288, 93331, 93349, 93391, 93404, 93452, 93466, 93511, 93530,
+            93597, 93642, 93653, 93703, 93713, 93725, 93774, 93793, 93840, 93851, 93899, 93911,
+            93957, 93978, 94027, 94037, 94085, 94099, 94146, 94161, 94222, 94232, 94277, 94293,
+            94340, 94352, 94401, 94412, 94466, 94479, 94525, 94538, 94581, 94601, 94647, 94661,
+            94710, 94722, 94768, 94783, 94841, 94856, 94898, 94912, 94968, 94981, 95031, 95052,
+            95099, 95111, 95278, 95437, 95499, 95521, 95582, 95596, 95646, 95665, 95707, 95720,
+            95768, 95787, 95874, 95885, 95933, 95947, 95995, 96039, 96117, 96152, 96201, 96220,
+            96390, 96594, 96826, 97035, 97151, 97164, 97209, 97247, 97360, 97402, 97483, 97531,
+            97605, 97652
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/static-export-2-cold.log"
+      },
+      "inventory": {
+        "fileCount": 2895,
+        "totalBytes": 63709938,
+        "uniqueContentCount": 2881,
+        "uniqueContentBytes": 62447924,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 1577,
+            "bytes": 21483646
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005226
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 2895,
+        "sidebarComponents": 181,
+        "reportedSeconds": 209.8
+      }
+    },
+    {
+      "pair": 2,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 5.716040999977849,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:23:23.524Z",
+          "uptime": "2:23  up 12 days,  9:48, 1 user, load averages: 18.71 14.94 17.14",
+          "loadAverages": {
+            "oneMinute": 18.71,
+            "fiveMinutes": 14.94,
+            "fifteenMinutes": 17.14
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:23:23.529Z",
+        "uptime": "2:23  up 12 days,  9:48, 1 user, load averages: 18.71 14.94 17.14",
+        "loadAverages": {
+          "oneMinute": 18.71,
+          "fiveMinutes": 14.94,
+          "fifteenMinutes": 17.14
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:26:49.603Z",
+        "uptime": "2:26  up 12 days,  9:52, 1 user, load averages: 11.80 13.93 16.25",
+        "loadAverages": {
+          "oneMinute": 11.8,
+          "fiveMinutes": 13.93,
+          "fifteenMinutes": 16.25
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 205962.76495799993,
+        "childMaxResidentBytes": 4867948544,
+        "userCpuMicroseconds": 322753950,
+        "systemCpuMicroseconds": 193061659,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 2033,
+          "skippedTicks": 0,
+          "peakResidentBytes": 5611864064,
+          "peakProcessCount": 2,
+          "observedPids": [
+            108, 225, 288, 346, 370, 491, 601, 743, 826, 1008, 1126, 1307, 1403, 1480, 1598, 1685,
+            1801, 1878, 1998, 2081, 2206, 2285, 2400, 2478, 2585, 2666, 2790, 2869, 2981, 3077,
+            3176, 3191, 3251, 3262, 3306, 3323, 3382, 3414, 3463, 3489, 3540, 3564, 3647, 3695,
+            3740, 3760, 3816, 3842, 3919, 3935, 3987, 4005, 4075, 4097, 4192, 4206, 4252, 4268,
+            4336, 4378, 4442, 4455, 4509, 4529, 4584, 4667, 4726, 4741, 4790, 4817, 4894, 4956,
+            5015, 5031, 5082, 5112, 5169, 5210, 5259, 5282, 5332, 5357, 5432, 5479, 5524, 5544,
+            5595, 5619, 5705, 5746, 5762, 5813, 5848, 5904, 5945, 6018, 6029, 6076, 6134, 6164,
+            6215, 6331, 6420, 6546, 6627, 6749, 6829, 6941, 6993, 7038, 7058, 7110, 7146, 7234,
+            7277, 7322, 7337, 7403, 7433, 7515, 7555, 7600, 7618, 7664, 7691, 7784, 7825, 7868,
+            7886, 7936, 7965, 8041, 8074, 8122, 8137, 8195, 8221, 8327, 8342, 8396, 8415, 8472,
+            8496, 8569, 8581, 8632, 8649, 8710, 8770, 8863, 98198, 98305, 98477, 98531, 98556,
+            98604, 98614, 98666, 98677, 98719, 98736, 98787, 98801, 98844, 98903, 98961, 98979,
+            99044, 99061, 99103, 99152, 99165, 99215, 99236, 99362, 99424, 99457, 99544, 99604,
+            99718, 99805, 99927
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/static-export-2-warm.log"
+      },
+      "inventory": {
+        "fileCount": 2895,
+        "totalBytes": 63709936,
+        "uniqueContentCount": 2881,
+        "uniqueContentBytes": 62447922,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 1577,
+            "bytes": 21483646
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005224
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 2895,
+        "sidebarComponents": 181,
+        "reportedSeconds": 205.4
+      }
+    },
+    {
+      "pair": 3,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.636333999922499,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:26:49.703Z",
+          "uptime": "2:26  up 12 days,  9:52, 1 user, load averages: 11.80 13.93 16.25",
+          "loadAverages": {
+            "oneMinute": 11.8,
+            "fiveMinutes": 13.93,
+            "fifteenMinutes": 16.25
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:26:49.708Z",
+        "uptime": "2:26  up 12 days,  9:52, 1 user, load averages: 11.80 13.93 16.25",
+        "loadAverages": {
+          "oneMinute": 11.8,
+          "fiveMinutes": 13.93,
+          "fifteenMinutes": 16.25
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:30:11.521Z",
+        "uptime": "2:30  up 12 days,  9:55, 1 user, load averages: 9.49 12.65 15.30",
+        "loadAverages": {
+          "oneMinute": 9.49,
+          "fiveMinutes": 12.65,
+          "fifteenMinutes": 15.3
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 201677.1869160001,
+        "childMaxResidentBytes": 4110925824,
+        "userCpuMicroseconds": 318995311,
+        "systemCpuMicroseconds": 191670822,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1992,
+          "skippedTicks": 0,
+          "peakResidentBytes": 4786978816,
+          "peakProcessCount": 2,
+          "observedPids": [
+            9666, 9916, 10174, 10189, 10250, 10285, 10381, 10466, 10583, 10666, 10781, 10866, 10987,
+            11053, 11156, 11217, 11317, 11388, 11492, 11554, 11641, 11715, 11812, 11874, 11980,
+            12067, 12191, 12234, 12309, 12409, 12483, 12584, 12624, 12674, 12686, 12732, 12748,
+            12806, 12851, 12863, 12911, 12958, 13000, 13018, 13060, 13080, 13125, 13135, 13184,
+            13197, 13300, 13323, 13368, 13381, 13426, 13442, 13527, 13605, 13722, 13778, 13822,
+            13835, 13879, 13890, 13907, 13959, 13969, 14016, 14030, 14072, 14082, 14128, 14144,
+            14190, 14205, 14247, 14261, 14309, 14327, 14346, 14391, 14404, 14449, 14560, 14612,
+            14679, 14749, 14761, 14806, 14818, 14862, 14872, 14917, 14941, 14984, 15029, 15042,
+            15088, 15104, 15158, 15180, 15223, 15236, 15280, 15447, 15511, 15575, 15635, 15645,
+            15689, 15702, 15716, 15759, 15771, 15820, 15880, 15927, 15939, 15986, 16003, 16055,
+            16074, 16151, 16171, 16183, 16228, 16238, 16286, 16300, 16350, 16411, 16455, 16469,
+            16512, 16528, 16577, 16589, 16636, 16647, 16691, 16708, 16763, 16780, 16824, 16837,
+            16884, 16895, 16944, 16960, 17006, 17021, 17064, 17079, 17121, 17134, 17180, 17194,
+            17239, 17252, 17298, 17314, 17372, 17387, 17422, 17449, 17497, 17510, 17560, 17581,
+            17627, 17638, 17686, 17702, 17714, 17760, 17776, 17823, 17836, 17881, 17894, 17943,
+            17968
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/static-export-3-cold.log"
+      },
+      "inventory": {
+        "fileCount": 2895,
+        "totalBytes": 63709936,
+        "uniqueContentCount": 2881,
+        "uniqueContentBytes": 62447922,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 1577,
+            "bytes": 21483646
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005224
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 2895,
+        "sidebarComponents": 181,
+        "reportedSeconds": 200.9
+      }
+    },
+    {
+      "pair": 3,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 5.019957999931648,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:30:11.600Z",
+          "uptime": "2:30  up 12 days,  9:55, 1 user, load averages: 9.49 12.65 15.30",
+          "loadAverages": {
+            "oneMinute": 9.49,
+            "fiveMinutes": 12.65,
+            "fifteenMinutes": 15.3
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:30:11.604Z",
+        "uptime": "2:30  up 12 days,  9:55, 1 user, load averages: 9.49 12.65 15.30",
+        "loadAverages": {
+          "oneMinute": 9.49,
+          "fiveMinutes": 12.65,
+          "fifteenMinutes": 15.3
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:33:38.658Z",
+        "uptime": "2:33  up 12 days,  9:58, 1 user, load averages: 10.75 11.60 14.28",
+        "loadAverages": {
+          "oneMinute": 10.75,
+          "fiveMinutes": 11.6,
+          "fifteenMinutes": 14.28
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 206921.00116699992,
+        "childMaxResidentBytes": 4706385920,
+        "userCpuMicroseconds": 323491654,
+        "systemCpuMicroseconds": 193311382,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 2042,
+          "skippedTicks": 0,
+          "peakResidentBytes": 5421006848,
+          "peakProcessCount": 2,
+          "observedPids": [
+            18437, 18561, 18731, 18781, 18801, 18846, 18858, 18873, 18916, 18926, 18971, 18989,
+            19032, 19049, 19093, 19112, 19177, 19199, 19243, 19256, 19302, 19362, 19381, 19434,
+            19451, 19498, 19513, 19587, 19629, 19702, 19726, 19774, 19903, 20118, 20335, 20586,
+            20682, 20725, 20738, 20806, 20886, 20964, 21015, 21099, 21140, 21218, 21278, 21333,
+            21345, 21394, 21412, 21457, 21470, 21515, 21530, 21587, 21604, 21647, 21661, 21711,
+            21725, 21772, 21788, 21837, 21850, 21895, 21910, 21952, 21965, 22011, 22026, 22072,
+            22085, 22130, 22147, 22206, 22220, 22264, 22278, 22322, 22335, 22382, 22401, 22502,
+            22519, 22588, 22605, 22683, 22699, 22747, 22765, 22818, 22868, 22951, 22982, 23063,
+            23119, 23234, 23310, 23424, 23517, 23645, 23740, 23776, 23845, 23868, 23962, 24036,
+            24149, 24232, 24351, 24430, 24537, 24618, 24734, 24822, 24939, 25015, 25128, 25205,
+            25323, 25402, 25516, 25602, 25715, 25785, 25895, 25971, 26077, 26157, 26290, 26303,
+            26349, 26363, 26412, 26434, 26484, 26516, 26569, 26586, 26636, 26657, 26721, 26797,
+            26849, 26864, 26915, 26935, 27000, 27037, 27088, 27099, 27151, 27173, 27230, 27306,
+            27356, 27371, 27420, 27440, 27497, 27545, 27560, 27615, 27667, 27694, 27777, 27805,
+            27850, 27872, 27928, 27950, 28038, 28082, 28098, 28159, 28180, 28237, 28307, 28341,
+            28386, 28407
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/static-export-3-warm.log"
+      },
+      "inventory": {
+        "fileCount": 2895,
+        "totalBytes": 63709936,
+        "uniqueContentCount": 2881,
+        "uniqueContentBytes": 62447922,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 1577,
+            "bytes": 21483646
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005224
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 2895,
+        "sidebarComponents": 181,
+        "reportedSeconds": 206.3
+      }
+    }
+  ],
+  "serverReady": [
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 6.424540999811143,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:33:38.742Z",
+          "uptime": "2:33  up 12 days,  9:58, 1 user, load averages: 10.75 11.60 14.28",
+          "loadAverages": {
+            "oneMinute": 10.75,
+            "fiveMinutes": 11.6,
+            "fifteenMinutes": 14.28
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:33:38.754Z",
+        "uptime": "2:33  up 12 days,  9:58, 1 user, load averages: 10.75 11.60 14.28",
+        "loadAverages": {
+          "oneMinute": 10.75,
+          "fiveMinutes": 11.6,
+          "fifteenMinutes": 14.28
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:33:48.105Z",
+        "uptime": "2:33  up 12 days,  9:59, 1 user, load averages: 18.29 13.18 14.81",
+        "loadAverages": {
+          "oneMinute": 18.29,
+          "fiveMinutes": 13.18,
+          "fifteenMinutes": 14.81
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 9202.317416999955,
+        "childMaxResidentBytes": 3900080128,
+        "userCpuMicroseconds": 16379907,
+        "systemCpuMicroseconds": 5697855,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 91,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3899932672,
+          "peakProcessCount": 1,
+          "observedPids": [29151]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/server-1-cold.log"
+      },
+      "spawnToReadyMilliseconds": 9138.504209000152,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 91,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3899932672,
+        "peakProcessCount": 1,
+        "observedPids": [29151]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3439
+      }
+    },
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.562166000017896,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:33:48.110Z",
+          "uptime": "2:33  up 12 days,  9:59, 1 user, load averages: 18.29 13.18 14.81",
+          "loadAverages": {
+            "oneMinute": 18.29,
+            "fiveMinutes": 13.18,
+            "fifteenMinutes": 14.81
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:33:48.115Z",
+        "uptime": "2:33  up 12 days,  9:59, 1 user, load averages: 18.29 13.18 14.81",
+        "loadAverages": {
+          "oneMinute": 18.29,
+          "fiveMinutes": 13.18,
+          "fifteenMinutes": 14.81
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:33:57.143Z",
+        "uptime": "2:33  up 12 days,  9:59, 1 user, load averages: 19.95 13.61 14.95",
+        "loadAverages": {
+          "oneMinute": 19.95,
+          "fiveMinutes": 13.61,
+          "fifteenMinutes": 14.95
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 8916.645332999993,
+        "childMaxResidentBytes": 3790323712,
+        "userCpuMicroseconds": 15732460,
+        "systemCpuMicroseconds": 5545903,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 88,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3790176256,
+          "peakProcessCount": 1,
+          "observedPids": [30009]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/server-1-warm.log"
+      },
+      "spawnToReadyMilliseconds": 8843.409874999896,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 88,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3790176256,
+        "peakProcessCount": 1,
+        "observedPids": [30009]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3461
+      }
+    },
+    {
+      "pair": 2,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.2305840000044554,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:33:57.148Z",
+          "uptime": "2:33  up 12 days,  9:59, 1 user, load averages: 19.95 13.61 14.95",
+          "loadAverages": {
+            "oneMinute": 19.95,
+            "fiveMinutes": 13.61,
+            "fifteenMinutes": 14.95
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:33:57.153Z",
+        "uptime": "2:33  up 12 days,  9:59, 1 user, load averages: 19.95 13.61 14.95",
+        "loadAverages": {
+          "oneMinute": 19.95,
+          "fiveMinutes": 13.61,
+          "fifteenMinutes": 14.95
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:34:06.281Z",
+        "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 20.94 14.05 15.09",
+        "loadAverages": {
+          "oneMinute": 20.94,
+          "fiveMinutes": 14.05,
+          "fifteenMinutes": 15.09
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 9020.810833999887,
+        "childMaxResidentBytes": 3975348224,
+        "userCpuMicroseconds": 16249939,
+        "systemCpuMicroseconds": 5158023,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 89,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3975200768,
+          "peakProcessCount": 1,
+          "observedPids": [30441]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/server-2-cold.log"
+      },
+      "spawnToReadyMilliseconds": 8931.194584000157,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 89,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3975200768,
+        "peakProcessCount": 1,
+        "observedPids": [30441]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3660
+      }
+    },
+    {
+      "pair": 2,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 3.827957999892533,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:34:06.285Z",
+          "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 20.94 14.05 15.09",
+          "loadAverages": {
+            "oneMinute": 20.94,
+            "fiveMinutes": 14.05,
+            "fifteenMinutes": 15.09
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:34:06.290Z",
+        "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 20.94 14.05 15.09",
+        "loadAverages": {
+          "oneMinute": 20.94,
+          "fiveMinutes": 14.05,
+          "fifteenMinutes": 15.09
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:34:15.518Z",
+        "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 24.89 15.12 15.45",
+        "loadAverages": {
+          "oneMinute": 24.89,
+          "fiveMinutes": 15.12,
+          "fifteenMinutes": 15.45
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 9113.996667,
+        "childMaxResidentBytes": 4045881344,
+        "userCpuMicroseconds": 16198379,
+        "systemCpuMicroseconds": 4826916,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 90,
+          "skippedTicks": 0,
+          "peakResidentBytes": 4045799424,
+          "peakProcessCount": 1,
+          "observedPids": [30854]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/server-2-warm.log"
+      },
+      "spawnToReadyMilliseconds": 9050.605874999892,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 90,
+        "skippedTicks": 0,
+        "peakResidentBytes": 4045799424,
+        "peakProcessCount": 1,
+        "observedPids": [30854]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3741
+      }
+    },
+    {
+      "pair": 3,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.071250000037253,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:34:15.523Z",
+          "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 24.89 15.12 15.45",
+          "loadAverages": {
+            "oneMinute": 24.89,
+            "fiveMinutes": 15.12,
+            "fifteenMinutes": 15.45
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:34:15.527Z",
+        "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 24.89 15.12 15.45",
+        "loadAverages": {
+          "oneMinute": 24.89,
+          "fiveMinutes": 15.12,
+          "fifteenMinutes": 15.45
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:34:24.808Z",
+        "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 24.00 15.26 15.50",
+        "loadAverages": {
+          "oneMinute": 24,
+          "fiveMinutes": 15.26,
+          "fifteenMinutes": 15.5
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 9161.824040999869,
+        "childMaxResidentBytes": 4027432960,
+        "userCpuMicroseconds": 16252835,
+        "systemCpuMicroseconds": 5223101,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 90,
+          "skippedTicks": 0,
+          "peakResidentBytes": 4027334656,
+          "peakProcessCount": 1,
+          "observedPids": [31205]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/server-3-cold.log"
+      },
+      "spawnToReadyMilliseconds": 9101.523125000065,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 90,
+        "skippedTicks": 0,
+        "peakResidentBytes": 4027334656,
+        "peakProcessCount": 1,
+        "observedPids": [31205]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3673
+      }
+    },
+    {
+      "pair": 3,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.453957999823615,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:34:24.813Z",
+          "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 24.00 15.26 15.50",
+          "loadAverages": {
+            "oneMinute": 24,
+            "fiveMinutes": 15.26,
+            "fifteenMinutes": 15.5
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:34:24.818Z",
+        "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 24.00 15.26 15.50",
+        "loadAverages": {
+          "oneMinute": 24,
+          "fiveMinutes": 15.26,
+          "fifteenMinutes": 15.5
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [
+          "applications/playground/scripts/static-export.ts",
+          "applications/playground/src/page-bundle.ts",
+          "applications/playground/src/playground-server.ts"
+        ],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": "7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7"
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:34:33.831Z",
+        "uptime": "2:34  up 12 days,  9:59, 1 user, load averages: 21.48 15.00 15.41",
+        "loadAverages": {
+          "oneMinute": 21.48,
+          "fiveMinutes": 15,
+          "fifteenMinutes": 15.41
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 8900.295832999982,
+        "childMaxResidentBytes": 3986456576,
+        "userCpuMicroseconds": 16039983,
+        "systemCpuMicroseconds": 5135415,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 88,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3986309120,
+          "peakProcessCount": 1,
+          "observedPids": [31646]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/candidate-2026-10-14T08-13-16-595Z/server-3-warm.log"
+      },
+      "spawnToReadyMilliseconds": 8831.767624999862,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 88,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3986309120,
+        "peakProcessCount": 1,
+        "observedPids": [31646]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3660
+      }
+    }
+  ],
+  "playwright": [],
+  "probes": {}
+}

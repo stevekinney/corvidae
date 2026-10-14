@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -106,7 +106,7 @@ describe('createFileSynchronizer', () => {
   it('skips files that become unreadable between scans', async () => {
     const unreadableFile = join(tempDir, 'private.md');
     await writeFile(unreadableFile, 'Secret content.');
-    await Bun.$`chmod 000 ${unreadableFile}`;
+    await chmod(unreadableFile, 0o000);
 
     try {
       const synchronizer = createFileSynchronizer({ memory, directory: tempDir });
@@ -114,7 +114,7 @@ describe('createFileSynchronizer', () => {
 
       expect(result).toEqual({ added: 0, updated: 0, removed: 0 });
     } finally {
-      await Bun.$`chmod 644 ${unreadableFile}`;
+      await chmod(unreadableFile, 0o644);
     }
   });
 

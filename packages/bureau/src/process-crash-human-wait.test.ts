@@ -23,6 +23,12 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import {
+  expectScenarioPassed,
+  type ScenarioScope,
+  settleScenario,
+  waitForBureauState,
+} from './test/hoisted-scenario';
+import {
   CLAIM_TTL_MS,
   createHarnessBureau,
   HUMAN_WAIT_PROMPT,
@@ -33,103 +39,115 @@ import type { Bureau } from './types';
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
 
-async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 1000,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 5));
+/**
+ * The SIGKILLed child and the claim-lapse wait are real time and real processes, and the recovery
+ * that follows boots durable engines over the child's store. None of that fits a per-test clock on
+ * a loaded host, so each backend's scenario runs whole, once, at module scope (see
+ * `test/hoisted-scenario.ts`); a failed assertion is captured there and rethrown by its test.
+ */
+async function humanWaitScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  const directory = mkdtempSync(join(tmpdir(), `corvidae-process-crash-human-wait-${backend}-`));
+  const storagePath = join(directory, 'bureau');
+  const markerPath = join(directory, 'marker.json');
+  let recoverer: Bureau | undefined;
+  // A hung scenario never reaches its `finally`, so what it owns is released from here.
+  scope.onHang(async () => {
+    await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  try {
+    // Premise: the child died from SIGKILL and left its marker.
+    const child = Bun.spawn(['bun', CHILD, 'human-wait-parked', backend, storagePath, markerPath], {
+      timeout: 120_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    scope.onHang(() => child.kill());
+    await child.exited;
+    const stderr = await new Response(child.stderr).text();
+    expect(child.signalCode ?? stderr).toBe('SIGKILL');
+    expect(existsSync(markerPath)).toBe(true);
+    const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
+
+    // The dead holder's claim lapses on Weft's own wall clock.
+    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
+
+    let generateCalls = 0;
+    recoverer = await createHarnessBureau({
+      backend,
+      storagePath,
+      generate: async () => {
+        generateCalls += 1;
+        return { content: 'resumed after the crash', toolCalls: [] };
+      },
+      toolbox: createToolbox([]),
+      humanInput: true,
+    });
+    const bureau = recoverer;
+    const report = await bureau.waitForRecovery?.();
+    if (report === undefined) throw new Error('waitForRecovery is unavailable');
+    expect(report.outcome).toBe('clean');
+    expect(report.perRunFailures).toEqual([]);
+
+    const reviewsFor = () => bureau.listPendingReviews().filter((review) => review.runId === runId);
+    await waitForBureauState([bureau], () => reviewsFor().length > 0, { runIds: [runId] });
+    await waitForBureauState([bureau], () => bureau.getRun(runId)?.liveness.status === 'waiting', {
+      runIds: [runId],
+    });
+
+    const reviews = reviewsFor();
+    expect(reviews).toHaveLength(1);
+    const [review] = reviews;
+    if (review?.kind !== 'human-wait')
+      throw new Error(`expected a human-wait review, got ${review?.kind}`);
+    expect(review.signalName).toBe(HUMAN_WAIT_SIGNAL);
+    expect(review.prompt).toBe(HUMAN_WAIT_PROMPT);
+    const liveness = bureau.getRun(runId)?.liveness;
+    expect(liveness?.declaredWait?.reason).toBe('review');
+    expect(liveness?.declaredWait?.dependency).toBe(HUMAN_WAIT_SIGNAL);
+    // The recovered run is parked, not looping: nothing generated before approval.
+    expect(generateCalls).toBe(0);
+
+    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
+
+    await waitForBureauState([bureau], () => bureau.getRun(runId)?.status === 'completed', {
+      runIds: [runId],
+    });
+    expect(generateCalls).toBe(1);
+    expect(reviewsFor()).toHaveLength(0);
+    expect(bureau.getRun(runId)?.liveness.declaredWait).toBeUndefined();
+    // Weft's own result waiter: it settles after the durable commit.
+    const durableState = await bureau.waitForDurableRun(runId);
+    expect(durableState?.status).toBe('completed');
+  } finally {
+    // allSettled never rejects, so the directory is always removed after shutdown.
+    const reports = await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
+    rmSync(directory, { recursive: true, force: true });
+    for (const report of reports) {
+      expect(report.status).toBe('fulfilled');
+      if (report.status === 'fulfilled') expect(report.value.unresolved).toBe(0);
+    }
   }
-  return check();
 }
+
+type Backend = 'sqlite' | 'lmdb';
+// The hang guard is the per-test timeout these tests carried before they were hoisted. It only
+// stops a genuine hang; every wait for a state change is by event (`waitForBureauState`).
+const HANG_GUARD_MILLISECONDS = 120_000;
+const outcomes = {
+  sqlite: await settleScenario(
+    (scope) => humanWaitScenario('sqlite', scope),
+    HANG_GUARD_MILLISECONDS,
+  ),
+  lmdb: await settleScenario((scope) => humanWaitScenario('lmdb', scope), HANG_GUARD_MILLISECONDS),
+};
 
 describe.each(['sqlite', 'lmdb'] as const)(
   'a human-wait park survives SIGKILL over %s',
   (backend) => {
-    it('surfaces the recovered review, waits on it, and resumes exactly once when it is approved', async () => {
-      const directory = mkdtempSync(
-        join(tmpdir(), `corvidae-process-crash-human-wait-${backend}-`),
-      );
-      const storagePath = join(directory, 'bureau');
-      const markerPath = join(directory, 'marker.json');
-      let recoverer: Bureau | undefined;
-
-      try {
-        // Premise: the child died from SIGKILL and left its marker.
-        const child = Bun.spawn(
-          ['bun', CHILD, 'human-wait-parked', backend, storagePath, markerPath],
-          { stdout: 'pipe', stderr: 'pipe' },
-        );
-        await child.exited;
-        const stderr = await new Response(child.stderr).text();
-        expect(child.signalCode ?? stderr).toBe('SIGKILL');
-        expect(existsSync(markerPath)).toBe(true);
-        const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
-
-        // The dead holder's claim lapses on Weft's own wall clock.
-        await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
-
-        let generateCalls = 0;
-        recoverer = await createHarnessBureau({
-          backend,
-          storagePath,
-          generate: async () => {
-            generateCalls += 1;
-            return { content: 'resumed after the crash', toolCalls: [] };
-          },
-          toolbox: createToolbox([]),
-          humanInput: true,
-        });
-        const bureau = recoverer;
-        const report = await bureau.waitForRecovery?.();
-        if (report === undefined) throw new Error('waitForRecovery is unavailable');
-        expect(report.outcome).toBe('clean');
-        expect(report.perRunFailures).toEqual([]);
-
-        const reviewsFor = () =>
-          bureau.listPendingReviews().filter((review) => review.runId === runId);
-        expect(await pollUntil(() => reviewsFor().length > 0)).toBe(true);
-        expect(await pollUntil(() => bureau.getRun(runId)?.liveness.status === 'waiting')).toBe(
-          true,
-        );
-
-        const reviews = reviewsFor();
-        expect(reviews).toHaveLength(1);
-        const [review] = reviews;
-        if (review?.kind !== 'human-wait')
-          throw new Error(`expected a human-wait review, got ${review?.kind}`);
-        expect(review.signalName).toBe(HUMAN_WAIT_SIGNAL);
-        expect(review.prompt).toBe(HUMAN_WAIT_PROMPT);
-        const liveness = bureau.getRun(runId)?.liveness;
-        expect(liveness?.declaredWait?.reason).toBe('review');
-        expect(liveness?.declaredWait?.dependency).toBe(HUMAN_WAIT_SIGNAL);
-        // The recovered run is parked, not looping: nothing generated before approval.
-        expect(generateCalls).toBe(0);
-
-        await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
-
-        expect(await pollUntil(() => bureau.getRun(runId)?.status === 'completed')).toBe(true);
-        expect(generateCalls).toBe(1);
-        expect(reviewsFor()).toHaveLength(0);
-        expect(bureau.getRun(runId)?.liveness.declaredWait).toBeUndefined();
-        expect(
-          await pollUntil(async () => {
-            const durableRun = await bureau.getDurableRun(runId);
-            return durableRun?.status === 'completed';
-          }),
-        ).toBe(true);
-      } finally {
-        // allSettled never rejects, so the directory is always removed after shutdown.
-        const reports = await Promise.allSettled(
-          recoverer === undefined ? [] : [recoverer.shutdown()],
-        );
-        rmSync(directory, { recursive: true, force: true });
-        for (const report of reports) {
-          expect(report.status).toBe('fulfilled');
-          if (report.status === 'fulfilled') expect(report.value.unresolved).toBe(0);
-        }
-      }
-    }, 120_000);
+    it('surfaces the recovered review, waits on it, and resumes exactly once when it is approved', () => {
+      expectScenarioPassed(outcomes[backend]);
+    });
   },
 );

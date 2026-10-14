@@ -164,7 +164,8 @@
       <p>Value changes: <output data-testid="value-change-count">{valueChangeCount}</output></p>
       <p>Mode: <output data-testid="editor-mode">{mode}</output></p>
     </div>
-    <pre data-testid="bound-value">{value}</pre>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -- keyboard scrolling is intentional for overflow content. -->
+    <pre data-testid="bound-value" role="region" aria-label="Bound value" tabindex="0">{value}</pre>
   </div>
 </div>
 

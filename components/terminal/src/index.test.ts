@@ -16,9 +16,10 @@ async function readManifest(path: string): Promise<Manifest> {
 }
 
 describe('package entry', () => {
-  test('exports the engine identity and no Terminal component before COR-478', () => {
-    expect(Object.keys(terminal)).toEqual(['TERMINAL_ENGINE']);
+  test('exports the Terminal component and the engine identity, and nothing else at runtime', () => {
+    expect(Object.keys(terminal).toSorted()).toEqual(['TERMINAL_ENGINE', 'Terminal']);
     expect(terminal.TERMINAL_ENGINE).toBe(TERMINAL_ENGINE);
+    expect(typeof terminal.Terminal).toBe('function');
   });
 
   test('names the engine the root catalog pins and this package depends on', async () => {

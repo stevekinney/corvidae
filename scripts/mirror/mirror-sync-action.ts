@@ -1,5 +1,11 @@
 import { pushVerifiedBundle } from './authenticated-push.ts';
-import { createGitHubApi, installationTokenFromApp, type GitHubApi } from './github-api.ts';
+import {
+  createGitHubApi,
+  installationTokenFromApp,
+  type GitHubApi,
+  type OpenPullRequestRecord,
+} from './github-api.ts';
+import { mirrorBotLogin } from './github-app.ts';
 import { resolveReleaseWorkflowFile } from './install-parity.ts';
 import {
   verifyPreparedSyncArtifact,
@@ -13,10 +19,12 @@ import {
   foreignCommitOwnership,
   git,
   gitEnvironment,
+  newestMirrorProvenance,
   provenanceTrailer,
   runSync,
   stageSurface,
   SyncError,
+  tryGit,
   type SyncResult,
 } from './sync.ts';
 import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
@@ -120,6 +128,374 @@ export function pullRequestBodyFor(options: {
   ].join('\n');
 }
 
+/** The corvidae commit a sync pull request was built from, read from its head commit's message. */
+function trailerShaOf(message: string): string | undefined {
+  const matches = [...message.matchAll(new RegExp(`^${provenanceTrailer}: ([0-9a-f]{40})$`, 'gm'))];
+  return matches.length === 1 ? matches[0]![1] : undefined;
+}
+
+interface SyncCandidates {
+  candidates: OpenPullRequestRecord[];
+  trailers: Map<number, string | undefined>;
+}
+
+/**
+ * The open sync pull requests this run is compared against: a `mirror-sync-` head, the App as
+ * author, the same base, and not the run's own pull request. Each carries the corvidae SHA read
+ * from its head commit, or `undefined` when there is no single parsable trailer.
+ */
+async function readSyncCandidates(options: {
+  api: Pick<GitHubApi, 'listOpenPullRequests' | 'getCommitMessage'>;
+  fullName: string;
+  base: string;
+  excludeNumber?: number | undefined;
+}): Promise<SyncCandidates> {
+  const { api, fullName, base, excludeNumber } = options;
+  const open = await api.listOpenPullRequests(fullName);
+  const candidates = open.filter(
+    (pullRequest) =>
+      pullRequest.number !== excludeNumber &&
+      pullRequest.headRef.startsWith('mirror-sync-') &&
+      pullRequest.author === mirrorBotLogin &&
+      pullRequest.baseRef === base,
+  );
+  const trailers = new Map<number, string | undefined>();
+  for (const candidate of candidates) {
+    trailers.set(
+      candidate.number,
+      trailerShaOf(await api.getCommitMessage(fullName, candidate.headSha)),
+    );
+  }
+  return { candidates, trailers };
+}
+
+/**
+ * The first candidate whose corvidae SHA strictly descends from this run's: a dispatch from an
+ * older corvidae ref can finish after a newer one already opened its pull request, and then
+ * everything this run would publish is obsolete. Equal SHAs are not newer.
+ */
+async function findNewerCandidate(
+  corvidaeRoot: string,
+  corvidaeCommit: string,
+  { candidates, trailers }: SyncCandidates,
+): Promise<{ candidate: OpenPullRequestRecord; trailerSha: string } | undefined> {
+  for (const candidate of candidates) {
+    const trailerSha = trailers.get(candidate.number);
+    if (trailerSha === undefined || trailerSha === corvidaeCommit) continue;
+    const descends = await tryGit(
+      corvidaeRoot,
+      'merge-base',
+      '--is-ancestor',
+      corvidaeCommit,
+      trailerSha,
+    );
+    if (descends.exitCode === 0) return { candidate, trailerSha };
+  }
+  return undefined;
+}
+
+/**
+ * Close every candidate whose corvidae SHA is an ancestor of `newCorvidaeCommit`, commenting
+ * with `commentFor`. A candidate the checkout cannot place is left open with a logged reason and
+ * never fails the job; a failed close is collected and thrown once every candidate was tried.
+ */
+async function closeAncestorCandidates(options: {
+  api: Pick<GitHubApi, 'createIssueComment' | 'closePullRequest'>;
+  corvidaeRoot: string;
+  fullName: string;
+  found: SyncCandidates;
+  newCorvidaeCommit: string;
+  commentFor: (trailerSha: string) => string;
+  closedLine: string;
+  failureHeading: string;
+  log: (line: string) => void;
+}): Promise<{ closed: number[]; left: { number: number; reason: string }[] }> {
+  const { api, corvidaeRoot, fullName, found, newCorvidaeCommit, log } = options;
+  const { candidates, trailers } = found;
+  const closed: number[] = [];
+  const left: { number: number; reason: string }[] = [];
+  const failures: string[] = [];
+  const leave = (number: number, reason: string): void => {
+    left.push({ number, reason });
+    log(`${fullName}#${number}: left open; ${reason}`);
+  };
+  for (const candidate of candidates) {
+    const trailerSha = trailers.get(candidate.number);
+    if (trailerSha === undefined) {
+      leave(
+        candidate.number,
+        `its head commit has no single parsable ${provenanceTrailer} trailer`,
+      );
+      continue;
+    }
+    const ancestry = await tryGit(
+      corvidaeRoot,
+      'merge-base',
+      '--is-ancestor',
+      trailerSha,
+      newCorvidaeCommit,
+    );
+    if (ancestry.exitCode === 128) {
+      leave(candidate.number, `${trailerSha} is not an object in the corvidae checkout`);
+      continue;
+    }
+    if (ancestry.exitCode !== 0) {
+      leave(
+        candidate.number,
+        ancestry.exitCode === 1
+          ? `${trailerSha} is not an ancestor of ${newCorvidaeCommit}`
+          : `git merge-base --is-ancestor exited ${ancestry.exitCode}: ${ancestry.stderr.trim()}`,
+      );
+      continue;
+    }
+    try {
+      await api.createIssueComment({
+        fullName,
+        issueNumber: candidate.number,
+        body: options.commentFor(trailerSha),
+      });
+      await api.closePullRequest(fullName, candidate.number);
+      closed.push(candidate.number);
+      log(`${fullName}#${candidate.number}: closed; ${options.closedLine}`);
+    } catch (error) {
+      failures.push(
+        `#${candidate.number}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new MirrorSyncActionError(`${options.failureHeading}:\n${failures.join('\n')}`);
+  }
+  return { closed, left };
+}
+
+/**
+ * Close the older sync pull requests a new one makes redundant.
+ *
+ * A sync pull request carries the whole target diff, so a newer one built from a descendant of an
+ * older one's corvidae commit contains everything the older one proposed. Leaving the older ones
+ * open means a stack of pull requests that each re-propose (and, once changesets are copied
+ * across, each re-deliver) the same release intent. A candidate is closed only when it is
+ * provably older: its trailer SHA is an ancestor of the new pull request's corvidae SHA, checked
+ * in the corvidae checkout. Anything the checkout cannot place is left open with a logged reason
+ * and never fails the job, because an unprovable pull request is a human's to judge. Only a
+ * failure to close a pull request that was provably superseded fails the job, and it does so
+ * after every other candidate has been tried.
+ *
+ * Snapshot pull requests are candidates too: they are sync pull requests whose release workflow
+ * dispatch the newer one makes moot.
+ */
+export async function supersedeOlderPullRequests(options: {
+  api: Pick<
+    GitHubApi,
+    'listOpenPullRequests' | 'getCommitMessage' | 'createIssueComment' | 'closePullRequest'
+  >;
+  corvidaeRoot: string;
+  fullName: string;
+  base: string;
+  /** The pull request just created. Excluded explicitly, never closed, whatever its trailer says. */
+  newPullRequest: { number: number; htmlUrl: string };
+  /** The corvidae commit the new pull request was built from. */
+  newCorvidaeCommit: string;
+  /**
+   * Runs once the new pull request is known not to be stale and before any older one is closed.
+   * The snapshot dispatch hangs here so a stale dispatch can never publish.
+   */
+  beforeClosingOlder?: (() => Promise<void>) | undefined;
+  log?: ((line: string) => void) | undefined;
+}): Promise<{ closed: number[]; left: { number: number; reason: string }[] }> {
+  const { api, corvidaeRoot, fullName, base, newPullRequest, newCorvidaeCommit } = options;
+  const log = options.log ?? ((line: string) => void process.stdout.write(`${line}\n`));
+  const found = await readSyncCandidates({
+    api,
+    fullName,
+    base,
+    excludeNumber: newPullRequest.number,
+  });
+  // A dispatch from an older corvidae ref can finish after a newer one already opened its pull
+  // request. Then the new pull request is the stale one: close it and touch nothing else.
+  const newer = await findNewerCandidate(corvidaeRoot, newCorvidaeCommit, found);
+  if (newer !== undefined) {
+    await api.createIssueComment({
+      fullName,
+      issueNumber: newPullRequest.number,
+      body: `Superseded by ${newer.candidate.htmlUrl}, which is already open and built from corvidae@${newer.trailerSha}, a descendant of the corvidae commit this pull request mirrors (${newCorvidaeCommit}).`,
+    });
+    await api.closePullRequest(fullName, newPullRequest.number);
+    log(
+      `${fullName}#${newPullRequest.number}: closed; superseded by newer ${newer.candidate.htmlUrl}`,
+    );
+    return { closed: [newPullRequest.number], left: [] };
+  }
+
+  await options.beforeClosingOlder?.();
+
+  return closeAncestorCandidates({
+    api,
+    corvidaeRoot,
+    fullName,
+    found,
+    newCorvidaeCommit,
+    commentFor: (trailerSha) =>
+      `Superseded by ${newPullRequest.htmlUrl}, which is built from corvidae@${newCorvidaeCommit}, a descendant of the corvidae commit this pull request mirrors (${trailerSha}).`,
+    closedLine: `superseded by ${newPullRequest.htmlUrl}`,
+    failureHeading: `${fullName}: ${newPullRequest.htmlUrl} is open, but these superseded pull requests could not be closed`,
+    log,
+  });
+}
+
+/**
+ * Finish a run that found nothing to sync. Corvidae HEAD already matches the target, so any open
+ * sync pull request built from an ancestor of this run's commit is obsolete and is closed, and a
+ * requested snapshot is dispatched first. If a strictly newer sync pull request is open, this run
+ * is the stale one: it dispatches nothing and closes nothing.
+ */
+export async function settleSkippedSync(options: {
+  api: Pick<
+    GitHubApi,
+    | 'dispatchWorkflow'
+    | 'listOpenPullRequests'
+    | 'getCommitMessage'
+    | 'createIssueComment'
+    | 'closePullRequest'
+  >;
+  target: MirrorTarget;
+  manifest: Pick<PreparedSyncManifest, 'baseBranch' | 'baseCommit' | 'workflowFile'>;
+  snapshot: boolean;
+  branch: string;
+  corvidaeCommit: string;
+  corvidaeRoot: string;
+  log?: ((line: string) => void) | undefined;
+}): Promise<string> {
+  const { api, target, manifest, snapshot, branch, corvidaeCommit, corvidaeRoot } = options;
+  const log = options.log ?? ((line: string) => void process.stdout.write(`${line}\n`));
+  const fullName = targetRepositoryFullName(target);
+  if (snapshot) {
+    if (manifest.workflowFile === undefined) {
+      throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
+    }
+    if (api.dispatchWorkflow === undefined) {
+      throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+    }
+  }
+  const found = await readSyncCandidates({ api, fullName, base: manifest.baseBranch });
+  const newer = await findNewerCandidate(corvidaeRoot, corvidaeCommit, found);
+  if (newer !== undefined) {
+    const reason = `${fullName}#${newer.candidate.number} is open and built from corvidae@${newer.trailerSha}, a descendant of this run's corvidae@${corvidaeCommit}`;
+    log(`${target}: nothing dispatched or closed; ${reason}`);
+    return `${target}: nothing dispatched or closed; ${reason}\n`;
+  }
+  let message = `${target}: no change, nothing to open\n`;
+  if (snapshot) {
+    await api.dispatchWorkflow!(
+      snapshotDispatchFor(target, manifest.workflowFile!, fullName, branch, {
+        decision: 'skip',
+        baseBranch: manifest.baseBranch,
+        baseCommit: manifest.baseCommit,
+      }),
+    );
+    message = `${target}: snapshot workflow dispatched for ${fullName}@${manifest.baseBranch} (${manifest.baseCommit})\n`;
+  }
+  const outcome = await closeAncestorCandidates({
+    api,
+    corvidaeRoot,
+    fullName,
+    found,
+    newCorvidaeCommit: corvidaeCommit,
+    commentFor: (trailerSha) =>
+      `Superseded: corvidae@${corvidaeCommit} already matches the target, so this pull request (built from corvidae@${trailerSha}) has nothing left to propose.`,
+    closedLine: 'corvidae HEAD already matches the target',
+    failureHeading: `${fullName}: these obsolete sync pull requests could not be closed`,
+    log,
+  });
+  if (outcome.closed.length > 0) {
+    message += `${target}: closed obsolete sync pull request(s) ${outcome.closed.map((number) => `#${number}`).join(', ')}; corvidae HEAD already matches the target\n`;
+  }
+  return message;
+}
+
+/**
+ * Open the sync pull request, check that it is not stale, dispatch the snapshot workflow when
+ * asked, then close the pull requests the new one supersedes. The order is the contract: the new pull request exists before
+ * anything is closed, so a failure to close can never leave a target with no sync pull request.
+ */
+export async function openSyncPullRequest(options: {
+  api: Pick<
+    GitHubApi,
+    | 'createPullRequest'
+    | 'dispatchWorkflow'
+    | 'listOpenPullRequests'
+    | 'getCommitMessage'
+    | 'createIssueComment'
+    | 'closePullRequest'
+  >;
+  target: MirrorTarget;
+  manifest: Pick<PreparedSyncManifest, 'baseBranch' | 'baseCommit' | 'changed' | 'workflowFile'> & {
+    commit: string;
+  };
+  snapshot: boolean;
+  branch: string;
+  corvidaeCommit: string;
+  corvidaeRoot: string;
+  log?: ((line: string) => void) | undefined;
+}): Promise<string> {
+  const { api, target, manifest, snapshot, branch, corvidaeCommit, corvidaeRoot } = options;
+  const fullName = targetRepositoryFullName(target);
+  const pullRequest = await api.createPullRequest({
+    fullName,
+    base: manifest.baseBranch,
+    head: branch,
+    title: `Sync ${target} from corvidae`,
+    body: pullRequestBodyFor({ target, corvidaeCommit, changed: manifest.changed }),
+  });
+  let message = `${target}: opened ${pullRequest.htmlUrl}\n`;
+  const outcome = await supersedeOlderPullRequests({
+    api,
+    corvidaeRoot,
+    fullName,
+    base: manifest.baseBranch,
+    newPullRequest: pullRequest,
+    newCorvidaeCommit: corvidaeCommit,
+    beforeClosingOlder: async () => {
+      if (!snapshot) return;
+      if (manifest.workflowFile === undefined) {
+        throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
+      }
+      if (api.dispatchWorkflow === undefined) {
+        throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+      }
+      await api.dispatchWorkflow(
+        snapshotDispatchFor(target, manifest.workflowFile, fullName, branch, {
+          ...manifest,
+          decision: 'pushed',
+          pullRequest,
+        }),
+      );
+      message = `${target}: source pull request ${pullRequest.htmlUrl}; snapshot workflow dispatched for ${fullName}@${branch} (${manifest.commit})\n`;
+    },
+    log: options.log,
+  });
+  if (outcome.closed.includes(pullRequest.number)) {
+    message = `${target}: ${pullRequest.htmlUrl} was opened and immediately closed as superseded by a newer open sync pull request; no snapshot was dispatched\n`;
+  }
+  return message;
+}
+
+/**
+ * A sync dispatched from a ref other than main records a trailer that is not on main's history,
+ * which would block every later sync. The workflow refuses first; this is the second line.
+ */
+export function refusePrepareOffMain(
+  environment: Record<string, string | undefined> = Bun.env,
+): void {
+  const ref = environment['GITHUB_REF'];
+  if (ref !== undefined && ref !== '' && ref !== 'refs/heads/main') {
+    throw new MirrorSyncActionError(
+      `Refusing to prepare a sync from ${ref}: a sync records its corvidae commit as provenance, so it must run from refs/heads/main.`,
+    );
+  }
+}
+
 function isMirrorTarget(value: string): value is MirrorTarget {
   return (mirrorTargets as readonly string[]).includes(value);
 }
@@ -190,18 +566,21 @@ export async function reportDrift(options: {
   directory: string;
 }): Promise<DriftReport> {
   const clone = await cloneTarget({ remote: options.remote, directory: options.directory });
+  const provenance = await newestMirrorProvenance(clone, options.target, { strict: true });
   await assertNoForeignCommits(
     clone,
     await foreignCommitOwnership({
       corvidaeRoot: options.corvidaeRoot,
       target: options.target,
       clone,
+      provenance,
     }),
   );
   await stageSurface({
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
     directory: clone,
+    provenance,
   });
   const porcelain = await git(clone, 'status', '--porcelain');
   const changed = porcelain.split('\n').filter((line) => line.length > 0);
@@ -260,6 +639,7 @@ async function corvidaeCommitFor(argv: readonly string[], corvidaeRoot: string):
 }
 
 async function runPrepare(argv: readonly string[]): Promise<number> {
+  refusePrepareOffMain();
   const target = requiredTarget(argv);
   const snapshot = snapshotOption(argv);
   const corvidaeRoot = defaultCorvidaeRoot(argv);
@@ -313,26 +693,19 @@ async function runPublish(argv: readonly string[]): Promise<number> {
     expectedSnapshot: snapshot,
     ...(baseBranch === undefined ? {} : { expectedBaseBranch: baseBranch }),
   });
-  const fullName = targetRepositoryFullName(target);
   const branch = pullRequestBranchFor(corvidaeCommit);
   if (manifest.decision === 'skip') {
-    if (snapshot) {
-      if (manifest.workflowFile === undefined) {
-        throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
-      }
-      const api = installationOnlyApi();
-      if (api.dispatchWorkflow === undefined) {
-        throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
-      }
-      await api.dispatchWorkflow(
-        snapshotDispatchFor(target, manifest.workflowFile, fullName, branch, manifest),
-      );
-      process.stdout.write(
-        `${target}: snapshot workflow dispatched for ${fullName}@${manifest.baseBranch} (${manifest.baseCommit})\n`,
-      );
-    } else {
-      process.stdout.write(`${target}: no change, nothing to open\n`);
-    }
+    process.stdout.write(
+      await settleSkippedSync({
+        api: installationOnlyApi(),
+        target,
+        manifest,
+        snapshot,
+        branch,
+        corvidaeCommit,
+        corvidaeRoot,
+      }),
+    );
     return 0;
   }
   if (bundlePath === undefined || manifest.commit === undefined) {
@@ -347,33 +720,17 @@ async function runPublish(argv: readonly string[]): Promise<number> {
     environment: gitEnvironment(),
     credentialEnvironment: () => api.pushEnvironment(),
   });
-  const pullRequest = await api.createPullRequest({
-    fullName,
-    base: manifest.baseBranch,
-    head: branch,
-    title: `Sync ${target} from corvidae`,
-    body: pullRequestBodyFor({ target, corvidaeCommit, changed: manifest.changed }),
-  });
-  if (snapshot) {
-    if (manifest.workflowFile === undefined) {
-      throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
-    }
-    if (api.dispatchWorkflow === undefined) {
-      throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
-    }
-    await api.dispatchWorkflow(
-      snapshotDispatchFor(target, manifest.workflowFile, fullName, branch, {
-        ...manifest,
-        decision: 'pushed',
-        pullRequest,
-      }),
-    );
-    process.stdout.write(
-      `${target}: source pull request ${pullRequest.htmlUrl}; snapshot workflow dispatched for ${fullName}@${branch} (${manifest.commit})\n`,
-    );
-    return 0;
-  }
-  process.stdout.write(`${target}: opened ${pullRequest.htmlUrl}\n`);
+  process.stdout.write(
+    await openSyncPullRequest({
+      api,
+      target,
+      manifest: { ...manifest, commit: manifest.commit },
+      snapshot,
+      branch,
+      corvidaeCommit,
+      corvidaeRoot,
+    }),
+  );
   return 0;
 }
 

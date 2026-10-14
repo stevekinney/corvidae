@@ -1,0 +1,68 @@
+/**
+ * The static production gate's case list.
+ *
+ * A case is one (route, view, viewport). Every component route (`/page/<name>`) runs its
+ * Documentation and Playground views at 1440px and 390px; every other canonical route runs its one
+ * page at both widths. The list is sorted by case id in code-unit order, so it is the same on every
+ * machine, and a shard takes every `count`-th case starting at `index - 1`, which spreads expensive
+ * component routes across shards.
+ */
+
+export const STATIC_VIEWPORTS = [
+  { width: 1440, height: 1000 },
+  { width: 390, height: 844 },
+] as const;
+
+export type StaticCaseView = 'documentation' | 'playground' | 'page';
+
+export type StaticCase = {
+  id: string;
+  route: string;
+  view: StaticCaseView;
+  width: number;
+  height: number;
+};
+
+export type Shard = { index: number; count: number };
+
+export function isComponentRoute(route: string): boolean {
+  return /^\/page\/[^/]+$/.test(route);
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
+export function caseId(route: string, view: StaticCaseView, width: number): string {
+  return `${route} ${view} ${width}px`;
+}
+
+export function createCaseList(routes: readonly string[]): StaticCase[] {
+  const cases: StaticCase[] = [];
+  for (const route of new Set(routes)) {
+    const views: StaticCaseView[] = isComponentRoute(route)
+      ? ['documentation', 'playground']
+      : ['page'];
+    for (const view of views) {
+      for (const { width, height } of STATIC_VIEWPORTS) {
+        cases.push({ id: caseId(route, view, width), route, view, width, height });
+      }
+    }
+  }
+  return cases.toSorted((left, right) => compareCodeUnits(left.id, right.id));
+}
+
+export function parseShard(value: string): Shard {
+  const match = /^(\d+)\/(\d+)$/.exec(value);
+  const index = Number(match?.[1]);
+  const count = Number(match?.[2]);
+  if (match === null || count < 1 || index < 1 || index > count) {
+    throw new Error(`[static-playground] --shard must be <index>/<count> with 1 <= index <= count`);
+  }
+  return { index, count };
+}
+
+export function selectShard(cases: readonly StaticCase[], shard: Shard): StaticCase[] {
+  return cases.filter((_testCase, position) => position % shard.count === shard.index - 1);
+}
