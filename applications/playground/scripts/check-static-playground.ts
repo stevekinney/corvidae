@@ -47,7 +47,11 @@ import { loadStaticHostConfiguration } from './static-playground-server.ts';
 
 const PLAYGROUND_ROOT = join(import.meta.dirname, '..');
 const DEFAULT_DIRECTORY = join(PLAYGROUND_ROOT, 'build');
-const DEFAULT_OUTPUT = join(PLAYGROUND_ROOT, 'test-results', 'static-production');
+/**
+ * Outside `test-results/`, which Playwright empties before every development `test:browser` run,
+ * so a gate report survives until the next gate run replaces it.
+ */
+const DEFAULT_OUTPUT = join(PLAYGROUND_ROOT, 'production-gate-results');
 const DEFAULT_WORKERS = 4;
 const SERVER_READY_DEADLINE_MILLISECONDS = 30_000;
 

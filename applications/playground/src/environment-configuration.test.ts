@@ -4,7 +4,7 @@ import {
   readEnvironmentConfiguration,
   scrubbedEnvironmentOf,
   secretEntriesOf,
-  urlPassword,
+  urlPasswords,
 } from './environment-configuration.ts';
 
 const VARIABLES = [
@@ -147,11 +147,27 @@ describe('credential-bearing connection strings', () => {
   });
 
   it.each([
-    ['https://cinder.website', undefined],
-    ['https://user@host.example', undefined],
-    ['postgres://user:p%40ss@host/db', 'p@ss'],
-    ['not a url: really', undefined],
-  ])('reads the password of %s as %s', (value, password) => {
-    expect(urlPassword(value)).toBe(password);
+    ['https://cinder.website', []],
+    ['https://user@host.example', []],
+    ['postgres://user:plain@host/db', ['plain']],
+    ['postgres://user:p%40ss@host/db', ['p%40ss', 'p@ss']],
+    ['postgres://user:p%zz@host/db', ['p%zz']],
+    ['not a url: really', []],
+  ])('reads the passwords of %s as %p', (value, passwords) => {
+    expect(urlPasswords(value)).toEqual(passwords);
+  });
+
+  it('scans both the percent-encoded and the decoded form of a password', () => {
+    expect(secretEntriesOf({ ENCODED_URL: 'postgres://user:p%40ss@host/db' })).toEqual([
+      ['ENCODED_URL', 'p%40ss'],
+      ['ENCODED_URL', 'p@ss'],
+    ]);
+  });
+
+  it('treats a password with a malformed percent escape as a credential instead of throwing', () => {
+    const environment = { MALFORMED_URL: 'postgres://user:p%zz@host/db', HOME: '/Users/example' };
+
+    expect(scrubbedEnvironmentOf(environment)).toEqual({ HOME: '/Users/example' });
+    expect(secretEntriesOf(environment)).toEqual([['MALFORMED_URL', 'p%zz']]);
   });
 });

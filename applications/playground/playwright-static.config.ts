@@ -15,7 +15,7 @@ const environment = readEnvironmentConfiguration();
 export default defineConfig({
   testDir: './tests',
   testMatch: 'playground-production.playwright.ts',
-  outputDir: environment.playgroundStaticScratch ?? './test-results/static-production/scratch',
+  outputDir: environment.playgroundStaticScratch ?? './production-gate-results/scratch',
   fullyParallel: true,
   forbidOnly: true,
   retries: 0,
