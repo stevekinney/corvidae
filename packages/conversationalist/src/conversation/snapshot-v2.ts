@@ -24,7 +24,11 @@ import type {
   Message,
 } from '../types';
 import { deepFreeze } from '../utilities/type-helpers';
-import { deserializeCurrentConversationHistory } from './serialization';
+import {
+  assembleConversationHistory,
+  parseConversationFrame,
+  parseConversationMessage,
+} from './serialization';
 import {
   asRecord,
   assertLineageMatchesTree,
@@ -275,21 +279,54 @@ export function readNodeFields(
   };
 }
 
+/** Resolves an index in the envelope's message table to its parsed, frozen message. */
+export type TableMessageReader = (index: number) => Message;
+
+/**
+ * Parses table entries on first use and returns the same frozen instance for
+ * every later reference. A table entry is shared by every node that carries
+ * its message, so a restore schema-validates each entry once rather than once
+ * per node, and restored nodes share message instances exactly as committed
+ * history does, which keeps the next snapshot compact.
+ */
+export function createTableMessageReader(table: readonly unknown[]): TableMessageReader {
+  const parsed = new Map<number, Message>();
+  return (index) => {
+    let message = parsed.get(index);
+    if (message === undefined) {
+      try {
+        message = deepFreeze(parseConversationMessage(table[index], 'current'));
+      } catch (error) {
+        throw snapshotError(
+          `invalid message table entry ${index}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      parsed.set(index, message);
+    }
+    return message;
+  };
+}
+
+/**
+ * A node's conversation, assembled from already-parsed table entries. Only the
+ * node's own header is schema-validated here. Its messages get the checks that
+ * depend on their neighbours, which a table entry cannot carry on its own:
+ * positions, tool pairing, and conversation integrity.
+ */
 export function deserializeNodeConversation(
   fields: NodeFields & NodeMessages,
-  table: readonly unknown[],
+  readMessage: TableMessageReader,
   schemaVersion: number,
 ): ConversationHistory {
-  const raw = {
-    ...fields.header,
-    ids: fields.ids,
-    messages: Object.fromEntries(
-      fields.ids.map((messageId) => [messageId, table[fields.sources.get(messageId)!]]),
-    ),
-  };
+  const messages: Record<string, Message> = {};
+  for (const messageId of fields.ids) {
+    messages[messageId] = readMessage(fields.sources.get(messageId)!);
+  }
   let conversation: ConversationHistory;
   try {
-    conversation = deserializeCurrentConversationHistory(raw);
+    // `readNodeFields` has already checked the ids; the frame validates the header.
+    const { header } = parseConversationFrame({ ...fields.header, ids: [], messages: {} });
+    conversation = assembleConversationHistory(header, fields.ids, messages);
   } catch (error) {
     throw snapshotError(
       `invalid conversation for ${fields.id}: ${error instanceof Error ? error.message : String(error)}`,
@@ -334,9 +371,7 @@ interface MutableDecodedNode extends DecodedSnapshotNode {
 export function decodeSnapshotV2(value: unknown): DecodedSnapshot {
   const { envelope, table, nodes } = readEnvelopeV2(value);
   const referencedIndexes = new Set<number>();
-  // One instance per table entry, so restored nodes share messages exactly as
-  // committed history does and the next snapshot stays compact.
-  const canonicalMessages = new Map<number, Message>();
+  const readMessage = createTableMessageReader(table);
   const decodedById = new Map<string, { node: MutableDecodedNode; context: ParentContext }>();
   let root: MutableDecodedNode | undefined;
 
@@ -351,25 +386,12 @@ export function decodeSnapshotV2(value: unknown): DecodedSnapshot {
     if (decodedById.has(fields.id)) throw snapshotError(`duplicate node id ${fields.id}`);
     for (const index of fields.messageReferences.values()) referencedIndexes.add(index);
 
-    const deserialized = deserializeNodeConversation(
-      fields,
-      table,
-      envelope.conversationSchemaVersion,
-    );
-    const messages: Record<string, Message> = {};
-    for (const messageId of fields.ids) {
-      const index = fields.sources.get(messageId)!;
-      let message = canonicalMessages.get(index);
-      if (message === undefined) {
-        message = deserialized.messages[messageId]!;
-        canonicalMessages.set(index, message);
-      }
-      messages[messageId] = message;
-    }
     const node: MutableDecodedNode = {
       id: fields.id,
       revision: fields.revision,
-      conversation: deepFreeze({ ...deserialized, messages }),
+      conversation: deepFreeze(
+        deserializeNodeConversation(fields, readMessage, envelope.conversationSchemaVersion),
+      ),
       children: [],
     };
     decodedById.set(fields.id, {
@@ -443,7 +465,7 @@ export function currentConversationFromSnapshotV2(value: unknown): ConversationH
   }
   const conversation = deserializeNodeConversation(
     fields,
-    table,
+    createTableMessageReader(table),
     envelope.conversationSchemaVersion,
   );
   if (fields.id !== envelope.currentBranchId || conversation.id !== envelope.conversationId) {

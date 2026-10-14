@@ -5,7 +5,7 @@
  * Full restoration walks that tree iteratively; current-conversation reads
  * follow only the selected path.
  */
-import type { ConversationHistory, Message } from '../types';
+import type { ConversationHistory } from '../types';
 import { deepFreeze } from '../utilities/type-helpers';
 import {
   assertLineageMatchesTree,
@@ -15,6 +15,7 @@ import {
   type SnapshotEnvelope,
 } from './snapshot-integrity';
 import {
+  createTableMessageReader,
   deserializeNodeConversation,
   readNodeFields,
   type DecodedSnapshot,
@@ -56,7 +57,7 @@ export function decodeNestedSnapshotV2(value: unknown): DecodedSnapshot {
   const { envelope, table, root: rootValue } = readNestedEnvelopeV2(value);
   const seenIds = new Set<string>();
   const referencedIndexes = new Set<number>();
-  const canonicalMessages = new Map<number, Message>();
+  const readMessage = createTableMessageReader(table);
   const pending: PendingNode[] = [{ value: rootValue, parent: null, parentNode: null }];
   let root: MutableNode | undefined;
 
@@ -79,25 +80,12 @@ export function decodeNestedSnapshotV2(value: unknown): DecodedSnapshot {
     if (seenIds.has(fields.id)) throw snapshotError(`duplicate node id ${fields.id}`);
     seenIds.add(fields.id);
     for (const index of fields.messageReferences.values()) referencedIndexes.add(index);
-    const deserialized = deserializeNodeConversation(
-      fields,
-      table,
-      envelope.conversationSchemaVersion,
-    );
-    const messages: Record<string, Message> = {};
-    for (const messageId of fields.ids) {
-      const index = fields.sources.get(messageId)!;
-      let message = canonicalMessages.get(index);
-      if (message === undefined) {
-        message = deserialized.messages[messageId]!;
-        canonicalMessages.set(index, message);
-      }
-      messages[messageId] = message;
-    }
     const node: MutableNode = {
       id: fields.id,
       revision: fields.revision,
-      conversation: deepFreeze({ ...deserialized, messages }),
+      conversation: deepFreeze(
+        deserializeNodeConversation(fields, readMessage, envelope.conversationSchemaVersion),
+      ),
       children: [],
     };
     if (current.parentNode === null) root = node;
@@ -153,7 +141,7 @@ export function currentConversationFromNestedSnapshotV2(value: unknown): Convers
   }
   const conversation = deserializeNodeConversation(
     fields,
-    table,
+    createTableMessageReader(table),
     envelope.conversationSchemaVersion,
   );
   if (fields.id !== envelope.currentBranchId || conversation.id !== envelope.conversationId) {
