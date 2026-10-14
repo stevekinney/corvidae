@@ -2,7 +2,11 @@ import { expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { outcomeOf, rethrow } from './testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from './testing/module-scope-scenario.test-support.ts';
 
 async function readHealthAddress(output: ReadableStream<Uint8Array>): Promise<string> {
   const reader = output.getReader();
@@ -27,6 +31,7 @@ async function readHealthAddress(output: ReadableStream<Uint8Array>): Promise<st
 const scenario1 = await outcomeOf(async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-cli-start-'));
   const child = Bun.spawn({
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cmd: [
       process.execPath,
       new URL('./cli-main.ts', import.meta.url).pathname,

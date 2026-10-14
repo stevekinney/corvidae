@@ -16,7 +16,11 @@ import ts from 'typescript';
 
 import manifest from '../../package.json';
 
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../testing/module-scope-scenario.test-support.ts';
 import { codegenPackageName, executeCodegen } from './codegen.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/codegen');
@@ -92,6 +96,7 @@ type ProcessResult = {
 
 async function runProcess(command: readonly string[], cwd: string): Promise<ProcessResult> {
   const process = Bun.spawn({
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cmd: [...command],
     cwd,
     stdout: 'pipe',

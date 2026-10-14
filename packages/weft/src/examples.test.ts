@@ -5,7 +5,11 @@ import {
   loadCustomerProfileActivity,
 } from './customer-profile.test-support.ts';
 import { formatGreetingActivity, helloWorldWorkflow } from './hello-world.test-support.ts';
-import { outcomeOf, rethrow } from './testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from './testing/module-scope-scenario.test-support.ts';
 
 async function loadHelloWorldModule() {
   return import('./hello-world-example.test-support.ts');
@@ -17,6 +21,7 @@ async function loadHelloWorldModule() {
 const scenario1 = await outcomeOf(async () => {
   const weftRoot = import.meta.dir + '/..';
   const proc = Bun.spawn(['bun', 'src/hello-world-example.test-support.ts'], {
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cwd: weftRoot,
     stdout: 'pipe',
     stderr: 'pipe',

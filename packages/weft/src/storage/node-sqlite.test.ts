@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../testing/module-scope-scenario.test-support.ts';
 import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 
@@ -302,11 +306,14 @@ function resolveNativeNode(searchPath: string): string {
   for (const directory of searchPath.split(delimiter).filter(existsSync)) {
     const candidate = Bun.which('node', { PATH: directory });
     if (candidate === null) continue;
-    const identity = Bun.spawnSync([
-      candidate,
-      '--eval',
-      'process.stdout.write(process.versions.bun ? "bun" : process.release.name)',
-    ]);
+    const identity = Bun.spawnSync(
+      [
+        candidate,
+        '--eval',
+        'process.stdout.write(process.versions.bun ? "bun" : process.release.name)',
+      ],
+      { timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+    );
     if (identity.exitCode === 0 && identity.stdout.toString() === 'node') return candidate;
   }
   throw new Error('Native SQLite integration requires Node.js.');
@@ -322,7 +329,9 @@ const scenario1 = await outcomeOf(async () => {
     const runtime = resolveNativeNode(
       [directory, resolveCliEnvironment().path ?? ''].join(delimiter),
     );
-    const identity = Bun.spawnSync([runtime, '-p', 'typeof process.versions.bun']);
+    const identity = Bun.spawnSync([runtime, '-p', 'typeof process.versions.bun'], {
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    });
     expect(identity.exitCode).toBe(0);
     expect(identity.stdout.toString().trim()).toBe('undefined');
   } finally {
@@ -381,6 +390,7 @@ const scenario3 = await outcomeOf(async () => {
   };
   const runtime = resolveNativeNode(environment.PATH);
   const child = Bun.spawn({
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cmd: [
       runtime,
       '--test',

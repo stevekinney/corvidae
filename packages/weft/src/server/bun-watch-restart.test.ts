@@ -34,7 +34,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'bun:test';
 
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../testing/module-scope-scenario.test-support.ts';
 
 const REVISION_MODULE_NAME = 'revision.ts';
 
@@ -139,6 +143,7 @@ async function recoverAcrossWatchRestart(): Promise<void> {
 
     let stdoutText = '';
     const watchProcess = Bun.spawn({
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       cmd: ['bun', '--watch', entrypoint, '--database', databasePath],
       cwd: directory,
       stdout: 'pipe',

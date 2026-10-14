@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
-import { outcomeOf, rethrow } from '../../../src/testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../../../src/testing/module-scope-scenario.test-support.ts';
 import { runRemoteWorkerExample } from '../src/index';
 
 // This scenario spawns the example entry point as a real process, which takes seconds on a loaded host, so each scenario runs here at
@@ -9,6 +13,7 @@ import { runRemoteWorkerExample } from '../src/index';
 const scenario1 = await outcomeOf(async () => {
   const weftRoot = `${import.meta.dir}/../../..`;
   const proc = Bun.spawn(['bun', 'examples/remote-worker/src/index.ts'], {
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cwd: weftRoot,
     stdout: 'pipe',
     stderr: 'pipe',

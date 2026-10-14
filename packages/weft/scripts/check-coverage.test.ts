@@ -1,6 +1,10 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
-import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../src/testing/module-scope-scenario.test-support.ts';
 import {
   assembleAllowanceLayers,
   assertNoAllowanceKeyIsCoverageIgnored,
@@ -110,7 +114,12 @@ const scenario1 = await outcomeOf(async () => {
       ].join('\n'),
     );
 
-    const child = Bun.spawn(['bun', entry], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+    const child = Bun.spawn(['bun', entry], {
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
     const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
 
     expect(exitCode).toBe(1);

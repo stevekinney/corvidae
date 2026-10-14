@@ -33,7 +33,11 @@
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'bun:test';
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../../testing/module-scope-scenario.test-support.ts';
 
 import {
   availableAdapterSpecs,
@@ -414,6 +418,7 @@ for (const spec of availableAdapterSpecs()) {
     await Bun.write(entrypointPath, adapterBatchEntrypointSource(spec));
 
     const child = Bun.spawn({
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       cmd: ['bun', entrypointPath, databasePath],
       stdout: 'pipe',
       stderr: 'pipe',
@@ -466,6 +471,7 @@ for (const spec of availableBunNodeAdapterSpecs()) {
     await Bun.write(entrypointPath, rawInTransactionEntrypointSource(spec));
 
     const child = Bun.spawn({
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       cmd: ['bun', entrypointPath, databasePath],
       stdout: 'pipe',
       stderr: 'pipe',

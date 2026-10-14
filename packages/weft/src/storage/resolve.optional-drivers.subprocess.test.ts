@@ -7,13 +7,18 @@ import {
   withOptionalStorageDriversAbsent,
 } from './block-optional-storage-drivers.test-support.ts';
 
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../testing/module-scope-scenario.test-support.ts';
 
 const weftRoot = import.meta.dir + '/../..';
 
 async function runFixture(relativePath: string): Promise<{ exitCode: number; stderr: string }> {
   return withOptionalStorageDriversAbsent(weftRoot, async (sandboxRoot) => {
     const proc = Bun.spawn(['bun', relativePath], {
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       cwd: sandboxRoot,
       stdout: 'pipe',
       stderr: 'pipe',

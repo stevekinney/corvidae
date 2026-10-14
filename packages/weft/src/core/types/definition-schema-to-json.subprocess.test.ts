@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../../testing/module-scope-scenario.test-support.ts';
 
 // This spawns a real process, which takes seconds on a loaded host. The scenarios below run at
 // module scope, off Bun's five-second per-test clock; each test rethrows its scenario's outcome.
@@ -12,6 +16,7 @@ import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-sup
  */
 const scenario1 = await outcomeOf(async () => {
   const proc = Bun.spawn(['bun', 'src/core/types/definition-schema-to-json.valibot-fixture.ts'], {
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cwd: import.meta.dir + '/../../..',
     stdout: 'pipe',
     stderr: 'pipe',

@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { describe, it } from 'bun:test';
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../../testing/module-scope-scenario.test-support.ts';
 
 interface BunEntrypointResult {
   exitCode: number | null;
@@ -16,6 +20,7 @@ const textDecoder = new TextDecoder();
 
 function runBunEntrypoint(entrypoint: string): BunEntrypointResult {
   const result = Bun.spawnSync({
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cmd: [process.execPath, entrypoint],
     cwd: process.cwd(),
     stderr: 'pipe',
@@ -59,6 +64,7 @@ const scenario1 = await outcomeOf(async () => {
     );
 
     const buildResult = Bun.spawnSync({
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       cmd: [
         process.execPath,
         'build',

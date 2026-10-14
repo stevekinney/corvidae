@@ -7,7 +7,11 @@ import {
   waitForCondition as waitForTestingCondition,
 } from '../testing/fake-timers.test-support.ts';
 
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../testing/module-scope-scenario.test-support.ts';
 import { buildInternalRealmManifest } from '../worker/manifest/internal-realm.ts';
 import type { WorkerPool } from '../workers/pool.ts';
 import type { WorkerOutboundMessage } from './types.ts';
@@ -277,6 +281,7 @@ const scenario1 = await outcomeOf(async () => {
   `;
 
   const childProcess = Bun.spawn(['bun', '-e', script], {
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cwd: globalThis.process.cwd(),
     stdout: 'pipe',
     stderr: 'pipe',
