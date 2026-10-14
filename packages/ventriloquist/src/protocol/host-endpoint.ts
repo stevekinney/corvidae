@@ -60,6 +60,8 @@ export class HostEndpoint {
   #authorityRevoked = false;
   #processExitReported = false;
   #attachmentErrorReported = false;
+  /** A `backend-failed` or `transport-failed` was reported for a submitted operation. */
+  #submittedFailureReported = false;
   #cleanupReported = false;
   readonly #inbound: SequenceCursor;
   readonly #outbound: SequenceCursor;
@@ -372,6 +374,7 @@ export class HostEndpoint {
     if (sent.ok) {
       if (submitted) {
         this.#authorityRevoked = true;
+        this.#submittedFailureReported = true;
         this.#operations.retire(operationSequence);
       } else this.#operations.refuse();
     }
@@ -384,6 +387,10 @@ export class HostEndpoint {
     if (this.#processExitReported) return reject('malformed-frame', 'already-reported');
     // "A failed connection is not a successful process exit": nothing follows an attachment error.
     if (this.#attachmentErrorReported) return reject('malformed-frame', 'unexpected-message');
+    // A reported submitted-operation failure already gave the terminal status: `backend-failed` and
+    // `transport-failed` revoke the generation ("operation failure; generation revoked"), so the
+    // process exit that follows is not reported as a success or as a second status.
+    if (this.#submittedFailureReported) return reject('malformed-frame', 'unexpected-message');
     // An output-only source reports source completion and never invents an exit code.
     if (this.#terms?.capabilities.mode === 'output-only') {
       return reject('malformed-frame', 'unexpected-message');
@@ -420,6 +427,8 @@ export class HostEndpoint {
     if (this.#attachmentErrorReported || this.#processExitReported) {
       return reject('malformed-frame', 'unexpected-message');
     }
+    // A reported submitted-operation failure already revoked the generation and gave the status.
+    if (this.#submittedFailureReported) return reject('malformed-frame', 'unexpected-message');
     if (this.#terms === undefined) {
       const encoded = encodeFrame(
         {
