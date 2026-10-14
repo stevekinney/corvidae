@@ -61,8 +61,16 @@ describe('the Dev Container', () => {
     // COR-1379: the browser-fixture suite in `bun run test` failed with no browser installed.
     const locked = /"playwright-core": \["playwright-core@([^"]+)"/u.exec(lockfile)?.[1];
     expect(locked).toBeDefined();
-    expect(dockerfile).toContain(`RUN npx --yes playwright@${locked} install --with-deps chromium`);
-    expect(dockerfile).toMatch(/^ENV PLAYWRIGHT_BROWSERS_PATH=\/ms-playwright$/mu);
+    expect(dockerfile).toContain(`npx --yes playwright@${locked} install-deps chromium`);
+    expect(dockerfile).toContain(`npx --yes playwright@${locked} install chromium`);
+  });
+
+  test("keeps browsers in Playwright's default cache, which Turborepo tasks can find", () => {
+    // COR-1379: Turborepo's strict environment mode dropped `PLAYWRIGHT_BROWSERS_PATH`, so the
+    // browser-fixture task looked in the default cache and found nothing.
+    expect(dockerfile).not.toMatch(/^ENV PLAYWRIGHT_BROWSERS_PATH/mu);
+    const install = dockerfile.indexOf('install chromium');
+    expect(install).toBeGreaterThan(dockerfile.search(/^USER bun$/mu));
   });
 
   test('runs an init process, so killed process groups are reaped', () => {

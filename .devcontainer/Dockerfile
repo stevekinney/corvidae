@@ -35,14 +35,13 @@ RUN mkdir -p /etc/postgresql-common \
 
 # `bun run test` includes the browser-fixture suite, which launches Chromium's headless shell
 # through Playwright, and Weft's opt-in `WEFT_BROWSER_SMOKE=1` suites need it too, plus full
-# Chromium for WebExtensionStorage, which loads an unpacked extension. Installing `chromium`
-# fetches both. The version is the `playwright-core` that `bun.lock` resolves, so the browser
-# revisions are the ones the installed package looks for; `scripts/dev-container.test.ts`
-# fails when the two drift apart. `--with-deps` installs the browsers' system libraries, and
-# the shared path keeps them readable by `bun`.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx --yes playwright@1.63.0 install --with-deps chromium \
-  && chmod -R a+rX /ms-playwright \
+# Chromium for WebExtensionStorage, which loads an unpacked extension. The version is the
+# `playwright-core` that `bun.lock` resolves, so the browser revisions are the ones the
+# installed package looks for; `scripts/dev-container.test.ts` fails when the two drift
+# apart. The browsers' system libraries need root; the browsers themselves are installed
+# below, as `bun`, into Playwright's default cache, because Turborepo's strict environment
+# mode would not pass a `PLAYWRIGHT_BROWSERS_PATH` through to the tasks.
+RUN npx --yes playwright@1.63.0 install-deps chromium \
   && rm -rf /root/.npm /var/lib/apt/lists/*
 
 # Debian keeps the server binaries off PATH; the suites find them with `Bun.which`.
@@ -62,4 +61,6 @@ ENV TURBO_CONCURRENCY=1
 # as dubious ownership.
 USER bun
 RUN git config --global --add safe.directory '*' \
-  && mkdir -p /home/bun/.cache/turbo
+  && mkdir -p /home/bun/.cache/turbo \
+  && npx --yes playwright@1.63.0 install chromium \
+  && rm -rf /home/bun/.npm
