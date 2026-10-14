@@ -2,7 +2,12 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import { renderSvelteOnServer, requiredInstance, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  requiredInstance,
+  setupHappyDom,
+} from '@lostgradient/testing';
 import { injectStrippedStyles } from '../../test/css.ts';
 
 setupHappyDom();
@@ -12,6 +17,7 @@ const { enhanceJson } = await import('./json-editor-enhancement.ts');
 const { default: JsonEditor } = await import('./json-editor.svelte');
 const { default: schema } = await import('./json-editor.schema.ts');
 const jsonEditorSource = new URL('./json-editor.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(jsonEditorSource);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const autofocusServerHtml = new Map(
   await Promise.all(

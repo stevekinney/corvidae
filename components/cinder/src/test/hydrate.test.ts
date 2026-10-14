@@ -13,7 +13,12 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { hydrateServerHtml, renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  hydrateServerHtml,
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -28,6 +33,7 @@ const ariaProps = {
   description: 'Helper text',
   error: 'Validation message',
 };
+await prepareSvelteServerSource(INPUT_SOURCE);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const [inputHtml, ariaHtml] = await Promise.all([
   renderSvelteOnServer(INPUT_SOURCE, inputProps),

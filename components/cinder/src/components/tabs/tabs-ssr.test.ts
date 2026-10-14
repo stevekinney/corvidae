@@ -2,7 +2,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -30,6 +34,7 @@ const withDisabledMiddle = [
   { value: 'c', title: 'C tab', body: 'C body' },
 ];
 
+await prepareSvelteServerSource(TABS_FIXTURE_SOURCE);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const [selectedFirstHtml, selectedMiddleHtml, selectedLastHtml, selectedDisabledHtml, noMatchHtml] =
   await Promise.all([

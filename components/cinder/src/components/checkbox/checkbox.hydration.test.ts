@@ -10,12 +10,18 @@
 import { describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { hydrateServerHtml, renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  hydrateServerHtml,
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
 const { default: Checkbox } = await import('./checkbox.svelte');
 const sourcePath = new URL('./checkbox.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(sourcePath);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const defaultProps = { id: 'agree', label: 'I agree' };
 const indeterminateProps = { id: 'parent', label: 'Select all', indeterminate: true };

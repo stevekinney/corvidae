@@ -21,7 +21,10 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, test } from 'bun:test';
 
-import { checkBuildFlagHydrationSafety } from './hydration-safety.ts';
+import {
+  checkBuildFlagHydrationSafety,
+  prepareBuildFlagHydrationSafety,
+} from './hydration-safety.ts';
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const fixture = (name: string): string => join(fixturesDir, `${name}.svelte`);
@@ -30,6 +33,10 @@ const effectGateFixture = fixture('hydration-probe-effect-gate');
 const childBrowserFlagFixture = fixture('hydration-probe-child-browser-flag');
 const childEffectGateFixture = fixture('hydration-probe-child-effect-gate');
 
+await prepareBuildFlagHydrationSafety(browserFlagFixture);
+await prepareBuildFlagHydrationSafety(effectGateFixture);
+await prepareBuildFlagHydrationSafety(childBrowserFlagFixture);
+await prepareBuildFlagHydrationSafety(childEffectGateFixture);
 // Each check runs Bun.build passes and server renders in child processes, whose duration tracks
 // host load. Run them while the file loads so each test only asserts on the settled result.
 const [browserFlagResult, effectGateResult, childBrowserFlagResult, childEffectGateResult] =

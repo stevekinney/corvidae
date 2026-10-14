@@ -29,12 +29,13 @@ mock.module('@floating-ui/dom', () => ({
 }));
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
-const { renderSvelteOnServer } = await import('@lostgradient/testing');
+const { prepareSvelteServerSource, renderSvelteOnServer } = await import('@lostgradient/testing');
 const { tick } = await import('svelte');
 const { default: MenuBar } = await import('./menu-bar.svelte');
 const { pushEscapeHandler, resetEscapeStack } = await import('../../_internal/overlay.ts');
 const MENU_BAR_SOURCE = `${import.meta.dir}/_menu-bar-ssr-test.svelte`;
 
+await prepareSvelteServerSource(MENU_BAR_SOURCE);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const [menuBarServerHtml, providerDirectionMenuBarServerHtml] = await Promise.all([
   renderSvelteOnServer(MENU_BAR_SOURCE),

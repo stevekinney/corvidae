@@ -4,11 +4,16 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
 const IMAGE_SOURCE = join(import.meta.dir, 'image.svelte');
+await prepareSvelteServerSource(IMAGE_SOURCE);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const [imageServerHtml, placeholderImageServerHtml] = await Promise.all([
   renderSvelteOnServer(IMAGE_SOURCE, { src: '/a.jpg', alt: 'A photo' }),

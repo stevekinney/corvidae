@@ -28,7 +28,12 @@
 import { describe, expect, test } from 'bun:test';
 import { createRawSnippet, tick } from 'svelte';
 
-import { hydrateServerHtml, renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  hydrateServerHtml,
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -73,6 +78,7 @@ const { default: CommandPalette } = await import('./command-palette.svelte');
 const { default: CommandPaletteHydrationFixture } =
   await import('./_command-palette-hydration-test.svelte');
 const sourcePath = new URL('./_command-palette-hydration-test.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(sourcePath);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const [closedHtml, openHtml] = await Promise.all([
   renderSvelteOnServer(sourcePath, { open: false }),

@@ -9,7 +9,12 @@
 import { describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
-import { hydrateServerHtml, renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  hydrateServerHtml,
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -30,6 +35,7 @@ const sizedProps = {
   error: 'Required',
   options,
 };
+await prepareSvelteServerSource(sourcePath);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const [fruitHtml, sizedHtml] = await Promise.all([
   renderSvelteOnServer(sourcePath, fruitProps),

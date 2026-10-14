@@ -2,7 +2,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, mount, unmount } from 'svelte';
 
-import { renderSvelteOnServer, setupHappyDom } from '@lostgradient/testing';
+import {
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
 
 setupHappyDom();
 
@@ -11,6 +15,7 @@ const { default: Sidebar } = await import('./sidebar.svelte');
 const { default: SideNavigation } = await import('../side-navigation/side-navigation.svelte');
 const { SIDEBAR_MOBILE_BREAKPOINT, SIDEBAR_MOBILE_MEDIA_QUERY } = await import('./index.ts');
 const SIDEBAR_SOURCE = new URL('./sidebar.svelte', import.meta.url).pathname;
+await prepareSvelteServerSource(SIDEBAR_SOURCE);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const [workspaceSidebarServerHtml, defaultSidebarServerHtml, customBreakpointSidebarServerHtml] =
   await Promise.all([

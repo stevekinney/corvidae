@@ -259,7 +259,7 @@ describe('hasA11yCoverage', () => {
       tempPath,
       `
 import { fireEvent } from '@testing-library/svelte';
-test('keyboard and role', () => {
+test('keyboard and role', async () => {
   const { getByRole } = render(Component);
   const el = getByRole('button');
   await fireEvent.keyDown(el, { key: 'Enter' });

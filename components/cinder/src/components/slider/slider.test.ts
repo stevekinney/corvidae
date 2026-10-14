@@ -7,12 +7,13 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { fireEvent, render, cleanup } = await import('@testing-library/svelte');
-const { renderSvelteOnServer } = await import('@lostgradient/testing');
+const { prepareSvelteServerSource, renderSvelteOnServer } = await import('@lostgradient/testing');
 const { tick } = await import('svelte');
 const { default: Slider } = await import('./slider.svelte');
 const { default: SliderDirectionFixture } =
   await import('../../test/fixtures/slider-direction-fixture.svelte');
 const SLIDER_DIRECTION_FIXTURE_SOURCE = `${import.meta.dir}/../../test/fixtures/slider-direction-fixture.svelte`;
+await prepareSvelteServerSource(SLIDER_DIRECTION_FIXTURE_SOURCE);
 // Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
 const [providerDirectionSliderServerHtml, localDirectionSliderServerHtml] = await Promise.all([
   renderSvelteOnServer(SLIDER_DIRECTION_FIXTURE_SOURCE, {
