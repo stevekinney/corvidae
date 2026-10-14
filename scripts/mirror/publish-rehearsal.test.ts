@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import type { CommandResult, CommandRunner } from './packaging.ts';
 import {
   collectEntryPoints,
@@ -251,8 +252,9 @@ describe('readShippedPaths', () => {
   });
 });
 
-describe('proveNpmPublishDryRun', () => {
-  test('builds, packs, lints and only then rehearses the publish', async () => {
+describe('proveNpmPublishDryRun', async () => {
+  // Real `bun pm pack`, publint and attw runs are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withStagedTree({ built: true }, async (work, scratch) => {
       const harness = fakeRunner();
       const probe = await proveNpmPublishDryRun({
@@ -289,8 +291,9 @@ describe('proveNpmPublishDryRun', () => {
       ]);
     });
   });
+  test('builds, packs, lints and only then rehearses the publish', () => rethrow(outcome1));
 
-  test('names a tag for a prerelease version, which npm refuses to publish without one', async () => {
+  const outcome2 = await outcomeOf(async () => {
     await withStagedTree({ built: true, version: '2.0.0-rc.1' }, async (work, scratch) => {
       const harness = fakeRunner();
       await proveNpmPublishDryRun({
@@ -310,6 +313,8 @@ describe('proveNpmPublishDryRun', () => {
       ]);
     });
   });
+  test('names a tag for a prerelease version, which npm refuses to publish without one', () =>
+    rethrow(outcome2));
 
   /**
    * The regression this module was written for.
@@ -318,7 +323,7 @@ describe('proveNpmPublishDryRun', () => {
    * `dist/` that does not exist, so npm packs the manifest alone and reports a successful
    * rehearsal. The probe has to fail anyway, and it has to fail before npm is reached at all.
    */
-  test('refuses a package that was never built, which npm alone would call a success', async () => {
+  const outcome3 = await outcomeOf(async () => {
     await withStagedTree({ built: false }, async (work, scratch) => {
       const harness = fakeRunner();
       const error = await proveNpmPublishDryRun({
@@ -334,8 +339,10 @@ describe('proveNpmPublishDryRun', () => {
       expect(harness.commands.map((command) => command[0])).toEqual(['bun']);
     });
   });
+  test('refuses a package that was never built, which npm alone would call a success', () =>
+    rethrow(outcome3));
 
-  test('stops at a failing build rather than packing whatever is on disk', async () => {
+  const outcome4 = await outcomeOf(async () => {
     await withStagedTree({ built: true }, async (work, scratch) => {
       const harness = fakeRunner({ buildExitCode: 1 });
       const error = await proveNpmPublishDryRun({
@@ -350,8 +357,9 @@ describe('proveNpmPublishDryRun', () => {
       expect(harness.commands.map((command) => command[0])).toEqual(['bun']);
     });
   });
+  test('stops at a failing build rather than packing whatever is on disk', () => rethrow(outcome4));
 
-  test('fails when npm exits non-zero', async () => {
+  const outcome5 = await outcomeOf(async () => {
     await withStagedTree({ built: true }, async (work, scratch) => {
       const error = await proveNpmPublishDryRun({
         run: fakeRunner({ npmExitCode: 1 }).run,
@@ -362,13 +370,14 @@ describe('proveNpmPublishDryRun', () => {
       expect(error).toBeInstanceOf(PublishRehearsalError);
     });
   });
+  test('fails when npm exits non-zero', () => rethrow(outcome5));
 
   /**
    * `publint` reads a `bun pm pack` artifact; npm publishes one it packs itself. Both read the
    * same `files` allowlist, but they are different tools, so the only statement about npm's own
    * tarball is the one npm makes. This is that statement being checked.
    */
-  test('refuses a green npm run whose reported tarball is missing an entry point', async () => {
+  const outcome6 = await outcomeOf(async () => {
     await withStagedTree({ built: true }, async (work, scratch) => {
       const error = await proveNpmPublishDryRun({
         run: fakeRunner({ shipped: ['package.json', 'dist/index.d.ts'] }).run,
@@ -382,13 +391,15 @@ describe('proveNpmPublishDryRun', () => {
       expect((error as Error).message).toContain('every consumer of it would fail');
     });
   });
+  test('refuses a green npm run whose reported tarball is missing an entry point', () =>
+    rethrow(outcome6));
 
   /**
    * COR-1230: `checkTarball`'s gate is scoped to `internal-resolution-error`, so the ESM-only
    * shape every package the mirror publishes actually has no longer fails `attw` at all. Pinned
    * here so that scoping cannot silently regress.
    */
-  test('an ESM-only tarball clears attw under the scoped gate', async () => {
+  const outcome7 = await outcomeOf(async () => {
     await withStagedTree({ built: true, esmOnly: true }, async (work, scratch) => {
       const probe = await proveNpmPublishDryRun({
         run: fakeRunner().run,
@@ -401,6 +412,7 @@ describe('proveNpmPublishDryRun', () => {
       expect(probe.exitCode).toBe(0);
     });
   });
+  test('an ESM-only tarball clears attw under the scoped gate', () => rethrow(outcome7));
 
   /**
    * The ruling this module makes, pinned so it cannot drift back by accident.
@@ -410,7 +422,7 @@ describe('proveNpmPublishDryRun', () => {
    * this probe redundant with `verifyTarget` in `sync.ts`, which already does. This probe rules on
    * whether the tarball is complete, which is publint's answer.
    */
-  test('reports a failing type resolution without refusing an otherwise complete tarball', async () => {
+  const outcome8 = await outcomeOf(async () => {
     await withStagedTree({ built: true, internalResolutionError: true }, async (work, scratch) => {
       const probe = await proveNpmPublishDryRun({
         run: fakeRunner().run,
@@ -423,12 +435,14 @@ describe('proveNpmPublishDryRun', () => {
       expect(probe.exitCode).toBe(0);
     });
   });
+  test('reports a failing type resolution without refusing an otherwise complete tarball', () =>
+    rethrow(outcome8));
 
   /**
    * Without this there is no rehearsal of a released package at all: npm refuses to publish over
    * a version it already has, and the transform carries the target's version through untouched.
    */
-  test('rehearses a named version, and says which one the tree carries', async () => {
+  const outcome9 = await outcomeOf(async () => {
     await withStagedTree({ built: true }, async (work, scratch) => {
       const harness = fakeRunner();
       const probe = await proveNpmPublishDryRun({
@@ -450,8 +464,9 @@ describe('proveNpmPublishDryRun', () => {
       expect(manifest['version']).toBe('1.5.0-rehearsal.0');
     });
   });
+  test('rehearses a named version, and says which one the tree carries', () => rethrow(outcome9));
 
-  test('refuses a package name this target does not publish', async () => {
+  const outcome10 = await outcomeOf(async () => {
     await withStagedTree({ built: true }, async (work, scratch) => {
       const error = await proveNpmPublishDryRun({
         run: fakeRunner().run,
@@ -464,10 +479,12 @@ describe('proveNpmPublishDryRun', () => {
       expect((error as Error).message).toContain('@lostgradient/cryptography');
     });
   });
+  test('refuses a package name this target does not publish', () => rethrow(outcome10));
 });
 
-describe('rehearsePublish', () => {
-  test('clones the public mirror, transforms into it, and proves the publish there', async () => {
+describe('rehearsePublish', async () => {
+  // Real `bun pm pack`, publint and attw runs are the behavior; they run at module scope, off the per-test clock.
+  const outcome11 = await outcomeOf(async () => {
     const clones: { remote: string; directory: string }[] = [];
     const stages: { target: string; directory: string }[] = [];
     await withStagedTree({ built: true }, async (work, scratch) => {
@@ -494,10 +511,13 @@ describe('rehearsePublish', () => {
       expect(report.remote).toBe('https://github.com/stevekinney/weft.git');
     });
   });
+  test('clones the public mirror, transforms into it, and proves the publish there', () =>
+    rethrow(outcome11));
 });
 
-describe('runPublishRehearsalCommand', () => {
-  test('refuses an unknown target', async () => {
+describe('runPublishRehearsalCommand', async () => {
+  // Real `bun pm pack`, publint and attw runs are the behavior; they run at module scope, off the per-test clock.
+  const outcome12 = await outcomeOf(async () => {
     expect(
       await runPublishRehearsalCommand([
         '--target',
@@ -509,8 +529,10 @@ describe('runPublishRehearsalCommand', () => {
       ]),
     ).toBe(1);
   });
+  test('refuses an unknown target', () => rethrow(outcome12));
 
-  test('refuses a run with nowhere to clone to', async () => {
+  const outcome13 = await outcomeOf(async () => {
     expect(await runPublishRehearsalCommand(['--target', 'weft'])).toBe(1);
   });
+  test('refuses a run with nowhere to clone to', () => rethrow(outcome13));
 });

@@ -16,17 +16,21 @@ export class OperationLedger {
    * The operations a submitted-operation failure may still name: every unresolved one, and the
    * acknowledged ones still inside the host FIFO window. Sequences of other messages are never in it.
    *
-   * The window is the negotiated FIFO depth. The contract bounds the host FIFO ("the bounded host
-   * FIFO is 256 operations"), keeps input and resize in one order ("Input and resize share one
-   * ordered operation sequence and FIFO"), and says an acknowledgement is acceptance "into that
-   * bounded host FIFO, never backend consumption", while "a submitted operation can still fail
-   * later". An operation can only fail while it is in the FIFO or being processed, and processing
-   * follows FIFO order, so once `window` newer operations have been accepted behind it, it has left
-   * the FIFO and cannot fail. The ledger therefore holds at most `window` acknowledged operations
-   * plus the unresolved ones (also at most `window`), however long the attachment lives.
+   * The window is the negotiated FIFO depth plus the one operation the host is processing. The
+   * contract bounds the host FIFO ("the bounded host FIFO is 256 operations"), keeps input and
+   * resize in one order ("Input and resize share one ordered operation sequence and FIFO"), and
+   * says an acknowledgement is acceptance "into that bounded host FIFO, never backend consumption",
+   * while "a submitted operation can still fail later" and `backend-failed` is a "submitted
+   * operation" failure. An operation can fail while it is in the FIFO or while the host processes
+   * it. Processing follows FIFO order and takes the oldest operation out of the FIFO, so the
+   * active operation is no longer among the `window` queued ones yet must stay failable. It has
+   * finished only once `window + 1` newer operations have been accepted behind it: `window` still
+   * queued, and the one the host took after it. The ledger therefore holds at most `window + 1`
+   * acknowledged operations plus the unresolved ones (at most `window`), however long the
+   * attachment lives.
    */
   readonly #submitted: Set<number>;
-  /** The acknowledged operations still inside the window, oldest first. */
+  /** The acknowledged operations still inside the window, oldest first: the queued ones and the active one. */
   readonly #acknowledged: number[];
   readonly #window: number;
 
@@ -43,7 +47,7 @@ export class OperationLedger {
     return this.#unresolved.length;
   }
 
-  /** How many operations a submitted-operation failure can still name: bounded by twice the window. */
+  /** How many operations a submitted-operation failure can still name: bounded by twice the window plus the active operation. */
   get trackedCount(): number {
     return this.#submitted.size;
   }
@@ -85,7 +89,7 @@ export class OperationLedger {
     this.#shift();
     if (sequence === undefined) return;
     this.#acknowledged.push(sequence);
-    if (this.#acknowledged.length > this.#window) {
+    if (this.#acknowledged.length > this.#window + 1) {
       this.#submitted.delete(this.#acknowledged.shift()!);
     }
   }

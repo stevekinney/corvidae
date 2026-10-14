@@ -157,6 +157,7 @@ import {
   ReviewRejectedEvent,
   ReviewRevokedEvent,
   ReviewSupersededEvent,
+  RunAbortSettledEvent,
   RunRegisteredEvent,
   RunRemovedEvent,
 } from './events';
@@ -428,6 +429,53 @@ const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'runnin
 export interface CancelDurableRunDependencies {
   getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
   cancel: (runId: string) => Promise<void>;
+}
+
+/** What {@link resolveWaitForDurableRun} needs from the durable engine and the bureau's options. */
+export interface WaitForDurableRunDependencies {
+  getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
+  /** Weft's result waiter for the run: resolves, or rejects with the run's own failure or another error. */
+  awaitResult: (runId: string) => Promise<void>;
+  /** `durableBackgroundTasks: 'manual'`, where Weft installs no cross-engine poll. */
+  manualBackgroundTasks: boolean;
+}
+
+/**
+ * The resolution algorithm behind {@link Bureau.waitForDurableRun}, independent of a real
+ * `runtime.durable.engine`. A rejection of the result waiter is accepted only when the store then
+ * confirms the run is terminal (a failed, cancelled or timed-out run rejects its own result);
+ * any other rejection says nothing about the run and propagates.
+ */
+export async function resolveWaitForDurableRun(
+  runId: string,
+  dependencies: WaitForDurableRunDependencies,
+): Promise<WorkflowState | null | undefined> {
+  const isTerminal = (state: WorkflowState) =>
+    !DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status);
+  const current = await dependencies.getDurableRun(runId);
+  if (current === undefined || current === null) return current;
+  if (isTerminal(current)) return current;
+  // Weft's result waiter rechecks the store only inside `runMaintenance()` under
+  // `backgroundTasks: 'manual'`, so a wait nothing re-drives could pend forever for a run another
+  // bureau completes. Refuse it plainly instead of hanging.
+  if (dependencies.manualBackgroundTasks) {
+    throw new BureauError(
+      `waitForDurableRun("${runId}") cannot wait under durableBackgroundTasks: 'manual', ` +
+        `where nothing re-reads the durable store between maintenance passes; call ` +
+        `runDurableMaintenance() and then getDurableRun() instead`,
+      'UNSUPPORTED_CAPABILITY',
+    );
+  }
+  let rejection: unknown;
+  try {
+    await dependencies.awaitResult(runId);
+  } catch (error) {
+    rejection = error;
+  }
+  const settled = await dependencies.getDurableRun(runId);
+  if (settled === undefined || settled === null) return settled;
+  if (isTerminal(settled)) return settled;
+  throw rejection ?? new Error(`Durable run "${runId}" settled without reaching a terminal state`);
 }
 
 /**
@@ -1298,6 +1346,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       });
     }
   });
+  // COR-1421 — `onEvent` listens from here, before any recovery pass can
+  // dispatch, so it hears the boot-time events a listener added after
+  // `createBureau()` returns would miss. It is registered AFTER the event
+  // feed's recorder above, so an event is recorded before the host callback
+  // runs and anything the callback dispatches in turn lands after it. A
+  // rejected promise from an async callback is reported like a throw.
+  if (options.onEvent) {
+    const onEvent = options.onEvent;
+    const reportOnEventFailure = (event: Event, error: unknown): void => {
+      diagnose({
+        level: 'error',
+        scope: 'events',
+        message: `[bureau] onEvent listener failed on a "${event.type}" event:`,
+        cause: error,
+      });
+    };
+    emitter.toObservable().subscribe((event: Event) => {
+      try {
+        const outcome: unknown = onEvent(event);
+        if (outcome instanceof Promise) {
+          outcome.catch((error: unknown) => reportOnEventFailure(event, error));
+        }
+      } catch (error) {
+        reportOnEventFailure(event, error);
+      }
+    });
+  }
   // ...and its operatives' events: one feed per run, created before the run
   // is registered and reaped when it is removed. See
   // `run-event-feed-attachment.ts`.
@@ -1328,9 +1403,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // Built first: two validators registered under one name and version are a
   // startup error, and it should fail before the durable engine exists.
   const goalValidatorCatalog = createGoalValidatorCatalog(options.validators);
+  // COR-1510: a run the durable engine resumes on its own (a claim it reclaimed) before
+  // `recoverDurableRuns` starts is still handed to `onRecoveredWorkflow`, ahead of its first step.
+  // This hook waits for that function to be bound, which `recoverDurableRuns` does when it starts.
+  const recoveredWorkflowHandler =
+    Promise.withResolvers<(info: RecoveredWorkflowInfo) => Promise<void>>();
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
-    { goalWorkflow: goalWorkflowHost.workflow, goalAttemptFence: goalAttemptFenceHost.fence },
+    {
+      goalWorkflow: goalWorkflowHost.workflow,
+      goalAttemptFence: goalAttemptFenceHost.fence,
+      onRecoveredWorkflow: async (info) => {
+        const handler = await recoveredWorkflowHandler.promise;
+        await handler(info);
+      },
+    },
   );
   // AB-223: scheduled fires are headless (no per-run emitter — see
   // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
@@ -1786,6 +1873,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // resolved report, and never leaks into a later pass.
   let currentRecoverySweepFailure: { message: string } | undefined;
   const liveFrameListeners = new Set<(frame: ServerFrame) => void>();
+  // COR-1421 — `engine.recoverAll()` resumes recovered workflows without
+  // awaiting them, so recovered runs emit live frames while the rest of boot
+  // still awaits, before `createBureau()` returns and a caller can subscribe.
+  // Until the FIRST `subscribeLiveFrames` listener attaches, frames are
+  // therefore retained: every frame emitted while a recovery pass runs (no
+  // per-run attribution, so anything the pass starts is covered), and after the
+  // pass the frames of the runs it reattached. Ordinary runs outside a pass are
+  // never retained. That listener is replayed the retained frames in emission order
+  // and the buffer closes for good. Replaying rather than deferring the resume
+  // keeps delivery independent of how many awaits the boot tail contains.
+  // The buffer holds at most BOOT_FRAME_BUFFER_LIMIT frames and evicts the
+  // OLDEST past that, so a late subscriber sees the most recent history; a
+  // reconnecting client still gets the rest through durable event history.
+  // Emitter listeners are NOT replayed: they register before recovery through
+  // `BureauOptions.onEvent`.
+  const BOOT_FRAME_BUFFER_LIMIT = 1024;
+  let recoveryPassActive = false;
+  const bootFrameRunIds = new Set<string>();
+  let liveFramesSubscribed = false;
+  const bootFrameBuffer: ServerFrame[] = [];
+  // Frames emitted while the first subscriber is being replayed queue behind
+  // the remaining replay instead of interleaving with it.
+  let frameReplayQueue: ServerFrame[] | undefined;
   // AB-96 — terminal RunReports, cached at the moment each run's lifecycle
   // event fires so `getRunReport` never needs to re-derive them.
   const runReports = new Map<string, RunReport>();
@@ -1914,17 +2024,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // and log per-listener instead, matching the isolation every other fan-out
     // in this file already gives its listeners (see `disposeRegisteredStreamListeners`
     // callers, `emitter.dispatch`).
+    // Retained while a recovery pass runs (any frame: scheduled fires and
+    // anything else the pass starts), and afterwards for the runs it reattached,
+    // until the first subscriber. Frames of ordinary runs outside a pass are
+    // never retained.
+    if (
+      !liveFramesSubscribed &&
+      (recoveryPassActive || ('runId' in frame && bootFrameRunIds.has(frame.runId)))
+    ) {
+      bootFrameBuffer.push(frame);
+      // Overflow evicts the oldest frame, keeping the most recent history.
+      if (bootFrameBuffer.length > BOOT_FRAME_BUFFER_LIMIT) bootFrameBuffer.shift();
+    }
+    frameReplayQueue?.push(frame);
     for (const listener of liveFrameListeners) {
-      try {
-        listener(frame);
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'live-frames',
-          message: `[bureau] subscribeLiveFrames listener threw on a "${frame.type}" frame:`,
-          cause: error,
-        });
-      }
+      deliverLiveFrame(listener, frame);
+    }
+  }
+
+  function deliverLiveFrame(listener: (frame: ServerFrame) => void, frame: ServerFrame): void {
+    try {
+      listener(frame);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'live-frames',
+        message: `[bureau] subscribeLiveFrames listener threw on a "${frame.type}" frame:`,
+        cause: error,
+      });
     }
   }
 
@@ -3732,6 +3859,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (store.getRun(runId)) {
       return;
     }
+    if (!liveFramesSubscribed) bootFrameRunIds.add(runId);
 
     const recoveredRun = reattachDurableActiveRun(
       {
@@ -4282,6 +4410,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * `createBureau()` never rejects on it, in whole or in part).
    */
   async function recoverDurableRuns(): Promise<BureauRecoveryReport> {
+    // COR-1421 — retain every live frame for the first subscriber while the
+    // pass runs.
+    recoveryPassActive = true;
+    try {
+      return await recoverDurableRunsPass();
+    } finally {
+      recoveryPassActive = false;
+    }
+  }
+
+  async function recoverDurableRunsPass(): Promise<BureauRecoveryReport> {
     // AB-389 — boot recovery drains the session outbox BEFORE anything
     // else in this pass, so a crash between a commit and its own drain
     // (the post-commit trigger never fired, or fired but the process died
@@ -4415,6 +4554,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // batch-failure handling this doc comment describes further up is
     // unchanged.
     try {
+      recoveredWorkflowHandler.resolve(onRecoveredWorkflow);
       const handles = await durable.engine.recoverAll({ onRecoveredWorkflow });
 
       // Read each handle's launch metadata CONCURRENTLY, so one slow/stuck read does
@@ -4918,6 +5058,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       detachBestEffortPromise(
         runState.activeRun.closed().then(() => {
           abortingRunIds.delete(id);
+          emitter.dispatch(new RunAbortSettledEvent(id));
           return undefined;
         }),
       );
@@ -5090,6 +5231,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function getDurableRun(runId: string) {
     if (!runtime.durable) return undefined;
     return runtime.durable.engine.get(runId);
+  }
+
+  /**
+   * Resolve once a run's durable workflow is terminal in the durable store — see the
+   * {@link Bureau.waitForDurableRun} doc comment. Built on Weft's result waiter
+   * (`engine.getHandle(runId).result()`), which settles from the store for a run another engine
+   * finishes; its rejection carries a failed run's error, which this wrapper turns back into the
+   * run's state.
+   */
+  async function waitForDurableRun(runId: string) {
+    if (!runtime.durable) return undefined;
+    const engine = runtime.durable.engine;
+    return resolveWaitForDurableRun(runId, {
+      getDurableRun,
+      awaitResult: async (id) => {
+        await engine.getHandle(id).result();
+      },
+      manualBackgroundTasks: options.durableBackgroundTasks === 'manual',
+    });
   }
 
   /**
@@ -9509,6 +9669,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     listAbortingRuns,
     deleteRun,
     getDurableRun,
+    waitForDurableRun,
     cancelDurableRun,
     listDurableRuns,
     runDurableMaintenance,
@@ -9579,10 +9740,39 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     getConfiguration,
     getTools: getToolSummaries,
     subscribeLiveFrames(listener) {
-      liveFrameListeners.add(listener);
-      return () => {
+      let active = true;
+      const unsubscribe = () => {
+        active = false;
         liveFrameListeners.delete(listener);
       };
+      // COR-1421 — the first subscriber closes the boot buffer and is replayed
+      // what recovery produced before it attached. The replay runs in a
+      // microtask, after this call has returned its unsubscribe handle, so a
+      // listener may unsubscribe itself from inside the replay. The listener
+      // joins the live set only once the replay queue drains, so a frame its
+      // own callback causes is delivered after the remaining replay, in
+      // emission order.
+      const firstSubscriber = !liveFramesSubscribed && frameReplayQueue === undefined;
+      liveFramesSubscribed = true;
+      bootFrameRunIds.clear();
+      const queue = firstSubscriber ? bootFrameBuffer.splice(0) : [];
+      if (queue.length === 0) {
+        liveFrameListeners.add(listener);
+        return unsubscribe;
+      }
+      frameReplayQueue = queue;
+      queueMicrotask(() => {
+        try {
+          while (queue.length > 0) {
+            if (!active) break;
+            deliverLiveFrame(listener, queue.shift()!);
+          }
+        } finally {
+          frameReplayQueue = undefined;
+          if (active) liveFrameListeners.add(listener);
+        }
+      });
+      return unsubscribe;
     },
     addEventListener: (type, listener, listenerOptions) =>
       emitter.addEventListener(type, listener, listenerOptions),
