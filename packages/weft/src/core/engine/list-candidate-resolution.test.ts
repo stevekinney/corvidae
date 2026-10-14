@@ -295,6 +295,46 @@ describe('resolveListCandidateIds', () => {
     }
   });
 
+  it('reads the build stamp before it starts any index scan', async () => {
+    class OrderRecordingStorage extends MemoryStorage {
+      readonly order: string[] = [];
+      recording = false;
+      override async get(key: string): Promise<Uint8Array | null> {
+        if (this.recording && key === KEYS.workflowVisibilityMetaBuiltAt())
+          this.order.push('stamp');
+        return super.get(key);
+      }
+      override async *scan(
+        prefix: string,
+        options?: ScanOptions,
+      ): AsyncIterable<[string, Uint8Array]> {
+        if (this.recording && prefix.startsWith('wf-idx-')) this.order.push('index-scan');
+        yield* super.scan(prefix, options);
+      }
+    }
+    const storage = new OrderRecordingStorage();
+    const engine = new Engine({ storage });
+    engine.register(visibilityCacheWorkflow);
+    try {
+      const handle = await engine.start('visibility-cache', 'order', { id: 'order-a' });
+      await handle.result();
+      await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+      getInternals(engine).workflowVisibilityWatermarkExpiresAt =
+        Date.now() - WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS;
+
+      storage.recording = true;
+      await engine.list({ status: 'completed', type: 'visibility-cache' });
+
+      // A scan begun before the first read could capture a partial rebuild that a publish then
+      // hides behind a matching stamp on both reads.
+      expect(storage.order[0]).toBe('stamp');
+      expect(storage.order.at(-1)).toBe('stamp');
+      expect(storage.order.filter((entry) => entry === 'index-scan').length).toBeGreaterThan(0);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
   it('falls back to the scan path when a drop ran inside the watermark cache window', async () => {
     const storage = new MemoryStorage();
     const engine = new Engine({ storage });

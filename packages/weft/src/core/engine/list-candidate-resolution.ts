@@ -103,8 +103,9 @@ function collectVisibilityQueries(
   internals: EngineInternals,
   filter: ListFilter,
   dimensions: readonly ListFilterDimension[],
-): Array<Promise<Set<string>>> {
-  const queries: Array<Promise<Set<string>>> = [];
+): Array<() => Promise<Set<string>>> {
+  // Deferred, not started: the indexed path must read the build stamp before any scan begins.
+  const queries: Array<() => Promise<Set<string>>> = [];
   for (const dimension of dimensions) {
     const value = filter[dimension];
     if (value === undefined) continue;
@@ -114,7 +115,7 @@ function collectVisibilityQueries(
       internals: EngineInternals,
       value: unknown,
     ) => Promise<Set<string>>;
-    queries.push(query(internals, value));
+    queries.push(() => query(internals, value));
   }
   return queries;
 }
@@ -134,7 +135,7 @@ export async function resolveListCandidateIds(
     // idPrefix is independent of the watermark — primary-key scan is always available.
     const queries =
       filter === undefined ? [] : collectVisibilityQueries(internals, filter, ['idPrefix']);
-    const visibilitySets = await Promise.all(queries);
+    const visibilitySets = await Promise.all(queries.map((query) => query()));
     return combineCandidateSets([
       baseConstrainedIds,
       failureCategoryCandidateIds,
@@ -162,16 +163,17 @@ export async function resolveListCandidateIds(
   }
 
   // The cached watermark says the index was live a moment ago, not that it still is. Read the
-  // build stamp on both sides of the index scans and require it unchanged: a backfill or drop
-  // removes the watermark and its stamp before it touches any row, and every publish writes a new
-  // stamp, so a scan that overlapped a sweep or a rebuild sees the stamp missing or changed and the
-  // query falls back to the scan path instead of returning a partial index. The scans start just
-  // before the first read, which is still safe: no row changes until the stamp is already gone.
+  // build stamp before any index scan starts and again after they all finish, and require it
+  // unchanged: a backfill or drop removes the watermark and its stamp before it touches any row,
+  // and every publish writes a new stamp, so a scan that overlapped a sweep or a rebuild sees the
+  // stamp missing or changed and the query falls back to the scan path instead of returning a
+  // partial index. Reading it first matters: a scan that started during a rebuild and finished
+  // before the publish would otherwise see the new stamp on both reads.
   const buildBefore = await readWorkflowVisibilityBuild(internals.storage);
   if (buildBefore === null) {
     return withoutVisibilityIndexes();
   }
-  const visibilitySets = await Promise.all(visibilityQueries);
+  const visibilitySets = await Promise.all(visibilityQueries.map((query) => query()));
   const buildAfter = await readWorkflowVisibilityBuild(internals.storage);
   if (!sameWorkflowVisibilityBuild(buildBefore, buildAfter)) {
     return withoutVisibilityIndexes();
