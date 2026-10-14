@@ -43,8 +43,8 @@
     },
     "@lostgradient/cinder": {
       "workspace": "@lostgradient/cinder",
-      "version": "0.27.0",
-      "fetchedAt": "2026-10-13",
+      "version": "0.27.1",
+      "fetchedAt": "2026-10-14",
       "subpaths": [
         ".",
         "./access-gate",
@@ -1048,8 +1048,8 @@
     },
     "@lostgradient/editor": {
       "workspace": "@lostgradient/editor",
-      "version": "0.16.0",
-      "fetchedAt": "2026-10-13",
+      "version": "0.16.1",
+      "fetchedAt": "2026-10-14",
       "subpaths": [
         ".",
         "./anchor-decorations",
@@ -1106,8 +1106,8 @@
     },
     "@lostgradient/markdown": {
       "workspace": "@lostgradient/markdown",
-      "version": "0.6.0",
-      "fetchedAt": "2026-10-13",
+      "version": "0.6.1",
+      "fetchedAt": "2026-10-14",
       "subpaths": [
         ".",
         "./diff",
