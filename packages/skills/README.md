@@ -260,19 +260,7 @@ A skill-enabled run follows this sequence:
 
 ### Per-agent skills on `createAgent` (COR-1367)
 
-`createAgentSkills({ catalog, includeTools?, loadArtifact?, events? })` builds the value `createAgent`'s `skills` option takes, and runs the sequence above for every run that agent starts, with a fresh client per run:
-
-```typescript
-import { createAgent } from '@lostgradient/operative';
-import { createAgentSkills, discoverSkills } from '@lostgradient/skills';
-
-const catalog = await discoverSkills({
-  sources: [{ id: 'user', kind: 'user', location: './skills', precedence: 20 }],
-});
-const agent = createAgent({ generate, skills: createAgentSkills({ catalog }) });
-```
-
-Skill content is scanned by the agent's own resolved guardrails, through `createSkillGuardrailOptions` — the same helper Bureau's `createRun` path uses. The seam (`AgentSkills`) is defined by operative and implemented here, rather than operative importing this package, because operative is published and this package is not. Active skills are not snapshotted for durable recovery on this path: a catalog-dispatched run has no Bureau session to hold them, so a recovered run starts with an empty active set.
+`createAgent`'s `skills` option runs the sequence above for every run that agent starts, with a fresh client per run. Build its value with `createAgentSkills({ catalog })` from `@lostgradient/bureau`. That adapter lives in Bureau, not here, because this package sits below operative in the package graph and does not import it (`test/package-graph.test.ts`).
 
 ## Lifecycle events
 

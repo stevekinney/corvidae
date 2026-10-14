@@ -5283,7 +5283,9 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
         });
 
         if (result.status !== 'available') throw new Error(`unexpected ${result.status}`);
-        const ids = (result.services.options.hooks?.describePlan().entries ?? [])
+        const ids = (
+          (result.services as DurableRunDeps).options.hooks?.describePlan().entries ?? []
+        )
           .map((entry) => entry.id)
           .filter((id) => id.includes('guardrails'));
         expect(ids).toEqual([...expected]);

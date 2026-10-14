@@ -50,10 +50,12 @@ export interface AgentSkillsRun {
  * Per-agent skills (COR-1367) — the seam `createAgent`'s `skills` option
  * accepts, the per-agent counterpart of the deprecated `BureauOptions.skills`.
  *
- * Operative defines it and `@lostgradient/skills` implements it
- * (`createAgentSkills`), rather than operative importing the skills package:
- * operative is published to the registry and the skills package is a private
- * workspace, so a published operative never names it as a dependency.
+ * Operative defines it and `@lostgradient/bureau` implements it over
+ * `@lostgradient/skills` (`createAgentSkills`). Operative cannot import the
+ * skills package (it is a private workspace and operative is mirrored for
+ * publication), and the skills package cannot import operative (it sits below
+ * operative in the package graph), so the implementation lives in Bureau,
+ * which already depends on both.
  */
 export interface AgentSkills {
   /**

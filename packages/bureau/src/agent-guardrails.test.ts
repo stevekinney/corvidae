@@ -22,9 +22,10 @@ import {
   type InputDetector,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
 } from '@lostgradient/operative';
-import { createAgentSkills, discoverSkills, type SkillCatalogRevision } from '@lostgradient/skills';
+import { discoverSkills, type SkillCatalogRevision } from '@lostgradient/skills';
 import { afterAll, describe, expect, it } from 'bun:test';
 
+import { createAgentSkills } from './agent-skills';
 import { catalogRunGuardrailsContext } from './bureau-catalog-dispatch';
 import { createBureau } from './create-bureau';
 import type { BureauOptions } from './types';
@@ -122,7 +123,9 @@ describe('guardrails registered exactly once', () => {
   it('composes the preset into the agent tier and not into Bureau’s', async () => {
     const agent = createAgent({ name: 'worker', generate: reply });
     const context = catalogRunGuardrailsContext(agent, undefined);
-    const options = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('hello', context);
+    const resolve = agent[OPERATIVE_RESOLVE_RUN_OPTIONS];
+    if (resolve === undefined) throw new Error('createAgent exposes its run-options resolver');
+    const options = await resolve('hello', context);
     const ids = (options.hooks?.describePlan().entries ?? []).map((entry) => entry.id);
     expect(ids.filter((id) => id.includes('guardrails-prepare-step'))).toEqual([
       'agent:guardrails-prepare-step',

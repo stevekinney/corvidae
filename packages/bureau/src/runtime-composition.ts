@@ -76,7 +76,6 @@ import {
   createSkillArtifactLoader,
   createSkillClient,
   createSkillClientToolbox,
-  createSkillGuardrailOptions,
   DEFAULT_SOURCE_PRECEDENCE,
   discoverSkills,
   renderActiveSkillInstructions,
@@ -121,6 +120,7 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 
+import { createSkillGuardrailOptions } from './agent-skills';
 import {
   type GoalAttemptFence,
   type GoalAttemptTarget,
@@ -2629,7 +2629,7 @@ async function buildRuntimeComposition(
     // as one of the retrieval surfaces that cannot reach the model through
     // `prepareStep`/`validateResponse` and so must scan directly and fold its
     // detections back into the session-wide taint state. The wiring is
-    // `createSkillGuardrailOptions` from `@lostgradient/skills`, which
+    // `createSkillGuardrailOptions` from `./agent-skills`, which
     // `createAgentSkills` uses for per-agent skills too (COR-1367), so the
     // two paths cannot drift.
     const skillGuardrail =

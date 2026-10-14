@@ -188,9 +188,9 @@ export interface CreateAgentOptionsBase {
   /**
    * This agent's skills (COR-1367) — the per-agent counterpart of the
    * deprecated `BureauOptions.skills`. Build the value with
-   * `createAgentSkills({ catalog })` from `@lostgradient/skills`; this option
-   * takes the `AgentSkills` seam rather than a catalog because operative is
-   * published and the skills package is not, so operative cannot import it.
+   * `createAgentSkills({ catalog })` from `@lostgradient/bureau`; this option
+   * takes the `AgentSkills` seam rather than a catalog because operative
+   * cannot import the private skills package.
    *
    * Each run then gets a fresh skill client bound to the catalog: the catalog
    * is shown to the model at step 0, `activate_skill`/`load_skill_resource`/

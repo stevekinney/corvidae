@@ -1,10 +1,11 @@
 /**
  * Per-agent skills for `createAgent` (COR-1367).
  *
- * Operative defines the seam (`AgentSkills`) and this package implements it,
- * rather than operative importing this package: `@lostgradient/operative` is
- * published to the registry and `@lostgradient/skills` is a private workspace,
- * so a published operative must never name it as a dependency.
+ * Operative defines the seam (`AgentSkills`) and Bureau implements it over
+ * `@lostgradient/skills`. Neither lower package may import the other: skills
+ * sits below operative in the package graph (`packages/skills/test/package-graph.test.ts`
+ * forbids the dependency), and operative must not name a private workspace.
+ * Bureau already depends on both, so the composition lives here.
  */
 
 import type { TypedEventTarget } from '@lostgradient/lifecycle';
@@ -18,13 +19,17 @@ import { AGENT_POLICY_HOOK_SOURCE, withActiveSkillToolPolicy } from '@lostgradie
 import type { AnyToolbox } from 'armorer';
 import { combineToolboxes, createToolbox } from 'armorer';
 
-import { createSkillArtifactLoader, type SkillArtifactLoader } from './client/artifact-loader';
-import { createSkillClientToolbox, renderClientCatalog } from './client/client-toolbox';
-import { renderActiveSkillInstructions } from './client/render';
-import { createSkillClient } from './client/skill-client';
-import type { SkillCatalogRevision } from './discovery/catalog';
-import type { SkillEventMap } from './events';
-import type { SkillGuardrailOptions } from './guardrail';
+import {
+  createSkillArtifactLoader,
+  createSkillClient,
+  createSkillClientToolbox,
+  renderActiveSkillInstructions,
+  renderClientCatalog,
+  type SkillArtifactLoader,
+  type SkillCatalogRevision,
+  type SkillEventMap,
+  type SkillGuardrailOptions,
+} from '@lostgradient/skills';
 
 /** Options for {@link createAgentSkills}. */
 export interface AgentSkillsOptions {
