@@ -7,7 +7,7 @@
  *   - --json output shape and exit-code contracts (via Bun.spawn)
  */
 
-import { describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,14 +22,6 @@ import {
   isInteractive,
 } from './component-conventions-tests.ts';
 
-// Several tests spawn the promotion-check CLI as a full `bun` subprocess (schema
-// regeneration + ts-morph/svelte AST parsing per run). Under the parallel
-// pre-push suite those subprocesses are starved and routinely exceed bun:test's
-// default 5s per-test timeout, producing load-induced flakes. Raise the ceiling
-// so the spawn-based contract tests stay deterministic under load; the fast
-// in-process unit tests in this file are unaffected by the larger ceiling.
-setDefaultTimeout(30_000);
-
 const SCRIPT_FILE = join(fileURLToPath(import.meta.url), '..', 'check-promotion-readiness.ts');
 
 const COMPONENTS_DIRECTORY = join(fileURLToPath(import.meta.url), '..', '..', 'src', 'components');
@@ -40,12 +32,15 @@ function componentDirectory(name: string, experimental = false): string {
 }
 
 // ---------------------------------------------------------------------------
-// CLI helper — spawn the script and return { stdout, stderr, exitCode }
+// CLI helper — the real `bun` process is the behavior under test: this suite runs under
+// `--conditions browser`, which resolves `prettier` to its standalone build, so the CLI cannot
+// run in process. Each distinct invocation is spawned once at module scope (concurrently), off
+// bun's per-test clock; the tests only assert on the settled results.
 // ---------------------------------------------------------------------------
 
-async function runPromotionCheck(
-  args: string[],
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+type PromotionCheckResult = { stdout: string; stderr: string; exitCode: number };
+
+async function spawnPromotionCheck(args: string[]): Promise<PromotionCheckResult> {
   const process = Bun.spawn(['bun', SCRIPT_FILE, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
@@ -58,6 +53,29 @@ async function runPromotionCheck(
   ]);
 
   return { stdout, stderr, exitCode };
+}
+
+const promotionCheckInvocations: string[][] = [
+  ['button'],
+  ['button', '--json'],
+  ['not-a-real-component-xyzzy'],
+  [],
+  ['not-a-real-component-xyzzy', '--json'],
+  ['json-viewer'],
+  ['json-viewer', '--json'],
+];
+const promotionCheckResults = new Map<string, PromotionCheckResult>(
+  await Promise.all(
+    promotionCheckInvocations.map(
+      async (args) => [args.join(' '), await spawnPromotionCheck(args)] as const,
+    ),
+  ),
+);
+
+function runPromotionCheck(args: string[]): PromotionCheckResult {
+  const result = promotionCheckResults.get(args.join(' '));
+  if (!result) throw new Error(`No promotion check was spawned for: ${args.join(' ')}`);
+  return result;
 }
 function parseJsonReport(stdout: string): Record<string, unknown> {
   const value: unknown = JSON.parse(stdout);
@@ -84,13 +102,13 @@ function reportStatus(report: Record<string, unknown>, check: string): unknown {
 // ---------------------------------------------------------------------------
 
 describe('button reference component', () => {
-  test('exits 0 for button', async () => {
-    const { exitCode } = await runPromotionCheck(['button']);
+  test('exits 0 for button', () => {
+    const { exitCode } = runPromotionCheck(['button']);
     expect(exitCode).toBe(0);
   });
 
-  test('--json output for button is PASS with correct shape', async () => {
-    const { stdout, exitCode } = await runPromotionCheck(['button', '--json']);
+  test('--json output for button is PASS with correct shape', () => {
+    const { stdout, exitCode } = runPromotionCheck(['button', '--json']);
     expect(exitCode).toBe(0);
     const report = parseJsonReport(stdout);
     expect(report['component']).toBe('button');
@@ -102,8 +120,8 @@ describe('button reference component', () => {
     expect(Array.isArray(report['warnings'])).toBe(true);
   });
 
-  test('--json emits no text before the JSON object', async () => {
-    const { stdout } = await runPromotionCheck(['button', '--json']);
+  test('--json emits no text before the JSON object', () => {
+    const { stdout } = runPromotionCheck(['button', '--json']);
     // stdout must start with the JSON object, no leading prose/diagnostics
     expect(stdout.trimStart()).toMatch(/^\{/);
   });
@@ -113,22 +131,19 @@ describe('button reference component', () => {
 // Error handling — unknown component exits 1
 // ---------------------------------------------------------------------------
 
-test('exits 1 for unknown component', async () => {
-  const { exitCode, stderr } = await runPromotionCheck(['not-a-real-component-xyzzy']);
+test('exits 1 for unknown component', () => {
+  const { exitCode, stderr } = runPromotionCheck(['not-a-real-component-xyzzy']);
   expect(exitCode).toBe(1);
   expect(stderr).toMatch(/not found/i);
 });
 
-test('exits 1 with no arguments', async () => {
-  const { exitCode } = await runPromotionCheck([]);
+test('exits 1 with no arguments', () => {
+  const { exitCode } = runPromotionCheck([]);
   expect(exitCode).toBe(1);
 });
 
-test('--json exits 1 for unknown component with no stdout (error on stderr only)', async () => {
-  const { stdout, stderr, exitCode } = await runPromotionCheck([
-    'not-a-real-component-xyzzy',
-    '--json',
-  ]);
+test('--json exits 1 for unknown component with no stdout (error on stderr only)', () => {
+  const { stdout, stderr, exitCode } = runPromotionCheck(['not-a-real-component-xyzzy', '--json']);
   expect(exitCode).toBe(1);
   expect(stdout.trim()).toBe('');
   expect(stderr).toMatch(/not found/i);
@@ -139,13 +154,13 @@ test('--json exits 1 for unknown component with no stdout (error on stderr only)
 // ---------------------------------------------------------------------------
 
 describe('experimental component (json-viewer)', () => {
-  test('exits 0 for json-viewer (experimental, alpha)', async () => {
-    const { exitCode } = await runPromotionCheck(['json-viewer']);
+  test('exits 0 for json-viewer (experimental, alpha)', () => {
+    const { exitCode } = runPromotionCheck(['json-viewer']);
     expect(exitCode).toBe(0);
   });
 
-  test('--json for json-viewer reports propNames pass (depthToSrc=3 path)', async () => {
-    const { stdout, exitCode } = await runPromotionCheck(['json-viewer', '--json']);
+  test('--json for json-viewer reports propNames pass (depthToSrc=3 path)', () => {
+    const { stdout, exitCode } = runPromotionCheck(['json-viewer', '--json']);
     expect(exitCode).toBe(0);
     const report = parseJsonReport(stdout);
     expect(report['component']).toBe('json-viewer');
@@ -244,7 +259,7 @@ describe('hasA11yCoverage', () => {
       tempPath,
       `
 import { fireEvent } from '@testing-library/svelte';
-test('keyboard and role', async () => {
+test('keyboard and role', () => {
   const { getByRole } = render(Component);
   const el = getByRole('button');
   await fireEvent.keyDown(el, { key: 'Enter' });

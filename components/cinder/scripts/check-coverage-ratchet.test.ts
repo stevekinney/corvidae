@@ -8,6 +8,7 @@ import {
   coverageFailures,
   formatCoverageSummary,
   formatLineRanges,
+  main,
   parseCoverageThresholds,
   parseLcovRecords,
   parseSvelteLcovRecords,
@@ -943,7 +944,21 @@ end_of_record
   });
 
   describe('main() end to end', () => {
-    test('prints the platform notice on a passing run, without failing it, when the local platform differs from the recorded one', () => {
+    async function runMain(packageRootArgument: string) {
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const exitCode = await main(
+        ['bun', 'check-coverage-ratchet.ts', '--package-root', packageRootArgument],
+        {
+          log: (message) => stdout.push(message),
+          warn: (message) => stderr.push(message),
+          error: (message) => stderr.push(message),
+        },
+      );
+      return { exitCode, stdout: stdout.join('\n'), stderr: stderr.join('\n') };
+    }
+
+    test('prints the platform notice on a passing run, without failing it, when the local platform differs from the recorded one', async () => {
       const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-platform-notice-'));
       writeFileSync(
         join(scratchDirectory, 'coverage-ratchet.json'),
@@ -983,19 +998,16 @@ end_of_record
         ].join('\n'),
       );
 
-      const result = Bun.spawnSync(
-        ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
-        { cwd: import.meta.dir },
-      );
+      const result = await runMain(scratchDirectory);
 
       expect(result.exitCode).toBe(0);
-      const stderr = result.stderr.toString();
+      const stderr = result.stderr;
       expect(stderr).toContain('NOTE: the Svelte coverage floor');
       expect(stderr).toContain('not-a-real-platform/not-a-real-arch');
-      expect(result.stdout.toString()).toContain('Svelte coverage ratchet');
+      expect(result.stdout).toContain('Svelte coverage ratchet');
     });
 
-    test('fails a fully covered run when runtime source imports an excluded test support module', () => {
+    test('fails a fully covered run when runtime source imports an excluded test support module', async () => {
       const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-support-import-'));
       writeFileSync(
         join(scratchDirectory, 'coverage-ratchet.json'),
@@ -1026,13 +1038,10 @@ end_of_record
         ].join('\n'),
       );
 
-      const result = Bun.spawnSync(
-        ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
-        { cwd: import.meta.dir },
-      );
+      const result = await runMain(scratchDirectory);
 
       expect(result.exitCode).toBe(1);
-      const stderr = result.stderr.toString();
+      const stderr = result.stderr;
       expect(stderr).toContain('src/index.ts imports ./index-test-helpers.js');
       expect(stderr).toContain('1 runtime import(s) of test support modules');
     });

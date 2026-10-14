@@ -7,7 +7,7 @@
  *   - --json output shape and exit-code contracts (via Bun.spawn)
  */
 
-import { describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,14 +22,6 @@ import {
   PROP_NAME_DENYLIST,
 } from './component-conventions-props.ts';
 
-// Several tests spawn the promotion-check CLI as a full `bun` subprocess (schema
-// regeneration + ts-morph/svelte AST parsing per run). Under the parallel
-// pre-push suite those subprocesses are starved and routinely exceed bun:test's
-// default 5s per-test timeout, producing load-induced flakes. Raise the ceiling
-// so the spawn-based contract tests stay deterministic under load; the fast
-// in-process unit tests in this file are unaffected by the larger ceiling.
-setDefaultTimeout(30_000);
-
 const SCRIPT_FILE = join(fileURLToPath(import.meta.url), '..', 'check-promotion-readiness.ts');
 
 const COMPONENTS_DIRECTORY = join(fileURLToPath(import.meta.url), '..', '..', 'src', 'components');
@@ -40,12 +32,15 @@ function componentDirectory(name: string, experimental = false): string {
 }
 
 // ---------------------------------------------------------------------------
-// CLI helper — spawn the script and return { stdout, stderr, exitCode }
+// CLI helper — the real `bun` process is the behavior under test: this suite runs under
+// `--conditions browser`, which resolves `prettier` to its standalone build, so the CLI cannot
+// run in process. Each distinct invocation is spawned once at module scope (concurrently), off
+// bun's per-test clock; the tests only assert on the settled results.
 // ---------------------------------------------------------------------------
 
-async function runPromotionCheck(
-  args: string[],
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+type PromotionCheckResult = { stdout: string; stderr: string; exitCode: number };
+
+async function spawnPromotionCheck(args: string[]): Promise<PromotionCheckResult> {
   const process = Bun.spawn(['bun', SCRIPT_FILE, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
@@ -58,6 +53,21 @@ async function runPromotionCheck(
   ]);
 
   return { stdout, stderr, exitCode };
+}
+
+const promotionCheckInvocations: string[][] = [['toast-region', '--json']];
+const promotionCheckResults = new Map<string, PromotionCheckResult>(
+  await Promise.all(
+    promotionCheckInvocations.map(
+      async (args) => [args.join(' '), await spawnPromotionCheck(args)] as const,
+    ),
+  ),
+);
+
+function runPromotionCheck(args: string[]): PromotionCheckResult {
+  const result = promotionCheckResults.get(args.join(' '));
+  if (!result) throw new Error(`No promotion check was spawned for: ${args.join(' ')}`);
+  return result;
 }
 function parseJsonReport(stdout: string): Record<string, unknown> {
   const value: unknown = JSON.parse(stdout);
@@ -297,8 +307,8 @@ describe('hasHydrationTest', () => {
 // ---------------------------------------------------------------------------
 
 describe('--json output shape on a failing component', () => {
-  test('toast-region exits 1 (hydration FAIL) with valid JSON report', async () => {
-    const { stdout, exitCode } = await runPromotionCheck(['toast-region', '--json']);
+  test('toast-region exits 1 (hydration FAIL) with valid JSON report', () => {
+    const { stdout, exitCode } = runPromotionCheck(['toast-region', '--json']);
     expect(exitCode).toBe(1);
 
     const report = parseJsonReport(stdout);
@@ -307,8 +317,8 @@ describe('--json output shape on a failing component', () => {
     expect(reportStatus(report, 'hydration')).toBe('fail');
   });
 
-  test('--json emits no stdout text before the JSON object on FAIL', async () => {
-    const { stdout } = await runPromotionCheck(['toast-region', '--json']);
+  test('--json emits no stdout text before the JSON object on FAIL', () => {
+    const { stdout } = runPromotionCheck(['toast-region', '--json']);
     expect(stdout.trimStart()).toMatch(/^\{/);
   });
 

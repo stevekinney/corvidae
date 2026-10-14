@@ -2,12 +2,7 @@
 import { afterEach, describe, expect, mock, spyOn, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
-import {
-  prepareSvelteServerSource,
-  renderSvelteOnServer,
-  requiredInstance,
-  setupHappyDom,
-} from '@lostgradient/testing';
+import { renderSvelteOnServer, requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { injectStrippedStyles } from '../../test/css.ts';
 
 setupHappyDom();
@@ -17,7 +12,23 @@ const { enhanceJson } = await import('./json-editor-enhancement.ts');
 const { default: JsonEditor } = await import('./json-editor.svelte');
 const { default: schema } = await import('./json-editor.schema.ts');
 const jsonEditorSource = new URL('./json-editor.svelte', import.meta.url).pathname;
-await prepareSvelteServerSource(jsonEditorSource);
+// Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
+const autofocusServerHtml = new Map(
+  await Promise.all(
+    [false, true].map(
+      async (autofocus) =>
+        [
+          autofocus,
+          await renderSvelteOnServer(jsonEditorSource, {
+            id: 'server-autofocus',
+            label: 'Payload',
+            value: '{}',
+            autofocus,
+          }),
+        ] as const,
+    ),
+  ),
+);
 
 afterEach(() => {
   cleanup();
@@ -27,13 +38,8 @@ afterEach(() => {
 describe('JsonEditor', () => {
   test.each([false, true])(
     'preserves native autofocus=%s in server-rendered markup',
-    async (autofocus) => {
-      const html = await renderSvelteOnServer(jsonEditorSource, {
-        id: 'server-autofocus',
-        label: 'Payload',
-        value: '{}',
-        autofocus,
-      });
+    (autofocus) => {
+      const html = autofocusServerHtml.get(autofocus) ?? '';
       expect(/<textarea\b[^>]*\sautofocus(?:[\s=>])/.test(html)).toBe(autofocus);
     },
   );

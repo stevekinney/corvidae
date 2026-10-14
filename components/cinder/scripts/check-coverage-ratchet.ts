@@ -581,10 +581,20 @@ export function formatLineRanges(lineNumbers: number[]): string {
   return ranges.join(', ');
 }
 
-export async function main(): Promise<void> {
-  const packageRootArgumentIndex = process.argv.indexOf('--package-root');
+export type CoverageRatchetOutput = {
+  log: (message: string) => void;
+  warn: (message: string) => void;
+  error: (message: string) => void;
+};
+
+/** Run the ratchet and return the process exit code instead of exiting. */
+export async function main(
+  argv: readonly string[] = process.argv,
+  output: CoverageRatchetOutput = console,
+): Promise<number> {
+  const packageRootArgumentIndex = argv.indexOf('--package-root');
   const packageRootArgument =
-    packageRootArgumentIndex >= 0 ? process.argv[packageRootArgumentIndex + 1] : undefined;
+    packageRootArgumentIndex >= 0 ? argv[packageRootArgumentIndex + 1] : undefined;
   if (packageRootArgumentIndex >= 0 && packageRootArgument === undefined) {
     throw new Error('--package-root requires a path argument');
   }
@@ -623,20 +633,20 @@ export async function main(): Promise<void> {
   }
 
   if (notices.length > 0) {
-    console.warn(notices.join('\n'));
+    output.warn(notices.join('\n'));
   }
 
   const supportImports = runtimeImportsOfTestSupport(packageRoot);
   if (supportImports.length > 0) {
     failures.push(`${supportImports.length} runtime import(s) of test support modules`);
-    console.error('Runtime source imports test support modules the ratchet excludes:');
+    output.error('Runtime source imports test support modules the ratchet excludes:');
     for (const { file, specifier } of supportImports) {
-      console.error(`  ${file} imports ${specifier}`);
+      output.error(`  ${file} imports ${specifier}`);
     }
   }
 
   if (failures.length > 0) {
-    console.error(`${summaries.join('\n')} Failed: ${failures.join(', ')}.`);
+    output.error(`${summaries.join('\n')} Failed: ${failures.join(', ')}.`);
     const scopesToReport: CoverageScope[] = [];
     if (failures.some((failure) => failure.startsWith('runtime lines')))
       scopesToReport.push('runtime');
@@ -645,15 +655,16 @@ export async function main(): Promise<void> {
     for (const scope of scopesToReport) {
       const gaps = uncoveredLineReport(coverageSource, scope, packageRoot);
       if (gaps.length === 0) continue;
-      console.error(`\nUncovered ${scope} lines (${gaps.length} file(s)):`);
+      output.error(`\nUncovered ${scope} lines (${gaps.length} file(s)):`);
       for (const { file, unhitLines } of gaps) {
-        console.error(`  ${file}: ${formatLineRanges(unhitLines)}`);
+        output.error(`  ${file}: ${formatLineRanges(unhitLines)}`);
       }
     }
-    process.exit(1);
+    return 1;
   }
 
-  console.log(summaries.join('\n'));
+  output.log(summaries.join('\n'));
+  return 0;
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) process.exitCode = await main();

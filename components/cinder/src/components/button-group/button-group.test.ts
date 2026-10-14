@@ -3,7 +3,6 @@ import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { createRawSnippet } from 'svelte';
 
 import {
-  prepareSvelteServerSource,
   renderSvelteOnServer,
   renderThenHydrate,
   requiredInstance,
@@ -23,7 +22,10 @@ const buttonGroupButtonsFixturePath = new URL(
   '../../test/fixtures/button-group-buttons-fixture.svelte',
   import.meta.url,
 ).pathname;
-await prepareSvelteServerSource(buttonGroupButtonsFixturePath);
+// Server rendering spawns a Bun process, so it runs once at module scope, off bun's per-test clock.
+const buttonGroupButtonsServerHtml = await renderSvelteOnServer(buttonGroupButtonsFixturePath, {
+  label: 'Actions',
+});
 
 afterEach(() => cleanup());
 
@@ -314,8 +316,8 @@ describe('ButtonGroup', () => {
     expect(newButton.hasAttribute('data-cinder-button-group-item')).toBe(true);
   });
 
-  test('SSR markup carries the styling-contract attribute on Button children before {@attach} runs (COR-459)', async () => {
-    const html = await renderSvelteOnServer(buttonGroupButtonsFixturePath, { label: 'Actions' });
+  test('SSR markup carries the styling-contract attribute on Button children before {@attach} runs (COR-459)', () => {
+    const html = buttonGroupButtonsServerHtml;
     // Two <Button> children — Button renders this attribute itself, from the
     // ButtonGroup context read during its own initialization, so it is present
     // in the static markup a server produces before any client-only
