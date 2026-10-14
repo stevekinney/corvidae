@@ -18,12 +18,14 @@ import { nativeNodeEnvironment } from './environment-configuration';
 const runtime = createDefaultRuntimeServices();
 
 /**
- * A child still running this long after it started is killed and reported as
- * stuck. It only detects a hang, so it is generous: native Node loads the
- * workspace's TypeScript source module by module, which on a contended host
- * has taken most of a minute before the host was ready.
+ * A child still running this long after it announced `loaded` is killed and
+ * reported as stuck. The clock starts at `loaded`, not at spawn: native Node
+ * loads the workspace's TypeScript source module by module, which on a
+ * contended host has taken over four minutes, while everything after loading
+ * is light work. A child that never finishes loading is bounded by the test's
+ * own timeout instead, and `stop()` still kills it.
  */
-export const HOST_DEADLINE_MS = 180_000;
+export const HOST_DEADLINE_MS = 120_000;
 
 export type HostEvent = Readonly<Record<string, unknown>> & { readonly event: string };
 
@@ -58,12 +60,17 @@ export function startHost(
   const waiters = new Set<() => void>();
   let streamEnded = false;
   let killedAtDeadline = false;
-  const deadline = runtime.timers.setTimeout(() => {
-    killedAtDeadline = true;
-    child.kill('SIGKILL');
-  }, HOST_DEADLINE_MS);
+  /** Set once the deadline is armed at `loaded`; clears it. */
+  let cancelDeadline: (() => void) | undefined;
 
   const notify = (): void => {
+    if (cancelDeadline === undefined && events.some((candidate) => candidate.event === 'loaded')) {
+      const deadline = runtime.timers.setTimeout(() => {
+        killedAtDeadline = true;
+        child.kill('SIGKILL');
+      }, HOST_DEADLINE_MS);
+      cancelDeadline = () => runtime.timers.clearTimeout(deadline);
+    }
     for (const waiter of waiters) waiter();
   };
   const stdoutDone = (async () => {
@@ -87,7 +94,7 @@ export function startHost(
   const finished = (async (): Promise<HostExit> => {
     const [, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     await stdoutDone;
-    runtime.timers.clearTimeout(deadline);
+    cancelDeadline?.();
     return {
       exitCode: child.exitCode,
       signalCode: child.signalCode,

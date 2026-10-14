@@ -16,12 +16,16 @@ export interface HostArguments {
   readonly directory: string;
 }
 
+/** Reads `<mode> <directory>` and announces `loaded`, the first handshake every host sends. */
 export function parseHostArguments(modes: readonly string[]): HostArguments {
   const [mode, directory] = process.argv.slice(2);
   if (mode === undefined || !modes.includes(mode) || directory === undefined) {
     process.stderr.write(`usage: <host> <${modes.join('|')}> <directory>\n`);
     process.exit(2);
   }
+  // Static imports are fully evaluated before this runs, so `loaded` marks the
+  // end of module loading, which the parent excludes from its hang deadline.
+  announce('loaded');
   return { mode, directory };
 }
 

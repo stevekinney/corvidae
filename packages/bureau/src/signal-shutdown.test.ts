@@ -40,8 +40,16 @@ const RUNTIME_CONTRACTS = join(
   'documentation',
   'runtime-contracts.md',
 );
-/** Each case runs at most two hosts one after the other, so either can reach its deadline first. */
-const TEST_TIMEOUT_MS = 2 * HOST_DEADLINE_MS + 60_000;
+/**
+ * The only bound on how long a host takes to load. Each case runs at most two
+ * hosts one after the other; native Node took 259 s to load the workspace
+ * source on a host with a load average near 110, so this covers two such loads
+ * plus each host's post-load deadline. A host that hangs before `loaded` fails
+ * here as a runner timeout rather than as `killedAtDeadline`, and `afterEach`
+ * still kills it.
+ */
+const NATIVE_LOAD_ALLOWANCE_MS = 300_000;
+const TEST_TIMEOUT_MS = 2 * (NATIVE_LOAD_ALLOWANCE_MS + HOST_DEADLINE_MS) + 60_000;
 
 const STORAGE_BY_RUNTIME: Record<HostRuntime, string> = {
   bun: 'BunSQLiteStorage',
