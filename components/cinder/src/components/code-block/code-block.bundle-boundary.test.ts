@@ -125,16 +125,18 @@ describe('CodeBlock — Shiki bundle boundary', () => {
   });
 });
 
-describe('CodeBlock — SSR two-phase contract', () => {
-  test('server render emits the plain <pre><code> fallback with escaped code, no highlight', () => {
-    const sourcePath = resolvePath(HERE, 'code-block.svelte');
-    const repositoryRoot = resolvePath(HERE, '../../..');
-    const malicious = '<img src=x onError=alert(1)>';
+// The real server process is the behavior under test (SSR without DOM globals, where `$effect`
+// never runs), so it runs once at module scope, off bun's per-test clock; the test below only
+// asserts on the settled result.
+function renderServerFallback(): { exitCode: number; stderr: string; ssrHtml: string } {
+  const sourcePath = resolvePath(HERE, 'code-block.svelte');
+  const repositoryRoot = resolvePath(HERE, '../../..');
+  const malicious = '<img src=x onError=alert(1)>';
 
-    // Compile the component for the server and render it in a child process so
-    // we exercise the real SSR path (where `$effect` never runs). Mirrors the
-    // toast-region SSR test harness.
-    const script = `
+  // Compile the component for the server and render it in a child process so
+  // we exercise the real SSR path (where `$effect` never runs). Mirrors the
+  // toast-region SSR test harness.
+  const script = `
       import { rm, writeFile } from 'node:fs/promises';
       import { dirname, join } from 'node:path';
       import { pathToFileURL } from 'node:url';
@@ -154,16 +156,22 @@ describe('CodeBlock — SSR two-phase contract', () => {
         await rm(file, { force: true });
       }
     `;
-    const result = Bun.spawnSync({
-      cmd: ['bun', '-e', script],
-      cwd: repositoryRoot,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const stderr = new TextDecoder().decode(result.stderr);
-    const ssrHtml = new TextDecoder().decode(result.stdout);
+  const result = Bun.spawnSync({
+    cmd: ['bun', '-e', script],
+    cwd: repositoryRoot,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const stderr = new TextDecoder().decode(result.stderr);
+  const ssrHtml = new TextDecoder().decode(result.stdout);
+  return { exitCode: result.exitCode, stderr, ssrHtml };
+}
 
-    expect(result.exitCode, stderr).toBe(0);
+const { exitCode, stderr, ssrHtml } = renderServerFallback();
+
+describe('CodeBlock — SSR two-phase contract', () => {
+  test('server render emits the plain <pre><code> fallback with escaped code, no highlight', () => {
+    expect(exitCode, stderr).toBe(0);
     // Plain fallback structure is present.
     expect(ssrHtml).toContain('cinder-code-block__pre');
     expect(ssrHtml).toContain('cinder-code-block__code');
@@ -173,5 +181,5 @@ describe('CodeBlock — SSR two-phase contract', () => {
     // escapes `<` to `&lt;`.
     expect(ssrHtml).toContain('&lt;img');
     expect(ssrHtml).not.toContain('<img src=x onError=alert(1)>');
-  }, 30_000);
+  });
 });

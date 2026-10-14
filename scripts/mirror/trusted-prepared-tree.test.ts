@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   preparedSyncManifestFile,
@@ -298,8 +299,9 @@ async function verifyArtifact(
   });
 }
 
-describe('trusted prepared tree reconstruction', () => {
-  test('accepts an explicitly requested target branch and rejects it as an implicit default', async () => {
+describe('trusted prepared tree reconstruction', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       const branch = 'steve/cinder-mirror-conversion';
@@ -321,7 +323,9 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
-  test('accepts a real prepared artifact and does not run target lifecycle scripts', async () => {
+  test('accepts an explicitly requested target branch and rejects it as an implicit default', () =>
+    rethrow(outcome1));
+  const outcome2 = await outcomeOf(async () => {
     const marker = join(tmpdir(), `mirror-lifecycle-${crypto.randomUUID()}`);
     const harness = await trustedHarness(marker);
     try {
@@ -332,8 +336,10 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(marker, { force: true });
     }
   });
+  test('accepts a real prepared artifact and does not run target lifecycle scripts', () =>
+    rethrow(outcome2));
 
-  test('accepts a real skip artifact after the target already matches the trusted transform', async () => {
+  const outcome3 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       await verifyArtifact(harness, await skipArtifact(harness));
@@ -341,8 +347,10 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
+  test('accepts a real skip artifact after the target already matches the trusted transform', () =>
+    rethrow(outcome3));
 
-  test('rejects a self-consistent forged artifact whose tree does not match reconstruction', async () => {
+  const outcome4 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       expect(
@@ -354,8 +362,10 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
+  test('rejects a self-consistent forged artifact whose tree does not match reconstruction', () =>
+    rethrow(outcome4));
 
-  test('rejects artifacts prepared from a stale default-branch head', async () => {
+  const outcome5 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       const artifactDirectory = await prepareArtifact(harness);
@@ -371,8 +381,9 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
+  test('rejects artifacts prepared from a stale default-branch head', () => rethrow(outcome5));
 
-  test('rejects artifact base branches that are not the target remote default branch', async () => {
+  const outcome6 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       const artifactDirectory = await prepareArtifact(harness);
@@ -387,8 +398,10 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
+  test('rejects artifact base branches that are not the target remote default branch', () =>
+    rethrow(outcome6));
 
-  test('rejects a trusted source checkout at the wrong commit', async () => {
+  const outcome7 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       const artifactDirectory = await prepareArtifact(harness);
@@ -401,8 +414,9 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
+  test('rejects a trusted source checkout at the wrong commit', () => rethrow(outcome7));
 
-  test('rejects a dirty trusted source checkout', async () => {
+  const outcome8 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       const artifactDirectory = await prepareArtifact(harness);
@@ -414,8 +428,9 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
+  test('rejects a dirty trusted source checkout', () => rethrow(outcome8));
 
-  test('rejects tracked symlinks before trusted reconstruction', async () => {
+  const outcome9 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       const symlinkClone = join(harness.root, 'symlink-seed');
@@ -445,8 +460,9 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
+  test('rejects tracked symlinks before trusted reconstruction', () => rethrow(outcome9));
 
-  test('rejects tracked gitlinks before trusted reconstruction', async () => {
+  const outcome10 = await outcomeOf(async () => {
     const harness = await trustedHarness();
     try {
       const moduleRepository = join(harness.root, 'module');
@@ -491,4 +507,5 @@ describe('trusted prepared tree reconstruction', () => {
       await rm(harness.root, { recursive: true, force: true });
     }
   });
+  test('rejects tracked gitlinks before trusted reconstruction', () => rethrow(outcome10));
 });
