@@ -9,7 +9,8 @@ const CHECKPOINT_CREATED_AT = 1_000;
 const ONE_HOUR = 3_600_000;
 const SETTLED_AT = 90_000;
 
-type Operation = Generator<ContextOperationRequest, unknown, unknown>;
+// Atomic state handles type their yields as `unknown`, so the table accepts any yield type.
+type Operation = Generator<unknown, unknown, unknown>;
 
 function createResumedContext(getNow: () => number) {
   return new Context({
@@ -34,7 +35,7 @@ function sleepFireAt(request: ContextOperationRequest): number {
   return request.scheduledFireAt;
 }
 
-function nextRequest(operation: Operation): ContextOperationRequest {
+function nextRequest<TRequest>(operation: Generator<TRequest, unknown, unknown>): TRequest {
   const yielded = operation.next();
   if (yielded.done) throw new Error('expected the operation to yield a request');
   return yielded.value;
