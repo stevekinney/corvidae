@@ -726,6 +726,39 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(notARun.outcome).toBe('session-terminal');
 
+      // A named run its own read finds live needs no listing, so a listing
+      // outage does not block it; and once decided, an exact retry is
+      // answered from the log with the engine unreachable altogether.
+      const outageSession = 'session-listing-outage';
+      await store.save(
+        createAgentSession({
+          id: outageSession,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: outageSession }),
+          metadata: { lastRunId: 'named-run', lastRunStatus: 'running' },
+        }),
+      );
+      const outage = await store.load(outageSession);
+      if (outage === undefined) throw new Error('expected the session');
+      const outageTag = steeringSessionRunTag(outageSession, outage.incarnation);
+      engineGet.mockImplementation((id: string) =>
+        Promise.resolve(
+          id === 'named-run' ? { type: 'agentRun', status: 'running', tags: [outageTag] } : null,
+        ),
+      );
+      engineList.mockImplementation(() => Promise.reject(new Error('listing unavailable')));
+      const namedPause = {
+        id: 'k-named',
+        principal: 'alice',
+        runId: 'named-run',
+        requestedValue: { target: 'pause' },
+      } as const;
+      const decided = await reader.submitSteeringCommand(outageSession, namedPause);
+      expect(decided.outcome).toBe('accepted');
+      engineGet.mockImplementation(() => Promise.reject(new Error('backend unavailable')));
+      const retried = await reader.submitSteeringCommand(outageSession, namedPause);
+      expect(retried.outcome).toBe('replayed');
+
       // An unscoped request whose liveness query fails is masked against the
       // session as it stands after the failure: here another process handed
       // the default run to bob while the query was failing.

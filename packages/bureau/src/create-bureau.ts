@@ -7787,52 +7787,60 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (durableSteeringStore() !== undefined && runAdmissionClosed) {
       throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
     }
-    let liveRunIds: string[];
-    try {
-      const steeringKv = durableSteeringStore();
-      if (steeringKv === undefined) {
-        liveRunIds = liveSessionRunIds(sessionId);
-      } else {
-        // Fold the log first: a run promoted elsewhere whose workflow does
-        // not exist yet is known only from its `promoted` entry, and the
-        // terminal decision below must count it.
-        await enqueueSteering(sessionId, () =>
-          catchUpSteering(steeringKv, sessionId, session.incarnation),
-        );
-        liveRunIds = await liveSessionRunIdsEverywhere(
-          sessionId,
-          session.incarnation,
-          request.runId,
-        );
+    // A key the log already decided is answered by admission from the log,
+    // which authorizes the caller against the run that answer discloses:
+    // nothing here depends on which runs are live now, so a backend that is
+    // unavailable must not stand between a retry and its recorded answer.
+    // A new decision is checked here, and again inside admission.
+    const keyAlreadyBound = await durableSteeringKeyIsBound(request.principal, request.id);
+    let liveRunIds: string[] = [];
+    if (!keyAlreadyBound) {
+      try {
+        const steeringKv = durableSteeringStore();
+        if (steeringKv === undefined) {
+          liveRunIds = liveSessionRunIds(sessionId);
+        } else {
+          // Fold the log first: a run promoted elsewhere whose workflow does
+          // not exist yet is known only from its `promoted` entry, and the
+          // terminal decision below must count it.
+          await enqueueSteering(sessionId, () =>
+            catchUpSteering(steeringKv, sessionId, session.incarnation),
+          );
+          liveRunIds = await liveSessionRunIdsEverywhere(
+            sessionId,
+            session.incarnation,
+            request.runId,
+          );
+        }
+      } catch (error) {
+        // Deleted meanwhile by another process: its log was read mid-deletion.
+        const afterFailure = await runtime.sessionStore?.load(sessionId);
+        if (afterFailure?.incarnation !== session.incarnation) return { outcome: 'not-found' };
+        // A request naming its run was authorized against that run above, so
+        // the failure is its to see.
+        if (request.runId !== undefined) throw error;
+        // An unscoped request's authority depends on which run is live, so a
+        // failed query is masked until this caller is shown to be authorized
+        // against the run this process can see.
+        const localTarget = liveSessionRunIdsOfIncarnation(sessionId, session.incarnation);
+        if (
+          !isSessionAuthorityAuthorized(
+            afterFailure.metadata,
+            request.principal,
+            localTarget.length === 1 ? localTarget[0] : undefined,
+          )
+        ) {
+          return { outcome: 'not-found' };
+        }
+        throw error;
       }
-    } catch (error) {
-      // Deleted meanwhile by another process: its log was read mid-deletion.
-      const afterFailure = await runtime.sessionStore?.load(sessionId);
-      if (afterFailure?.incarnation !== session.incarnation) return { outcome: 'not-found' };
-      // A request naming its run was authorized against that run above, so
-      // the failure is its to see.
-      if (request.runId !== undefined) throw error;
-      // An unscoped request's authority depends on which run is live, so a
-      // failed query is masked until this caller is shown to be authorized
-      // against the run this process can see.
-      const localTarget = liveSessionRunIdsOfIncarnation(sessionId, session.incarnation);
-      if (
-        !isSessionAuthorityAuthorized(
-          afterFailure.metadata,
-          request.principal,
-          localTarget.length === 1 ? localTarget[0] : undefined,
-        )
-      ) {
+      const targetRunId = request.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
+      if (!isSessionAuthorityAuthorized(session.metadata, request.principal, targetRunId)) {
         return { outcome: 'not-found' };
       }
-      throw error;
-    }
-    const targetRunId = request.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
-    if (!isSessionAuthorityAuthorized(session.metadata, request.principal, targetRunId)) {
-      return { outcome: 'not-found' };
-    }
-    if (isSessionRunTerminal(session.metadata) && liveRunIds.length === 0) {
-      return { outcome: 'session-terminal', sessionId };
+      if (isSessionRunTerminal(session.metadata) && liveRunIds.length === 0) {
+        return { outcome: 'session-terminal', sessionId };
+      }
     }
     // A refusal Bureau decides here, before the gate, is logged like the
     // gate's own refusals on a durable session, so a caller-supplied id
@@ -8082,6 +8090,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * Whether `(principal, id)` is bound in the durable steering log. An
+   * unreadable binding reads as unbound here; admission fails closed on it.
+   */
+  async function durableSteeringKeyIsBound(
+    principal: string,
+    id: string | undefined,
+  ): Promise<boolean> {
+    const kv = durableSteeringStore();
+    if (kv === undefined || id === undefined) return false;
+    try {
+      return (await readSteeringKeyBinding(kv, principal, id)) !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * This process's running runs of one session incarnation: a run of a
    * deleted incarnation still settling here is not the recreated session's.
    */
@@ -8146,6 +8171,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (namedRunId !== undefined && !live.has(namedRunId)) {
       const named = await engine.get(namedRunId);
       if (named !== null && isLiveSessionWorkflow(named)) live.add(namedRunId);
+    }
+    // Already conclusive without the listing: the named run is live, or
+    // unscoped, two runs already make it ambiguous.
+    if (namedRunId === undefined ? live.size >= 2 : live.has(namedRunId)) {
+      return [...live].toSorted((left, right) => left.localeCompare(right));
     }
     const others = await engine.list({
       type: 'agentRun',
