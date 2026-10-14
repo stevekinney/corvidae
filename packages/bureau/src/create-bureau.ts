@@ -1679,6 +1679,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     steeringQueues.set(sessionId, settled);
     void settled.then(() => {
       if (steeringQueues.get(sessionId) === settled) steeringQueues.delete(sessionId);
+      return undefined;
     });
     return next;
   }
@@ -7518,11 +7519,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const stored = await readSteeringKeyBinding(kv, principal, id);
       if (stored !== undefined) {
         const { binding } = stored;
+        const bindingSession =
+          binding.sessionId === sessionId
+            ? undefined
+            : await runtime.sessionStore?.load(binding.sessionId);
         const live =
           binding.sessionId === sessionId
             ? binding.incarnation === incarnation
-            : (await runtime.sessionStore?.load(binding.sessionId))?.incarnation ===
-              binding.incarnation;
+            : bindingSession?.incarnation === binding.incarnation;
         if (live) {
           const elsewhere = await answerFromOtherSteeringLog(kv, binding, command);
           if (elsewhere !== undefined) return elsewhere;
@@ -8986,7 +8990,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // Pending steering log appends (run-boundary events are logged
             // in the background) finish before the backend closes under
             // them. Each one reports its own failure as a diagnostic.
-            await Promise.allSettled([...steeringQueues.values()]);
+            await Promise.allSettled(steeringQueues.values());
             steeringQueues.clear();
             steeringCursors.clear();
             steeringRefusals.clear();

@@ -60,7 +60,8 @@ describe('steering log', () => {
     expect(await readSteeringLogEntries(kv, 'session-1', 'inc-1', 1, head.sequence)).toEqual([
       applied,
     ]);
-    expect((await readSteeringKeyBinding(kv, 'alice', 'cmd-1'))?.binding).toEqual({
+    const bound = await readSteeringKeyBinding(kv, 'alice', 'cmd-1');
+    expect(bound?.binding).toEqual({
       sessionId: 'session-1',
       incarnation: 'inc-1',
       sequence: 1,
@@ -162,9 +163,9 @@ describe('steering log', () => {
 
     expect(await readSteeringLogHead(kv, 'session-1', 'inc-1')).toEqual({ raw: null, sequence: 0 });
     expect(await readSteeringKeyBinding(kv, 'alice', 'cmd-1')).toBeUndefined();
-    expect((await readSteeringKeyBinding(kv, 'alice', 'cmd-rebound'))?.binding.incarnation).toBe(
-      'inc-2',
-    );
-    expect((await readSteeringLogHead(kv, 'session-1', 'inc-2')).sequence).toBe(1);
+    const rebound = await readSteeringKeyBinding(kv, 'alice', 'cmd-rebound');
+    expect(rebound?.binding.incarnation).toBe('inc-2');
+    const newHead = await readSteeringLogHead(kv, 'session-1', 'inc-2');
+    expect(newHead.sequence).toBe(1);
   });
 });
