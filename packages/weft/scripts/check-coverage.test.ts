@@ -1,5 +1,6 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
+import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
 import {
   assembleAllowanceLayers,
   assertNoAllowanceKeyIsCoverageIgnored,
@@ -62,6 +63,54 @@ describe('listCoverageTestFiles', () => {
     expect(files).toContain('scripts/benchmarks/coverage-mode.test.ts');
     expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');
   });
+});
+
+// The pipe scenario below runs the coverage CLI in a real child process, which takes seconds on a
+// loaded host, so it runs here at module scope, off Bun's five-second per-test clock; its test
+// rethrows the outcome.
+
+const scenario1 = await outcomeOf(async () => {
+  // A real child process with piped stderr, because the defect only exists there:
+  // `process.exit()` discarded whatever the pipe had not yet accepted, and a
+  // `console.error` issued behind a large queued `process.stderr.write` was dropped,
+  // so a failing run's tail was cut mid-line and its stage reason never arrived.
+  const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+
+  const payloadBytes = 2 * 1024 * 1024;
+  // `checkCoverage` removes `coverage/` under its working directory, so the child runs
+  // in a scratch directory rather than this package.
+  const root = await mkdtemp(join(tmpdir(), 'weft-cov-pipe-'));
+  try {
+    const entry = join(root, 'failing-coverage-cli.ts');
+    await writeFile(
+      entry,
+      [
+        `import { runCheckCoverageCli, runCoverageShard } from ${JSON.stringify(new URL('./check-coverage.ts', import.meta.url).pathname)};`,
+        `const payload = new TextEncoder().encode('x'.repeat(${String(payloadBytes)}));`,
+        `const stream = (bytes) => new ReadableStream({ start(controller) { if (bytes) controller.enqueue(bytes); controller.close(); } });`,
+        `await runCheckCoverageCli({`,
+        `  listCoverageTestFiles: async () => ['src/example.test.ts'],`,
+        `  runCoverageShard: (shard) => runCoverageShard(shard, {`,
+        `    spawnCoverageProcess: () => ({ exited: Promise.resolve(1), signalCode: null, stdout: stream(payload), stderr: stream() }),`,
+        `  }),`,
+        `});`,
+        '',
+      ].join('\n'),
+    );
+
+    const child = Bun.spawn(['bun', entry], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
+    const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+
+    expect(exitCode).toBe(1);
+    // `toBe(true)` rather than `toContain`, so a failure does not print 2 MiB of payload.
+    expect(stderr.includes('x'.repeat(payloadBytes))).toBe(true);
+    expect(stderr).toContain('exiting non-zero at stage "child exit"');
+    expect(stderr.endsWith('Coverage execution failed.\n')).toBe(true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 describe('parseLcov', () => {
@@ -302,52 +351,8 @@ describe('parseLcov', () => {
     expect(stderrWriteSpy).toHaveBeenCalledWith('synthetic coverage shard exited with code 7.\n');
   });
 
-  it('delivers a large failure tail and every diagnostic after it through a piped stderr (COR-1329)', async () => {
-    // A real child process with piped stderr, because the defect only exists there:
-    // `process.exit()` discarded whatever the pipe had not yet accepted, and a
-    // `console.error` issued behind a large queued `process.stderr.write` was dropped,
-    // so a failing run's tail was cut mid-line and its stage reason never arrived.
-    const { mkdtemp, rm, writeFile } = await import('node:fs/promises');
-    const { join } = await import('node:path');
-    const { tmpdir } = await import('node:os');
-
-    const payloadBytes = 2 * 1024 * 1024;
-    // `checkCoverage` removes `coverage/` under its working directory, so the child runs
-    // in a scratch directory rather than this package.
-    const root = await mkdtemp(join(tmpdir(), 'weft-cov-pipe-'));
-    try {
-      const entry = join(root, 'failing-coverage-cli.ts');
-      await writeFile(
-        entry,
-        [
-          `import { runCheckCoverageCli, runCoverageShard } from ${JSON.stringify(new URL('./check-coverage.ts', import.meta.url).pathname)};`,
-          `const payload = new TextEncoder().encode('x'.repeat(${String(payloadBytes)}));`,
-          `const stream = (bytes) => new ReadableStream({ start(controller) { if (bytes) controller.enqueue(bytes); controller.close(); } });`,
-          `await runCheckCoverageCli({`,
-          `  listCoverageTestFiles: async () => ['src/example.test.ts'],`,
-          `  runCoverageShard: (shard) => runCoverageShard(shard, {`,
-          `    spawnCoverageProcess: () => ({ exited: Promise.resolve(1), signalCode: null, stdout: stream(payload), stderr: stream() }),`,
-          `  }),`,
-          `});`,
-          '',
-        ].join('\n'),
-      );
-
-      const child = Bun.spawn(['bun', entry], { cwd: root, stdout: 'pipe', stderr: 'pipe' });
-      const [stderr, exitCode] = await Promise.all([
-        new Response(child.stderr).text(),
-        child.exited,
-      ]);
-
-      expect(exitCode).toBe(1);
-      // `toBe(true)` rather than `toContain`, so a failure does not print 2 MiB of payload.
-      expect(stderr.includes('x'.repeat(payloadBytes))).toBe(true);
-      expect(stderr).toContain('exiting non-zero at stage "child exit"');
-      expect(stderr.endsWith('Coverage execution failed.\n')).toBe(true);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  }, 60_000);
+  it('delivers a large failure tail and every diagnostic after it through a piped stderr (COR-1329)', () =>
+    rethrow(scenario1));
 });
 
 describe('formatCoverageFailureReason', () => {
