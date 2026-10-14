@@ -57,9 +57,9 @@ The investigation found all rejection paths ahead of any mutation, so the split 
 - **Deletion is incarnation-scoped:** it removes `steering-log:v1:<session>:<incarnation>:*` and the index keys whose entries point at that incarnation. A recreated session has a new incarnation and never sees the old log.
 - **Cross-process reach is unchanged:** a run reads its own process's gate. A process folds new entries at the start of each run and before each admission, so steering admitted elsewhere reaches a run at its next boundary only if that run's process catches up. Steering does not push updates across processes.
 
-## Open choice
+## Run-scoped commands
 
-Whether run-scoped `pause` and `resume` enter the durable log, or stay process-local. They are run-bound, and a run does not survive a process today. Logging them with their recorded `boundRunId` keeps one code path and makes pause idempotency durable. Leaving them out keeps the documented boundary that run-scoped state is not carried across restarts.
+`pause` and `resume` enter the log like every other target (decided 2026-10-14), each with its recorded `boundRunId`. All seven targets therefore share one admission path, and pause idempotency survives restarts and processes. A logged pause takes effect only where its bound run is live: the fold records the binding, and a process that does not hold that run never pauses anything for it. This replaces the earlier documented rule that run-scoped steering state is not carried across a restart.
 
 ## Acceptance criteria
 
