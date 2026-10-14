@@ -67,17 +67,31 @@ export function readEnvironmentConfiguration() {
 /**
  * Names that can carry a credential. The static production gate scrubs every matching variable
  * from the environment it gives its child processes (the static server, and Playwright with its
- * browsers), and fails when the value of any matching variable in its own environment appears in
- * a served file. Case-sensitive on purpose: Bun's lowercase `npm_*` script variables, `HOME`, and
+ * browsers). Its served-byte leak check scans only the narrower {@link SECRET_VALUE_NAME} set. Case-sensitive on purpose: Bun's lowercase `npm_*` script variables, `HOME`, and
  * `PATH` stay.
  */
 export const SECRET_ENVIRONMENT_NAME =
   /^(VERCEL_.*|.*TOKEN.*|.*SECRET.*|.*PASSWORD.*|.*API_KEY.*|ANTHROPIC_.*|LINEAR_.*)$/;
 
-/** Every set variable whose name matches {@link SECRET_ENVIRONMENT_NAME}, for the leak check. */
+/**
+ * Names that hold a secret value, as opposed to public deployment metadata. Narrower than
+ * {@link SECRET_ENVIRONMENT_NAME}: `VERCEL_ENV=production` is stripped from child environments
+ * but is not a secret, and scanning served bytes for `production` would fail on authored prose.
+ */
+export const SECRET_VALUE_NAME =
+  /(TOKEN|SECRET|PASSWORD|PASSPHRASE|API_KEY|PRIVATE_KEY|CREDENTIAL)/;
+
+/** Every set variable whose name marks a secret value, for the served-byte leak check. */
 export function readSecretEnvironmentEntries(): [name: string, value: string][] {
   return Object.entries(process.env).flatMap(([name, value]) =>
-    value !== undefined && SECRET_ENVIRONMENT_NAME.test(name) ? [[name, value]] : [],
+    value !== undefined && SECRET_VALUE_NAME.test(name) ? [[name, value]] : [],
+  );
+}
+
+/** The names of every set variable matching {@link SECRET_ENVIRONMENT_NAME}. */
+export function readCredentialShapedNames(): string[] {
+  return Object.keys(process.env).filter(
+    (name) => process.env[name] !== undefined && SECRET_ENVIRONMENT_NAME.test(name),
   );
 }
 

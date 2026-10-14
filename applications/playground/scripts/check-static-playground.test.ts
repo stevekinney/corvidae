@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   readScrubbedEnvironment,
   SECRET_ENVIRONMENT_NAME,
+  SECRET_VALUE_NAME,
 } from '../src/environment-configuration.ts';
 import {
   assertOutputOutsideServedDirectory,
@@ -107,6 +108,7 @@ describe('static production gate over fixtures', () => {
       const parentEnvironment = {
         ...readScrubbedEnvironment(),
         STATIC_GATE_CHILD_TOKEN: 'a value no fixture file contains',
+        VERCEL_ENV: 'preview',
       };
       const environmentRecord = join(record, 'child-secrets.json');
 
@@ -121,6 +123,39 @@ describe('static production gate over fixtures', () => {
     } finally {
       await rm(record, { recursive: true, force: true });
     }
+  });
+
+  it('scans served bytes only for secret values, not public deployment metadata', async () => {
+    // The good fixture's prose says "production". `VERCEL_ENV` is stripped from children but is
+    // not a secret, so it must not fail the leak scan; a real token value in served bytes must.
+    const metadataOnly = await runFixture('good', {
+      ...readScrubbedEnvironment(),
+      VERCEL_ENV: 'production',
+    });
+    const realToken = await runFixture('good', {
+      ...readScrubbedEnvironment(),
+      VERCEL_ENV: 'production',
+      VERCEL_OIDC_TOKEN: 'static production gate',
+    });
+
+    expect(metadataOnly.report.preflightFailures).toEqual([]);
+    expect(metadataOnly.exitCode).toBe(0);
+    expect(realToken.exitCode).toBe(1);
+    expect(realToken.report.preflightFailures).toContain(
+      'served file index.html contains the value of VERCEL_OIDC_TOKEN',
+    );
+  });
+
+  it.each([
+    ['VERCEL_ENV', false],
+    ['VERCEL_URL', false],
+    ['VERCEL_OIDC_TOKEN', true],
+    ['VERCEL_AUTOMATION_BYPASS_SECRET', true],
+    ['ANTHROPIC_API_KEY', true],
+    ['DATABASE_PASSWORD', true],
+  ] as const)('treats %s as a secret value: %s', (name, secret) => {
+    expect(SECRET_VALUE_NAME.test(name)).toBe(secret);
+    expect(SECRET_ENVIRONMENT_NAME.test(name)).toBe(true);
   });
 
   it('refuses an output directory inside the served directory', async () => {

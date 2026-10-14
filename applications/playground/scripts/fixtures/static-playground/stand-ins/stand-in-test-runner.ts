@@ -18,8 +18,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  readCredentialShapedNames,
   readEnvironmentConfiguration,
-  readSecretEnvironmentEntries,
 } from '../../../../src/environment-configuration.ts';
 import type { StaticCase } from '../../../static-playground-cases.ts';
 import { argumentValue, startSleeper, waitForFile } from './stand-in-processes.ts';
@@ -32,10 +32,7 @@ const environmentRecord = argumentValue('--environment-record');
 // Proves what the runner hands its children: the names of every credential-shaped variable
 // this process can see, which must be none.
 if (environmentRecord !== undefined) {
-  await Bun.write(
-    environmentRecord,
-    JSON.stringify(readSecretEnvironmentEntries().map(([name]) => name)),
-  );
+  await Bun.write(environmentRecord, JSON.stringify(readCredentialShapedNames()));
 }
 
 if (record !== undefined) {
