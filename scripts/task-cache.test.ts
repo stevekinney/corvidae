@@ -43,8 +43,6 @@ test('application hosts and tests receive only their owned configuration', async
   try {
     await createWorkspace(directory);
     const cases = [
-      { name: 'desktop', task: 'dev', variable: 'ANTHROPIC_API_KEY' },
-      { name: 'desktop', task: 'dev', variable: 'ANTHROPIC_BASE_URL' },
       { name: 'weft-ui', task: 'dev:browser', variable: 'WEFT_UI_PORT' },
       { name: 'weft', task: 'test', variable: 'WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK' },
       { name: 'cinder', task: 'test', variable: 'CINDER_SVG_DATA_URI_ROOTS' },
@@ -283,76 +281,6 @@ test('test tasks preserve and hash the benchmark runner environment', async () =
     );
     expect(after).not.toBe(before);
     expect(await run(directory, command, unconstrained)).toContain('runner=0');
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
-
-test('application check caches restore generated inputs without restoring build output', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'corvidae-generated-inputs-'));
-  try {
-    await createWorkspace(directory);
-    await Bun.write(
-      join(directory, '.gitignore'),
-      'node_modules/\n.turbo/\n.hutch/\n.svelte-kit/\n.playwright/\nbuild/\nexecutions.txt\n',
-    );
-    // Electrobun projects its SDK into `.hutch/devkit` rather than generating
-    // `.svelte-kit`, but the property under test is unchanged: a task that
-    // declares generated inputs as outputs restores them from cache, while an
-    // application's build output stays deleted.
-    const cases = [
-      {
-        name: 'desktop',
-        tasks: ['prepare:devkit'],
-        outputs: ['.hutch/devkit/tsconfig.json', '.hutch/devkit/api/sdks/main/index.ts'],
-      },
-    ];
-    for (const application of cases) {
-      const applicationDirectory = join(directory, 'packages', application.name);
-      await Bun.write(
-        join(applicationDirectory, 'package.json'),
-        JSON.stringify({
-          name: `@lostgradient/${application.name}`,
-          private: true,
-          scripts: Object.fromEntries(application.tasks.map((task) => [task, 'bun generate.ts'])),
-        }),
-      );
-      await Bun.write(
-        join(applicationDirectory, 'generate.ts'),
-        `const file = Bun.file('executions.txt');
-await Bun.write(file, String((await file.exists() ? Number(await file.text()) : 0) + 1));
-for (const output of ${JSON.stringify(application.outputs)}) await Bun.write(output, 'generated input');
-`,
-      );
-    }
-    await run(directory, [process.execPath, 'install']);
-    for (const application of cases) {
-      const applicationDirectory = join(directory, 'packages', application.name);
-      const executions = Bun.file(join(applicationDirectory, 'executions.txt'));
-      for (const [index, task] of application.tasks.entries()) {
-        const command = [
-          join(root, 'node_modules/.bin/turbo'),
-          'run',
-          task,
-          `--filter=@lostgradient/${application.name}`,
-        ];
-        const unrelatedBuildOutput = join(
-          applicationDirectory,
-          'build/dev-macos-arm64/application.js',
-        );
-        await Bun.write(unrelatedBuildOutput, 'application build');
-        await run(directory, command);
-        expect(await executions.text()).toBe(String(index + 1));
-        await rm(unrelatedBuildOutput);
-        for (const output of application.outputs) await rm(join(applicationDirectory, output));
-        await run(directory, command);
-        expect(await executions.text()).toBe(String(index + 1));
-        for (const output of application.outputs) {
-          expect(await Bun.file(join(applicationDirectory, output)).text()).toBe('generated input');
-        }
-        expect(await Bun.file(unrelatedBuildOutput).exists()).toBe(false);
-      }
-    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

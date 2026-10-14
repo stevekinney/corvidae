@@ -46,7 +46,7 @@ beforeAll(async () => {
   git('config', 'user.name', 'test');
   for (const path of [
     'applications/playground/package.json',
-    'applications/desktop/package.json',
+    'applications/example/package.json',
     'packages/weft/package.json',
     'scripts/mirror/package-map.json',
     'scripts/mirror/sync.ts',
@@ -70,7 +70,7 @@ describe('ignore-build.sh', () => {
     ['packages/weft/package.json', 1],
     ['scripts/mirror/package-map.json', 1],
     ['tsconfig.json', 1],
-    ['applications/desktop/package.json', 0],
+    ['applications/example/package.json', 0],
     ['scripts/mirror/sync.ts', 0],
   ])('a commit touching only %s exits %i', async (path, expected) => {
     const head = await commitTouching(path);
@@ -79,6 +79,21 @@ describe('ignore-build.sh', () => {
 
   test('builds when there is no previous deployment to compare against', () => {
     expect(ignoreExit(undefined, base)).toBe(1);
+  });
+
+  // Vercel sets the previous SHA to the branch's last successful deployment. A force-push after
+  // an amend or rebase orphans that commit, and a branch can also fall further behind than the
+  // shallow clone reaches; either way the object is absent and `git diff` exits 128, which Vercel
+  // reports as a failed deployment rather than a build. Because a failed deployment is not a
+  // successful one, the previous SHA should not advance past it either.
+  test('builds when the previous deployment commit is not in the clone', () => {
+    const absentCommit = 'deadbeef'.repeat(5);
+    expect(ignoreExit(absentCommit, base)).toBe(1);
+  });
+
+  test('builds whenever the comparison itself fails, rather than exiting with git’s error code', () => {
+    const absentCommit = 'deadbeef'.repeat(5);
+    expect(ignoreExit(base, absentCommit)).toBe(1);
   });
 
   test('is what vercel.json runs, within the 256-character limit Vercel enforces', async () => {

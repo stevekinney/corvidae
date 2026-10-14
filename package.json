@@ -39,7 +39,6 @@
     "@shikijs/themes": "^3.21.0",
     "@shikijs/types": "^3.21.0",
     "@standard-schema/spec": "^1.1.0",
-    "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@tanstack/svelte-query": "^6.2.1",
     "@tanstack/virtual-core": "^3.17.1",
     "@testing-library/dom": "^10.4.1",
@@ -122,7 +121,6 @@
     "unified": "^11.0.5",
     "unist-util-visit": "^5.0.0",
     "valibot": "^1.4.0",
-    "vite": "^8.1.5",
     "zod": "^4.6.5"
   },
   "scripts": {

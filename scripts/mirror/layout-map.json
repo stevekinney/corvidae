@@ -109,17 +109,11 @@
       "targetDirectory": "internal/typescript",
       "reason": "The cinder target holds the shared TypeScript configuration as an ordinary workspace, so every emitted tsconfig can extend it by specifier. The weft target vendors a copy instead, which `typescript-configuration.ts` places relative to the package rather than through this table."
     },
-    "@lostgradient/desktop": {
-      "disposition": "deferred",
-      "corvidaeDirectory": "applications/desktop",
-      "issue": "COR-1221",
-      "reason": "Excluded from the mirror by the repository owner, 2026-09-21 (`package-map.json` carries the `exclude` ruling), so no placement is needed and the plan never consults this entry. The application was the SvelteKit `chat-room` when that ruling was made and is now an Electrobun desktop application; the rename removes the specific name collision with cinder's `labs/chat-room` (`@cinder/chat-room-lab`) but not the reason for the ruling, which is that a public library mirror has not been ruled on as a home for a private desktop application whose toolchain is a Hutch-managed devkit projected outside version control. It stays `deferred` rather than being given a directory so that if the exclusion is ever lifted, the placement has to be ruled on before anything is emitted."
-    },
     "@lostgradient/playground": {
       "disposition": "deferred",
       "corvidaeDirectory": "applications/playground",
       "issue": "COR-1201",
-      "reason": "Excluded from the mirror (`package-map.json` carries the `exclude` ruling), so no placement is needed and the plan never consults this entry. COR-1201 moved cinder.website onto this application and deleted the public cinder repository's former copy at `packages/playground` in cinder#1602. It stays `deferred` rather than being given a directory, as `@lostgradient/desktop` does, so that lifting the exclusion forces a ruling on placement before anything is emitted."
+      "reason": "Excluded from the mirror (`package-map.json` carries the `exclude` ruling), so no placement is needed and the plan never consults this entry. COR-1201 moved cinder.website onto this application and deleted the public cinder repository's former copy at `packages/playground` in cinder#1602. It stays `deferred` rather than being given a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/evaluation": {
       "disposition": "deferred",
@@ -131,23 +125,17 @@
       "disposition": "deferred",
       "corvidaeDirectory": "components/terminal",
       "issue": "COR-482",
-      "reason": "Excluded from the mirror in `package-map.json` by the owner ruling of 2026-09-25 (not published until a later publication project), so no placement is needed and the plan never consults this entry. COR-482 created the workspace. It stays `deferred` rather than being given a directory, matching `@lostgradient/desktop`, so that lifting the exclusion forces a ruling on placement before anything is emitted."
+      "reason": "Excluded from the mirror in `package-map.json` by the owner ruling of 2026-09-25 (not published until a later publication project), so no placement is needed and the plan never consults this entry. COR-482 created the workspace. It stays `deferred` rather than being given a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/ventriloquist": {
       "disposition": "deferred",
       "corvidaeDirectory": "packages/ventriloquist",
       "issue": "COR-482",
-      "reason": "Excluded from the mirror in `package-map.json` by the owner ruling of 2026-09-25 (not published until a later publication project), so no placement is needed and the plan never consults this entry. COR-482 created the workspace; its only consumer is `@lostgradient/terminal`, which is itself excluded. It stays `deferred` rather than being given a directory, matching `@lostgradient/desktop`, so that lifting the exclusion forces a ruling on placement before anything is emitted."
-    },
-    "@lostgradient/telephone": {
-      "disposition": "deferred",
-      "corvidaeDirectory": "packages/telephone",
-      "issue": "COR-1221",
-      "reason": "Excluded from the mirror in `package-map.json`, so no placement is needed. New in this repository and never published: it carries an Operative agent run onto the chat stream wire, and its only consumer is `@lostgradient/desktop`, which is itself excluded \u2014 so nothing the mirror emits depends on it. `deferred` rather than a directory, matching every other excluded workspace here, so the sync refuses rather than guessing if the exclusion is lifted."
+      "reason": "Excluded from the mirror in `package-map.json` by the owner ruling of 2026-09-25 (not published until a later publication project), so no placement is needed and the plan never consults this entry. COR-482 created the workspace; its only consumer is `@lostgradient/terminal`, which is itself excluded. It stays `deferred` rather than being given a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     }
   },
   "openQuestions": [
-    "The cinder target's root manifest declares `applications/*`, `components/*`, `packages/*` and `internal/*` as its workspace globs. After this remap, `applications/*` and `components/*` match nothing corvidae emits; they are kept because a glob that matches nothing is harmless while narrowing the list could drop a workspace the target owns. Cinder's own root manifest lists `labs/chat-room`, which none of the emitted globs covers, so the emitted root already removes that lab from the target's workspace graph. `@lostgradient/desktop` itself is excluded from the mirror by owner ruling (2026-09-21), so nothing corvidae emits reaches that path either way.",
+    "The cinder target's root manifest declares `applications/*`, `components/*`, `packages/*` and `internal/*` as its workspace globs. After this remap, `applications/*` and `components/*` match nothing corvidae emits; they are kept because a glob that matches nothing is harmless while narrowing the list could drop a workspace the target owns. Cinder's own root manifest lists `labs/chat-room`, which none of the emitted globs covers, so the emitted root already removes that lab from the target's workspace graph.",
     "`@lostgradient/weft-ui` lands in the cinder target at `packages/weft-ui` purely because `targetFor` gives the weft target one member. The weft repository carried its own drifted copy at the same path; COR-1192 rules that copy retired rather than synced, which `target-owned.json`'s `retired` section records and the transform carries out. Three things now move together if the weft repository is ever meant to receive weft-ui again: that routing, this entry, and the retirement."
   ]
 }

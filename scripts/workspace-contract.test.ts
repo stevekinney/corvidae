@@ -28,7 +28,6 @@ const libraries = [
   'editor',
   'markdown',
   'testing',
-  'telephone',
   'terminal',
   'ventriloquist',
 ];
@@ -65,9 +64,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/skills',
   '@lostgradient/testing',
   '@lostgradient/typescript',
-  '@lostgradient/desktop',
   '@lostgradient/playground',
-  '@lostgradient/telephone',
   '@lostgradient/terminal',
   '@lostgradient/ventriloquist',
   'armorer',
@@ -229,9 +226,6 @@ describe('internal workspace architecture', () => {
     }
     manifests.set('root', await readManifest('.'));
     for (const [name, manifest] of manifests) {
-      // The desktop application builds its renderer with Vite, which is how
-      // Electrobun 2.x builds views; every other workspace stays Vite-free.
-      if (name === '@lostgradient/desktop') continue;
       const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
       expect(dependencies['vite'], name).toBeUndefined();
       expect(dependencies['@sveltejs/vite-plugin-svelte'], name).toBeUndefined();
@@ -487,15 +481,6 @@ describe('internal workspace architecture', () => {
     expect(testWatcher?.command).toContain('turbo watch test');
     expect(testWatcher?.command).not.toContain('--experimental-write-cache');
     expect(testWatcher?.isBackground).toBe(true);
-    const application = await readManifest('applications/desktop');
-    // Electrobun owns the desktop build; Vite only builds the renderer, and
-    // both are gated on the devkit projection that `prepare:devkit` performs.
-    expect(application.scripts?.['prepare:devkit']).toBe(
-      'HUTCH_NO_UPDATE_CHECK=1 electrobun prepare',
-    );
-    expect(application.scripts?.['build:renderer']).toContain('vite build');
-    expect(application.scripts?.['build']).toContain('electrobun build');
-    expect(application.scripts?.['dev']).toContain('electrobun dev');
   });
 
   test('installation does not enable Git hooks or publishing', async () => {

@@ -15,6 +15,9 @@ describe('documentation stylesheet', () => {
     expect(stylesheet).toContain('.cinder-table__body');
     expect(stylesheet).toContain('.cinder-accordion-item');
     expect(stylesheet).toContain('.cinder-json-token-key');
+    // The sidebar's "Search components" palette.
+    expect(stylesheet).toContain('.cinder-command-palette');
+    expect(stylesheet).toContain('.cinder-command-item');
     expect(stylesheet).not.toContain('@import');
     // Vercel serves static CSS compressed. The cache-disabled transfer budget
     // is measured on those response bytes, not the decoded stylesheet size.
@@ -32,6 +35,8 @@ describe('documentation stylesheet', () => {
       'collapsible',
       'color-picker',
       'color-swatch-picker',
+      'command-item',
+      'command-palette',
       'copy-button',
       'kbd',
       'input',
@@ -53,6 +58,8 @@ describe('landing stylesheet', () => {
       'code-block',
       'color-picker',
       'color-swatch-picker',
+      'command-item',
+      'command-palette',
       'copy-button',
       'form-field',
       'input',
@@ -62,6 +69,8 @@ describe('landing stylesheet', () => {
     expect(stylesheet).toContain('.cinder-button');
     expect(stylesheet).toContain('--cinder-code-block');
     expect(stylesheet).toContain('.cinder-color-picker');
+    expect(stylesheet).toContain('.cinder-command-palette');
+    expect(stylesheet).toContain('.cinder-command-item');
     // A bare `--cinder-table` substring check would false-positive on the
     // unrelated `--cinder-table-of-contents-*` custom properties (global
     // :root tokens present in every stylesheet), which share the "table"

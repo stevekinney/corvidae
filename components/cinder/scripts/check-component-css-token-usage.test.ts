@@ -319,7 +319,7 @@ describe('extractExamplesJsonSurfaces (COR-344)', () => {
 
 describe('workspace-wide gate (COR-344)', () => {
   // This is the actual CI/`bun run validate` gate: it scans the real,
-  // committed workspace tree (Cinder + chat + editor + the desktop app +
+  // committed workspace tree (Cinder + chat + editor +
   // browser-fixtures — see `defaultScanRoots`) and fails the moment any
   // `--cinder-*` reference is undeclared beyond what `token-usage-baseline.json`
   // already accepts. `check-component-css-token-usage.ts --strict` (the CLI
