@@ -61,7 +61,7 @@ export {
   mergedContextDocument,
 } from './theme-sources.ts';
 export type { OverrideScopeName, ThemeSourceEnvelope } from './theme-sources.ts';
-export { THEME_LAYER, StylesheetError, renderThemeStylesheet } from './theme-stylesheet.ts';
+export { StylesheetError, THEME_LAYER, renderThemeStylesheet } from './theme-stylesheet.ts';
 export type {
   ContextProperties,
   StylesheetContext,

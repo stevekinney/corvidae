@@ -24,13 +24,16 @@ export type StylesheetContext =
   | 'dark/reduced'
   | 'dark/forced-reduced-motion';
 
-export type ContextProperties = Readonly<Record<StylesheetContext, Readonly<Record<string, string>>>>;
+export type ContextProperties = Readonly<
+  Record<StylesheetContext, Readonly<Record<string, string>>>
+>;
 
 export const THEME_LAYER = 'cinder-theme';
 const LAYER_ORDER = `cinder.tokens, cinder.foundation, cinder.components, cinder.utilities, ${THEME_LAYER}`;
 
 const PROPERTY_NAME = /^--cinder-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const UNSAFE_VALUE = /[;{}\\<>@!]|\/\*|\*\/|url\(|image\(|image-set\(|src\(|expression\(|[\u0000-\u001f]/i;
+const UNSAFE_VALUE =
+  /[;{}\\<>@!]|\/\*|\*\/|url\(|image\(|image-set\(|src\(|expression\(|[\u0000-\u001f]/i;
 
 export class StylesheetError extends Error {}
 
@@ -58,6 +61,41 @@ function differing(
   return new Set([...names].filter((name) => left[name] !== right[name]));
 }
 
+const REFERENCE = /var\(\s*(--[\w-]+)/g;
+
+/**
+ * Custom properties substitute `var()` where they are declared, so a nested scope inherits
+ * the substituted value of an alias declared above it. Whenever a property changes in a
+ * block, every property whose value reads it, directly or through other properties, must be
+ * declared in that block too (the generator's "dependent aliases"). `sources` are every map
+ * whose text may refer to a changed property.
+ */
+function withDependents(
+  seed: ReadonlySet<string>,
+  sources: ReadonlyArray<Readonly<Record<string, string>>>,
+): Set<string> {
+  const references = new Map<string, Set<string>>();
+  for (const source of sources) {
+    for (const [name, value] of Object.entries(source)) {
+      const found = references.get(name) ?? new Set<string>();
+      for (const match of value.matchAll(REFERENCE)) found.add(match[1] ?? '');
+      references.set(name, found);
+    }
+  }
+  const result = new Set(seed);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [name, found] of references) {
+      if (!result.has(name) && [...found].some((reference) => result.has(reference))) {
+        result.add(name);
+        grew = true;
+      }
+    }
+  }
+  return result;
+}
+
 function comment(text: string): string {
   return text.replace(/\*\//g, '* /').replace(/[\r\n]+/g, ' ');
 }
@@ -77,7 +115,12 @@ function motionDeclarations(
 ): string {
   const system = differing(maps[`light/${motion}`], maps['light/default']);
   const own = differing(maps[`${theme}/${motion}`], maps[`${theme}/default`]);
-  return lines(new Set([...system, ...own]), maps[`${theme}/${motion}`]);
+  const names = withDependents(new Set([...system, ...own]), [
+    maps[`${theme}/${motion}`],
+    maps[`${theme}/default`],
+    maps[`light/${motion}`],
+  ]);
+  return lines(names, maps[`${theme}/${motion}`]);
 }
 
 /**
@@ -91,7 +134,7 @@ export function renderThemeStylesheet(
 ): string {
   const light = maps['light/default'];
   const dark = maps['dark/default'];
-  const themeDiff = differing(light, dark);
+  const themeDiff = withDependents(differing(light, dark), [light, dark]);
   const css = renderStylesheetSkeleton({
     root: lines(Object.keys(light), light),
     dark: lines(themeDiff, dark),

@@ -57,9 +57,7 @@ describe('renderThemeStylesheet', () => {
     expect(properties.length).toBeGreaterThan(300);
     expect(properties.every((name) => name?.startsWith('--cinder-'))).toBe(true);
     const selectors = [...css.matchAll(/^([^\s@/*][^{\n]*)\{/gm)].map((match) => match[1] ?? '');
-    expect(selectors.every((selector) => /^(:root|\[data-theme)/.test(selector.trim()))).toBe(
-      true,
-    );
+    expect(selectors.every((selector) => /^(:root|\[data-theme)/.test(selector.trim()))).toBe(true);
   });
 
   test('restates a motion difference for the theme that changes it, and only there', () => {
@@ -70,6 +68,32 @@ describe('renderThemeStylesheet', () => {
       withValue('dark/default', '--cinder-radius-md', '3px'),
     );
     expect(darkRestates).toContain('--cinder-radius-md: 3px;');
+  });
+
+  test('restates an alias whose text is unchanged but whose input differs, in every scope', () => {
+    // Custom properties substitute var() where they are declared, so a nested scope would
+    // inherit the outer scope's substituted value of --cinder-b unless it is declared again.
+    const synthetic = (a: string, motionA = a) => ({
+      '--cinder-a': a,
+      '--cinder-b': 'var(--cinder-a)',
+      '--cinder-motion-a': motionA,
+      '--cinder-c': 'var(--cinder-motion-a)',
+    });
+    const contexts: ContextProperties = {
+      'light/default': synthetic('1px'),
+      'light/reduced': synthetic('1px', '0px'),
+      'light/forced-reduced-motion': synthetic('1px', '0px'),
+      'dark/default': synthetic('2px'),
+      'dark/reduced': synthetic('2px', '0px'),
+      'dark/forced-reduced-motion': synthetic('2px', '0px'),
+    };
+    const output = renderThemeStylesheet(contexts);
+    const darkBlock = output.slice(output.indexOf("\n[data-theme='dark'] {"));
+    expect(darkBlock.slice(0, darkBlock.indexOf('}'))).toContain('--cinder-b: var(--cinder-a);');
+    const reduced = output.slice(output.indexOf('@media (prefers-reduced-motion'));
+    expect(reduced.slice(0, reduced.indexOf('}'))).toContain(
+      '--cinder-c: var(--cinder-motion-a);',
+    );
   });
 
   test.each([
