@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   OPTIONAL_STORAGE_DRIVER_ENTRIES,
   withOptionalStorageDriversAbsent,
@@ -92,5 +94,51 @@ describe('storage/resolve (optional-driver subprocess gates)', () => {
     expect(existsSync(seen.sandboxRoot)).toBe(false);
     // The shared install the rest of the suite and a concurrent typecheck read is untouched.
     expect(existsSync(join(weftRoot, 'node_modules', 'lmdb'))).toBe(true);
+  });
+
+  it('skips a dangling dependency link instead of failing to build the sandbox', async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'weft-optional-drivers-dangling-'));
+    try {
+      mkdirSync(join(packageRoot, 'src'), { recursive: true });
+      mkdirSync(join(packageRoot, 'node_modules', '@scope'), { recursive: true });
+      writeFileSync(join(packageRoot, 'package.json'), '{}');
+      writeFileSync(join(packageRoot, 'tsconfig.json'), '{}');
+      symlinkSync(
+        join(packageRoot, 'missing'),
+        join(packageRoot, 'node_modules', '@scope', 'gone'),
+      );
+      const linked = await withOptionalStorageDriversAbsent(packageRoot, async (sandboxRoot) =>
+        existsSync(join(sandboxRoot, 'node_modules', '@scope', 'gone')),
+      );
+      expect(linked).toBe(false);
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('fails to build the sandbox when a dependency link cannot be resolved for another reason', async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), 'weft-optional-drivers-loop-'));
+    try {
+      mkdirSync(join(packageRoot, 'src'), { recursive: true });
+      mkdirSync(join(packageRoot, 'node_modules'), { recursive: true });
+      writeFileSync(join(packageRoot, 'package.json'), '{}');
+      writeFileSync(join(packageRoot, 'tsconfig.json'), '{}');
+      // Two links that point at each other: realpath fails with ELOOP, not ENOENT.
+      symlinkSync(
+        join(packageRoot, 'node_modules', 'second'),
+        join(packageRoot, 'node_modules', 'first'),
+      );
+      symlinkSync(
+        join(packageRoot, 'node_modules', 'first'),
+        join(packageRoot, 'node_modules', 'second'),
+      );
+      expect(
+        await throwingRejectionOf(
+          withOptionalStorageDriversAbsent(packageRoot, async () => 'unused'),
+        ),
+      ).toThrow(/ELOOP|too many/i);
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
   });
 });
