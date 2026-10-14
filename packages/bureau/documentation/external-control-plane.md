@@ -26,7 +26,7 @@ These follow from the rulings and from the code, so they were decided rather tha
 - **One event authority.** Bureau's durable event history, a filter over one Weft `FleetEventFeed`, is the only source of resumable cursors. The in-memory `bureau.events` and `operative.runs.events` feeds are live frames: they feed the A2A and AG-UI streams and are served over the generic Server-Sent Events route, but their cursors do not survive a restart and are not a resumable contract.
 - **Errors.** Weft's `FaultCode` gains the categories this contract needs instead of Bureau inventing a second code space. A2A's own error codes apply on the A2A surface.
 - **Versioning.** The Weft catalog keeps its `/v1` namespace and each management operation declares a schema version. A2A carries its own protocol version through `A2A-Version`; each extension carries a major version in its URI.
-- **No vendor SDK at runtime.** The A2A schemas in Weft are hand-written zod schemas pinned to the 1.0.1 specification. `@a2a-js/sdk` is a development dependency for conformance smoke tests only.
+- **The kit builds on the official SDK** (owner ruling, recorded while scoping the kit). `@lostgradient/weft/a2a` depends on `@a2a-js/sdk`, pinned exactly to `1.3.0` and published as an optional peer dependency. It reuses the SDK's types, its transport-agnostic `JsonRpcTransportHandler`, its `A2ARequestHandler`, `TaskStore`, and `PushNotificationStore` interfaces, its Agent Card signing, and its client, rather than defining Weft-owned A2A schemas.
 - **No `required` extensions.** Every Bureau extension is optional. A required extension would reject every plain A2A client, which defeats the reason for being A2A-native.
 - **Run creation receipts follow COR-424.** The ledger COR-424 is building keys on the authenticated caller, a caller-supplied request identifier, and the operation version. On the A2A surface the request identifier is the published agent's name with the message's `messageId`, so one `messageId` sent to two agents creates two tasks.
 
@@ -70,7 +70,7 @@ Three surfaces sit over one set of native Bureau resources. Each is a projection
 
 Adapters reach Bureau only through the mount context's `dispatch` and `subscribe`, never by calling the `bureau` object directly, so every request passes the catalog's access policy and `authorize` hook ([COR-1298, decision 4](https://github.com/stevekinney/corvidae/pull/183)). An adapter that bypasses `dispatch` is a defect.
 
-The protocol mechanics live in Weft and the Bureau semantics live in Bureau. `@lostgradient/weft/a2a` provides the A2A schemas, the JSON-RPC binding, A2A errors, streaming framing, version and extension negotiation, Agent Card construction and signing, and an `A2ATaskBackend` interface. Bureau implements that interface over its runs; Weft's reference backend implements it over workflows. See [Changes to Weft](#changes-to-weft).
+The protocol mechanics live in Weft and the Bureau semantics live in Bureau. `@lostgradient/weft/a2a` wraps the official `@a2a-js/sdk` in a fetch handler, with streaming over Server-Sent Events, version and extension negotiation, the public Agent Card and its signing keys, durable stores over Weft storage, and outbox-backed push delivery. Bureau implements the SDK's `A2ARequestHandler` over its runs; Weft's reference backend implements the SDK's executor over workflows. See [Changes to Weft](#changes-to-weft).
 
 ## Resource taxonomy
 
@@ -105,7 +105,8 @@ A task is the external face of one agent run. Bureau maps its run and review sta
 | Admitted, not yet started | `TASK_STATE_SUBMITTED` |
 | Running, aborting, or cleaning up before a terminal result | `TASK_STATE_WORKING` |
 | Waiting on a human-wait signal or an elicitation the requester answers | `TASK_STATE_INPUT_REQUIRED` |
-| Waiting on an approval or credential the requester supplies | `TASK_STATE_AUTH_REQUIRED` |
+| Waiting on an approval the requester decides | `TASK_STATE_INPUT_REQUIRED` |
+| Waiting on a credential the requester must grant | `TASK_STATE_AUTH_REQUIRED`, with an out-of-band authorization URL in the status message (A2A 1.0.1 §7.6.1); a message answering it may negotiate or decline but never carries the credential |
 | Waiting on a review an operator resolves | `TASK_STATE_WORKING`, with the review identifier in the cleanup extension's status detail |
 | Finished with `stop-condition` | `TASK_STATE_COMPLETED` |
 | Finished with `elicitation-denied` (the requester declined to answer) | `TASK_STATE_FAILED`, with the finish reason in the status message |
@@ -155,7 +156,7 @@ Operations are commands (mutate state and return a receipt), queries (read state
 | `SendMessage` | Command | Without `taskId`, admits a new run of the published agent through the COR-424 ledger and returns the task. With `taskId`, delivers the message to that task: an answer to `INPUT_REQUIRED` or `AUTH_REQUIRED`, or session input to a live task. | Served |
 | `SendStreamingMessage` | Command plus subscription | As `SendMessage`, then streams the task until it is terminal | Served |
 | `GetTask` | Query | The task snapshot, with `historyLength` applied | Served |
-| `ListTasks` | Query | The caller's own tasks, filtered by `contextId`, `status`, and `statusTimestampAfter`, sorted by status timestamp descending, paginated with `pageToken` (COR-1304) | Served |
+| `ListTasks` | Query | The caller's own tasks with the mounted agent, filtered by `contextId`, `status`, and `statusTimestampAfter`, sorted by status timestamp descending, paginated with `pageSize` (1–100) and `pageToken`, applying `historyLength` and omitting artifacts unless `includeArtifacts` is true (COR-1304) | Served |
 | `CancelTask` | Command | Requests cancellation of the run; returns the task in its current state | Served |
 | `SubscribeToTask` | Subscription and terminal-result wait | Sends the current task first, then follows it; the durable-history extension makes it resumable through `Last-Event-ID` | Served |
 | Push notification config `Create`, `Get`, `List`, `Delete` | Command and query | Registers webhook delivery for a task through the delivery outbox | Served (COR-841) |
@@ -169,8 +170,8 @@ Management operations are Weft catalog operations named under `bureau.*`, served
 
 | Operation | Kind | Purpose |
 | --- | --- | --- |
-| `bureau.deployment.get` | Query | The deployment profile |
-| `bureau.agents.list` | Query | Published agents and their card URLs |
+| `bureau.deployment.get` | Query | The deployment profile; any authenticated principal |
+| `bureau.agents.list` | Query | Published agents, their `definitionRevision`, and their card URLs; any authenticated principal |
 | `bureau.tasks.list`, `bureau.tasks.get` | Query | Any principal's tasks, with cleanup status, for operator scopes |
 | `bureau.tasks.cancel` | Command | Operator cancellation of any task |
 | `bureau.tasks.events` | Subscription | A task's durable history with a resumable cursor |
@@ -219,7 +220,7 @@ Bureau publishes these A2A extensions. Each URI names a specification document t
 | Extension | URI | What it adds |
 | --- | --- | --- |
 | Durable history | `…/a2a/extensions/durable-history-v1.md` | The durable cursor as the Server-Sent Events `id` of every streamed event, resumption through the standard `Last-Event-ID` request header on `SubscribeToTask` (whose request carries only `tenant` and `id`), and an explicit gap event below the retention floor |
-| Command receipts | `…/a2a/extensions/command-receipts-v1.md` | The receipt state on every command response, `expectedRevision` and `deadline` on commands, and a typed conflict on reuse |
+| Command receipts | `…/a2a/extensions/command-receipts-v1.md` | The receipt state, `expectedRevision`, and `deadline` on `SendMessage`, the one A2A command with a message to carry them, and a typed conflict on reuse. `CancelTask` and the push-configuration operations have fixed shapes with no carrier and rely on their specified idempotency instead |
 | Cleanup | `…/a2a/extensions/cleanup-v1.md` | The `CleanupAcknowledgement` and review detail on task status, so a canceled task can report whether cleanup finished |
 
 `…` is `https://github.com/stevekinney/weft/blob/main/packages/weft/documentation`.
@@ -251,7 +252,7 @@ A command's receipt is a projection of the store that admitted it: the COR-424 l
 | `canceled` | Stopped before or during application | Mailbox `cancelled`; run `aborted` |
 | `cleanup-pending` | Terminal, with cleanup still running | `CleanupAcknowledgement` not yet settled |
 | `cleaned-up` | Terminal, with cleanup `completed` or `not-required` | `CleanupAcknowledgement` |
-| `expired` | The receipt or its idempotency binding outlived retention | Mailbox terminal retention; ledger retention |
+| `expired` | The command's deadline passed before it applied | Mailbox `deadline-exceeded`; ledger deadline |
 | `unknown-outcome` | An external effect may or may not have happened | Outbox `unknown-outcome`; `CleanupAcknowledgement` `unresolved` with `unknown-effect` |
 
 Which states each operation can produce:
@@ -273,7 +274,7 @@ Which states each operation can produce:
 - **Concurrency.** State transitions are compare-and-swap on the record. Two concurrent commands to one resource produce one winner; the other observes the new revision.
 - **Stale target.** A command carrying `expectedRevision` that no longer matches returns the stale-revision fault and changes nothing.
 - **Duplicate delivery.** A command delivered twice, for example by a retrying proxy, is an exact retry.
-- **Expiry.** After the idempotency binding's retention, 24 hours by default, a query for the old receipt returns `expired`, and the same `messageId` admits a new command. Clients that retry later than that must mint a new identifier.
+- **Expiry.** After the idempotency binding's retention, 24 hours by default, the mailbox deletes the command record and its binding (`packages/weft/src/core/mailbox-maintenance.ts`), so a query for the old receipt returns not-found and the same `messageId` admits a new command. Clients that retry later than that must mint a new identifier. A command whose deadline passes before it applies is `expired`.
 - **Disconnect.** Closing a stream or connection changes nothing about the task. The client reattaches with `SubscribeToTask`.
 - **Process restart.** With persistent storage, ledger entries, mailbox receipts, outbox deliveries, and durable history survive a restart. `BureauOptions.persistence` is optional and an ephemeral Bureau has no durable history, so `createBureauHandler` declares the durable-history and command-receipts extensions, and makes these guarantees, only over persistent storage; over ephemeral storage the extensions are absent from every card. COR-424's fault points define run creation's behavior at each crash boundary: a retry after a crash never starts a second run once a ledger entry exists.
 - **No exactly-once external effects.** Bureau guarantees one model run per command identity. It does not guarantee that a tool's or a webhook receiver's side effect happened exactly once; a crash after an external effect and before settlement reports `unknown-outcome`.
@@ -298,12 +299,12 @@ One model underlies every surface. Resource snapshots come from the resource's o
 The tenant is the deployment, and authorization inside it is owner of record plus operator scopes.
 
 - **Owner of record.** Every resource records its owning principal when it is created, and the record survives restart. Work started by the scheduler, recovery, or expiry carries a named service principal such as `system:scheduler`, never an absent owner.
-- **Owners see their own.** A principal can list, read, command, observe, and cancel resources it owns.
+- **Owners see their own.** A principal can list, read, command, observe, and cancel resources it owns. On the A2A surface every lookup and listing is also scoped to the published agent of the mount the request arrived on, so one agent's endpoint never reveals or acts on another agent's tasks.
 - **Operator scopes.** Bureau registers its own scopes (`bureau.tasks:read`, `bureau.tasks:write`, `bureau.reviews:read`, `bureau.reviews:resolve`, `bureau.deliveries:read`, `bureau.deliveries:write`, `bureau.audit:read`, `bureau.schedules:read`, `bureau.schedules:write`, `bureau.goals:read`, `bureau.goals:write`, `bureau.contexts:write`, and `bureau.events:observe-all`). A write scope does not imply its read scope; operators hold both beside Weft's closed scope list. They grant cross-owner access only to management operations, never to the A2A surface, where A2A's `ListTasks` stays caller-scoped.
 - **Not-found-shaped denial.** A resource the caller may not see answers exactly as one that does not exist, on every surface.
 - **Identifiers are not credentials.** Knowing a task, context, review, or asset identifier grants nothing.
 - **Wildcard observation** of every present and future task is the separate `bureau.events:observe-all` scope; a read scope does not imply it.
-- **The one public path** is each published agent's Agent Card. Every other path authenticates (COR-718's "no unauthenticated paths" criterion is amended to say so).
+- **The only public paths** are each published agent's Agent Card and, when the card is signed, the JWKS its signature names. Every other path authenticates (COR-718's "no unauthenticated paths" criterion is amended to say so).
 - **A2A's `tenant` field** routes to a published agent within the deployment; it is not a security boundary.
 
 The predicate per action:
@@ -336,7 +337,7 @@ Errors are versioned with the surface that returns them, machine-readable, and c
 | Unsupported capability | `UnsupportedOperationError` (`-32004`), `ExtensionSupportRequiredError` (`-32008`), `VersionNotSupportedError` (`-32009`) | `NotImplemented`, `UnsupportedCapability` (new) | 400, 501 |
 | Rate limit | HTTP 429 | `RateLimited` (new) | 429 |
 | Deadline | A2A has no deadline code: an expired command is `TASK_STATE_FAILED` with a deadline reason, and an expired request is JSON-RPC `-32603` with `Timeout` data | `Timeout` | 408 |
-| Cancellation | `TaskNotCancelableError` (`-32002`) for a terminal task | `Cancelled` (new) | 409 |
+| Cancellation | `TaskNotCancelableError` (`-32002`) for a terminal task | `Conflict` (Weft keeps no cancellation category) | 409 |
 | Unavailable dependency | JSON-RPC `-32603` with retry detail | `Unavailable` (new) | 503 |
 | Internal failure | JSON-RPC `-32603` | `EngineFailure` | 500 |
 
@@ -368,24 +369,24 @@ This supersedes COR-807, which rejected direct peer messaging for lack of a cons
 
 Weft is a public package. To make it a good base for anyone implementing A2A, not just Bureau, these changes land in Weft:
 
-- **`@lostgradient/weft/a2a`.** A new subpath, kept free of Bun-only and UI code, containing:
-  - zod schemas for the A2A 1.0.1 types;
-  - the JSON-RPC binding and A2A error codes;
-  - streaming framing over Server-Sent Events;
+- **`@lostgradient/weft/a2a`.** A new subpath, kept free of Bun-only and UI code, built on `@a2a-js/sdk` and containing:
+  - a fetch handler around the SDK's `JsonRpcTransportHandler`, with streaming over Server-Sent Events and the durable cursor as each event's `id`;
   - `A2A-Version` and `A2A-Extensions` negotiation;
-  - Agent Card construction, JWS signing over the RFC 8785 canonical form, and the well-known card route;
-  - push notification delivery as an outbox transport;
-  - an `A2ATaskBackend` interface the implementer supplies. Weft's record type is named `A2ATask` so it does not collide with Weft's remote-worker task vocabulary.
+  - the public Agent Card route, signed with the SDK's `generateAgentCardSignature`, and its public JWKS;
+  - security schemes derived from Weft's `AuthConfig`;
+  - durable `TaskStore` and `PushNotificationStore` implementations over Weft storage;
+  - push notification delivery through Weft's outbox, signed with Standard Webhooks and behind an SSRF egress policy.
 - **A workflow reference backend.** Weft workflows served as A2A agents: a workflow run is a task, `waitForSignal` is `TASK_STATE_INPUT_REQUIRED`, cancellation is `CancelTask`, workflow output is artifacts, and history is the fleet feed. It is also the conformance fixture for the A2A test kit, proving the kit independent of Bureau.
-- **A durable `A2ATask` store** over Weft storage for backends that have no task records of their own. The workflow backend uses it; Bureau does not, because a Bureau run already is the task.
+- **Durable stores** over Weft storage for backends that have no task records of their own. The workflow backend uses the task store; Bureau uses only the push-configuration store, because a Bureau run already is the task.
 - **Security scheme derivation.** Card `securitySchemes` generated from Weft's `AuthConfig`.
 - **Foreign subscriptions over Server-Sent Events.** The generic subscription route COR-1299 adds, which no transport reaches today.
-- **Fault codes.** `StaleRevision`, `RateLimited`, `Cancelled`, `Unavailable`, and `UnsupportedCapability` added to `FaultCode`.
-- **A server version.** Discovery information gains a version field, which Agent Cards need and Weft does not expose today.
-- **A rate-limit key hook.** A fetch handler cannot see the client address, so the limiter needs a caller-supplied key.
+- **Fault codes.** `StaleRevision`, `RateLimited`, `Unavailable`, and `UnsupportedCapability` added to `FaultCode`.
+
+An Agent Card's `version` is the agent's version, `definitionRevision` for Bureau and the definition's `version` for workflows, so Weft adds no server version. Rate limiting of a fetch handler, which cannot see the client address, stays with COR-718's limits criterion.
+
 - **Package-registered scopes.** Weft's scope list is closed today (`packages/weft/src/server/authorization-scope.ts`); a package must be able to register its own namespaced scopes, such as Bureau's operator scopes.
 
-The Conversationalist-to-A2A part mapping (COR-1303) stays in Conversationalist with its own hand-written types for the pinned proto, as that issue specifies, so Conversationalist gains no dependency on Weft. A Bureau test, where both packages are available, proves that the mapping's output parses with `@lostgradient/weft/a2a`'s schemas, so the two type definitions cannot drift.
+The Conversationalist-to-A2A part mapping (COR-1303) stays in Conversationalist with its own hand-written types for the pinned proto, as that issue specifies, so Conversationalist gains no dependency on Weft. A Bureau test, where both packages are available, proves that the mapping's output is accepted by `@a2a-js/sdk`'s types and request handler, so the two definitions cannot drift.
 
 ## The Bureau UI
 
@@ -451,12 +452,12 @@ COR-1300's operations (`bureau.run`, `getRun`, `abortRun`, `listPendingReviews`,
 - **COR-1298** treats the A2A adapter as the primary mount and gets its third question answered: `bureau.events` and `operative.runs.events` turn on `transports.http` with live-only semantics.
 - **COR-1447** exports the shared UI layers from `@lostgradient/weft/ui`.
 - **COR-794** conforms to the asset section; COR-901 is no longer blocked by it. COR-788 adds the authenticated asset route.
-- **COR-962** defines the interactive surface named in the taxonomy. A2UI travels to the Bureau UI over AG-UI and to external clients and peers over A2UI's A2A extension, which the A2A surface advertises as optional. An action from any renderer, Bureau's or a foreign host's, arrives as a command and is reauthorized like any other; the renderer is never trusted. The A2UI pin moves from `v0.9` to the current `v0.9.1`.
+- **COR-962** defines the interactive surface named in the taxonomy. A2UI travels to the Bureau UI over AG-UI and to external clients and peers over A2UI's A2A extension, which the A2A surface advertises as optional. An action from any renderer, Bureau's or a foreign host's, arrives as a command and is reauthorized like any other; the renderer is never trusted. Bureau agents emit A2UI's standard v0.9.1 basic catalog, which official renderers understand, and offer Cinder's catalog (COR-1310) only to clients that list it in `supportedCatalogIds`. The Bureau UI renders the basic catalog with Cinder through a renderer in `@lostgradient/chat`; Cinder gains `text`, `video-player`, and `audio-player` components and an `image` fit and size for it. Structured input requests travel as A2UI forms in the `INPUT_REQUIRED` status message, with a text fallback. The A2UI pin moves from `v0.9` to the current `v0.9.1`.
 - **The Weft A2A kit and its workflow reference backend** are tracked as new issues in the A2A Interoperability project, upstream of COR-903.
 - **The External Control Plane and A2A Interoperability projects** drop their non-goals that kept A2A a projection, and this project's two-tenant criterion becomes two principals plus two deployments.
 - **Existing issues the A2A surface depends on.** COR-1302 is a hard dependency: Bureau must mint a stable `taskId` at admission, and today `bureau.run`'s handle reports a placeholder identifier until durable dispatch resolves. `SendMessage` returns that task early only when `configuration.returnImmediately` is true; otherwise it waits, as A2A 1.0.1 §3.2.2 requires, until the task is terminal or interrupted. COR-1301 (descriptions and skills), COR-1303 (message-to-part mapping, in Conversationalist), COR-1304 (caller-scoped task listing), and COR-855 (the AG-UI projection) supply the rest.
 - **New work to scope.** No existing issue owns these, so each needs scoping before the surface that relies on it ships:
-  - the Weft A2A kit, its workflow reference backend (both in A2A Interoperability), and the Weft changes listed above, including package-registered scopes, the new fault codes, the server version, and the rate-limit key hook;
+  - the Weft A2A kit, its workflow reference backend (both in A2A Interoperability), and the Weft changes listed above, including package-registered scopes and the new fault codes;
   - delivering `SendMessage` with a `taskId` to a live task, which needs session-input admission (today `unsupported-capability`, and outside COR-424's scope);
   - durable-history maintenance: advancing the retention floor, replacing the silent gap skip with the explicit gap event, and the frames-dropped marker;
   - the management operations COR-1300 and COR-841 do not cover: `bureau.deployment.get`, `bureau.agents.list`, `bureau.tasks.*`, `bureau.contexts.delete`, `bureau.audit.query`, `bureau.schedules.*`, and `bureau.goals.*`;
