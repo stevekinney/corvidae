@@ -37,9 +37,13 @@ function runSeamProbe(): { exitCode: number; stdout: string; stderr: string } {
   };
 }
 
+// The clean child process is the behavior under test (see above), so it runs once at module scope,
+// off bun's per-test clock; the test below only asserts on the settled result.
+const seamProbe = runSeamProbe();
+
 describe('CodeBlock default-highlighter seam (real Shiki adapter)', () => {
   test('seam is wired to a real, memoized Shiki highlighter that escapes input', () => {
-    const { exitCode, stdout, stderr } = runSeamProbe();
+    const { exitCode, stdout, stderr } = seamProbe;
     expect(exitCode, stderr).toBe(0);
     const probe = JSON.parse(stdout) as { memoized: boolean; ts: string; escaped: string };
 
@@ -55,7 +59,7 @@ describe('CodeBlock default-highlighter seam (real Shiki adapter)', () => {
     // emits the `<` as an HTML entity (`&lt;` or `&#x3C;`) inside its spans.
     expect(probe.escaped).not.toContain('<img src=x onError=alert(1)>');
     expect(probe.escaped.toLowerCase()).toMatch(/&lt;|&#x3c;|&#60;/);
-  }, 30_000);
+  });
 
   test('loader module memoizes the adapter-created highlighter in this process', async () => {
     const highlighter = mock((code: string) => `<pre><code>${code}</code></pre>`);

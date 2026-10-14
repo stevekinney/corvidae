@@ -1,35 +1,28 @@
 import { describe, expect, it } from 'bun:test';
 import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { isCliEntrypoint } from './index.ts';
+import { isCliEntrypoint, runCli as runKnowledgeCli } from './index.ts';
 
 const cliDirectory = dirname(fileURLToPath(import.meta.url));
-const packageRoot = resolve(cliDirectory, '../..');
 const cliEntrypoint = join(cliDirectory, 'index.ts');
 
 type CliResult = {
-  exitCode: number | null;
+  exitCode: number;
   stdout: string;
   stderr: string;
 };
 
-function runCli(args: string[]): CliResult {
-  const result = Bun.spawnSync({
-    cmd: [process.execPath, cliEntrypoint, ...args],
-    cwd: packageRoot,
-    env: { ...Bun.env, TZ: 'UTC', LANG: 'en_US.UTF-8' },
-    stdout: 'pipe',
-    stderr: 'pipe',
+async function runCli(args: string[]): Promise<CliResult> {
+  let stdout = '';
+  let stderr = '';
+  const exitCode = await runKnowledgeCli(args, {
+    stdout: (text) => (stdout += text),
+    stderr: (text) => (stderr += text),
   });
-  const decoder = new TextDecoder();
-  return {
-    exitCode: result.exitCode,
-    stdout: decoder.decode(result.stdout),
-    stderr: decoder.decode(result.stderr),
-  };
+  return { exitCode, stdout, stderr };
 }
 
 function parseJson(stdout: string): Record<string, unknown> {
@@ -43,8 +36,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 describe('cinder CLI', () => {
-  it('prints help without writing stderr', () => {
-    const result = runCli(['--help']);
+  it('prints help without writing stderr', async () => {
+    const result = await runCli(['--help']);
 
     expect(result.exitCode, result.stderr).toBe(0);
     expect(result.stderr).toBe('');
@@ -52,8 +45,8 @@ describe('cinder CLI', () => {
     expect(result.stdout).not.toContain('cinder mcp');
   });
 
-  it('rejects the removed mcp command with suggestions that exclude it', () => {
-    const result = runCli(['mcp', '--json']);
+  it('rejects the removed mcp command with suggestions that exclude it', async () => {
+    const result = await runCli(['mcp', '--json']);
     const payload = parseJson(result.stdout);
     const error = payload['error'];
 
@@ -68,8 +61,8 @@ describe('cinder CLI', () => {
     ]);
   });
 
-  it('prints search results in the JSON envelope', () => {
-    const result = runCli(['search', 'modal', '--json']);
+  it('prints search results in the JSON envelope', async () => {
+    const result = await runCli(['search', 'modal', '--json']);
     const payload = parseJson(result.stdout);
     const data = payload['data'];
 
@@ -84,8 +77,8 @@ describe('cinder CLI', () => {
     ).toBe(true);
   });
 
-  it('prints component details in the JSON envelope', () => {
-    const result = runCli(['show', 'button', '--json']);
+  it('prints component details in the JSON envelope', async () => {
+    const result = await runCli(['show', 'button', '--json']);
     const payload = parseJson(result.stdout);
     const data = payload['data'];
 
@@ -98,8 +91,8 @@ describe('cinder CLI', () => {
     expect(isRecord(data) && data['variables']).toBeDefined();
   });
 
-  it('prints best-practice payloads in the JSON envelope', () => {
-    const result = runCli(['best-practices', 'styles', '--json']);
+  it('prints best-practice payloads in the JSON envelope', async () => {
+    const result = await runCli(['best-practices', 'styles', '--json']);
     const payload = parseJson(result.stdout);
     const data = payload['data'];
 
@@ -111,8 +104,8 @@ describe('cinder CLI', () => {
     expect(isRecord(firstSection) ? firstSection['topic'] : undefined).toBe('styles');
   });
 
-  it('prints JSON-mode failures to stdout with no stderr noise', () => {
-    const result = runCli(['show', 'buton', '--json']);
+  it('prints JSON-mode failures to stdout with no stderr noise', async () => {
+    const result = await runCli(['show', 'buton', '--json']);
     const payload = parseJson(result.stdout);
     const error = payload['error'];
 
@@ -123,8 +116,8 @@ describe('cinder CLI', () => {
     expect(isRecord(error) && Array.isArray(error['suggestions'])).toBe(true);
   });
 
-  it('rejects non-numeric limit suffixes', () => {
-    const result = runCli(['search', 'button', '--limit', '10abc', '--json']);
+  it('rejects non-numeric limit suffixes', async () => {
+    const result = await runCli(['search', 'button', '--limit', '10abc', '--json']);
     const payload = parseJson(result.stdout);
     const error = payload['error'];
 
