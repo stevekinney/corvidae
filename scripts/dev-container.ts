@@ -41,7 +41,8 @@ async function exists(path: string): Promise<boolean> {
 
 async function linkWorktreeRepository(workspace: string): Promise<string> {
   const dotGit = join(workspace, '.git');
-  if ((await lstat(dotGit)).isDirectory()) return 'The checkout is a main checkout.';
+  const entry = await lstat(dotGit);
+  if (entry.isDirectory()) return 'The checkout is a main checkout.';
   const common = worktreeCommonDirectory(await readFile(dotGit, 'utf8'), workspace);
   if (common === null) throw new Error(`${dotGit} does not name a standard Git worktree.`);
   if (await exists(common)) return `${common} is already reachable.`;
