@@ -16,7 +16,12 @@ export * from './style-markers.ts';
 export * from './svelte-plugin.ts';
 export * from './visual-fixtures.ts';
 
-export { outcomeOf, rethrow } from './helpers/module-scope-outcome.ts';
+export {
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+  ScenarioHangError,
+  outcomeOf,
+  rethrow,
+} from './helpers/module-scope-outcome.ts';
 export { rejectionOf, throwingRejectionOf } from './helpers/promise-outcome.ts';
 export { requiredInstance, requiredValue } from './helpers/required-value.ts';
 
