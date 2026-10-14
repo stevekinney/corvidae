@@ -71,12 +71,11 @@ export {
   AGENT_POLICY_HOOK_SOURCE,
   AGENT_POLICY_PINNED_LAST_PRIORITY,
   OPERATIVE_RESOLVES_GUARDRAILS,
-  createSkillGuardrailOptions,
   resolveAgentGuardrails,
   resolvesOwnGuardrails,
   withActiveSkillToolPolicy,
 } from './agent-policy';
-export type { AgentSkillsOptions, GuardrailsDeclaration } from './agent-policy';
+export type { AgentSkills, AgentSkillsRun, GuardrailsDeclaration } from './agent-policy';
 export * from './cost-budget-monitor';
 export * from './cost-estimation';
 export * from './create-agent';

@@ -169,7 +169,7 @@ Every field except `agents` is optional.
 
 Bureau hands its value down through `AgentRunContext.inheritedGuardrails` to agents that carry `OPERATIVE_RESOLVES_GUARDRAILS` (every `createAgent` result), and then registers no guardrail invariant of its own for that run, so the policy runs exactly once and a recovered run resumes under the same composition its fresh dispatch used. A hand-written `RunnableAgent`, or a `createLazyAgent` wrapper, keeps Bureau's own guardrail invariant as before and is handed `false`, so a `createAgent` behind a lazy wrapper does not add the preset a second time.
 
-Skills do not inherit: `BureauOptions.skills` only ever composed `createRun` runs. A catalog agent offers exactly the catalog its own `skills.catalog` names, scanned by its own guardrails.
+Skills do not inherit: `BureauOptions.skills` only ever composed `createRun` runs. A catalog agent offers exactly the catalog its own `skills: createAgentSkills({ catalog })` (from `@lostgradient/skills`) names, scanned by its own guardrails.
 
 Removing the two deprecated fields later is therefore not a behavior change for an agent that says nothing: with no bureau value to inherit, it still resolves to the AB-40 preset.
 

@@ -9,20 +9,8 @@
  * answers for the same configuration.
  */
 
-import type { HookRegistry, RuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
-import {
-  createSkillArtifactLoader,
-  createSkillClient,
-  createSkillClientToolbox,
-  renderActiveSkillInstructions,
-  renderClientCatalog,
-  type SkillArtifactLoader,
-  type SkillCatalogRevision,
-  type SkillEventMap,
-  type SkillGuardrailOptions,
-} from '@lostgradient/skills';
+import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox } from 'armorer';
-import { combineToolboxes, createToolbox } from 'armorer';
 
 import type { ToolPolicy } from './create-policy-enforcement-hook';
 import { createPolicyEnforcementHook } from './create-policy-enforcement-hook';
@@ -38,34 +26,43 @@ import type { OperativeHookMap } from './hooks';
 export type GuardrailsDeclaration = GuardrailsOptions | false;
 
 /**
- * Per-agent skills, the `createAgent` counterpart of Bureau's deprecated
- * `BureauOptions.skills`.
+ * One run's slice of an agent's policy, handed to {@link AgentSkills.composeRun}.
  */
-export interface AgentSkillsOptions {
+export interface AgentSkillsRun {
+  /** The run's toolbox before skills: the agent's own tools, or its shared `toolbox`. */
+  toolbox: AnyToolbox;
+  /** The run's agent-tier hook plan. Skill hooks are registered on it in place. */
+  hooks: HookRegistry<OperativeHookMap>;
+  /** The run's stamped agent name, for skill event correlation. */
+  agentName: string;
+  /** The agent's resolved runtime services. */
+  runtime: RuntimeServices;
   /**
-   * The catalog revision this agent's runs see. A revision, not a set of
-   * sources, for the reason `SkillRuntimeConfiguration.catalog` gives: a run's
-   * skills are an immutable input, so discovery (and the decision about which
-   * sources to trust) happens before the agent is built, with
-   * `discoverSkills` from `@lostgradient/skills`.
+   * The run's resolved guardrails — the configuration and the per-run hooks
+   * built from it — so skill bodies and resources are scanned and fold their
+   * detections into the same taint state (COR-1226). Absent when the run has
+   * no guardrails.
    */
-  catalog: SkillCatalogRevision;
+  guardrails?: { configuration: GuardrailsOptions; hooks: GuardrailHooks } | undefined;
+}
+
+/**
+ * Per-agent skills (COR-1367) — the seam `createAgent`'s `skills` option
+ * accepts, the per-agent counterpart of the deprecated `BureauOptions.skills`.
+ *
+ * Operative defines it and `@lostgradient/skills` implements it
+ * (`createAgentSkills`), rather than operative importing the skills package:
+ * operative is published to the registry and the skills package is a private
+ * workspace, so a published operative never names it as a dependency.
+ */
+export interface AgentSkills {
   /**
-   * Whether the model is handed `activate_skill`, `load_skill_resource` and
-   * `deactivate_skill` and shown the catalog at step 0. Defaults to `true`.
-   * `false` keeps the catalog out of the model's reach entirely; there is then
-   * nothing that can activate a skill.
+   * Applies these skills to one run: registers whatever hooks they need on
+   * `run.hooks` and returns the run's toolbox (`run.toolbox` itself when no
+   * tools are added). Called once per run, so per-run state such as the active
+   * skill set never crosses runs.
    */
-  includeTools?: boolean | undefined;
-  /**
-   * Reads a catalog record's artifact. Defaults to
-   * `createSkillArtifactLoader({})`, which follows filesystem sources only. A
-   * catalog that includes `storage` records needs a loader built over that
-   * store, which is what Bureau supplies for its own runs.
-   */
-  loadArtifact?: SkillArtifactLoader | undefined;
-  /** Where skill lifecycle events are dispatched. Silence when omitted. */
-  events?: TypedEventTarget<SkillEventMap> | undefined;
+  composeRun(run: AgentSkillsRun): AnyToolbox;
 }
 
 /**
@@ -84,41 +81,6 @@ export function resolveAgentGuardrails(
 ): GuardrailsOptions | undefined {
   const resolved = declared ?? inherited ?? createDefaultGuardrailsPreset();
   return resolved === false ? undefined : resolved;
-}
-
-/**
- * Carries a guardrail configuration onto the skill client and skill toolbox
- * (COR-1226): skill bodies and resources are untrusted instruction input, and
- * they reach the model through tool results rather than `prepareStep`, so they
- * are scanned directly and their detections folded back into the same
- * session-wide taint state the input guardrail reads.
- *
- * `undefined` when there is no input guardrail to carry. The taint wiring
- * mirrors `createGuardrails`'s own, including its confidence threshold.
- */
-export function createSkillGuardrailOptions(
-  configuration: GuardrailsOptions,
-  guardrails: GuardrailHooks,
-): SkillGuardrailOptions | undefined {
-  const input = configuration.input;
-  if (input === undefined) return undefined;
-  return {
-    detectors: input.detectors,
-    ...(input.action !== undefined ? { action: input.action === 'warn' ? 'warn' : 'block' } : {}),
-    getSessionTainted: () => guardrails.taint.isTainted(),
-    onTriggered: (event) => {
-      if (event.confidence >= (configuration.taint?.taintThreshold ?? 0.8)) {
-        guardrails.taint.taint({
-          reason: event.detail ?? `Detection by ${event.detector}`,
-          detector: event.detector,
-          confidence: event.confidence,
-          step: 0,
-          provenance: event.provenance,
-        });
-      }
-      input.onTriggered?.(event);
-    },
-  };
 }
 
 /**
@@ -168,7 +130,7 @@ export const AGENT_POLICY_HOOK_SOURCE = 'agent';
 /** Inputs for one run's policy composition. */
 export interface ComposeAgentRunPolicyOptions {
   guardrails: GuardrailsOptions | undefined;
-  skills: AgentSkillsOptions | undefined;
+  skills: AgentSkills | undefined;
   toolbox: AnyToolbox;
   /** The run's hook plan. Policy registrations are added to it in place. */
   hooks: HookRegistry<OperativeHookMap>;
@@ -196,79 +158,6 @@ function registerGuardrails(
 }
 
 /**
- * Wires one run's skills: a fresh skill client bound to the agent's catalog,
- * the skill tools combined into the run's toolbox, the catalog shown at step
- * 0, the active instructions re-rendered every step, and the toolbox narrowed
- * by the active skills' tool policy. Returns the run's toolbox.
- */
-function composeSkills(
-  options: ComposeAgentRunPolicyOptions & { skills: AgentSkillsOptions },
-  skillGuardrail: SkillGuardrailOptions | undefined,
-): AnyToolbox {
-  const { skills, hooks } = options;
-  const client = createSkillClient({
-    catalog: skills.catalog,
-    loadArtifact: skills.loadArtifact ?? createSkillArtifactLoader({}),
-    runtime: options.runtime,
-    correlation: { agentName: options.agentName },
-    ...(skillGuardrail === undefined ? {} : { guardrail: skillGuardrail }),
-    ...(skills.events === undefined ? {} : { events: skills.events }),
-  });
-
-  let toolbox = options.toolbox;
-  const toolset =
-    skills.includeTools === false
-      ? undefined
-      : createSkillClientToolbox(
-          client,
-          skillGuardrail === undefined ? undefined : { guardrail: skillGuardrail },
-        );
-  // `undefined` for an empty catalog, so no skill tool is exposed at all: a
-  // model handed `activate_skill` against nothing invents a name to pass it.
-  if (toolset !== undefined) {
-    hooks.on(
-      'prepareStep',
-      (context) => {
-        if (context.step !== 0) return Promise.resolve();
-        const rendered = renderClientCatalog(client);
-        if (rendered !== undefined) {
-          context.conversation.appendSystemMessage(rendered, { _skillCatalogInjected: true });
-        }
-        return Promise.resolve();
-      },
-      { id: 'agent:skill-client-catalog', source: AGENT_POLICY_HOOK_SOURCE, replay: 'safe' },
-    );
-    toolbox = combineToolboxes(
-      toolbox,
-      createToolbox([
-        toolset.activateSkill,
-        toolset.loadSkillResource,
-        toolset.deactivateSkill,
-      ]) as AnyToolbox,
-    );
-  }
-
-  // Re-rendered every step rather than left in the transcript, so active
-  // instructions survive a compaction strategy that rewrote the history.
-  hooks.on(
-    'prepareStep',
-    (context) => {
-      const instructions = renderActiveSkillInstructions(client.active());
-      if (instructions !== undefined) {
-        context.conversation.appendSystemMessage(instructions, { _skillContentInjected: true });
-      }
-      return Promise.resolve();
-    },
-    { id: 'agent:skill-client-instructions', source: AGENT_POLICY_HOOK_SOURCE, replay: 'safe' },
-  );
-
-  return withActiveSkillToolPolicy(toolbox, () => {
-    const narrowed = client.narrowedTools();
-    return narrowed === undefined ? undefined : { allowList: [...narrowed] };
-  });
-}
-
-/**
  * Applies an agent's resolved guardrails and skills to one run.
  *
  * Called per run, never per agent: `createGuardrails` carries per-run taint
@@ -280,15 +169,19 @@ function composeSkills(
 export function composeAgentRunPolicy(options: ComposeAgentRunPolicyOptions): AnyToolbox {
   const guardrails =
     options.guardrails === undefined ? undefined : createGuardrails(options.guardrails);
-  const skillGuardrail =
-    options.guardrails === undefined || guardrails === undefined
-      ? undefined
-      : createSkillGuardrailOptions(options.guardrails, guardrails);
 
   const toolbox =
     options.skills === undefined
       ? options.toolbox
-      : composeSkills({ ...options, skills: options.skills }, skillGuardrail);
+      : options.skills.composeRun({
+          toolbox: options.toolbox,
+          hooks: options.hooks,
+          agentName: options.agentName,
+          runtime: options.runtime,
+          ...(options.guardrails === undefined || guardrails === undefined
+            ? {}
+            : { guardrails: { configuration: options.guardrails, hooks: guardrails } }),
+        });
 
   // Registered after the skill hooks, and pinned behind every other agent
   // hook, so the input scan sees a step everything else already contributed to.

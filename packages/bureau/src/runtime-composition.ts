@@ -56,7 +56,6 @@ import {
   createScheduler,
   createScheduleWakeupTool,
   createSessionStore,
-  createSkillGuardrailOptions,
   createStepBasedStrategy,
   DEFAULT_MAXIMUM_STEPS,
   isAgentRunWorkflowInput,
@@ -77,6 +76,7 @@ import {
   createSkillArtifactLoader,
   createSkillClient,
   createSkillClientToolbox,
+  createSkillGuardrailOptions,
   DEFAULT_SOURCE_PRECEDENCE,
   discoverSkills,
   renderActiveSkillInstructions,
@@ -2628,9 +2628,10 @@ async function buildRuntimeComposition(
     // context. `GuardrailHooks.taint`'s own doc comment names skill resources
     // as one of the retrieval surfaces that cannot reach the model through
     // `prepareStep`/`validateResponse` and so must scan directly and fold its
-    // detections back into the session-wide taint state. The wiring lives in
-    // operative's `createSkillGuardrailOptions`, shared with `createAgent`'s
-    // per-agent skills (COR-1367) so the two paths cannot drift.
+    // detections back into the session-wide taint state. The wiring is
+    // `createSkillGuardrailOptions` from `@lostgradient/skills`, which
+    // `createAgentSkills` uses for per-agent skills too (COR-1367), so the
+    // two paths cannot drift.
     const skillGuardrail =
       guardrails && guardrailsConfig
         ? createSkillGuardrailOptions(guardrailsConfig, guardrails)

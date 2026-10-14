@@ -404,7 +404,6 @@
         "@lostgradient/embeddings": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/lifecycle": "workspace:*",
-        "@lostgradient/skills": "workspace:*",
         "@lostgradient/tool-protocol": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@opentelemetry/api": "catalog:",
@@ -425,6 +424,7 @@
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
         "@lostgradient/tool-protocol": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",

@@ -22,7 +22,7 @@ import {
   type InputDetector,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
 } from '@lostgradient/operative';
-import { discoverSkills, type SkillCatalogRevision } from '@lostgradient/skills';
+import { createAgentSkills, discoverSkills, type SkillCatalogRevision } from '@lostgradient/skills';
 import { afterAll, describe, expect, it } from 'bun:test';
 
 import { catalogRunGuardrailsContext } from './bureau-catalog-dispatch';
@@ -161,9 +161,11 @@ describe('guardrails registered exactly once', () => {
     });
     try {
       // Bureau's tier carries the bureau policy for an agent it cannot see into…
-      expect((await bureau.run('worker', 'BUREAU').result()).finishReason).toBe('tripwire');
+      const tripped = await bureau.run('worker', 'BUREAU').result();
+      expect(tripped.finishReason).toBe('tripwire');
       // …and the inner agent inherited `false`, so the preset did not run underneath it.
-      expect((await bureau.run('worker', INJECTION).result()).finishReason).toBe('stop-condition');
+      const passed = await bureau.run('worker', INJECTION).result();
+      expect(passed.finishReason).toBe('stop-condition');
       expect(generateCalls).toBe(1);
     } finally {
       await bureau.dispose();
@@ -214,11 +216,17 @@ describe('skills precedence', () => {
             system = conversation
               .getMessages()
               .filter((message) => message.role === 'system')
-              .map((message) => String(message.content))
+              .map((message) =>
+                typeof message.content === 'string'
+                  ? message.content
+                  : JSON.stringify(message.content),
+              )
               .join('\n');
             return { content: 'ok', toolCalls: [] };
           },
-          ...(agentSkills === undefined ? {} : { skills: { catalog: agentSkills } }),
+          ...(agentSkills === undefined
+            ? {}
+            : { skills: createAgentSkills({ catalog: agentSkills }) }),
         }),
       },
       ...(bureauSkills === undefined ? {} : { skills: { catalog: bureauSkills } }),

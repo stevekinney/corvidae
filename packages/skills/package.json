@@ -16,6 +16,7 @@
     "armorer": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
+    "@lostgradient/operative": "workspace:*",
     "@lostgradient/tool-protocol": "workspace:*",
     "@lostgradient/weft": "workspace:*",
     "gray-matter": "catalog:",

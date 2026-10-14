@@ -136,6 +136,8 @@ export {
   resolveMediaType,
 } from './artifact';
 // Admission limits and manifest filenames are public constants.
+export { createAgentSkills, createSkillGuardrailOptions } from './agent-skills';
+export type { AgentSkillsOptions } from './agent-skills';
 export {
   DEFAULT_SKILL_ADMISSION_LIMITS,
   SKILL_MANIFEST_FALLBACK_FILENAME,

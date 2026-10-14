@@ -5,7 +5,7 @@ import { createHeadlessPermissionPolicyHooks, createToolbox } from 'armorer';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
-import type { AgentSkillsOptions } from './agent-policy';
+import type { AgentSkills } from './agent-policy';
 import {
   composeAgentRunPolicy,
   OPERATIVE_RESOLVES_GUARDRAILS,
@@ -187,11 +187,17 @@ export interface CreateAgentOptionsBase {
 
   /**
    * This agent's skills (COR-1367) — the per-agent counterpart of the
-   * deprecated `BureauOptions.skills`. Each run gets a fresh skill client
-   * bound to `skills.catalog`: the catalog is shown to the model at step 0,
-   * `activate_skill`/`load_skill_resource`/`deactivate_skill` join the run's
-   * toolbox, active skill instructions are re-rendered on every step, and an
-   * active skill's `allowed-tools` narrows the tools the model sees.
+   * deprecated `BureauOptions.skills`. Build the value with
+   * `createAgentSkills({ catalog })` from `@lostgradient/skills`; this option
+   * takes the `AgentSkills` seam rather than a catalog because operative is
+   * published and the skills package is not, so operative cannot import it.
+   *
+   * Each run then gets a fresh skill client bound to the catalog: the catalog
+   * is shown to the model at step 0, `activate_skill`/`load_skill_resource`/
+   * `deactivate_skill` join the run's toolbox, active skill instructions are
+   * re-rendered on every step, an active skill's `allowed-tools` narrows the
+   * tools the model sees, and skill content is scanned by this agent's
+   * resolved guardrails.
    *
    * Under `permissions`, the skill tools are ordinary tools: deny-by-default
    * denies them unless the allowlist names them. With a shared `toolbox`, the
@@ -202,7 +208,7 @@ export interface CreateAgentOptionsBase {
    * Omitted, the agent has no skills: Bureau's own `skills` never reached a
    * catalog-dispatched agent and still does not.
    */
-  skills?: AgentSkillsOptions | undefined;
+  skills?: AgentSkills | undefined;
 }
 
 /**
@@ -430,7 +436,7 @@ export interface StandaloneAgent<
   readonly guardrails?: GuardrailsOptions | false | undefined;
 
   /** This agent's skills, exactly as `options.skills` supplied them (COR-1367). */
-  readonly skills?: AgentSkillsOptions | undefined;
+  readonly skills?: AgentSkills | undefined;
 
   /**
    * Always `true`: a `createAgent` agent resolves its own guardrails and
