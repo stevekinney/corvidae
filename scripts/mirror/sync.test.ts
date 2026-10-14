@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,6 +15,7 @@ import { runCommand } from './packaging.ts';
 import { planSurface } from './surface.ts';
 import {
   assertBuildInputsPresent,
+  assertNoForeignCommits,
   assertPrivateWorkspacesCheckable,
   BuildInputError,
   cloneTarget,
@@ -23,10 +24,13 @@ import {
   directPushEnvironment,
   findForeignCommits,
   ForeignCommitError,
+  foreignCommitOwnership,
   git,
   gitEnvironment,
+  newestMirrorProvenance,
   provenanceTrailer,
   runSync,
+  stageSurface,
   SyncError,
   type PullRequestOptions,
   type SyncResult,
@@ -1768,6 +1772,111 @@ describe('pruning what corvidae no longer carries', async () => {
     rethrow(outcome29));
 });
 
+describe('changeset emission through the sync (COR-1433)', async () => {
+  const emittedAfter = (adding: string): string =>
+    `.changeset/corvidae-${adding.slice(0, 12)}-note.md`;
+  const changesetText =
+    '---\n"@lostgradient/cryptography": patch\n---\n\nFix a thing in cryptography.\n';
+
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcomeChangesetDelivery = await outcomeOf(async () => {
+    const targetFiles = targetFixture();
+    targetFiles['.changeset/config.json'] = '{}\n';
+    targetFiles['.changeset/mcp-x.md'] = '---\n"@lostgradient/cinder-mcp": patch\n---\n\nTarget.\n';
+    await withHarness(async (harness) => {
+      const corvidaeGit = (...arguments_: string[]) => git(harness.corvidae, ...arguments_);
+      await corvidaeGit('init', '--quiet', '--initial-branch=main');
+      await corvidaeGit('add', '--all');
+      await corvidaeGit('commit', '--quiet', '--message', 'Corvidae before the changeset');
+      const startHead = await corvidaeGit('rev-parse', 'HEAD');
+      const start = startHead.trim();
+      await Bun.write(join(harness.corvidae, '.changeset/note.md'), changesetText);
+      await corvidaeGit('add', '--all');
+      await corvidaeGit('commit', '--quiet', '--message', 'Add a changeset');
+      const addingHead = await corvidaeGit('rev-parse', 'HEAD');
+      const adding = addingHead.trim();
+
+      // A target the mirror has already written to, as of `start`.
+      const seed = await cloneTarget({
+        remote: harness.remote,
+        directory: harness.runDirectory('seed'),
+      });
+      await git(
+        seed,
+        'commit',
+        '--quiet',
+        '--allow-empty',
+        '--message',
+        `Sync agent-bureau from corvidae\n\n${provenanceTrailer}: ${start}`,
+      );
+      await git(seed, 'push', '--quiet', 'origin', 'HEAD:main');
+
+      const clone = await cloneTarget({
+        remote: harness.remote,
+        directory: harness.runDirectory('stage'),
+      });
+      const provenance = await newestMirrorProvenance(clone, 'agent-bureau', { strict: true });
+      expect(provenance?.trailerSha).toBe(start);
+      const outcome = await stageSurface({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        directory: clone,
+        provenance,
+      });
+
+      expect(outcome.written).toContain(emittedAfter(adding));
+      expect(await Bun.file(join(clone, emittedAfter(adding))).text()).toBe(changesetText);
+      // Neither pruned nor retired: nothing under the target's `.changeset/` is ever deleted.
+      expect(
+        [...outcome.deleted, ...outcome.retired].filter((path) => path.startsWith('.changeset/')),
+      ).toEqual([]);
+      expect(await Bun.file(join(clone, '.changeset/mcp-x.md')).exists()).toBe(true);
+      expect(await Bun.file(join(clone, '.changeset/config.json')).exists()).toBe(true);
+
+      // The sync lands, then the target's release tooling consumes the changeset.
+      await git(clone, 'add', '--all');
+      await git(
+        clone,
+        'commit',
+        '--quiet',
+        '--message',
+        `Sync agent-bureau from corvidae\n\n${provenanceTrailer}: ${adding}`,
+      );
+      await git(clone, 'rm', '--quiet', emittedAfter(adding));
+      await git(clone, 'commit', '--quiet', '--message', 'Version Packages');
+      await assertNoForeignCommits(
+        clone,
+        await foreignCommitOwnership({
+          corvidaeRoot: harness.corvidae,
+          target: 'agent-bureau',
+          clone,
+        }),
+      );
+    }, targetFiles);
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('delivers a pending changeset, leaves the target-authored ones, and accepts the target consuming it', () =>
+    rethrow(outcomeChangesetDelivery));
+});
+
+describe('newestMirrorProvenance (COR-1433)', () => {
+  test('strict mode throws when the squash fallback cannot fetch the pull request, and lenient mode does not', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mirror-strict-provenance-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      await Bun.write(join(root, 'file.txt'), 'content\n');
+      await git(root, 'add', '-A');
+      // Subject shaped like a squash merge, no trailer, and no `origin` to fetch the pull from.
+      await git(root, 'commit', '--quiet', '-m', 'Sync weft from corvidae (#7)');
+      expect(await newestMirrorProvenance(root, 'weft')).toBeNull();
+      expect(
+        await throwingRejectionOf(newestMirrorProvenance(root, 'weft', { strict: true })),
+      ).toThrow(SyncError);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('the private-workspace check', () => {
   test('a private workspace that emits TypeScript without a typecheck script is refused', () => {
     expect(() =>
@@ -1861,6 +1970,36 @@ describe('the foreign-commit guard net-effect rule', async () => {
     const foreign = await findForeignCommits(root, ownership);
     return foreign.map(({ subject }) => subject);
   }
+
+  // Every git call is a process, and under host load each costs tens of milliseconds; the guard
+  // once spawned 26 here (an ancestry probe and a parent lookup per commit, a tree lookup and a
+  // blob read per emission comparison, a tree lookup per repeat of the same path). Eight is the
+  // history read (3), one diff per commit (3), and one tree lookup each for the path at HEAD and
+  // at the mirror commit (2). A change that raises this count reintroduces per-commit or per-path
+  // fan-out. The repository is real, so the scenario runs at module scope, off the per-test clock.
+  const spawnCountOutcome = await outcomeOf(async () => {
+    const emission = 'export const value = 3;\n';
+    await withRepository(
+      async (root, ownership) => {
+        await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
+        await commitMirror(root);
+        for (const value of [1, 2, 3]) {
+          await Bun.write(join(root, sourcePath), `export const value = ${value};\n`);
+          await commitAll(root, `Edit source to ${value}`);
+        }
+        const spawn = spyOn(Bun, 'spawn');
+        try {
+          expect(await subjects(root, ownership)).toEqual([]);
+          expect(spawn).toHaveBeenCalledTimes(8);
+        } finally {
+          spawn.mockRestore();
+        }
+      },
+      { generatedFiles: new Map([[sourcePath, { contents: emission, executable: false }]]) },
+    );
+  });
+  test('judges a run of edits without spawning git per commit or per repeated path', () =>
+    rethrow(spawnCountOutcome));
 
   test('accepts a foreign edit that a later commit restores to the mirror bytes', async () => {
     await withRepository(async (root, ownership) => {

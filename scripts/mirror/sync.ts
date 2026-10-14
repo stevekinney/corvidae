@@ -250,6 +250,7 @@ const recordSeparator = String.fromCharCode(30);
 
 interface CommitRecord extends ForeignCommit {
   provenance: string;
+  parents: string[];
 }
 
 /** GitHub squash merges append co-author metadata after the App's provenance paragraph. */
@@ -266,15 +267,21 @@ async function readHistory(directory: string): Promise<CommitRecord[]> {
   const head = await tryGit(directory, 'rev-parse', '--verify', 'HEAD');
   // An empty target has no HEAD to walk, which is a first sync rather than a failure.
   if (head.exitCode !== 0) return [];
-  const format = `%H${unitSeparator}%s${unitSeparator}%(trailers:key=${provenanceTrailer},valueonly,separator=%x2C)${unitSeparator}%B${recordSeparator}`;
+  const format = `%H${unitSeparator}%P${unitSeparator}%s${unitSeparator}%(trailers:key=${provenanceTrailer},valueonly,separator=%x2C)${unitSeparator}%B${recordSeparator}`;
   const log = await git(directory, 'log', '--topo-order', `--format=${format}`);
   return log
     .split(recordSeparator)
     .map((record) => record.replace(/^\n/, ''))
     .filter((record) => record.length > 0)
     .map((record) => {
-      const [sha = '', subject = '', trailer = '', message = ''] = record.split(unitSeparator);
-      return { sha, subject, provenance: trailer.trim() || squashMergeProvenance(message) };
+      const [sha = '', parents = '', subject = '', trailer = '', message = ''] =
+        record.split(unitSeparator);
+      return {
+        sha,
+        subject,
+        parents: parents.split(' ').filter((parent) => parent.length > 0),
+        provenance: trailer.trim() || squashMergeProvenance(message),
+      };
     });
 }
 
@@ -283,6 +290,7 @@ async function pullRequestSquashProvenance(
   directory: string,
   { sha, subject }: CommitRecord,
   target: string,
+  strict: boolean,
 ): Promise<string> {
   const prefix = `Sync ${target} from corvidae (#`;
   if (!subject.startsWith(prefix) || !subject.endsWith(')')) return '';
@@ -300,7 +308,16 @@ async function pullRequestSquashProvenance(
     'origin',
     `refs/pull/${number}/head`,
   );
-  if (fetched.exitCode !== 0) return '';
+  if (fetched.exitCode !== 0) {
+    // A guard may call an unfetchable squash foreign and carry on. Changeset emission cannot: it
+    // would place release intent against an older provenance than the one the target really has.
+    if (strict) {
+      throw new SyncError(
+        `Cannot read pull request ${number} of ${target} to recover the provenance of ${sha}: ${fetched.stderr}`,
+      );
+    }
+    return '';
+  }
   const originalSubjectOutput = await git(directory, 'log', '-1', '--format=%s', 'FETCH_HEAD');
   const originalSubject = originalSubjectOutput.trim();
   if (originalSubject !== `Sync ${target} from corvidae`) return '';
@@ -318,6 +335,55 @@ async function pullRequestSquashProvenance(
   );
   const trailer = trailerOutput.trim();
   return /^[0-9a-f]{40}$/.test(trailer) ? trailer : '';
+}
+
+/** The target's newest mirror-authored commit and the corvidae commit it was built from. */
+export interface MirrorProvenance {
+  /** The target commit carrying the provenance. */
+  commit: string;
+  /** The trailer SHA: the `Corvidae-Commit` value, always a corvidae commit and never a target one. */
+  trailerSha: string;
+}
+
+/**
+ * The newest provenance in a target clone's history, or `null` when the mirror has never written
+ * there (a first sync).
+ *
+ * The squash-merge fallback runs only when `target` is supplied, because recovering a squash that
+ * dropped the App's trailer means fetching its pull request and proving the tree matches, and
+ * that is only meaningful for the target the sync names. `strict` makes a failed fetch fatal
+ * instead of skipping the commit: the foreign-commit guard tolerates an unfetchable squash (it
+ * simply stays foreign), but a caller that is about to place release intent against the
+ * provenance must not silently settle for an older one.
+ */
+export async function newestMirrorProvenance(
+  directory: string,
+  target?: string,
+  options: { strict?: boolean } = {},
+): Promise<MirrorProvenance | null> {
+  return provenanceFromHistory(
+    directory,
+    await readHistory(directory),
+    target,
+    options.strict ?? false,
+  );
+}
+
+async function provenanceFromHistory(
+  directory: string,
+  history: readonly CommitRecord[],
+  target: string | undefined,
+  strict: boolean,
+): Promise<MirrorProvenance | null> {
+  for (const commit of history) {
+    const trailerSha =
+      commit.provenance ||
+      (target === undefined
+        ? ''
+        : await pullRequestSquashProvenance(directory, commit, target, strict));
+    if (trailerSha.length > 0) return { commit: commit.sha, trailerSha };
+  }
+  return null;
 }
 
 /**
@@ -340,31 +406,48 @@ export async function findForeignCommits(
   ownership?: ForeignCommitOwnership,
 ): Promise<ForeignCommit[]> {
   const history = await readHistory(directory);
-  if (ownership !== undefined) {
-    for (const commit of history) {
-      if (!commit.provenance)
-        commit.provenance = await pullRequestSquashProvenance(directory, commit, ownership.target);
-    }
-  }
-  const newestMirrored = history.findIndex((commit) => commit.provenance.length > 0);
-  if (newestMirrored === -1) return [];
-  const mirrorCommit = history[newestMirrored]!.sha;
+  const newest =
+    ownership?.provenance !== undefined
+      ? ownership.provenance
+      : await provenanceFromHistory(directory, history, ownership?.target, false);
+  if (newest === null) return [];
+  const mirrorCommit = newest.commit;
   const ancestry = await git(directory, 'rev-list', '--ancestry-path', `${mirrorCommit}..HEAD`);
   const descendants = new Set(ancestry.trim().split('\n'));
   const candidates = history.filter(({ sha }) => descendants.has(sha));
   if (ownership === undefined) return candidates.map(({ sha, subject }) => ({ sha, subject }));
+  const walk: GuardWalk = { directory, mirrorCommit, descendants, entries: new Map() };
   const foreign: ForeignCommit[] = [];
-  for (const { sha, subject } of candidates) {
-    if (!(await isAcceptableCommit(directory, sha, mirrorCommit, ownership)))
-      foreign.push({ sha, subject });
+  for (const { sha, subject, parents } of candidates) {
+    if (!(await isAcceptableCommit(walk, sha, parents, ownership))) foreign.push({ sha, subject });
   }
   return foreign;
+}
+
+/**
+ * What one `findForeignCommits` call has already established about the clone, so judging each
+ * commit does not spawn git again for it. Every git call is a process, and the guard used to
+ * spawn several per commit and per path; under host load that serial fan-out dominated a sync's
+ * guard and the tests that drive it.
+ */
+interface GuardWalk {
+  directory: string;
+  mirrorCommit: string;
+  /** `rev-list --ancestry-path <mirror>..HEAD`: every commit descending from the mirror commit. */
+  descendants: ReadonlySet<string>;
+  /** `treeEntry` results keyed by commit and path. HEAD cannot move during one call. */
+  entries: Map<string, Promise<string>>;
 }
 
 /** What decides whether a commit above the mirror's own is the target's to make. */
 export interface ForeignCommitOwnership {
   policy: TargetOwnedPolicy;
   target: string;
+  /**
+   * The clone's newest mirror provenance when the caller already resolved it (`null` for none),
+   * so a run reads it once. Left `undefined`, the guard resolves it itself.
+   */
+  provenance?: MirrorProvenance | null | undefined;
   /** Declared version constants that a target release may update only to its manifest version. */
   versionConstantPaths?: ReadonlyMap<string, string> | undefined;
   /**
@@ -437,22 +520,19 @@ interface BlockingChange {
  * commit (such a commit has nothing to judge and is never the target's own).
  */
 async function blockingChanges(
-  directory: string,
+  walk: GuardWalk,
   sha: string,
-  mirrorCommit: string,
+  parents: readonly string[],
   ownership: ForeignCommitOwnership,
 ): Promise<BlockingChange[] | undefined> {
-  const parentRecord = await git(directory, 'rev-list', '--parents', '-n', '1', sha);
-  const parents = parentRecord.trim().split(/\s+/).slice(1);
   let inspected = false;
   const blocking: BlockingChange[] = [];
   for (const parent of parents) {
-    const ancestor = await tryGit(directory, 'merge-base', '--is-ancestor', mirrorCommit, parent);
-    if (ancestor.exitCode === 1) continue;
-    if (ancestor.exitCode !== 0)
-      throw new SyncError(`Cannot inspect mirror ancestry: ${ancestor.stderr}`);
+    // Every candidate is an ancestor of HEAD, so its parent is too, and a parent descends from the
+    // mirror commit exactly when it is the mirror commit or on the ancestry path above it.
+    if (parent !== walk.mirrorCommit && !walk.descendants.has(parent)) continue;
     inspected = true;
-    blocking.push(...(await blockingDeltaChanges(directory, parent, sha, ownership)));
+    blocking.push(...(await blockingDeltaChanges(walk.directory, parent, sha, ownership)));
   }
   return inspected ? blocking : undefined;
 }
@@ -476,15 +556,15 @@ async function blockingChanges(
  * still differs stays foreign, while one whose paths were all restored is accepted.
  */
 async function isAcceptableCommit(
-  directory: string,
+  walk: GuardWalk,
   sha: string,
-  mirrorCommit: string,
+  parents: readonly string[],
   ownership: ForeignCommitOwnership,
 ): Promise<boolean> {
-  const blocking = await blockingChanges(directory, sha, mirrorCommit, ownership);
+  const blocking = await blockingChanges(walk, sha, parents, ownership);
   if (blocking === undefined) return false;
   for (const change of blocking) {
-    if (!(await endsWhereTheSyncLeavesIt(directory, mirrorCommit, change, ownership))) return false;
+    if (!(await endsWhereTheSyncLeavesIt(walk, change, ownership))) return false;
   }
   return true;
 }
@@ -494,19 +574,19 @@ async function isAcceptableCommit(
  * absence this sync leaves.
  */
 async function endsWhereTheSyncLeavesIt(
-  directory: string,
-  mirrorCommit: string,
+  walk: GuardWalk,
   { path, manifestKeys }: BlockingChange,
   { generatedFiles, generatedManifestKeys, transform }: ForeignCommitOwnership,
 ): Promise<boolean> {
-  const headEntry = await treeEntry(directory, 'HEAD', path);
+  const { mirrorCommit } = walk;
+  const headEntry = await treeEntry(walk, 'HEAD', path);
   // Before the manifest branch, so an edited manifest the sync retires and a later commit deleted
   // ends where the sync leaves it too.
   if (headEntry === '' && !transform.files.has(path)) return true;
   if (manifestKeys !== undefined) {
-    const head = await readManifest(directory, 'HEAD', path);
+    const head = await readManifest(walk, 'HEAD', path);
     if (head === undefined) return false;
-    const mirror = await readManifest(directory, mirrorCommit, path);
+    const mirror = await readManifest(walk, mirrorCommit, path);
     const generated = generatedManifestKeys?.get(path);
     return manifestKeys.every((key) => {
       const value = JSON.stringify(head[key]);
@@ -516,26 +596,33 @@ async function endsWhereTheSyncLeavesIt(
       );
     });
   }
-  if (headEntry === (await treeEntry(directory, mirrorCommit, path))) return true;
+  if (headEntry === (await treeEntry(walk, mirrorCommit, path))) return true;
   const emitted = generatedFiles?.get(path);
-  return emitted !== undefined && (await matchesEmission(directory, 'HEAD', path, emitted));
+  return emitted !== undefined && matchesEmission(headEntry, emitted);
 }
 
 /** `<mode> <type> <blob>` for a path at a commit, or the empty string when the path is absent. */
-async function treeEntry(directory: string, commit: string, path: string): Promise<string> {
-  const entry = await git(directory, 'ls-tree', '-z', commit, '--', path);
-  return entry.split('\t', 1)[0] ?? '';
+function treeEntry(walk: GuardWalk, commit: string, path: string): Promise<string> {
+  const key = `${commit}\0${path}`;
+  let entry = walk.entries.get(key);
+  if (entry === undefined) {
+    entry = git(walk.directory, 'ls-tree', '-z', commit, '--', path).then(
+      (output) => output.split('\t', 1)[0] ?? '',
+    );
+    walk.entries.set(key, entry);
+  }
+  return entry;
 }
 
 /** A manifest at a commit, or `undefined` when it is absent or not a JSON object. */
 async function readManifest(
-  directory: string,
+  walk: GuardWalk,
   commit: string,
   path: string,
 ): Promise<Record<string, unknown> | undefined> {
-  if ((await treeEntry(directory, commit, path)) === '') return undefined;
+  if ((await treeEntry(walk, commit, path)) === '') return undefined;
   try {
-    const value: unknown = JSON.parse(await git(directory, 'show', `${commit}:${path}`));
+    const value: unknown = JSON.parse(await git(walk.directory, 'show', `${commit}:${path}`));
     return typeof value === 'object' && value !== null && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : undefined;
@@ -563,11 +650,23 @@ async function blockingDeltaChanges(
   // `--no-renames`: a rename is judged as the deletion of its old path plus the addition of its
   // new one, so moving an emitted file out of the sync's reach is still a deletion the sync would
   // undo. `-z`: paths arrive unquoted, so one git would escape still matches the plan's keys.
-  const status = await git(directory, 'diff', '--name-status', '--no-renames', '-z', parent, sha);
+  // `--raw --no-abbrev`: each record carries the new mode and full blob id, so comparing a change
+  // with the emission needs no further git call.
+  const status = await git(
+    directory,
+    'diff',
+    '--raw',
+    '--no-abbrev',
+    '--no-renames',
+    '-z',
+    parent,
+    sha,
+  );
   const fields = status.split('\0');
   const transformOwnedKeys = new Set(policy.insideFiles.manifestKeys.map((entry) => entry.key));
   for (let index = 0; index + 1 < fields.length; index += 2) {
-    const kind = (fields[index] ?? '').trim();
+    // `:<old mode> <new mode> <old blob> <new blob> <status>`
+    const [, newMode = '', , newBlob = '', kind = ''] = (fields[index] ?? '').trim().split(' ');
     const path = fields[index + 1] ?? '';
     if (findTargetOwner(policy, path, target) !== undefined) continue;
     if (targetOwnedFiles?.has(path)) continue;
@@ -591,7 +690,7 @@ async function blockingDeltaChanges(
       if (
         emitted !== undefined &&
         kind.startsWith('M') &&
-        (await matchesEmission(directory, sha, path, emitted))
+        matchesEmission(`${newMode} blob ${newBlob}`, emitted)
       )
         continue;
       blocking.push({ path });
@@ -616,29 +715,24 @@ async function blockingDeltaChanges(
   return blocking;
 }
 
-/** Whether a path at one commit holds exactly the bytes and executable bit the sync would write. */
-async function matchesEmission(
-  directory: string,
-  sha: string,
-  path: string,
-  emitted: EmittedFile,
-): Promise<boolean> {
-  const entry = await git(directory, 'ls-tree', '-z', sha, '--', path);
-  const mode = entry.split(' ', 1)[0];
-  if (mode !== (emitted.executable ? '100755' : '100644')) return false;
-  const blob = Bun.spawn(['git', 'cat-file', 'blob', `${sha}:${path}`], {
-    cwd: directory,
-    env: gitEnvironment(),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  const [bytes, exitCode] = await Promise.all([new Response(blob.stdout).bytes(), blob.exited]);
-  if (exitCode !== 0) throw new SyncError(`Cannot read ${path} at ${sha}`);
-  const expected =
+/**
+ * Whether a tree entry holds exactly the bytes and executable bit the sync would write.
+ *
+ * The entry already names the blob, so the emission is hashed the way git names a blob rather
+ * than reading the blob back: the object id is the digest of `blob <length>\0` and the bytes, in
+ * whichever hash the repository uses, which the id's length gives away.
+ */
+function matchesEmission(entry: string, emitted: EmittedFile): boolean {
+  const [mode, type, blob = ''] = entry.split(' ');
+  if (type !== 'blob' || mode !== (emitted.executable ? '100755' : '100644')) return false;
+  const bytes =
     typeof emitted.contents === 'string'
       ? new TextEncoder().encode(emitted.contents)
       : emitted.contents;
-  return Buffer.from(bytes).equals(expected);
+  const hasher = new Bun.CryptoHasher(blob.length === 64 ? 'sha256' : 'sha1');
+  hasher.update(`blob ${bytes.byteLength}\0`);
+  hasher.update(bytes);
+  return hasher.digest('hex') === blob;
 }
 
 /**
@@ -667,17 +761,26 @@ export async function foreignCommitOwnership(options: {
   corvidaeRoot: string;
   target: MirrorTarget;
   clone: string;
+  /** Resolved by the caller to share one read across the run; resolved here when omitted. */
+  provenance?: MirrorProvenance | null | undefined;
 }): Promise<ForeignCommitOwnership> {
   const policy = await loadTargetOwnedPolicy();
+  // `null` means the caller resolved "no provenance", so only `undefined` asks for a read.
+  const provenance =
+    options.provenance !== undefined
+      ? options.provenance
+      : await newestMirrorProvenance(options.clone, options.target, { strict: true });
   const plan = await planSurface({
     corvidaeRoot: options.corvidaeRoot,
     target: options.target,
     targetDirectory: options.clone,
     policy,
+    trailerSha: provenance?.trailerSha ?? null,
   });
   return {
     policy,
     target: options.target,
+    provenance,
     targetOwnedFiles: await declaredBuildInputs(options.target),
     generatedManifestKeys: new Map(
       Object.entries(plan.files)
@@ -775,6 +878,8 @@ export interface StageOptions {
   directory: string;
   /** Extra `bun install` arguments for the lockfile-regenerating install. */
   installArguments?: readonly string[] | undefined;
+  /** The clone's newest mirror provenance, resolved once by the caller; resolved here when omitted. */
+  provenance?: MirrorProvenance | null | undefined;
 }
 
 export interface StageOutcome {
@@ -811,9 +916,20 @@ export async function stageSurface({
   target,
   directory,
   installArguments,
+  provenance,
 }: StageOptions): Promise<StageOutcome> {
   const policy = await loadTargetOwnedPolicy();
-  const plan = await planSurface({ corvidaeRoot, target, targetDirectory: directory, policy });
+  const resolved =
+    provenance !== undefined
+      ? provenance
+      : await newestMirrorProvenance(directory, target, { strict: true });
+  const plan = await planSurface({
+    corvidaeRoot,
+    target,
+    targetDirectory: directory,
+    policy,
+    trailerSha: resolved?.trailerSha ?? null,
+  });
   const surface = await loadPackageSurface();
   assertNothingDeferred(plan);
   assertPublishable(plan, surface.packages);
@@ -1208,12 +1324,16 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     directory: options.directory,
     branch: options.branch,
   });
+  // Read once for the whole run: the guard, the guard's plan and the staging plan all place
+  // changeset emission against this same trailer SHA.
+  const provenance = await newestMirrorProvenance(clone, options.target, { strict: true });
   await assertNoForeignCommits(
     clone,
     await foreignCommitOwnership({
       corvidaeRoot: options.corvidaeRoot,
       target: options.target,
       clone,
+      provenance,
     }),
   );
 
@@ -1236,6 +1356,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     target: options.target,
     directory: clone,
     installArguments: options.installArguments,
+    provenance,
   });
 
   const porcelain = await git(clone, 'status', '--porcelain');

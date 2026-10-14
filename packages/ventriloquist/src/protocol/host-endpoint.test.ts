@@ -1043,10 +1043,17 @@ describe('the smallest frame budget', () => {
     expectOk(client.receive(expectOk(host.acknowledgeOperation(1)).frame));
     expectOk(client.receive(expectOk(host.output('pty', 'ab')).frame));
     expectOk(host.receive(expectOk(client.consumeOutput(2)).frame));
-    expectOk(client.receive(expectOk(host.failOperation(2, 'backend-failed', '')).frame));
+    expectOk(client.receive(expectOk(host.failOperation(2, 'fifo-full', '')).frame));
     expectOk(client.receive(expectOk(host.processExit(null, null)).frame));
     expectOk(host.receive(expectOk(client.terminate()).frame));
     expectOk(client.receive(expectOk(host.cleanupResult('incomplete')).frame));
+    // A submitted-operation failure is the terminal status instead of a process exit.
+    const failing = connect({ host: { maxFrameBytes: MINIMUM_FRAME_PAYLOAD_BYTES } });
+    expectOk(failing.host.receive(expectOk(failing.client.input('a')).frame));
+    expectOk(
+      failing.client.receive(expectOk(failing.host.failOperation(1, 'backend-failed', '')).frame),
+    );
+    expectOk(failing.client.receive(expectOk(failing.host.cleanupResult('complete')).frame));
   });
 });
 

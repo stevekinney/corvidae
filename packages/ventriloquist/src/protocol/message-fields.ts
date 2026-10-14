@@ -30,6 +30,11 @@ type FieldReader = {
 
 const SESSION_IDENTIFIER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** Whether `value` is a canonical session identifier: the lowercase UUID form the wire schema requires. */
+export function isSessionIdentifier(value: unknown): value is string {
+  return typeof value === 'string' && SESSION_IDENTIFIER.test(value);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -58,7 +63,7 @@ function field(reason: FailureReason, read: (value: unknown) => unknown): FieldR
 
 const version = field('wrong-version', (value) => (value === PROTOCOL_VERSION ? value : INVALID));
 const sessionId = field('invalid-session-identifier', (value) =>
-  typeof value === 'string' && SESSION_IDENTIFIER.test(value) ? value : INVALID,
+  isSessionIdentifier(value) ? value : INVALID,
 );
 const generation = field('invalid-generation', (value) =>
   integerWithin(value, 1, Number.MAX_SAFE_INTEGER),
