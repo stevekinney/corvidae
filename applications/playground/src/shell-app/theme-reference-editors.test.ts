@@ -465,7 +465,7 @@ async function typeInto(id: string, text: string): Promise<void> {
 
 const aliasRow = () => ({ ...rowOf('fx.b'), aliases: ['fx.a'], themeAware: true });
 const lightFx = (controller: ThemeBuilderController) =>
-  (controller.draft!.envelope.overrides.light as JsonObject)['fx'] as JsonObject | undefined;
+  controller.draft!.envelope.overrides.light['fx'] as JsonObject | undefined;
 
 async function mountPanel(
   row: ReturnType<typeof aliasRow> | ReturnType<typeof catalogueRowByPath>,

@@ -237,9 +237,8 @@ async function choose(select: HTMLSelectElement, value: string): Promise<void> {
 }
 
 const lightNode = (controller: ThemeBuilderController, path: string) =>
-  ((controller.draft!.envelope.overrides.light as JsonObject)['fx'] as JsonObject | undefined)?.[
-    path.slice(3)
-  ] as JsonObject | undefined;
+  (controller.draft!.envelope.overrides.light['fx'] as JsonObject | undefined)?.[path.slice(3)] as
+    JsonObject | undefined;
 const entries = (controller: ThemeBuilderController) => controller.history!.entries.length;
 
 describe('shadow layers', () => {
@@ -255,7 +254,7 @@ describe('shadow layers', () => {
       expect(input(`layer-1-${member}-amount`)).not.toBeNull();
     }
     const blur = input('layer-0-blur-amount');
-    const label = target.querySelector(`label[for="${blur.id}"]`)!.textContent!;
+    const label = target.querySelector(`label[for="${blur.id}"]`)!.textContent;
     expect(label).toContain('Fx shadow');
     expect(label).toContain('fx.shadow');
     expect(label).toContain('layer 1');
