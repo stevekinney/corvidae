@@ -322,7 +322,9 @@ describe('changeset emission', () => {
       const error = await rejectionOf(emit(root, await target(synced), synced, mirror));
       expect(error).toBeInstanceOf(ChangesetEmissionError);
       expect((error as Error).message).toContain('.changeset/fix-a.md');
-      expect((error as Error).message).toContain('delete it and add a new file under a new name');
+      expect((error as Error).message).toContain(
+        'to replace a changeset, delete it in one pull request and add the replacement in a separate, later pull request',
+      );
     }
   });
 
@@ -388,77 +390,146 @@ describe('changeset emission', () => {
     expect(Object.keys(files)).toEqual([emittedPath(squashed, 'fix-a')]);
   });
 
-  describe('the package-to-mirror mapping', () => {
-    const definitions = 'scripts/mirror/target-definitions.ts';
-    const packageMap = 'scripts/mirror/package-map.json';
+  test('a delete and an add of a similar changeset in one commit throws, so the remedy is two pull requests', async () => {
+    const { root } = await corvidae();
+    const body =
+      'Line one of a longer explanation.\nLine two keeps going.\nLine three too.\nLine four ends it.';
+    await write(root, '.changeset/old-name.md', changeset('@lostgradient/weft', body));
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'rm', '--quiet', '.changeset/old-name.md');
+    await write(
+      root,
+      '.changeset/new-name.md',
+      changeset('@lostgradient/weft', `${body}\nLine five.`),
+    );
+    await commit(root, 'Replace it in one commit');
+    const error = await rejectionOf(emit(root, await target(synced), synced));
+    expect(error).toBeInstanceOf(ChangesetEmissionError);
+    expect((error as Error).message).toContain('.changeset/new-name.md');
+  });
 
-    async function mapped(contents: string, map: string): Promise<{ root: string; start: string }> {
-      const { root } = await corvidae();
-      await write(root, definitions, contents);
-      await write(root, packageMap, map);
-      return { root, start: await commit(root, 'Mapping') };
-    }
+  test('the same replacement as two later commits passes and emits the new file', async () => {
+    const { root } = await corvidae();
+    const body =
+      'Line one of a longer explanation.\nLine two keeps going.\nLine three too.\nLine four ends it.';
+    await write(root, '.changeset/old-name.md', changeset('@lostgradient/weft', body));
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'rm', '--quiet', '.changeset/old-name.md');
+    await commit(root, 'Delete it in one pull request');
+    await write(
+      root,
+      '.changeset/new-name.md',
+      changeset('@lostgradient/weft', `${body}\nLine five.`),
+    );
+    const added = await commit(root, 'Add the replacement later');
+    const files = await emit(root, await target(synced), synced);
+    expect(Object.keys(files)).toEqual([emittedPath(added, 'new-name')]);
+  });
 
-    const map = (extra = ''): string =>
+  describe('a package moving between mirrors', () => {
+    const definitionsPath = 'scripts/mirror/target-definitions.ts';
+    const packageMapPath = 'scripts/mirror/package-map.json';
+
+    const definitions = (members: Record<string, string[]>): string =>
+      `export const targetDefinitions = ${JSON.stringify(
+        Object.fromEntries(
+          ['weft', 'cinder', 'agent-bureau'].map((name) => [
+            name,
+            { members: members[name] ?? [] },
+          ]),
+        ),
+      )};\n`;
+
+    const map = (workspaces: string[], snapshot = ''): string =>
       `${JSON.stringify({
-        workspaces: {
-          '@lostgradient/weft': {
-            disposition: 'publish-as',
-            name: '@lostgradient/weft',
-            lastPublishedVersion: '1.0.0',
-            ...(extra === '' ? {} : { publishedSnapshot: { version: extra } }),
-          },
-        },
+        workspaces: Object.fromEntries(
+          workspaces.map((workspace) => [
+            workspace,
+            {
+              disposition: 'publish-as',
+              name: workspace,
+              lastPublishedVersion: '1.0.0',
+              ...(snapshot === '' ? {} : { publishedSnapshot: { version: snapshot } }),
+            },
+          ]),
+        ),
       })}\n`;
 
-    test('a mapping change while a changeset spans the trailer throws for every target', async () => {
-      const { root } = await mapped("export const members = ['weft'];\n", map());
-      await write(root, '.changeset/fix-a.md', weftChangeset);
-      const synced = await commit(root, 'Add a changeset');
-      await write(root, definitions, "export const members = ['cinder'];\n");
-      await commit(root, 'Move the package');
-      for (const mirror of ['weft', 'cinder', 'agent-bureau'] as const) {
-        const error = await rejectionOf(emit(root, await target(synced), synced, mirror));
+    const weft = '@lostgradient/weft';
+    const chat = '@lostgradient/chat';
+
+    async function mapped(members: Record<string, string[]>, workspaces = [weft, chat]) {
+      const { root } = await corvidae();
+      await write(root, definitionsPath, definitions(members));
+      await write(root, packageMapPath, map(workspaces));
+      return { root, base: await commit(root, 'Mapping') };
+    }
+
+    test('a package moved while a changeset names it throws for every target, as in the double-release scenario', async () => {
+      const { root, base } = await mapped({ cinder: [weft], weft: [] });
+      // Z lands after weft's trailer and before cinder's trailer.
+      await write(root, '.changeset/z.md', weftChangeset);
+      const cinderTrailer = await commit(root, 'Add Z');
+      await write(root, definitionsPath, definitions({ cinder: [], weft: [weft] }));
+      await commit(root, 'Move the package from cinder to weft');
+      for (const [mirror, trailer] of [
+        ['weft', base],
+        ['cinder', cinderTrailer],
+      ] as const) {
+        const error = await rejectionOf(emit(root, await target(trailer), trailer, mirror));
         expect(error).toBeInstanceOf(ChangesetEmissionError);
-        expect((error as Error).message).toContain(definitions);
-        expect((error as Error).message).toContain(
-          'deliver or delete changesets that span the trailer before moving a package between mirrors',
+        const message = (error as Error).message;
+        expect(message).toContain(weft);
+        expect(message).toContain('cinder');
+        expect(message).toContain('weft');
+        expect(message).toContain('.changeset/z.md');
+        expect(message).toContain(
+          'delete changesets that name a package before moving it between mirrors, and add new ones after the move',
         );
       }
     });
 
-    test('a package name change in package-map.json also throws', async () => {
-      const { root } = await mapped("export const members = ['weft'];\n", map());
-      await write(root, '.changeset/fix-a.md', weftChangeset);
-      const synced = await commit(root, 'Add a changeset');
-      await write(
-        root,
-        packageMap,
-        map().replace('"name":"@lostgradient/weft"', '"name":"@lostgradient/weft-core"'),
-      );
-      await commit(root, 'Rename the package');
-      expect(await rejectionOf(emit(root, await target(synced), synced))).toBeInstanceOf(
+    test('adding a new publish-as workspace with changesets present passes', async () => {
+      const { root } = await mapped({ weft: [weft] }, [weft]);
+      await write(root, '.changeset/z.md', weftChangeset);
+      const synced = await commit(root, 'Add Z');
+      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [chat] }));
+      await write(root, packageMapPath, map([weft, chat]));
+      await commit(root, 'Add a workspace');
+      expect(await emit(root, await target(synced), synced)).toEqual({});
+    });
+
+    test('removing a workspace and recording a snapshot are not moves', async () => {
+      const { root } = await mapped({ weft: [weft], cinder: [chat] });
+      await write(root, '.changeset/z.md', weftChangeset);
+      const synced = await commit(root, 'Add Z');
+      await write(root, definitionsPath, definitions({ weft: [weft] }));
+      await write(root, packageMapPath, map([weft], '1.0.1'));
+      await commit(root, 'Remove a workspace and record a snapshot');
+      expect(await emit(root, await target(synced), synced)).toEqual({});
+    });
+
+    test('a move of a package that no changeset names passes', async () => {
+      const { root } = await mapped({ weft: [weft], cinder: [chat] });
+      await write(root, '.changeset/z.md', weftChangeset);
+      const synced = await commit(root, 'Add Z');
+      await write(root, definitionsPath, definitions({ weft: [weft, chat], cinder: [] }));
+      await commit(root, 'Move chat');
+      expect(await emit(root, await target(synced), synced)).toEqual({});
+    });
+
+    test('a trailer mapping that cannot be resolved fails closed', async () => {
+      const { root } = await mapped({ weft: [weft] }, [weft]);
+      await write(root, '.changeset/z.md', weftChangeset);
+      const synced = await commit(root, 'Add Z');
+      await write(root, definitionsPath, 'this is not a module (\n');
+      const broken = await commit(root, 'Break the mapping at the trailer');
+      await write(root, definitionsPath, definitions({ weft: [], cinder: [weft] }));
+      await commit(root, 'Repair it, moved');
+      expect(await rejectionOf(emit(root, await target(broken), broken))).toBeInstanceOf(
         ChangesetEmissionError,
       );
-    });
-
-    test('a mapping change with no changeset spanning the trailer passes', async () => {
-      const { root, start } = await mapped("export const members = ['weft'];\n", map());
-      await write(root, definitions, "export const members = ['cinder'];\n");
-      await commit(root, 'Move the package');
-      await write(root, '.changeset/fix-a.md', weftChangeset);
-      const adding = await commit(root, 'Add a changeset');
-      const files = await emit(root, await target(start), start);
-      expect(Object.keys(files)).toEqual([emittedPath(adding, 'fix-a')]);
-    });
-
-    test('recording a publication snapshot is not a mapping change', async () => {
-      const { root } = await mapped("export const members = ['weft'];\n", map());
-      await write(root, '.changeset/fix-a.md', weftChangeset);
-      const synced = await commit(root, 'Add a changeset');
-      await write(root, packageMap, map('1.0.1'));
-      await commit(root, 'Record a publication');
-      expect(await emit(root, await target(synced), synced)).toEqual({});
+      expect(synced).not.toBe(broken);
     });
   });
 });

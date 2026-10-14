@@ -1,4 +1,7 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   ChangesetError,
@@ -159,7 +162,7 @@ async function addingCommit(
 }
 
 const immutableRemedy =
-  'delete it and add a new file under a new name; after sync, fix it in the target instead';
+  'to replace a changeset, delete it in one pull request and add the replacement in a separate, later pull request; after sync, fix it in the target instead';
 
 /**
  * Check 1, global for every target: a changeset on `main` is immutable until it is deleted.
@@ -207,52 +210,118 @@ async function textAt(
 }
 
 /**
- * What the changeset validator resolves from a mapping file. The member lists in
- * `target-definitions.ts` are compared as text. `package-map.json` is compared as the map from
- * each publish-as name to its workspace, because recording a publication rewrites that file's
- * snapshots without moving anything; an unreadable file compares as its raw text.
+ * Each `publish-as` package's npm name mapped to its mirror, under the mapping as it stood at a
+ * revision. `target-definitions.ts` has no imports, so the historical file is loaded as a module
+ * from a temporary copy (the way `publication-history.ts` loads historical policy) rather than
+ * parsed. Anything unreadable throws: a mapping that cannot be resolved fails closed.
  */
-function mappingFingerprint(path: string, text: string | undefined): string {
-  if (text === undefined || !path.endsWith('.json')) return text ?? '\0absent';
+async function packageTargetsAt(
+  corvidaeRoot: string,
+  revision: string,
+): Promise<Map<string, MirrorTarget>> {
+  const [definitionsText, mapText] = await Promise.all(
+    mappingFiles.map((path) => textAt(corvidaeRoot, revision, path)),
+  );
+  if (definitionsText === undefined || mapText === undefined) {
+    throw new ChangesetEmissionError(
+      `Cannot resolve the package-to-mirror mapping at ${revision}: ${mappingFiles.join(' and ')} must both exist there`,
+    );
+  }
+  const directory = await mkdtemp(join(tmpdir(), 'changeset-mapping-'));
   try {
-    const parsed = JSON.parse(text) as {
+    const file = join(directory, 'target-definitions.ts');
+    await Bun.write(file, definitionsText);
+    const module = (await import(pathToFileURL(file).href)) as {
+      targetDefinitions?: Record<string, { members?: readonly string[] }>;
+    };
+    const definitions = module.targetDefinitions;
+    const map = JSON.parse(mapText) as {
       workspaces?: Record<string, { disposition?: string; name?: string }>;
     };
-    return JSON.stringify(
-      Object.entries(parsed.workspaces ?? {})
-        .map(([workspace, entry]) => [
-          workspace,
-          entry.disposition === 'publish-as' ? entry.name : (entry.disposition ?? null),
-        ])
-        .toSorted(([left], [right]) => String(left).localeCompare(String(right))),
+    if (definitions === undefined || map.workspaces === undefined) throw new Error('wrong shape');
+    const packages = new Map<string, MirrorTarget>();
+    for (const [workspace, entry] of Object.entries(map.workspaces)) {
+      if (entry.disposition !== 'publish-as' || entry.name === undefined) continue;
+      const owners = Object.entries(definitions).filter(([, definition]) =>
+        definition.members?.includes(workspace),
+      );
+      if (owners.length === 1) packages.set(entry.name, owners[0]![0] as MirrorTarget);
+    }
+    return packages;
+  } catch (error) {
+    if (error instanceof ChangesetEmissionError) throw error;
+    throw new ChangesetEmissionError(
+      `Cannot resolve the package-to-mirror mapping at ${revision}: ${error instanceof Error ? error.message : String(error)}`,
     );
-  } catch {
-    return text;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+/** The package names a changeset's bytes name, or `undefined` when they cannot be read. */
+function packagesNamedBy(bytes: Uint8Array): string[] | undefined {
+  try {
+    return parseChangeset(new TextDecoder().decode(bytes)).bumps.map(({ name }) => name);
+  } catch (error) {
+    if (error instanceof ChangesetError) return undefined;
+    throw error;
   }
 }
 
 /**
- * Check 2, global: a changeset that spans the trailer was resolved to a target by a mapping that
- * must still be the mapping. Targets are resolved from the current mapping only, which is safe
- * because this guarantees it did not change under any changeset already synced.
+ * Check 2, global: no changeset may name a package that moved between mirrors.
+ *
+ * Each target has its own trailer, so a changeset delivered to one mirror can later be pending
+ * for another once its package moves; the same release would ship twice. A move is a package
+ * defined in both mappings (the trailer's and HEAD's) whose mirror differs. Adding or removing a
+ * workspace, or recording a publication snapshot, is not a move. A changeset at the trailer or
+ * at HEAD that names a moved package, or cannot be read, throws for every target.
  */
-async function assertMappingStable(
+async function assertNoMovedPackages(
   corvidaeRoot: string,
   trailerSha: string,
   syncedFiles: readonly string[],
+  headFiles: readonly string[],
 ): Promise<void> {
-  if (syncedFiles.length === 0) return;
-  for (const path of mappingFiles) {
-    const [before, after] = await Promise.all([
+  const texts = await Promise.all(
+    mappingFiles.flatMap((path) => [
       textAt(corvidaeRoot, trailerSha, path),
       textAt(corvidaeRoot, 'HEAD', path),
-    ]);
-    if (mappingFingerprint(path, before) !== mappingFingerprint(path, after)) {
-      throw new ChangesetEmissionError(
-        `${path} changed since the target last synced while ${syncedFiles.join(', ')} spans that sync, so which mirror owns those changesets may have changed; deliver or delete changesets that span the trailer before moving a package between mirrors.`,
-      );
+    ]),
+  );
+  if (texts[0] === texts[1] && texts[2] === texts[3]) return;
+  const [before, after] = await Promise.all([
+    packageTargetsAt(corvidaeRoot, trailerSha),
+    packageTargetsAt(corvidaeRoot, 'HEAD'),
+  ]);
+  const moved = new Map<string, { from: MirrorTarget; to: MirrorTarget }>();
+  for (const [name, from] of before) {
+    const to = after.get(name);
+    if (to !== undefined && to !== from) moved.set(name, { from, to });
+  }
+  if (moved.size === 0) return;
+
+  const offenders = new Map<string, Set<string>>();
+  const note = (name: string, path: string): void => {
+    offenders.set(name, (offenders.get(name) ?? new Set()).add(path));
+  };
+  for (const [revision, paths] of [
+    [trailerSha, syncedFiles],
+    ['HEAD', headFiles],
+  ] as const) {
+    for (const path of paths) {
+      const names = packagesNamedBy(await blobBytes(corvidaeRoot, revision, path));
+      for (const name of names ?? [...moved.keys()]) if (moved.has(name)) note(name, path);
     }
   }
+  if (offenders.size === 0) return;
+  const lines = [...offenders].map(([name, paths]) => {
+    const { from, to } = moved.get(name)!;
+    return `${name} moved from ${from} to ${to}, and ${[...paths].toSorted().join(', ')} names it`;
+  });
+  throw new ChangesetEmissionError(
+    `${lines.join('; ')}: delete changesets that name a package before moving it between mirrors, and add new ones after the move.`,
+  );
 }
 
 /** Whether the target's current history has ever contained the path. */
@@ -288,7 +357,7 @@ export async function planChangesetEmission({
     changesetsAt(corvidaeRoot, trailerSha),
   ]);
   await assertImmutable(corvidaeRoot, headFiles);
-  await assertMappingStable(corvidaeRoot, trailerSha, syncedFiles);
+  await assertNoMovedPackages(corvidaeRoot, trailerSha, syncedFiles, headFiles);
   const synced = new Set(syncedFiles);
   const pending = headFiles.filter((path) => !synced.has(path));
 
