@@ -214,6 +214,25 @@ type OwnedChild = {
   kill: (signal: NodeJS.Signals) => void;
 };
 
+/**
+ * Forced on every measured child, so the parent's environment cannot change what is measured.
+ * `NODE_ENV` selects development or production Svelte compilation (`playground-svelte-plugin.ts`)
+ * and is removed, which is how `bun run build` runs from a clean shell. An inherited
+ * `CINDER_TEST_COMPONENTS` would narrow the server's eager prebuild; empty is its every-component
+ * default.
+ */
+export const NORMALIZED_CHILD_ENVIRONMENT: Readonly<Record<string, string | undefined>> = {
+  NODE_ENV: undefined,
+  CINDER_TEST_COMPONENTS: '',
+};
+
+/** The normalized environment as a result file records it: null means removed. */
+export function recordedChildEnvironment(): Record<string, string | null> {
+  return Object.fromEntries(
+    Object.entries(NORMALIZED_CHILD_ENVIRONMENT).map(([name, value]) => [name, value ?? null]),
+  );
+}
+
 /** Spawn a child, drain both pipes into its log, and observe its process tree every 100 ms. */
 function spawnOwnedChild(
   command: string[],
@@ -222,7 +241,7 @@ function spawnOwnedChild(
   const startedAt = performance.now();
   const child = Bun.spawn(command, {
     cwd: options.cwd,
-    env: { ...process.env, ...options.environment },
+    env: { ...process.env, ...NORMALIZED_CHILD_ENVIRONMENT, ...options.environment },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -282,13 +301,7 @@ function childEnvironment(
   cacheDirectory: string,
   extra: Record<string, string>,
 ): Record<string, string> {
-  // An inherited CINDER_TEST_COMPONENTS would narrow the server's eager prebuild; an empty value
-  // is the server's own "every component" default.
-  return {
-    BUN_RUNTIME_TRANSPILER_CACHE_PATH: cacheDirectory,
-    CINDER_TEST_COMPONENTS: '',
-    ...extra,
-  };
+  return { BUN_RUNTIME_TRANSPILER_CACHE_PATH: cacheDirectory, ...extra };
 }
 
 function sampleHeader(context: SampleContext): {
@@ -400,19 +413,29 @@ async function measureServerReady(context: SampleContext): Promise<ServerReadySa
   };
 }
 
-function assertPlaywrightPortFree(): void {
-  const result = Bun.spawnSync(['lsof', '-nP', `-iTCP:${PLAYWRIGHT_PORT}`, '-sTCP:LISTEN'], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  if (result.exitCode === 0) {
-    throw new Error(`Port ${PLAYWRIGHT_PORT} is already listening:\n${result.stdout.toString()}`);
+/** Whether anything accepts TCP connections on the port, over IPv4 or IPv6 loopback. No `lsof`. */
+export async function isPortListening(port: number): Promise<boolean> {
+  for (const hostname of ['127.0.0.1', '::1']) {
+    try {
+      const socket = await Bun.connect({ hostname, port, socket: { data() {} } });
+      socket.end();
+      return true;
+    } catch {
+      // Refused, or this loopback family is unavailable: try the next one.
+    }
+  }
+  return false;
+}
+
+async function assertPlaywrightPortFree(): Promise<void> {
+  if (await isPortListening(PLAYWRIGHT_PORT)) {
+    throw new Error(`Port ${PLAYWRIGHT_PORT} is already listening; test:browser cannot start.`);
   }
 }
 
 async function measurePlaywright(context: SampleContext): Promise<PlaywrightSample> {
   await prepareTemperature(context);
-  assertPlaywrightPortFree();
+  await assertPlaywrightPortFree();
   const header = sampleHeader(context);
   const reportPath = join(
     context.options.workDirectory,
@@ -465,7 +488,6 @@ async function measureProbe(
     ],
     {
       cwd: PLAYGROUND_ROOT,
-      environment: { CINDER_TEST_COMPONENTS: '' },
       logPath: join(options.workDirectory, `probe-${probe}.log`),
     },
   ).finish();
@@ -529,7 +551,10 @@ async function run(options: RunOptions): Promise<MeasurementResults> {
     label: options.label,
     startedAt,
     finishedAt: startedAt,
-    environment: capturePinnedEnvironment(REPOSITORY_ROOT, PLAYGROUND_ROOT),
+    environment: {
+      ...capturePinnedEnvironment(REPOSITORY_ROOT, PLAYGROUND_ROOT),
+      childEnvironment: recordedChildEnvironment(),
+    },
     routeInventory: [],
     definitions: DEFINITIONS,
     prerequisites: [],

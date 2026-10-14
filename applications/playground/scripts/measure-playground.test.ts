@@ -2,7 +2,13 @@ import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 
 import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
-import { microsecondsFrom, parseCommandLine, PHASES } from './measure-playground.ts';
+import {
+  isPortListening,
+  microsecondsFrom,
+  NORMALIZED_CHILD_ENVIRONMENT,
+  parseCommandLine,
+  PHASES,
+} from './measure-playground.ts';
 
 const now = new Date('2026-10-13T12:34:56.789Z');
 
@@ -94,5 +100,29 @@ describe('microsecondsFrom', () => {
 
   it('passes a number through', () => {
     expect(microsecondsFrom(42)).toBe(42);
+  });
+});
+
+describe('isPortListening (4274040404)', () => {
+  it('detects a listener with a Bun connection probe, without lsof', async () => {
+    const listener = Bun.listen({
+      hostname: '127.0.0.1',
+      port: 0,
+      socket: { data() {} },
+    });
+    try {
+      expect(await isPortListening(listener.port)).toBe(true);
+    } finally {
+      listener.stop(true);
+    }
+    expect(await isPortListening(listener.port)).toBe(false);
+  });
+});
+
+describe('NORMALIZED_CHILD_ENVIRONMENT (4274040392)', () => {
+  it('removes an inherited NODE_ENV and component scope from every measured child', () => {
+    expect('NODE_ENV' in NORMALIZED_CHILD_ENVIRONMENT).toBe(true);
+    expect(NORMALIZED_CHILD_ENVIRONMENT['NODE_ENV']).toBeUndefined();
+    expect(NORMALIZED_CHILD_ENVIRONMENT['CINDER_TEST_COMPONENTS']).toBe('');
   });
 });
