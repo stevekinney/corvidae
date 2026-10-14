@@ -1,8 +1,8 @@
 import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type ConditionalTextValueStore,
-  decodeStorageKeyComponent,
   encodeStorageKeyComponent,
+  tryDecodeStorageKeyComponent,
 } from '@lostgradient/weft';
 
 import type { Effort, SteeringRequestedValue } from '@lostgradient/operative';
@@ -224,10 +224,22 @@ function isSteeringFailure(value: unknown): boolean {
   );
 }
 
+/**
+ * A refusal Bureau decides before the gate: an unresolvable or uncatalogued
+ * request (`policy-denied`), or an identity selector it cannot resolve
+ * (`selector-unavailable`). Nothing else is ever logged as `refused`; any
+ * other outcome would replay a decision no process made.
+ */
 function isRefusalOutcome(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  if (value['outcome'] === 'unsupported-capability') return typeof value['reason'] === 'string';
-  return value['outcome'] === 'rejected' && isSteeringFailure(value['failure']);
+  if (value['outcome'] === 'unsupported-capability') {
+    return value['reason'] === 'selector-unavailable';
+  }
+  return (
+    value['outcome'] === 'rejected' &&
+    isSteeringFailure(value['failure']) &&
+    (value['failure'] as { reason: unknown }).reason === 'policy-denied'
+  );
 }
 
 /**
@@ -469,10 +481,12 @@ export async function listSteeringLogIncarnations(
       .slice(LOG_PREFIX.length + 1, -':head'.length)
       .split(':');
     if (sessionPart === undefined || incarnationPart === undefined) continue;
-    found.push({
-      sessionId: decodeStorageKeyComponent(sessionPart),
-      incarnation: decodeStorageKeyComponent(incarnationPart),
-    });
+    // A key no encoder wrote is skipped, so it cannot stop the sweep from
+    // reaching every valid log after it.
+    const sessionId = tryDecodeStorageKeyComponent(sessionPart);
+    const incarnation = tryDecodeStorageKeyComponent(incarnationPart);
+    if (sessionId === null || incarnation === null) continue;
+    found.push({ sessionId, incarnation });
   }
   return found;
 }

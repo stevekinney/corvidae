@@ -10,6 +10,7 @@ import {
   readSteeringLogHead,
   SteeringLogCorruptError,
   type SteeringLogEvent,
+  listSteeringLogIncarnations,
   steeringSessionRunTag,
 } from './steering-log';
 
@@ -148,12 +149,27 @@ describe('steering log', () => {
       { failedAt: '2026-09-02T00:00:01.000Z', reason: 'superseded-by' },
       { failedAt: '2026-09-02T00:00:01.000Z', reason: 'no-such-reason' },
       { failedAt: '2026-09-02T00:00:01.000Z', reason: 'policy-denied', supersededBy: 'x' },
+      // Well-formed, but never a refusal Bureau decides before the gate.
+      { failedAt: '2026-09-02T00:00:01.000Z', reason: 'run-terminal' },
+      { failedAt: '2026-09-02T00:00:01.000Z', reason: 'deadline-passed' },
     ]) {
       await kv.set(entryKey, refused(failure));
       await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
         SteeringLogCorruptError,
       );
     }
+    await kv.set(
+      entryKey,
+      JSON.stringify({
+        type: 'refused',
+        command: command(),
+        outcome: { outcome: 'unsupported-capability', reason: 'anything-else' },
+        now: '2026-09-02T00:00:01.000Z',
+      }),
+    );
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
     await kv.set(
       entryKey,
       JSON.stringify(admit({ requestedValue: { target: 'pause', override: 'x' } as never })),
@@ -270,6 +286,28 @@ describe('steering log', () => {
     );
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
+    );
+  });
+
+  it('lists every decodable log incarnation, skipping a key no encoder wrote', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    await kv.set('steering-log:v1:%E0%A4%A:inc-0:head', '{"sequence":1}');
+    for (const sessionId of ['session-1', 'session-2']) {
+      const head = await readSteeringLogHead(kv, sessionId, 'inc-1');
+      await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        'inc-1',
+        head,
+        admit({ sessionId, id: sessionId }),
+      );
+    }
+    const listed = await listSteeringLogIncarnations(kv);
+    expect(listed.toSorted((left, right) => left.sessionId.localeCompare(right.sessionId))).toEqual(
+      [
+        { sessionId: 'session-1', incarnation: 'inc-1' },
+        { sessionId: 'session-2', incarnation: 'inc-1' },
+      ],
     );
   });
 

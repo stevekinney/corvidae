@@ -7981,14 +7981,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     sessionId: string,
     request: SteeringCommandRequest,
   ): Promise<SteeringCommandAdmissionOutcome> {
+    // Copied before anything awaits: every check and the decision itself
+    // read this copy, so a caller changing its own request object later
+    // cannot alter what was validated (its run, or its requested value).
+    const snapshot = structuredClone(request);
     // A durable submission reads the engine and the log from its first
     // await to its last, so shutdown waits for the whole of it before it
     // disposes either; once shutdown starts, none begins.
-    if (durableSteeringStore() === undefined) return admitSteeringRequest(sessionId, request);
+    if (durableSteeringStore() === undefined) return admitSteeringRequest(sessionId, snapshot);
     if (runAdmissionClosed) {
       throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
     }
-    const submission = admitSteeringRequest(sessionId, request);
+    const submission = admitSteeringRequest(sessionId, snapshot);
     inFlightSteeringSubmissions.add(submission);
     try {
       return await submission;

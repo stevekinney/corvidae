@@ -26,6 +26,7 @@ import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
+import type { SteeringCommandRequest } from './steering';
 import { createRuntimeComposition } from './runtime-composition';
 import {
   appendSteeringLogEvent,
@@ -1270,6 +1271,21 @@ describe('durable steering across two Bureau processes', () => {
 
       // Alice loses the first run. Reusing the key through the second, which
       // she still holds, must not disclose the first run's command.
+      // The request is read as it was when submitted: naming a run on the
+      // caller's own object afterwards cannot turn an ambiguous unscoped
+      // pause into one bound to that run.
+      const unscopedRequest: SteeringCommandRequest = {
+        id: 'k-mutated',
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      };
+      const submitted = bureau.submitSteeringCommand(sessionId, unscopedRequest);
+      (unscopedRequest as { runId?: string }).runId = first;
+      const mutated = await submitted;
+      expect(mutated.outcome).toBe('rejected');
+      if (mutated.outcome !== 'rejected') throw new Error('expected rejected');
+      expect(mutated.failure.reason).toBe('run-ambiguous');
+
       // A refusal keeps the run its request named, and a conflict against it
       // discloses, and is authorized against, that run.
       const refused = await bureau.submitSteeringCommand(sessionId, {
