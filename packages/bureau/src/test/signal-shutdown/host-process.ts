@@ -17,8 +17,13 @@ import { nativeNodeEnvironment } from './environment-configuration';
 
 const runtime = createDefaultRuntimeServices();
 
-/** A child still running this long after it started is killed and reported as stuck. */
-const HOST_DEADLINE_MS = 60_000;
+/**
+ * A child still running this long after it started is killed and reported as
+ * stuck. It only detects a hang, so it is generous: native Node loads the
+ * workspace's TypeScript source module by module, which on a contended host
+ * has taken most of a minute before the host was ready.
+ */
+export const HOST_DEADLINE_MS = 180_000;
 
 export type HostEvent = Readonly<Record<string, unknown>> & { readonly event: string };
 

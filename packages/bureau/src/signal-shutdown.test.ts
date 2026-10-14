@@ -24,6 +24,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import {
   type HostProcess,
   type HostRuntime,
+  HOST_DEADLINE_MS,
   hostCommand,
   startHost,
 } from './test/signal-shutdown/host-process';
@@ -39,7 +40,8 @@ const RUNTIME_CONTRACTS = join(
   'documentation',
   'runtime-contracts.md',
 );
-const TEST_TIMEOUT_MS = 120_000;
+/** Each case runs at most two hosts one after the other, so either can reach its deadline first. */
+const TEST_TIMEOUT_MS = 2 * HOST_DEADLINE_MS + 60_000;
 
 const STORAGE_BY_RUNTIME: Record<HostRuntime, string> = {
   bun: 'BunSQLiteStorage',
