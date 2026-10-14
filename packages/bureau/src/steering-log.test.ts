@@ -241,7 +241,8 @@ describe('steering log', () => {
     expect(await readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).toEqual([refused]);
 
     // A selector for another target is not this refusal's.
-    const entryKey = (await kv.list('steering-log:v1:')).find((key) => key.includes(':entry:'));
+    const logKeys = await kv.list('steering-log:v1:');
+    const entryKey = logKeys.find((key) => key.includes(':entry:'));
     if (entryKey === undefined) throw new Error('expected an entry');
     await kv.set(
       entryKey,
