@@ -177,6 +177,96 @@ export function parseConversationFrame(json: unknown): ConversationFrame {
   };
 }
 
+const conversationStatuses: ReadonlySet<unknown> = new Set(['active', 'archived', 'deleted']);
+const conversationHeaderKeys: ReadonlySet<string> = new Set([
+  'schemaVersion',
+  'id',
+  'title',
+  'status',
+  'metadata',
+  'createdAt',
+  'updatedAt',
+]);
+
+function invalidHeaderError(detail: string): Error {
+  return createSerializationError(`failed to deserialize conversation: invalid header ${detail}`);
+}
+
+function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false;
+  const prototype = Reflect.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Copies a JSON value, accepting exactly what `jsonValueSchema` accepts:
+ * strings, finite numbers, booleans, null, arrays, and plain objects of those.
+ * `ancestors` holds the containers being copied, so a cycle is rejected rather
+ * than walked forever, while a value shared by two branches is still accepted.
+ */
+function copyJsonValue(value: unknown, ancestors: Set<object>): unknown {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw invalidHeaderError('metadata: non-finite number');
+    return value;
+  }
+  const isArray = Array.isArray(value);
+  if (!isArray && !isPlainJsonObject(value)) throw invalidHeaderError('metadata: not JSON');
+  if (ancestors.has(value)) throw invalidHeaderError('metadata: cycle');
+  ancestors.add(value);
+  let copy: unknown;
+  if (isArray) {
+    copy = Array.from({ length: value.length }, (_, index) =>
+      copyJsonValue(value[index], ancestors),
+    );
+  } else {
+    // `fromEntries` defines each key, so a `__proto__` key stays an own property.
+    copy = Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [key, copyJsonValue(nested, ancestors)]),
+    );
+  }
+  ancestors.delete(value);
+  return copy;
+}
+
+/**
+ * Reads a conversation header (everything but `ids` and `messages`) without
+ * zod. It accepts exactly what the header fields of `conversationShape` accept
+ * under `.strict()`, and returns a copy, so freezing the result never freezes
+ * the caller's input.
+ *
+ * Snapshot restore reads one header per history node. Messages are
+ * schema-validated once per table entry, and this keeps the per-node work free
+ * of schema parsing too. {@link parseConversationFrame} stays the
+ * schema-backed reader for whole conversations; a test checks that the two
+ * accept and reject the same headers.
+ */
+export function readConversationHistoryHeader(value: unknown): ConversationHistoryHeader {
+  if (!isRecord(value)) throw invalidHeaderError('shape');
+  for (const key of Object.keys(value)) {
+    if (!conversationHeaderKeys.has(key)) throw invalidHeaderError(`field ${key}`);
+  }
+  const { schemaVersion, id, title, status, metadata, createdAt, updatedAt } = value;
+  if (typeof schemaVersion !== 'number' || !Number.isInteger(schemaVersion) || schemaVersion < 1) {
+    throw invalidHeaderError('schemaVersion');
+  }
+  if (typeof id !== 'string') throw invalidHeaderError('id');
+  if (title !== undefined && typeof title !== 'string') throw invalidHeaderError('title');
+  if (!conversationStatuses.has(status)) throw invalidHeaderError('status');
+  if (!isPlainJsonObject(metadata)) throw invalidHeaderError('metadata');
+  if (typeof createdAt !== 'string') throw invalidHeaderError('createdAt');
+  if (typeof updatedAt !== 'string') throw invalidHeaderError('updatedAt');
+  return {
+    schemaVersion,
+    id,
+    title,
+    status: status as ConversationHistoryHeader['status'],
+    metadata: copyJsonValue(metadata, new Set()) as ConversationHistoryHeader['metadata'],
+    createdAt,
+    updatedAt,
+  };
+}
+
 /**
  * Assembles parsed messages into a conversation: the history half of
  * {@link deserializeConversationHistory}. It runs no schema validation, only

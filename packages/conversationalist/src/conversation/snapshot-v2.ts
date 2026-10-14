@@ -26,8 +26,8 @@ import type {
 import { deepFreeze } from '../utilities/type-helpers';
 import {
   assembleConversationHistory,
-  parseConversationFrame,
   parseConversationMessage,
+  readConversationHistoryHeader,
 } from './serialization';
 import {
   asRecord,
@@ -313,11 +313,11 @@ export function createTableMessageReader(table: readonly unknown[]): TableMessag
  * entry cannot carry on its own: positions, tool pairing, and conversation
  * integrity.
  *
- * The node's header (id, title, status, metadata, timestamps) is still
- * schema-validated here, once per node. It is the node's own data rather than
- * a shared table entry, nothing else validates it, and it is a fixed set of
- * fields, so its cost does not grow with the conversation the way per-node
- * message parsing did.
+ * The node's header (id, title, status, metadata, timestamps) is the node's
+ * own data rather than a shared table entry, so it is checked here, once per
+ * node, by `readConversationHistoryHeader`: plain type checks that accept what
+ * the conversation schema accepts, with no schema parse. Zod runs only on
+ * table entries, once each.
  */
 export function deserializeNodeConversation(
   fields: NodeFields & NodeMessages,
@@ -330,8 +330,8 @@ export function deserializeNodeConversation(
   }
   let conversation: ConversationHistory;
   try {
-    // `readNodeFields` has already checked the ids; the frame validates the header.
-    const { header } = parseConversationFrame({ ...fields.header, ids: [], messages: {} });
+    // `readNodeFields` has already checked the ids.
+    const header = readConversationHistoryHeader(fields.header);
     conversation = assembleConversationHistory(header, fields.ids, messages);
   } catch (error) {
     throw snapshotError(

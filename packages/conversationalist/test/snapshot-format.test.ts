@@ -338,6 +338,46 @@ describe('snapshot format version 2', () => {
     }
   });
 
+  it('rejects a malformed node header, even when re-signed', () => {
+    const snapshot = editedConversation().snapshot();
+    const cases: Array<[string, (header: Record<string, unknown>) => void]> = [
+      ['an unknown status', (header) => Reflect.set(header, 'status', 'paused')],
+      ['a null title', (header) => Reflect.set(header, 'title', null)],
+      ['a zero schema version', (header) => Reflect.set(header, 'schemaVersion', 0)],
+      ['an unknown field', (header) => Reflect.set(header, 'surprise', true)],
+      ['a non-object metadata', (header) => Reflect.set(header, 'metadata', [])],
+      [
+        'a non-JSON metadata value',
+        (header) => Reflect.set(header, 'metadata', { at: new Date() }),
+      ],
+      ['a numeric timestamp', (header) => Reflect.set(header, 'updatedAt', 0)],
+    ];
+
+    for (const [, mutate] of cases) {
+      for (const position of [0, 1]) {
+        const mutated = structuredClone(snapshot);
+        mutate(mutated.nodes[position]!.conversation);
+        resign(mutated);
+        const id = mutated.nodes[position]!.id;
+        expect(() => decodeSnapshot(mutated)).toThrow(`invalid conversation for ${id}`);
+      }
+    }
+  });
+
+  it('copies node header metadata rather than freezing the snapshot it restores from', () => {
+    const conversation = new Conversation(
+      createConversationHistory({ metadata: { tags: ['a'], nested: { depth: 1 } } }),
+    );
+    conversation.appendUserMessage('Hello.');
+    const snapshot = structuredClone(conversation.snapshot());
+
+    const restored = Conversation.from(snapshot);
+
+    expect(restored.current.metadata).toEqual({ tags: ['a'], nested: { depth: 1 } });
+    expect(Object.isFrozen(snapshot.nodes[0]!.conversation.metadata)).toBe(false);
+    expect(Object.isFrozen(snapshot.nodes[0]!.conversation.metadata['tags'])).toBe(false);
+  });
+
   it('rejects a tool result without its call, even when re-signed', () => {
     const conversation = new Conversation(createConversationHistory());
     conversation.appendUserMessage('Look it up.');
