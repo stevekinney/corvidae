@@ -527,7 +527,8 @@ export function answerSteeringRetry(
     },
     command,
   );
-  return resolved.outcome === 'replayed' ? refusal.outcome : resolved;
+  // A copy: the caller must not be able to change what later retries see.
+  return resolved.outcome === 'replayed' ? structuredClone(refusal.outcome) : resolved;
 }
 
 interface StoredSteeringCommand {

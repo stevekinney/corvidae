@@ -139,6 +139,15 @@ describe('steering log', () => {
       SteeringLogCorruptError,
     );
 
+    for (const sequence of [0, -1, 1.5]) {
+      await kv.set(
+        bindingKey,
+        JSON.stringify({ sessionId: 'session-1', incarnation: 'inc-1', sequence }),
+      );
+      await expect(readSteeringKeyBinding(kv, 'alice', 'cmd-1')).rejects.toThrow(
+        SteeringLogCorruptError,
+      );
+    }
     await kv.set(bindingKey, 'not json');
     await expect(readSteeringKeyBinding(kv, 'alice', 'cmd-1')).rejects.toThrow(
       SteeringLogCorruptError,

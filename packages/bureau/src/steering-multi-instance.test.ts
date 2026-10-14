@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { GenerateFunction } from '@lostgradient/operative';
+import { encodeStorageKeyComponent } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -116,6 +117,20 @@ describe('durable steering across two Bureau processes', () => {
       if (reusedRefused.outcome !== 'conflict') throw new Error('expected conflict');
       expect(reusedRefused.conflict.reason).toBe('target-mismatch');
       expect(reusedRefused.conflict.original.state).toBe('rejected');
+      // A returned refusal is the caller's own copy: changing it changes
+      // nothing a later retry sees.
+      if (refused.outcome === 'rejected') {
+        (refused.failure as { reason: string }).reason = 'mutated';
+        const again = await bureauA.submitSteeringCommand(sessionId, {
+          id: 'refused',
+          principal: 'alice',
+          deadline: '2000-01-01T00:00:00.000Z',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        });
+        if (again.outcome !== 'rejected') throw new Error('expected rejected');
+        expect(again.failure.reason).toBe('deadline-passed');
+        (refused.failure as { reason: string }).reason = again.failure.reason;
+      }
       const retriedRefusal = await bureauB.submitSteeringCommand(sessionId, {
         id: 'refused',
         principal: 'alice',
@@ -324,6 +339,68 @@ describe('durable steering across two Bureau processes', () => {
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('replays a policy-resolved command for an exact retry, even where the policy is gone', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-policy-'));
+    const path = join(directory, 'bureau.sqlite');
+    const withPolicy = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createToolbox([]),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+      modelPolicy: {
+        policyRevision: 1,
+        users: { 'fast-tier': { exactOverride: { model: 'claude-sonnet-5' } } },
+      },
+    });
+    const withoutPolicy = await openBureau(path);
+    try {
+      const sessionId = await startRunningSession(withPolicy);
+      const viaPolicy = {
+        id: 'p1',
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'fast-tier' },
+      } as const;
+      expect(versionOf(await withPolicy.submitSteeringCommand(sessionId, viaPolicy))).toBe(1);
+
+      // This process has no such profile, so resolving the retry afresh
+      // would refuse it; it repeats the original request, so it replays.
+      const retried = await withoutPolicy.submitSteeringCommand(sessionId, viaPolicy);
+      expect(retried.outcome).toBe('replayed');
+    } finally {
+      await withPolicy.dispose();
+      await withoutPolicy.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('fails a run start on a corrupt steering log, leaving the session failed rather than running', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-corrupt-start-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureau = await openBureau(path);
+    try {
+      const sessionId = await startRunningSession(bureau);
+      const session = await bureau.getSession(sessionId);
+      const kv = bureau.kv;
+      if (kv === undefined || session === undefined) throw new Error('expected a durable session');
+      const [headKey] = await kv.list(`steering-log:v1:${encodeStorageKeyComponent(sessionId)}:`);
+      expect(headKey).toBeDefined();
+      const heads = (
+        await kv.list(`steering-log:v1:${encodeStorageKeyComponent(sessionId)}:`)
+      ).filter((key) => key.endsWith(':head'));
+      await kv.set(heads[0] ?? '', '{"sequence":-1}');
+
+      await expect(
+        bureau.createRun({ message: 'again', principal: 'alice', sessionId }),
+      ).rejects.toThrow();
+      const after = await bureau.getSession(sessionId);
+      expect(after?.metadata['lastRunStatus']).toBe('error');
+    } finally {
+      await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);

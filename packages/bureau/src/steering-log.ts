@@ -4,6 +4,8 @@ import {
   encodeStorageKeyComponent,
 } from '@lostgradient/weft';
 
+import type { SteeringRequestedValue } from '@lostgradient/operative';
+
 import type { ImplementedSteeringCommand, SteeringCommandAdmissionOutcome } from './steering';
 
 /**
@@ -33,6 +35,12 @@ export type SteeringLogEvent =
       readonly command: ImplementedSteeringCommand;
       readonly liveRunIds: readonly string[];
       readonly now: string;
+      /**
+       * The value the caller asked for, when Bureau resolved it to the
+       * command's concrete one (a `policyRef`). Kept so an exact retry of the
+       * original request matches even after the policy or catalog changes.
+       */
+      readonly submittedValue?: SteeringRequestedValue;
     }
   | {
       /**
@@ -196,8 +204,11 @@ function parseEvent(raw: string, sequence: number): SteeringLogEvent {
     switch (parsed['type']) {
       case 'admit': {
         const liveRunIds = parsed['liveRunIds'];
+        const submitted = parsed['submittedValue'];
         if (
           isSteeringCommand(parsed['command']) &&
+          (submitted === undefined ||
+            isSteeringCommand({ ...(parsed['command'] as object), requestedValue: submitted })) &&
           Array.isArray(liveRunIds) &&
           liveRunIds.every((runId) => typeof runId === 'string')
         ) {
@@ -277,7 +288,8 @@ export async function readSteeringKeyBinding(
     isRecord(parsed) &&
     typeof parsed['sessionId'] === 'string' &&
     typeof parsed['incarnation'] === 'string' &&
-    typeof parsed['sequence'] === 'number'
+    isVersion(parsed['sequence']) &&
+    parsed['sequence'] > 0
   ) {
     return { raw, binding: parsed as unknown as SteeringKeyBinding };
   }

@@ -215,6 +215,7 @@ import {
 import {
   answerSteeringRetry,
   type BureauSteeringGate,
+  getSteeringLedgerEntry,
   createSteeringCommandLedger,
   createSteeringGate,
   type ImplementedSteeringCommand,
@@ -1672,6 +1673,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
      * a retry is answered from the log instead of decided afresh.
      */
     readonly refusals: Map<string, Map<string, SteeringRefusal>>;
+    /** Each accepted command's value as the caller submitted it, where Bureau resolved it. */
+    readonly submitted: Map<string, Map<string, SteeringRequestedValue>>;
     /** The last head read or written. Appends are conditioned on it. */
     head: SteeringLogHead;
     /** How many entries have been applied to `gate`. */
@@ -1721,6 +1724,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     gate: BureauSteeringGate,
     refusals: Map<string, Map<string, SteeringRefusal>>,
     event: SteeringLogEvent,
+    submitted?: Map<string, Map<string, SteeringRequestedValue>>,
   ): SteeringCommandAdmissionOutcome | undefined {
     switch (event.type) {
       case 'admit': {
@@ -1728,27 +1732,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           liveRunIds: event.liveRunIds,
           now: event.now,
         });
+        const { principal, id } = event.command;
         if (outcome.outcome === 'rejected' || outcome.outcome === 'unsupported-capability') {
-          const { principal, id } = event.command;
-          let byId = refusals.get(principal);
-          if (byId === undefined) {
-            byId = new Map();
-            refusals.set(principal, byId);
-          }
-          byId.set(id, { command: event.command, outcome, refusedAt: event.now });
+          // Stored as a copy: the returned outcome is the caller's to keep.
+          nestedSet(refusals, principal, id, {
+            command: event.command,
+            outcome: structuredClone(outcome),
+            refusedAt: event.now,
+          });
+        } else if (event.submittedValue !== undefined && submitted !== undefined) {
+          nestedSet(submitted, principal, id, event.submittedValue);
         }
         return outcome;
       }
-      case 'refused': {
-        const { principal, id } = event.command;
-        let byId = refusals.get(principal);
-        if (byId === undefined) {
-          byId = new Map();
-          refusals.set(principal, byId);
-        }
-        byId.set(id, { command: event.command, outcome: event.outcome, refusedAt: event.now });
-        return event.outcome;
-      }
+      case 'refused':
+        nestedSet(refusals, event.command.principal, event.command.id, {
+          command: event.command,
+          outcome: structuredClone(event.outcome),
+          refusedAt: event.now,
+        });
+        return structuredClone(event.outcome);
       case 'applied':
         gate.recordApplied(event.runId, event.configVersion, event.now);
         return undefined;
@@ -1759,6 +1762,44 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         gate.failAcceptedForRun(event.runId, event.now);
         return undefined;
     }
+  }
+
+  function nestedSet<T>(
+    map: Map<string, Map<string, T>>,
+    outer: string,
+    inner: string,
+    value: T,
+  ): void {
+    let byInner = map.get(outer);
+    if (byInner === undefined) {
+      byInner = new Map();
+      map.set(outer, byInner);
+    }
+    byInner.set(inner, value);
+  }
+
+  /**
+   * A retry of an accepted command, re-expressed as the command it retries
+   * when it repeats the caller's original submission exactly (a `policyRef`
+   * Bureau resolved at admission). Resolving the retry again could pick a
+   * different coordinate, or fail, after the policy or catalog changed;
+   * matching the submission keeps the retry an exact replay.
+   */
+  function asSubmittedRetry(
+    ledger: ReturnType<typeof createSteeringCommandLedger>,
+    submitted: Map<string, Map<string, SteeringRequestedValue>>,
+    command: ImplementedSteeringCommand,
+  ): ImplementedSteeringCommand {
+    const original = submitted.get(command.principal)?.get(command.id);
+    const accepted = getSteeringLedgerEntry(ledger, command.principal, command.id);
+    if (original === undefined || accepted === undefined) return command;
+    const asked = command.requestedValue as Record<string, unknown>;
+    const first = original as Record<string, unknown>;
+    const same =
+      asked['target'] === first['target'] &&
+      asked['override'] === first['override'] &&
+      asked['policyRef'] === first['policyRef'];
+    return same ? { ...command, requestedValue: accepted.requestedValue } : command;
   }
 
   /**
@@ -1792,6 +1833,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         gate,
         ledger,
         refusals: new Map(),
+        submitted: new Map(),
         head: { raw: null, sequence: 0 },
         applied: 0,
       };
@@ -1815,7 +1857,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       head.sequence,
     );
     for (const event of events) {
-      applySteeringEvent(cursor.gate, cursor.refusals, event);
+      applySteeringEvent(cursor.gate, cursor.refusals, event, cursor.submitted);
       cursor.applied += 1;
     }
     cursor.head = head;
@@ -1849,7 +1891,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
       const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, cursor.head, event);
       if (appended.status === 'appended') {
-        applySteeringEvent(cursor.gate, cursor.refusals, event);
+        applySteeringEvent(cursor.gate, cursor.refusals, event, cursor.submitted);
         cursor.applied += 1;
         cursor.head = appended.head;
         return;
@@ -1898,8 +1940,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * Folds a recovered durable run's session log and hands the run its view of
-   * the gate, before replay resumes. A failure leaves the run to resume
-   * without steering, as recovery always did, and is diagnosed.
+   * the gate, before replay resumes. A failure fails the recovered workflow
+   * (the recovery hook rethrows), and is diagnosed.
    */
   async function recoverRunSteering(
     sessionId: string,
@@ -1916,12 +1958,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       services.options = { ...services.options, runId, steering: cursor.gate.forRun(runId) };
       return cursor.gate;
     } catch (error) {
+      // Fails the recovered workflow rather than resuming it without its
+      // durable steering: the log is the only record of its desired model,
+      // pause, and identity, and running on defaults would ignore them.
       diagnose({
         level: 'error',
         scope: 'steering',
-        message: `[bureau] Recovered run "${runId}" resumes without steering; its session's steering log could not be folded: ${serializeUnknownError(error)}`,
+        message: `[bureau] Recovered run "${runId}" cannot resume: its session's steering log could not be folded: ${serializeUnknownError(error)}`,
       });
-      return undefined;
+      throw error;
     }
   }
 
@@ -3386,13 +3431,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
       }
       if (steeringKv !== undefined && steeringSession !== undefined) {
-        await enqueueSteering(sessionId, () =>
-          appendThenApplySteering(steeringKv, sessionId, steeringSession.incarnation, {
-            type: 'promoted',
-            runId,
-            now: runtimeServices.clock.nowISO(),
-          }),
-        );
+        try {
+          await enqueueSteering(sessionId, () =>
+            appendThenApplySteering(steeringKv, sessionId, steeringSession.incarnation, {
+              type: 'promoted',
+              runId,
+              now: runtimeServices.clock.nowISO(),
+            }),
+          );
+        } catch (error) {
+          // The session was already saved as running this run, which will
+          // now never start: record it as failed rather than leave a phantom.
+          try {
+            await saveSession(
+              sessionId,
+              conversation,
+              { lastRunId: runId, lastRunStatus: 'error', lastError: serializeUnknownError(error) },
+              request.agentName,
+              baseConversationHistory,
+            );
+          } catch (rollbackError) {
+            diagnose({
+              level: 'error',
+              scope: 'steering',
+              message: `[bureau] Could not mark session "${sessionId}" failed after run "${runId}" failed to start: ${serializeUnknownError(rollbackError)}`,
+            });
+          }
+          throw error;
+        }
       } else {
         getSessionSteeringGate(sessionId).promoteForNewRun(runId, runtimeServices.clock.nowISO());
       }
@@ -7651,8 +7717,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return outcome;
     }
     const outcome = await enqueueSteering(sessionId, () =>
-      admitDurableSteeringCommand(kv, session.incarnation, command, () =>
-        liveSessionRunIds(sessionId),
+      admitDurableSteeringCommand(
+        kv,
+        session.incarnation,
+        command,
+        () => liveSessionRunIds(sessionId),
+        undefined,
+        'policyRef' in request.requestedValue && request.requestedValue.policyRef !== undefined
+          ? request.requestedValue
+          : undefined,
       ),
     );
     if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
@@ -7707,6 +7780,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     request: ImplementedSteeringCommand,
     liveRunIdsNow: () => string[],
     refusal?: SteeringRefusal['outcome'],
+    submittedValue?: SteeringRequestedValue,
   ): Promise<SteeringCommandAdmissionOutcome> {
     // A private copy: the event appended, the event applied, and what the
     // caller may later mutate must never differ.
@@ -7718,7 +7792,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const current = await runtime.sessionStore?.load(sessionId);
       if (current?.incarnation !== incarnation) return { outcome: 'not-found' };
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
-      const answered = answerSteeringRetry(cursor.ledger, cursor.refusals, command);
+      const answered = answerSteeringRetry(
+        cursor.ledger,
+        cursor.refusals,
+        asSubmittedRetry(cursor.ledger, cursor.submitted, command),
+      );
       if (answered !== undefined) return answered;
 
       let expectedBinding: string | null = null;
@@ -7758,10 +7836,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // Live runs and the clock are read now, on this attempt, not when the
       // caller queued: a run that ended (and logged it) while this waited
       // must not be bound, and a deadline is judged at the moment of decision.
+      // Checked again as close to the append as possible. The log cannot
+      // condition on the session record itself (it changes on every save),
+      // so a deletion committing in the instant between this read and the
+      // append can still win; the orphan it leaves is removed by the boot
+      // sweep, and the admission is equivalent to one that landed just
+      // before the deletion.
+      const stillLive = await runtime.sessionStore?.load(sessionId);
+      if (stillLive?.incarnation !== incarnation) return { outcome: 'not-found' };
       const now = runtimeServices.clock.nowISO();
       const event: Extract<SteeringLogEvent, { type: 'admit' | 'refused' }> =
         refusal === undefined
-          ? { type: 'admit', command, liveRunIds: liveRunIdsNow(), now }
+          ? {
+              type: 'admit',
+              command,
+              liveRunIds: liveRunIdsNow(),
+              now,
+              ...(submittedValue !== undefined ? { submittedValue } : {}),
+            }
           : { type: 'refused', command, outcome: refusal, now };
       const appended = await appendSteeringLogEvent(
         kv,
@@ -7772,7 +7864,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         expectedBinding,
       );
       if (appended.status === 'appended') {
-        const outcome = applySteeringEvent(cursor.gate, cursor.refusals, event);
+        const outcome = applySteeringEvent(cursor.gate, cursor.refusals, event, cursor.submitted);
         cursor.applied += 1;
         cursor.head = appended.head;
         if (outcome === undefined) throw new Error('an admit event always yields an outcome');
@@ -7795,6 +7887,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<SteeringCommandAdmissionOutcome | undefined> {
     const ledger = createSteeringCommandLedger();
     const refusals = new Map<string, Map<string, SteeringRefusal>>();
+    const submitted = new Map<string, Map<string, SteeringRequestedValue>>();
     const gate = createSteeringGate(binding.sessionId, ledger, runtimeServices.clock);
     const head = await readSteeringLogHead(kv, binding.sessionId, binding.incarnation);
     const events = await readSteeringLogEntries(
@@ -7804,8 +7897,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       0,
       head.sequence,
     );
-    for (const event of events) applySteeringEvent(gate, refusals, event);
-    return answerSteeringRetry(ledger, refusals, command);
+    for (const event of events) applySteeringEvent(gate, refusals, event, submitted);
+    return answerSteeringRetry(ledger, refusals, asSubmittedRetry(ledger, submitted, command));
   }
 
   function listPendingReviews(): PendingReview[] {

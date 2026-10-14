@@ -276,6 +276,58 @@ describe('durable steering survives SIGKILL', () => {
   );
 
   it(
+    'fails a recovered run whose steering log is corrupt instead of resuming it on defaults',
+    withDirectory('corvidae-steering-recovered-corrupt-', async (directory) => {
+      const { sessionId, incarnation } = await runCrashingChild(directory, 'admitted', [
+        'admit',
+        'model',
+      ]);
+      const storage = await resolveStorage({
+        type: 'sqlite',
+        path: join(directory, 'bureau.sqlite'),
+      });
+      const kv = textValueStore(storage);
+      const [entryKey] = (await kv.list('steering-log:v1:')).filter((key) =>
+        key.includes(':entry:'),
+      );
+      if (entryKey === undefined) throw new Error('expected a logged entry');
+      await kv.set(entryKey, '{"type":"admit"}');
+      expect((await readSteeringLogHead(kv, sessionId, incarnation)).sequence).toBeGreaterThan(0);
+      await kv.close();
+      await Bun.sleep(CLAIM_TTL_MS * 10);
+
+      let generateCalls = 0;
+      const recovering = await createBureau({
+        agents: {},
+        generate: async () => {
+          generateCalls += 1;
+          return { content: 'done', toolCalls: [] };
+        },
+        toolbox: createToolbox([]),
+        storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+        durableExecution: true,
+        durableOwnership: CLAIM_OPTIONS,
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      try {
+        await recovering.waitForRecovery?.();
+        let status: string | undefined;
+        for (let attempt = 0; attempt < 300; attempt += 1) {
+          const runs = await recovering.listDurableRuns?.();
+          status = runs?.items[0]?.status;
+          if (status === 'failed' || status === 'completed') break;
+          await Bun.sleep(10);
+        }
+        expect(status).toBe('failed');
+        expect(generateCalls).toBe(0);
+      } finally {
+        await recovering.dispose();
+      }
+    }),
+    60_000,
+  );
+
+  it(
     'sweeps a steering log whose session no longer exists at boot',
     withDirectory('corvidae-steering-orphan-', async (directory) => {
       const path = join(directory, 'bureau.sqlite');
