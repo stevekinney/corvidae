@@ -11,6 +11,7 @@
  * script. Only committed source reaches the container; the host's `node_modules` is never
  * mounted. The image digest, Bun version, and source SHA are printed for the evidence record.
  */
+import { constants } from 'node:os';
 import { join } from 'node:path';
 
 export const IMAGE = 'mcr.microsoft.com/playwright:v1.63.0-noble';
@@ -88,7 +89,44 @@ async function runMode(mode: ContainerMode): Promise<number> {
   }
 }
 
+export type ModeResult = [mode: ContainerMode, status: number];
+
+/**
+ * Run each container mode in turn, stopping before the next one once a signal has arrived. A
+ * Ctrl-C during the first mode stops that container (see `runMode`) and must not then start the
+ * second.
+ */
+export async function runContainerModes(
+  modes: readonly ContainerMode[],
+  runOne: (mode: ContainerMode) => Promise<number>,
+  receivedSignal: () => NodeJS.Signals | undefined,
+): Promise<ModeResult[]> {
+  const results: ModeResult[] = [];
+  for (const mode of modes) {
+    if (receivedSignal() !== undefined) break;
+    process.stdout.write(`[linux-lifecycle] running the lifecycle cases (${mode})\n`);
+    results.push([mode, await runOne(mode)]);
+  }
+  return results;
+}
+
+/** `128 + n` when signal `n` interrupted the run, otherwise 0 only when every mode passed. */
+export function recipeExitStatus(
+  results: readonly ModeResult[],
+  signal: NodeJS.Signals | undefined,
+  expectedModes: number,
+): number {
+  if (signal !== undefined) return 128 + constants.signals[signal];
+  return results.length === expectedModes && results.every(([, status]) => status === 0) ? 0 : 1;
+}
+
 async function main(): Promise<void> {
+  let received: NodeJS.Signals | undefined;
+  const onSignal = (signal: NodeJS.Signals): void => {
+    received ??= signal;
+  };
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
   const sha = git(['rev-parse', 'HEAD']);
   if (git(['status', '--porcelain']) !== '') {
     process.stderr.write('[linux-lifecycle] the tree is dirty; only HEAD is tested\n');
@@ -102,15 +140,15 @@ async function main(): Promise<void> {
     .stdout.toString()
     .trim();
   process.stdout.write(`[linux-lifecycle] source ${sha}, image ${digest}, bun ${BUN_VERSION}\n`);
-  const results: [ContainerMode, number][] = [];
-  for (const mode of ['init', 'no-init'] as const) {
-    process.stdout.write(`[linux-lifecycle] running the lifecycle cases (${mode})\n`);
-    results.push([mode, await runMode(mode)]);
-  }
+  const modes = ['init', 'no-init'] as const;
+  const results = await runContainerModes(modes, runMode, () => received);
   for (const [mode, status] of results) {
     process.stdout.write(`[linux-lifecycle] ${mode}: exit ${status}\n`);
   }
-  process.exitCode = results.every(([, status]) => status === 0) ? 0 : 1;
+  if (received !== undefined) {
+    process.stderr.write(`[linux-lifecycle] interrupted by ${received}; remaining modes skipped\n`);
+  }
+  process.exitCode = recipeExitStatus(results, received, modes.length);
 }
 
 if (import.meta.main) {
