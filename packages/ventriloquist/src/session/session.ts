@@ -34,6 +34,7 @@ import type {
   TerminalDimensions,
 } from './session-types.ts';
 import { attempt, combineOutcomes, settleWithin, type Settling } from './settle.ts';
+import { SourceAcquisitionError } from './source-acquisition-error.ts';
 
 type QueuedOperation =
   | { readonly sequence: number; readonly kind: 'input'; readonly bytes: Uint8Array }
@@ -145,35 +146,45 @@ export class Session {
     this.#resolveClosed = resolveClosed;
   }
 
-  /** Open every source; if one cannot be opened, release those already acquired before rethrowing. */
+  /**
+   * Open every source; if one cannot be opened, release those already acquired and throw an error
+   * that carries the outcome of that release, so the owner of the slot can quarantine on an
+   * incomplete or unknown one instead of losing it.
+   */
   #openSources(definitions: readonly OutputSource[]): readonly OpenSource[] {
     const opened: OpenSource[] = [];
     try {
       for (const definition of definitions) opened.push(openSource(definition));
     } catch (error) {
-      for (const source of opened) {
-        void source.release(this.#clock, this.#budgets.cleanupDeadlineMilliseconds);
-      }
-      throw error;
+      const releases = opened.map((source) =>
+        source.release(this.#clock, this.#budgets.cleanupDeadlineMilliseconds),
+      );
+      throw new SourceAcquisitionError(
+        error,
+        Promise.all(releases).then((outcomes) => combineOutcomes(outcomes)),
+      );
     }
     return opened;
   }
 
-  /** The three state axes, quarantine and ownership, as they are right now. */
+  /**
+   * The three state axes, quarantine and ownership, as they are right now. Every part is a frozen
+   * copy: the session's own state is never reachable from what it hands out.
+   */
   get snapshot(): SessionSnapshot {
-    return {
+    return Object.freeze({
       sessionIdentity: this.sessionId,
-      process: this.#process,
-      connection: this.#connection,
-      cleanup: this.#cleanup,
+      process: Object.freeze({ ...this.#process }),
+      connection: Object.freeze({ ...this.#connection }),
+      cleanup: Object.freeze({ ...this.#cleanup }),
       quarantined: this.#quarantined,
       closed: this.#finalized,
-      ownership: {
-        process: this.#backend === undefined ? 'none' : 'owned',
-        sources: this.#sources.map((source) => source.ownership),
-        view: this.#connection.kind === 'attached' ? 'bound' : 'unbound',
-      },
-    };
+      ownership: Object.freeze({
+        process: this.#backend === undefined ? ('none' as const) : ('owned' as const),
+        sources: Object.freeze(this.#sources.map((source) => source.ownership)),
+        view: this.#connection.kind === 'attached' ? ('bound' as const) : ('unbound' as const),
+      }),
+    });
   }
 
   /**
@@ -639,11 +650,15 @@ export class Session {
     const summary: SessionClosedSummary = {
       sessionIdentity: this.sessionId,
       cause,
-      process: this.#process,
+      process: Object.freeze({ ...this.#process }),
       cleanup,
-      drain: { state: unavailableBytes === 0 ? 'drained' : 'truncated', unavailableBytes },
+      drain: Object.freeze({
+        state: unavailableBytes === 0 ? ('drained' as const) : ('truncated' as const),
+        unavailableBytes,
+      }),
       quarantined: this.#quarantined,
     };
+    Object.freeze(summary);
     this.#emit({ type: 'sessionClosed', summary });
     this.#finalized = true;
     this.#resolveClosed(summary);

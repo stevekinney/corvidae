@@ -6,6 +6,8 @@ import type { AttachmentAuthority, AttachRequest, ProcessBackend } from './sessi
  * host's grant can only narrow what the session offers: a read-only request or grant, or a session
  * with no backend process, yields a read-only attachment with no input, resize or kill. There is no
  * path by which a client widens it, and no read-only exception for automatic terminal replies.
+ * The result is deeply frozen, because the session consults this same object on every operation:
+ * a holder that could edit it would be editing the authority itself.
  */
 export function deriveAuthority(
   generation: number,
@@ -21,5 +23,9 @@ export function deriveAuthority(
     kill: !readOnly,
     readOnly,
   };
-  return { generation, capabilities, canWrite: capabilities.input || capabilities.resize };
+  return Object.freeze({
+    generation,
+    capabilities: Object.freeze(capabilities),
+    canWrite: capabilities.input || capabilities.resize,
+  });
 }

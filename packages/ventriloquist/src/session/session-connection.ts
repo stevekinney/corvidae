@@ -3,7 +3,7 @@ import { describeFailure } from '../protocol/failure-table.ts';
 import { HostEndpoint, type HostEndpointOptions } from '../protocol/host-endpoint.ts';
 import type { ClientMessage, HelloMessage } from '../protocol/messages.ts';
 import { MAXIMUM_FRAME_PAYLOAD_BYTES } from '../protocol/protocol-constants.ts';
-import type { ProtocolFailure, ProtocolResult } from '../protocol/protocol-failure.ts';
+import { accept, type ProtocolFailure, type ProtocolResult } from '../protocol/protocol-failure.ts';
 import type {
   AttachmentGrant,
   InputFailureReason,
@@ -48,6 +48,12 @@ export class SessionConnection {
   readonly #host: HostEndpoint;
   #attachment: SessionAttachment | undefined;
   #closeCode: number | undefined;
+  /** The close code to use once the cleanup result has been sent, when a failure fixed one earlier. */
+  #closeCodeAfterCleanup: number | undefined;
+  /** How many of the session's sources have reported completion on this attachment. */
+  #sourcesCompleted = 0;
+  /** A process exit held back until output has ended, so no trailing byte follows it. */
+  #pendingExit: { readonly exitCode: number | null; readonly signal: string | null } | undefined;
 
   constructor(options: SessionConnectionOptions) {
     this.#options = options;
@@ -56,12 +62,14 @@ export class SessionConnection {
 
   /** Feed one frame received from the client. */
   receive(frame: Uint8Array | string): void {
-    this.#attachment?.heartbeat();
     const received = this.#host.receive(frame);
     if (!received.ok) {
       this.#reject(received.failure);
       return;
     }
+    // Liveness is earned only by a frame the endpoint accepted for this session and generation: a
+    // stale, foreign or malformed frame proves nothing about the peer and must not keep a process alive.
+    this.#attachment?.heartbeat();
     this.#dispatch(received.value);
   }
 
@@ -124,7 +132,7 @@ export class SessionConnection {
       generation: result.authority.generation,
       capabilities: result.authority.capabilities,
     });
-    this.#sent(issued.ok ? { frame: issued.value, sequence: 0 } : undefined);
+    this.#deliver(issued.ok ? accept({ frame: issued.value, sequence: 0 }) : issued);
   }
 
   /** A host callback that throws is a refusal, never an escape: no generation is issued and the transport closes. */
@@ -137,17 +145,31 @@ export class SessionConnection {
   }
 
   #resolve(sequence: number, receipt: InputReceipt): void {
-    this.#sent(
+    this.#deliver(
       receipt.disposition === 'accepted'
-        ? this.#unwrap(this.#host.acknowledgeOperation(sequence))
-        : this.#unwrap(
-            this.#host.failOperation(sequence, failureCodeFor(receipt.reason), receipt.reason),
-          ),
+        ? this.#host.acknowledgeOperation(sequence)
+        : this.#host.failOperation(sequence, failureCodeFor(receipt.reason), receipt.reason),
     );
   }
 
-  #unwrap(result: ProtocolResult<SentFrame>): SentFrame | undefined {
-    return result.ok ? result.value : undefined;
+  /**
+   * Put what the endpoint built on the transport, and return whether it was sent. A frame the
+   * endpoint refused to build was never delivered, so the client's view has diverged from the
+   * session's: that fails the attachment closed, revoking the generation and closing the transport
+   * with the failure's code. The one exception is a refusal because the attachment has already
+   * ended, which an earlier failure or the cleanup result has already reported.
+   */
+  #deliver(result: ProtocolResult<SentFrame>): boolean {
+    if (result.ok) {
+      this.#transmit(result.value.frame);
+      return true;
+    }
+    const { failure } = result;
+    if (failure.reason !== 'attachment-revoked') {
+      void this.#attachment?.protocolViolation();
+      this.#close(describeFailure(failure.code).closeCode);
+    }
+    return false;
   }
 
   /** Close the transport once. The first reason stands, so a fatal failure's code is not replaced by the cleanup's. */
@@ -159,10 +181,6 @@ export class SessionConnection {
     } catch {
       // The code is recorded and the transport is already unusable; a close that throws has nothing left to do.
     }
-  }
-
-  #sent(sent: SentFrame | undefined): void {
-    if (sent !== undefined) this.#transmit(sent.frame);
   }
 
   /**
@@ -197,29 +215,55 @@ export class SessionConnection {
         this.#sendOutput(event);
         break;
       case 'processExit':
-        this.#sent(this.#unwrap(this.#host.processExit(event.exitCode, event.signal)));
+        // The backend can report its exit before its streams reach end of file. The contract orders
+        // "PTY EOF or source completion, then the distinct process-exit result", and the endpoint
+        // refuses output after the exit, so the exit waits for the end of output.
+        this.#pendingExit = { exitCode: event.exitCode, signal: event.signal };
+        this.#flushExitWhenOutputEnded();
+        break;
+      case 'sourceComplete':
+        this.#sourcesCompleted += 1;
+        this.#flushExitWhenOutputEnded();
         break;
       case 'operationResult':
-        this.#sent(
-          this.#unwrap(
-            this.#host.failOperation(
-              event.sequence,
-              event.disposition === 'unknown' ? 'transport-failed' : 'backend-failed',
-              event.reason,
-            ),
+        this.#deliver(
+          this.#host.failOperation(
+            event.sequence,
+            event.disposition === 'unknown' ? 'transport-failed' : 'backend-failed',
+            event.reason,
           ),
         );
         break;
-      case 'sessionClosed':
-        this.#sent(this.#unwrap(this.#host.cleanupResult(event.summary.cleanup)));
-        this.#close(1000);
-        break;
-      case 'sourceComplete':
       case 'attachmentRevoked':
-        // Neither has a wire message: end of file is invisible to the client except as the
-        // absence of a process-exit, and revocation is announced by the cleanup result that follows.
+        // No further output is accepted once the generation is revoked, so a held exit is final.
+        this.#flushExit();
+        if (event.cause === 'start-failed') {
+          // The backend never started: report the failure, never a process exit, and close with its code.
+          this.#deliver(this.#host.attachmentError('spawn-failed', 'the backend failed to start'));
+          this.#closeCodeAfterCleanup ??= describeFailure('spawn-failed').closeCode;
+        }
+        // Otherwise revocation has no wire message of its own: the cleanup result that follows announces it.
+        break;
+      case 'sessionClosed':
+        this.#flushExit();
+        this.#deliver(this.#host.cleanupResult(event.summary.cleanup));
+        this.#close(this.#closeCodeAfterCleanup ?? 1000);
         break;
     }
+  }
+
+  /** Send the held process exit once every source has completed, or at once when there are none to wait for. */
+  #flushExitWhenOutputEnded(): void {
+    if (this.#sourcesCompleted >= this.#options.session.snapshot.ownership.sources.length) {
+      this.#flushExit();
+    }
+  }
+
+  #flushExit(): void {
+    const exit = this.#pendingExit;
+    if (exit === undefined) return;
+    this.#pendingExit = undefined;
+    this.#deliver(this.#host.processExit(exit.exitCode, exit.signal));
   }
 
   /** Send a chunk as however many frames the payload budget needs, preserving every byte and the order. */
@@ -228,7 +272,7 @@ export class SessionConnection {
     let offset = 0;
     do {
       const slice = event.bytes.subarray(offset, offset + limit);
-      this.#sent(this.#unwrap(this.#host.output(event.channel, slice)));
+      if (!this.#deliver(this.#host.output(event.channel, slice))) return;
       offset += limit;
     } while (offset < event.bytes.length);
   }

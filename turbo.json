@@ -154,7 +154,7 @@
       ]
     },
     "@lostgradient/ventriloquist#test": {
-      "outputs": [],
+      "outputs": ["test-results/**"],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV"],
       "inputs": [
@@ -166,7 +166,7 @@
     },
     "@lostgradient/ventriloquist#test:coverage": {
       "dependsOn": ["transit"],
-      "outputs": ["coverage/**"],
+      "outputs": ["coverage/**", "test-results/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",

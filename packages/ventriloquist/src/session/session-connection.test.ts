@@ -189,17 +189,25 @@ describe('input, resize and acknowledgement', () => {
   test('input after the process exited is refused with an explicit failure, not queued', async () => {
     const { harness, transport } = await wire();
     harness.session.reportProcessExit(0, null);
-    transport.pump();
-    // Process exit revokes the generation, so the client refuses the input before any frame exists.
+    // The exit waits for end of file, so the client still holds authority: the session refuses the input.
+    transport.send(transport.client.input(utf8('early')));
+    expect(transport.pump()).toMatchObject([
+      { kind: 'operation-failure', code: 'read-only', message: 'input-disabled' },
+    ]);
+    harness.stream.end();
+    await flush();
+    expect(transport.pump().map((message) => message.kind)).toEqual([
+      'process-exit',
+      'cleanup-result',
+    ]);
+    // The exit and the cleanup result ended the generation, so the client refuses further input before any frame exists.
     const late = transport.client.input(utf8('late'));
     expect(late).toMatchObject({
       ok: false,
-      failure: { code: 'read-only', reason: 'authority-revoked' },
+      failure: { code: 'stale-generation', reason: 'attachment-revoked' },
     });
     expect(transport.pump()).toEqual([]);
     expect(harness.backend?.calls.filter((call) => call.call === 'write')).toEqual([]);
-    harness.stream.end();
-    await flush();
   });
 
   test('the session FIFO limit and input budget are reported as fifo-full without touching authority', async () => {
@@ -459,5 +467,123 @@ describe('exit, stop and the final result', () => {
     await flush();
     const summary = await harness.session.closed;
     expect(summary.cause).toBe('liveness-expired');
+  });
+});
+
+describe('trailing output after the process exit', () => {
+  test('output the backend produced before its streams ended is delivered before the process exit', async () => {
+    const { harness, transport } = await wire();
+    harness.stream.push(utf8('first'));
+    await flush();
+    harness.session.reportProcessExit(0, null);
+    // The exit has been reported, but the stream has not reached end of file.
+    harness.stream.push(utf8('trailing'));
+    await flush();
+    expect(transport.pump().map((message) => message.kind)).toEqual(['output', 'output']);
+    harness.stream.end();
+    await flush();
+    const rest = transport.pump();
+    expect(rest.map((message) => message.kind)).toEqual(['process-exit']);
+    transport.send(transport.client.consumeOutput(13));
+    await flush();
+    expect(transport.pump().map((message) => message.kind)).toEqual(['cleanup-result']);
+    expect(transport.failures).toEqual([]);
+    const payloads = transport.received
+      .filter((message) => message.kind === 'output')
+      .map((message) => new TextDecoder().decode(message.payload));
+    expect(payloads).toEqual(['first', 'trailing']);
+  });
+
+  test('an exit whose streams never end is sent when the attachment is revoked, before the cleanup result', async () => {
+    const { harness, transport } = await wire();
+    harness.session.reportProcessExit(3, null);
+    expect(transport.pump()).toEqual([]);
+    harness.clock.advance(5_000);
+    await flush();
+    const messages = transport.pump();
+    expect(messages.map((message) => message.kind)).toEqual(['process-exit', 'cleanup-result']);
+    expect(messages[0]).toMatchObject({ exitCode: 3 });
+  });
+
+  test('an exit with no sources to wait for is sent at once', async () => {
+    const { harness, transport } = await wire({ sources: [] });
+    harness.session.reportProcessExit(0, null);
+    await flush();
+    expect(transport.pump().map((message) => message.kind)).toEqual([
+      'process-exit',
+      'cleanup-result',
+    ]);
+  });
+
+  test('output the endpoint refuses fails the connection closed instead of being dropped', async () => {
+    const stream = createScriptedStream('pty');
+    // A pipe carries stdout and stderr only, so a pty chunk can never be delivered.
+    const { harness, transport } = await wire({
+      backend: { mode: 'pipe' },
+      sources: [stream.source],
+    });
+    stream.push(utf8('lost'));
+    await flush();
+    expect(transport.closeCodes).toEqual([1002]);
+    expect(harness.session.snapshot.connection.kind).toBe('revoked');
+    const summary = await harness.session.closed;
+    expect(summary.cause).toBe('protocol-failure');
+  });
+});
+
+describe('startup failure', () => {
+  test('a backend that fails to start after capabilities were issued is reported as spawn-failed before the cleanup result', async () => {
+    const harness = createHarness({
+      backend: { start: () => Promise.reject(new Error('no shell')) },
+    });
+    const transport = createFixtureTransport({ session: harness.session });
+    transport.connect();
+    expect(transport.client.phase).toBe('attached');
+    void harness.session.start();
+    await flush();
+    const messages = transport.pump();
+    expect(messages.map((message) => message.kind)).toEqual(['attachment-error', 'cleanup-result']);
+    expect(messages[0]).toMatchObject({ code: 'spawn-failed' });
+    expect(messages.some((message) => message.kind === 'process-exit')).toBe(false);
+    expect(transport.failures).toEqual([]);
+    // The close waits for the cleanup result, and carries the table's spawn-failed code.
+    expect(transport.closeCodes).toEqual([1011]);
+  });
+});
+
+describe('liveness', () => {
+  test('a stale frame does not count as liveness', async () => {
+    const { harness, transport } = await wire();
+    harness.clock.advance(20_000);
+    transport.connection.receive(forged({ kind: 'input', payload: utf8('x') }, 1, 99));
+    harness.clock.advance(20_000);
+    expect(harness.session.snapshot.connection.kind).toBe('revoked');
+    await flush();
+    const summary = await harness.session.closed;
+    expect(summary.cause).toBe('liveness-expired');
+  });
+
+  test('a frame for another session does not count as liveness', async () => {
+    const { harness, transport } = await wire();
+    harness.clock.advance(20_000);
+    const foreign = encodeFrame({
+      kind: 'resize',
+      sessionId: '7c1d2e3f-4a5b-4c6d-8e7f-90a1b2c3d4e5',
+      attachmentGeneration: 1,
+      sequence: 1,
+      columns: 10,
+      rows: 10,
+    } as unknown as ClientMessage);
+    if (foreign.ok) transport.connection.receive(foreign.value);
+    harness.clock.advance(20_000);
+    expect(harness.session.snapshot.connection.kind).toBe('revoked');
+  });
+
+  test('a malformed frame does not count as liveness', async () => {
+    const { harness, transport } = await wire();
+    harness.clock.advance(20_000);
+    transport.connection.receive('not a frame');
+    harness.clock.advance(20_000);
+    expect(harness.session.snapshot.connection.kind).toBe('revoked');
   });
 });

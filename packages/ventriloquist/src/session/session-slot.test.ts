@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ManualClock } from './fixtures/manual-clock.ts';
 import { createScriptedBackend, type ScriptedBackendOptions } from './fixtures/scripted-backend.ts';
-import { createScriptedStream } from './fixtures/scripted-sources.ts';
+import { createScriptedStream, type ReleaseBehavior } from './fixtures/scripted-sources.ts';
 import { SessionSlot } from './session-slot.ts';
 import { flush, Recorder, SESSION_ID } from './session.test-support.ts';
 
@@ -127,5 +127,56 @@ describe('the ownership slot', () => {
       accepted: false,
       reason: 'stale-session',
     });
+  });
+});
+
+describe('a source that cannot be opened during construction', () => {
+  /** A slot request whose second source throws on open, after the first has been acquired. */
+  function failingOptions(sessionId: string, release: ReleaseBehavior, clock = new ManualClock()) {
+    const acquired = createScriptedStream('pty', { cancel: release });
+    const locked = {
+      kind: 'stream' as const,
+      channel: 'stderr' as const,
+      stream: {
+        getReader: (): never => {
+          throw new TypeError('stream is locked');
+        },
+      },
+    };
+    return { ...options(sessionId), clock, sources: [acquired.source, locked] };
+  }
+
+  test.each(['reject', 'hang'] as const)(
+    'quarantines the slot when releasing the sources already acquired %ss',
+    async (release) => {
+      const clock = new ManualClock();
+      const slot = new SessionSlot();
+      expect(() => slot.create(failingOptions(SESSION_ID, release, clock))).toThrow(
+        'stream is locked',
+      );
+      await flush();
+      // A hanging release has not been observed yet, so the slot is held rather than reusable.
+      if (release === 'hang') {
+        expect(slot.create(options(OTHER_ID))).toEqual({ accepted: false, reason: 'occupied' });
+        clock.advance(5_000);
+        await flush();
+      }
+      expect(slot.create(options(OTHER_ID))).toEqual({ accepted: false, reason: 'quarantined' });
+      expect(slot.create(options(THIRD_ID))).toEqual({ accepted: false, reason: 'quarantined' });
+      expect(slot.current).toBeUndefined();
+    },
+  );
+
+  test('admits a replacement once the acquired sources are released completely', async () => {
+    const slot = new SessionSlot();
+    expect(() => slot.create(failingOptions(SESSION_ID, 'resolve'))).toThrow('stream is locked');
+    await flush();
+    expect(slot.create(options(OTHER_ID)).accepted).toBe(true);
+  });
+
+  test('holds the slot while the release is still in flight', async () => {
+    const slot = new SessionSlot();
+    expect(() => slot.create(failingOptions(SESSION_ID, 'hang'))).toThrow('stream is locked');
+    expect(slot.create(options(OTHER_ID))).toEqual({ accepted: false, reason: 'occupied' });
   });
 });
