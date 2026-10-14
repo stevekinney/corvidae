@@ -48,7 +48,7 @@ The gate runs in two layers. First the runner starts the static server (`scripts
 
 The build digest is the SHA-256 of the served directory's manifest: one `<sha256>  <path>` line per file, keyed by its POSIX path relative to that directory and sorted by path. `test-results/static-production/` holds `report.json` (each failing case with its diagnostics and screenshot path, the case count, worker count, source SHA, build digest, export duration, and peak resident set), the manifest as `manifest.sha256`, and failure screenshots. Run the gate after a direct `bun run --filter=@lostgradient/playground build`, not a `turbo run build` restored from cache: a cached `build/` without its matching report fails the digest or source check, on purpose.
 
-A pull request that changes any path listed in `scripts/ignore-build.sh` runs `test:production` against a fresh production build of its head before merge, and records the case count, the build digest, and the exit status in the pull request body. Deployed verification then compares the live site's digest with that report.
+This is a manual practice; nothing runs it automatically, and this workspace has no CI. Before merging a pull request that changes a path in `scripts/ignore-build.sh`, run `bun run --filter=@lostgradient/playground build` and then `test:production` on the pull request's head, and record the case count, the build digest, and the exit status in the pull request body. Comparing the deployed site's digest with that report is likewise a manual verification step after the deployment.
 
 ## Deployment
 

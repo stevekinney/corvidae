@@ -60,6 +60,10 @@ process.exitCode = await runStaticPlaygroundGate({
           '--mode',
           argumentValue('--mode') ?? 'pass',
           ...(record === undefined ? [] : ['--record', record]),
+          ...(argumentValue('--environment-record') === undefined
+            ? []
+            : ['--environment-record', argumentValue('--environment-record') ?? '']),
+          ...(process.argv.includes('--stubborn') ? ['--stubborn'] : []),
         ],
       }),
 });

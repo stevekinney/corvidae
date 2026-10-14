@@ -65,9 +65,11 @@ export function readEnvironmentConfiguration() {
 }
 
 /**
- * Names that can carry a credential. The static production gate removes every matching variable
- * before its credential-independent run, and fails when a matching value appears in served output.
- * Case-sensitive on purpose: Bun's lowercase `npm_*` script variables, `HOME`, and `PATH` stay.
+ * Names that can carry a credential. The static production gate scrubs every matching variable
+ * from the environment it gives its child processes (the static server, and Playwright with its
+ * browsers), and fails when the value of any matching variable in its own environment appears in
+ * a served file. Case-sensitive on purpose: Bun's lowercase `npm_*` script variables, `HOME`, and
+ * `PATH` stay.
  */
 export const SECRET_ENVIRONMENT_NAME =
   /^(VERCEL_.*|.*TOKEN.*|.*SECRET.*|.*PASSWORD.*|.*API_KEY.*|ANTHROPIC_.*|LINEAR_.*)$/;
@@ -84,15 +86,6 @@ export function readScrubbedEnvironment(): Record<string, string> {
   return Object.fromEntries(
     Object.entries(process.env).flatMap(([name, value]) =>
       value !== undefined && !SECRET_ENVIRONMENT_NAME.test(name) ? [[name, value]] : [],
-    ),
-  );
-}
-
-/** The current environment, for forwarding to a child process with additions. */
-export function readProcessEnvironment(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).flatMap(([name, value]) =>
-      value === undefined ? [] : [[name, value]],
     ),
   );
 }

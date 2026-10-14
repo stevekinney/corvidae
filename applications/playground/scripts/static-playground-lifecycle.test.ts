@@ -66,14 +66,27 @@ async function readPid(record: string, label: string): Promise<number> {
   return Number(readFileSync(path, 'utf8').trim());
 }
 
-async function startCase(mode: 'pass' | 'fail' | 'hang'): Promise<RunningCase> {
+async function startCase(
+  mode: 'pass' | 'fail' | 'hang',
+  extraArguments: string[] = [],
+): Promise<RunningCase> {
   const record = await mkdtemp(join(tmpdir(), 'static-lifecycle-record-'));
   const output = await mkdtemp(join(tmpdir(), 'static-lifecycle-output-'));
   const sentinel = Bun.spawn(['/bin/sh', '-c', 'while :; do sleep 1; done'], {
     stdio: ['ignore', 'ignore', 'ignore'],
   });
   const driver = Bun.spawn(
-    [process.execPath, DRIVER, '--mode', mode, '--record', record, '--output', output],
+    [
+      process.execPath,
+      DRIVER,
+      '--mode',
+      mode,
+      '--record',
+      record,
+      '--output',
+      output,
+      ...extraArguments,
+    ],
     { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
   );
   let stdout = '';
@@ -170,6 +183,22 @@ describe('static gate runner lifecycle with stand-in children', () => {
     running.driver.kill(signal);
 
     expect(await running.driver.exited).toBe(status);
+    await expectEverythingGone(running, capture);
+  });
+
+  it('exits 128 + signal for a SIGINT that arrives during cleanup of a passing run', async () => {
+    const running = await startCase('pass', ['--stubborn']);
+    const capture = await captureAndSpawnLate(running);
+    const stubborn = await readPid(running.record, 'stubborn');
+    capture.pids.add(stubborn);
+    await writeFile(join(running.record, 'proceed'), '');
+    // The stubborn sleeper ignores SIGTERM, which holds cleanup in its grace period.
+    await waitFor(() => running.stdout().includes('cleaning up owned processes'));
+    running.driver.kill('SIGINT');
+    // Let cleanup finish promptly rather than wait out the grace and escalate.
+    process.kill(stubborn, 'SIGKILL');
+
+    expect(await running.driver.exited).toBe(130);
     await expectEverythingGone(running, capture);
   });
 

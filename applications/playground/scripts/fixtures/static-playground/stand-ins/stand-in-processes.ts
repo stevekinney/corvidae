@@ -6,14 +6,22 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SLEEPER = 'echo $$ > "$1"; while :; do sleep 1; done';
+const STUBBORN_SLEEPER = `trap '' TERM; ${SLEEPER}`;
 
 /**
  * Start a sleeper that records its PID as `<record>/<label>.pid`. A detached sleeper leads a new
  * process group and names `marker` on its command line, the way Chromium leaves the test runner's
  * group but names its profile inside the run-owned `TMPDIR`.
  */
-export function startSleeper(record: string, label: string, detached = false, marker = ''): void {
-  const command = ['/bin/sh', '-c', SLEEPER, 'stand-in-sleeper', join(record, `${label}.pid`)];
+export function startSleeper(
+  record: string,
+  label: string,
+  detached = false,
+  marker = '',
+  ignoreTermination = false,
+): void {
+  const script = ignoreTermination ? STUBBORN_SLEEPER : SLEEPER;
+  const command = ['/bin/sh', '-c', script, 'stand-in-sleeper', join(record, `${label}.pid`)];
   if (marker !== '') command.push(`--profile=${marker}`);
   const sleeper = Bun.spawn(command, { stdio: ['ignore', 'ignore', 'ignore'], detached });
   sleeper.unref();

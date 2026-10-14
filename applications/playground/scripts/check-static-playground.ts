@@ -17,14 +17,14 @@
  *
  * `report.json`, the digest manifest, and failure screenshots land in `--output`, which persists.
  */
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import {
-  readProcessEnvironment,
+  readScrubbedEnvironment,
   readSecretEnvironmentEntries,
 } from '../src/environment-configuration.ts';
 import { EXPORT_REPORT_PATH, type ExportReport, parseExportReport } from './export-report.ts';
@@ -221,12 +221,18 @@ async function startServer(state: RunState): Promise<{ server: OwnedChild; origi
   return { server, origin: `http://127.0.0.1:${port}` };
 }
 
-function childEnvironment(
+/**
+ * A child's environment: the runner's own with every credential-shaped variable removed, plus the
+ * run-owned temporary directory and `additions`. Neither the static server nor Playwright and its
+ * browsers needs a credential, so none is handed to them; the unscrubbed values are read only by
+ * the served-byte leak scan in the runner itself.
+ */
+export function childEnvironment(
   runDirectory: string,
   additions: Record<string, string>,
 ): Record<string, string> {
   return {
-    ...readProcessEnvironment(),
+    ...readScrubbedEnvironment(),
     TMPDIR: runDirectory,
     TMP: runDirectory,
     TEMP: runDirectory,
@@ -355,9 +361,34 @@ function statusForError(error: unknown, report: GateReport): number {
   return 1;
 }
 
+/** A path with symlinks in its existing ancestors resolved, keeping segments that do not exist yet. */
+function canonicalPath(path: string): string {
+  let existing = resolve(path);
+  const missing: string[] = [];
+  while (!existsSync(existing) && dirname(existing) !== existing) {
+    missing.unshift(basename(existing));
+    existing = dirname(existing);
+  }
+  return join(realpathSync(existing), ...missing);
+}
+
+/**
+ * The report, manifest, and screenshots are written after the digest is computed, so an output
+ * directory inside the served one would change the bytes the report vouches for.
+ */
+export function assertOutputOutsideServedDirectory(output: string, directory: string): void {
+  const fromServed = relative(canonicalPath(directory), canonicalPath(output));
+  if (fromServed === '' || (!fromServed.startsWith(`..${sep}`) && fromServed !== '..')) {
+    throw new Error(
+      `[static-playground] --output ${output} must be outside the served directory ${directory}`,
+    );
+  }
+}
+
 /** Run the gate and return its exit status. Every process it starts is gone when it resolves. */
 export async function runStaticPlaygroundGate(options: GateOptions): Promise<number> {
   const startedAt = performance.now();
+  assertOutputOutsideServedDirectory(options.output, options.directory);
   await mkdir(options.output, { recursive: true });
   await rm(join(options.output, 'screenshots'), { recursive: true, force: true });
   const runDirectory = realpathSync(await mkdtemp(join(tmpdir(), 'static-playground-')));
@@ -365,8 +396,13 @@ export async function runStaticPlaygroundGate(options: GateOptions): Promise<num
   const owner = new ProcessOwner({ marker: runDirectory });
   const interruption = Promise.withResolvers<never>();
   interruption.promise.catch(() => undefined);
-  const onSignal = (signal: NodeJS.Signals): void =>
+  // Recorded apart from the promise: a signal that lands during cleanup, after the gate itself
+  // settled, still has to decide the exit status.
+  let receivedSignal: NodeJS.Signals | undefined;
+  const onSignal = (signal: NodeJS.Signals): void => {
+    receivedSignal ??= signal;
     interruption.reject(new GateInterrupted(signal));
+  };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
   const report = emptyReport(options);
@@ -383,10 +419,14 @@ export async function runStaticPlaygroundGate(options: GateOptions): Promise<num
   } catch (error) {
     status = statusForError(error, report);
   }
+  process.stdout.write('[static-playground] cleaning up owned processes\n');
   const cleanup = await owner.cleanup();
   await rm(runDirectory, { recursive: true, force: true });
   process.off('SIGINT', onSignal);
   process.off('SIGTERM', onSignal);
+  if (receivedSignal !== undefined && status !== 128 + signalNumber(receivedSignal)) {
+    status = statusForError(new GateInterrupted(receivedSignal), report);
+  }
   if (!cleanup.complete) {
     const survivors = cleanup.survivors.map((row) => `${row.pid} ${row.args}`).join('; ');
     report.diagnosis =

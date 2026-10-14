@@ -8,6 +8,7 @@ import {
   SECRET_ENVIRONMENT_NAME,
 } from '../src/environment-configuration.ts';
 import {
+  assertOutputOutsideServedDirectory,
   type CaseResult,
   type GateReport,
   parseGateArguments,
@@ -98,6 +99,64 @@ describe('static production gate over fixtures', () => {
     expect(report.preflightFailures).toEqual([
       'served file page/button/index.html contains the value of STATIC_FIXTURE_TOKEN',
     ]);
+  });
+
+  it('gives its children no credential-shaped variable, while still scanning for its value', async () => {
+    const record = await mkdtemp(join(tmpdir(), 'static-gate-environment-'));
+    try {
+      const parentEnvironment = {
+        ...readScrubbedEnvironment(),
+        STATIC_GATE_CHILD_TOKEN: 'a value no fixture file contains',
+      };
+      const environmentRecord = join(record, 'child-secrets.json');
+
+      const { exitCode, report } = await runGate(
+        [process.execPath, DRIVER, '--fixture', 'good', '--environment-record', environmentRecord],
+        parentEnvironment,
+      );
+
+      expect(exitCode).toBe(0);
+      expect(report.preflightFailures).toEqual([]);
+      expect(await Bun.file(environmentRecord).json()).toEqual([]);
+    } finally {
+      await rm(record, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses an output directory inside the served directory', async () => {
+    const served = await mkdtemp(join(tmpdir(), 'static-gate-served-'));
+    try {
+      const gate = Bun.spawn(
+        [
+          process.execPath,
+          CHECK,
+          '--directory',
+          served,
+          '--output',
+          join(served, 'nested', 'report'),
+          '--allow-source-mismatch',
+        ],
+        { env: readScrubbedEnvironment(), stdout: 'pipe', stderr: 'pipe' },
+      );
+      const [exitCode, stderr] = await Promise.all([gate.exited, new Response(gate.stderr).text()]);
+
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain('must be outside the served directory');
+      expect(await Array.fromAsync(new Bun.Glob('**/*').scan({ cwd: served }))).toEqual([]);
+    } finally {
+      await rm(served, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects the served directory itself as output and accepts a sibling', () => {
+    const directory = join(FIXTURES, 'good');
+
+    expect(() => assertOutputOutsideServedDirectory(directory, directory)).toThrow(
+      'must be outside',
+    );
+    expect(() =>
+      assertOutputOutsideServedDirectory(join(FIXTURES, 'good-report'), directory),
+    ).not.toThrow();
   });
 
   it('fails when the export report is missing', async () => {
