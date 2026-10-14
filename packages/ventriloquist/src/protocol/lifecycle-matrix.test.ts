@@ -32,6 +32,7 @@ type Phase =
   | 'attached'
   | 'after-process-exit'
   | 'after-attachment-error'
+  | 'after-submitted-failure'
   | 'after-terminate'
   | 'after-cleanup'
   | 'after-close';
@@ -77,6 +78,7 @@ const PHASES: readonly Phase[] = [
   'attached',
   'after-process-exit',
   'after-attachment-error',
+  'after-submitted-failure',
   'after-terminate',
   'after-cleanup',
   'after-close',
@@ -115,6 +117,7 @@ const LIVE: readonly Phase[] = [
   'attached',
   'after-process-exit',
   'after-attachment-error',
+  'after-submitted-failure',
   'after-terminate',
 ];
 
@@ -170,6 +173,35 @@ const RULES: readonly Rule[] = [
         (c.kind === 'operation-failure' || c.kind === 'cleanup-result')
       ),
     expects: () => 'refused',
+  },
+  {
+    group:
+      'after a submitted-operation failure: no process exit and no attachment error, on either side',
+    cite: '`backend-failed` | server, submitted operation | operation failure; generation revoked | cancel unsent operations; cleanup. / `transport-failed` | either, live session | unknown delivery; generation revoked | disable input; cleanup. / A failed connection is not a successful process exit. / Exit: ... the distinct process-exit result when known, revokes the generation, and emits cleanup-result.',
+    applies: (c) =>
+      c.phase === 'after-submitted-failure' &&
+      (c.kind === 'process-exit' || c.kind === 'attachment-error'),
+    expects: () => 'refused',
+  },
+  {
+    group:
+      'after a submitted-operation failure: input, resize and acknowledgements are over, cancellations, output drain, consumed output, terminate and cleanup stay legal',
+    cite: '`backend-failed` ... generation revoked | cancel unsent operations; cleanup. / `transport-failed` ... generation revoked | disable input; cleanup. / Stop revokes authority immediately, cancels queued but unsubmitted operations with explicit results ... and reports complete, incomplete, or unknown.',
+    applies: (c) => c.phase === 'after-submitted-failure',
+    expects: (c) => {
+      switch (c.kind) {
+        case 'output':
+        case 'output-consumed':
+        case 'terminate':
+          return 'legal';
+        case 'operation-failure':
+          return verdict(c.pending);
+        case 'cleanup-result':
+          return verdict(!c.pending);
+        default:
+          return 'refused';
+      }
+    },
   },
   {
     group: 'a second hello and a second capabilities are duplicates',
@@ -290,20 +322,29 @@ function cellLabel(cell: Cell): string {
   return `${cell.column} ${cell.kind} ${cell.mode} ${cell.phase} pending=${cell.pending}`;
 }
 
-type Rig = { host: HostEndpoint; client: ClientEndpoint; toHost: number; toClient: number };
+type Rig = {
+  host: HostEndpoint;
+  client: ClientEndpoint;
+  toHost: number;
+  toClient: number;
+  /** The operation an acknowledgement or a cancellation names: the oldest one still unresolved. */
+  pendingSequence: number;
+};
 
 /** Reach `phase` through the real endpoints, or `undefined` when no such state exists. */
 function build(mode: Mode, phase: Phase, pending: boolean): Rig | undefined {
   if (pending && mode === 'output-only') return undefined;
   if (pending && phase === 'after-cleanup') return undefined;
   if (mode === 'output-only' && phase === 'after-process-exit') return undefined;
+  // A submitted operation needs input, which an output-only attachment never has.
+  if (mode === 'output-only' && phase === 'after-submitted-failure') return undefined;
   const host = new HostEndpoint();
   const client = new ClientEndpoint({
     sessionId: SESSION_IDENTIFIER,
     requestedMode: REQUESTED[mode],
     token: TOKEN,
   });
-  const rig: Rig = { host, client, toHost: 0, toClient: 0 };
+  const rig: Rig = { host, client, toHost: 0, toClient: 0, pendingSequence: 1 };
   if (phase === 'before-hello') return rig;
   expectOk(host.receive(expectOk(client.hello())));
   if (phase === 'before-capabilities') return rig;
@@ -315,6 +356,23 @@ function build(mode: Mode, phase: Phase, pending: boolean): Rig | undefined {
   const output = expectOk(host.output(CHANNEL[mode], 'x'));
   expectOk(client.receive(output.frame));
   rig.toClient += 1;
+  if (phase === 'after-submitted-failure') {
+    // One operation is accepted into the FIFO, and then fails: `backend-failed` names a submitted one.
+    const submitted = expectOk(client.input('a'));
+    expectOk(host.receive(submitted.frame));
+    expectOk(client.receive(expectOk(host.acknowledgeOperation(submitted.sequence)).frame));
+    rig.toHost += 1;
+    rig.toClient += 1;
+    if (pending) {
+      expectOk(host.receive(expectOk(client.input('b')).frame));
+      rig.toHost += 1;
+      rig.pendingSequence = 2;
+    }
+    const failed = expectOk(host.failOperation(submitted.sequence, 'backend-failed', 'm'));
+    expectOk(client.receive(failed.frame));
+    rig.toClient += 1;
+    return rig;
+  }
   if (pending) {
     expectOk(host.receive(expectOk(client.input('a')).frame));
     rig.toHost += 1;
@@ -382,11 +440,11 @@ function forge(cell: Cell, rig: Rig): Uint8Array | string {
     },
     input: { ...header, kind: 'input', payload },
     resize: { ...header, kind: 'resize', columns: 80, rows: 24 },
-    'operation-ack': { ...header, kind: 'operation-ack', operationSequence: 1 },
+    'operation-ack': { ...header, kind: 'operation-ack', operationSequence: rig.pendingSequence },
     'operation-failure': {
       ...header,
       kind: 'operation-failure',
-      operationSequence: 1,
+      operationSequence: rig.pendingSequence,
       code: 'read-only',
       message: 'm',
     },
@@ -441,9 +499,9 @@ function observe(cell: Cell, rig: Rig): Expectation {
         case 'output:foreign-channel':
           return verdict(host.output(FOREIGN_CHANNEL[cell.mode], 'x').ok);
         case 'operation-ack':
-          return verdict(host.acknowledgeOperation(1).ok);
+          return verdict(host.acknowledgeOperation(rig.pendingSequence).ok);
         case 'operation-failure':
-          return verdict(host.failOperation(1, 'read-only', 'm').ok);
+          return verdict(host.failOperation(rig.pendingSequence, 'read-only', 'm').ok);
         case 'process-exit':
           return verdict(host.processExit(0, null).ok);
         case 'attachment-error':

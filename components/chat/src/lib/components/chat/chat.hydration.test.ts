@@ -22,7 +22,13 @@
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { prepareSvelteServerSource, renderThenHydrate, setupHappyDom } from '@lostgradient/testing';
+import {
+  hydrateServerHtml,
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+  setupHappyDom,
+} from '@lostgradient/testing';
+import { tick } from 'svelte';
 import { createConversation } from './builders.ts';
 import type { ConversationHistory } from './conversation-model.ts';
 
@@ -88,6 +94,33 @@ const emptyConversation: ConversationHistory = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+// Server rendering is a real DOM-free process, so each render happens once here at module scope,
+// off the per-test clock. Every test hydrates the recorded HTML with the SAME props object the
+// server rendered, as `renderThenHydrate` did, and asserts.
+const realClockConversation = createConversation({ id: 'real-clock-conversation' });
+const realClockProps = { id: 'real-clock-chat', conversation: realClockConversation };
+const fixedClockProps = {
+  id: 'default-environment-chat',
+  conversation: createConversation(
+    {
+      id: 'default-environment-conversation',
+    },
+    {
+      now: () => '2026-01-01T00:00:00.000Z',
+    },
+  ),
+};
+const emptyProps = {
+  id: 'stable-empty-chat',
+  conversation: emptyConversation,
+  virtualized: true,
+};
+const [realClockHtml, fixedClockHtml, emptyHtml] = await Promise.all([
+  renderSvelteOnServer(sourcePath, realClockProps),
+  renderSvelteOnServer(sourcePath, fixedClockProps),
+  renderSvelteOnServer(sourcePath, emptyProps),
+]);
+
 describe('Chat hydration', () => {
   // Uses the DEFAULT `now` environment hook rather than an injected clock, so
   // the shape issue #756 described (`createConversation({ id })` with nothing
@@ -105,11 +138,9 @@ describe('Chat hydration', () => {
   // anything that started rendering one would make the reporter's theory
   // correct. (The packaged-consumer causes turned out to be elsewhere.)
   test('hydrates a default-environment createConversation without a mismatch warning', async () => {
-    const conversation = createConversation({ id: 'real-clock-conversation' });
-    const result = await renderThenHydrate(Chat, sourcePath, {
-      id: 'real-clock-chat',
-      conversation,
-    });
+    const conversation = realClockConversation;
+    const result = hydrateServerHtml(Chat, realClockHtml, realClockProps);
+    await tick();
 
     try {
       expect(
@@ -129,18 +160,8 @@ describe('Chat hydration', () => {
   });
 
   test('hydrates a fixed-clock createConversation snapshot without a mismatch warning', async () => {
-    const conversation = createConversation(
-      {
-        id: 'default-environment-conversation',
-      },
-      {
-        now: () => '2026-01-01T00:00:00.000Z',
-      },
-    );
-    const result = await renderThenHydrate(Chat, sourcePath, {
-      id: 'default-environment-chat',
-      conversation,
-    });
+    const result = hydrateServerHtml(Chat, fixedClockHtml, fixedClockProps);
+    await tick();
 
     try {
       expect(
@@ -155,11 +176,8 @@ describe('Chat hydration', () => {
   });
 
   test('hydrates an empty conversation without changing the server-rendered surface', async () => {
-    const result = await renderThenHydrate(Chat, sourcePath, {
-      id: 'stable-empty-chat',
-      conversation: emptyConversation,
-      virtualized: true,
-    });
+    const result = hydrateServerHtml(Chat, emptyHtml, emptyProps);
+    await tick();
 
     try {
       const hydrationWarnings = result.warnings.filter((warning) =>

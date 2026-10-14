@@ -3,18 +3,28 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
+import type { GitHubApi, OpenPullRequestRecord } from './github-api.ts';
 import {
   dispatchSnapshotWorkflow,
+  openSyncPullRequest,
   pullRequestBodyFor,
   pullRequestBranchFor,
+  refusePrepareOffMain,
   reportDrift,
   runMirrorSyncActionCommand,
+  settleSkippedSync,
   snapshotDispatchFor,
+  supersedeOlderPullRequests,
   targetRemoteUrl,
   targetRepositoryFullName,
 } from './mirror-sync-action.ts';
 import { git, runSync } from './sync.ts';
+
+// The end-to-end scenarios clone, install, build, pack and import a package, some twice. They
+// keep the 300-second budget they had as tests as their hang guard, not the 120-second default.
+const END_TO_END_BUDGET_MILLISECONDS = 300_000;
 
 describe('targetRepositoryFullName and targetRemoteUrl', () => {
   test('every mirror target resolves under the account every mirror lives on', () => {
@@ -22,6 +32,20 @@ describe('targetRepositoryFullName and targetRemoteUrl', () => {
     expect(targetRepositoryFullName('cinder')).toBe('stevekinney/cinder');
     expect(targetRepositoryFullName('agent-bureau')).toBe('stevekinney/agent-bureau');
     expect(targetRemoteUrl('weft')).toBe('https://github.com/stevekinney/weft.git');
+  });
+});
+
+describe('refusePrepareOffMain', () => {
+  test('refuses a ref other than main and says why', () => {
+    expect(() => refusePrepareOffMain({ GITHUB_REF: 'refs/heads/feature' })).toThrow(
+      /refs\/heads\/feature.*main/,
+    );
+    expect(() => refusePrepareOffMain({ GITHUB_REF: 'refs/tags/v1' })).toThrow();
+  });
+
+  test('allows main, and an unset ref outside Actions', () => {
+    expect(() => refusePrepareOffMain({ GITHUB_REF: 'refs/heads/main' })).not.toThrow();
+    expect(() => refusePrepareOffMain({})).not.toThrow();
   });
 });
 
@@ -162,23 +186,27 @@ describe('snapshotDispatchFor', () => {
   });
 });
 
-describe('runMirrorSyncActionCommand argument handling', () => {
-  test('refuses an unknown mode without touching git or GitHub', async () => {
+describe('runMirrorSyncActionCommand argument handling', async () => {
+  // Real `bash` steps against real local remotes are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand(['--mode', 'nuke']);
     expect(code).toBe(1);
   });
+  test('refuses an unknown mode without touching git or GitHub', () => rethrow(outcome1));
 
-  test('requires --mode', async () => {
+  const outcome2 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand([]);
     expect(code).toBe(1);
   });
+  test('requires --mode', () => rethrow(outcome2));
 
-  test('requires --target for report mode', async () => {
+  const outcome3 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand(['--mode', 'report', '--work', '/tmp/x']);
     expect(code).toBe(1);
   });
+  test('requires --target for report mode', () => rethrow(outcome3));
 
-  test('refuses an unknown --target for report mode', async () => {
+  const outcome4 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand([
       '--mode',
       'report',
@@ -189,8 +217,9 @@ describe('runMirrorSyncActionCommand argument handling', () => {
     ]);
     expect(code).toBe(1);
   });
+  test('refuses an unknown --target for report mode', () => rethrow(outcome4));
 
-  test('requires --target for prepare mode', async () => {
+  const outcome5 = await outcomeOf(async () => {
     const code = await runMirrorSyncActionCommand([
       '--mode',
       'prepare',
@@ -203,8 +232,9 @@ describe('runMirrorSyncActionCommand argument handling', () => {
     ]);
     expect(code).toBe(1);
   });
+  test('requires --target for prepare mode', () => rethrow(outcome5));
 
-  test('rejects malformed --snapshot input before prepare setup', async () => {
+  const outcome6 = await outcomeOf(async () => {
     const messages: string[] = [];
     const originalWrite = process.stderr.write;
     const captureWrite: typeof process.stderr.write = (chunk) => {
@@ -235,6 +265,7 @@ describe('runMirrorSyncActionCommand argument handling', () => {
 
     expect(messages.join('')).toContain('--snapshot must be "true" or "false"');
   });
+  test('rejects malformed --snapshot input before prepare setup', () => rethrow(outcome6));
 });
 
 /**
@@ -406,55 +437,49 @@ async function withHarness(
   }
 }
 
-const endToEndTimeout = 120_000;
-
-describe('reportDrift', () => {
-  test(
-    'reports a target as behind when the transform would change it, and pushes nothing',
-    async () => {
-      await withHarness(async (harness) => {
-        const report = await reportDrift({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: join(harness.workRoot, 'behind'),
-        });
-        expect(report.behind).toBe(true);
-        expect(report.changed.join('\n')).toContain('packages/cryptography/src/index.ts');
-
-        // Nothing was pushed: the remote's `main` still holds only the seed commit.
-        const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
-        expect(commitCount.trim()).toBe('1');
+describe('reportDrift', async () => {
+  // Real `bash` steps against real local remotes are the behavior; they run at module scope, off the per-test clock.
+  const outcome7 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      const report = await reportDrift({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: join(harness.workRoot, 'behind'),
       });
-    },
-    endToEndTimeout,
-  );
+      expect(report.behind).toBe(true);
+      expect(report.changed.join('\n')).toContain('packages/cryptography/src/index.ts');
 
-  test(
-    'reports a target as up to date once a real sync has caught it up',
-    async () => {
-      await withHarness(async (harness) => {
-        await runSync({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: join(harness.workRoot, 'sync'),
-          scratchDirectory: join(harness.workRoot, 'scratch'),
-          corvidaeCommit: 'corvidae-seed',
-        });
+      // Nothing was pushed: the remote's `main` still holds only the seed commit.
+      const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
+      expect(commitCount.trim()).toBe('1');
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('reports a target as behind when the transform would change it, and pushes nothing', () =>
+    rethrow(outcome7));
 
-        const report = await reportDrift({
-          corvidaeRoot: harness.corvidae,
-          target: 'agent-bureau',
-          remote: harness.remote,
-          directory: join(harness.workRoot, 'after'),
-        });
-        expect(report.behind).toBe(false);
-        expect(report.changed).toEqual([]);
+  const outcome8 = await outcomeOf(async () => {
+    await withHarness(async (harness) => {
+      await runSync({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: join(harness.workRoot, 'sync'),
+        scratchDirectory: join(harness.workRoot, 'scratch'),
+        corvidaeCommit: 'corvidae-seed',
       });
-    },
-    endToEndTimeout,
-  );
+
+      const report = await reportDrift({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        remote: harness.remote,
+        directory: join(harness.workRoot, 'after'),
+      });
+      expect(report.behind).toBe(false);
+      expect(report.changed).toEqual([]);
+    });
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('reports a target as up to date once a real sync has caught it up', () => rethrow(outcome8));
 });
 
 test('snapshot dispatch discovers the release workflow filename from the staged clone', async () => {
@@ -485,4 +510,394 @@ test('snapshot dispatch discovers the release workflow filename from the staged 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+describe('supersession (COR-1433)', () => {
+  const bot = 'lost-gradient-mirror-sync[bot]';
+  const newNumber = 20;
+
+  /** A corvidae history `older -> newer` plus a commit on a side branch that is not an ancestor. */
+  async function withCorvidae(
+    body: (shas: { older: string; newer: string; side: string }, root: string) => Promise<void>,
+  ): Promise<void> {
+    const root = await mkdtemp(join(tmpdir(), 'supersession-corvidae-'));
+    try {
+      await git(root, 'init', '--quiet', '--initial-branch=main');
+      await git(root, 'config', 'user.email', 'fixture@example.test');
+      await git(root, 'config', 'user.name', 'Fixture');
+      const commit = async (message: string): Promise<string> => {
+        await git(root, 'commit', '--quiet', '--allow-empty', '--message', message);
+        const head = await git(root, 'rev-parse', 'HEAD');
+        return head.trim();
+      };
+      const older = await commit('Older');
+      await git(root, 'checkout', '--quiet', '-b', 'side');
+      const side = await commit('Side');
+      await git(root, 'checkout', '--quiet', 'main');
+      const newer = await commit('Newer');
+      await body({ older, newer, side }, root);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+
+  function record(
+    number: number,
+    overrides: Partial<OpenPullRequestRecord> = {},
+  ): OpenPullRequestRecord {
+    return {
+      number,
+      htmlUrl: `https://github.com/stevekinney/weft/pull/${number}`,
+      author: bot,
+      headRef: `mirror-sync-${number}`,
+      headSha: `head-${number}`,
+      baseRef: 'main',
+      ...overrides,
+    };
+  }
+
+  interface Fake {
+    api: Pick<
+      GitHubApi,
+      | 'createPullRequest'
+      | 'dispatchWorkflow'
+      | 'listOpenPullRequests'
+      | 'getCommitMessage'
+      | 'createIssueComment'
+      | 'closePullRequest'
+    >;
+    events: string[];
+  }
+
+  function fake(
+    open: readonly OpenPullRequestRecord[],
+    messages: Record<string, string>,
+    failClosing: ReadonlySet<number> = new Set(),
+  ): Fake {
+    const events: string[] = [];
+    return {
+      events,
+      api: {
+        async createPullRequest() {
+          events.push('create');
+          return {
+            number: newNumber,
+            htmlUrl: `https://github.com/stevekinney/weft/pull/${newNumber}`,
+            headSha: 'new-head',
+          };
+        },
+        async dispatchWorkflow() {
+          events.push('dispatch');
+        },
+        async listOpenPullRequests() {
+          return open;
+        },
+        async getCommitMessage(_fullName, sha) {
+          return messages[sha] ?? '';
+        },
+        async createIssueComment({ issueNumber, body }) {
+          events.push(`comment ${issueNumber}: ${body}`);
+        },
+        async closePullRequest(_fullName, number) {
+          if (failClosing.has(number)) throw new Error(`HTTP 500 closing ${number}`);
+          events.push(`close ${number}`);
+        },
+      },
+    };
+  }
+
+  const trailer = (sha: string): string => `Sync weft from corvidae\n\nCorvidae-Commit: ${sha}`;
+
+  test('closes an older sync pull request whose trailer is an ancestor, and nothing else', async () => {
+    await withCorvidae(async ({ older, newer, side }, root) => {
+      const { api, events } = fake(
+        [
+          record(11),
+          record(newNumber),
+          record(12),
+          record(13),
+          record(14),
+          record(15, { author: 'someone-else' }),
+          record(16, { baseRef: 'release' }),
+          record(17, { headRef: 'feature/something' }),
+          record(18, { headRef: 'mirror-sync-snapshot-18' }),
+        ],
+        {
+          'head-11': trailer(older),
+          [`head-${newNumber}`]: trailer(newer),
+          'head-12': trailer(side),
+          'head-13': 'Sync weft from corvidae\n\nno trailer here',
+          'head-14': trailer('f'.repeat(40)),
+          'head-15': trailer(older),
+          'head-16': trailer(older),
+          'head-17': trailer(older),
+          'head-18': trailer(older),
+        },
+      );
+      const logged: string[] = [];
+      const outcome = await supersedeOlderPullRequests({
+        api,
+        corvidaeRoot: root,
+        fullName: 'stevekinney/weft',
+        base: 'main',
+        newPullRequest: {
+          number: newNumber,
+          htmlUrl: `https://github.com/stevekinney/weft/pull/${newNumber}`,
+        },
+        newCorvidaeCommit: newer,
+        log: (line) => logged.push(line),
+      });
+
+      // 11 and the snapshot pull request 18 are provably older; the new pull request is never touched.
+      expect(outcome.closed).toEqual([11, 18]);
+      expect(events.filter((event) => event.startsWith('close'))).toEqual(['close 11', 'close 18']);
+      expect(events.find((event) => event.startsWith('comment 11'))).toContain(`pull/${newNumber}`);
+      expect(outcome.left.map(({ number }) => number)).toEqual([12, 13, 14]);
+      expect(logged.join('\n')).toContain('#12: left open');
+      expect(logged.join('\n')).toContain('not an ancestor');
+      expect(logged.join('\n')).toContain('no single parsable');
+      expect(logged.join('\n')).toContain('not an object in the corvidae checkout');
+    });
+  });
+
+  test('a stale dispatch closes the new pull request when an open one is strictly newer', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      // The new pull request is built from `older`; pull request 11 is built from `newer`.
+      const { api, events } = fake([record(11), record(12)], {
+        'head-11': trailer(newer),
+        'head-12': trailer(older),
+      });
+      const outcome = await supersedeOlderPullRequests({
+        api,
+        corvidaeRoot: root,
+        fullName: 'stevekinney/weft',
+        base: 'main',
+        newPullRequest: {
+          number: newNumber,
+          htmlUrl: `https://github.com/stevekinney/weft/pull/${newNumber}`,
+        },
+        newCorvidaeCommit: older,
+        log: () => {},
+      });
+      expect(outcome.closed).toEqual([newNumber]);
+      expect(events.filter((event) => event.startsWith('close'))).toEqual([`close ${newNumber}`]);
+      expect(events.find((event) => event.startsWith(`comment ${newNumber}`))).toContain('pull/11');
+    });
+  });
+
+  test('a stale snapshot dispatch never dispatches the snapshot workflow', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
+      const message = await openSyncPullRequest({
+        api,
+        target: 'weft',
+        manifest: {
+          baseBranch: 'main',
+          baseCommit: 'base',
+          changed: [],
+          commit: 'c'.repeat(40),
+          workflowFile: 'release.yaml',
+        },
+        snapshot: true,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: older,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      expect(events).not.toContain('dispatch');
+      expect(events).toContain(`close ${newNumber}`);
+      expect(message).toContain('superseded');
+    });
+  });
+
+  test('a current snapshot dispatch dispatches before it closes the older pull requests', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake([record(11)], { 'head-11': trailer(older) });
+      await openSyncPullRequest({
+        api,
+        target: 'weft',
+        manifest: {
+          baseBranch: 'main',
+          baseCommit: 'base',
+          changed: [],
+          commit: 'c'.repeat(40),
+          workflowFile: 'release.yaml',
+        },
+        snapshot: true,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: newer,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      const order = events.filter((event) => /^(create|dispatch|close)/.test(event));
+      expect(order).toEqual(['create', 'dispatch', 'close 11']);
+    });
+  });
+
+  const skipManifest = {
+    baseBranch: 'main',
+    baseCommit: 'base-sha',
+    workflowFile: 'release.yaml',
+  } as const;
+
+  test('a skip-path snapshot is not dispatched while a strictly newer sync pull request is open', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
+      const logged: string[] = [];
+      const message = await settleSkippedSync({
+        api,
+        target: 'weft',
+        manifest: skipManifest,
+        snapshot: true,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: older,
+        corvidaeRoot: root,
+        log: (line) => logged.push(line),
+      });
+      expect(events).toEqual([]);
+      expect(logged.join('\n')).toContain('#11');
+      expect(message).toContain('nothing dispatched or closed');
+    });
+  });
+
+  test('a skip-path snapshot is dispatched when no open sync pull request is newer', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake([record(11), record(12, { author: 'someone-else' })], {
+        'head-11': trailer(older),
+        'head-12': trailer(newer),
+      });
+      const message = await settleSkippedSync({
+        api,
+        target: 'weft',
+        manifest: skipManifest,
+        snapshot: true,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: newer,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      // The older pull request is obsolete too: dispatch first, then close it.
+      expect(events.filter((event) => /^(dispatch|close)/.test(event))).toEqual([
+        'dispatch',
+        'close 11',
+      ]);
+      expect(message).toContain('snapshot workflow dispatched');
+    });
+  });
+
+  test('a non-snapshot skip closes an older sync pull request whose trailer is an ancestor', async () => {
+    await withCorvidae(async ({ older, newer, side }, root) => {
+      const { api, events } = fake(
+        [record(11), record(12), record(13, { author: 'someone-else' })],
+        {
+          'head-11': trailer(older),
+          'head-12': trailer(side),
+          'head-13': trailer(older),
+        },
+      );
+      const message = await settleSkippedSync({
+        api,
+        target: 'weft',
+        manifest: skipManifest,
+        snapshot: false,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: newer,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      expect(events.filter((event) => event.startsWith('close'))).toEqual(['close 11']);
+      expect(events.find((event) => event.startsWith('comment 11'))).toContain(
+        'already matches the target',
+      );
+      expect(events).not.toContain('dispatch');
+      expect(message).toContain('closed');
+    });
+  });
+
+  test('a skip with a strictly newer open sync pull request closes nothing, with or without a snapshot', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      for (const snapshot of [false, true]) {
+        const { api, events } = fake([record(11), record(12)], {
+          'head-11': trailer(newer),
+          'head-12': trailer(older),
+        });
+        await settleSkippedSync({
+          api,
+          target: 'weft',
+          manifest: skipManifest,
+          snapshot,
+          branch: 'mirror-sync-new',
+          corvidaeCommit: older,
+          corvidaeRoot: root,
+          log: () => {},
+        });
+        expect(events).toEqual([]);
+      }
+    });
+  });
+
+  test('a sync of the same corvidae commit closes the earlier attempt', async () => {
+    await withCorvidae(async ({ newer }, root) => {
+      const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
+      await supersedeOlderPullRequests({
+        api,
+        corvidaeRoot: root,
+        fullName: 'stevekinney/weft',
+        base: 'main',
+        newPullRequest: { number: newNumber, htmlUrl: 'https://example.test/pr/20' },
+        newCorvidaeCommit: newer,
+        log: () => {},
+      });
+      expect(events.some((event) => event === 'close 11')).toBe(true);
+    });
+  });
+
+  test('opens the new pull request first, and a failed close fails the job after it exists', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake(
+        [record(11), record(12)],
+        { 'head-11': trailer(older), 'head-12': trailer(older) },
+        new Set([11]),
+      );
+      const failure = await throwingRejectionOf(
+        openSyncPullRequest({
+          api,
+          target: 'weft',
+          manifest: { baseBranch: 'main', baseCommit: 'base', changed: [], commit: 'c'.repeat(40) },
+          snapshot: false,
+          branch: 'mirror-sync-new',
+          corvidaeCommit: newer,
+          corvidaeRoot: root,
+          log: () => {},
+        }),
+      );
+      expect(failure).toThrow(/#11: HTTP 500 closing 11/);
+      expect(events[0]).toBe('create');
+      // The other superseded pull request was still attempted before the job failed.
+      expect(events).toContain('close 12');
+    });
+  });
+
+  test('a clean publish returns the opened message and leaves unrelated pull requests alone', async () => {
+    await withCorvidae(async ({ newer }, root) => {
+      const { api, events } = fake([record(15, { author: 'someone-else' })], {});
+      const message = await openSyncPullRequest({
+        api,
+        target: 'weft',
+        manifest: {
+          baseBranch: 'main',
+          baseCommit: 'base',
+          changed: ['a'],
+          commit: 'c'.repeat(40),
+        },
+        snapshot: false,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: newer,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      expect(message).toBe(`weft: opened https://github.com/stevekinney/weft/pull/${newNumber}\n`);
+      expect(events).toEqual(['create']);
+    });
+  });
 });
