@@ -66,9 +66,17 @@ if (
   process.exit(2);
 }
 
-/** Bounded condition poll with a tiny real delay (LMDB starves a zero-delay loop). */
-async function pollUntil(description: string, check: () => boolean | Promise<boolean>) {
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt += 1) {
+/**
+ * Condition poll with a tiny real delay (LMDB starves a zero-delay loop),
+ * bounded by `attempts`. A scenario whose parent enforces its own deadline
+ * passes `Infinity`, so a slow host is not mistaken for a stuck one.
+ */
+async function pollUntil(
+  description: string,
+  check: () => boolean | Promise<boolean>,
+  attempts = POLL_ATTEMPTS,
+) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (await check()) return;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }
@@ -316,7 +324,8 @@ async function humanWaitParked(): Promise<void> {
  * COR-1439: the supervisor's relaunch after `park-after-step-0` died from
  * SIGKILL. Boots a durable Bureau over the same store, lets boot recovery and
  * durable maintenance adopt the run once the dead holder's claim lapses, and
- * records the run's terminal status beside the crash marker.
+ * records the run's terminal status beside the crash marker. It polls without
+ * an attempt bound: the parent test owns the deadline and kills it there.
  */
 async function relaunchRecover(): Promise<void> {
   const { runId } = JSON.parse(readFileSync(markerPath as string, 'utf8')) as { runId: string };
@@ -340,12 +349,17 @@ async function relaunchRecover(): Promise<void> {
     },
   });
   const report = await bureau.waitForRecovery?.();
-  await pollUntil('the relaunched run to complete', async () => {
-    const durable = await bureau.getDurableRun(runId);
-    if (durable?.status === 'completed') return true;
-    await bureau.runDurableMaintenance();
-    return false;
-  });
+  await pollUntil(
+    'the relaunched run to complete',
+    async () => {
+      const durable = await bureau.getDurableRun(runId);
+      if (durable?.status === 'completed') return true;
+      await bureau.runDurableMaintenance();
+      return false;
+    },
+    // The parent test kills this child at its own deadline and reports that.
+    Number.POSITIVE_INFINITY,
+  );
   const durable = await bureau.getDurableRun(runId);
   writeFileSync(
     join(dirname(markerPath as string), 'relaunched.json'),

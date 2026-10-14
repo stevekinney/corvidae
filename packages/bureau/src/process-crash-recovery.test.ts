@@ -41,6 +41,8 @@ const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const CLAIM_TTL_MS = 200;
 const CLAIM_RENEW_MS = 50;
 const runtime = createDefaultRuntimeServices();
+/** A relaunched child still running this long after it started is killed and reported as stuck. */
+const RELAUNCH_DEADLINE_MS = 90_000;
 
 interface CrashMarker {
   readonly runId: string;
@@ -304,9 +306,23 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash relaunch over %s', (ba
       const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as CrashMarker;
 
       const relaunched = spawnChild('relaunch-recover');
-      await relaunched.exited;
-      const stderr = await new Response(relaunched.stderr).text();
-      expect({ exitCode: relaunched.exitCode, stderr }).toEqual({ exitCode: 0, stderr: '' });
+      // A relaunch that never recovers is killed here and reported as stuck,
+      // rather than its duration being measured.
+      let killedAtDeadline = false;
+      const deadline = runtime.timers.setTimeout(() => {
+        killedAtDeadline = true;
+        relaunched.kill('SIGKILL');
+      }, RELAUNCH_DEADLINE_MS);
+      const [, stderr] = await Promise.all([
+        relaunched.exited,
+        new Response(relaunched.stderr).text(),
+      ]);
+      runtime.timers.clearTimeout(deadline);
+      expect({ exitCode: relaunched.exitCode, killedAtDeadline, stderr }).toEqual({
+        exitCode: 0,
+        killedAtDeadline: false,
+        stderr: '',
+      });
 
       const marker = JSON.parse(
         readFileSync(join(directory, 'relaunched.json'), 'utf8'),
