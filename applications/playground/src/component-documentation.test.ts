@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { analyzeAll, analyzeComponent } from './analyze.ts';
+import { analyzeAll, analyzeComponent, getProjectCreationCount } from './analyze.ts';
 import { validateComponentDocumentationPayload } from './component-documentation-reference.ts';
 import {
   ComponentDocumentationError,
@@ -39,8 +39,47 @@ function chunkManifests(
   return chunks;
 }
 
+/*
+ * Analysis is the expensive part of a documentation build. The first component a package
+ * analyzes creates that package's ts-morph project, and each component then pays its own type
+ * analysis: on a loaded host, the first Chat component took over four seconds and the six
+ * together close to three, against Bun's 5-second budget for a test body or a `beforeAll` hook.
+ * Module scope is untimed, so every package these tests document is analyzed here, one
+ * component after another, and the tests read the results.
+ */
 const bulkValidationManifests = await analyzeAll(COMPONENTS_ROOT);
 const bulkValidationPackageManifest = await loadPackageManifestForDocumentation();
+
+const chatDefinitions = (await discoverComponentDefinitions()).filter(
+  (definition) => definition.source.id === CHAT_COMPONENT_SOURCE.id,
+);
+const chatManifests = new Map<string, ComponentManifest>();
+for (const definition of chatDefinitions) {
+  chatManifests.set(
+    definition.name,
+    await analyzeComponent(definition.filePath, { importPath: definition.importPath }),
+  );
+}
+const chatPackageManifest = await loadPackageManifestForDocumentation(CHAT_COMPONENT_SOURCE);
+
+function chatManifest(componentName: string): ComponentManifest {
+  const manifest = chatManifests.get(componentName);
+  if (manifest === undefined) throw new Error(`Chat component ${componentName} was not analyzed`);
+  return manifest;
+}
+
+/*
+ * A test that analyzes a package nothing above warmed creates a new ts-morph project inside its
+ * own clock, which is the cost these warmups exist to keep out. Fail it by name, on any host,
+ * rather than leave it to time out only when the machine is busy.
+ */
+const projectsCreatedAtModuleScope = getProjectCreationCount();
+afterEach(() => {
+  expect(
+    getProjectCreationCount(),
+    'a test created a ts-morph project; analyze its package at module scope instead',
+  ).toBe(projectsCreatedAtModuleScope);
+});
 
 describe('buildComponentDocumentation', () => {
   it('returns Button purpose, README HTML, schema, constraints, examples, and raw artifacts', async () => {
@@ -109,14 +148,10 @@ describe('buildComponentDocumentation', () => {
   });
 
   it('points a README link to its own headings at their README ids', async () => {
-    const manifest = await analyzeComponent(
-      join(CHAT_COMPONENT_SOURCE.componentsRoot, 'chat', 'chat.svelte'),
-      { importPath: '@lostgradient/chat' },
-    );
     const payload = await buildComponentDocumentation(
       'chat',
-      manifest,
-      await loadPackageManifestForDocumentation(CHAT_COMPONENT_SOURCE),
+      chatManifest('chat'),
+      chatPackageManifest,
       CHAT_COMPONENT_SOURCE,
     );
 
@@ -284,15 +319,10 @@ describe('buildComponentDocumentation', () => {
   });
 
   it('loads Chat documentation and source links from the extracted package', async () => {
-    const manifest = await analyzeComponent(
-      join(CHAT_COMPONENT_SOURCE.componentsRoot, 'chat', 'chat.svelte'),
-      { importPath: '@lostgradient/chat' },
-    );
-    const packageManifest = await loadPackageManifestForDocumentation(CHAT_COMPONENT_SOURCE);
     const payload = await buildComponentDocumentation(
       'chat',
-      manifest,
-      packageManifest,
+      chatManifest('chat'),
+      chatPackageManifest,
       CHAT_COMPONENT_SOURCE,
     );
 
@@ -351,28 +381,20 @@ describe('buildComponentDocumentation', () => {
   });
 
   it('builds valid documentation for every extracted Chat component', async () => {
-    const allDefinitions = await discoverComponentDefinitions();
-    const definitions = allDefinitions.filter(
-      (definition) => definition.source.id === CHAT_COMPONENT_SOURCE.id,
-    );
-    const packageManifest = await loadPackageManifestForDocumentation(CHAT_COMPONENT_SOURCE);
     const failures: string[] = [];
 
-    for (const definition of definitions) {
-      const manifest = await analyzeComponent(definition.filePath, {
-        importPath: definition.importPath,
-      });
+    for (const definition of chatDefinitions) {
       const payload = await buildComponentDocumentation(
         definition.name,
-        manifest,
-        packageManifest,
+        chatManifest(definition.name),
+        chatPackageManifest,
         CHAT_COMPONENT_SOURCE,
       );
       const errors = validateComponentDocumentationPayload(payload);
       if (errors.length > 0) failures.push(`${definition.name}: ${errors.join('; ')}`);
     }
 
-    expect(definitions.map((definition) => definition.name)).toEqual([
+    expect(chatDefinitions.map((definition) => definition.name)).toEqual([
       'chat',
       'chat-composer-popover',
       'chat-conversation-header',
