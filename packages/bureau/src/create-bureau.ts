@@ -7150,11 +7150,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return { outcome: 'session-terminal', sessionId };
     }
     // AB-200/AB-68: all seven targets reach the gate. `agent-identity` is
-    // validated against the agents map below, and `route`/`model`/
-    // `provider`/`effort` are validated against the model catalog (a
-    // `policyRef` first resolved through `modelPolicy.users`, COR-1227)
-    // before the gate owns their desired-state writes and per-run
-    // `configVersion` accounting.
+    // validated against the agents map below, and `model`/`provider`/
+    // `effort` are validated against the model catalog; `route` is not,
+    // because Bureau holds no routing table (see the `known` check below).
+    // A configuration `policyRef` is first resolved through
+    // `modelPolicy.users` (COR-1227). The gate then owns their
+    // desired-state writes and per-run `configVersion` accounting.
     const steeringTarget = request.requestedValue.target;
     // A `policyRef` names a pre-approved policy only the AB-66 selector can
     // resolve into a concrete agent name. Until that resolution path exists
