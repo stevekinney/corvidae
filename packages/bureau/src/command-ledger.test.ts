@@ -52,7 +52,7 @@ function memoryLedger() {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const ledger = createCommandLedger<TestClaim, TestResult>({
     kv,
-    now: () => runtime.clock.nowISO(),
+    clock: runtime.clock,
     nextConflictId: () => runtime.identifiers.next('ledger-conflict'),
   });
   return { fixture, kv, runtime, ledger };
@@ -210,6 +210,7 @@ describe('createCommandLedger (memory backend)', () => {
           reason: 'payload-mismatch',
           payloadDigest: 'digest-b',
           originalPayloadDigest: 'digest-a',
+          originalClaimedAt: ORIGIN,
           recordedAt: ORIGIN,
         },
       ]);
@@ -364,7 +365,7 @@ describe('createCommandLedger (memory backend)', () => {
             raced = true;
             const competitor = createCommandLedger<TestClaim, TestResult>({
               kv,
-              now: () => runtime.clock.nowISO(),
+              clock: runtime.clock,
               nextConflictId: () => runtime.identifiers.next('ledger-conflict'),
             });
             await competitor.claim(identity(), 'digest-a', { runId: 'run-competitor' });
@@ -376,7 +377,7 @@ describe('createCommandLedger (memory backend)', () => {
       };
       const ledger = createCommandLedger<TestClaim, TestResult>({
         kv: racing,
-        now: () => runtime.clock.nowISO(),
+        clock: runtime.clock,
         nextConflictId: () => runtime.identifiers.next('ledger-conflict'),
       });
 

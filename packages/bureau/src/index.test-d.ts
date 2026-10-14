@@ -15,6 +15,7 @@ import type {
   AgentRunForName,
   AssembleReproductionArtifactOptions,
   Bureau,
+  BureauOptions,
   BureauFaultOperation,
   BureauFaultPlan,
   BureauFaultPlanEntry,
@@ -36,6 +37,7 @@ import type {
   ReproductionArtifact,
   ReproductionArtifactEnvironment,
   RunCreationReceipt,
+  RunCreationReceiptLocation,
 } from './index';
 import {
   assembleReproductionArtifact,
@@ -43,6 +45,7 @@ import {
   BureauFaultSelectorResolutionError,
   BureauHarnessUnsupportedError,
   BureauLedgerConflictError,
+  COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
   createBureauTestHarness,
   createCommandLedger,
   createDurableEventHistoryFixture,
@@ -145,3 +148,10 @@ type CreateRunReturn = Awaited<ReturnType<Bureau['createRun']>>;
 declare const createdRun: CreateRunReturn;
 export const createdRunReceipt: RunCreationReceipt | undefined = createdRun.receipt;
 export const createdRunSummary: CreatedRunSummary = createdRun;
+
+// COR-424: the run-creation binding's retention window and its receipt query.
+void COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS;
+export const retentionOption: BureauOptions['runCreationTerminalRetentionMs'] = 86_400_000;
+type LocateReturn424 = Awaited<ReturnType<Bureau['locateRunCreationReceipt']>>;
+declare const locatedReceipt: LocateReturn424;
+export const receiptLocation: RunCreationReceiptLocation = locatedReceipt;

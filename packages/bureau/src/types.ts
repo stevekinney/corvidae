@@ -81,7 +81,7 @@ import type { BureauAssetOptions } from './assets/asset-service';
 import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
-import type { CreatedRunSummary } from './command-ledger';
+import type { CreatedRunSummary, RunCreationReceiptLocation } from './command-ledger';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
 import type {
   DurableEventHistoryPageOptions,
@@ -527,6 +527,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * durable engine is composed.
    */
   checkpointRetention?: CheckpointRetentionOption;
+  /**
+   * COR-424 — how long a run-creation request id stays bound to its run after
+   * the run settles, in milliseconds: a positive integer, default 86400000
+   * (24 hours, the same as Weft's mailbox `terminalRetentionMs`). Measured on
+   * the runtime clock, from when the ledger first observes the run settled;
+   * a run still in progress holds its binding. Once the window has passed,
+   * {@link Bureau.locateRunCreationReceipt} reports `expired` and the same
+   * request id creates a new run. `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')` for any other value.
+   */
+  runCreationTerminalRetentionMs?: number | undefined;
   /**
    * COR-41 — governed memory for the Bureau's recall and persistence hooks.
    * Recall goes through mandatory recall admission (trust minimums, detector
@@ -1257,9 +1268,25 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `receipt`. Retrying it with the same principal, agent, request id, and
    * payload returns the original run and receipt rather than creating
    * another run; reusing the request id with a different payload rejects
-   * with `BureauLedgerConflictError`.
+   * with `BureauLedgerConflictError`. Both hold while the binding is retained
+   * ({@link BureauOptions.runCreationTerminalRetentionMs}); after that the
+   * request id creates a new run.
    */
   createRun(request: CreateRunRequest): Promise<CreatedRunSummary>;
+  /**
+   * COR-424 — where a run-creation request's receipt stands: `recorded`,
+   * `pending` (claimed, with no started run), `expired` once its binding's
+   * retention window has passed (the same request id then creates a new
+   * run), or `not-found`. Scoped like the ledger key, to the principal and
+   * published agent (`agentName`, default `bureau`). A query that finds the
+   * run started records its receipt, and one that first finds the run
+   * settled starts the retention window, exactly as a retry would. Rejects
+   * with `BureauError` (`BAD_REQUEST`) for a blank principal or request id,
+   * and (`NOT_CONFIGURED`, subject `durable`) without a durable engine.
+   */
+  locateRunCreationReceipt(
+    request: LocateRunCreationReceiptRequest,
+  ): Promise<RunCreationReceiptLocation>;
   submitSchedulerTask(request: SubmitSchedulerTaskRequest): Promise<SubmitSchedulerTaskResponse>;
   /**
    * Resolve a scheduler receipt's `taskId` to `in-progress`, `terminal` (with the
@@ -2115,9 +2142,20 @@ export interface CreateRunRequest {
    * resolves with a receipt. Requires `principal`, since an idempotency key
    * needs an authenticated caller to belong to, and a bureau with a durable
    * engine (`NOT_CONFIGURED` otherwise), since a receipt promises a retry
-   * after a restart finds the original run.
+   * after a restart finds the original run. The request id stays bound to its
+   * run until {@link BureauOptions.runCreationTerminalRetentionMs} after the
+   * run settles; after that it creates a new run.
    */
   runCreationRequestId?: string | undefined;
+}
+
+/** COR-424 — which run-creation request {@link Bureau.locateRunCreationReceipt} looks up. */
+export interface LocateRunCreationReceiptRequest {
+  /** The authenticated caller that issued the request. */
+  principal: string;
+  /** The published agent the request addressed. Defaults to `bureau`. */
+  agentName?: string | undefined;
+  runCreationRequestId: string;
 }
 
 export interface SubmitSchedulerTaskRequest {

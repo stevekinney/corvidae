@@ -1,0 +1,257 @@
+/**
+ * COR-424 — the run-creation binding's retention window through `createRun`
+ * and `locateRunCreationReceipt`, over both persistent backends. Within the
+ * window an exact retry replays the original receipt; once it has passed, a
+ * receipt query reports `expired` and the same request id creates a new run.
+ * The window is measured on the bureau's injected runtime clock, which these
+ * tests move with `setTime`.
+ */
+import {
+  createManualRuntimeServices,
+  type ManualRuntimeServices,
+  type RuntimeServices,
+} from '@lostgradient/lifecycle';
+import type { GenerateFunction } from '@lostgradient/operative';
+import { createToolbox, type Tool } from 'armorer';
+import { describe, expect, it } from 'bun:test';
+
+import {
+  BureauLedgerConflictError,
+  type RunCreationReceipt,
+  type RunCreationReceiptLocation,
+} from './command-ledger';
+import { BureauError, createBureau } from './create-bureau';
+import {
+  type BureauStorageFixture,
+  createLmdbStorageFixture,
+  createSqliteStorageFixture,
+} from './test/storage-fixtures';
+import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import type { Bureau, CreateRunRequest } from './types';
+
+const ORIGIN = '2026-10-13T00:00:00.000Z';
+const ORIGIN_MS = Date.parse(ORIGIN);
+const DAY_MS = 86_400_000;
+
+const REQUEST: CreateRunRequest = {
+  message: 'Summarize the quarter.',
+  principal: 'alice',
+  runCreationRequestId: 'request-1',
+};
+
+const LOCATE = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
+
+type FixtureFactory = (runtime: RuntimeServices) => BureauStorageFixture;
+
+const BACKENDS: readonly (readonly [string, FixtureFactory])[] = [
+  ['sqlite', (runtime) => createSqliteStorageFixture({ runtime })],
+  ['lmdb', (runtime) => createLmdbStorageFixture({ runtime })],
+];
+
+const finishes: GenerateFunction = async () => ({ content: 'done', toolCalls: [] });
+
+/**
+ * Runs `body` against a durable bureau over a fresh store whose runs finish
+ * at their first step, then tears both down.
+ */
+async function withBureau(
+  factory: FixtureFactory,
+  body: (bureau: Bureau, runtime: ManualRuntimeServices) => Promise<void>,
+  runCreationTerminalRetentionMs?: number,
+): Promise<void> {
+  const runtime = createManualRuntimeServices({ origin: ORIGIN });
+  const fixture = factory(runtime);
+  const bureau = await createBureau({
+    agents: {},
+    generate: finishes,
+    toolbox: createToolbox<readonly Tool[]>([]),
+    runtime,
+    storage: fixture.configuration,
+    durableExecution: true,
+    durableOwnership: { ownership: 'none' },
+    ...(runCreationTerminalRetentionMs === undefined ? {} : { runCreationTerminalRetentionMs }),
+  });
+  try {
+    await body(bureau, runtime);
+  } finally {
+    await bureau.dispose();
+    await fixture.dispose();
+  }
+}
+
+/**
+ * A bounded poll with a small real delay between checks; never a blind sleep.
+ * A zero-delay poll starves LMDB's own completion callbacks (see
+ * `run-creation-fault-points.test.ts`).
+ */
+async function pollUntil(check: () => boolean): Promise<boolean> {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    if (check()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  return check();
+}
+
+/** Creates the request's run, waits for it to finish, and lets a receipt query observe that. */
+async function settledRun(bureau: Bureau, request: CreateRunRequest = REQUEST) {
+  const created = await bureau.createRun(request);
+  expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+  expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual(recorded(created.receipt));
+  return created;
+}
+
+/** The location of a recorded receipt; fails when the run carried none. */
+function recorded(receipt: RunCreationReceipt | undefined): RunCreationReceiptLocation {
+  if (receipt === undefined) throw new Error('expected the run to carry a receipt');
+  return { status: 'recorded', receipt };
+}
+
+async function durableRunIds(bureau: Bureau): Promise<string[] | undefined> {
+  const page = await bureau.listDurableRuns();
+  return page?.items.map((run) => run.id).toSorted();
+}
+
+describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) => {
+  it('replays the original receipt for an exact retry within the window', async () => {
+    await withBureau(factory, async (bureau, runtime) => {
+      const created = await settledRun(bureau);
+
+      runtime.setTime(ORIGIN_MS + DAY_MS - 1);
+      const retry = await bureau.createRun(REQUEST);
+
+      expect(retry.id).toBe(created.id);
+      expect(retry.receipt).toEqual(created.receipt);
+      expect(await durableRunIds(bureau)).toEqual([created.id]);
+    });
+  });
+
+  it('reports the receipt expired after the window, and the same request id creates a new run', async () => {
+    await withBureau(factory, async (bureau, runtime) => {
+      const created = await settledRun(bureau);
+
+      runtime.setTime(ORIGIN_MS + DAY_MS);
+      expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual({
+        status: 'expired',
+        requestId: 'request-1',
+        expiredAt: new Date(ORIGIN_MS + DAY_MS).toISOString(),
+      });
+      const fresh = await bureau.createRun(REQUEST);
+
+      expect(fresh.id).not.toBe(created.id);
+      expect(fresh.receipt).toEqual({
+        runId: fresh.id,
+        requestId: 'request-1',
+        createdAt: new Date(ORIGIN_MS + DAY_MS).toISOString(),
+        status: 'running',
+      });
+      expect(await durableRunIds(bureau)).toEqual([created.id, fresh.id].toSorted());
+      expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual(recorded(fresh.receipt));
+    });
+  });
+
+  it('no longer reports a conflict for a different payload once the binding has expired', async () => {
+    await withBureau(factory, async (bureau, runtime) => {
+      const created = await settledRun(bureau);
+      const changed = { ...REQUEST, message: 'Summarize the year.' };
+      expect(await rejectionOf(bureau.createRun(changed))).toBeInstanceOf(
+        BureauLedgerConflictError,
+      );
+
+      runtime.setTime(ORIGIN_MS + DAY_MS);
+      const fresh = await bureau.createRun(changed);
+
+      expect(fresh.id).not.toBe(created.id);
+      expect(fresh.receipt).toMatchObject({ runId: fresh.id, requestId: 'request-1' });
+      expect(await durableRunIds(bureau)).toEqual([created.id, fresh.id].toSorted());
+    });
+  });
+
+  it('honors a configured window', async () => {
+    await withBureau(
+      factory,
+      async (bureau, runtime) => {
+        const created = await settledRun(bureau);
+
+        runtime.setTime(ORIGIN_MS + 59_999);
+        expect(await bureau.createRun(REQUEST)).toMatchObject({ id: created.id });
+
+        runtime.setTime(ORIGIN_MS + 60_000);
+        expect(await bureau.locateRunCreationReceipt(LOCATE)).toMatchObject({ status: 'expired' });
+        const fresh = await bureau.createRun(REQUEST);
+        expect(fresh.id).not.toBe(created.id);
+      },
+      60_000,
+    );
+  });
+});
+
+describe('locateRunCreationReceipt', () => {
+  it('reports a request id it never saw as not found', async () => {
+    await withBureau(BACKENDS[0]![1], async (bureau) => {
+      expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual({
+        status: 'not-found',
+        requestId: 'request-1',
+      });
+    });
+  });
+
+  it('scopes the query to the caller and the published agent', async () => {
+    await withBureau(BACKENDS[0]![1], async (bureau) => {
+      await settledRun(bureau);
+      expect(
+        await bureau.locateRunCreationReceipt({ ...LOCATE, principal: 'mallory' }),
+      ).toMatchObject({ status: 'not-found' });
+      expect(
+        await bureau.locateRunCreationReceipt({ ...LOCATE, agentName: 'other-agent' }),
+      ).toMatchObject({ status: 'not-found' });
+      expect(
+        await bureau.locateRunCreationReceipt({ ...LOCATE, agentName: 'bureau' }),
+      ).toMatchObject({ status: 'recorded' });
+    });
+  });
+
+  it('requires a principal and a request id', async () => {
+    await withBureau(BACKENDS[0]![1], async (bureau) => {
+      for (const request of [
+        { principal: ' ', runCreationRequestId: 'request-1' },
+        { principal: 'alice', runCreationRequestId: '' },
+      ]) {
+        const failure = await rejectionOf(bureau.locateRunCreationReceipt(request));
+        expect(failure).toBeInstanceOf(BureauError);
+        expect((failure as BureauError).code).toBe('BAD_REQUEST');
+      }
+    });
+  });
+
+  it('offers no receipts without a durable engine', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate: finishes,
+      toolbox: createToolbox<readonly Tool[]>([]),
+      runtime: createManualRuntimeServices({ origin: ORIGIN }),
+    });
+    try {
+      const failure = await rejectionOf(bureau.locateRunCreationReceipt(LOCATE));
+      expect(failure).toBeInstanceOf(BureauError);
+      expect((failure as BureauError).code).toBe('NOT_CONFIGURED');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('runCreationTerminalRetentionMs', () => {
+  it.each([0, -1, 1.5])('rejects %p at construction', async (runCreationTerminalRetentionMs) => {
+    const failure = await rejectionOf(
+      createBureau({
+        agents: {},
+        generate: finishes,
+        toolbox: createToolbox<readonly Tool[]>([]),
+        runtime: createManualRuntimeServices({ origin: ORIGIN }),
+        runCreationTerminalRetentionMs,
+      }),
+    );
+    expect(failure).toBeInstanceOf(BureauError);
+    expect((failure as BureauError).code).toBe('BAD_REQUEST');
+  });
+});

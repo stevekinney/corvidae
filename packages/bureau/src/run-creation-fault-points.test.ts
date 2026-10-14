@@ -240,7 +240,7 @@ async function withScenario(
       storageB,
       ledger: createCommandLedger({
         kv: textValueStore(storageB, { disposeUnderlyingStorage: false }),
-        now: () => runtime.clock.nowISO(),
+        clock: runtime.clock,
         nextConflictId: () => runtime.identifiers.next('conflict'),
       }),
       crashOn(trigger, point) {
@@ -440,6 +440,7 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
         ),
       ).toBe(true);
       const completed = await ledger.read(IDENTITY);
+      if (completed?.state !== 'completed') throw new Error('expected a completed entry');
 
       const generateB = heldGenerate();
       const bureauB = await boot(storageB, generateB.generate);
@@ -450,7 +451,13 @@ describe.each(BACKENDS)('run creation fault points over %s', (_backend, factory)
       expect(generateB.calls()).toBe(0);
       expect(await durableRunIds(bureauB)).toEqual([created.id]);
       expect(await durableStatus(bureauB, created.id)).toBe('cancelled');
-      expect(await ledger.read(IDENTITY)).toEqual(completed);
+      // The retry is the first to observe the run settled, so it records that
+      // once, starting the binding's retention window; nothing else changes.
+      const settled = await ledger.read(IDENTITY);
+      if (settled?.state !== 'completed') throw new Error('expected a completed entry');
+      const { settledAt, ...unchanged } = settled;
+      expect(unchanged).toEqual(completed);
+      expect(settledAt).toBeString();
     });
   });
 });

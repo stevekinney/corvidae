@@ -139,6 +139,7 @@ import {
   digestRunCreationPayload,
   type RunCreationAttempt,
   type RunCreationObservation,
+  type RunCreationReceiptLocation,
 } from './command-ledger';
 import {
   createDurableEventHistory,
@@ -249,6 +250,7 @@ import type {
   CleanupAcknowledgement,
   ConfigurationResponse,
   CreateRunRequest,
+  LocateRunCreationReceiptRequest,
   DiagnosticSink,
   DurableScheduleDefinition,
   EventHistoryDeletedAggregateOutcome,
@@ -1234,6 +1236,19 @@ function validateCheckpointRetentionOption(value: CheckpointRetentionOption | un
 }
 
 /**
+ * COR-424 — `BureauOptions.runCreationTerminalRetentionMs` decides when a
+ * run-creation request id may create a second run, so a value that is not a
+ * positive integer is a construction-time error, as Weft's mailbox treats its
+ * own `terminalRetentionMs`.
+ */
+function validateRunCreationRetentionOption(value: number | undefined): void {
+  if (value === undefined) return;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    toBadRequest('"options.runCreationTerminalRetentionMs" must be a positive integer');
+  }
+}
+
+/**
  * COR-772 — `BureauOptions.children.delegation` signs every child's grant, so
  * an empty secret or a lifetime that expires every grant on issue is a
  * construction-time error rather than a silently unusable topology.
@@ -1317,6 +1332,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     options.sessionInput?.principalBacklogLimit ?? DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT;
   validateAuditRetentionOption(options.auditRetention);
   validateCheckpointRetentionOption(options.checkpointRetention);
+  validateRunCreationRetentionOption(options.runCreationTerminalRetentionMs);
   validateChildrenOption(options.children);
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
   const ownsStore = !options.store;
@@ -1721,6 +1737,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           kv: runCreationKv,
           clock: runtimeServices.clock,
           identifiers: runtimeServices.identifiers,
+          terminalRetentionMs: options.runCreationTerminalRetentionMs,
           observe: async ({ runId }): Promise<RunCreationObservation> => {
             const runState = store.getRun(runId);
             if (runState !== undefined) {
@@ -3788,6 +3805,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       );
     }
     return runCreationLedger;
+  }
+
+  /**
+   * COR-424 — where a run-creation request's receipt stands, keyed exactly as
+   * `createRunFromRequest` keys the request. See `Bureau.locateRunCreationReceipt`.
+   */
+  async function locateRunCreationReceipt(
+    request: LocateRunCreationReceiptRequest,
+  ): Promise<RunCreationReceiptLocation> {
+    const principal = typeof request.principal === 'string' ? request.principal.trim() : '';
+    const requestId =
+      typeof request.runCreationRequestId === 'string' ? request.runCreationRequestId.trim() : '';
+    if (principal.length === 0) toBadRequest('"principal" must be a non-empty string');
+    if (requestId.length === 0) toBadRequest('"runCreationRequestId" must be a non-empty string');
+    return requireRunCreationLedger().locate({
+      callerId: principal,
+      agentName: request.agentName ?? BUREAU_AGENT_NAME,
+      requestId,
+    });
   }
 
   /**
@@ -9825,6 +9861,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return runtime.ready;
     },
     createRun: createRunFromRequest,
+    locateRunCreationReceipt,
     submitSchedulerTask,
     locateSchedulerTask,
     awaitSchedulerTask,

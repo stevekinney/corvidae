@@ -23,11 +23,17 @@
  * compare-and-swap, so two attempts racing for one identity cannot both
  * claim it.
  *
- * **Retention.** The ledger keeps every binding indefinitely: entries and
- * conflict records carry no expiry and nothing prunes them, so a request id
- * stays bound to its first payload for the life of the store. A retention
- * window (after which a request id would admit a new command) is not
- * implemented.
+ * **Retention.** A binding is held for `terminalRetentionMs` (24 hours by
+ * default, the same as Weft's mailbox `terminalRetentionMs`) after its
+ * command settles, measured on the injected runtime clock. A command still in
+ * progress holds its binding however old it is. Once the window has passed,
+ * {@link CommandLedger.locate} reports the binding `expired`, and the next
+ * claim of the same identity, with any payload, replaces it with a fresh
+ * pending entry and deletes its conflict records in the same compare-and-swap.
+ * Until then those conflict records are ignored: they belong to a binding
+ * that no longer holds. {@link CommandLedger.prune} deletes expired bindings
+ * and their conflict records, after which a query reports `not-found`. Every
+ * rule below holds only while a binding is retained.
  *
  * An unreadable entry fails closed. Treating it as absent would let a retry
  * claim the identity afresh and create the very duplicate this ledger exists
@@ -49,19 +55,30 @@
  *   completes the entry with a receipt carrying the status it observed, so
  *   every later retry receives that same receipt. When the run never
  *   started, the retry reports it as `pending` and writes nothing: without
- *   a lease, a crashed claimant cannot be told apart from a slow one, and the
- *   request id stays bound to the claimed run. A caller that needs the run
- *   then uses a new request id.
+ *   a lease, a crashed claimant cannot be told apart from a slow one, so the
+ *   request id stays bound to the claimed run until its retention window,
+ *   measured from the claim, has passed. A caller that needs the run sooner
+ *   uses a new request id.
  *
  * A completed entry carries the {@link RunCreationReceipt} and the summary
  * returned to the original caller. A retry receives that original receipt
  * unchanged, alongside the run as it stands now.
+ *
+ * A run-creation binding's retention window starts when its run settles, so
+ * a delayed retry of a long-running run never starts a second one: a run
+ * still in progress, or a claim this process is still settling, holds the
+ * binding however old it is. The ledger does not hear about a run settling
+ * as it happens; it records `settledAt` the first time a retry, a receipt
+ * query ({@link RunCreationLedger.locate}), or a prune observes the run
+ * settled, and the window runs from there. A claim whose run never started,
+ * or whose run no longer exists, is measured from its own latest timestamp.
  */
 import { sha256HexSync } from '@lostgradient/cryptography';
 import type { RuntimeClock, RuntimeIdentifiers } from '@lostgradient/lifecycle';
 import {
   type ConditionalTextValueStore,
   encodeStorageKeyComponent,
+  type TextValueStoreBatchOperation,
   type WorkflowState,
 } from '@lostgradient/weft';
 
@@ -75,6 +92,12 @@ const COMMAND_LEDGER_KEY_PREFIX = 'command-ledger:v1';
 
 /** Bounds the compare-and-swap loop against concurrent claimants of one identity. */
 const COMMAND_LEDGER_MAX_CAS_ATTEMPTS = 10;
+
+/**
+ * How long a settled command's binding is retained by default: 24 hours, the
+ * same as Weft's mailbox and outbox `terminalRetentionMs`.
+ */
+export const COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS = 86_400_000;
 
 /** Who issued a command, which command it was, and under which contract version. */
 export interface CommandLedgerIdentity {
@@ -103,6 +126,12 @@ export interface CommandLedgerCompletedEntry<TClaim, TResult> {
   readonly claim: TClaim;
   readonly completedAt: string;
   readonly result: TResult;
+  /**
+   * When the ledger first observed the command's effect settled, if it has.
+   * The retention window of a command whose effect outlives its
+   * acknowledgement, such as a run, starts here.
+   */
+  readonly settledAt?: string | undefined;
 }
 
 /** The entry an identity resolves to. */
@@ -119,7 +148,30 @@ export interface CommandLedgerConflictEntry {
   readonly payloadDigest: string;
   /** The digest recorded on the original entry. */
   readonly originalPayloadDigest: string;
+  /** When the original entry was claimed: which binding of the identity this conflicted with. */
+  readonly originalClaimedAt: string;
   readonly recordedAt: string;
+}
+
+/**
+ * Where an identity's binding stands: `retained` while it still binds the
+ * identity, `expired` once its retention window has passed (until a claim
+ * replaces it or a prune deletes it), and `not-found` when there is none.
+ */
+export type CommandLedgerLocation<TClaim, TResult> =
+  | { readonly state: 'not-found' }
+  | { readonly state: 'retained'; readonly entry: CommandLedgerEntry<TClaim, TResult> }
+  | {
+      readonly state: 'expired';
+      readonly entry: CommandLedgerEntry<TClaim, TResult>;
+      /** When the retention window closed. */
+      readonly expiredAt: string;
+    };
+
+/** What one {@link CommandLedger.prune} pass deleted. */
+export interface CommandLedgerPruneResult {
+  readonly entries: number;
+  readonly conflicts: number;
 }
 
 /** What a claim found: a fresh entry this call wrote, or the entry already there. */
@@ -191,10 +243,11 @@ export class RunCreationReceiptUnrecordedError extends Error {
 export interface CommandLedger<TClaim, TResult> {
   /**
    * Claim `identity` for a command whose payload digests to `payloadDigest`.
-   * Resolves `claimed` when this call wrote a new pending entry and `existing`
-   * when an entry with the same digest was already there. Rejects with
-   * {@link BureauLedgerConflictError}, after recording the attempt, when the
-   * existing entry's digest differs.
+   * Resolves `claimed` when this call wrote a new pending entry, replacing an
+   * expired binding if there was one, and `existing` when a retained entry
+   * with the same digest was already there. Rejects with
+   * {@link BureauLedgerConflictError}, after recording the attempt, when a
+   * retained entry's digest differs.
    */
   claim(
     identity: CommandLedgerIdentity,
@@ -210,23 +263,57 @@ export interface CommandLedger<TClaim, TResult> {
   complete(
     entry: CommandLedgerPendingEntry<TClaim>,
     result: TResult,
+    options?: { readonly settled?: boolean },
   ): Promise<CommandLedgerCompletedEntry<TClaim, TResult>>;
+  /**
+   * Record, once, that a completed command's effect has settled, so its
+   * retention window starts now. Resolves with the entry as stored; an entry
+   * already settled keeps its first `settledAt`. Resolves `undefined`,
+   * writing nothing, when the stored entry is no longer this completed claim.
+   */
+  settle(
+    entry: CommandLedgerCompletedEntry<TClaim, TResult>,
+  ): Promise<CommandLedgerCompletedEntry<TClaim, TResult> | undefined>;
   /**
    * Remove a pending entry whose command produced no effect, so a retry claims
    * afresh. Resolves `false`, removing nothing, when the stored entry is no
    * longer exactly `entry`.
    */
   release(entry: CommandLedgerPendingEntry<TClaim>): Promise<boolean>;
+  /** The stored entry, retained or expired, without applying retention. */
   read(identity: CommandLedgerIdentity): Promise<CommandLedgerEntry<TClaim, TResult> | undefined>;
+  /** Where the identity's binding stands, with retention applied. */
+  locate(identity: CommandLedgerIdentity): Promise<CommandLedgerLocation<TClaim, TResult>>;
+  /** The conflicts recorded against the identity's binding while it is retained; none once it has expired. */
   listConflicts(identity: CommandLedgerIdentity): Promise<readonly CommandLedgerConflictEntry[]>;
+  /**
+   * Delete every expired binding with its conflict records, and conflict
+   * records whose binding is gone and whose own window has passed.
+   */
+  prune(): Promise<CommandLedgerPruneResult>;
 }
 
-export interface CreateCommandLedgerOptions {
+export interface CreateCommandLedgerOptions<TClaim = unknown, TResult = unknown> {
   readonly kv: ConditionalTextValueStore;
-  /** The ISO timestamp recorded on claims, completions, and conflicts. */
-  readonly now: () => string;
+  /** The runtime clock: every timestamp the ledger records, and every expiry it decides. */
+  readonly clock: Pick<RuntimeClock, 'now' | 'nowISO'>;
   /** Mints the id of each recorded conflict. */
   readonly nextConflictId: () => string;
+  /**
+   * How long a binding is retained after its command settles, in
+   * milliseconds. A positive integer; default
+   * {@link COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} (24 hours).
+   */
+  readonly terminalRetentionMs?: number | undefined;
+  /**
+   * When `entry`'s retention window starts, in epoch milliseconds, or
+   * `undefined` while its command is still in progress, which holds the
+   * binding. Consulted only once the window measured from the entry's latest
+   * recorded timestamp has passed, so it must never answer earlier than that.
+   * By default the window starts at that timestamp.
+   */
+  readonly retentionStart?:
+    ((entry: CommandLedgerEntry<TClaim, TResult>) => Promise<number | undefined>) | undefined;
 }
 
 function identityKeySuffix(identity: CommandLedgerIdentity): string {
@@ -235,13 +322,16 @@ function identityKeySuffix(identity: CommandLedgerIdentity): string {
     .join(':');
 }
 
+const ENTRY_KEY_PREFIX = `${COMMAND_LEDGER_KEY_PREFIX}:entry:`;
+const CONFLICT_KEY_PREFIX = `${COMMAND_LEDGER_KEY_PREFIX}:conflict:`;
+
 function entryKey(identity: CommandLedgerIdentity): string {
-  return `${COMMAND_LEDGER_KEY_PREFIX}:entry:${identityKeySuffix(identity)}`;
+  return `${ENTRY_KEY_PREFIX}${identityKeySuffix(identity)}`;
 }
 
 function conflictKeyPrefix(identity: CommandLedgerIdentity): string {
   // The trailing delimiter keeps `request-1` from listing `request-10`'s conflicts.
-  return `${COMMAND_LEDGER_KEY_PREFIX}:conflict:${identityKeySuffix(identity)}:`;
+  return `${CONFLICT_KEY_PREFIX}${identityKeySuffix(identity)}:`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -270,8 +360,25 @@ function isWellFormedEntry(value: unknown): boolean {
   }
   if (value['state'] === 'pending') return true;
   return (
-    value['state'] === 'completed' && typeof value['completedAt'] === 'string' && 'result' in value
+    value['state'] === 'completed' &&
+    typeof value['completedAt'] === 'string' &&
+    'result' in value &&
+    (value['settledAt'] === undefined || typeof value['settledAt'] === 'string')
   );
+}
+
+/** The latest time an entry records: no retention window can start before it. */
+function latestTimestamp(entry: CommandLedgerEntry<unknown, unknown>): string {
+  if (entry.state === 'pending') return entry.claimedAt;
+  return entry.settledAt ?? entry.completedAt;
+}
+
+function validateTerminalRetentionMs(value: number | undefined): number {
+  if (value === undefined) return COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError('"terminalRetentionMs" must be a positive integer');
+  }
+  return value;
 }
 
 function parseEntry<TClaim, TResult>(
@@ -290,6 +397,18 @@ function parseEntry<TClaim, TResult>(
   return parsed as CommandLedgerEntry<TClaim, TResult>;
 }
 
+/**
+ * A parse that resolves `undefined` for an unreadable record instead of
+ * throwing, for pruning, which keeps what it cannot read.
+ */
+function readable<T>(parse: () => T): T | undefined {
+  try {
+    return parse();
+  } catch {
+    return undefined;
+  }
+}
+
 function parseConflict(key: string, raw: string | null): CommandLedgerConflictEntry | undefined {
   if (raw === null) return undefined;
   let parsed: unknown;
@@ -298,7 +417,13 @@ function parseConflict(key: string, raw: string | null): CommandLedgerConflictEn
   } catch (error) {
     throw new Error(`Command-ledger conflict record at "${key}" is unreadable.`, { cause: error });
   }
-  if (!isRecord(parsed) || parsed['state'] !== 'failed' || !isIdentity(parsed['identity'])) {
+  if (
+    !isRecord(parsed) ||
+    parsed['state'] !== 'failed' ||
+    !isIdentity(parsed['identity']) ||
+    typeof parsed['originalClaimedAt'] !== 'string' ||
+    typeof parsed['recordedAt'] !== 'string'
+  ) {
     throw new Error(`Command-ledger conflict record at "${key}" is unreadable.`);
   }
   return parsed as unknown as CommandLedgerConflictEntry;
@@ -306,17 +431,57 @@ function parseConflict(key: string, raw: string | null): CommandLedgerConflictEn
 
 /**
  * A command ledger over `options.kv`. See the module doc for the identity,
- * digest, and conflict rules.
+ * digest, conflict, and retention rules.
  */
 export function createCommandLedger<TClaim, TResult>(
-  options: CreateCommandLedgerOptions,
+  options: CreateCommandLedgerOptions<TClaim, TResult>,
 ): CommandLedger<TClaim, TResult> {
-  const { kv, now, nextConflictId } = options;
+  const { kv, clock, nextConflictId, retentionStart } = options;
+  const terminalRetentionMs = validateTerminalRetentionMs(options.terminalRetentionMs);
+  type Entry = CommandLedgerEntry<TClaim, TResult>;
+  type Completed = CommandLedgerCompletedEntry<TClaim, TResult>;
+
+  /**
+   * When `entry`'s retention window closed, in epoch milliseconds, if it has;
+   * `undefined` while the binding is retained.
+   */
+  async function expiredAt(entry: Entry): Promise<number | undefined> {
+    const now = clock.now();
+    const earliest = Date.parse(latestTimestamp(entry)) + terminalRetentionMs;
+    if (now < earliest) return undefined;
+    if (retentionStart === undefined) return earliest;
+    const start = await retentionStart(entry);
+    if (start === undefined) return undefined;
+    const closes = Math.max(start + terminalRetentionMs, earliest);
+    return now < closes ? undefined : closes;
+  }
+
+  /** Whether `stored` is still the claim `entry` was made under, in any state. */
+  function isSameClaim(stored: Entry | undefined, entry: Entry): boolean {
+    return (
+      stored !== undefined &&
+      stored.claimedAt === entry.claimedAt &&
+      JSON.stringify(stored.claim) === JSON.stringify(entry.claim)
+    );
+  }
+
+  async function readStored(key: string): Promise<{ raw: string; entry: Entry } | undefined> {
+    const raw = await kv.get(key);
+    return raw === null ? undefined : { raw, entry: parseEntry<TClaim, TResult>(key, raw) };
+  }
+
+  /** A delete for each conflict record of `identity`, to commit with a change to its binding. */
+  async function conflictDeletions(
+    identity: CommandLedgerIdentity,
+  ): Promise<TextValueStoreBatchOperation[]> {
+    const keys = await kv.list(conflictKeyPrefix(identity));
+    return keys.map((key) => ({ type: 'delete', key }));
+  }
 
   async function recordConflict(
     identity: CommandLedgerIdentity,
     payloadDigest: string,
-    originalPayloadDigest: string,
+    original: Entry,
   ): Promise<string> {
     for (let attempt = 0; attempt < COMMAND_LEDGER_MAX_CAS_ATTEMPTS; attempt += 1) {
       const conflictId = nextConflictId();
@@ -327,8 +492,9 @@ export function createCommandLedger<TClaim, TResult>(
         conflictId,
         reason: 'payload-mismatch',
         payloadDigest,
-        originalPayloadDigest,
-        recordedAt: now(),
+        originalPayloadDigest: original.payloadDigest,
+        originalClaimedAt: original.claimedAt,
+        recordedAt: clock.nowISO(),
       };
       const committed = await kv.conditionalBatch(
         [{ key, expectedValue: null }],
@@ -342,33 +508,98 @@ export function createCommandLedger<TClaim, TResult>(
     );
   }
 
+  /**
+   * Write `entry` as the identity's binding: into an empty slot, or over the
+   * expired binding stored as `expiredRaw`, whose conflict records go with it.
+   */
+  async function writeClaim(
+    key: string,
+    entry: CommandLedgerPendingEntry<TClaim>,
+    expiredRaw: string | null,
+  ): Promise<boolean> {
+    const deletions = expiredRaw === null ? [] : await conflictDeletions(entry.identity);
+    return kv.conditionalBatch(
+      [{ key, expectedValue: expiredRaw }],
+      [{ type: 'set', key, value: JSON.stringify(entry) }, ...deletions],
+    );
+  }
+
+  async function locate(
+    identity: CommandLedgerIdentity,
+  ): Promise<CommandLedgerLocation<TClaim, TResult>> {
+    const stored = await readStored(entryKey(identity));
+    if (stored === undefined) return { state: 'not-found' };
+    const closed = await expiredAt(stored.entry);
+    if (closed === undefined) return { state: 'retained', entry: stored.entry };
+    return { state: 'expired', entry: stored.entry, expiredAt: new Date(closed).toISOString() };
+  }
+
+  /**
+   * Delete the binding stored as `raw` with its conflict records. Resolves how
+   * many conflict records went with it, or `undefined` when it changed first.
+   */
+  async function deleteBinding(
+    key: string,
+    raw: string,
+    entry: Entry,
+  ): Promise<number | undefined> {
+    const deletions = await conflictDeletions(entry.identity);
+    const committed = await kv.conditionalBatch(
+      [{ key, expectedValue: raw }],
+      [{ type: 'delete', key }, ...deletions],
+    );
+    return committed ? deletions.length : undefined;
+  }
+
+  /** Whether the binding `conflict` was recorded against still exists; an unreadable one counts. */
+  async function isBound(conflict: CommandLedgerConflictEntry): Promise<boolean> {
+    const key = entryKey(conflict.identity);
+    const raw = await kv.get(key);
+    if (raw === null) return false;
+    const entry = readable(() => parseEntry<TClaim, TResult>(key, raw));
+    return entry === undefined || entry.claimedAt === conflict.originalClaimedAt;
+  }
+
+  /**
+   * Deletes conflict records whose binding is gone: released, replaced, or
+   * pruned. An unreadable record is kept.
+   */
+  async function pruneOrphanedConflicts(): Promise<number> {
+    let pruned = 0;
+    for (const key of await kv.list(CONFLICT_KEY_PREFIX)) {
+      const raw = await kv.get(key);
+      const conflict = readable(() => parseConflict(key, raw));
+      if (raw === null || conflict === undefined || (await isBound(conflict))) continue;
+      if (await kv.conditionalBatch([{ key, expectedValue: raw }], [{ type: 'delete', key }])) {
+        pruned += 1;
+      }
+    }
+    return pruned;
+  }
+
   return {
     async claim(identity, payloadDigest, claim) {
       const key = entryKey(identity);
       for (let attempt = 0; attempt < COMMAND_LEDGER_MAX_CAS_ATTEMPTS; attempt += 1) {
-        const raw = await kv.get(key);
-        if (raw !== null) {
-          const existing = parseEntry<TClaim, TResult>(key, raw);
-          if (existing.payloadDigest === payloadDigest) {
-            return { outcome: 'existing', entry: existing };
-          }
-          const conflictId = await recordConflict(identity, payloadDigest, existing.payloadDigest);
-          throw new BureauLedgerConflictError(identity.requestId, conflictId);
-        }
+        const stored = await readStored(key);
         const entry: CommandLedgerPendingEntry<TClaim> = {
           state: 'pending',
           identity,
           payloadDigest,
-          claimedAt: now(),
+          claimedAt: clock.nowISO(),
           claim,
         };
-        const committed = await kv.conditionalBatch(
-          [{ key, expectedValue: null }],
-          [{ type: 'set', key, value: JSON.stringify(entry) }],
-        );
-        if (committed) return { outcome: 'claimed', entry };
-        // Another attempt claimed the identity between the read and the
-        // write. Re-read and resolve against what it wrote.
+        if (stored !== undefined && (await expiredAt(stored.entry)) === undefined) {
+          const existing = stored.entry;
+          if (existing.payloadDigest === payloadDigest) {
+            return { outcome: 'existing', entry: existing };
+          }
+          const conflictId = await recordConflict(identity, payloadDigest, existing);
+          throw new BureauLedgerConflictError(identity.requestId, conflictId);
+        }
+        if (await writeClaim(key, entry, stored?.raw ?? null)) return { outcome: 'claimed', entry };
+        // Another attempt claimed, completed, or settled the identity between
+        // the read and the write. Re-read and resolve against what it wrote.
       }
       throw new Error(
         `Command ledger could not claim request "${identity.requestId}" ` +
@@ -376,31 +607,27 @@ export function createCommandLedger<TClaim, TResult>(
       );
     },
 
-    async complete(entry, result) {
+    async complete(entry, result, completion = {}) {
       const key = entryKey(entry.identity);
-      const expected = JSON.stringify(entry);
-      const completed: CommandLedgerCompletedEntry<TClaim, TResult> = {
+      const completedAt = clock.nowISO();
+      const completed: Completed = {
         ...entry,
         state: 'completed',
-        completedAt: now(),
+        completedAt,
         result,
+        ...(completion.settled === true ? { settledAt: completedAt } : {}),
       };
       const committed = await kv.conditionalBatch(
-        [{ key, expectedValue: expected }],
+        [{ key, expectedValue: JSON.stringify(entry) }],
         [{ type: 'set', key, value: JSON.stringify(completed) }],
       );
       if (committed) return completed;
       // Another attempt may have completed this same claim first, as a retry
       // that observed the run does. Its record stands; anything else means
       // the claim this call held is gone.
-      const raw = await kv.get(key);
-      const stored = raw === null ? undefined : parseEntry<TClaim, TResult>(key, raw);
-      if (
-        stored?.state === 'completed' &&
-        stored.claimedAt === entry.claimedAt &&
-        JSON.stringify(stored.claim) === JSON.stringify(entry.claim)
-      ) {
-        return stored;
+      const stored = await readStored(key);
+      if (stored?.entry.state === 'completed' && isSameClaim(stored.entry, entry)) {
+        return stored.entry;
       }
       throw new Error(
         `Command-ledger entry for request "${entry.identity.requestId}" is no longer pending ` +
@@ -408,27 +635,70 @@ export function createCommandLedger<TClaim, TResult>(
       );
     },
 
+    async settle(entry) {
+      const key = entryKey(entry.identity);
+      for (let attempt = 0; attempt < COMMAND_LEDGER_MAX_CAS_ATTEMPTS; attempt += 1) {
+        const stored = await readStored(key);
+        if (stored?.entry.state !== 'completed' || !isSameClaim(stored.entry, entry)) {
+          return undefined;
+        }
+        if (stored.entry.settledAt !== undefined) return stored.entry;
+        const settled: Completed = { ...stored.entry, settledAt: clock.nowISO() };
+        const committed = await kv.conditionalBatch(
+          [{ key, expectedValue: stored.raw }],
+          [{ type: 'set', key, value: JSON.stringify(settled) }],
+        );
+        if (committed) return settled;
+      }
+      throw new Error(
+        `Command ledger could not record the settlement of request ` +
+          `"${entry.identity.requestId}" within ${COMMAND_LEDGER_MAX_CAS_ATTEMPTS} ` +
+          'compare-and-swap attempts.',
+      );
+    },
+
     async release(entry) {
       const key = entryKey(entry.identity);
       return kv.conditionalBatch(
         [{ key, expectedValue: JSON.stringify(entry) }],
-        [{ type: 'delete', key }],
+        [{ type: 'delete', key }, ...(await conflictDeletions(entry.identity))],
       );
     },
 
     async read(identity) {
-      const key = entryKey(identity);
-      const raw = await kv.get(key);
-      return raw === null ? undefined : parseEntry<TClaim, TResult>(key, raw);
+      const stored = await readStored(entryKey(identity));
+      return stored?.entry;
     },
 
+    locate,
+
     async listConflicts(identity) {
+      const location = await locate(identity);
+      if (location.state !== 'retained') return [];
       const conflicts: CommandLedgerConflictEntry[] = [];
       for (const key of await kv.list(conflictKeyPrefix(identity))) {
         const conflict = parseConflict(key, await kv.get(key));
-        if (conflict !== undefined) conflicts.push(conflict);
+        if (conflict?.originalClaimedAt === location.entry.claimedAt) conflicts.push(conflict);
       }
       return conflicts;
+    },
+
+    async prune() {
+      let entries = 0;
+      let conflicts = 0;
+      for (const key of await kv.list(ENTRY_KEY_PREFIX)) {
+        const raw = await kv.get(key);
+        // An unreadable entry fails closed here too: it is kept, never pruned.
+        const entry =
+          raw === null ? undefined : readable(() => parseEntry<TClaim, TResult>(key, raw));
+        if (raw === null || entry === undefined || (await expiredAt(entry)) === undefined) continue;
+        const removedConflicts = await deleteBinding(key, raw, entry);
+        if (removedConflicts === undefined) continue;
+        entries += 1;
+        conflicts += removedConflicts;
+      }
+      conflicts += await pruneOrphanedConflicts();
+      return { entries, conflicts };
     },
   };
 }
@@ -553,15 +823,47 @@ export type RunCreationAttempt =
 
 export interface CreateRunCreationLedgerOptions {
   readonly kv: ConditionalTextValueStore;
-  readonly clock: Pick<RuntimeClock, 'nowISO'>;
+  readonly clock: Pick<RuntimeClock, 'now' | 'nowISO'>;
   readonly identifiers: RuntimeIdentifiers;
   /** Looks up the run a claim reserved. */
   readonly observe: (claim: RunCreationClaim) => Promise<RunCreationObservation>;
+  /**
+   * How long a binding is retained after its run settles, in milliseconds.
+   * Default {@link COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} (24 hours).
+   */
+  readonly terminalRetentionMs?: number | undefined;
 }
+
+/** Which run-creation request a receipt query is for. */
+export interface LocateRunCreationReceiptInput {
+  readonly callerId: string;
+  readonly agentName: string;
+  readonly requestId: string;
+}
+
+/**
+ * Where a run-creation request's receipt stands: `recorded` once the run has
+ * started, `pending` while its claim has no started run, `expired` once the
+ * binding's retention window has passed (the request id then admits a new
+ * run), and `not-found` when the ledger holds no binding for it.
+ */
+export type RunCreationReceiptLocation =
+  | { readonly status: 'recorded'; readonly receipt: RunCreationReceipt }
+  | { readonly status: 'pending'; readonly receipt: RunCreationReceipt }
+  | { readonly status: 'expired'; readonly requestId: string; readonly expiredAt: string }
+  | { readonly status: 'not-found'; readonly requestId: string };
 
 export interface RunCreationLedger {
   readonly ledger: CommandLedger<RunCreationClaim, RunCreationLedgerResult>;
   begin(input: BeginRunCreationInput): Promise<RunCreationAttempt>;
+  /**
+   * Where the request's receipt stands. Like a retry, a query that finds the
+   * claimed run started records its receipt, and one that first finds the
+   * run settled starts the binding's retention window.
+   */
+  locate(input: LocateRunCreationReceiptInput): Promise<RunCreationReceiptLocation>;
+  /** Delete expired bindings and their conflict records. */
+  prune(): Promise<CommandLedgerPruneResult>;
 }
 
 /** Maps a durable workflow status onto the `RunSummary` status vocabulary. */
@@ -586,6 +888,28 @@ function runStatusFromDurable(
 }
 
 type RunCreationPendingEntry = CommandLedgerPendingEntry<RunCreationClaim>;
+type RunCreationCompletedEntry = CommandLedgerCompletedEntry<
+  RunCreationClaim,
+  RunCreationLedgerResult
+>;
+type RunCreationEntry = CommandLedgerEntry<RunCreationClaim, RunCreationLedgerResult>;
+
+/** The `RunSummary` statuses a run never leaves. */
+const SETTLED_RUN_STATUSES: ReadonlySet<string> = new Set(['completed', 'error', 'aborted']);
+
+/** The run's status as observed: live in this process, else durable; `undefined` when it never started. */
+function observedStatus(observation: RunCreationObservation): string | undefined {
+  return observation.live?.status ?? runStatusFromDurable(observation.durableStatus);
+}
+
+function runCreationIdentity(input: LocateRunCreationReceiptInput): CommandLedgerIdentity {
+  return {
+    callerId: input.callerId,
+    target: input.agentName,
+    requestId: input.requestId,
+    operationVersion: RUN_CREATION_OPERATION_VERSION,
+  };
+}
 
 /** The summary of a claimed run that has not started, so has done no work. */
 function notStartedSummary(entry: RunCreationPendingEntry): RunSummary {
@@ -634,13 +958,51 @@ export function createRunCreationLedger(
   options: CreateRunCreationLedgerOptions,
 ): RunCreationLedger {
   const { clock, identifiers, observe } = options;
-  const ledger = createCommandLedger<RunCreationClaim, RunCreationLedgerResult>({
-    kv: options.kv,
-    now: () => clock.nowISO(),
-    nextConflictId: () => identifiers.next('command-ledger-conflict'),
-  });
   // Attempts this process claimed and has not yet settled, by ledger key.
   const inFlight = new Map<string, Promise<CreatedRunSummary>>();
+  const ledger: CommandLedger<RunCreationClaim, RunCreationLedgerResult> = createCommandLedger<
+    RunCreationClaim,
+    RunCreationLedgerResult
+  >({
+    kv: options.kv,
+    clock,
+    nextConflictId: () => identifiers.next('command-ledger-conflict'),
+    terminalRetentionMs: options.terminalRetentionMs,
+    retentionStart,
+  });
+
+  /**
+   * When a binding's retention window starts: once its run has settled, or,
+   * for a run that never started or no longer exists, at the entry's own
+   * latest timestamp. A run still in progress, or a claim this process is
+   * still settling, holds the binding. The ledger records no run's settlement
+   * as it happens, so the window starts when the ledger first observes it:
+   * on a retry, a receipt query, or a prune. That is never before the run
+   * settled, so a delayed retry of a long-running run never starts another.
+   */
+  async function retentionStart(entry: RunCreationEntry): Promise<number | undefined> {
+    if (entry.state === 'completed' && entry.settledAt !== undefined) {
+      return Date.parse(entry.settledAt);
+    }
+    if (inFlight.has(entryKey(entry.identity))) return undefined;
+    const status = observedStatus(await observe(entry.claim));
+    if (status === undefined) return Date.parse(latestTimestamp(entry));
+    // A started run whose claim is still pending is recorded by the next
+    // retry, which then settles it; until then it holds the binding.
+    if (!SETTLED_RUN_STATUSES.has(status) || entry.state === 'pending') return undefined;
+    // `undefined` when the entry changed under this read; the claim's
+    // compare-and-swap then fails against it and re-reads.
+    const settled = await ledger.settle(entry);
+    return Date.parse(settled?.settledAt ?? latestTimestamp(entry));
+  }
+
+  /** Records that a completed entry's run has settled, the first time a retry or query sees it. */
+  async function settleIfObserved(entry: RunCreationCompletedEntry, status: string): Promise<void> {
+    if (entry.settledAt === undefined && SETTLED_RUN_STATUSES.has(status)) {
+      await ledger.settle(entry);
+    }
+  }
+
   // Serializes this process's claims of one identity, so a concurrent retry
   // reads the ledger only after the attempt that claimed it has registered
   // in `inFlight`, and waits for it rather than reporting it not started.
@@ -660,15 +1022,14 @@ export function createRunCreationLedger(
     }
   }
 
-  async function replayCompleted(
-    entry: CommandLedgerCompletedEntry<RunCreationClaim, RunCreationLedgerResult>,
-  ): Promise<CreatedRunSummary> {
+  async function replayCompleted(entry: RunCreationCompletedEntry): Promise<CreatedRunSummary> {
     const { live, durableStatus } = await observe(entry.claim);
     const stored = entry.result.summary;
     const summary = live ?? {
       ...stored,
       status: runStatusFromDurable(durableStatus) ?? stored.status,
     };
+    await settleIfObserved(entry, summary.status);
     return { ...summary, receipt: entry.result.receipt };
   }
 
@@ -687,8 +1048,32 @@ export function createRunCreationLedger(
     // Without a live run this process has observed none of the run's work,
     // so it reports none.
     const summary: RunSummary = live ?? { ...notStartedSummary(entry), status };
-    const recorded = await ledger.complete(entry, { receipt: receiptFor(entry, status), summary });
+    const recorded = await ledger.complete(
+      entry,
+      { receipt: receiptFor(entry, status), summary },
+      { settled: SETTLED_RUN_STATUSES.has(status) },
+    );
     return { ...summary, receipt: recorded.result.receipt };
+  }
+
+  async function locate(input: LocateRunCreationReceiptInput): Promise<RunCreationReceiptLocation> {
+    const location = await ledger.locate(runCreationIdentity(input));
+    if (location.state === 'not-found') return { status: 'not-found', requestId: input.requestId };
+    if (location.state === 'expired') {
+      return { status: 'expired', requestId: input.requestId, expiredAt: location.expiredAt };
+    }
+    const { entry } = location;
+    if (entry.state === 'completed') {
+      const status = observedStatus(await observe(entry.claim));
+      if (status !== undefined) await settleIfObserved(entry, status);
+      return { status: 'recorded', receipt: entry.result.receipt };
+    }
+    if (inFlight.has(entryKey(entry.identity))) {
+      return { status: 'pending', receipt: receiptFor(entry, 'pending') };
+    }
+    const replayed = await replayPending(entry);
+    const receipt = replayed.receipt ?? receiptFor(entry, replayed.status);
+    return { status: replayed.status === 'pending' ? 'pending' : 'recorded', receipt };
   }
 
   /** The original receipt a conflicting attempt reports, once the original has one. */
@@ -704,6 +1089,10 @@ export function createRunCreationLedger(
     key: string,
     input: BeginRunCreationInput,
   ): Promise<ClaimDecision> {
+    // Taken before the ledger read: an attempt in flight now may settle while
+    // the read is outstanding, and a pending entry read then is still its
+    // claim, which this retry must wait for rather than report not started.
+    const settling = inFlight.get(key);
     let outcome: CommandLedgerClaimOutcome<RunCreationClaim, RunCreationLedgerResult>;
     try {
       outcome = await ledger.claim(identity, input.payloadDigest, input.claim);
@@ -714,7 +1103,7 @@ export function createRunCreationLedger(
       });
     }
     if (outcome.outcome === 'existing') {
-      return { kind: 'existing', entry: outcome.entry, inFlight: inFlight.get(key) };
+      return { kind: 'existing', entry: outcome.entry, inFlight: inFlight.get(key) ?? settling };
     }
     const settlement = Promise.withResolvers<CreatedRunSummary>();
     // An attempt nobody is waiting on may still fail; its caller sees that
@@ -726,13 +1115,10 @@ export function createRunCreationLedger(
 
   return {
     ledger,
+    locate,
+    prune: () => ledger.prune(),
     async begin(input) {
-      const identity: CommandLedgerIdentity = {
-        callerId: input.callerId,
-        target: input.agentName,
-        requestId: input.requestId,
-        operationVersion: RUN_CREATION_OPERATION_VERSION,
-      };
+      const identity = runCreationIdentity(input);
       const key = entryKey(identity);
       const decision = await withClaimLock(key, () => claimOrObserve(identity, key, input));
 
