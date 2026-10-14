@@ -1,12 +1,8 @@
-import { abandonParentAfterChildCheckpointConflict } from './checkpoint-conflict-abandon.ts';
 import { isCheckpointConflictFor } from './checkpoint-conflict-error.ts';
+import { watchChildDurableOutcome } from './child-outcome-poll.ts';
 import { currentExecutionAttempt, type ExecutionAttempt } from './execution-attempts.ts';
 import { getWorkflowResultPromise } from './handle-result.ts';
 import type { EngineInternals } from './internals.ts';
-import {
-  confirmParentOwnership,
-  parentEligibleForChildConflictAbandonment,
-} from './parent-abandonment-eligibility.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
 
 /**
@@ -81,46 +77,28 @@ function fenceResultOnParentGeneration(
   signal: AbortSignal | undefined,
 ): Promise<unknown> {
   const gate = Promise.withResolvers<unknown>();
-  let stillAwaiting = true;
-  const settleView = (settle: () => void): void => {
-    stillAwaiting = false;
-    settle();
-  };
   void promise.then(
     async (value) => {
-      if (await parentStillOwnsGeneration(internals, parentWorkflowId)) {
-        settleView(() => gate.resolve(value));
-      }
+      if (await parentStillOwnsGeneration(internals, parentWorkflowId)) gate.resolve(value);
       return undefined;
     },
     async (error: unknown) => {
-      // A child abandoned after a lost checkpoint race is healthy under its winner, so this must
-      // not become a failure of the child. Nothing on this engine can settle the parent's view of
-      // it either, and the winner may have resumed only the child, so the parent gives up the
-      // same way the child did, but only when the whole eligibility predicate holds, judged
-      // after the last await and in the same synchronous stretch as the abandonment.
+      // A child this engine lost to a checkpoint race is healthy under its winner, so this must
+      // not become a failure of the child, and nothing on this engine will ever settle it. The
+      // parent's view instead follows the child's durable outcome (see `child-outcome-poll.ts`).
       if (isCheckpointConflictFor(error, childWorkflowId)) {
-        const ownershipConfirmed = await confirmParentOwnership(internals, parentWorkflowId);
-        const input = {
+        watchChildDurableOutcome(internals, {
           parentWorkflowId,
-          parkedAttempt: parentAttempt,
+          childWorkflowId,
+          parentAttempt,
           signal,
-          stillAwaiting,
-          ownershipConfirmed,
-        };
-        if (parentEligibleForChildConflictAbandonment(internals, input)) {
-          abandonParentAfterChildCheckpointConflict(
-            internals,
-            parentWorkflowId,
-            parentAttempt,
-            error,
-          );
-        }
+          confirmParentStillOwned: () => parentStillOwnsGeneration(internals, parentWorkflowId),
+          resolve: gate.resolve,
+          reject: gate.reject,
+        });
         return undefined;
       }
-      if (await parentStillOwnsGeneration(internals, parentWorkflowId)) {
-        settleView(() => gate.reject(error));
-      }
+      if (await parentStillOwnsGeneration(internals, parentWorkflowId)) gate.reject(error);
       return undefined;
     },
   );

@@ -2,11 +2,7 @@ import {
   WeftWorkflowCheckpointConflictWarning,
   WorkflowCheckpointConflictError,
 } from './checkpoint-conflict-error.ts';
-import {
-  abandonExecutionAttempt,
-  currentExecutionAttempt,
-  type ExecutionAttempt,
-} from './execution-attempts.ts';
+import { abandonExecutionAttempt, currentExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 
 /**
@@ -46,17 +42,7 @@ export function abandonWorkflowAfterCheckpointConflict(
   error: WorkflowCheckpointConflictError,
 ): void {
   const { workflowId, workflowExecutionToken } = error;
-  if (
-    !abandonExecutionAttempt(
-      internals,
-      workflowId,
-      workflowExecutionToken,
-      error.lostChildWorkflowId === undefined
-        ? undefined
-        : { workflowId: error.lostChildWorkflowId, cause: error.cause },
-    )
-  )
-    return;
+  if (!abandonExecutionAttempt(internals, workflowId, workflowExecutionToken)) return;
   try {
     internals.strategy.retireWorkflow(workflowId);
   } catch {
@@ -74,49 +60,7 @@ export function abandonWorkflowAfterCheckpointConflict(
     internals.handleCache.delete(workflowId);
   }
 
-  emitCheckpointConflictWarning(
-    new WeftWorkflowCheckpointConflictWarning(workflowId, error.lostChildWorkflowId),
-  );
-}
-
-/**
- * Give up a parent that is parked on a child this engine abandoned after a lost checkpoint race,
- * the same way the child was given up: nothing durable is written, and the parent's pending
- * `result()` rejects with a {@link WorkflowCheckpointConflictError} for the parent whose `cause`
- * is the child's loss.
- *
- * Under `ownership: 'none'` nothing on the losing engine can ever settle the parent's view of that
- * child. The winner may have recovered every workflow, in which case it drives the parent too, or
- * it may have resumed only the child, in which case the parent would stay parked here for good with
- * no durable record of why. Either way this engine is no longer the one to drive the parent, so it
- * stops, exactly as {@link persistCheckpointAbandoningOnConflict} stops a workflow whose own
- * commit lost.
- *
- * `parkedAttempt` is the execution attempt this engine held for the parent when it began awaiting
- * the child. The loss arrives later, so the abandonment is bound to that attempt rather than to the
- * generation's token: a parent this engine has since relaunched or replaced is healthy and is left
- * alone. A parent the engine never held an attempt for has nothing to abandon. Idempotent, so a
- * parent awaiting several lost children is abandoned once.
- */
-export function abandonParentAfterChildCheckpointConflict(
-  internals: EngineInternals,
-  parentWorkflowId: string,
-  parkedAttempt: ExecutionAttempt | undefined,
-  childConflict: WorkflowCheckpointConflictError,
-): void {
-  // Eligibility is the caller's to establish, immediately before this call
-  // (`parentEligibleForChildConflictAbandonment`): this only performs the abandonment.
-  if (parkedAttempt === undefined) return;
-  // Through A -> B -> C, A names C, the workflow that actually lost, not B, which only inherited it.
-  const inherited = childConflict.lostChildWorkflowId !== undefined;
-  abandonWorkflowAfterCheckpointConflict(
-    internals,
-    new WorkflowCheckpointConflictError(parentWorkflowId, {
-      cause: inherited ? childConflict.cause : childConflict,
-      lostChildWorkflowId: childConflict.lostChildWorkflowId ?? childConflict.workflowId,
-      workflowExecutionToken: parkedAttempt.workflowExecutionToken,
-    }),
-  );
+  emitCheckpointConflictWarning(new WeftWorkflowCheckpointConflictWarning(workflowId));
 }
 
 /**
@@ -133,12 +77,6 @@ export function abandonedGenerationConflict(
   if (held?.abandoned !== true) return undefined;
   return new WorkflowCheckpointConflictError(workflowId, {
     workflowExecutionToken: held.workflowExecutionToken,
-    // A parent abandoned for its child keeps saying so, with the conflict, to a later
-    // `getHandle(parent).result()`.
-    ...(held.lostChild !== undefined && {
-      lostChildWorkflowId: held.lostChild.workflowId,
-      cause: held.lostChild.cause,
-    }),
   });
 }
 

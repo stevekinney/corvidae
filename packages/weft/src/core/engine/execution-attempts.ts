@@ -72,17 +72,11 @@ export type ExecutionAttempt = {
   readonly workflowExecutionToken: string | undefined;
   /** This engine lost the generation's checkpoint compare-and-swap race, so it is the winner's. */
   readonly abandoned: boolean;
-  /** Set when the attempt was abandoned because a descendant it awaited lost its race, not its own. */
-  readonly lostChild?: LostChild | undefined;
 };
-
-/** The workflow that actually lost its race, and the conflict it lost with. */
-export type LostChild = { readonly workflowId: string; readonly cause: unknown };
 
 type ExecutionAttemptRecord = {
   readonly workflowExecutionToken: string | undefined;
   abandoned: boolean;
-  lostChild?: LostChild | undefined;
 };
 
 const attemptsByEngine = new WeakMap<EngineInternals, Map<string, ExecutionAttemptRecord>>();
@@ -145,7 +139,6 @@ export function abandonExecutionAttempt(
   internals: EngineInternals,
   workflowId: string,
   workflowExecutionToken: string | undefined,
-  lostChild?: LostChild,
 ): boolean {
   const attempt = attemptsByEngine.get(internals)?.get(workflowId);
   if (
@@ -156,7 +149,6 @@ export function abandonExecutionAttempt(
     return false;
   }
   attempt.abandoned = true;
-  attempt.lostChild = lostChild;
   return true;
 }
 
@@ -167,27 +159,6 @@ export function abandonExecutionAttempt(
  */
 export function isHeldGenerationAbandoned(internals: EngineInternals, workflowId: string): boolean {
   return attemptsByEngine.get(internals)?.get(workflowId)?.abandoned === true;
-}
-
-/**
- * The abandonment of the generation identified by `workflowExecutionToken`, with what it carries,
- * or `undefined` when the engine holds no such abandoned generation. A caller that must put an
- * abandonment back (a failed resume) restores it from this, not from the bare flag.
- */
-export function heldAbandonment(
-  internals: EngineInternals,
-  workflowId: string,
-  workflowExecutionToken: string | undefined,
-): { readonly lostChild: LostChild | undefined } | undefined {
-  const attempt = attemptsByEngine.get(internals)?.get(workflowId);
-  if (
-    attempt === undefined ||
-    !attempt.abandoned ||
-    attempt.workflowExecutionToken !== workflowExecutionToken
-  ) {
-    return undefined;
-  }
-  return { lostChild: attempt.lostChild };
 }
 
 /**

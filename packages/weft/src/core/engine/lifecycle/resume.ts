@@ -15,7 +15,7 @@
  */
 
 import { KEYS } from '../../../storage/interface.ts';
-import { abandonExecutionAttempt, heldAbandonment } from '../execution-attempts.ts';
+import { abandonExecutionAttempt, isGenerationAbandoned } from '../execution-attempts.ts';
 import type { WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import { decodeWorkflowState } from '../validation.ts';
@@ -112,7 +112,7 @@ export async function resumeWorkflowFromStorage(
   // Relaunching ends the abandoned attempt as soon as the checkpoint is adopted and begins a
   // new one, before the remaining resume steps run; restore the abandonment if any of them fail.
   const token = state.workflowExecutionToken;
-  const abandonment = heldAbandonment(internals, workflowId, token);
+  const wasAbandoned = isGenerationAbandoned(internals, workflowId, token);
 
   try {
     return await performResumeAfterClaimAcquired(
@@ -125,9 +125,7 @@ export async function resumeWorkflowFromStorage(
       options?.skipEagerRevisionCheck,
     );
   } catch (error) {
-    if (abandonment !== undefined) {
-      abandonExecutionAttempt(internals, workflowId, token, abandonment.lostChild);
-    }
+    if (wasAbandoned) abandonExecutionAttempt(internals, workflowId, token);
     // WFT-134: release a freshly-acquired claim (see its doc) on any
     // rejection above, notably `performSerializedResume`'s status/generation
     // re-check — unless the caller asked to defer that release (see

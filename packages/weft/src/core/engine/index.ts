@@ -143,6 +143,7 @@ import {
   listCheckpoints as listCheckpointHistory,
   replayTo as replayWorkflowToCheckpoint,
 } from './checkpoint-reads.ts';
+import { pollChildOutcomes } from './child-outcome-poll.ts';
 import {
   copyWorkflowDefinition,
   createActivityWorkerDispatcher,
@@ -2085,6 +2086,8 @@ export class Engine<
     // Without it a manual-mode engine awaiting a child claimed by another
     // engine would never observe that child terminate.
     await pollPendingCrossEngineResultWaiters(internals);
+    // The same, for a parent awaiting a child this engine lost to a checkpoint race.
+    await pollChildOutcomes(internals);
     await internals.scheduler.tick(now);
     try {
       await internals.updateCoordinator.cleanupExpiredResponses();

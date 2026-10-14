@@ -43,20 +43,12 @@ export const WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME = 'WeftWorkflowCheckpoint
 export class WeftWorkflowCheckpointConflictWarning extends Error {
   readonly workflowId: string;
 
-  readonly lostChildWorkflowId: string | undefined;
-
-  constructor(workflowId: string, lostChildWorkflowId?: string) {
+  constructor(workflowId: string) {
     super(
-      lostChildWorkflowId === undefined
-        ? `workflow "${workflowId}" lost a checkpoint compare-and-swap race: another writer advanced its ` +
-            'checkpoint over the same store. This engine stops driving that workflow and writes nothing ' +
-            'further; the rest of its workflows are unaffected.'
-        : `workflow "${workflowId}" is abandoned because the workflow it awaits, "${lostChildWorkflowId}", lost a ` +
-            'checkpoint compare-and-swap race: another writer advanced the child over the same store. ' +
-            "The parent's own checkpoint is unchanged. This engine stops driving the parent and writes " +
-            'nothing further; the rest of its workflows are unaffected.',
+      `workflow "${workflowId}" lost a checkpoint compare-and-swap race: another writer advanced its ` +
+        'checkpoint over the same store. This engine stops driving that workflow and writes nothing ' +
+        'further; the rest of its workflows are unaffected.',
     );
-    this.lostChildWorkflowId = lostChildWorkflowId;
     this.name = WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME;
     this.workflowId = workflowId;
   }
@@ -74,12 +66,10 @@ export class WeftWorkflowCheckpointConflictWarning extends Error {
  * `handle.result()` on the losing engine rejects with this error, including a
  * call made after the loss, for as long as this engine still holds the lost
  * generation. A parent workflow on the losing engine that was awaiting a child
- * this engine abandoned is never failed because of the child: the child is healthy
- * under its winner. Nothing on this engine can settle the parent's view of that
- * child, though, and the winner may have resumed only the child, so the parent is
- * abandoned the same way, and its `result()` rejects with this error for the
- * parent, whose `cause` is the child's. The loser writes nothing durable and
- * releases nothing locally, and it does not recover on its own: recovering the workflow on
+ * this engine abandoned is never failed because of it: the child is healthy under
+ * its winner, so the parent keeps waiting and settles from the child's durable
+ * terminal outcome, or stays parked if the winner never finishes it. The loser
+ * writes nothing durable and releases nothing locally, and it does not recover on its own: recovering the workflow on
  * the losing engine means re-resuming it from the winner's checkpoint, which this
  * error does not do for you. `ownership: 'workflow-lease'` is the complete
  * answer for two live engines over one store.
@@ -108,42 +98,24 @@ export class WorkflowCheckpointConflictError extends WeftError<'WorkflowCheckpoi
    * the loss was being classified is not the loser.
    */
   readonly workflowExecutionToken: string | undefined;
-  /**
-   * Set when this workflow is not the one that lost the race: it was abandoned because the child it
-   * was awaiting lost its own checkpoint race, so this workflow's own checkpoint is unchanged and
-   * the winning writer owns the child, not this workflow. Names that child.
-   */
-  readonly lostChildWorkflowId: string | undefined;
 
   constructor(
     workflowId: string,
-    options?: ErrorOptions & {
-      readonly workflowExecutionToken?: string | undefined;
-      readonly lostChildWorkflowId?: string | undefined;
-    },
+    options?: ErrorOptions & { readonly workflowExecutionToken?: string | undefined },
   ) {
     super(
       'WorkflowCheckpointConflictError',
-      options?.lostChildWorkflowId !== undefined
-        ? `Workflow "${workflowId}" was awaiting workflow "${options.lostChildWorkflowId}" (its child or a descendant), whose checkpoint ` +
-            'commit lost its CAS race against a newer checkpoint written by another writer over the same ' +
-            "store. This engine stops driving the parent and writes nothing further; the parent's own " +
-            'checkpoint is unchanged, and the winning writer owns the child.'
-        : `Checkpoint commit for workflow "${workflowId}" lost its CAS race against a newer checkpoint: ` +
-            'another writer over the same store advanced this workflow. This engine stops driving it ' +
-            'and writes nothing further; the winning writer owns its durable state.',
+      `Checkpoint commit for workflow "${workflowId}" lost its CAS race against a newer checkpoint: ` +
+        'another writer over the same store advanced this workflow. This engine stops driving it ' +
+        'and writes nothing further; the winning writer owns its durable state.',
       options?.cause === undefined ? undefined : { cause: options.cause },
     );
     this.workflowId = workflowId;
     this.workflowExecutionToken = options?.workflowExecutionToken;
-    this.lostChildWorkflowId = options?.lostChildWorkflowId;
   }
 }
 
 /** Whether `error` reports a lost checkpoint race for exactly this workflow. */
-export function isCheckpointConflictFor(
-  error: unknown,
-  workflowId: string,
-): error is WorkflowCheckpointConflictError {
+export function isCheckpointConflictFor(error: unknown, workflowId: string): boolean {
   return error instanceof WorkflowCheckpointConflictError && error.workflowId === workflowId;
 }
