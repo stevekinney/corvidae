@@ -34,7 +34,12 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { prepareSvelteServerSource, renderThenHydrate } from '@lostgradient/testing';
+import {
+  hydrateServerHtml,
+  prepareSvelteServerSource,
+  renderSvelteOnServer,
+} from '@lostgradient/testing';
+import { tick } from 'svelte';
 
 const markdownPreviewModule = await import('./markdown-preview.svelte');
 const { default: MarkdownPreview, segmentRenderedMarkdown } = markdownPreviewModule;
@@ -42,6 +47,23 @@ const { default: MarkdownPreview, segmentRenderedMarkdown } = markdownPreviewMod
 const sourcePath = new URL('./markdown-preview.svelte', import.meta.url).pathname;
 
 await prepareSvelteServerSource(sourcePath);
+
+// Server rendering is a real DOM-free process, so each distinct message renders once here at module
+// scope, off the per-test clock; the tests hydrate the recorded HTML and assert.
+const contents = ['hello world', '**bold**', '<img src=x onError=alert(1)>'] as const;
+const serverHtml = new Map(
+  await Promise.all(
+    contents.map(
+      async (content) => [content, await renderSvelteOnServer(sourcePath, { content })] as const,
+    ),
+  ),
+);
+
+async function hydrateMessage(content: (typeof contents)[number]) {
+  const result = hydrateServerHtml(MarkdownPreview, serverHtml.get(content) ?? '', { content });
+  await tick();
+  return result;
+}
 
 describe('Chat markdown-preview SSR contract', () => {
   test('preserves ancestors while extracting nested override placeholders', () => {
@@ -62,9 +84,7 @@ describe('Chat markdown-preview SSR contract', () => {
     // The `$effect` that populates `renderedHtml` never runs on the server, so
     // `renderedHtml` stays '' and the `{:else}` branch emits the raw content as
     // a paragraph — without throwing and without importing the rendering graph.
-    const result = await renderThenHydrate(MarkdownPreview, sourcePath, {
-      content: 'hello world',
-    });
+    const result = await hydrateMessage('hello world');
 
     try {
       expect(result.ssrHtml).toContain(
@@ -81,9 +101,7 @@ describe('Chat markdown-preview SSR contract', () => {
     // runs. On the server the `{#if renderedHtml}` branch is never taken, so the
     // markdown source is emitted verbatim inside the `<p>` fallback and the
     // rendered `<strong>` markup is absent.
-    const result = await renderThenHydrate(MarkdownPreview, sourcePath, {
-      content: '**bold**',
-    });
+    const result = await hydrateMessage('**bold**');
 
     try {
       expect(result.ssrHtml).toContain('<p>**bold**</p>');
@@ -98,9 +116,7 @@ describe('Chat markdown-preview SSR contract', () => {
     // the opening `<` to `&lt;`. This proves the server path emits *text*,
     // never an unescaped `{@html}` injection of the raw message body — the
     // `<img>` tag is neutralized and cannot execute its `onError` handler.
-    const result = await renderThenHydrate(MarkdownPreview, sourcePath, {
-      content: '<img src=x onError=alert(1)>',
-    });
+    const result = await hydrateMessage('<img src=x onError=alert(1)>');
 
     try {
       expect(result.ssrHtml).toContain('&lt;img src=x onError=alert(1)>');
@@ -114,9 +130,7 @@ describe('Chat markdown-preview SSR contract', () => {
     // A clean hydrate (no mismatch warnings) confirms the SSR output and the
     // client's first render agree: both produce the raw-text fallback, and the
     // dynamic-import effect only swaps in formatted HTML on a later frame.
-    const result = await renderThenHydrate(MarkdownPreview, sourcePath, {
-      content: 'hello world',
-    });
+    const result = await hydrateMessage('hello world');
 
     try {
       expect(result.warnings).toEqual([]);
