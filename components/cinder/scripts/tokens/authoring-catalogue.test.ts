@@ -107,13 +107,29 @@ describe('the real catalogue', async () => {
     expect(new Set(catalogue.scales['spacing']).size).toBe(19);
     // `space.one` is `--cinder-space-1`: membership is not inferred from a name prefix.
     expect(catalogue.scales['spacing']).toContain('space.one');
-    const scaled = catalogue.records.filter((record) => record.scale !== undefined);
+    const scaled = catalogue.records.filter((record) => record.scale === 'spacing');
     expect(scaled.map((record) => record.path).toSorted()).toEqual(literalMembers.toSorted());
     for (const record of catalogue.records) {
-      if (/^(radius|font|motion|leading|tracking)\./.test(record.path)) {
+      if (/^(font|motion|leading|tracking)\./.test(record.path)) {
         expect(record.scale).toBeUndefined();
       }
     }
+  });
+
+  test('radius scale membership is the public literal dimension members of the radius group', () => {
+    const foundation = JSON.parse(
+      readFileSync(
+        new URL('../../src/tokens/sets/foundation.tokens.json', import.meta.url),
+        'utf8',
+      ),
+    ) as { radius: Record<string, any> };
+    const literalMembers = Object.entries(foundation.radius)
+      .filter(([name, member]) => !name.startsWith('$') && typeof member.$value === 'object')
+      .map(([name]) => `radius.${name}`);
+    expect(literalMembers).toHaveLength(4);
+    expect(catalogue.scales['radius']!.toSorted()).toEqual(literalMembers.toSorted());
+    const scaled = catalogue.records.filter((record) => record.scale === 'radius');
+    expect(scaled.map((record) => record.path).toSorted()).toEqual(literalMembers.toSorted());
   });
 
   test('the four CSS-only tokens carry explicit status and no value', () => {
@@ -207,7 +223,7 @@ describe('the catalogue over a fixture corpus', () => {
       corpus.resolver,
       corpus.documentsByPath,
     );
-    expect(catalogue.scales).toEqual({ spacing: ['space.one', 'space.two'] });
+    expect(catalogue.scales).toEqual({ spacing: ['space.one', 'space.two'], radius: [] });
     expect(
       catalogue.layerStacks['dark/forced-reduced-motion']!.map((layer) => layer.layer),
     ).toEqual(['sets.foundation', 'theme.dark', 'motion.forced-reduced-motion']);
@@ -273,17 +289,27 @@ describe('spacing scale validation', () => {
     expect(run).toThrow('declares unknown scale "colour"');
   });
 
-  test('a radius token is never a scale member unless it is marked', () => {
+  test('a public literal dimension in the radius group must be marked', () => {
     const corpus = cloneCorpus(loadProfileCorpus());
     baseDocument(corpus)['radius'] = {
       $type: 'dimension',
       small: publicToken('--cinder-radius-small', 'radius'),
     };
+    expect(() => buildAuthoringCatalogue(corpus.resolver, corpus.documentsByPath)).toThrow(
+      'Public literal dimension "radius.small" in group "radius" lacks scale "radius" metadata.',
+    );
+  });
+
+  test('a marked radius member joins the radius scale only', () => {
+    const corpus = cloneCorpus(loadProfileCorpus());
+    const small = publicToken('--cinder-radius-small', 'radius', { scale: 'radius' });
+    baseDocument(corpus)['radius'] = { $type: 'dimension', small };
     const catalogue = buildAuthoringCatalogue(corpus.resolver, corpus.documentsByPath);
     expect(catalogue.scales['spacing']).toEqual(['space.one', 'space.two']);
-    expect(
-      catalogue.records.find((record) => record.path === 'radius.small')!.scale,
-    ).toBeUndefined();
+    expect(catalogue.scales['radius']).toEqual(['radius.small']);
+    expect(catalogue.records.find((record) => record.path === 'radius.small')!.scale).toBe(
+      'radius',
+    );
   });
 });
 

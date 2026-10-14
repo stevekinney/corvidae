@@ -28,7 +28,10 @@ import { mergeAndExpandExtends } from './resolve.ts';
 import type { ResolverDocument, TokenDocument } from './types.ts';
 
 /** Scale name -> the token group whose public literal dimension members form it. */
-export const DEFAULT_SCALE_GROUPS: Readonly<Record<string, string>> = { spacing: 'space' };
+export const DEFAULT_SCALE_GROUPS: Readonly<Record<string, string>> = {
+  spacing: 'space',
+  radius: 'radius',
+};
 
 export type CatalogueOptions = {
   scaleGroups?: Readonly<Record<string, string>>;

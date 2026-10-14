@@ -138,6 +138,21 @@ export class ThemeBuilderCore {
     return envelope === undefined ? new Set() : overriddenPaths(envelope);
   }
 
+  /** Token paths the author locked; presets and the foundation editors leave them alone. */
+  get lockedPaths(): ReadonlySet<string> {
+    return new Set(this.draft?.envelope.locked ?? []);
+  }
+
+  /** Lock or unlock one token as an undoable transaction. */
+  setLocked(path: string, locked: boolean): Promise<CommitOutcome> {
+    const name = this.nameOf(path);
+    return this.commit({
+      kind: 'edit',
+      label: `${locked ? 'Lock' : 'Unlock'} ${name}`,
+      edit: { kind: 'set-locked', path, locked },
+    });
+  }
+
   protected setEntry(entry: ThemeEntry): void {
     const id = entry.draft.envelope.id;
     this.library = { ...this.library, entries: { ...this.library.entries, [id]: entry } };

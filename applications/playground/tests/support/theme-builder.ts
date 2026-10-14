@@ -47,8 +47,9 @@ export async function waitForScene(frame: Frame): Promise<void> {
 }
 
 export async function selectContext(page: Page, context: PreviewContext): Promise<void> {
-  await page.getByLabel('Color mode').selectOption(context.colorMode);
-  await page.getByLabel('Motion').selectOption(context.motion);
+  // Exact: editor fields are labeled with token names, such as "Motion slow value".
+  await page.getByLabel('Color mode', { exact: true }).selectOption(context.colorMode);
+  await page.getByLabel('Motion', { exact: true }).selectOption(context.motion);
 }
 
 /** A state the builder's own host would never send, posted from the builder window. */

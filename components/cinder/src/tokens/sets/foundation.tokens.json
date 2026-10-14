@@ -321,6 +321,7 @@
           "cssProperty": "--cinder-radius-sm",
           "public": true,
           "category": "radius",
+          "scale": "radius",
           "cssRecipe": null
         }
       }
@@ -336,6 +337,7 @@
           "cssProperty": "--cinder-radius-md",
           "public": true,
           "category": "radius",
+          "scale": "radius",
           "cssRecipe": null
         }
       }
@@ -351,6 +353,7 @@
           "cssProperty": "--cinder-radius-lg",
           "public": true,
           "category": "radius",
+          "scale": "radius",
           "cssRecipe": null
         }
       }
@@ -366,6 +369,7 @@
           "cssProperty": "--cinder-radius-full",
           "public": true,
           "category": "radius",
+          "scale": "radius",
           "cssRecipe": null
         }
       }

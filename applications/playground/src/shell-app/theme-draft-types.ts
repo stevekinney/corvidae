@@ -60,10 +60,19 @@ export type ThemeEnvelope = {
   base: ThemeBase;
   overrides: ThemeOverrides;
   cssOverrides: CssOverrides;
+  /**
+   * Token paths the author locked (COR-489): scale presets and the foundation editors leave
+   * them alone. Sorted, and absent while nothing is locked.
+   */
+  locked?: readonly string[];
 };
 
 /** What an edit changes and history restores; the base and identity never move. */
-export type EditableState = { overrides: ThemeOverrides; cssOverrides: CssOverrides };
+export type EditableState = {
+  overrides: ThemeOverrides;
+  cssOverrides: CssOverrides;
+  locked?: readonly string[];
+};
 
 /** Partial input kept apart from the last-valid source revision. */
 export type InputBufferEntry = { text: string; error: string | null };
@@ -85,7 +94,11 @@ export function emptyOverrides(): ThemeOverrides {
 }
 
 export function editableState(envelope: ThemeEnvelope): EditableState {
-  return { overrides: envelope.overrides, cssOverrides: envelope.cssOverrides };
+  return {
+    overrides: envelope.overrides,
+    cssOverrides: envelope.cssOverrides,
+    ...(envelope.locked === undefined ? {} : { locked: envelope.locked }),
+  };
 }
 
 export function isDirty(draft: ThemeDraft): boolean {

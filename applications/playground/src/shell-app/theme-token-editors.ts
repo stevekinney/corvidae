@@ -10,6 +10,8 @@ import type { Component } from 'svelte';
 import type { CatalogueRow } from './theme-builder-catalogue.ts';
 import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import ColorTokenEditor from './theme-color-editor.svelte';
+import FoundationEditor from './theme-foundation-editor.svelte';
+import { FOUNDATION_EDITOR_TYPES } from './theme-foundation-values.ts';
 import GenericTokenEditor from './theme-token-editor-generic.svelte';
 import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
@@ -34,3 +36,5 @@ export function editorForToken(row: CatalogueRow): TokenEditor {
 
 // COR-263: the color editor handles every color record.
 registerTokenEditor('color', ColorTokenEditor);
+// COR-489: the non-color scalar types share one foundation editor.
+for (const type of FOUNDATION_EDITOR_TYPES) registerTokenEditor(type, FoundationEditor);

@@ -15,6 +15,7 @@
 
   import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
   import ThemeChecksPanel from './theme-checks-panel.svelte';
+  import ThemeFoundationsView from './theme-foundations-view.svelte';
   import ThemeWorkbenchCatalogue from './theme-workbench-catalogue.svelte';
   import ThemeWorkbenchDraftBar from './theme-workbench-draft-bar.svelte';
   import ThemeWorkbenchLibrary from './theme-workbench-library.svelte';
@@ -149,6 +150,9 @@
       <ThemeWorkbenchRail {workbench} />
       <div class="main">
         <ThemeWorkbenchCatalogue {workbench} {layout} {controller} />
+        {#if controller !== undefined && workbench.groupId === 'foundations'}
+          <ThemeFoundationsView {controller} {workbench} />
+        {/if}
         <ThemeWorkbenchEditor {workbench} {editor} {controller} />
       </div>
     </div>

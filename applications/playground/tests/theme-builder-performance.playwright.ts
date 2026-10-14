@@ -142,8 +142,9 @@ test.describe('input to render', () => {
     await selectToken(page, 'Foundations', 'radius.medium');
     const samples = await collect((index) =>
       commitEdit(page, {
-        field: '#theme-builder-value-radius-medium',
-        text: `{"value": ${2 + (index % 9)}, "unit": "px"}`,
+        field: '#theme-builder-foundation-radius-medium-amount',
+        text: `${2 + (index % 9)}`,
+        unit: 'px',
         property: '--cinder-radius-md',
         expected: `${2 + (index % 9)}px`,
       }),
@@ -178,16 +179,23 @@ async function selectToken(page: Page, group: string, path: string): Promise<voi
  */
 async function commitEdit(
   page: Page,
-  edit: { field: string; text: string; property: string; expected: string | null },
+  edit: { field: string; text: string; unit?: string; property: string; expected: string | null },
 ): Promise<number> {
   await page.evaluate(
-    ({ field, text }) => {
+    ({ field, text, unit }) => {
       const input = document.querySelector(field) as HTMLInputElement;
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
       setter.call(input, text);
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      if (unit !== undefined) {
+        const select = document.querySelector(
+          field.replace(/-amount$/, '-unit'),
+        ) as HTMLSelectElement;
+        select.value = unit;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     },
-    { field: edit.field, text: edit.text },
+    { field: edit.field, text: edit.text, unit: edit.unit },
   );
   return page.evaluate(async ({ property, expected }) => {
     const root = (document.querySelector('iframe') as HTMLIFrameElement).contentDocument!
