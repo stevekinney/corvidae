@@ -75,3 +75,25 @@ describe('platform-neutral TypeScript program', () => {
     expect(output).toContain(message);
   });
 });
+
+describe('files the neutral program covers', () => {
+  test('include the session core and its fixtures, and exclude the Bun and WebSocket entries', () => {
+    const result = Bun.spawnSync(
+      [process.execPath, typescriptCompiler, '--listFilesOnly', '-p', 'tsconfig.neutral.json'],
+      { cwd: packageRoot },
+    );
+    expect(result.exitCode).toBe(0);
+    const files = result.stdout
+      .toString()
+      .split('\n')
+      .filter((file) => file.startsWith(packageRoot));
+    const relative = files.map((file) => file.slice(packageRoot.length + 1));
+    expect(relative).toContain('src/session/session.ts');
+    expect(relative).toContain('src/session/fixtures/fixture-transport.ts');
+    expect(relative.some((file) => file.startsWith('src/bun/'))).toBe(false);
+    expect(relative.some((file) => file.startsWith('src/websocket/'))).toBe(false);
+    expect(
+      relative.some((file) => file.endsWith('.test.ts') || file.endsWith('.test-support.ts')),
+    ).toBe(false);
+  });
+});
