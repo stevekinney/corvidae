@@ -24,75 +24,28 @@ import {
 
 export const DOCKER_PLATFORM = `linux/${REQUIRED_BASELINE_ARCHITECTURE}`;
 export const DOCKERFILE_PATH = resolve(BROWSER_FIXTURES_ROOT, 'Dockerfile');
-/** The host refuses to start a container above this multiple of its logical CPUs. */
-export const LOAD_LIMIT_PER_CPU = 3;
-export const LOAD_POLL_MILLISECONDS = 60_000;
-export const LOAD_WAIT_LIMIT_MILLISECONDS = 3 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
-// Host load gate
+// Host load record
 // ---------------------------------------------------------------------------
-
-export type LoadReading = { load: number; limit: number; cpuCount: number };
-
-export function readHostLoad(cpuCount: number = cpus().length): LoadReading {
-  return { load: loadavg()[0] ?? 0, limit: cpuCount * LOAD_LIMIT_PER_CPU, cpuCount };
-}
-
-export type LoadGateDependencies = {
-  readLoad: () => LoadReading;
-  sleep: (milliseconds: number) => Promise<void>;
-  log: (message: string) => void;
-};
-
-export type LoadGateResult =
-  | { ok: true; waitedMilliseconds: number; reading: LoadReading }
-  | { ok: false; waitedMilliseconds: number; reading: LoadReading; reason: string };
-
-function describeLoad(reading: LoadReading): string {
-  return `1-minute load ${reading.load.toFixed(2)} against a limit of ${reading.limit} (${LOAD_LIMIT_PER_CPU} x ${reading.cpuCount} logical CPUs)`;
-}
 
 /**
- * Refuse to start while the host is overloaded: a loaded host makes the suite's
- * behavioural timeouts fire for reasons unrelated to the code. Without
- * `wait`, refuse immediately. With it, poll every minute and give up (blocked)
- * after three hours. Suite timeouts are never raised instead.
+ * The 1-minute load average and logical CPU count at a moment of a run. Host
+ * load never blocks a run; it is recorded with each run, in the output and the
+ * review report, so a behavioural timeout can be read against the load it ran
+ * under (COR-1512).
  */
-export async function waitForHostLoad(
-  wait: boolean,
-  dependencies: LoadGateDependencies,
-): Promise<LoadGateResult> {
-  let waited = 0;
-  let reading = dependencies.readLoad();
-  while (reading.load > reading.limit) {
-    if (!wait) {
-      return {
-        ok: false,
-        waitedMilliseconds: 0,
-        reading,
-        reason: `Refusing to start: ${describeLoad(reading)}. Retry later or pass --wait-for-load.`,
-      };
-    }
-    if (waited >= LOAD_WAIT_LIMIT_MILLISECONDS) {
-      return {
-        ok: false,
-        waitedMilliseconds: waited,
-        reading,
-        reason: `Blocked: the host stayed above the load limit for ${Math.round(waited / 60_000)} minutes (${describeLoad(reading)}).`,
-      };
-    }
-    dependencies.log(`Waiting for host load: ${describeLoad(reading)}.`);
-    await dependencies.sleep(LOAD_POLL_MILLISECONDS);
-    waited += LOAD_POLL_MILLISECONDS;
-    reading = dependencies.readLoad();
-  }
-  if (waited > 0) {
-    dependencies.log(
-      `Host load settled after ${Math.round(waited / 60_000)} minutes: ${describeLoad(reading)}.`,
-    );
-  }
-  return { ok: true, waitedMilliseconds: waited, reading };
+export type HostLoadReading = { oneMinuteLoad: number; logicalCpus: number };
+
+export function readHostLoad(
+  read: () => number[] = loadavg,
+  logicalCpus: number = cpus().length,
+): HostLoadReading {
+  return { oneMinuteLoad: read()[0] ?? 0, logicalCpus };
+}
+
+export function describeHostLoad(reading: HostLoadReading): string {
+  return `1-minute load ${reading.oneMinuteLoad.toFixed(2)} on ${reading.logicalCpus} logical CPUs`;
 }
 
 // ---------------------------------------------------------------------------
@@ -333,19 +286,16 @@ export async function applyBaselines(
   }
 }
 
-/** Split the wrapper's own flags from the arguments forwarded to Playwright. */
+/** Split the wrapper's own flag from the arguments forwarded to Playwright. */
 export function parseWrapperArguments(dockerArguments: readonly string[]): {
-  waitForLoad: boolean;
   source: string;
   forwarded: string[];
 } {
-  let waitForLoad = false;
   let source = 'HEAD';
   const forwarded: string[] = [];
   for (let index = 0; index < dockerArguments.length; index += 1) {
     const argument = dockerArguments[index] ?? '';
-    if (argument === '--wait-for-load') waitForLoad = true;
-    else if (argument === '--source') {
+    if (argument === '--source') {
       const value = dockerArguments[index + 1];
       if (value === undefined) throw new Error('--source needs a commit reference.');
       source = value;
@@ -353,5 +303,5 @@ export function parseWrapperArguments(dockerArguments: readonly string[]): {
     } else if (argument.startsWith('--source=')) source = argument.slice('--source='.length);
     else forwarded.push(argument);
   }
-  return { waitForLoad, source, forwarded };
+  return { source, forwarded };
 }

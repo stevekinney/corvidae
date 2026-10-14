@@ -39,11 +39,11 @@ On a development host it exits non-zero and points at the Docker path. Inside th
 Two root scripts drive the renderer from the host:
 
 ```bash
-bun run test:browser:visual:docker -- --wait-for-load
-bun run test:browser:update:docker -- --wait-for-load
+bun run test:browser:visual:docker
+bun run test:browser:update:docker
 ```
 
-Both accept `--source <ref>` (default `HEAD`), `--wait-for-load`, and any other arguments, which they forward to Playwright. Each run follows the same isolation rules:
+Both accept `--source <ref>` (default `HEAD`) and forward any other arguments to Playwright. Each run follows the same isolation rules:
 
 - The exact commit enters the container as `git archive <sha>` on stdin. The host checkout and its `node_modules` are never mounted, so uncommitted changes cannot leak into a run. Commit first, then run.
 - The container installs from the lockfile with `bun install --frozen-lockfile`.
@@ -60,17 +60,17 @@ Both accept `--source <ref>` (default `HEAD`), `--wait-for-load`, and any other 
 
 If the update run fails, nothing is applied.
 
-## Host load gate
+## Host load
 
-A loaded host makes the suite's behavioural timeouts fire for reasons unrelated to the code. So both wrappers refuse to start when the 1-minute load average exceeds three times the logical CPU count, printing the reading. With `--wait-for-load` they poll every 60 seconds, record how long they waited, and give up after three hours, reporting the host as blocked. Suite timeouts are never raised to compensate.
+Host load never blocks a run. Each run records the 1-minute load average and the logical CPU count at its start and end, prints them, and the update run writes them into the review report. A behavioural timeout can then be read against the load it ran under; if the same failure reproduces against an `origin/main` control at the same time, it is not the refresh's blocker and is recorded as such. Suite timeouts are never raised to compensate.
 
 ## Refreshing the baselines
 
 A refresh is two commits on one branch, then a control:
 
 - Commit the change that needs new baselines (or the tooling itself). Call it T.
-- Run `bun run test:browser:update:docker -- --wait-for-load` against T. Review the report, then commit the applied baselines and `provenance.json` as B. Provenance records `renderedSourceSha` T.
-- Run `bun run test:browser:visual:docker -- --wait-for-load --source B`. It must exit 0.
+- Run `bun run test:browser:update:docker -- --source T`. Review the report, then commit the applied baselines and `provenance.json` as B. Provenance records `renderedSourceSha` T.
+- Run `bun run test:browser:visual:docker -- --source B`. It must exit 0, with every behavioural and screenshot case passing.
 
 After the pull request merges, run the same visual command against the merged commit and record the result. That run, not provenance, proves the set reproduces on `main`.
 
@@ -97,6 +97,6 @@ All live in `scripts/browser-fixtures/scripts/`, each with a unit test:
 - `baseline-provenance.ts`: provenance read and write, the lockfile and `packageManager` pins, and the image tag.
 - `update-snapshots.ts`: the in-container update entry point.
 - `update-snapshots-docker.ts` and `run-browser-docker.ts`: the host entry points.
-- `docker-baseline-runner.ts`: the shared load gate, image build, archive, container run, kill-on-signal, and apply step.
+- `docker-baseline-runner.ts`: the shared host load record, image build, archive, container run, kill-on-signal, and apply step.
 - `baseline-diff-report.ts`: the review report.
 - `snapshot-change-detection.ts`: exits 0 when the working tree has baseline or provenance changes, 1 when it has none.

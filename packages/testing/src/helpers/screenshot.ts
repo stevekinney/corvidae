@@ -208,11 +208,11 @@ export function blockBaselineGuard(
     'Block mode compares against committed baselines, but none exists for this case.',
     'Baselines are authored only in the renderer image. Commit, then run:',
     '',
-    '  bun run test:browser:update:docker -- --wait-for-load',
+    '  bun run test:browser:update:docker',
     '',
     'Then verify the commit with the root visual regression command:',
     '',
-    '  bun run test:browser:visual:docker -- --wait-for-load',
+    '  bun run test:browser:visual:docker',
     '',
     'See scripts/browser-fixtures/visual-baselines.md.',
   ].join('\n');

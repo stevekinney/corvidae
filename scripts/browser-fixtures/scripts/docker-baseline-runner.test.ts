@@ -14,76 +14,36 @@ import { join } from 'node:path';
 import { playwrightBaseImage, readRepositoryPins } from './baseline-provenance.ts';
 import {
   DOCKERFILE_PATH,
-  LOAD_WAIT_LIMIT_MILLISECONDS,
   applyBaselines,
   containerCommand,
   containerNameForRun,
   createDockerRunner,
+  describeHostLoad,
   dockerArchitectureProblem,
   dockerBuildArguments,
   dockerRunArguments,
   normalizeDockerArchitecture,
   parseWrapperArguments,
+  readHostLoad,
   runContainerWithCleanup,
   terminateContainer,
-  waitForHostLoad,
   type DockerRunner,
-  type LoadReading,
 } from './docker-baseline-runner.ts';
 
-const reading = (load: number): LoadReading => ({ load, limit: 30, cpuCount: 10 });
-
-describe('host load gate', () => {
-  it('starts immediately when the load is at or under three times the CPU count', async () => {
-    const result = await waitForHostLoad(false, {
-      readLoad: () => reading(30),
-      sleep: async () => {},
-      log: () => {},
+describe('host load record', () => {
+  // Host load never blocks a run (COR-1512); each run records it instead.
+  it('reads the 1-minute load average and the logical CPU count', () => {
+    expect(readHostLoad(() => [56.25, 40, 30], 10)).toEqual({
+      oneMinuteLoad: 56.25,
+      logicalCpus: 10,
     });
-    expect(result).toEqual({ ok: true, waitedMilliseconds: 0, reading: reading(30) });
+    expect(readHostLoad(() => [], 4)).toEqual({ oneMinuteLoad: 0, logicalCpus: 4 });
   });
 
-  it('refuses without --wait-for-load and prints the reading', async () => {
-    const result = await waitForHostLoad(false, {
-      readLoad: () => reading(56),
-      sleep: async () => {},
-      log: () => {},
-    });
-    if (result.ok) throw new Error('expected a refusal');
-    expect(result.reason).toContain('1-minute load 56.00 against a limit of 30');
-    expect(result.reason).toContain('--wait-for-load');
-  });
-
-  it('polls every minute and records the wait', async () => {
-    const loads = [56, 40, 12];
-    const sleeps: number[] = [];
-    const messages: string[] = [];
-    const result = await waitForHostLoad(true, {
-      readLoad: () => reading(loads.shift() ?? 0),
-      sleep: async (milliseconds) => {
-        sleeps.push(milliseconds);
-      },
-      log: (message) => messages.push(message),
-    });
-    expect(sleeps).toEqual([60_000, 60_000]);
-    expect(result.ok).toBe(true);
-    expect(result.waitedMilliseconds).toBe(120_000);
-    expect(messages.at(-1)).toContain('settled after 2 minutes');
-  });
-
-  it('reports blocked after three hours above the limit', async () => {
-    let sleeps = 0;
-    const result = await waitForHostLoad(true, {
-      readLoad: () => reading(56),
-      sleep: async () => {
-        sleeps += 1;
-      },
-      log: () => {},
-    });
-    if (result.ok) throw new Error('expected blocked');
-    expect(sleeps).toBe(180);
-    expect(result.waitedMilliseconds).toBe(LOAD_WAIT_LIMIT_MILLISECONDS);
-    expect(result.reason).toContain('Blocked');
+  it('describes a reading for the run output', () => {
+    expect(describeHostLoad({ oneMinuteLoad: 11.5, logicalCpus: 10 })).toBe(
+      '1-minute load 11.50 on 10 logical CPUs',
+    );
   });
 });
 
@@ -165,15 +125,13 @@ describe('container command and run arguments', () => {
     expect(containerNameForRun(1, 2)).toBe('corvidae-baselines-1-2');
   });
 
-  it('parses the wrapper flags and forwards the rest', () => {
-    expect(parseWrapperArguments(['--wait-for-load', '--source', 'abc', '--grep', 'x'])).toEqual({
-      waitForLoad: true,
+  it('parses the wrapper flag and forwards the rest', () => {
+    expect(parseWrapperArguments(['--source', 'abc', '--grep', 'x'])).toEqual({
       source: 'abc',
       forwarded: ['--grep', 'x'],
     });
     expect(parseWrapperArguments(['--source=def']).source).toBe('def');
     expect(parseWrapperArguments([])).toEqual({
-      waitForLoad: false,
       source: 'HEAD',
       forwarded: [],
     });

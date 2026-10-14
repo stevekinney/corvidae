@@ -1,5 +1,5 @@
 /**
- * `bun run test:browser:visual:docker [--wait-for-load] [--source <ref>] [-- playwright args]`
+ * `bun run test:browser:visual:docker [--source <ref>] [-- playwright args]`
  *
  * Runs the whole browser suite in block mode inside the authoritative renderer
  * (native linux/arm64, Playwright jammy) against an exact commit. Every
@@ -8,11 +8,14 @@
  * cinder's `run-browser-docker.ts` (COR-1512). Failure artefacts (traces, diff
  * images) are left in the printed container output directory.
  */
+import { describeHostLoad } from './docker-baseline-runner.ts';
 import { startRendererRun } from './update-snapshots-docker.ts';
 
 async function main(): Promise<number> {
-  const { exitCode, sha } = await startRendererRun('visual', process.argv.slice(2));
-  process.stdout.write(`Visual run against ${sha} exited ${exitCode}.\n`);
+  const { exitCode, sha, hostLoad } = await startRendererRun('visual', process.argv.slice(2));
+  process.stdout.write(
+    `Visual run against ${sha} exited ${exitCode}. Host load: start ${describeHostLoad(hostLoad.start)}; end ${describeHostLoad(hostLoad.end)}.\n`,
+  );
   return exitCode;
 }
 

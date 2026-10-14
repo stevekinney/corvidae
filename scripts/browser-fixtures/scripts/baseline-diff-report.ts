@@ -58,6 +58,12 @@ export type BaselineDiffReport = {
   };
 };
 
+/** The 1-minute load and logical CPU count at the start and end of the rendering run. */
+export type RunHostLoad = {
+  start: { oneMinuteLoad: number; logicalCpus: number };
+  end: { oneMinuteLoad: number; logicalCpus: number };
+};
+
 export type PairComparison = {
   comparison: BaselineComparison;
   diffImage?: Buffer;
@@ -204,11 +210,22 @@ function percent(ratio: number): string {
   return `${(ratio * 100).toFixed(3)}%`;
 }
 
-export function renderReportMarkdown(report: BaselineDiffReport, heading: string): string {
+export function renderReportMarkdown(
+  report: BaselineDiffReport,
+  heading: string,
+  hostLoad?: RunHostLoad,
+): string {
   const { counts } = report;
-  const lines = [
-    `# ${heading}`,
-    '',
+  const lines = [`# ${heading}`, ''];
+  if (hostLoad !== undefined) {
+    const describe = (reading: RunHostLoad['start']) =>
+      `${reading.oneMinuteLoad.toFixed(2)} on ${reading.logicalCpus} logical CPUs`;
+    lines.push(
+      `Host 1-minute load: ${describe(hostLoad.start)} at the start of the run, ${describe(hostLoad.end)} at the end.`,
+      '',
+    );
+  }
+  lines.push(
     `Pixel comparison: pixelmatch at threshold ${PIXEL_THRESHOLD}. The ratio is changed pixels over the new image's width times height. Images above ${percent(CLASSIFICATION_RATIO)} need a classification: (a) rasterizer or toolchain drift, (b) an intentional source change never re-baselined (cite the commit), or (c) an unintended regression.`,
     '',
     '| Category | Count |',
@@ -224,7 +241,7 @@ export function renderReportMarkdown(report: BaselineDiffReport, heading: string
     '',
     '## Changed baselines',
     '',
-  ];
+  );
   const changed = report.comparisons
     .filter((comparison) => comparison.kind === 'changed')
     .toSorted((left, right) => right.ratio - left.ratio);
@@ -270,11 +287,12 @@ export async function writeBaselineDiffReport(
   report: BaselineDiffReport,
   outputDirectory: string,
   heading: string,
+  hostLoad?: RunHostLoad,
 ): Promise<{ json: string; markdown: string }> {
   await mkdir(outputDirectory, { recursive: true });
   const json = join(outputDirectory, 'baseline-diff-report.json');
   const markdown = join(outputDirectory, 'baseline-diff-report.md');
-  await Bun.write(json, `${JSON.stringify(report, null, 2)}\n`);
-  await Bun.write(markdown, renderReportMarkdown(report, heading));
+  await Bun.write(json, `${JSON.stringify({ ...report, hostLoad }, null, 2)}\n`);
+  await Bun.write(markdown, renderReportMarkdown(report, heading, hostLoad));
   return { json, markdown };
 }

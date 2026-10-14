@@ -1,5 +1,5 @@
 /**
- * `bun run test:browser:update:docker [--wait-for-load] [--source <ref>] [-- playwright args]`
+ * `bun run test:browser:update:docker [--source <ref>] [-- playwright args]`
  *
  * Regenerates the Linux visual baselines in the authoritative renderer (native
  * linux/arm64, Playwright jammy), from an exact commit, then writes a review
@@ -31,6 +31,7 @@ import {
   containerNameForRun,
   createDockerRunner,
   createRunDirectory,
+  describeHostLoad,
   dockerArchitectureProblem,
   dockerBuildArguments,
   dockerRunArguments,
@@ -41,24 +42,24 @@ import {
   readHostLoad,
   resolveCommit,
   runContainerWithCleanup,
-  waitForHostLoad,
+  type HostLoadReading,
 } from './docker-baseline-runner.ts';
 
-/** Build the renderer image and start a gated, archived container run. Shared with the visual run. */
+/** Build the renderer image and start an archived container run, recording host load. Shared with the visual run. */
 export async function startRendererRun(
   mode: 'update' | 'visual',
   dockerArguments: readonly string[],
-): Promise<{ exitCode: number; sha: string; runDirectory: string }> {
+): Promise<{
+  exitCode: number;
+  sha: string;
+  runDirectory: string;
+  hostLoad: { start: HostLoadReading; end: HostLoadReading };
+}> {
   const options = parseWrapperArguments(dockerArguments);
   const architectureProblem = dockerArchitectureProblem(readDockerArchitecture());
   if (architectureProblem !== undefined) throw new Error(architectureProblem);
 
-  const gate = await waitForHostLoad(options.waitForLoad, {
-    readLoad: () => readHostLoad(),
-    sleep: (milliseconds) => Bun.sleep(milliseconds),
-    log: (message) => process.stdout.write(`${message}\n`),
-  });
-  if (!gate.ok) throw new Error(gate.reason);
+  const loadAtStart = readHostLoad();
 
   const sha = resolveCommit(options.source);
   const pins = readRepositoryPins();
@@ -76,7 +77,7 @@ export async function startRendererRun(
 
   const containerName = containerNameForRun();
   process.stdout.write(
-    `Running ${mode} for ${sha} in ${containerName} (${gate.reading.load.toFixed(2)} load, waited ${Math.round(gate.waitedMilliseconds / 60_000)} minutes).\n`,
+    `Running ${mode} for ${sha} in ${containerName}. Host at start: ${describeHostLoad(loadAtStart)}.\n`,
   );
   const exitCode = await runContainerWithCleanup(
     docker,
@@ -94,12 +95,18 @@ export async function startRendererRun(
     containerName,
     sourceArchive,
   );
-  process.stdout.write(`Container output: ${outputDirectory}\n`);
-  return { exitCode, sha, runDirectory };
+  const loadAtEnd = readHostLoad();
+  process.stdout.write(
+    `Container output: ${outputDirectory}\nHost at end: ${describeHostLoad(loadAtEnd)}.\n`,
+  );
+  return { exitCode, sha, runDirectory, hostLoad: { start: loadAtStart, end: loadAtEnd } };
 }
 
 async function main(): Promise<number> {
-  const { exitCode, sha, runDirectory } = await startRendererRun('update', process.argv.slice(2));
+  const { exitCode, sha, runDirectory, hostLoad } = await startRendererRun(
+    'update',
+    process.argv.slice(2),
+  );
   if (exitCode !== 0) {
     process.stderr.write(`The update run exited ${exitCode}; no baselines were applied.\n`);
     return exitCode;
@@ -127,6 +134,7 @@ async function main(): Promise<number> {
     report,
     reportDirectory,
     `Visual baseline refresh rendered from ${sha}`,
+    hostLoad,
   );
   const applied = filesToApply(report);
   await applyBaselines(

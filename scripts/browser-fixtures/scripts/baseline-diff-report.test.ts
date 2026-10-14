@@ -147,9 +147,23 @@ describe('buildBaselineDiffReport', () => {
     expect(markdown).toContain('- `tabs/added.png`');
     expect(markdown).toContain('- `tabs/orphan.png`');
 
-    const written = await writeBaselineDiffReport(report, join(root, 'report'), 'Refresh');
-    expect(JSON.parse(readFileSync(written.json, 'utf8')).counts.changed).toBe(1);
-    expect(readFileSync(written.markdown, 'utf8')).toBe(markdown);
+    const hostLoad = {
+      start: { oneMinuteLoad: 11.5, logicalCpus: 10 },
+      end: { oneMinuteLoad: 42, logicalCpus: 10 },
+    };
+    const written = await writeBaselineDiffReport(
+      report,
+      join(root, 'report'),
+      'Refresh',
+      hostLoad,
+    );
+    const json = JSON.parse(readFileSync(written.json, 'utf8'));
+    expect(json.counts.changed).toBe(1);
+    expect(json.hostLoad).toEqual(hostLoad);
+    expect(readFileSync(written.markdown, 'utf8')).toContain(
+      'Host 1-minute load: 11.50 on 10 logical CPUs at the start of the run, 42.00 on 10 logical CPUs at the end.',
+    );
+    expect(markdown).not.toContain('Host 1-minute load');
   });
 
   it('marks a small change as below the classification threshold', async () => {
