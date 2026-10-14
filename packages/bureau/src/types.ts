@@ -1334,7 +1334,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *
    * Resolves `undefined` when no durable engine is composed and `null` when the engine has no such
    * run, the same meanings as {@link Bureau.getDurableRun}. A run that is already terminal
-   * resolves immediately. It rejects only when the durable engine itself is disposed first.
+   * resolves immediately. It rejects when Weft's result waiter fails for a reason that leaves the
+   * run non-terminal in the store (a disposed engine, a transient read failure), and it rejects
+   * with an `UNSUPPORTED_CAPABILITY` `BureauError` for a non-terminal run under
+   * `durableBackgroundTasks: 'manual'`, where nothing re-reads the store between maintenance
+   * passes: use `runDurableMaintenance()` and `getDurableRun()` there.
    */
   waitForDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
 

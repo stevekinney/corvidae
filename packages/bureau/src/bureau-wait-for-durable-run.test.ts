@@ -8,10 +8,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import type { WorkflowState } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { createBureau } from './create-bureau';
+import { createBureau, resolveWaitForDurableRun } from './create-bureau';
+import { waitForCondition } from './test';
 import type { Bureau } from './types';
 
 const bureaus: Bureau[] = [];
@@ -113,5 +115,83 @@ describe('Bureau.waitForDurableRun', () => {
     const state = await waiting;
 
     expect(state?.status).toBe('completed');
+  });
+
+  describe('resolveWaitForDurableRun', () => {
+    const running = { id: 'r', status: 'running' } as unknown as WorkflowState;
+    const failed = { id: 'r', status: 'failed' } as unknown as WorkflowState;
+
+    it('propagates a rejection that leaves the run non-terminal instead of resolving with it', async () => {
+      const rejection = await resolveWaitForDurableRun('r', {
+        getDurableRun: async () => running,
+        awaitResult: async () => {
+          throw new Error('transient read failure');
+        },
+        manualBackgroundTasks: false,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect((rejection as Error | undefined)?.message).toBe('transient read failure');
+    });
+
+    it('accepts a rejection once the store confirms the run is terminal', async () => {
+      let reads = 0;
+      const state = await resolveWaitForDurableRun('r', {
+        getDurableRun: async () => (reads++ === 0 ? running : failed),
+        awaitResult: async () => {
+          throw new Error('the run failed');
+        },
+        manualBackgroundTasks: false,
+      });
+
+      expect(state?.status).toBe('failed');
+    });
+
+    it('does not report a waiter that resolved while the run is still non-terminal as settled', async () => {
+      const rejection = await resolveWaitForDurableRun('r', {
+        getDurableRun: async () => running,
+        awaitResult: async () => {},
+        manualBackgroundTasks: false,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(rejection).toBeInstanceOf(Error);
+    });
+  });
+
+  it('refuses to wait for a non-terminal run under durableBackgroundTasks: manual, and still reports a terminal one', async () => {
+    const release = Promise.withResolvers<void>();
+    const bureau = await createBureau({
+      agents: {},
+      generate: async () => {
+        await release.promise;
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([]),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+      durableBackgroundTasks: 'manual',
+    });
+    bureaus.push(bureau);
+    const run = await bureau.createRun({ message: 'go' });
+
+    const refusal = await bureau.waitForDurableRun(run.id).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect((refusal as { code?: string } | undefined)?.code).toBe('UNSUPPORTED_CAPABILITY');
+
+    release.resolve();
+    await waitForCondition(async () => {
+      const durable = await bureau.getDurableRun(run.id);
+      return durable?.status === 'completed';
+    }, 'the run never completed');
+    const terminal = await bureau.waitForDurableRun(run.id);
+    expect(terminal?.status).toBe('completed');
   });
 });

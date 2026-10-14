@@ -15,6 +15,16 @@ import type { Subscription } from '@lostgradient/lifecycle';
 
 import type { Bureau } from '../types';
 
+/** What a running scenario hands its owner so that a hung scenario can be cleaned up. */
+export interface ScenarioScope {
+  /**
+   * Registers something the scenario owns (a bureau to shut down, a child to kill, a directory to
+   * remove). The releases run, last registered first, as soon as the hang guard fires, because a
+   * hung scenario never reaches its own `finally`. Each release must be safe to run twice.
+   */
+  onHang(release: () => unknown): void;
+}
+
 export interface ScenarioOutcome {
   readonly failed: boolean;
   readonly error?: unknown;
@@ -24,35 +34,48 @@ export interface ScenarioOutcome {
  * Runs `run`, capturing its failure. `hangGuardMilliseconds` is the only time bound: it is the
  * per-test timeout the scenario's tests had before they were hoisted, kept solely so a genuine
  * hang fails the scenario instead of stalling the file. It does not bound any wait for a state
- * change, which `waitForBureauState` makes by event.
+ * change, which `waitForBureauState` makes by event. When the guard wins, the releases the
+ * scenario registered on its {@link ScenarioScope} run before this returns, so the next scenario
+ * starts with nothing of this one still alive.
  */
 export async function settleScenario(
-  run: () => Promise<void>,
+  run: (scope: ScenarioScope) => Promise<void>,
   hangGuardMilliseconds: number,
 ): Promise<ScenarioOutcome> {
+  const releases: Array<() => unknown> = [];
+  const scope: ScenarioScope = { onHang: (release) => void releases.push(release) };
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let hung = false;
   const hang = new Promise<ScenarioOutcome>((resolve) => {
-    timer = setTimeout(
-      () =>
-        resolve({
-          failed: true,
-          error: new Error(
-            `the scenario made no progress within the ${hangGuardMilliseconds}ms hang guard`,
-          ),
-        }),
-      hangGuardMilliseconds,
-    );
+    timer = setTimeout(() => {
+      hung = true;
+      resolve({
+        failed: true,
+        error: new Error(
+          `the scenario made no progress within the ${hangGuardMilliseconds}ms hang guard`,
+        ),
+      });
+    }, hangGuardMilliseconds);
   });
   const finished = (async (): Promise<ScenarioOutcome> => {
     try {
-      await run();
+      await run(scope);
       return { failed: false };
     } catch (error) {
       return { failed: true, error };
     }
   })();
   try {
-    return await Promise.race([finished, hang]);
+    const outcome = await Promise.race([finished, hang]);
+    if (hung) {
+      for (const release of releases.toReversed()) {
+        // Best effort: a failing release must not hide the hang it is cleaning up after.
+        await Promise.resolve()
+          .then(release)
+          .catch(() => {});
+      }
+    }
+    return outcome;
   } finally {
     clearTimeout(timer);
   }

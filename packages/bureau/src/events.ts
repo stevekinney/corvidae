@@ -66,6 +66,23 @@ export class RunRemovedEvent extends Event {
 }
 
 /**
+ * Fired when an aborted run's teardown has settled: its `activeRun.closed()` resolved and the run
+ * left `listAbortingRuns()`. `abortRun` returns before this, and the run's terminal status can
+ * precede it, so a caller that must know the abort is fully finished (not merely that the run
+ * stopped) waits for this rather than for a status.
+ */
+export class RunAbortSettledEvent extends Event {
+  static readonly type = 'run.abort-settled' as const;
+
+  readonly runId: string;
+
+  constructor(runId: string) {
+    super(RunAbortSettledEvent.type);
+    this.runId = runId;
+  }
+}
+
+/**
  * Fired when the bureau is disposed.
  */
 export class BureauDisposedEvent extends Event {
@@ -348,6 +365,7 @@ export interface BureauEventMap extends EventMap {
   [ActionEvent.type]: ActionEvent;
   [RunRegisteredEvent.type]: RunRegisteredEvent;
   [RunRemovedEvent.type]: RunRemovedEvent;
+  [RunAbortSettledEvent.type]: RunAbortSettledEvent;
   [BureauDisposedEvent.type]: BureauDisposedEvent;
   [RecoveryAttemptedEvent.type]: RecoveryAttemptedEvent;
   [RecoveryRejectedEvent.type]: RecoveryRejectedEvent;

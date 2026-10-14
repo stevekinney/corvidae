@@ -22,7 +22,12 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import { expectScenarioPassed, settleScenario, waitForBureauState } from './test/hoisted-scenario';
+import {
+  expectScenarioPassed,
+  type ScenarioScope,
+  settleScenario,
+  waitForBureauState,
+} from './test/hoisted-scenario';
 import {
   CLAIM_TTL_MS,
   createHarnessBureau,
@@ -40,11 +45,16 @@ const runtime = createDefaultRuntimeServices();
  * a loaded host, so each backend's scenario runs whole, once, at module scope (see
  * `test/hoisted-scenario.ts`); a failed assertion is captured there and rethrown by its test.
  */
-async function humanWaitScenario(backend: Backend): Promise<void> {
+async function humanWaitScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `corvidae-process-crash-human-wait-${backend}-`));
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
   let recoverer: Bureau | undefined;
+  // A hung scenario never reaches its `finally`, so what it owns is released from here.
+  scope.onHang(async () => {
+    await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
+    rmSync(directory, { recursive: true, force: true });
+  });
 
   try {
     // Premise: the child died from SIGKILL and left its marker.
@@ -52,6 +62,7 @@ async function humanWaitScenario(backend: Backend): Promise<void> {
       stdout: 'pipe',
       stderr: 'pipe',
     });
+    scope.onHang(() => child.kill());
     await child.exited;
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
@@ -124,8 +135,11 @@ type Backend = 'sqlite' | 'lmdb';
 // stops a genuine hang; every wait for a state change is by event (`waitForBureauState`).
 const HANG_GUARD_MILLISECONDS = 120_000;
 const outcomes = {
-  sqlite: await settleScenario(() => humanWaitScenario('sqlite'), HANG_GUARD_MILLISECONDS),
-  lmdb: await settleScenario(() => humanWaitScenario('lmdb'), HANG_GUARD_MILLISECONDS),
+  sqlite: await settleScenario(
+    (scope) => humanWaitScenario('sqlite', scope),
+    HANG_GUARD_MILLISECONDS,
+  ),
+  lmdb: await settleScenario((scope) => humanWaitScenario('lmdb', scope), HANG_GUARD_MILLISECONDS),
 };
 
 describe.each(['sqlite', 'lmdb'] as const)(

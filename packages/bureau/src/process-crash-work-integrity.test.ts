@@ -42,7 +42,12 @@ import {
   readEffects,
   REMEMBERED_ANSWER,
 } from './test/process-crash-work-integrity-fixtures';
-import { expectScenarioPassed, settleScenario, waitForBureauState } from './test/hoisted-scenario';
+import {
+  expectScenarioPassed,
+  type ScenarioScope,
+  settleScenario,
+  waitForBureauState,
+} from './test/hoisted-scenario';
 import type { Bureau } from './types';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
@@ -62,10 +67,20 @@ interface Scenario {
 
 async function withScenario(
   backend: Backend,
+  scope: ScenarioScope,
   body: (scenario: Scenario) => Promise<void>,
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `corvidae-work-integrity-${backend}-`));
   const closers: Array<() => unknown> = [];
+  // A hung scenario never reaches the cleanup below, so the same closers run from here.
+  scope.onHang(async () => {
+    for (const closer of closers.toReversed()) {
+      await Promise.resolve()
+        .then(closer)
+        .catch(() => {});
+    }
+    rmSync(directory, { recursive: true, force: true });
+  });
   let bodyError: { error: unknown } | undefined;
   try {
     await body({
@@ -121,6 +136,7 @@ async function spawnChild(
     ],
     { stdout: 'pipe', stderr: 'pipe' },
   );
+  scenario.onCleanup(() => child.kill());
   await child.exited;
   const stderr = await new Response(child.stderr).text();
   return { signalCode: child.signalCode, exitCode: child.exitCode, stderr };
@@ -208,8 +224,8 @@ async function recoverCharge(backend: Backend, scenario: Scenario, wrap: boolean
   return { marker, bureau, shutdown, closeIdempotency, stepZeroCalls };
 }
 
-async function idempotentChargeScenario(backend: Backend): Promise<void> {
-  await withScenario(backend, async (scenario) => {
+async function idempotentChargeScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  await withScenario(backend, scope, async (scenario) => {
     const { marker, bureau, shutdown, closeIdempotency, stepZeroCalls } = await recoverCharge(
       backend,
       scenario,
@@ -244,8 +260,8 @@ async function idempotentChargeScenario(backend: Backend): Promise<void> {
   });
 }
 
-async function controlChargeScenario(backend: Backend): Promise<void> {
-  await withScenario(backend, async (scenario) => {
+async function controlChargeScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  await withScenario(backend, scope, async (scenario) => {
     const { marker, bureau, shutdown, stepZeroCalls } = await recoverCharge(
       backend,
       scenario,
@@ -261,8 +277,8 @@ async function controlChargeScenario(backend: Backend): Promise<void> {
   });
 }
 
-async function governedMemoryScenario(backend: Backend): Promise<void> {
-  await withScenario(backend, async (scenario) => {
+async function governedMemoryScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  await withScenario(backend, scope, async (scenario) => {
     const marker = await crash<{ runId: string; sessionId: string }>(
       scenario,
       'memory-write-then-crash',
@@ -295,8 +311,8 @@ async function governedMemoryScenario(backend: Backend): Promise<void> {
   });
 }
 
-async function abortSiblingScenario(backend: Backend): Promise<void> {
-  await withScenario(backend, async (scenario) => {
+async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  await withScenario(backend, scope, async (scenario) => {
     const marker = await crash<{ xRunId: string; yRunId: string }>(scenario, 'two-parked-runs');
     const generateObservers = new Set<() => void>();
     const deferreds = new Map<string, PromiseWithResolvers<{ content: string; toolCalls: [] }>>();
@@ -399,16 +415,19 @@ const HANG_GUARD_MILLISECONDS = 120_000;
 async function settleBackend(backend: Backend) {
   return {
     idempotent: await settleScenario(
-      () => idempotentChargeScenario(backend),
+      (scope) => idempotentChargeScenario(backend, scope),
       HANG_GUARD_MILLISECONDS,
     ),
-    control: await settleScenario(() => controlChargeScenario(backend), HANG_GUARD_MILLISECONDS),
+    control: await settleScenario(
+      (scope) => controlChargeScenario(backend, scope),
+      HANG_GUARD_MILLISECONDS,
+    ),
     governedMemory: await settleScenario(
-      () => governedMemoryScenario(backend),
+      (scope) => governedMemoryScenario(backend, scope),
       HANG_GUARD_MILLISECONDS,
     ),
     abortSibling: await settleScenario(
-      () => abortSiblingScenario(backend),
+      (scope) => abortSiblingScenario(backend, scope),
       HANG_GUARD_MILLISECONDS,
     ),
   };
