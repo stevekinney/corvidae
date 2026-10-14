@@ -16,13 +16,14 @@ export * from './style-markers.ts';
 export * from './svelte-plugin.ts';
 export * from './visual-fixtures.ts';
 
+export { outcomeOf, rethrow } from './helpers/module-scope-outcome.ts';
 export { rejectionOf, throwingRejectionOf } from './helpers/promise-outcome.ts';
 export { requiredInstance, requiredValue } from './helpers/required-value.ts';
 
 export { setupHappyDom } from './helpers/happy-dom.ts';
 export { registerGlobalCleanup } from './helpers/svelte-cleanup.ts';
 
-export { renderThenHydrate } from './helpers/svelte-hydration.ts';
+export { hydrateServerHtml, renderThenHydrate } from './helpers/svelte-hydration.ts';
 export {
   importSvelteOnServer,
   prepareSvelteServerSource,
