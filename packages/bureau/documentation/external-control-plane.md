@@ -230,7 +230,7 @@ Bureau also advertises one third-party extension, A2UI's A2A extension at the UR
 
 The rules for every extension:
 
-- **Activation.** A client activates an extension per request with the `A2A-Extensions` header, or the binding's equivalent. The response echoes the extensions Bureau applied.
+- **Activation.** A client activates an extension per request with the `A2A-Extensions` header, or the binding's equivalent. The response echoes the extensions Bureau applied. The one exception is A2UI's extension, which Bureau also treats as activated when a message carries `metadata.a2uiClientCapabilities`, as the pinned A2UI v0.9.1 extension specification allows.
 - **Versioning.** A breaking change publishes a new URI with the next major version. Bureau never falls back to an older version on its own.
 - **Optional by declaration.** Every card entry has `required: false`.
 - **Fail-closed as a client.** When an operative calls a peer whose card marks an extension `required` and Bureau does not implement it, Bureau refuses the call with `ExtensionSupportRequiredError` rather than sending a request the peer will misread.
@@ -292,6 +292,7 @@ One model underlies every surface. Resource snapshots come from the resource's o
 | Snapshot plus tail | A subscriber receives the current snapshot, then every durable event after the snapshot's cursor. A2A's `SubscribeToTask` already sends the task first; the durable-history extension adds the cursor. |
 | Ephemeral frames | Step, delta, and tool frames from the in-memory run feed reach the A2A and AG-UI streams live. They carry no resumable cursor and are not replayed; reconnecting yields the snapshot and the durable tail. |
 | Slow consumers | Durable-history subscriptions are pull-driven and never buffer unboundedly. Ephemeral frames beyond a stream's buffer are dropped, and the stream emits one frames-dropped marker so the client knows to re-read the snapshot. |
+| A2A projection of live frames | A2A streams carry only the protocol's `StreamResponse` kinds: the initial `Task`, `TaskStatusUpdateEvent`, and `TaskArtifactUpdateEvent`. Step, delta, and tool frames and the frames-dropped marker travel as `TaskStatusUpdateEvent`s in the `working` state, with the frame in the durable-history extension's `metadata` namespace, and only when that extension is activated; otherwise they are omitted from A2A and remain available through AG-UI. |
 | Audit | A separate, allowlisted, append-only compliance record (`packages/bureau/src/audit-trail.ts`). Events are not audit records, and the audit trail is not an event stream. |
 | Telemetry | Traces and metrics follow `traceparent` and are not part of the contract. |
 
@@ -330,6 +331,7 @@ Errors are versioned with the surface that returns them, machine-readable, and c
 | Category | A2A surface | Weft fault | HTTP |
 | --- | --- | --- | --- |
 | Validation | JSON-RPC `-32602` | `InvalidParams` | 400 |
+| Unsupported content | `ContentTypeNotSupportedError` (`-32005`) when a message part's media type is outside the agent's `defaultInputModes` or skill input modes | `Unprocessable` | 415 |
 | Authentication | HTTP 401 | `Unauthorized` | 401 |
 | Authorization | Not found (denial is not-found-shaped) | `NotFound` | 404 |
 | Not found | `TaskNotFoundError` (`-32001`) | `NotFound` | 404 |
@@ -371,7 +373,7 @@ This supersedes COR-807, which rejected direct peer messaging for lack of a cons
 Weft is a public package. To make it a good base for anyone implementing A2A, not just Bureau, these changes land in Weft:
 
 - **`@lostgradient/weft/a2a`.** A new subpath, kept free of Bun-only and UI code, built on `@a2a-js/sdk` and containing:
-  - a fetch handler around the SDK's `JsonRpcTransportHandler`, with streaming over Server-Sent Events and the durable cursor as each event's `id`;
+  - a fetch handler around the SDK's `JsonRpcTransportHandler`, with streaming over Server-Sent Events, where only snapshots and durable-history events carry their durable cursor as the SSE `id` and ephemeral frames carry none;
   - `A2A-Version` and `A2A-Extensions` negotiation;
   - the public Agent Card route, signed with the SDK's `generateAgentCardSignature`, and its public JWKS;
   - security schemes derived from Weft's `AuthConfig`;
