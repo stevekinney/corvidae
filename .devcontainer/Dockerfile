@@ -33,6 +33,18 @@ RUN mkdir -p /etc/postgresql-common \
   && echo 'bun ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/bun \
   && chmod 0440 /etc/sudoers.d/bun
 
+# `bun run test` includes the browser-fixture suite, which launches Chromium's headless shell
+# through Playwright, and Weft's opt-in `WEFT_BROWSER_SMOKE=1` suites need it too, plus full
+# Chromium for WebExtensionStorage, which loads an unpacked extension. Installing `chromium`
+# fetches both. The version is the `playwright-core` that `bun.lock` resolves, so the browser
+# revisions are the ones the installed package looks for; `scripts/dev-container.test.ts`
+# fails when the two drift apart. `--with-deps` installs the browsers' system libraries, and
+# the shared path keeps them readable by `bun`.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx --yes playwright@1.63.0 install --with-deps chromium \
+  && chmod -R a+rX /ms-playwright \
+  && rm -rf /root/.npm /var/lib/apt/lists/*
+
 # Debian keeps the server binaries off PATH; the suites find them with `Bun.which`.
 ENV PATH=/usr/lib/postgresql/17/bin:$PATH
 # Keep Turborepo's local cache out of the bind-mounted checkout, so a host run never

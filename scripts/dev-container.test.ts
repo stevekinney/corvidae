@@ -16,6 +16,7 @@ const configuration = (await Bun.file(join(root, '.devcontainer/devcontainer.jso
   mounts: string[];
   init: boolean;
 };
+const lockfile = await Bun.file(join(root, 'bun.lock')).text();
 const manifest = (await Bun.file(join(root, 'package.json')).json()) as { packageManager: string };
 
 // COR-1379: validation passed or failed depending on what the host had installed. The
@@ -54,6 +55,14 @@ describe('the Dev Container', () => {
     // COR-1379: at Turborepo's default of ten, and again at two, parallel type-checks were
     // killed for memory.
     expect(dockerfile).toMatch(/^ENV TURBO_CONCURRENCY=1$/mu);
+  });
+
+  test('installs Chromium for the Playwright version the lockfile resolves', () => {
+    // COR-1379: the browser-fixture suite in `bun run test` failed with no browser installed.
+    const locked = /"playwright-core": \["playwright-core@([^"]+)"/u.exec(lockfile)?.[1];
+    expect(locked).toBeDefined();
+    expect(dockerfile).toContain(`RUN npx --yes playwright@${locked} install --with-deps chromium`);
+    expect(dockerfile).toMatch(/^ENV PLAYWRIGHT_BROWSERS_PATH=\/ms-playwright$/mu);
   });
 
   test('runs an init process, so killed process groups are reaped', () => {
