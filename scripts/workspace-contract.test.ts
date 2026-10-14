@@ -8,7 +8,7 @@ import ts from 'typescript';
 import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
-const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui'];
+const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui', 'terminal'];
 const libraries = [
   'bureau',
   'operative',
@@ -28,6 +28,8 @@ const libraries = [
   'editor',
   'markdown',
   'testing',
+  'terminal',
+  'ventriloquist',
 ];
 
 /**
@@ -63,6 +65,8 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/testing',
   '@lostgradient/typescript',
   '@lostgradient/playground',
+  '@lostgradient/terminal',
+  '@lostgradient/ventriloquist',
   'armorer',
   'conversationalist',
 ]);
