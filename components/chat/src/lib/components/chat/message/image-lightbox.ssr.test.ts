@@ -50,36 +50,32 @@ const images = [
   { src: '/b.jpg', alt: 'Image B' },
 ];
 
+// Server rendering is a real DOM-free process, so the three renders run once here at module scope,
+// off the per-test clock, and the tests only assert.
+const [openAtStart, openAtSecond, closed] = await Promise.all([
+  renderSvelteOnServer(sourcePath, { images, initialIndex: 0, open: true }),
+  renderSvelteOnServer(sourcePath, { images, initialIndex: 1, open: true }),
+  renderSvelteOnServer(sourcePath, { images, initialIndex: 0, open: false }),
+]);
+
 describe('ImageLightbox SSR contract', () => {
-  test('an initially-open lightbox (open={true}) server-renders NO visible dialog at all', async () => {
-    const html = await renderSvelteOnServer(sourcePath, {
-      images,
-      initialIndex: 0,
-      open: true,
-    });
+  test('an initially-open lightbox (open={true}) server-renders NO visible dialog at all', () => {
+    const html = openAtStart;
 
     expect(html).not.toContain('<dialog');
     expect(html).not.toContain('role="dialog"');
     expect(html).not.toContain('aria-modal="true"');
   });
 
-  test('an initially-open lightbox with a non-zero initialIndex still server-renders no dialog', async () => {
-    const html = await renderSvelteOnServer(sourcePath, {
-      images,
-      initialIndex: 1,
-      open: true,
-    });
+  test('an initially-open lightbox with a non-zero initialIndex still server-renders no dialog', () => {
+    const html = openAtSecond;
 
     expect(html).not.toContain('<dialog');
     expect(html).not.toContain('src="/b.jpg"');
   });
 
-  test('an initially-closed lightbox (open={false}, the default) emits no dialog markup at all', async () => {
-    const html = await renderSvelteOnServer(sourcePath, {
-      images,
-      initialIndex: 0,
-      open: false,
-    });
+  test('an initially-closed lightbox (open={false}, the default) emits no dialog markup at all', () => {
+    const html = closed;
 
     expect(html).not.toContain('<dialog');
     expect(html).not.toContain('role="dialog"');
