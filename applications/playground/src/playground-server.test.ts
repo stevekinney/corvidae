@@ -16,7 +16,7 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import { rm, utimes, writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { throwingRejectionOf } from '@lostgradient/testing';
@@ -30,10 +30,10 @@ import { isComponentDocumentationPayload } from './component-documentation-refer
 import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 import { COMPOSE_ONLY_COMPONENTS, discoverComponentDefinitions } from './discover.ts';
 import {
-  classifyPlaygroundSrcChange,
-  scheduleRebuild,
-  waitForPendingRebuild,
-} from './file-watcher.ts';
+  setFeaturedExampleRenderer,
+  type FeaturedExampleRenderer,
+} from './featured-example-server-renderer.ts';
+import { classifyPlaygroundSrcChange } from './file-watcher.ts';
 import {
   buildFixtureBundle,
   clearFixtureBundleCaches,
@@ -50,7 +50,6 @@ import {
   createSharedDisposer,
   eagerPrebuildComponents,
   handleRequest,
-  isWarmupStable,
   mapWithConcurrencyLimitInBatches,
   mergeGeneratedSchemaMetadata,
   readGeneratedComponentSchema,
@@ -58,12 +57,10 @@ import {
   releaseIncrementalPrebuildMemory,
   rewriteRepositoryRelativeReadmeLinks,
   runConcurrentStartupWarmup,
-  runGenerationCheckedWarmup,
   warmPageServerRenderer,
-  warmupInstabilityReasons,
 } from './playground-server.ts';
 import { configureRequestIdleTimeout } from './port-scanner.ts';
-import { getRebuildGeneration, incrementRebuildGeneration } from './rebuild-generation.ts';
+import { incrementRebuildGeneration } from './rebuild-generation.ts';
 import { jsonForScriptTag } from './render-shell.ts';
 import { advertiseLiveReload, triggerReload } from './sse-broadcast.ts';
 import {
@@ -72,9 +69,6 @@ import {
   isPageServerRenderers,
   isShellServerRendererModule,
   loadPageServerRenderer,
-  rendererWarmupAttemptDecision,
-  rendererWarmupNeedsCacheInvalidation,
-  rendererWarmupNeedsPrebuild,
   resetPageServerRendererPromise,
   resolveRendererLoad,
   setPreparedShellServerRenderer,
@@ -588,8 +582,79 @@ const testShellServerRenderer: NonNullable<
   head: '<style>.dx-shell { display: contents; }</style>',
 });
 
+/**
+ * Stands in for the fresh-process featured-example render. A real one cold-compiles the
+ * example's Svelte graph in a new `bun` process, about a second per component on an idle host
+ * and over three under load, and this file renders seven components. Paid inside a route
+ * test's 5-second budget, that compile timed tests out whenever other work loaded the host.
+ * The real render is asserted in `featured-example-server-renderer.test.ts`; here a page only
+ * has to embed what the renderer returns.
+ */
+const testFeaturedExampleRenderer: FeaturedExampleRenderer = async (componentName, scenario) => ({
+  body: `<p data-test-featured-example="${componentName}/${scenario}">Featured ${componentName}/${scenario}</p>`,
+  head: '',
+});
+
+/**
+ * Why a `/page/:name` request would compile the page server renderer on a test's clock, or
+ * `null` when the memo already holds a settled, fresh build. The first compile of
+ * `page-server-entry.ts` costs from under a second idle to over three under load.
+ */
+function pageServerRendererColdReason(load: Promise<PageServerRendererLoadResult>): string | null {
+  const status = Bun.peek.status(load);
+  if (status === 'pending') {
+    return 'the page server renderer is still compiling, so a test reset its memo after the module-scope warm';
+  }
+  if (status === 'rejected') return 'the page server renderer build rejected';
+  if ((Bun.peek(load) as PageServerRendererLoadResult).usedFallback) {
+    return 'the page server renderer fell back to its last-good build';
+  }
+  return null;
+}
+
+/*
+ * The page server renderer compiles here, at module scope, which Bun does not time; its test
+ * budget applies to test bodies and to `beforeAll` hooks alike. The sequence doubles as the
+ * memo-identity check: the targeted reset compares promise IDENTITY, so the loader must hand
+ * callers the exact promise it memoizes. An `async` wrapper would instead return a fresh
+ * promise that merely adopts the stored one, `expected` could never match, every targeted
+ * reset would be silently suppressed, and a rejected or last-good memo would never clear. This
+ * runs the REAL loader and reset together -- a stubbed reset cannot observe this, which is how
+ * the bug shipped the first time. It ends with the memo holding a settled build that every
+ * route test reuses.
+ *
+ * Nothing in this file may reset that memo afterwards. Tests that drive real rebuild
+ * invalidation live in `startup-warmup-stability.test.ts`, in their own process, and the
+ * `beforeEach` below fails any test that would start with a cold renderer.
+ */
+const pageServerRendererMemo = await (async () => {
+  resetPageServerRendererPromise();
+  const first = loadPageServerRenderer();
+  const second = loadPageServerRenderer();
+  resetPageServerRendererPromise(Promise.resolve() as never);
+  const afterForeignReset = loadPageServerRenderer();
+  resetPageServerRendererPromise(first);
+  const afterOwnReset = loadPageServerRenderer();
+  await Promise.allSettled([first, afterOwnReset]);
+  return { first, second, afterForeignReset, afterOwnReset };
+})();
+
+/*
+ * Component manifests come from a ts-morph analysis cached for the life of the process, and a
+ * package's first page pays for its source project: about two seconds for Chat on a loaded host,
+ * on top of everything else that test does. Analyze every component here, untimed, through the
+ * same route the manifest tests exercise. Nothing in this file clears that cache afterwards.
+ */
+const manifestWarmup = await handleRequest(req('/api/manifest'));
+if (!manifestWarmup.ok) {
+  throw new Error(`[server.test] manifest warmup returned ${manifestWarmup.status}`);
+}
+
 beforeEach(() => {
   setPreparedShellServerRenderer(testShellServerRenderer);
+  setFeaturedExampleRenderer(testFeaturedExampleRenderer);
+  const coldReason = pageServerRendererColdReason(loadPageServerRenderer());
+  if (coldReason !== null) throw new Error(`[server.test] ${coldReason}`);
 });
 
 describe('last-good rebuild fallback', () => {
@@ -616,6 +681,25 @@ afterEach(() => {
 
 function req(path: string, options?: RequestInit): Request {
   return new Request(`http://localhost:${PORT}${path}`, options);
+}
+
+/**
+ * Follow a stable entry URL to the hashed entry it imports and return that entry's code. The
+ * stable URL must be exactly one side-effect import, never a copy of the entry: a copy is a
+ * second module record that runs the entry's top-level `hydrate()` a second time.
+ */
+async function hashedEntryBehind(stableUrl: string): Promise<{ url: string; code: string }> {
+  const stable = await handleRequest(req(stableUrl));
+  expect(stable.status).toBe(200);
+  const stableCode = await stable.text();
+  const match = /^import "(\/(?:page|shell)-bundle\/[A-Za-z0-9_-]+-[a-z0-9]{8,}\.js)";\n$/.exec(
+    stableCode,
+  );
+  expect(match, `${stableUrl} serves ${stableCode.slice(0, 120)}`).not.toBeNull();
+  const url = match![1]!;
+  const entry = await handleRequest(req(url));
+  expect(entry.status).toBe(200);
+  return { url, code: await entry.text() };
 }
 
 describe('request idle timeout configuration', () => {
@@ -664,120 +748,6 @@ describe('shared disposer', () => {
 
     expect(dispose()).toBe(firstDispose);
     expect(disposeCalls).toBe(1);
-  });
-});
-
-describe('startup warmup stability', () => {
-  it('settles a pending rebuild before a retry can pre-build bundles', async () => {
-    const generationAtStart = getRebuildGeneration();
-    scheduleRebuild({ kind: 'components' });
-
-    expect(getRebuildGeneration()).toBe(generationAtStart);
-    const settledGeneration = await waitForPendingRebuild();
-
-    expect(settledGeneration).toBe(generationAtStart + 1);
-    expect(getRebuildGeneration()).toBe(settledGeneration);
-  });
-
-  it('captures the settled generation as a stable prebuild baseline', async () => {
-    const generationBeforeDebounce = getRebuildGeneration();
-    scheduleRebuild({ kind: 'components' });
-
-    const generationAtStart = await waitForPendingRebuild();
-
-    expect(generationAtStart).toBe(generationBeforeDebounce + 1);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(isWarmupStable(generationAtStart, getRebuildGeneration(), 100, 100)).toBe(true);
-  });
-
-  it('rejects retry work when a rebuild settles before the work completes', async () => {
-    const generationBeforeWork = getRebuildGeneration();
-    const attempt = await runGenerationCheckedWarmup(async () => {
-      scheduleRebuild({ kind: 'components' });
-      await waitForPendingRebuild();
-      return 'prebuilt';
-    });
-
-    expect(attempt.value).toBe('prebuilt');
-    expect(attempt.instabilityReasons).toEqual([
-      `rebuild generation changed (${generationBeforeWork} -> ${generationBeforeWork + 1})`,
-    ]);
-  });
-
-  it('rejects retry work while rebuild invalidation is still pending', async () => {
-    const attempt = await runGenerationCheckedWarmup(async () => {
-      scheduleRebuild({ kind: 'components' });
-      return 'prebuilt';
-    });
-
-    expect(attempt.value).toBe('prebuilt');
-    expect(attempt.instabilityReasons).toEqual(['rebuild debounce is pending']);
-    await waitForPendingRebuild();
-  });
-
-  it('rejects retry work when source changes before watcher invalidation starts', async () => {
-    const temporarySourcePath = join(import.meta.dirname, '.warmup-source-mtime.test-fixture.ts');
-    await rm(temporarySourcePath, { force: true });
-
-    try {
-      const attempt = await runGenerationCheckedWarmup(async () => {
-        await writeFile(temporarySourcePath, 'export {};\n');
-        const futureMtime = new Date(Date.now() + 5_000);
-        await utimes(temporarySourcePath, futureMtime, futureMtime);
-        return 'prebuilt';
-      });
-
-      expect(attempt.value).toBe('prebuilt');
-      expect(
-        attempt.instabilityReasons.some((reason) =>
-          reason.startsWith('newest source mtime changed'),
-        ),
-      ).toBe(true);
-    } finally {
-      await rm(temporarySourcePath, { force: true });
-    }
-  });
-
-  it('rejects a warmup when source changes before watcher validation', () => {
-    expect(isWarmupStable(4, 4, 100, 101)).toBe(false);
-    expect(isWarmupStable(4, 5, 100, 100)).toBe(false);
-    expect(isWarmupStable(4, 4, 100, 100, true)).toBe(false);
-    expect(isWarmupStable(4, 4, 100, 100)).toBe(true);
-  });
-
-  it('reports every condition that invalidated a warmup pass', () => {
-    expect(warmupInstabilityReasons(4, 5, 100, 101, true)).toEqual([
-      'rebuild generation changed (4 -> 5)',
-      'newest source mtime changed (100 -> 101)',
-      'rebuild debounce is pending',
-    ]);
-    expect(warmupInstabilityReasons(4, 4, 100, 100)).toEqual([]);
-  });
-
-  it('only requires a full page pre-build after invalidation or a source change', () => {
-    expect(rendererWarmupNeedsPrebuild(false, false, false)).toBe(false);
-    expect(rendererWarmupNeedsPrebuild(true, false, false)).toBe(true);
-    expect(rendererWarmupNeedsPrebuild(false, true, false)).toBe(true);
-    expect(rendererWarmupNeedsPrebuild(false, false, true)).toBe(true);
-    expect(rendererWarmupNeedsCacheInvalidation(false, true, false)).toBe(true);
-    expect(rendererWarmupNeedsCacheInvalidation(true, true, false)).toBe(true);
-    expect(rendererWarmupNeedsCacheInvalidation(true, false, false)).toBe(false);
-    expect(rendererWarmupNeedsCacheInvalidation(false, false, true)).toBe(true);
-  });
-
-  it('carries cache instability through a renderer fallback', () => {
-    expect(rendererWarmupAttemptDecision(true, true, false, false)).toEqual({
-      accepted: false,
-      needsPrebuild: true,
-    });
-    expect(rendererWarmupAttemptDecision(true, false, false, false)).toEqual({
-      accepted: false,
-      needsPrebuild: false,
-    });
-    expect(rendererWarmupAttemptDecision(false, false, false, false)).toEqual({
-      accepted: true,
-      needsPrebuild: false,
-    });
   });
 });
 
@@ -1026,7 +996,7 @@ describe('/shell-bundle/:filename.js', () => {
     const response = await handleRequest(req('/shell-bundle/shell.js'));
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('application/javascript');
-    const body = await response.text();
+    const { code: body } = await hashedEntryBehind('/shell-bundle/shell.js');
     // The landing page keeps its server-rendered content static. Interactive
     // shell behavior is loaded with dynamic imports, so color editing and nav
     // filtering work without putting the documentation/editor graph in the
@@ -1076,9 +1046,7 @@ describe('chunks under /page-bundle/<filename>.js', () => {
     // does — markdown-preview lazy-loads @lostgradient/markdown/rendering). The
     // entry response body must reference at least one hashed chunk URL,
     // and every referenced URL must resolve to 200 application/javascript.
-    const entryResponse = await handleRequest(req('/page-bundle/chat.js'));
-    expect(entryResponse.status).toBe(200);
-    const body = await entryResponse.text();
+    const { code: body } = await hashedEntryBehind('/page-bundle/chat.js');
     // Hashed chunks contain a hash segment after the last `-`; the
     // unhashed entry URL is just `<component>.js`. Match the hashed
     // shape with at least one dash and an alphanumeric tail.
@@ -1106,7 +1074,7 @@ describe('chunks under /page-bundle/<filename>.js', () => {
       expect(entryResponse.status).toBe(200);
       expect(entryResponse.headers.get('Content-Type')).toBe('application/javascript');
 
-      const body = await entryResponse.text();
+      const { code: body } = await hashedEntryBehind(`/page-bundle/${componentName}.js`);
       const chunkUrls = Array.from(
         body.matchAll(/\/page-bundle\/[A-Za-z0-9_-]+-[a-z0-9]{8,}\.js/g),
         (match) => match[0],
@@ -1158,9 +1126,7 @@ describe('Cache-Control headers on bundle routes', () => {
     // one hashed chunk. Warm the entry, extract a hashed chunk URL, then
     // assert the chunk response carries the immutable header. Hashed URLs
     // have a `-<hash>` segment; the bare entry URL (`chat.js`) does not.
-    const entryResponse = await handleRequest(req('/page-bundle/chat.js'));
-    expect(entryResponse.status).toBe(200);
-    const body = await entryResponse.text();
+    const { code: body } = await hashedEntryBehind('/page-bundle/chat.js');
     // A content-hashed chunk ends in `-<hash>.js` where the hash is a long
     // lowercase-alphanumeric content digest (Bun's `[name]-[hash]` naming).
     // Requiring that hash tail — rather than "any hyphenated segment" — avoids
@@ -1197,8 +1163,7 @@ describe('build artifact paths', () => {
     // stack should land in chunks, not in the entry. If a future change
     // reverts the lazy import or splitting breaks, the entry will balloon
     // back to multi-MB. This is a structural, not size-based, assertion.
-    const response = await handleRequest(req('/page-bundle/chat.js'));
-    const body = await response.text();
+    const { code: body } = await hashedEntryBehind('/page-bundle/chat.js');
     // The bundled grammar files have a stable string fingerprint —
     // every @shikijs/langs/<lang>.mjs starts with `var <lang>_default = ...`
     // and references "scopeName". The entry should not contain a Shiki
@@ -1259,6 +1224,34 @@ describe('/styles/* (path traversal guard)', () => {
     const response = await handleRequest(req('/styles/this-file-does-not-exist.css'));
     expect(response.status).toBe(404);
   });
+});
+
+describe('stable entry URLs evaluate the hashed entry once', () => {
+  it.each([
+    ['/page-bundle/chat.js', 'data-playground-controls-hydrated'],
+    ['/shell-bundle/shell.js', 'Preview theme:'],
+  ])(
+    'serves %s as one import of the hashed entry, never a copy of it',
+    async (stableUrl, marker) => {
+      const stable = await handleRequest(req(stableUrl));
+      const stableCode = await stable.text();
+      const { url, code } = await hashedEntryBehind(stableUrl);
+
+      // The entry's own code lives only at the hashed URL that peer chunks import.
+      expect(stableCode).not.toContain(marker);
+      expect(code).toContain(marker);
+      expect(stableCode).toBe(`import ${JSON.stringify(url)};\n`);
+    },
+    60_000,
+  );
+
+  it('serves the same thin module from the cached entry on a second request', async () => {
+    const firstResponse = await handleRequest(req('/page-bundle/chat.js'));
+    const first = await firstResponse.text();
+    const secondResponse = await handleRequest(req('/page-bundle/chat.js'));
+    const second = await secondResponse.text();
+    expect(second).toBe(first);
+  }, 60_000);
 });
 
 describe('/bundle/:name/:scenario.js', () => {
@@ -1469,6 +1462,20 @@ describe('/page/:name', () => {
     expect(response.status).toBe(404);
   });
 
+  it('gives only the documentation page an unpadded body, leaving snapshot and preview gutters unchanged', async () => {
+    const bodyPadding = async (query: string): Promise<string> => {
+      const response = await handleRequest(req(`/page/${FIXTURE_COMPONENT}${query}`));
+      const html = await response.text();
+      const bodyRule = /\n\s+body \{([^}]*)\}/.exec(html)?.[1] ?? '';
+      return /padding:\s*([^;]+);/.exec(bodyRule)?.[1]?.trim() ?? '';
+    };
+    const gutter = 'clamp(var(--cinder-space-1), 2.5vw, var(--cinder-space-6))';
+
+    expect(await bodyPadding('')).toBe('0');
+    expect(await bodyPadding('?snapshot=1')).toBe(gutter);
+    expect(await bodyPadding('?preview=1')).toBe(gutter);
+  });
+
   it('does NOT include data-snapshot-mode on <html> without ?snapshot=1', async () => {
     const response = await handleRequest(req(`/page/${FIXTURE_COMPONENT}`));
     const html = await response.text();
@@ -1634,7 +1641,11 @@ describe('/page/:name', () => {
     expect(html).toContain('<pre class="shiki');
     expect(html).toContain('id="overview-mount-basic"');
     expect(html).toContain('data-overview-preview-rendered');
-    expect(html).toContain('Scheduled maintenance is planned');
+    // The stand-in's output, embedded in the overview mount. The real banner render, with its
+    // "Scheduled maintenance is planned" copy, is asserted in featured-example-server-renderer.test.ts.
+    expect(html).toContain(
+      '<p data-test-featured-example="banner/basic">Featured banner/basic</p>',
+    );
     expect(html).not.toContain('id="overview-mount-basic"></div>');
     expect(html).not.toContain('__CINDER_OVERVIEW_EXAMPLE_HTML__');
   });
@@ -2229,34 +2240,49 @@ describe('/page/:name server-rendering surfaces', () => {
 });
 
 describe('loadPageServerRenderer memo identity', () => {
-  /**
-   * The targeted reset compares promise IDENTITY, so the loader must hand callers
-   * the exact promise it memoizes. An `async` wrapper would instead return a fresh
-   * promise that merely adopts the stored one, `expected` could never match, every
-   * targeted reset would be silently suppressed, and a rejected or last-good memo
-   * would never clear. This runs the REAL loader and reset together -- a stubbed
-   * reset cannot observe this, which is how the bug shipped the first time.
-   */
-  it('returns the memoized promise itself, so a targeted reset can match it', async () => {
-    resetPageServerRendererPromise();
-    const first = loadPageServerRenderer();
-    const second = loadPageServerRenderer();
-    try {
-      expect(second).toBe(first);
+  // The loader and reset ran at module scope; see `pageServerRendererMemo`.
+  it('returns the memoized promise itself, so a targeted reset can match it', () => {
+    const { first, second, afterForeignReset, afterOwnReset } = pageServerRendererMemo;
+    expect(second).toBe(first);
+    // Discarding a DIFFERENT promise must leave the memo alone...
+    expect(afterForeignReset).toBe(first);
+    // ...and discarding the memoized one must clear it.
+    expect(afterOwnReset).not.toBe(first);
+  });
 
-      // Discarding a DIFFERENT promise must leave the memo alone...
-      resetPageServerRendererPromise(Promise.resolve() as never);
-      expect(loadPageServerRenderer()).toBe(first);
+  it('leaves every test in this file a compiled page renderer instead of a cold build', () => {
+    expect(loadPageServerRenderer()).toBe(pageServerRendererMemo.afterOwnReset);
+    expect(pageServerRendererColdReason(loadPageServerRenderer())).toBeNull();
+  });
+});
 
-      // ...and discarding the memoized one must clear it.
-      resetPageServerRendererPromise(first);
-      const third = loadPageServerRenderer();
-      expect(third).not.toBe(first);
-      await Promise.allSettled([third]);
-    } finally {
-      resetPageServerRendererPromise();
-      await Promise.allSettled([first]);
-    }
+describe('pageServerRendererColdReason', () => {
+  const renderers = {
+    renderComponentPageBody: () => ({ body: '', head: '' }),
+    renderLandingBody: () => ({ body: '', head: '' }),
+  } as unknown as PageServerRenderers;
+
+  it('reports a build that has not settled', () => {
+    const neverSettles = new Promise<PageServerRendererLoadResult>(() => {});
+    expect(pageServerRendererColdReason(neverSettles)).toContain('still compiling');
+  });
+
+  it('reports a build that fell back to the last-good renderer', () => {
+    expect(
+      pageServerRendererColdReason(Promise.resolve({ renderers, usedFallback: true })),
+    ).toContain('fell back');
+  });
+
+  it('reports a build that rejected', () => {
+    const rejected = Promise.reject(new Error('page server bundle failed'));
+    rejected.catch(() => {});
+    expect(pageServerRendererColdReason(rejected)).toContain('rejected');
+  });
+
+  it('accepts a settled fresh build', () => {
+    expect(
+      pageServerRendererColdReason(Promise.resolve({ renderers, usedFallback: false })),
+    ).toBeNull();
   });
 });
 

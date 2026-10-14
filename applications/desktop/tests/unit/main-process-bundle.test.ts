@@ -6,6 +6,7 @@ import path from 'node:path';
 import { throwingRejectionOf } from '@lostgradient/testing';
 
 import {
+  buildMainProcess,
   bundleMainProcess,
   mainProcessBundlePath,
   mainProcessEntrypoint,
@@ -54,6 +55,19 @@ describe('the pre-bundled main process', () => {
     // The stylesheet import comes back from Bun as a second output. Only the
     // entry point may reach the directory Electrobun reads.
     expect(await readdir(path.dirname(outputPath))).toEqual(['index.js']);
+  });
+
+  test('bundles the real main-process entry point to a single file with no Svelte or Cinder module', async () => {
+    // COR-1397: a codec import through the `@lostgradient/chat` browser barrel once pulled the
+    // whole chat and Cinder graph into the main process (887 inputs, 273 outputs). Anything
+    // beyond the entry point is an asset the main process never loads.
+    const result = await buildMainProcess();
+
+    expect(result.outputs.map((output) => path.relative(projectRoot, output.path))).toEqual([
+      'index.js',
+    ]);
+    const bundle = await result.outputs[0]!.text();
+    expect(bundle).not.toMatch(/\.svelte|\.css|components\/cinder/u);
   });
 
   test('fails instead of writing a partial file when the graph does not resolve', async () => {

@@ -27,6 +27,7 @@
   import Sun from 'lucide-svelte/icons/sun';
   import X from 'lucide-svelte/icons/x';
   import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.ts';
+  import ComponentSearch from './shell-app/component-search.svelte';
   import { humanizeComponentName } from './shell-app/humanize.ts';
   import {
     buildComponentHref,
@@ -85,6 +86,8 @@
     scrollOverflowSentinel,
   } from './component-page-example-mounts.ts';
 
+  import { describeOverviewStage, selectOverviewExample } from './component-page-overview-stage.ts';
+
   type CinderExampleDescriptor = {
     scenario: string;
     title: string;
@@ -96,8 +99,6 @@
       __CINDER_EXAMPLES__?: CinderExampleDescriptor[];
       __CINDER_SNAPSHOT_READY__?: Promise<void>;
     };
-  type BadgeVariant = 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'accent';
-  type StatusDotStatus = 'online' | 'warning' | 'danger' | 'pending' | 'neutral' | 'accent';
 
   // The bare component's module namespace is loaded by the page-bundle entry
   // only after a reader opens Playground. Keeping the loader as a prop rather
@@ -185,7 +186,6 @@
   }
 
   const examples: CinderExampleDescriptor[] = untrack(() => examplesProp) ?? readExamples();
-  const explicitlyFeatured = examples.filter((example) => example.featured === true);
 
   // Snapshot mode (`?snapshot=1`) is how the visual-regression and a11y test
   // harness loads this route. Those tests assert global single-instance counts
@@ -198,12 +198,16 @@
       new URLSearchParams(window.location.search).get('snapshot') === '1');
 
   // The Overview live preview uses the first featured example, or the first
-  // example overall. Undefined when there are no examples at all, and suppressed
-  // in snapshot mode so it never double-mounts a scenario the Examples section
-  // already shows.
-  const overviewExample: CinderExampleDescriptor | undefined = snapshotMode
-    ? undefined
-    : (explicitlyFeatured[0] ?? examples[0]);
+  // example overall (see `selectOverviewExample`). Undefined when there are no
+  // examples at all, and suppressed in snapshot mode so it never double-mounts a
+  // scenario the Examples section already shows. The stage's title, mount, and
+  // code panel are all derived from this one descriptor via `overviewStage`.
+  const overviewExample: CinderExampleDescriptor | undefined = selectOverviewExample(
+    examples,
+    snapshotMode,
+  );
+  const overviewStage =
+    overviewExample === undefined ? undefined : describeOverviewStage(overviewExample);
 
   // The component this page documents. Supplied as a prop by both render paths;
   // falls back to parsing the current URL path (`/page/<name>`) when absent.
@@ -265,11 +269,11 @@
   const liveReloadEvents = { reload: handleLiveReload, 'shell-reload': handleLiveReload };
 
   // --- Theme toggle -----------------------------------------------------
-  // Cinder tokens switch on `color-scheme` (via `light-dark()`); the playground
-  // bridge mirrors the same value onto `data-cinder-theme` for bookkeeping. We
-  // read the active scheme on mount and, on toggle, write BOTH `color-scheme`
-  // (the real switch) and `data-cinder-theme` so we stay consistent with the
-  // bridge, plus persist to localStorage under the pre-paint key.
+  // Cinder's built tokens switch on `data-theme` (Bun lowers their `light-dark()`
+  // to toggles keyed on `prefers-color-scheme` and `:root[data-theme]`), and the
+  // playground's own CSS reads `data-cinder-theme`. We read the active scheme on
+  // mount and, on toggle, `applyTheme` writes `color-scheme`, `data-theme` and
+  // `data-cinder-theme`, plus persists to localStorage under the pre-paint key.
   // Server rendering has no `document`, so the SSR tree seeds `light` — matching
   // the base `color-scheme: light dark` first argument — and the real preference
   // is adopted in `onMount`. Seeding from the document during init would make the
@@ -542,6 +546,26 @@
     }
   });
 
+  // The Overview stage's own "Show code" disclosure. It is separate from the
+  // Examples disclosure for the same scenario so opening one never toggles the
+  // other, but both read the one `fetchedSource` entry for the scenario.
+  let overviewExpandedIds: string[] = $state([]);
+
+  $effect(() => {
+    if (
+      overviewStage !== undefined &&
+      overviewExpandedIds.includes(overviewStage.sourceItemId) &&
+      fetchedSource[overviewStage.scenario] === undefined &&
+      !loadingSource[overviewStage.scenario]
+    ) {
+      void fetchExampleSource(componentName, overviewStage.scenario, {
+        fetchedSource,
+        loadingSource,
+        sourceErrors,
+      });
+    }
+  });
+
   // Mount each registered scenario into its preview container via an attachment.
   // An attachment runs exactly when its element is created and tears down when
   // the element is removed, so there is no effect-vs-DOM timing race (the old
@@ -554,7 +578,7 @@
     mountErrors,
     onScenarioSettled: (mountKey, error) => {
       settleSnapshotMount(mountKey, error);
-      if (mountKey === `overview-mount-${overviewExample?.scenario}`) {
+      if (mountKey === overviewStage?.mountId) {
         onOverviewPreviewSettled?.(error);
       }
     },
@@ -639,32 +663,6 @@
    * policy for type complexity, not two.
    */
   const SINGLE_TYPE_PREVIEW_CHARS = 160;
-
-  function statusDotStatus(status: string): StatusDotStatus {
-    switch (status) {
-      case 'stable':
-        return 'online';
-      case 'beta':
-        return 'accent';
-      case 'alpha':
-        return 'warning';
-      default:
-        return 'neutral';
-    }
-  }
-
-  function statusBadgeVariant(status: string): BadgeVariant {
-    switch (status) {
-      case 'stable':
-        return 'success';
-      case 'beta':
-        return 'info';
-      case 'alpha':
-        return 'warning';
-      default:
-        return 'neutral';
-    }
-  }
 
   // --- Import line copy --------------------------------------------------
   let importCopied = $state(false);
@@ -1114,84 +1112,44 @@
         <!-- ===== Hero ===== -->
         <div class="dx-hero">
           <div class="dx__inner">
-            <div class="dx-hero__grid">
-              <div>
-                <div class="dx-eyebrow">
-                  <span class="dx-eyebrow__index">{component.categoryLabel}</span>
-                  <span class="dx-eyebrow__rule" aria-hidden="true"></span>
-                </div>
-                <h1 id="component-name">{component.name}</h1>
-                <p class="dx-hero__lede">{component.purpose}</p>
-                <div class="dx-hero__meta">
-                  <div class="dx-import">
-                    <span class="dx-import__code">
-                      {#if highlightedImportStatement !== ''}
-                        {@html highlightedImportStatement}
-                      {:else}
-                        {importStatement}
-                      {/if}
-                    </span>
-                    <Tooltip text={importCopied ? 'Copied' : 'Copy import'}>
-                      <button
-                        type="button"
-                        class="dx-import__copy"
-                        data-copied={importCopied ? '' : undefined}
-                        aria-label={importCopied ? 'Copied import' : 'Copy import'}
-                        onclick={copyImport}
-                      >
-                        {#if importCopied}
-                          <Check size={14} strokeWidth={1.5} aria-hidden="true" />
-                        {:else}
-                          <Copy size={14} strokeWidth={1.5} aria-hidden="true" />
-                        {/if}
-                      </button>
-                    </Tooltip>
-                  </div>
-                  {#if component.tags.length > 0}
-                    <div class="dx-tags">
-                      {#each component.tags as tag (tag)}
-                        <Badge variant="neutral" size="sm">{tag}</Badge>
-                      {/each}
-                    </div>
+            <div class="dx-eyebrow">
+              <span class="dx-eyebrow__index">{component.categoryLabel}</span>
+              <span class="dx-eyebrow__rule" aria-hidden="true"></span>
+            </div>
+            <h1 id="component-name">{component.name}</h1>
+            <p class="dx-hero__lede">{component.purpose}</p>
+            <div class="dx-hero__meta">
+              <div class="dx-import">
+                <span class="dx-import__code">
+                  {#if highlightedImportStatement !== ''}
+                    {@html highlightedImportStatement}
+                  {:else}
+                    {importStatement}
                   {/if}
-                </div>
-              </div>
-
-              <aside class="dx-spec" aria-label="Component facts">
-                <div class="dx-spec__row">
-                  <span class="dx-spec__key">Status</span>
-                  <span class="dx-spec__val">
-                    <!-- The adjacent Badge is the accessible status text. The dot
-                       is a redundant color cue, so mark it decorative — otherwise
-                       its role="img" name re-announces the same word the Badge
-                       already speaks (the audible half of #388). -->
-                    <StatusDot status={statusDotStatus(component.status)} aria-hidden="true" />
-                    <Badge variant={statusBadgeVariant(component.status)} size="sm">
-                      {component.status}
-                    </Badge>
-                  </span>
-                </div>
-                <div class="dx-spec__row">
-                  <span class="dx-spec__key">Category</span>
-                  <span class="dx-spec__val">{component.categoryLabel}</span>
-                </div>
-                {#if component.a11y?.pattern !== undefined}
-                  <div class="dx-spec__row">
-                    <span class="dx-spec__key">A11y pattern</span>
-                    <span class="dx-spec__val">{component.a11y.pattern}</span>
-                  </div>
-                {/if}
-                <div class="dx-spec__row">
-                  <span class="dx-spec__key">Export</span>
-                  <span class="dx-spec__val dx-spec__val--monospace">{component.exportName}</span>
-                </div>
-                <div class="dx-spec__row">
-                  <span class="dx-spec__key">Version</span>
-                  <span class="dx-spec__val dx-spec__val--monospace"
-                    >v{component.packageVersion}</span
+                </span>
+                <Tooltip text={importCopied ? 'Copied' : 'Copy import'}>
+                  <button
+                    type="button"
+                    class="dx-import__copy"
+                    data-copied={importCopied ? '' : undefined}
+                    aria-label={importCopied ? 'Copied import' : 'Copy import'}
+                    onclick={copyImport}
                   >
+                    {#if importCopied}
+                      <Check size={14} strokeWidth={1.5} aria-hidden="true" />
+                    {:else}
+                      <Copy size={14} strokeWidth={1.5} aria-hidden="true" />
+                    {/if}
+                  </button>
+                </Tooltip>
+              </div>
+              {#if component.tags.length > 0}
+                <div class="dx-tags">
+                  {#each component.tags as tag (tag)}
+                    <Badge variant="neutral" size="sm">{tag}</Badge>
+                  {/each}
                 </div>
-              </aside>
+              {/if}
             </div>
           </div>
         </div>
@@ -1598,30 +1556,41 @@
                     <h2 class="dx-section__title">Overview</h2>
                     <span class="dx-section__rule" aria-hidden="true"></span>
                   </div>
-                  <div class="dx-prose readme-content">
-                    {#each splitReadmeHtml(documentation.readme.html) as segment, i (i)}
-                      {#if segment.type === 'html'}
-                        {@html segment.content}
-                      {:else}
-                        {@const block = documentation.readme.codeBlocks[segment.index]}
-                        {#if block !== undefined}
-                          <StaticCodeBlock
-                            code={block.value}
-                            language={block.language ?? 'plaintext'}
-                            highlightedHtml={segment.fallbackHtml}
-                            copyable
-                          />
+                  {#snippet readmeBody()}
+                    <div class="dx-prose readme-content">
+                      {#each splitReadmeHtml(documentation.readme.html) as segment, i (i)}
+                        {#if segment.type === 'html'}
+                          {@html segment.content}
                         {:else}
-                          <div class="readme-pre-fallback">{@html segment.fallbackHtml}</div>
+                          {@const block = documentation.readme.codeBlocks[segment.index]}
+                          {#if block !== undefined}
+                            <StaticCodeBlock
+                              code={block.value}
+                              language={block.language ?? 'plaintext'}
+                              highlightedHtml={segment.fallbackHtml}
+                              copyable
+                            />
+                          {:else}
+                            <div class="readme-pre-fallback">{@html segment.fallbackHtml}</div>
+                          {/if}
                         {/if}
-                      {/if}
-                    {/each}
-                  </div>
-                  {#if overviewExample !== undefined}
+                      {/each}
+                    </div>
+                  {/snippet}
+                  {#if overviewStage !== undefined}
+                    <div class="dx-reference" role="region" aria-label="Reference usage">
+                      <p class="dx-reference__label">Reference usage</p>
+                      {@render readmeBody()}
+                    </div>
+                  {:else}
+                    {@render readmeBody()}
+                  {/if}
+                  {#if overviewStage !== undefined}
                     <div class="dx-stage">
                       <div class="dx-stage__bar">
                         <span class="dx-stage__dot" aria-hidden="true"></span>
                         <span class="dx-stage__label">Live preview</span>
+                        <h3 class="dx-stage__title">{overviewStage.title}</h3>
                       </div>
                       <!-- svelte-ignore a11y_no_noninteractive_tabindex (Scrollable previews need keyboard access to overflow content.) -->
                       <div
@@ -1630,20 +1599,20 @@
                         aria-label="Overview preview"
                         tabindex="0"
                       >
-                        {#if mountErrors[`overview-mount-${overviewExample.scenario}`] !== undefined}
-                          {@const error = mountErrors[`overview-mount-${overviewExample.scenario}`]}
+                        {#if mountErrors[overviewStage.mountId] !== undefined}
+                          {@const error = mountErrors[overviewStage.mountId]}
                           <Callout variant="danger" title="This preview failed to render">
                             <p>{error?.message}</p>
                           </Callout>
                         {/if}
                         <div
                           class="example-preview"
-                          id="overview-mount-{overviewExample.scenario}"
+                          id={overviewStage.mountId}
                           data-overview-preview-rendered={overviewExampleHtml !== null &&
                           overviewExampleHtml !== ''
                             ? ''
                             : undefined}
-                          {@attach mountScenario(overviewExample.scenario)}
+                          {@attach mountScenario(overviewStage.scenario)}
                         >
                           {#if overviewExampleHtml !== null && overviewExampleHtml !== ''}
                             {@html overviewExampleHtml}
@@ -1655,6 +1624,11 @@
                           {/if}
                         </div>
                       </div>
+                      <Accordion bind:expandedIds={overviewExpandedIds}>
+                        <AccordionItem id={overviewStage.sourceItemId} title="Show code">
+                          {@render exampleSourcePanel(overviewStage.scenario, overviewStage.title)}
+                        </AccordionItem>
+                      </Accordion>
                     </div>
                   {/if}
                 </section>
@@ -1730,9 +1704,7 @@
                     <div class="dx-examples">
                       {#each examples as { scenario, title, description } (scenario)}
                         {@const disclosure = disclosureFor(exampleDisclosures, scenario)}
-                        {@const source = fetchedSource[scenario]}
                         {@const mountError = mountErrors[`example-mount-${scenario}`]}
-                        {@const sourceError = sourceErrors[scenario]}
                         {#if disclosure}
                           <section id="example-card-{scenario}" class="dx-example">
                             <div class="dx-example__head">
@@ -1783,45 +1755,7 @@
 
                               <Accordion bind:expandedIds={disclosure.expandedIds}>
                                 <AccordionItem id={`source-${scenario}`} title="Show code">
-                                  {#if loadingSource[scenario]}
-                                    <p class="source-loading">Loading…</p>
-                                  {:else if source === null}
-                                    <Callout variant="danger" title="Could not load source">
-                                      <dl class="example-error__detail">
-                                        <dt>Requested</dt>
-                                        <dd>
-                                          <code>
-                                            {sourceError?.url ??
-                                              `/example-src/${componentName}/${scenario}`}
-                                          </code>
-                                        </dd>
-                                        <dt>Reason</dt>
-                                        <dd>{sourceError?.detail ?? 'Unknown error'}</dd>
-                                      </dl>
-                                      <div class="example-error__actions">
-                                        <Button
-                                          size="sm"
-                                          variant="secondary"
-                                          aria-label="Retry loading source for {title}"
-                                          onclick={() =>
-                                            fetchExampleSource(componentName, scenario, {
-                                              fetchedSource,
-                                              loadingSource,
-                                              sourceErrors,
-                                            })}
-                                        >
-                                          Retry
-                                        </Button>
-                                      </div>
-                                    </Callout>
-                                  {:else if source !== undefined}
-                                    <CodeBlock
-                                      highlighter={depictHighlighter}
-                                      code={source}
-                                      language="svelte"
-                                      copyable
-                                    />
-                                  {/if}
+                                  {@render exampleSourcePanel(scenario, title)}
                                 </AccordionItem>
                               </Accordion>
                             </div>
@@ -2125,6 +2059,7 @@
 -->
       <nav class="dx-nav" aria-label="Components" {@attach persistScrollPosition}>
         <a class="dx-nav__brand" href="/">CINDER</a>
+        <ComponentSearch components={sidebarComponents} />
         <div class="dx-nav__filter">
           <label class="cinder-sr-only" for="sidebar-filter">Filter components</label>
           <input
@@ -2205,6 +2140,44 @@
   </div>
 {/if}
 
+{#snippet exampleSourcePanel(scenario: string, title: string)}
+  {@const source = fetchedSource[scenario]}
+  {@const sourceError = sourceErrors[scenario]}
+  {#if loadingSource[scenario]}
+    <p class="source-loading">Loading…</p>
+  {:else if source === null}
+    <Callout variant="danger" title="Could not load source">
+      <dl class="example-error__detail">
+        <dt>Requested</dt>
+        <dd>
+          <code>
+            {sourceError?.url ?? `/example-src/${componentName}/${scenario}`}
+          </code>
+        </dd>
+        <dt>Reason</dt>
+        <dd>{sourceError?.detail ?? 'Unknown error'}</dd>
+      </dl>
+      <div class="example-error__actions">
+        <Button
+          size="sm"
+          variant="secondary"
+          aria-label="Retry loading source for {title}"
+          onclick={() =>
+            fetchExampleSource(componentName, scenario, {
+              fetchedSource,
+              loadingSource,
+              sourceErrors,
+            })}
+        >
+          Retry
+        </Button>
+      </div>
+    </Callout>
+  {:else if source !== undefined}
+    <CodeBlock highlighter={depictHighlighter} code={source} language="svelte" copyable />
+  {/if}
+{/snippet}
+
 <style>
   /* Page surface: pure white in light mode, the system surface in dark. Set
      LOCALLY on the page root via `light-dark()` (which follows `color-scheme`,
@@ -2224,7 +2197,6 @@
        page is expressed as a `calc()` against it. */
     --dx-topbar-h: 0rem;
     min-height: 100vh;
-    border: 1px solid var(--cinder-border);
     background: light-dark(oklch(100% 0 0), var(--cinder-surface-canvas));
   }
 
@@ -2450,12 +2422,6 @@
     padding-block: clamp(2rem, 5vw, 3.75rem) clamp(1.25rem, 2.5vw, 1.75rem);
     border-block-end: 1px solid var(--cinder-border-muted);
   }
-  .dx-hero__grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 19rem;
-    gap: clamp(1.5rem, 4vw, 3.5rem);
-    align-items: end;
-  }
   .dx-eyebrow {
     display: flex;
     align-items: center;
@@ -2505,42 +2471,6 @@
     gap: var(--cinder-space-1-5, 0.375rem);
   }
 
-  .dx-spec {
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised);
-    box-shadow: var(--cinder-shadow-sm);
-    overflow: hidden;
-  }
-  .dx-spec__row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-4);
-    padding: var(--cinder-space-3) var(--cinder-space-4);
-    font-size: var(--cinder-text-sm);
-  }
-  .dx-spec__row + .dx-spec__row {
-    border-block-start: 1px solid var(--cinder-border-muted);
-  }
-  .dx-spec__key {
-    color: var(--cinder-text-subtle);
-    font-size: var(--cinder-text-xs);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .dx-spec__val {
-    color: var(--cinder-text-default);
-    font-weight: var(--cinder-font-medium);
-    display: inline-flex;
-    align-items: center;
-    gap: var(--cinder-space-2);
-  }
-  .dx-spec__val--monospace {
-    font-family: var(--cinder-font-mono);
-    font-weight: var(--cinder-font-normal);
-  }
-
   .dx-import {
     display: inline-flex;
     align-items: stretch;
@@ -2551,15 +2481,19 @@
     max-width: 100%;
   }
   .dx-import__code {
-    display: inline-flex;
-    align-items: center;
+    /* A block, not a flex container: its text and highlighted spans must flow
+       and wrap as one run. The control centers it vertically. */
+    display: block;
+    align-self: center;
     padding: var(--cinder-space-2) var(--cinder-space-3);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* Wraps inside the control at narrow widths so the whole statement stays
+       visible without scrolling or widening the page. */
+    min-inline-size: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   /* A real button affordance, not a bare icon hugging the code field's edge:
      a comfortable square hit target with its own raised surface, separated from
@@ -3216,6 +3150,20 @@
     background: var(--cinder-border-strong);
   }
   .dx-stage__label {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-2xs);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--cinder-text-subtle);
+  }
+  .dx-stage__title {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    font-weight: 600;
+    color: var(--cinder-text);
+  }
+  .dx-reference__label {
+    margin: 0 0 var(--cinder-space-2);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-2xs);
     letter-spacing: 0.1em;
@@ -3897,16 +3845,6 @@
     margin: 0 0 var(--cinder-space-2);
   }
   /* ===== Responsive ===== */
-  @media (max-width: 1080px) {
-    .dx-hero__grid {
-      grid-template-columns: minmax(0, 1fr);
-      align-items: start;
-    }
-    .dx-spec {
-      max-width: 26rem;
-    }
-  }
-
   @media (max-width: 920px) {
     .dx-layout {
       grid-template-columns: minmax(0, 1fr);
@@ -3922,9 +3860,6 @@
   @media (max-width: 640px) {
     .dx-guide {
       grid-template-columns: minmax(0, 1fr);
-    }
-    .dx-spec {
-      max-width: none;
     }
   }
   @media (prefers-reduced-motion: reduce) {

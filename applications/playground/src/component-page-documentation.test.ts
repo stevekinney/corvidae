@@ -318,15 +318,13 @@ describe('component-page single-scroll layout', () => {
     }
   });
 
-  test('renders the hero, spec card, and section anchors from a fixture', async () => {
+  test('renders the hero and section anchors from a fixture', async () => {
     const { unmount } = render(ComponentPage);
 
     expect(await findHeroHeading('Button')).toBeTruthy();
     expect(screen.getByText('Fixture purpose for a documentation page.')).toBeTruthy();
     // Import line built from exportName + importSpecifier.
     expect(screen.getByText("import { Button } from '@lostgradient/cinder';")).toBeTruthy();
-    // Spec card version row.
-    expect(screen.getByText('v0.2.0')).toBeTruthy();
 
     // Section anchors resolve.
     for (const id of ['overview', 'guidance', 'props', 'related']) {
@@ -355,32 +353,36 @@ describe('component-page single-scroll layout', () => {
     await tick();
   });
 
-  test('maps a non-stable status to a non-success badge variant', async () => {
-    const beta = baseFixture();
-    beta.component.status = 'beta';
-    installDocumentationDataIsland(beta);
-
+  test('renders no Component facts card, keeping the import control and category heading', async () => {
     const { unmount } = render(ComponentPage);
-    const statusBadge = await screen.findByText('beta');
-    expect(statusBadge.getAttribute('data-variant')).toBe('info');
+    await findHeroHeading('Button');
+
+    expect(document.querySelector('.dx-spec')).toBeNull();
+    expect(document.querySelector('aside[aria-label="Component facts"]')).toBeNull();
+    expect(screen.queryByLabelText('Component facts')).toBeNull();
+    // The facts card is the only place the version and A11y pattern rows lived.
+    expect(document.body.textContent).not.toContain('v0.2.0');
+    expect(document.querySelector('.dx-import')).not.toBeNull();
+    expect(document.querySelector('.dx-eyebrow__index')?.textContent).toBe('Actions');
+    // The hero's only child grid track is gone with the card.
+    expect(document.querySelector('.dx-hero__grid')).toBeNull();
 
     unmount();
     await tick();
   });
 
-  test('renders the status dot as decorative so it does not re-announce the badge text', async () => {
-    // Regression for #388/#372: the spec-row StatusDot sits next to a Badge that
-    // already names the status visibly. The dot must be decorative
-    // (`aria-hidden`) — if it carried `aria-label={status}` it would speak the
-    // same word the Badge already announces (the audible duplication).
+  test('keeps the hero, tabs and layout sections inside the single gutter owner', async () => {
     const { unmount } = render(ComponentPage);
     await findHeroHeading('Button');
 
-    const dot = document.querySelector('.dx-spec__val [role="img"]');
-    expect(dot).not.toBeNull();
-    expect(dot?.getAttribute('aria-hidden')).toBe('true');
-    // The decorative dot carries no accessible name of its own.
-    expect(dot?.getAttribute('aria-label')).toBeNull();
+    const canvas = document.querySelector('.dx');
+    expect(canvas).not.toBeNull();
+    // Every hero and layout section takes its horizontal gutter from `.dx__inner`;
+    // the canvas itself is not wrapped by one, and the hero heading sits inside one.
+    expect(document.querySelectorAll('.dx__inner').length).toBeGreaterThan(0);
+    expect(document.querySelector('.dx-hero h1')?.closest('.dx__inner')).not.toBeNull();
+    expect(document.querySelector('.dx-views')?.closest('.dx__inner')).not.toBeNull();
+    expect(canvas?.parentElement?.closest('.dx__inner')).toBeNull();
 
     unmount();
     await tick();
@@ -991,6 +993,117 @@ describe('component-page stage controls and the shareable URL', () => {
     const unmount = await mountPlaygroundAt('http://localhost/page/button?view=playground');
 
     expect(toolbarSearch()).toEqual({ width: null, focus: null });
+
+    unmount();
+    await tick();
+  });
+});
+
+describe('component-page Overview pairs the live preview with its own example code', () => {
+  // A deliberate mismatch: the README documents one thing, the featured example
+  // is another. The stage must follow the selected descriptor, never the README.
+  const readmeOnlyMarker = 'README_ONLY_REFERENCE_SNIPPET';
+  const featuredSource = '<Widget label="Featured example only" />';
+  const secondSource = '<Widget label="Second example only" />';
+  const examples = [
+    { scenario: 'first', title: 'First scenario' },
+    { scenario: 'second', title: 'Second scenario', featured: true },
+  ];
+  const originalFetch = globalThis.fetch;
+  let requestedUrls: string[] = [];
+
+  beforeEach(() => {
+    requestedUrls = [];
+    const probe = (probeModule as unknown as { default: unknown }).default;
+    Reflect.set(window, '__CINDER_SCENARIOS__', { first: probe, second: probe });
+    const fixture = baseFixture();
+    fixture.readme.html = `<h1>Button</h1><p>${readmeOnlyMarker}</p>`;
+    installDocumentationDataIsland(fixture);
+    globalThis.fetch = (async (input: string) => {
+      const url = input;
+      requestedUrls.push(url);
+      if (url.endsWith('/second')) return new Response(featuredSource);
+      if (url.endsWith('/first')) return new Response(secondSource);
+      return new Response('missing', { status: 404 });
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  function overviewSection(): HTMLElement {
+    const section = document.getElementById('overview');
+    if (section === null) throw new Error('Overview section is missing');
+    return section;
+  }
+
+  test('labels the README as reference usage, independent of the stage', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples, snapshotMode: false } });
+    await findHeroHeading('Button');
+
+    const reference = overviewSection().querySelector('[aria-label="Reference usage"]');
+    expect(reference).not.toBeNull();
+    expect(reference?.textContent).toContain(readmeOnlyMarker);
+    expect(reference?.contains(overviewSection().querySelector('.dx-stage'))).toBe(false);
+
+    unmount();
+    await tick();
+  });
+
+  test('titles the stage with the selected example and mounts that scenario', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples, snapshotMode: false } });
+    await findHeroHeading('Button');
+
+    const stage = overviewSection().querySelector('.dx-stage');
+    expect(stage?.querySelector('.dx-stage__title')?.textContent).toBe('Second scenario');
+    expect(stage?.querySelector('#overview-mount-second')).not.toBeNull();
+    expect(stage?.querySelector('#overview-mount-first')).toBeNull();
+    expect(stage?.textContent).not.toContain(readmeOnlyMarker);
+
+    unmount();
+    await tick();
+  });
+
+  test('shows the selected example source, never README code, behind Show code', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples, snapshotMode: false } });
+    await findHeroHeading('Button');
+
+    const stage = overviewSection().querySelector<HTMLElement>('.dx-stage');
+    const toggle = stage?.querySelector<HTMLButtonElement>(
+      '[data-accordion-toggle="overview-source-second"]',
+    );
+    expect(toggle).not.toBeNull();
+    await fireEvent.click(toggle as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(stage?.querySelector('pre[data-language="svelte"]')?.textContent).toBe(featuredSource);
+    });
+    expect(stage?.textContent).not.toContain(readmeOnlyMarker);
+    expect(stage?.textContent).not.toContain('Second example only');
+    expect(requestedUrls).toEqual(['/example-src/button/second']);
+
+    unmount();
+    await tick();
+  });
+
+  test('renders no stage and no reference label in snapshot mode', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples, snapshotMode: true } });
+    await tick();
+
+    expect(document.querySelector('.dx-stage')).toBeNull();
+    expect(document.querySelector('[aria-label="Reference usage"]')).toBeNull();
+
+    unmount();
+    await tick();
+  });
+
+  test('renders no stage and no reference label when there are no examples', async () => {
+    const { unmount } = render(ComponentPage, { props: { examples: [], snapshotMode: false } });
+    await findHeroHeading('Button');
+
+    expect(overviewSection().querySelector('.dx-stage')).toBeNull();
+    expect(overviewSection().querySelector('[aria-label="Reference usage"]')).toBeNull();
 
     unmount();
     await tick();

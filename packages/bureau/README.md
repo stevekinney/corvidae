@@ -141,7 +141,7 @@ Every field except `agents` is optional.
 | `identity` | `IdentityConfiguration` | Configure identity resolution for memory and session ownership. |
 | `skills` **(deprecated)** | `SkillRuntimeConfiguration` | Attach a skill catalog; injects an `<available_skills>` system block on step 0 of every run. Agent-owned now—deprecated, not removed, per AB-242; AB-15's end state moves this per-agent onto `createAgent`, but that field has not landed on `CreateAgentOptions` yet—see AB-242 and AB-352. |
 | `streaming` | `StreamingConfiguration` | Enable enhanced streaming and expose a `streamEventTarget` on run runtime. |
-| `scheduler` | `SchedulerConfiguration` | Attach an in-process priority scheduler (`submitSchedulerTask`). `retentionWindowMs` (finite, greater than zero; unset means indefinite) bounds how long a settled task stays resolvable through `locateSchedulerTask` / `awaitSchedulerTask`; it is forwarded unchanged to operative's `createScheduler`, and Bureau's composed runtime drives its timers. |
+| `scheduler` | `SchedulerConfiguration` | Attach an in-process priority scheduler (`submitSchedulerTask`). `retentionWindowMs` (finite, greater than zero; unset defaults to 3600000 milliseconds, one hour, and an explicit value overrides it) bounds how long a settled task stays resolvable through `locateSchedulerTask` / `awaitSchedulerTask`; an explicit value is forwarded unchanged to operative's `createScheduler`, and Bureau's composed runtime drives its timers. |
 | `stopWhen` **(deprecated)** | `StopCondition \| StopCondition[]` | Default stop condition(s) applied to every run. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `stopWhen`. |
 | `maximumSteps` / `systemPrompt` **(deprecated)** | `number` / `string` | Default step cap and system prompt for runs that don't specify their own. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `maximumSteps`/`instructions`. |
 | `observability` | `boolean \| Omit<ObservabilityOptions, 'eventTarget'>` | Opt into OpenTelemetry spans/metrics for durable runs. No-op without `@opentelemetry/api` installed. |
@@ -701,12 +701,15 @@ The root exports `createBureau` and the Bureau-specific test harnesses. `waitFor
 
 ### `createBureauTestHarness(options)` (AB-261)
 
-Composes a real `Bureau` over an injected `ManualRuntimeServices` (`options.runtime`, defaulting to a freshly constructed one) and an owned `BureauStorageFixture` (`options.storage`, required). The returned promise resolves only once `bureau.ready` is `true` and boot recovery has completed. Every other `BureauOptions` field passes through unchanged.
+Composes a real `Bureau` over an injected `ManualRuntimeServices` (`options.runtime`, defaulting to a freshly constructed one) and an owned `BureauStorageFixture` (`options.storage`, required). The returned promise resolves only once `bureau.ready` is `true` and boot recovery has completed. Every other `BureauOptions` field passes through unchanged. `createManualRuntimeServices` and the `ManualRuntimeServices` type are re-exported from `@lostgradient/bureau` (and `@lostgradient/operative`); their source owner, `@lostgradient/lifecycle`, is a private workspace inlined into these packages, so a consumer never imports it directly (COR-89).
 
 ```typescript
 import { createAgent } from '@lostgradient/operative';
-import { createBureauTestHarness, createSqliteStorageFixture } from '@lostgradient/bureau';
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createBureauTestHarness,
+  createManualRuntimeServices,
+  createSqliteStorageFixture,
+} from '@lostgradient/bureau';
 
 const runtime = createManualRuntimeServices();
 const storage = createSqliteStorageFixture({ runtime });

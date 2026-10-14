@@ -5,7 +5,14 @@ import { dirname, join, normalize } from 'node:path';
 
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
-import { rewritePublishedComponentExamples } from './component-example-imports.ts';
+import {
+  diffReviewStateExports,
+  findBareRootComponentImport,
+  publicComponentSymbols,
+  rewritePublishedComponentExamples,
+  rewritePublishedComponentReadme,
+} from './component-example-imports.ts';
+import { findInternalReadmeMarker } from './packaging.ts';
 import {
   additionalSourceRoots,
   applyVersionConstants,
@@ -44,7 +51,13 @@ test('published component examples use their component subpaths under browser co
     const internalManifest = await Bun.file(
       join(corvidaeRoot, 'components', workspace, 'package.json'),
     ).json();
-    expect(internalManifest.exports).toEqual({ '.': './src/index.ts' });
+    // Chat additionally declares `./stream-events` (COR-1397), a browser-free codec entry for the
+    // desktop main process. It is internal: the published map is generated, never copied.
+    expect(internalManifest.exports).toEqual(
+      workspace === 'chat'
+        ? { '.': './src/index.ts', './stream-events': './src/lib/session/stream-event-codec.ts' }
+        : { '.': './src/index.ts' },
+    );
     const manifestContents = plan.files[`packages/${workspace}/package.json`];
     expect(manifestContents).toBeDefined();
     const emittedManifest = JSON.parse(
@@ -52,6 +65,7 @@ test('published component examples use their component subpaths under browser co
         ? manifestContents
         : new TextDecoder().decode(manifestContents),
     );
+    expect(emittedManifest.exports['./stream-events']).toBeUndefined();
     for (const component of components) {
       const subpath = workspace === 'chat' ? component.replace(/^chat-/, '') : component;
       const specifier = `@lostgradient/${workspace}/${subpath}`;
@@ -110,6 +124,126 @@ test('published component examples retain multiline imports while routing public
   expect(published.examples[0].code).toContain(
     "import {\n    ReviewEditor,\n    type Thread,\n  } from '@lostgradient/editor/review-editor';",
   );
+});
+
+// COR-1446: the target's package build copies every emitted component README into
+// `dist/components/<name>/README.md`, so what the mirror emits here is what npm ships.
+test('emitted Chat and Editor component READMEs carry no internal marker and no bare-root component import', () => {
+  const { plan } = committedPlans.cinder;
+  const readmes = Object.entries(plan.source.files).filter(([path]) =>
+    /^packages\/(?:chat|editor)\/src\/lib\/components\/[^/]+\/README\.md$/.test(path),
+  );
+  expect(readmes.length).toBeGreaterThanOrEqual(11);
+  for (const [path, contents] of readmes) {
+    const workspace = path.startsWith('packages/chat/') ? 'chat' : 'editor';
+    const text = new TextDecoder().decode(contents);
+    expect({ path, marker: findInternalReadmeMarker(text) }).toEqual({ path, marker: undefined });
+    expect({
+      path,
+      bareRootImport: findBareRootComponentImport(
+        text,
+        `@lostgradient/${workspace}`,
+        publicComponentSymbols(workspace),
+      ),
+    }).toEqual({ path, bareRootImport: undefined });
+  }
+  const markdownEditor = new TextDecoder().decode(
+    plan.source.files['packages/editor/src/lib/components/markdown-editor/README.md'] ??
+      new Uint8Array(),
+  );
+  expect(markdownEditor).toContain(
+    "import { MarkdownEditor } from '@lostgradient/editor/markdown-editor';",
+  );
+});
+
+const readmePath = 'packages/editor/src/lib/components/review-editor/README.md';
+
+function rewriteReadme(markdown: string, path = readmePath): string {
+  return new TextDecoder().decode(
+    rewritePublishedComponentReadme(new TextEncoder().encode(markdown), path),
+  );
+}
+
+test('a published component README routes fenced imports to their subpaths and keeps root exports', () => {
+  const markdown = [
+    '# ReviewEditor',
+    '',
+    "Prose naming `import { toPersistedThreads } from '@lostgradient/editor'` is left alone.",
+    '',
+    '```svelte',
+    '<script lang="ts">',
+    "  import { ReviewEditor, toRuntimeThreads } from '@lostgradient/editor';",
+    "  import type { ReviewState, Thread } from '@lostgradient/editor';",
+    "  import { createDiffReviewState } from '@lostgradient/editor';",
+    "  import type { DiffReviewState } from '@lostgradient/editor';",
+    '</script>',
+    '```',
+    '',
+  ].join('\n');
+  const published = rewriteReadme(markdown);
+  expect(published).toContain(
+    "Prose naming `import { toPersistedThreads } from '@lostgradient/editor'` is left alone.",
+  );
+  expect(published).toContain(
+    "  import { ReviewEditor } from '@lostgradient/editor/review-editor';",
+  );
+  expect(published).toContain("  import { toRuntimeThreads } from '@lostgradient/editor';");
+  expect(published).toContain("  import type { ReviewState } from '@lostgradient/editor';");
+  expect(published).toContain(
+    "  import type { Thread } from '@lostgradient/editor/review-editor';",
+  );
+  expect(published).toContain(
+    "  import type { DiffReviewState } from '@lostgradient/editor/diff-review-state';",
+  );
+  expect(published).toContain(
+    "  import { createDiffReviewState } from '@lostgradient/editor/diff-review-state';",
+  );
+});
+
+test('a published Chat component README rewrites multiline fenced imports', () => {
+  const published = rewriteReadme(
+    "```ts\nimport {\n  ChatSubSession,\n  createConversation,\n} from '@lostgradient/chat';\n```\n",
+    'packages/chat/src/lib/components/chat-sub-session/README.md',
+  );
+  expect(published).toContain("import { ChatSubSession } from '@lostgradient/chat/sub-session';");
+  expect(published).toContain("import { createConversation } from '@lostgradient/chat';");
+});
+
+test('a published component README that still carries an internal marker refuses emission', () => {
+  expect(() =>
+    rewriteReadme('Declare `"@lostgradient/editor": "workspace:*"` in the consuming workspace.\n'),
+  ).toThrow('workspace:*');
+  expect(() => rewriteReadme('Run it from the Corvidae root.\n')).toThrow('Corvidae');
+});
+
+test('a published component README that imports a component from the root outside a fence refuses emission', () => {
+  expect(() => rewriteReadme("    import { ReviewEditor } from '@lostgradient/editor';\n")).toThrow(
+    'bare @lostgradient/editor root',
+  );
+});
+
+test('the diff-review-state symbol map names every non-fixture export of that module', async () => {
+  const source = await Bun.file(
+    join(corvidaeRoot, 'components/editor/src/lib/diff-review-state/index.ts'),
+  ).text();
+  const exported = [...source.matchAll(/^export (?:type )?\{([^}]+)\} from '\.\/([^']+)';$/gm)]
+    .filter(([, , module]) => module !== 'fixtures.js')
+    .flatMap(([, names]) => (names ?? '').split(','))
+    .map((name) => name.trim())
+    .filter(Boolean);
+  expect(exported.length).toBeGreaterThan(30);
+  expect(exported.toSorted()).toEqual([...diffReviewStateExports].toSorted());
+});
+
+test('README rewriting touches only Chat and Editor component READMEs', () => {
+  const internal = 'Run it from the Corvidae root.\n';
+  for (const path of [
+    'packages/editor/README.md',
+    'packages/components/src/components/button/README.md',
+    'packages/editor/src/lib/components/review-editor/notes.md',
+  ]) {
+    expect(rewriteReadme(internal, path)).toBe(internal);
+  }
 });
 
 /** Stand up a throwaway tree, hand it to the body, and remove it however the body ends. */
@@ -745,7 +879,7 @@ describe('the committed workspaces', () => {
    * already excludes them by construction.
    */
   test.each<MirrorTarget>(['cinder', 'weft'])(
-    'the %s plan preserves source bytes except published component examples',
+    'the %s plan preserves source bytes except published component examples and READMEs',
     async (target) => {
       const { plan } = committedPlans[target];
       // A declared version constant is the one sanctioned difference: the transform rewrites its
@@ -766,6 +900,10 @@ describe('the committed workspaces', () => {
           ) &&
           path !== 'packages/chat/src/lib/components/chat/chat.examples.json'
         )
+          continue;
+        // COR-1446: fenced imports in these are routed to their public subpaths; the test above
+        // asserts what they become.
+        if (/^packages\/(?:chat|editor)\/src\/lib\/components\/[^/]+\/README\.md$/.test(path))
           continue;
         const workspace = plan.emitted
           .filter((candidate) => path.startsWith(`${candidate.targetDirectory}/`))

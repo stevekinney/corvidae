@@ -1,5 +1,5 @@
 import { THEMES, VIEWPORTS } from '@lostgradient/testing';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './component-page-fixture.ts';
 import { fixtureEntry } from './editor-fixture.ts';
 
@@ -378,6 +378,60 @@ async function assertLinkPopoverBoundsAndDensity(
   await expect(page.locator('.link-popover-close'), `${label}: Close is reachable`).toBeVisible();
 }
 
+// COR-1320 — the "insert WITH a selection" case builds its selection from key
+// presses, and under machine load both the browser's DOM selection and the
+// ProseMirror selection the toolbar reads can trail those key events. These
+// readers let the case wait on each step's observed selection instead of on
+// key-event timing.
+
+type ProseMirrorSelectionReading = { from: number; to: number };
+
+// The fixture mirrors the basic editor's `onSelectionChange` callback into
+// `data-selection-from` and `data-selection-to` on `#example-mount-basic`.
+// Either attribute missing means the selection is unknown, reported as `null`
+// so that a wait on it keeps polling instead of matching any expected value.
+async function readProseMirrorSelection(page: Page): Promise<ProseMirrorSelectionReading | null> {
+  return page.locator('#example-mount-basic').evaluate((element) => {
+    const from = element.getAttribute('data-selection-from');
+    const to = element.getAttribute('data-selection-to');
+    if (from === null || to === null) return null;
+    return { from: Number(from), to: Number(to) };
+  });
+}
+
+async function readProseMirrorSelectionLength(page: Page): Promise<number | null> {
+  const reading = await readProseMirrorSelection(page);
+  return reading === null ? null : reading.to - reading.from;
+}
+
+type DomSelectionReading = {
+  text: string;
+  collapsed: boolean;
+  insideParagraph: boolean;
+  atParagraphStart: boolean;
+};
+
+// The browser's own selection, read independently of ProseMirror: its text,
+// whether it is collapsed, whether it is anchored inside `paragraph`, and
+// whether its range starts at offset 0 of the paragraph's first position.
+async function readDomSelection(paragraph: Locator): Promise<DomSelectionReading> {
+  return paragraph.evaluate((element) => {
+    const selection = window.getSelection();
+    if (selection === null || selection.rangeCount === 0) {
+      return { text: '', collapsed: false, insideParagraph: false, atParagraphStart: false };
+    }
+    const range = selection.getRangeAt(0);
+    return {
+      text: selection.toString(),
+      collapsed: selection.isCollapsed,
+      insideParagraph: selection.anchorNode !== null && element.contains(selection.anchorNode),
+      atParagraphStart:
+        range.startOffset === 0 &&
+        (range.startContainer === element || range.startContainer === element.firstChild),
+    };
+  });
+}
+
 for (const theme of THEMES) {
   for (const viewport of linkPopoverViewports) {
     test(`MarkdownEditor LinkPopover bounds and density across the five popup cases in ${theme} at ${viewport.width}x${viewport.height}`, async ({
@@ -400,12 +454,83 @@ for (const theme of THEMES) {
 
       // Case: insert WITH a selection — selects the paragraph's first word
       // ("This"), so the popover renders URL-only (no separate text field).
-      await paragraph.click();
+      // Each input is awaited on the observed DOM and ProseMirror selections
+      // before the next one is sent, so a lagging selection update under load
+      // cannot shorten the selection the toolbar reads when Link is clicked.
+      //
+      // The editor reports its initial selection (the end of the document)
+      // before it is ever clicked, and when ProseMirror is first focused it
+      // writes its own selection back into the DOM a moment later. If that
+      // write-back runs after Home and before ProseMirror has read the click,
+      // it moves the DOM caret back to the stale position. So the click lands
+      // on the paragraph's first line at its left edge, and the case waits for
+      // the ProseMirror reading to move off its pre-click value: any later
+      // write-back then targets the paragraph start, the same place Home does.
+      const selectionBeforeClick = await readProseMirrorSelection(page);
+      await paragraph.click({ position: { x: 2, y: 4 } });
+      await expect(
+        editorWrapper.locator('.ProseMirror'),
+        'insert with selection: click focuses the editor content',
+      ).toBeFocused();
+      await expect
+        .poll(() => readDomSelection(paragraph), {
+          message: 'insert with selection: click leaves a collapsed caret in the first paragraph',
+        })
+        .toMatchObject({ collapsed: true, insideParagraph: true });
+      await expect
+        .poll(() => readProseMirrorSelection(page), {
+          message: 'insert with selection: ProseMirror selection reflects the click',
+        })
+        .not.toEqual(selectionBeforeClick);
+      await expect
+        .poll(() => readProseMirrorSelectionLength(page), {
+          message: 'insert with selection: ProseMirror selection is collapsed after the click',
+        })
+        .toBe(0);
+
       await page.keyboard.press('Home');
-      await page.keyboard.press('Shift+ArrowRight');
-      await page.keyboard.press('Shift+ArrowRight');
-      await page.keyboard.press('Shift+ArrowRight');
-      await page.keyboard.press('Shift+ArrowRight');
+      await expect
+        .poll(() => readDomSelection(paragraph), {
+          message: 'insert with selection: Home moves the DOM caret to the paragraph start',
+        })
+        .toMatchObject({ text: '', collapsed: true, atParagraphStart: true });
+      await expect
+        .poll(() => readProseMirrorSelectionLength(page), {
+          message: 'insert with selection: ProseMirror selection is collapsed after Home',
+        })
+        .toBe(0);
+
+      // Four keyboard presses select "This"; each one is confirmed in both the
+      // DOM selection and the ProseMirror selection before the next press.
+      let selectionAnchor: number | null = null;
+      for (const [index, expectedText] of ['T', 'Th', 'Thi', 'This'].entries()) {
+        const pressCount = index + 1;
+        await page.keyboard.press('Shift+ArrowRight');
+        await expect
+          .poll(() => readDomSelection(paragraph), {
+            message: `insert with selection: DOM selection after press ${pressCount}`,
+          })
+          .toMatchObject({ text: expectedText });
+        if (selectionAnchor === null) {
+          await expect
+            .poll(() => readProseMirrorSelectionLength(page), {
+              message: `insert with selection: ProseMirror selection length after press ${pressCount}`,
+            })
+            .toBe(pressCount);
+          const reading = await readProseMirrorSelection(page);
+          if (reading === null)
+            throw new Error('ProseMirror selection must be known after press 1.');
+          selectionAnchor = reading.from;
+        } else {
+          const anchor = selectionAnchor;
+          await expect
+            .poll(() => readProseMirrorSelection(page), {
+              message: `insert with selection: ProseMirror selection after press ${pressCount}`,
+            })
+            .toEqual({ from: anchor, to: anchor + pressCount });
+        }
+      }
+
       await linkButton.click();
       await assertLinkPopoverBoundsAndDensity(page, viewport.width, 'insert with selection');
       await expect(textField, 'insert with selection: no text field').toHaveCount(0);

@@ -233,15 +233,15 @@ describe('parseLcov', () => {
     expect(() =>
       parseLcov(
         [
-          'SF:scripts/generate-operation-client.ts',
+          'SF:scripts/check-implementation-file-sizes.ts',
           'FNF:0',
           'FNH:0',
-          'DA:325,1',
+          'DA:470,1',
           'end_of_record',
         ].join('\n'),
       ),
     ).toThrow(
-      'Coverage allowance for scripts/generate-operation-client.ts:325 points at a covered line',
+      'Coverage allowance for scripts/check-implementation-file-sizes.ts:470 points at a covered line',
     );
   });
 
