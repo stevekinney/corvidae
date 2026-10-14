@@ -199,3 +199,67 @@ describe('a listener that rejects late', () => {
     expect(await harness.session.closed).toMatchObject({ cause: 'process-exit' });
   });
 });
+
+describe('a startup exit followed by a rejected start', () => {
+  test('still starts the sources and drains the tail', async () => {
+    const stream = createScriptedStream('pty');
+    stream.push(utf8('tail'));
+    stream.end();
+    const holder: { harness?: Harness } = {};
+    const gate = createDeferred<void>();
+    const harness = createHarness({
+      sources: [stream.source],
+      backend: {
+        start: () => {
+          holder.harness?.session.reportProcessExit(0, null);
+          return gate.promise;
+        },
+      },
+    });
+    holder.harness = harness;
+    const attachment = expectAttached(
+      harness.session.attach({
+        requestedMode: 'interactive',
+        grant: 'interactive',
+        listener: harness.recorder.listener,
+      }),
+    );
+    void harness.session.start();
+    await flush();
+    gate.reject(new Error('start failed after the exit'));
+    await flush();
+    expect(harness.recorder.ofType('output').map((event) => event.bytes)).toEqual([utf8('tail')]);
+    attachment.outputParsedThrough(4);
+    expect(await harness.session.closed).toMatchObject({
+      cause: 'process-exit',
+      drain: { state: 'drained', unavailableBytes: 0 },
+    });
+  });
+});
+
+describe('output that overflows during a natural drain', () => {
+  test('quarantines the slot although the first cause was the process exit', async () => {
+    const harness = createHarness({ budgets: { outputQueueBytes: 65_536 } });
+    expectAttached(
+      harness.session.attach({
+        requestedMode: 'interactive',
+        grant: 'interactive',
+        listener: harness.recorder.listener,
+      }),
+    );
+    void harness.session.start();
+    await flush();
+    harness.session.reportProcessExit(0, null);
+    harness.stream.push(new Uint8Array(40_000));
+    harness.stream.push(new Uint8Array(40_000));
+    await flush();
+    const summary = await harness.session.closed;
+    expect(summary).toMatchObject({
+      cause: 'process-exit',
+      cleanup: 'incomplete',
+      quarantined: true,
+    });
+    expect(summary.drain.state).toBe('truncated');
+    expect(harness.session.snapshot.quarantined).toBe(true);
+  });
+});

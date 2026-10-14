@@ -518,19 +518,15 @@ describe('trailing output after the process exit', () => {
     ]);
   });
 
-  test('output the endpoint refuses fails the connection closed instead of being dropped', async () => {
-    const stream = createScriptedStream('pty');
-    // A pipe carries stdout and stderr only, so a pty chunk can never be delivered.
-    const { harness, transport } = await wire({
-      backend: { mode: 'pipe' },
-      sources: [stream.source],
-    });
-    stream.push(utf8('lost'));
+  test('a frame the endpoint refuses fails the connection closed instead of being dropped', async () => {
+    // An output-only session has no process, so the endpoint refuses an exit the session reports anyway.
+    const { harness, transport } = await wire({ backend: false, sources: [] });
+    harness.session.reportProcessExit(0, null);
     await flush();
-    expect(transport.closeCodes).toEqual([1002]);
     expect(harness.session.snapshot.connection.kind).toBe('revoked');
     const summary = await harness.session.closed;
     expect(summary.cause).toBe('protocol-failure');
+    expect(transport.closeCodes).toEqual([1002]);
   });
 });
 
@@ -670,5 +666,138 @@ describe('a synchronous process exit from the backend', () => {
     ]);
     expect(transport.failures).toEqual([]);
     expect(transport.closeCodes).toEqual([1000]);
+  });
+});
+
+describe('the endpoint window and the session FIFO share one depth', () => {
+  function connectionFor(operationQueueLimit: number, limits?: { maxQueuedOperations: number }) {
+    const harness = createHarness({ budgets: { operationQueueLimit } });
+    return () =>
+      new SessionConnection({
+        session: harness.session,
+        authorize: () => ({ allowed: true, grant: 'interactive' }),
+        send: () => undefined,
+        close: () => undefined,
+        ...(limits === undefined ? {} : { limits }),
+      });
+  }
+
+  test('a session FIFO deeper than the endpoint can window is rejected at construction', () => {
+    expect(connectionFor(300)).toThrow(RangeError);
+    expect(connectionFor(256, { maxQueuedOperations: 100 })).toThrow(RangeError);
+  });
+
+  test('a matching or shallower session FIFO is accepted', () => {
+    expect(connectionFor(256)).not.toThrow();
+    expect(connectionFor(100, { maxQueuedOperations: 100 })).not.toThrow();
+    expect(connectionFor(50, { maxQueuedOperations: 100 })).not.toThrow();
+  });
+
+  test('the depth the client is told is the depth the session enforces', async () => {
+    const { transport } = await wire({ budgets: { operationQueueLimit: 100 } });
+    expect(transport.client.terms?.maxQueuedOperations).toBe(100);
+  });
+});
+
+describe('a transport that fails while sending', () => {
+  function throwingConnection(harness: Harness, attempts: (Uint8Array | string)[]) {
+    return new SessionConnection({
+      session: harness.session,
+      authorize: () => ({ allowed: true, grant: 'interactive' }),
+      send: (frame) => {
+        attempts.push(frame);
+        throw new Error('socket is gone');
+      },
+      close: () => undefined,
+    });
+  }
+
+  function hello(harness: Harness): string | Uint8Array {
+    const client = new ClientEndpoint({
+      sessionId: harness.session.sessionId,
+      requestedMode: 'interactive',
+      token: 'fixture-token',
+    });
+    const built = client.hello();
+    if (!built.ok) throw new Error('could not build hello');
+    return built.value;
+  }
+
+  test('releases nothing buffered after the capabilities could not be sent', async () => {
+    const early = {
+      kind: 'subscription' as const,
+      channel: 'pty' as const,
+      subscribe: (deliver: (bytes: Uint8Array) => void) => {
+        deliver(utf8('one'));
+        deliver(utf8('two'));
+        return () => undefined;
+      },
+    };
+    const harness = createHarness({ sources: [early] });
+    void harness.session.start();
+    await flush();
+    const attempts: (Uint8Array | string)[] = [];
+    throwingConnection(harness, attempts).receive(hello(harness));
+    // Only the capabilities were attempted; the buffered output was dropped with the attachment.
+    expect(attempts).toHaveLength(1);
+    expect(typeof attempts[0]).toBe('string');
+  });
+
+  test('stops sending the remaining slices of a chunk after one fails', async () => {
+    const stream = createScriptedStream('pty');
+    const harness = createHarness({ sources: [stream.source] });
+    void harness.session.start();
+    await flush();
+    const attempts: (Uint8Array | string)[] = [];
+    let armed = false;
+    const connection = new SessionConnection({
+      session: harness.session,
+      authorize: () => ({ allowed: true, grant: 'interactive' }),
+      send: (frame) => {
+        if (!armed) return;
+        attempts.push(frame);
+        throw new Error('socket is gone');
+      },
+      close: () => undefined,
+      limits: { maxFrameBytes: 1_024 },
+    });
+    connection.receive(hello(harness));
+    armed = true;
+    stream.push(new Uint8Array(5_000));
+    await flush();
+    // Output frames are binary; the cleanup result that follows the violation is text.
+    expect(attempts.filter((frame) => typeof frame !== 'string')).toHaveLength(1);
+  });
+});
+
+describe('a fatal failure of an attached connection', () => {
+  test.each([
+    ['a malformed frame', 'this is not a frame', 1002],
+    ['an oversized frame', 'x'.repeat(70_000), 1009],
+  ] as const)(
+    '%s sends the cleanup result before the transport closes',
+    async (_name, frame, code) => {
+      const { harness, transport } = await wire();
+      transport.connection.receive(frame);
+      await flush();
+      await harness.session.closed;
+      expect(transport.sentAfterClose).toEqual([]);
+      const kinds = transport.pump().map((message) => message.kind);
+      expect(kinds).toEqual(['cleanup-result']);
+      expect(transport.wire.at(-1)).toEqual({ type: 'close', code });
+      expect(transport.closeCodes).toEqual([code]);
+    },
+  );
+
+  test('a backend failure closes with the failure table code, after the cleanup result', async () => {
+    const { harness, transport } = await wire({
+      backend: { write: () => Promise.reject(new Error('x')) },
+    });
+    transport.send(transport.client.input(utf8('a')));
+    await flush();
+    await harness.session.closed;
+    expect(transport.sentAfterClose).toEqual([]);
+    expect(transport.wire.at(-1)).toEqual({ type: 'close', code: 1011 });
+    expect(transport.closeCodes).toEqual([1011]);
   });
 });

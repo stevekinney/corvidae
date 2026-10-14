@@ -48,7 +48,7 @@ const stream = (cancel: ReleaseBehavior, expected: CleanupOutcome): Variant => (
   label: `owned stream, cancel ${cancel}`,
   expected,
   build: () => {
-    const scripted = createScriptedStream('pty', { cancel });
+    const scripted = createScriptedStream('stdout', { cancel });
     return { source: scripted.source, releaseCalls: () => scripted.cancelCount };
   },
 });

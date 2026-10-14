@@ -205,7 +205,7 @@ describe('the final sessionClosed', () => {
   });
 
   test('no output is delivered after it, even if a source keeps producing', async () => {
-    const subscription = createScriptedSubscription();
+    const subscription = createScriptedSubscription('pty');
     const harness = createHarness({ sources: [subscription.source] });
     await startAndAttach(harness);
     await harness.session.dispose();

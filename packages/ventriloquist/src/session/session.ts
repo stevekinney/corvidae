@@ -1,3 +1,5 @@
+import { channelPermitted } from '../protocol/endpoint-support.ts';
+import { isSessionIdentifier } from '../protocol/message-fields.ts';
 import type { CleanupOutcome, OutputChannel } from '../protocol/messages.ts';
 import {
   MAXIMUM_TERMINAL_DIMENSION,
@@ -126,18 +128,33 @@ export class Session {
   readonly #deliveries = new Set<Promise<void>>();
   /** A listener threw or rejected at some point before finalization. */
   #callbackFailed = false;
+  /** Output ever overflowed the budget, whatever cause closed the session first. */
+  #overflowed = false;
   #sourcesStarted = false;
   #sourcesEnded = 0;
   #droppedBytes = 0;
   #drainWaiter: (() => void) | undefined;
 
   constructor(options: SessionOptions) {
-    if (options.sessionId.length === 0) throw new TypeError('sessionId must not be empty');
+    // The wire schema requires a canonical UUID, so any other identity could never be addressed by a client.
+    if (!isSessionIdentifier(options.sessionId)) {
+      throw new TypeError('sessionId must be a canonical lowercase UUID');
+    }
     if (options.profile.profileId.length === 0) throw new TypeError('profileId must not be empty');
     if (!isDimension(options.dimensions.columns) || !isDimension(options.dimensions.rows)) {
       throw new RangeError(
         `dimensions must be integers from ${MINIMUM_TERMINAL_DIMENSION} to ${MAXIMUM_TERMINAL_DIMENSION}`,
       );
+    }
+    // Checked before any source is opened or the backend can launch: a source on a channel the
+    // mode never carries could never be delivered, and by then a resource would be held.
+    const mode = options.backend?.mode ?? 'output-only';
+    for (const source of options.sources) {
+      if (!channelPermitted(mode, source.channel)) {
+        throw new TypeError(
+          `a ${mode} session cannot carry a source on the ${source.channel} channel`,
+        );
+      }
     }
     this.sessionId = options.sessionId;
     this.profile = Object.freeze({ ...options.profile });
@@ -173,6 +190,11 @@ export class Session {
       );
     }
     return opened;
+  }
+
+  /** The configured user-operation FIFO depth, which a connection's endpoint window must cover. */
+  get operationQueueLimit(): number {
+    return this.#budgets.operationQueueLimit;
   }
 
   /**
@@ -220,7 +242,8 @@ export class Session {
     this.#startPending = false;
     if (this.#closeCause !== undefined) {
       // A natural close that began during startup is waiting for output that has not been read yet.
-      if (succeeded && this.#exitedDuringStartup) this.#startSources();
+      // However `start()` settled: the exit was reported, so the bytes it left behind are still owed.
+      if (this.#exitedDuringStartup) this.#startSources();
       this.#checkDrain();
       return;
     }
@@ -518,6 +541,7 @@ export class Session {
     }
     const chunkId = attachment.output.reserve(bytes.length);
     if (chunkId === undefined) {
+      this.#overflowed = true;
       this.#droppedBytes += bytes.length;
       this.#beginClose('output-overflow');
       return;
@@ -646,8 +670,7 @@ export class Session {
       this.#callbackFailed && NATURAL_CAUSES.has(cause) ? 'callback-failed' : cause;
     // An output overflow dropped bytes the session had no way to pause, so the owned scope was not
     // drained cleanly however the release itself went: it quarantines the slot.
-    const outcome =
-      cause === 'output-overflow' ? combineOutcomes([released, 'incomplete']) : released;
+    const outcome = this.#overflowed ? combineOutcomes([released, 'incomplete']) : released;
     this.#cleanup = { kind: 'finished', outcome };
     this.#quarantined = outcome !== 'complete';
     this.#finalize(finalCause, outcome);

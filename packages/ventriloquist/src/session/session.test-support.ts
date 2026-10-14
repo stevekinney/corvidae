@@ -72,7 +72,10 @@ export type HarnessOptions = {
 /** A session over a scripted PTY backend and one scripted stream, unless the options say otherwise. */
 export function createHarness(options: HarnessOptions = {}): Harness {
   const clock = options.clock ?? new ManualClock();
-  const stream = createScriptedStream('pty');
+  // The default source rides the channel the backend's mode carries: a pty, a pipe's stdout, or an output-only stdout.
+  const stream = createScriptedStream(
+    options.backend === false || options.backend?.mode === 'pipe' ? 'stdout' : 'pty',
+  );
   const backend = options.backend === false ? undefined : createScriptedBackend(options.backend);
   const session = new Session({
     sessionId: options.sessionId ?? SESSION_ID,

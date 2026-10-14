@@ -136,7 +136,7 @@ describe('a source that cannot be opened during construction', () => {
     const acquired = createScriptedStream('pty', { cancel: release });
     const locked = {
       kind: 'stream' as const,
-      channel: 'stderr' as const,
+      channel: 'pty' as const,
       stream: {
         getReader: (): never => {
           throw new TypeError('stream is locked');

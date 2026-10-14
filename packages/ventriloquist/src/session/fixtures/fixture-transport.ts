@@ -16,6 +16,10 @@ export type FixtureTransportOptions = {
   readonly maxFrameBytes?: number;
 };
 
+export type WireEvent =
+  | { readonly type: 'frame'; readonly frame: Uint8Array | string }
+  | { readonly type: 'close'; readonly code: number };
+
 export type FixtureTransport = {
   readonly client: ClientEndpoint;
   readonly connection: SessionConnection;
@@ -25,6 +29,14 @@ export type FixtureTransport = {
   readonly received: ServerMessage[];
   readonly failures: ProtocolFailure[];
   readonly closeCodes: number[];
+  /** Frames the host tried to send after it closed the transport. A real socket drops these. */
+  readonly sentAfterClose: (Uint8Array | string)[];
+  /** Everything the host did to the transport, in order: each frame it put on the wire and each close. */
+  readonly wire: WireEvent[];
+  /** The socket the connection writes to, for a test that wants to prove how it behaves. */
+  readonly socket: { send(frame: Uint8Array | string): void; close(code: number): void };
+  /** Make every later send throw while the socket stays open, as a socket that died underneath the host does. */
+  breakSends(): void;
   /** Run the handshake: the client's hello to the host, the host's capabilities back to the client. */
   connect(): void;
   /** Hand a frame the client built to the host. A failed build is returned for the test to inspect. */
@@ -44,6 +56,27 @@ export function createFixtureTransport(options: FixtureTransportOptions): Fixtur
   const received: ServerMessage[] = [];
   const failures: ProtocolFailure[] = [];
   const closeCodes: number[] = [];
+  const sentAfterClose: (Uint8Array | string)[] = [];
+  const wire: WireEvent[] = [];
+  let closed = false;
+  let broken = false;
+  // Behaves like a real WebSocket: once closed, a send fails, and the frame never reaches the peer.
+  const socket = {
+    send: (frame: Uint8Array | string): void => {
+      if (closed) {
+        sentAfterClose.push(frame);
+        throw new Error('the socket is closed');
+      }
+      if (broken) throw new Error('the socket is broken');
+      wire.push({ type: 'frame', frame });
+      outbox.push(frame);
+    },
+    close: (code: number): void => {
+      closed = true;
+      wire.push({ type: 'close', code });
+      closeCodes.push(code);
+    },
+  };
   const grant = options.grant ?? 'interactive';
   const client = new ClientEndpoint({
     sessionId: options.sessionId ?? options.session.sessionId,
@@ -53,12 +86,8 @@ export function createFixtureTransport(options: FixtureTransportOptions): Fixtur
   const connection = new SessionConnection({
     session: options.session,
     authorize: () => (grant === false ? { allowed: false } : { allowed: true, grant }),
-    send: (frame) => {
-      outbox.push(frame);
-    },
-    close: (code) => {
-      closeCodes.push(code);
-    },
+    send: (frame) => socket.send(frame),
+    close: (code) => socket.close(code),
     ...(options.maxFrameBytes === undefined
       ? {}
       : { limits: { maxFrameBytes: options.maxFrameBytes } }),
@@ -80,6 +109,12 @@ export function createFixtureTransport(options: FixtureTransportOptions): Fixtur
     received,
     failures,
     closeCodes,
+    sentAfterClose,
+    wire,
+    socket,
+    breakSends: () => {
+      broken = true;
+    },
     connect: () => {
       const hello = client.hello();
       if (hello.ok) connection.receive(hello.value);

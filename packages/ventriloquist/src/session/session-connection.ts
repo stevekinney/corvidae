@@ -52,18 +52,29 @@ export class SessionConnection {
   readonly #host: HostEndpoint;
   #attachment: SessionAttachment | undefined;
   #closeCode: number | undefined;
-  /** The close code to use once the cleanup result has been sent, when a failure fixed one earlier. */
+  /**
+   * The failure table's close code for a fatal failure of an attached connection. The close waits
+   * for the cleanup result, because a closed WebSocket drops anything sent afterwards.
+   */
   #closeCodeAfterCleanup: number | undefined;
   /** How many of the session's sources have reported completion on this attachment. */
   #sourcesCompleted = 0;
-  /** A process exit held back until output has ended, so no trailing byte follows it. */
   /** Session events that arrived before the capabilities were issued, delivered in order once they are. */
   #admissionBuffer: SessionEvent[] | undefined;
+  /** A process exit held back until output has ended, so no trailing byte follows it. */
   #pendingExit: { readonly exitCode: number | null; readonly signal: string | null } | undefined;
 
   constructor(options: SessionConnectionOptions) {
     this.#options = options;
-    this.#host = new HostEndpoint(options.limits);
+    // One depth for both halves: the endpoint's failable window is this depth plus the active
+    // operation, which is all the session's FIFO of the same depth plus one in flight can hold.
+    const depth = options.limits?.maxQueuedOperations ?? options.session.operationQueueLimit;
+    if (options.session.operationQueueLimit > depth) {
+      throw new RangeError(
+        `the session's operation FIFO (${options.session.operationQueueLimit}) is deeper than the endpoint's window (${depth})`,
+      );
+    }
+    this.#host = new HostEndpoint({ ...options.limits, maxQueuedOperations: depth });
   }
 
   /** Feed one frame received from the client. */
@@ -129,7 +140,7 @@ export class SessionConnection {
     const { process } = session.snapshot;
     if (process.kind === 'failed' && process.reason === START_REJECTED_REASON) {
       this.#deliver(this.#host.attachmentError('spawn-failed', SPAWN_FAILED_MESSAGE));
-      this.#close(describeFailure('spawn-failed').closeCode);
+      this.#failClosed(describeFailure('spawn-failed').closeCode);
       return;
     }
     // Attaching can start sources, and a source may emit before `attach` returns. Nothing can be
@@ -191,16 +202,26 @@ export class SessionConnection {
    * ended, which an earlier failure or the cleanup result has already reported.
    */
   #deliver(result: ProtocolResult<SentFrame>): boolean {
-    if (result.ok) {
-      this.#transmit(result.value.frame);
-      return true;
-    }
+    if (result.ok) return this.#transmit(result.value.frame);
     const { failure } = result;
     if (failure.reason !== 'attachment-revoked') {
       void this.#attachment?.protocolViolation();
-      this.#close(describeFailure(failure.code).closeCode);
+      this.#failClosed(describeFailure(failure.code).closeCode);
     }
     return false;
+  }
+
+  /**
+   * End the connection fatally with the failure table's close code. Once attached, the cleanup
+   * result is still owed to the client, so the close is recorded and made after it is sent; with no
+   * attachment there is no cleanup to report and the transport closes now. The first code stands.
+   */
+  #failClosed(code: number): void {
+    if (this.#attachment === undefined) {
+      this.#close(code);
+      return;
+    }
+    this.#closeCodeAfterCleanup ??= code;
   }
 
   /** Close the transport once. The first reason stands, so a fatal failure's code is not replaced by the cleanup's. */
@@ -215,15 +236,18 @@ export class SessionConnection {
   }
 
   /**
-   * Put a frame on the transport. A transport that throws is failed rather than left half-open:
-   * the attachment is revoked as a violation and the transport is closed with the transport-failure code.
+   * Put a frame on the transport and report whether it went. A transport that throws is failed
+   * rather than left half-open: the attachment is revoked as a violation and the transport is closed
+   * with the transport-failure code. The caller must stop sending what it was in the middle of.
    */
-  #transmit(frame: Uint8Array | string): void {
+  #transmit(frame: Uint8Array | string): boolean {
     try {
       this.#options.send(frame);
+      return true;
     } catch {
       void this.#attachment?.protocolViolation();
-      this.#close(TRANSPORT_FAILURE_CLOSE_CODE);
+      this.#failClosed(TRANSPORT_FAILURE_CLOSE_CODE);
+      return false;
     }
   }
 
@@ -237,7 +261,7 @@ export class SessionConnection {
       return;
     }
     void this.#attachment?.protocolViolation();
-    this.#close(describeFailure(failure.code).closeCode);
+    this.#failClosed(describeFailure(failure.code).closeCode);
   }
 
   #onEvent(event: SessionEvent): void {
@@ -265,13 +289,7 @@ export class SessionConnection {
         this.#flushExitWhenOutputEnded();
         break;
       case 'operationResult':
-        this.#deliver(
-          this.#host.failOperation(
-            event.sequence,
-            event.disposition === 'unknown' ? 'transport-failed' : 'backend-failed',
-            event.reason,
-          ),
-        );
+        this.#reportOperationResult(event);
         break;
       case 'attachmentRevoked':
         // No further output is accepted once the generation is revoked, so a held exit is final.
@@ -279,7 +297,7 @@ export class SessionConnection {
         if (event.cause === 'start-failed') {
           // The backend never started: report the failure, never a process exit, and close with its code.
           this.#deliver(this.#host.attachmentError('spawn-failed', SPAWN_FAILED_MESSAGE));
-          this.#closeCodeAfterCleanup ??= describeFailure('spawn-failed').closeCode;
+          this.#failClosed(describeFailure('spawn-failed').closeCode);
         }
         // Otherwise revocation has no wire message of its own: the cleanup result that follows announces it.
         break;
@@ -289,6 +307,17 @@ export class SessionConnection {
         this.#close(this.#closeCodeAfterCleanup ?? 1000);
         break;
     }
+  }
+
+  /**
+   * Tell the client how an operation ended. A failed or unknown submitted operation is the failure
+   * table's `backend-failed` or `transport-failed`, which close with its code; a canceled one was
+   * never submitted, so the close stays whatever ended the session.
+   */
+  #reportOperationResult(event: Extract<SessionEvent, { type: 'operationResult' }>): void {
+    const code = event.disposition === 'unknown' ? 'transport-failed' : 'backend-failed';
+    this.#deliver(this.#host.failOperation(event.sequence, code, event.reason));
+    if (event.disposition !== 'canceled') this.#failClosed(describeFailure(code).closeCode);
   }
 
   /** Send the held process exit once every source has completed, or at once when there are none to wait for. */

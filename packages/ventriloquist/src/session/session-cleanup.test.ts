@@ -276,7 +276,7 @@ const BEHAVIORS: readonly [ReleaseBehavior, 'complete' | 'incomplete' | 'unknown
 
 describe('cleanup of owned and borrowed sources', () => {
   test.each(BEHAVIORS)('an owned stream whose cancel %s reports %s', async (cancel, expected) => {
-    const stream = createScriptedStream('pty', { cancel });
+    const stream = createScriptedStream('stdout', { cancel });
     const harness = createHarness({ backend: false, sources: [stream.source] });
     await startAndAttach(harness, 'read-only');
     const closing = harness.session.dispose();
@@ -290,7 +290,7 @@ describe('cleanup of owned and borrowed sources', () => {
   });
 
   test('an owned stream whose releaseLock throws is incomplete', async () => {
-    const stream = createScriptedStream('pty', {
+    const stream = createScriptedStream('stdout', {
       releaseLock: () => {
         throw new Error('still locked');
       },
@@ -302,7 +302,7 @@ describe('cleanup of owned and borrowed sources', () => {
   });
 
   test('an owned stream that already ended is only released, never canceled', async () => {
-    const stream = createScriptedStream('pty');
+    const stream = createScriptedStream('stdout');
     const harness = createHarness({ backend: false, sources: [stream.source] });
     const attachment = await startAndAttach(harness, 'read-only');
     stream.push(utf8('end'));
@@ -335,7 +335,7 @@ describe('cleanup of owned and borrowed sources', () => {
 
   test('an owned iterable delivers copies of what it yields, in order, on its own channel', async () => {
     const iterable = createScriptedIterable('stderr');
-    const harness = createHarness({ backend: false, sources: [iterable.source] });
+    const harness = createHarness({ backend: { mode: 'pipe' }, sources: [iterable.source] });
     await startAndAttach(harness, 'read-only');
     const first = utf8('one');
     iterable.push(first);
@@ -407,7 +407,7 @@ describe('cleanup of owned and borrowed sources', () => {
   });
 
   test('the least certain outcome across the backend and every source wins', async () => {
-    const owned = createScriptedStream('pty', { cancel: 'reject' });
+    const owned = createScriptedStream('stdout', { cancel: 'reject' });
     const borrowed = createScriptedSubscription('stderr');
     const harness = createHarness({
       backend: { mode: 'pipe', cleanup: () => new Promise(() => undefined) },
@@ -444,10 +444,13 @@ describe('cleanup of owned and borrowed sources', () => {
     expect(stream.lockReleased).toBe(true);
   });
 
-  test('both channels of a pipe end before an output-only session closes', async () => {
+  test('every source ends before an output-only session closes', async () => {
     const stdout = createScriptedSubscription('stdout');
-    const stderr = createScriptedSubscription('stderr');
-    const harness = createHarness({ backend: false, sources: [stdout.source, stderr.source] });
+    const stderr = createScriptedSubscription('stdout');
+    const harness = createHarness({
+      backend: false,
+      sources: [stdout.source, stderr.source],
+    });
     await startAndAttach(harness, 'read-only');
     stdout.end();
     await flush();
@@ -460,10 +463,10 @@ describe('cleanup of owned and borrowed sources', () => {
 
 describe('construction failure', () => {
   test('a source that cannot be opened releases the readers already acquired', async () => {
-    const first = createScriptedStream('pty');
+    const first = createScriptedStream('stdout');
     const locked = {
       kind: 'stream' as const,
-      channel: 'stderr' as const,
+      channel: 'stdout' as const,
       stream: {
         getReader: (): never => {
           throw new TypeError('stream is locked');
