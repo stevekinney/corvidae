@@ -2136,7 +2136,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         poller.gate.settleForDeletion(runtimeServices.clock.nowISO());
         return;
       }
-      await enqueueSteering(sessionId, () => catchUpSteering(kv, sessionId, poller.incarnation));
+      // Replaced while this poll read the session (deleted and recreated,
+      // with a new run polling it): folding the old incarnation now would
+      // replace the new cursor and gate the recreated run reads.
+      await enqueueSteering(sessionId, async () => {
+        if (steeringPollers.get(sessionId) !== poller) return;
+        await catchUpSteering(kv, sessionId, poller.incarnation);
+      });
       poller.lastFailure = undefined;
     } catch (error) {
       const failure = serializeUnknownError(error);
@@ -8084,8 +8090,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // gate's own refusals on a durable session, so a caller-supplied id
     // stays decided: a later retry is answered from the log, not re-judged
     // against a catalog or policy that may have changed since.
+    // Refused after a `policyRef` resolved, the logged command carries the
+    // resolved value that was validated and refused, and the selector is
+    // kept beside it, exactly as for an admission.
     const refuseSteering = async (
       outcome: SteeringRefusal['outcome'],
+      resolvedFromSelector?: ImplementedSteeringCommand['requestedValue'],
     ): Promise<SteeringCommandAdmissionOutcome> => {
       const kv = durableSteeringStore();
       if (kv === undefined || request.id === undefined) return outcome;
@@ -8094,7 +8104,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         idOrigin: 'caller',
         sessionId,
         principal: request.principal,
-        requestedValue: request.requestedValue,
+        requestedValue: resolvedFromSelector ?? request.requestedValue,
         requestedAt: runtimeServices.clock.nowISO(),
         ...(request.expectedRevision !== undefined
           ? { expectedRevision: request.expectedRevision }
@@ -8109,6 +8119,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           refused,
           () => liveSessionRunIdsEverywhere(sessionId, session.incarnation, request.runId),
           outcome,
+          resolvedFromSelector === undefined ? undefined : request.requestedValue,
         ),
       );
     };
@@ -8278,10 +8289,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 // cannot contain routes would reject every valid route.
                 true;
       if (!known) {
-        return refuseSteering({
-          outcome: 'rejected',
-          failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
-        });
+        return refuseSteering(
+          {
+            outcome: 'rejected',
+            failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+          },
+          configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
+        );
       }
     }
 

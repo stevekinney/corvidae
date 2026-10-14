@@ -276,13 +276,32 @@ describe('durable steering across two Bureau processes', () => {
       const run = await bureauA.createRun({ message: 'go', principal: 'alice' });
       for (let attempt = 0; attempt < 200 && generateCalls === 0; attempt += 1) await Bun.sleep(10);
 
-      // B pauses A's run. A learns of it from its own log poll.
+      // B pauses A's run. A learns of it from its own log poll, which the
+      // test observes as A reading the pause's log entry; only then does the
+      // tool return and the run reach its boundary.
+      const kvA = bureauA.kv;
+      if (kvA === undefined) throw new Error('expected a durable store');
+      const readsByA = spyOn(kvA, 'get');
       const paused = await bureauB.submitSteeringCommand(run.sessionId, {
         principal: 'alice',
         requestedValue: { target: 'pause' },
       });
       expect(paused.outcome).toBe('accepted');
-      await Bun.sleep(2_500);
+      const sessionA = await bureauA.getSession(run.sessionId);
+      const kvB = bureauB.kv;
+      if (sessionA === undefined || kvB === undefined) throw new Error('expected the session');
+      const pauseHead = await readSteeringLogHead(kvB, run.sessionId, sessionA.incarnation);
+      const pauseSequence = pauseHead.sequence;
+      const pauseEntry = `:entry:${String(pauseSequence).padStart(12, '0')}`;
+      readsByA.mockClear();
+      for (let attempt = 0; attempt < 1_000; attempt += 1) {
+        if (readsByA.mock.calls.some(([key]) => key.endsWith(pauseEntry))) break;
+        await Bun.sleep(10);
+      }
+      expect(readsByA.mock.calls.some(([key]) => key.endsWith(pauseEntry))).toBe(true);
+      readsByA.mockRestore();
+      // The read entry is applied to the gate in the same fold.
+      await Bun.sleep(0);
       releaseTool?.();
       await Bun.sleep(300);
       expect(bureauA.getRun(run.id)?.status).toBe('running');
@@ -558,7 +577,10 @@ describe('durable steering across two Bureau processes', () => {
       durableExecution: true,
       modelPolicy: {
         policyRevision: 1,
-        users: { 'fast-tier': { exactOverride: { model: 'claude-sonnet-5' } } },
+        users: {
+          'fast-tier': { exactOverride: { model: 'claude-sonnet-5' } },
+          'unknown-tier': { exactOverride: { model: 'no-such-model' } },
+        },
       },
     });
     const withoutPolicy = await openBureau(path);
@@ -603,6 +625,30 @@ describe('durable steering across two Bureau processes', () => {
       const refusedHere = await withoutPolicy.submitSteeringCommand(sessionId, unresolvable);
       expect(refusedHere.outcome).toBe('rejected');
       expect(await withPolicy.submitSteeringCommand(sessionId, unresolvable)).toEqual(refusedHere);
+
+      // Refused by the catalog after the selector resolved: the logged command
+      // is the resolved value that was refused, and the selector stays its
+      // retry key, so a conflict discloses the value and a retry replays.
+      const uncatalogued = {
+        id: 'p-uncatalogued',
+        principal: 'alice',
+        requestedValue: { target: 'model', policyRef: 'unknown-tier' },
+      } as const;
+      const refusedByCatalog = await withPolicy.submitSteeringCommand(sessionId, uncatalogued);
+      expect(refusedByCatalog.outcome).toBe('rejected');
+      expect(await withoutPolicy.submitSteeringCommand(sessionId, uncatalogued)).toEqual(
+        refusedByCatalog,
+      );
+      const reusedUncatalogued = await withPolicy.submitSteeringCommand(sessionId, {
+        ...uncatalogued,
+        requestedValue: { target: 'model', override: 'claude-opus-4-8' },
+      });
+      expect(reusedUncatalogued.outcome).toBe('conflict');
+      if (reusedUncatalogued.outcome !== 'conflict') throw new Error('expected conflict');
+      expect(reusedUncatalogued.conflict.original.requestedValue).toEqual({
+        target: 'model',
+        override: 'no-such-model',
+      });
 
       // Refused after the selector was resolved (an unrepresentable revision):
       // the selector is kept, so an exact retry replays where the profile

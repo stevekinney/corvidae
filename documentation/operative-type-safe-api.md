@@ -258,7 +258,7 @@ An `agent-identity` override is validated against the Bureau's own `agents` cata
 
 The four configuration targets are session-scoped and effective at the next `runStep` boundary, so a run already in flight observes them. `agent-identity` is session-scoped but deferred to step 0 of the session's next run, because swapping the agent also changes the tool set and hook plan. `pause` and `resume` bind to one run.
 
-On a durably-configured bureau each admitted command is persisted into a per-session mailbox before it enters desired state, and a restart replays the log back into a fresh gate. The in-memory gate remains the authority for desired state; the mailbox is the durable log.
+On a durably-configured bureau each decision is appended to an append-only steering log, one per session incarnation, before it enters desired state. Every process sharing the backend folds that log into its own gate, so they agree on versions, command states, and idempotency, and a restart or recovered run folds it again. A process driving one of the session's durable runs re-reads the log every 2 seconds, so a command admitted in another process reaches the run at its next step boundary. See [the durable steering log](durable-steering-log.md).
 
 The operative run-step boundary reads a `SteeringGate`; a paused run waits for `awaitResume()` or its abort signal before the next step. The wider exported command contract describes these typed states: `accepted`, `applied`, `rejected`, `superseded`, or `failed`.
 

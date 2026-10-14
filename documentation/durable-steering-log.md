@@ -1,6 +1,6 @@
 # Durable Steering Log
 
-This is the design for making a durable Bureau session's steering survive any number of restarts and any number of Bureau processes sharing one backend. It replaces the steering mailbox as the durable record of steering. Today that mailbox carries steering across exactly one restart, because recovery acknowledges what it replays. A first attempt in pull request 190 added a desired-state snapshot, command records, and a lease beside the mailbox. Four review rounds kept finding races between those separately written stores, so that work was backed out. This design keeps one durable structure and commits every change to it atomically.
+This is the design for making a durable Bureau session's steering survive any number of restarts and any number of Bureau processes sharing one backend. It replaces the steering mailbox as the durable record of steering. That mailbox carried steering across exactly one restart, because recovery acknowledged what it replayed. A first attempt in pull request 190 added a desired-state snapshot, command records, and a lease beside the mailbox. Four review rounds kept finding races between those separately written stores, so that work was backed out. This design keeps one durable structure and commits every change to it atomically.
 
 ## The core idea
 
