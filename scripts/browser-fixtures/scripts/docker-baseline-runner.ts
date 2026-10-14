@@ -126,8 +126,13 @@ export function containerCommand(mode: ContainerMode, extraArguments: readonly s
   // The JSON reporter writes to PLAYWRIGHT_JSON_OUTPUT_FILE (/out/results.json) so the
   // host can name each failure and tell screenshot failures from behavioural ones.
   const forwarded = ` -- ${[PLAYWRIGHT_REPORTERS, ...extraArguments].map(shellQuote).join(' ')}`;
+  // `--update-snapshots=all` does not rewrite a baseline that already matches within
+  // tolerance, so an update first removes every Linux baseline: each one a test uses is
+  // then written fresh, and a committed baseline nothing writes is a true orphan.
+  const wipe =
+    mode === 'update' ? ` && find ${LINUX_BASELINE_DIRECTORY} -name '*.png' -delete` : '';
   return [
-    `mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && touch /tmp/baseline-marker && bun run ${script}${forwarded}`,
+    `mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile${wipe} && touch /tmp/baseline-marker && bun run ${script}${forwarded}`,
     'status=$?',
     `find ${LINUX_BASELINE_DIRECTORY} -name '*.png' -newer /tmp/baseline-marker > /out/regenerated.txt 2>/dev/null`,
     `mkdir -p /out/linux && cp -R ${LINUX_BASELINE_DIRECTORY}/. /out/linux/ 2>/dev/null`,

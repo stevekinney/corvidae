@@ -12,6 +12,7 @@ import {
   filesToDelete,
   listBaselines,
   orphanEvidence,
+  owningTest,
   parseRegeneratedList,
   renameTarget,
   renderReportMarkdown,
@@ -148,6 +149,7 @@ describe('buildBaselineDiffReport', () => {
       renamedChanged: 1,
       deletedOrphans: 3,
       unpairedOrphans: 1,
+      restored: 0,
       needsClassification: 3,
     });
     expect(
@@ -199,6 +201,7 @@ describe('buildBaselineDiffReport', () => {
           },
         ],
         flakyTests: [],
+        skippedTests: [],
       },
       decision: { apply: true, reason: 'Applied with 1 accepted behavioural failure(s).' },
     };
@@ -299,5 +302,80 @@ describe('regenerated and listed baselines', () => {
     writeFileSync(join(root, 'provenance.json'), '{}');
     expect(await listBaselines(root)).toEqual(['a/one.png', 'b/two.png']);
     expect(await listBaselines(join(root, 'missing'))).toEqual([]);
+  });
+});
+
+describe('restored, not regenerated (COR-1512 guard)', () => {
+  // An update starts from no baselines, so a test that fails or is skipped before its
+  // screenshot writes nothing. Its committed baseline must be kept, not deleted as an orphan.
+  it('keeps baselines owned by a failing or skipped test and deletes only the rest', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'baseline-diff-report-'));
+    const oldDirectory = join(root, 'old');
+    const newDirectory = join(root, 'new');
+    write(oldDirectory, 'tabs/dark-mobile-keyboard-next.png', png(white));
+    write(oldDirectory, 'tabs/dark-mobile-keyboard-next-resting.png', png(white));
+    write(oldDirectory, 'popover/light-desktop-transformed-ancestor-shell.png', png(white));
+    write(oldDirectory, 'gone/light-desktop-retired.png', png(white));
+    write(oldDirectory, 'button/light-desktop-primary.png', png(white));
+    write(newDirectory, 'button/light-desktop-primary.png', png(white));
+
+    const report = await buildBaselineDiffReport({
+      oldDirectory,
+      newDirectory,
+      regenerated: ['button/light-desktop-primary.png'],
+      nonPassing: [
+        {
+          title: 'components.playwright.ts › tabs › dark-mobile-keyboard-next',
+          file: 'components.playwright.ts',
+          reason: 'Test timeout of 30000ms exceeded.',
+        },
+        {
+          title: 'overlay-positioning.playwright.ts › popover › keeps its shell',
+          file: 'overlay-positioning.playwright.ts',
+          reason: 'skipped',
+        },
+      ],
+      specSources: new Map([
+        [
+          'overlay-positioning.playwright.ts',
+          "await captureScreenshot(page, 'popover', 'light-desktop-transformed-ancestor-shell');",
+        ],
+      ]),
+    });
+
+    expect(report.restored).toEqual([
+      {
+        path: 'popover/light-desktop-transformed-ancestor-shell.png',
+        test: 'overlay-positioning.playwright.ts › popover › keeps its shell',
+        reason: 'skipped',
+      },
+      {
+        path: 'tabs/dark-mobile-keyboard-next-resting.png',
+        test: 'components.playwright.ts › tabs › dark-mobile-keyboard-next',
+        reason: 'Test timeout of 30000ms exceeded.',
+      },
+      {
+        path: 'tabs/dark-mobile-keyboard-next.png',
+        test: 'components.playwright.ts › tabs › dark-mobile-keyboard-next',
+        reason: 'Test timeout of 30000ms exceeded.',
+      },
+    ]);
+    expect(report.counts.restored).toBe(3);
+    expect(filesToDelete(report)).toEqual(['gone/light-desktop-retired.png']);
+    expect(renderReportMarkdown(report, 'Refresh')).toContain(
+      '- `tabs/dark-mobile-keyboard-next.png`: `components.playwright.ts › tabs › dark-mobile-keyboard-next` (Test timeout of 30000ms exceeded.)',
+    );
+  });
+
+  it('does not let a passing component claim an unrelated orphan', () => {
+    expect(
+      owningTest('gone/light-desktop-retired.png', [
+        {
+          title: 'components.playwright.ts › button › light-desktop-primary',
+          file: 'x',
+          reason: 'r',
+        },
+      ]),
+    ).toBeUndefined();
   });
 });

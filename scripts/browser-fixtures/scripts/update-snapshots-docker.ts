@@ -55,6 +55,7 @@ import {
   CONTAINER_RESULTS_PATH,
   RESULTS_FILE_NAME,
   decideApply,
+  nonPassingTests,
   summarizePlaywrightResults,
   type SuiteResults,
 } from './suite-results.ts';
@@ -145,13 +146,15 @@ export function manifestFixtureNames(manifestText: string): Map<string, string[]
   );
 }
 
-async function readSpecText(directory: string): Promise<string> {
-  if (!existsSync(directory)) return '';
+/** The rendered commit's spec sources, keyed by path relative to the tests directory. */
+async function readSpecSources(directory: string): Promise<Map<string, string>> {
+  if (!existsSync(directory)) return new Map();
   const files = await readdir(directory, { recursive: true });
-  return files
-    .filter((file) => file.endsWith('.ts'))
-    .map((file) => readFileSync(join(directory, file), 'utf8'))
-    .join('\n');
+  return new Map(
+    files
+      .filter((file) => file.endsWith('.ts'))
+      .map((file) => [file.split('\\').join('/'), readFileSync(join(directory, file), 'utf8')]),
+  );
 }
 
 async function main(): Promise<number> {
@@ -171,11 +174,12 @@ async function main(): Promise<number> {
   extractArchive(oldArchive, oldRoot);
 
   const manifestPath = join(outputDirectory, 'manifest.json');
+  const specSources = await readSpecSources(join(oldRoot, 'scripts/browser-fixtures/tests'));
   const namingSources: NamingSources = {
     manifestFixtures: existsSync(manifestPath)
       ? manifestFixtureNames(readFileSync(manifestPath, 'utf8'))
       : new Map(),
-    specText: await readSpecText(join(oldRoot, 'scripts/browser-fixtures/tests')),
+    specText: [...specSources.values()].join('\n'),
   };
   const regenerated = parseRegeneratedList(
     await Bun.file(join(outputDirectory, 'regenerated.txt')).text(),
@@ -187,6 +191,8 @@ async function main(): Promise<number> {
     regenerated,
     diffDirectory: join(reportDirectory, 'diffs'),
     namingSources,
+    nonPassing: nonPassingTests(results),
+    specSources,
   });
   const written = await writeBaselineDiffReport(
     report,
@@ -214,7 +220,7 @@ async function main(): Promise<number> {
     deleted,
   );
   process.stdout.write(
-    `Applied ${applied.length} baselines and provenance.json; deleted ${deleted.length} orphans.\n`,
+    `Applied ${applied.length} baselines and provenance.json; deleted ${deleted.length} orphans; kept ${report.restored.length} restored baselines.\n`,
   );
   return 0;
 }

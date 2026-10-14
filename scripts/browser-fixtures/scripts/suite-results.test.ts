@@ -7,6 +7,7 @@ import {
   compareWithControl,
   decideApply,
   isScreenshotFailure,
+  nonPassingTests,
   renderControlComparison,
   summarizePlaywrightResults,
   type SuiteResults,
@@ -23,6 +24,7 @@ const REPORT = JSON.stringify({
       file: 'tree.playwright.ts',
       specs: [
         { title: 'renders', file: 'tree.playwright.ts', line: 4, tests: [{ status: 'expected' }] },
+        { title: 'scrolls', file: 'tree.playwright.ts', line: 9, tests: [{ status: 'skipped' }] },
       ],
       suites: [
         {
@@ -117,7 +119,24 @@ describe('summarizePlaywrightResults', () => {
         },
       ],
       flakyTests: ['components.playwright.ts › button › dark-desktop-primary'],
+      skippedTests: [{ title: 'tree.playwright.ts › scrolls', file: 'tree.playwright.ts' }],
     });
+  });
+
+  it('lists failing and skipped tests with the reason each may not have written a baseline', () => {
+    expect(nonPassingTests(summarizePlaywrightResults(REPORT))).toEqual([
+      {
+        title: 'components.playwright.ts › button › light-desktop-primary',
+        file: 'components.playwright.ts',
+        reason: 'Error: expect(page).toHaveScreenshot(expected) failed',
+      },
+      {
+        title: 'tree.playwright.ts › Tree — virtualized › keeps rows windowed',
+        file: 'tree.playwright.ts',
+        reason: 'Error: row 5000 missing',
+      },
+      { title: 'tree.playwright.ts › scrolls', file: 'tree.playwright.ts', reason: 'skipped' },
+    ]);
   });
 
   it('recognizes screenshot failures by their comparison messages', () => {
@@ -138,6 +157,7 @@ const behavioural: SuiteResults = {
     { title: 'a › axe', file: 'a', line: 1, status: 'failed', errors: ['axe'], screenshot: false },
   ],
   flakyTests: [],
+  skippedTests: [],
 };
 const screenshot: SuiteResults = {
   ...behavioural,

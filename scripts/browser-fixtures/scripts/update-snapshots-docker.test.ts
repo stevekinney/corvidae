@@ -35,6 +35,7 @@ describe('update-snapshots-docker helpers', () => {
       skipped: 1,
       failures: [],
       flakyTests: [],
+      skippedTests: [],
     });
   });
 });

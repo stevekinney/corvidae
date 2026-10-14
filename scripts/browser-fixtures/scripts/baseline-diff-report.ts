@@ -26,7 +26,7 @@ import { dirname, join, relative } from 'node:path';
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 
-import type { ApplyDecision, SuiteResults } from './suite-results.ts';
+import type { ApplyDecision, NonPassingTest, SuiteResults } from './suite-results.ts';
 
 /** The suite's `toHaveScreenshot` threshold (`SNAPSHOT_DIFF_OPTIONS` in @lostgradient/testing). */
 export const PIXEL_THRESHOLD = 0.1;
@@ -73,10 +73,15 @@ export type SuiteOutcome = {
   decision: ApplyDecision;
 };
 
+/** A committed baseline a non-passing test owns: kept from git, never deleted. */
+export type RestoredBaseline = { path: string; test: string; reason: string };
+
 export type BaselineDiffReport = {
   comparisons: BaselineComparison[];
   /** Committed baselines no test regenerated; all are deleted by the refresh. */
   orphaned: string[];
+  /** Committed baselines a failing or skipped test may not have written: kept, not orphaned. */
+  restored: RestoredBaseline[];
   renamed: RenamedBaseline[];
   unpairedOrphans: OrphanEvidence[];
   counts: {
@@ -91,6 +96,7 @@ export type BaselineDiffReport = {
     renamedChanged: number;
     deletedOrphans: number;
     unpairedOrphans: number;
+    restored: number;
     needsClassification: number;
   };
 };
@@ -181,7 +187,34 @@ export type BuildReportOptions = {
   regenerated: readonly string[];
   diffDirectory?: string;
   namingSources?: NamingSources;
+  /** Tests that failed or were skipped in the update run, which may not have written a baseline. */
+  nonPassing?: readonly NonPassingTest[];
+  /** Spec sources by repository-relative file under the tests directory. */
+  specSources?: ReadonlyMap<string, string>;
 };
+
+/**
+ * The non-passing test that owns a committed baseline, if any. A sweep test's title
+ * names the component and the image (`components.playwright.ts › button › dark-mobile-primary`
+ * owns `button/dark-mobile-primary.png` and its `-resting` partner); a spec that names its
+ * screenshots owns one whose name it quotes.
+ */
+export function owningTest(
+  baseline: string,
+  nonPassing: readonly NonPassingTest[],
+  specSources: ReadonlyMap<string, string> = new Map(),
+): NonPassingTest | undefined {
+  const slug = baseline.split('/')[0] ?? '';
+  const stem = (baseline.split('/').at(-1) ?? '').replace(/\.png$/, '').replace(/-resting$/, '');
+  const quoted = (text: string, name: string) =>
+    ["'", '"', '`'].some((quote) => text.includes(`${quote}${name}${quote}`));
+  return nonPassing.find((test) => {
+    const segments = test.title.split(' › ');
+    if (segments.includes(slug) && segments.includes(stem)) return true;
+    const source = specSources.get(test.file);
+    return source !== undefined && (quoted(source, stem) || quoted(source, `${slug}/${stem}`));
+  });
+}
 
 const RENAMED_FROM = /-default\.png$/;
 const BASELINE_NAME = /^(?:light|dark)-(?:mobile|tablet|desktop)-(.+)\.png$/;
@@ -235,7 +268,13 @@ export async function buildBaselineDiffReport(
     comparisons.filter((comparison) => comparison.kind === 'added').map((c) => c.path),
   );
   const committed = await listBaselines(options.oldDirectory);
-  const orphaned = committed.filter((path) => !regenerated.has(path));
+  const restored: RestoredBaseline[] = [];
+  const orphaned: string[] = [];
+  for (const path of committed.filter((candidate) => !regenerated.has(candidate))) {
+    const owner = owningTest(path, options.nonPassing ?? [], options.specSources);
+    if (owner === undefined) orphaned.push(path);
+    else restored.push({ path, test: owner.title, reason: owner.reason });
+  }
   const renamed: RenamedBaseline[] = [];
   const unpairedOrphans: OrphanEvidence[] = [];
   for (const from of orphaned) {
@@ -262,6 +301,7 @@ export async function buildBaselineDiffReport(
     orphaned,
     renamed,
     unpairedOrphans,
+    restored,
     counts: {
       regenerated: comparisons.length,
       changed: of('changed').length,
@@ -276,6 +316,7 @@ export async function buildBaselineDiffReport(
       renamedChanged: renamed.length - renamedUnchanged.length,
       deletedOrphans: orphaned.length,
       unpairedOrphans: unpairedOrphans.length,
+      restored: restored.length,
       needsClassification: needsClassification([
         ...comparisons,
         ...renamed.map((rename) => rename.comparison),
@@ -393,6 +434,7 @@ export function renderReportMarkdown(
     `| Renamed and changed | ${counts.renamedChanged} |`,
     `| Deleted orphans (all) | ${counts.deletedOrphans} |`,
     `| Deleted orphans without a rename partner | ${counts.unpairedOrphans} |`,
+    `| Restored, not regenerated (owned by a failing or skipped test) | ${counts.restored} |`,
     `| Needs classification | ${counts.needsClassification} |`,
     '',
   );
@@ -443,6 +485,17 @@ export function renderReportMarkdown(
     .map((comparison) => `- \`${comparison.path}\``);
   lines.push('## Added baselines', '', ...(added.length > 0 ? added : ['None.']), '');
   lines.push(
+    '## Restored, not regenerated',
+    '',
+    'Committed baselines whose test failed or was skipped in the update run, so it may never have reached its screenshot. They keep their committed bytes and are not orphans.',
+    '',
+    ...(report.restored.length > 0
+      ? report.restored.map(
+          (entry) =>
+            `- \`${entry.path}\`: \`${entry.test}\` (${entry.reason.replaceAll('|', '\\|')})`,
+        )
+      : ['None.']),
+    '',
     '## Deleted orphans with a rename partner',
     '',
     ...(report.renamed.length > 0

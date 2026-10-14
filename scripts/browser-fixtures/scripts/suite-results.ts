@@ -29,7 +29,24 @@ export type SuiteResults = {
   skipped: number;
   failures: FailedTest[];
   flakyTests: string[];
+  /** Tests that never ran to completion because they were skipped. */
+  skippedTests: { title: string; file: string }[];
 };
+
+/** A test that did not pass, and so may not have written its baseline. */
+export type NonPassingTest = { title: string; file: string; reason: string };
+
+/** Every failing or skipped test, with the reason a review should see. */
+export function nonPassingTests(results: SuiteResults): NonPassingTest[] {
+  return [
+    ...results.failures.map((failure) => ({
+      title: failure.title,
+      file: failure.file,
+      reason: failure.errors[0] ?? failure.status,
+    })),
+    ...results.skippedTests.map((test) => ({ ...test, reason: 'skipped' })),
+  ];
+}
 
 type JsonResult = { status?: string; errors?: { message?: string }[] };
 type JsonTest = { status?: string; results?: JsonResult[] };
@@ -71,12 +88,14 @@ export function summarizePlaywrightResults(text: string): SuiteResults {
   const report = JSON.parse(text) as JsonReport;
   const failures: FailedTest[] = [];
   const flakyTests: string[] = [];
+  const skippedTests: { title: string; file: string }[] = [];
   for (const root of report.suites ?? []) {
     const file = root.file ?? root.title ?? '';
     walk(root, [file], (spec, path) => {
       const title = [...path, spec.title ?? ''].join(' › ');
       for (const test of spec.tests ?? []) {
         if (test.status === 'flaky') flakyTests.push(title);
+        if (test.status === 'skipped') skippedTests.push({ title, file: spec.file ?? file });
         if (test.status !== 'unexpected') continue;
         const errors = (test.results ?? []).flatMap((result) =>
           (result.errors ?? []).map((error) => firstLine(error.message ?? '')),
@@ -103,6 +122,7 @@ export function summarizePlaywrightResults(text: string): SuiteResults {
     skipped: report.stats?.skipped ?? 0,
     failures: failures.toSorted((left, right) => left.title.localeCompare(right.title)),
     flakyTests: flakyTests.toSorted(),
+    skippedTests: skippedTests.toSorted((left, right) => left.title.localeCompare(right.title)),
   };
 }
 
