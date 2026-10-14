@@ -7,6 +7,7 @@
 
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { encode } from '../core/codec.ts';
 import type { Engine } from '../core/engine.ts';
 import { TaskResultDeliveryEvent } from '../core/events.ts';
 import { encodeTaskAttemptRecord, taskAttemptKey } from '../core/task-ledger/task-attempt.ts';
@@ -28,8 +29,10 @@ import { createOperationRegistry, executeOperation } from './operation-catalog.t
 import { clearTaskDeadLetterOperation } from './operations/clear-task-dead-letter.ts';
 import {
   getTaskDeadLetterOperation,
+  getTaskDeadLetterRestBinding,
   getTaskResultDeliveriesOperation,
   getTaskResultDeliveriesOutputSchema,
+  getTaskResultDeliveriesRestBinding,
   type GetTaskDeadLetterOutput,
   type GetTaskResultDeliveriesOutput,
 } from './operations/get-task-deliveries.ts';
@@ -48,7 +51,7 @@ const WORKER_PRINCIPAL = principalFromApiKey({ subject: 'worker', scopes: ['work
 const NOOP_CLEANUP = (_operationId: string) => {};
 
 function serveOptions(engine: Engine): ServeOptions {
-  return { engine, port: 0 } as unknown as ServeOptions;
+  return { engine, port: 0 };
 }
 
 function leased(operationId: string, overrides: Partial<RemoteTaskLeased> = {}): RemoteTaskLeased {
@@ -165,33 +168,18 @@ describe('weft.tasks.deliveries over long-poll', () => {
     await seedLeased(storage, leased('op-lp'));
     const submission = { operationId: 'op-lp', workerId: 'w-1', attemptToken: token };
 
-    expect(
-      (await postResult(options, { ...submission, status: 'completed', value: 1 }, 'other')).status,
-    ).toBe(403);
-    expect(
-      (await postResult(options, { ...submission, workerId: 'w-2', status: 'completed' })).status,
-    ).toBe(403);
-    expect(
-      (await postResult(options, { ...submission, status: 'completed', value: { total: 1 } }))
-        .status,
-    ).toBe(200);
-    expect(
-      (await postResult(options, { ...submission, status: 'completed', value: { total: 1 } }))
-        .status,
-    ).toBe(200);
-    expect(
-      (await postResult(options, { ...submission, status: 'completed', value: { total: 2 } }))
-        .status,
-    ).toBe(403);
-    expect(
-      (
-        await postResult(options, {
-          ...submission,
-          attemptToken: 'forged-token',
-          status: 'completed',
-        })
-      ).status,
-    ).toBe(403);
+    const cases: ReadonlyArray<readonly [Record<string, unknown>, string, number]> = [
+      [{ ...submission, status: 'completed', value: 1 }, 'other', 403],
+      [{ ...submission, workerId: 'w-2', status: 'completed' }, 'default', 403],
+      [{ ...submission, status: 'completed', value: { total: 1 } }, 'default', 200],
+      [{ ...submission, status: 'completed', value: { total: 1 } }, 'default', 200],
+      [{ ...submission, status: 'completed', value: { total: 2 } }, 'default', 403],
+      [{ ...submission, attemptToken: 'forged-token', status: 'completed' }, 'default', 403],
+    ];
+    for (const [body, queue, expectedStatus] of cases) {
+      const response = await postResult(options, body, queue);
+      expect(response.status).toBe(expectedStatus);
+    }
 
     const history = await readDeliveries(engine, 'op-lp');
     expect(history.droppedCount).toBe(0);
@@ -316,7 +304,10 @@ describe('weft.tasks.deliveries over WebSocket', () => {
     });
     send({ ...result, attemptToken: 'secret-attempt-token' });
     await waitForCondition(
-      async () => (await readDeliveries(engine, 'op-ws')).deliveries.length === 3,
+      async () => {
+        const recorded = await readDeliveries(engine, 'op-ws');
+        return recorded.deliveries.length === 3;
+      },
       { timeoutMs: 1_000, label: 'three recorded deliveries' },
     );
 
@@ -445,5 +436,58 @@ describe('delivery history retention', () => {
     );
     expect(cleared.ok).toBe(true);
     expect(await storage.get(taskResultDeliveryKey('op-dead'))).toBeNull();
+  });
+});
+
+describe('task delivery REST bindings', () => {
+  it('read the operationId from the path under the reserved /detail/ namespace', async () => {
+    const request = new Request('http://localhost/v1/tasks/detail/op-1/deliveries');
+    expect(getTaskResultDeliveriesRestBinding.path).toBe(
+      '/v1/tasks/detail/:operationId/deliveries',
+    );
+    expect(
+      await getTaskResultDeliveriesRestBinding.extractInput(request, { operationId: 'op-1' }),
+    ).toEqual({ operationId: 'op-1' });
+    expect(await getTaskResultDeliveriesRestBinding.extractInput(request, {})).toEqual({
+      operationId: '',
+    });
+  });
+
+  it('read maxBytes from the query string, leaving it to the default when absent', async () => {
+    const withLimit = new Request('http://localhost/v1/tasks/detail/op-1/dead-letter?maxBytes=10');
+    expect(
+      await getTaskDeadLetterRestBinding.extractInput(withLimit, { operationId: 'op-1' }),
+    ).toEqual({ operationId: 'op-1', maxBytes: 10 });
+    for (const url of [
+      'http://localhost/v1/tasks/detail/op-1/dead-letter',
+      'http://localhost/v1/tasks/detail/op-1/dead-letter?maxBytes=',
+    ]) {
+      expect(await getTaskDeadLetterRestBinding.extractInput(new Request(url), {})).toEqual({
+        operationId: '',
+        maxBytes: undefined,
+      });
+    }
+  });
+});
+
+describe('task delivery operations on a corrupt ledger record', () => {
+  it('fault EngineFailure rather than NotFound', async () => {
+    const storage = new MemoryStorage();
+    await using engine = createEngine(storage);
+    await storage.put(taskLedgerKey('op-corrupt'), encode({ invalid: true }));
+    const deliveries = await invoke(
+      engine,
+      'weft.tasks.deliveries',
+      { operationId: 'op-corrupt' },
+      ['system:read'],
+    );
+    expect(deliveries.ok ? 'ok' : deliveries.fault.code).toBe('EngineFailure');
+    const deadLetter = await invoke(
+      engine,
+      'weft.tasks.deadletters.get',
+      { operationId: 'op-corrupt' },
+      ['system:admin'],
+    );
+    expect(deadLetter.ok ? 'ok' : deadLetter.fault.code).toBe('EngineFailure');
   });
 });

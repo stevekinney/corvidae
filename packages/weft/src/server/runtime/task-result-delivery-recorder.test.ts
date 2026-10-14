@@ -103,7 +103,8 @@ describe('recordTaskResultDelivery', () => {
       { ...submission, workerId: 'w'.repeat(10_000) },
       { outcome: 'acknowledged', disposition: 'applied' },
     );
-    expect((await readHistory(storage))?.entries[0]).not.toHaveProperty('workerId');
+    const history = await readHistory(storage);
+    expect(history?.entries[0]).not.toHaveProperty('workerId');
   });
 
   it('leaves rejection text alone when the submitted token is empty', async () => {
@@ -114,7 +115,8 @@ describe('recordTaskResultDelivery', () => {
       { ...submission, attemptToken: '' },
       { outcome: 'rejected', rejectionCode: 'stale-attempt', reason: 'stale attempt' },
     );
-    expect((await readHistory(storage))?.entries[0]).toMatchObject({ reason: 'stale attempt' });
+    const history = await readHistory(storage);
+    expect(history?.entries[0]).toMatchObject({ reason: 'stale attempt' });
   });
 
   it('logs and gives up after repeatedly losing the compare-and-swap', async () => {
@@ -164,7 +166,8 @@ describe('long-poll oversized results', () => {
       principalFromApiKey({ subject: 'worker', scopes: ['workers:write'] }),
     );
     expect(response?.status).toBe(413);
-    expect((await readHistory(storage))?.entries).toEqual([
+    const history = await readHistory(storage);
+    expect(history?.entries).toEqual([
       expect.objectContaining({
         transport: 'longPoll',
         outcome: 'acknowledged',
