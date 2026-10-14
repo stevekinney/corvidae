@@ -51,13 +51,7 @@ test('published component examples use their component subpaths under browser co
     const internalManifest = await Bun.file(
       join(corvidaeRoot, 'components', workspace, 'package.json'),
     ).json();
-    // Chat additionally declares `./stream-events` (COR-1397), a browser-free codec entry for the
-    // desktop main process. It is internal: the published map is generated, never copied.
-    expect(internalManifest.exports).toEqual(
-      workspace === 'chat'
-        ? { '.': './src/index.ts', './stream-events': './src/lib/session/stream-event-codec.ts' }
-        : { '.': './src/index.ts' },
-    );
+    expect(internalManifest.exports).toEqual({ '.': './src/index.ts' });
     const manifestContents = plan.files[`packages/${workspace}/package.json`];
     expect(manifestContents).toBeDefined();
     const emittedManifest = JSON.parse(
@@ -65,7 +59,6 @@ test('published component examples use their component subpaths under browser co
         ? manifestContents
         : new TextDecoder().decode(manifestContents),
     );
-    expect(emittedManifest.exports['./stream-events']).toBeUndefined();
     for (const component of components) {
       const subpath = workspace === 'chat' ? component.replace(/^chat-/, '') : component;
       const specifier = `@lostgradient/${workspace}/${subpath}`;
