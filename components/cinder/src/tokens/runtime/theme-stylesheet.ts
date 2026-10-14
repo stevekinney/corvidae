@@ -41,7 +41,12 @@ function hasControlCharacter(value: string): boolean {
   return false;
 }
 
-export class StylesheetError extends Error {}
+export class StylesheetError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StylesheetError';
+  }
+}
 
 function declaration(name: string, value: string): string {
   if (!PROPERTY_NAME.test(name)) throw new StylesheetError(`"${name}" is not a Cinder property.`);

@@ -163,3 +163,85 @@ describe('pairing measurement', () => {
     expect(badOpacity).toMatchObject({ status: 'needs-review', code: 'invalid-opacity' });
   });
 });
+
+describe('CSS color evaluation edge cases', () => {
+  const properties = { '--ink': 'oklch(20% 0.1 250)' };
+  const evaluateRelative = (channels: string) =>
+    evaluateCssColor(`oklch(from var(--ink) ${channels})`, properties, light);
+  const code = (value: string) => {
+    const result = evaluateCssColor(value, properties, light);
+    return result.ok ? 'ok' : result.code;
+  };
+
+  it('evaluates unary minus, multiplication and division in channel expressions', () => {
+    const negated = evaluateRelative('calc(0.5 + -l) c h');
+    expect(negated.ok && negated.color.l).toBeCloseTo(0.3, 6);
+    const scaled = evaluateRelative('calc(l * 2) calc(c / 2) h');
+    expect(scaled.ok && scaled.color.l).toBeCloseTo(0.4, 6);
+    expect(scaled.ok && scaled.color.c).toBeCloseTo(0.05, 6);
+  });
+
+  it('rejects channel expressions with a dangling operand or a unary minus with no operand', () => {
+    expect(code('oklch(from var(--ink) calc(l * banana) c h)')).toBe('unsupported-syntax');
+    expect(code('oklch(from var(--ink) calc(-) c h)')).toBe('unsupported-syntax');
+  });
+
+  it('reads percentages as lightness and chroma fractions but not as a hue', () => {
+    const percent = evaluateRelative('50% 50% h');
+    expect(percent.ok && percent.color.l).toBeCloseTo(0.5, 6);
+    expect(percent.ok && percent.color.c).toBeCloseTo(0.2, 6);
+    expect(code('oklch(from var(--ink) l c 50%)')).toBe('unsupported-syntax');
+  });
+
+  it('refuses relative colors without exactly three channels', () => {
+    expect(code('oklch(from var(--ink) l c)')).toBe('unsupported-syntax');
+  });
+
+  it('refuses a light-dark() that does not take exactly two colors', () => {
+    expect(code('light-dark(red)')).toBe('unsupported-syntax');
+  });
+
+  it('refuses a color-mix() whose percentage sits between its words', () => {
+    expect(code('color-mix(in oklch, red 10% blue, blue)')).toBe('unsupported-syntax');
+  });
+
+  it('mixes two colors evenly when neither names a percentage', () => {
+    const result = evaluateCssColor(
+      'color-mix(in oklch, oklch(20% 0 0), oklch(60% 0 0))',
+      properties,
+      light,
+    );
+    expect(result.ok && result.color.l).toBeCloseTo(0.4, 6);
+  });
+
+  it('refuses unsupported syntax that is not a whole var(), calc() or color-mix() call', () => {
+    expect(code('1px var(--ink)')).toBe('unsupported-syntax');
+    expect(code('rgb(from red r g b)')).toBe('unsupported-syntax');
+  });
+});
+
+describe('pairing measurement edge cases', () => {
+  it('reports Needs review when the backdrop is itself translucent or unresolved', () => {
+    const translucent = measurePairing(
+      pairing({ backdrop: '--base' }),
+      { '--fg': '#000', '--bg': 'oklch(100% 0 0 / 0.5)', '--base': 'oklch(0% 0 0 / 0.5)' },
+      light,
+    );
+    expect(translucent).toMatchObject({ status: 'needs-review', code: 'unknown-background' });
+    const missing = measurePairing(
+      pairing({ backdrop: '--base' }),
+      { '--fg': '#000', '--bg': 'oklch(100% 0 0 / 0.5)' },
+      light,
+    );
+    expect(missing).toMatchObject({ status: 'needs-review', code: 'missing-property' });
+  });
+
+  it('reports Needs review when the named opacity property is absent', () => {
+    const result = measurePairing(
+      pairing({ opacity: '--o' }),
+      { '--fg': '#000', '--bg': '#fff' },
+      light,
+    );
+    expect(result).toMatchObject({ status: 'needs-review', code: 'unknown-opacity' });
+  });
+});

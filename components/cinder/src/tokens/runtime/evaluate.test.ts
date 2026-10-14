@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import { cloneCorpus, loadProfileCorpus } from '../../../scripts/tokens/authoring-test-support.ts';
 import { evaluateTheme, validateThemeSources, type ThemeSources } from './evaluate.ts';
@@ -206,6 +206,39 @@ describe('evaluateTheme', () => {
     expect(extra.diagnostics.map((d) => d.reason)).toContain(
       'token document is not referenced by the resolver',
     );
+  });
+});
+
+describe('evaluateTheme when a context fails unexpectedly', () => {
+  test('reports the failure against that context instead of throwing', () => {
+    // Projection builds each context's property map with Object.fromEntries; make it fail
+    // for the maps only, so validation (which also relies on it) is unaffected.
+    const real = Object.fromEntries.bind(Object);
+    const failing = spyOn(Object, 'fromEntries').mockImplementation(((entries: Iterable<any>) => {
+      const pairs = [...entries];
+      if (pairs.some(([key]) => typeof key === 'string' && key.startsWith('--cinder-'))) {
+        throw new Error('projection exploded');
+      }
+      return real(pairs);
+    }) as typeof Object.fromEntries);
+    let result: ReturnType<typeof evaluateTheme>;
+    try {
+      result = evaluateTheme(baseSources());
+    } finally {
+      failing.mockRestore();
+    }
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics.map((d) => d.context)).toEqual([
+      'light/default',
+      'light/reduced',
+      'light/forced-reduced-motion',
+      'dark/default',
+      'dark/reduced',
+      'dark/forced-reduced-motion',
+    ]);
+    expect(
+      result.diagnostics.every((d) => d.reason === 'projection exploded' && d.path === '$'),
+    ).toBe(true);
   });
 });
 

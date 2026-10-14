@@ -3,9 +3,11 @@ import type { ValueResolver } from './resolve.ts';
 import type { TokenType } from './types.ts';
 
 export type DimensionOrDuration = { value: number; unit: string };
+type ColorComponent = number | 'none';
+/** `isColorValue` admits exactly three channels, so the formatters below can destructure them without a check. */
 export type ColorValue = {
   colorSpace: string;
-  components: Array<number | 'none'>;
+  components: [ColorComponent, ColorComponent, ColorComponent];
   alpha?: number | 'none';
   hex?: string;
 };
@@ -199,11 +201,6 @@ const PREDEFINED_COLOR_SPACES = new Set([
  */
 function formatOtherColorSpace(value: ColorValue): string | undefined {
   const [first, second, third] = value.components;
-  if (first === undefined || second === undefined || third === undefined) {
-    throw new Error(
-      `${value.colorSpace} color value is missing a component: ${JSON.stringify(value)}`,
-    );
-  }
   const alpha = value.alpha === undefined ? '' : ` / ${formatComponent(value.alpha)}`;
   const [a, b, c] = [formatComponent(first), formatComponent(second), formatComponent(third)];
   const percent = (component: number | 'none'): string =>
@@ -229,16 +226,12 @@ function formatOtherColorSpace(value: ColorValue): string | undefined {
 
 function formatOklch(value: ColorValue): string {
   const [lightness, chroma, hue] = value.components;
-  if (lightness === undefined || chroma === undefined || hue === undefined)
-    throw new Error(`oklch color value is missing a component: ${JSON.stringify(value)}`);
   const alpha = value.alpha === undefined ? '' : ` / ${formatComponent(value.alpha)}`;
   return `oklch(${formatOklchLightness(lightness)} ${formatComponent(chroma)} ${formatComponent(hue)}${alpha})`;
 }
 
 function formatSrgb(value: ColorValue): string {
   const [red, green, blue] = value.components;
-  if (red === undefined || green === undefined || blue === undefined)
-    throw new Error(`srgb color value is missing a component: ${JSON.stringify(value)}`);
   const alpha = value.alpha === undefined ? '' : ` / ${formatComponent(value.alpha)}`;
   return `color(srgb ${formatComponent(red)} ${formatComponent(green)} ${formatComponent(blue)}${alpha})`;
 }

@@ -148,23 +148,53 @@ export function traceProvenance(
     return entries;
   });
 
+  /**
+   * Whether layer `index` declares a group above `path` that carries an `$extends`. A layer's
+   * own groups shadow the lookup documents, so a layer that restates the extended group cannot
+   * expand to a member only an earlier layer declares; the merge still delivers it.
+   */
+  function declaresExtendingAncestor(index: number, path: string): boolean {
+    const segments = path.split('.');
+    return segments.some((_, length) => {
+      const groupPath = segments.slice(0, length).join('.');
+      const group = locate(documents[index]!, groupPath).groups.find((g) => g.path === groupPath);
+      return typeof group?.group.$extends === 'string';
+    });
+  }
+
+  /** The last layer whose expansion holds `path`, else the last that extends a group above it. */
+  function supplyingLayer(path: string): number {
+    const expandedHolder = stack.findLastIndex((_, index) => expandedEntries[index]!.has(path));
+    if (expandedHolder >= 0) return expandedHolder;
+    return stack.findLastIndex((_, index) => declaresExtendingAncestor(index, path));
+  }
+
+  /** Where `path` is copied from when layer `index` supplies it through the `$extends` of its ancestor `length` segments deep. */
+  function extendsHop(
+    path: string,
+    segments: readonly string[],
+    index: number,
+    length: number,
+  ): { index: number; path: string } | undefined {
+    const groupPath = segments.slice(0, length).join('.');
+    const group = locate(documents[index]!, groupPath).groups.find((g) => g.path === groupPath);
+    const extended = group?.group.$extends;
+    const target = typeof extended === 'string' ? pointerOrReferencePath(extended) : undefined;
+    if (target === undefined) return undefined;
+    const origin = [target, ...segments.slice(length)].filter(Boolean).join('.');
+    const holder = supplyingLayer(origin);
+    return holder < 0 ? undefined : { index: holder, path: origin };
+  }
+
   /** The declaration that really supplies `path` in layer `index`, following `$extends` members back to their origin. */
   function originOf(path: string, index: number, depth = 0): { index: number; path: string } {
     if (rawEntries[index]!.has(path) || depth > 32) return { index, path };
     const segments = path.split('.');
-    for (let length = segments.length - 1; length >= 0; length--) {
-      const groupPath = segments.slice(0, length).join('.');
-      const group = locate(documents[index]!, groupPath).groups.find((g) => g.path === groupPath);
-      const extended = group?.group.$extends;
-      if (typeof extended !== 'string') continue;
-      const target = pointerOrReferencePath(extended);
-      if (target === undefined) continue;
-      const origin = [target, ...segments.slice(length)].filter(Boolean).join('.');
-      for (let layer = stack.length - 1; layer >= 0; layer--) {
-        if (expandedEntries[layer]!.has(origin)) return originOf(origin, layer, depth + 1);
-      }
-    }
-    return { index, path };
+    // The nearest extending ancestor that can account for the member wins.
+    const hop = segments
+      .map((_, length) => extendsHop(path, segments, index, length))
+      .findLast((candidate) => candidate !== undefined);
+    return hop === undefined ? { index, path } : originOf(hop.path, hop.index, depth + 1);
   }
 
   function typeOf(path: string, entry: CorpusEntry): EffectiveType {
@@ -233,8 +263,12 @@ export function traceProvenance(
   const traced = new Map<string, TokenContextProvenance>();
   for (const [path, entry] of finalEntries) {
     const layers: ContributingLayer[] = [];
+    const expandedAnywhere = expandedEntries.some((entries) => entries.has(path));
+    const supplies = stack.map((_, index) =>
+      expandedAnywhere ? expandedEntries[index]!.has(path) : declaresExtendingAncestor(index, path),
+    );
     stack.forEach((layer, index) => {
-      if (!expandedEntries[index]!.has(path)) return;
+      if (!supplies[index]) return;
       layers.push({
         document: layer.document,
         kind: layer.kind,
@@ -243,7 +277,7 @@ export function traceProvenance(
         via: rawEntries[index]!.has(path) ? 'declared' : 'extends',
       });
     });
-    const lastIndex = stack.findLastIndex((_, index) => expandedEntries[index]!.has(path));
+    const lastIndex = supplyingLayer(path);
     const origin = originOf(path, lastIndex);
     const winner: TokenLocation = { document: stack[origin.index]!.document, path: origin.path };
     traced.set(path, {

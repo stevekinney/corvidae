@@ -55,9 +55,9 @@ export function savedEnvelopeText() {
   )}\n`;
 }
 
-/** Validate the saved envelope, evaluate its six contexts, and produce the stylesheet. */
-export function consumerArtifacts() {
-  const envelope = JSON.parse(savedEnvelopeText());
+/** Validate a saved envelope (the bundled one by default), evaluate its six contexts, and produce the stylesheet. */
+export function consumerArtifacts(envelopeText = savedEnvelopeText()) {
+  const envelope = JSON.parse(envelopeText);
   if (envelope.base.sourceDigest !== CINDER_BASE.sourceDigest) {
     throw new Error('The saved envelope was written against a different Cinder base.');
   }
@@ -121,9 +121,14 @@ export function runConsumerChecks() {
   return artifacts;
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+/** Runs the checks and prints a summary when `entryPath` is this file, i.e. when it was run directly. */
+export function runAsScript(entryPath = process.argv[1]) {
+  if (entryPath === undefined || fileURLToPath(import.meta.url) !== entryPath) return false;
   const { maps, css } = runConsumerChecks();
   console.log(
     `[tokens-consumer] OK: ${CONTEXTS.length} contexts, ${Object.keys(maps['light/default']).length} properties, ${css.length} bytes of CSS.`,
   );
+  return true;
 }
+
+runAsScript();

@@ -2,7 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { CINDER_BASE } from './base-corpus.ts';
 import { evaluateThemeProperties } from './evaluate.ts';
-import { applyCssOnlyOverrides, buildThemeSources } from './theme-sources.ts';
+import {
+  applyCssOnlyOverrides,
+  buildThemeSources,
+  mergedContextDocument,
+} from './theme-sources.ts';
 import {
   renderThemeStylesheet,
   StylesheetError,
@@ -32,6 +36,26 @@ describe('buildThemeSources', () => {
     expect(sources.revision).toBe(3);
     expect(Object.keys(sources.documents)).toContain('overrides/forced-reduced-motion.tokens.json');
     expect(JSON.stringify(CINDER_BASE.resolver)).not.toContain('overrides/');
+  });
+});
+
+describe('mergedContextDocument', () => {
+  const radius = (document: unknown) =>
+    (document as { radius: { medium: { $value: unknown } } }).radius.medium.$value;
+
+  test('lays a context override over the base without flattening or evaluating it', () => {
+    const override = { radius: { medium: { $value: { value: 9, unit: 'px' } } } };
+    const sources = buildThemeSources(
+      { base: CINDER_BASE, overrides: { ...emptyOverrides, dark: override } },
+      1,
+    );
+    expect(radius(mergedContextDocument(sources, { theme: 'dark', motion: 'default' }))).toEqual({
+      value: 9,
+      unit: 'px',
+    });
+    expect(
+      radius(mergedContextDocument(sources, { theme: 'light', motion: 'default' })),
+    ).not.toEqual({ value: 9, unit: 'px' });
   });
 });
 
@@ -106,6 +130,13 @@ describe('renderThemeStylesheet', () => {
     expect(() =>
       renderThemeStylesheet(withValue('light/default', '--cinder-radius-md', value)),
     ).toThrow(StylesheetError);
+  });
+
+  test('reports a refusal as a StylesheetError that names itself', () => {
+    const run = () => renderThemeStylesheet(withValue('light/default', '--cinder-radius-md', ''));
+    expect(run).toThrow(StylesheetError);
+    expect(run).toThrow('The value of --cinder-radius-md is not a plain CSS value.');
+    expect(new StylesheetError('x').name).toBe('StylesheetError');
   });
 
   test('refuses a property outside the public Cinder surface', () => {

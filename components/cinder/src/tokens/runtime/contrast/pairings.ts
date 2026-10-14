@@ -322,7 +322,3 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
     description: 'Default text dimmed by the disabled opacity',
   },
 ];
-
-export function pairingById(id: string): ContrastPairing | undefined {
-  return CONTRAST_PAIRINGS.find((pairing) => pairing.id === id);
-}

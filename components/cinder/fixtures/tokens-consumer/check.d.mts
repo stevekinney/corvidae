@@ -11,5 +11,6 @@ export type ConsumerArtifacts = {
   css: string;
   diagnostics: unknown[];
 };
-export function consumerArtifacts(): ConsumerArtifacts;
+export function consumerArtifacts(envelopeText?: string): ConsumerArtifacts;
 export function runConsumerChecks(): ConsumerArtifacts;
+export function runAsScript(entryPath?: string): boolean;
