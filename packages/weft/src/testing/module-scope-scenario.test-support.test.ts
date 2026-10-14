@@ -21,4 +21,9 @@ describe('outcomeOf', () => {
     const outcome = await outcomeOf(() => Promise.reject(undefined));
     expect(() => rethrow(outcome)).toThrow('scenario failed');
   });
+
+  it('reports a scenario that never settles as hung once the guard elapses', async () => {
+    const outcome = await outcomeOf(() => new Promise<void>(() => {}), 5);
+    expect(() => rethrow(outcome)).toThrow('scenario did not settle within 5 ms; it is hung');
+  });
 });
