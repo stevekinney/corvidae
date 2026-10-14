@@ -18,6 +18,7 @@ import { createWeftClient } from '../../client/generated/operation-client.genera
 import { createConformanceTargetRunner } from '../../conformance/targets.ts';
 import { Engine } from '../../core/engine.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,
   REMOTE_WORKER_SUPPORTED_PROTOCOL_VERSIONS,
@@ -336,9 +337,9 @@ describe('weft.conformance.* — served through serve() and the generated client
         includeRunLockfile: false,
       });
       expect(await client['weft.conformance.targets']({})).toEqual({ targets: [] });
-      await expect(client['weft.conformance.report']({ target: 'reference' })).rejects.toThrow(
-        'No conformance target named "reference"',
-      );
+      expect(
+        await throwingRejectionOf(client['weft.conformance.report']({ target: 'reference' })),
+      ).toThrow('No conformance target named "reference"');
     } finally {
       await server.stop();
       engine[Symbol.dispose]();
