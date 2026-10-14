@@ -49,6 +49,7 @@ describe('package entry points', () => {
         'QUEUED_OPERATIONS_RANGE',
         'REQUIRED_CORPUS_FIXTURE_IDS',
         'SEEDED_PARTITION_COUNT',
+        'SUPPLEMENTARY_CORPUS_FIXTURE_IDS',
         'byteByByteChunks',
         'channelsForMode',
         'closeCodeForFailure',

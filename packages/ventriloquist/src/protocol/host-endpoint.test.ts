@@ -461,6 +461,48 @@ describe('operations the host refuses without queueing them', () => {
   });
 });
 
+describe('a refusal the host cannot report', () => {
+  function overflowing(options: { maxQueuedOperations?: number } = {}): HostEndpoint {
+    const host = new HostEndpoint(options, {
+      inbound: new SequenceCursor(),
+      outbound: new SequenceCursor(MAXIMUM_SEQUENCE),
+    });
+    expectOk(host.receive(helloFrame()));
+    expectOk(host.issueCapabilities({ generation: 1, capabilities: PIPE_CAPABILITIES }));
+    return host;
+  }
+
+  const overflow = { code: 'transport-failed', reason: 'sequence-overflow' };
+
+  test('returns the send failure and revokes the generation for a read-only refusal', () => {
+    const host = overflowing();
+    const refused = host.receive(
+      clientFrame({ kind: 'resize', columns: 80, rows: 24 }, { sequence: 1 }),
+    );
+    expect(failureOf(refused)).toEqual(overflow);
+    expect(host.authorityRevoked).toBe(true);
+    expect(failureOf(host.receive(inputFrame(2)))).toEqual({
+      code: 'stale-generation',
+      reason: 'attachment-revoked',
+    });
+  });
+
+  test('returns the send failure and revokes the generation for a fifo-full refusal', () => {
+    const host = overflowing({ maxQueuedOperations: 1 });
+    expectOk(host.receive(inputFrame(1)));
+    expect(failureOf(host.receive(inputFrame(2)))).toEqual(overflow);
+    expect(host.authorityRevoked).toBe(true);
+    expect(failureOf(host.receive(inputFrame(3))).reason).toBe('attachment-revoked');
+  });
+
+  test('returns the send failure and revokes the generation for a stale-generation refusal', () => {
+    const host = overflowing();
+    expect(failureOf(host.receive(inputFrame(1, 2)))).toEqual(overflow);
+    expect(host.authorityRevoked).toBe(true);
+    expect(failureOf(host.receive(inputFrame(1))).reason).toBe('attachment-revoked');
+  });
+});
+
 describe('acknowledgements from the client', () => {
   function withOutput() {
     const pair = connect();
@@ -715,6 +757,85 @@ describe('frames the host sends', () => {
       code: 'stale-generation',
       reason: 'attachment-revoked',
     });
+  });
+
+  test('refuses to fail a sequence that was an output-consumed frame, not an operation', () => {
+    const { host, client } = connect();
+    expectOk(client.receive(expectOk(host.output('pty', 'abc')).frame));
+    const first = expectOk(client.input('a'));
+    const consumed = expectOk(client.consumeOutput(3));
+    const second = expectOk(client.input('b'));
+    for (const sent of [first, consumed, second]) expectOk(host.receive(sent.frame));
+    expect(consumed.sequence).toBe(2);
+    expect(failureOf(host.failOperation(consumed.sequence, 'backend-failed', 'x'))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unknown-operation',
+    });
+    expect(host.authorityRevoked).toBe(false);
+    expectOk(host.failOperation(second.sequence, 'backend-failed', 'x'));
+    expect(host.authorityRevoked).toBe(true);
+  });
+
+  test('revokes authority when the process exits, and refuses input and resize afterwards', () => {
+    const { host } = connect();
+    expect(host.authorityRevoked).toBe(false);
+    expectOk(host.processExit(0, null));
+    expect(host.authorityRevoked).toBe(true);
+    const input = host.receive(inputFrame(1));
+    expect(failureOf(input)).toEqual({ code: 'read-only', reason: 'authority-revoked' });
+    const reply = decodeFrame(input.ok ? '' : input.failure.reply!, 'client');
+    expect(expectOk(reply)).toMatchObject({
+      kind: 'operation-failure',
+      code: 'read-only',
+      operationSequence: 1,
+    });
+    expect(
+      failureOf(
+        host.receive(clientFrame({ kind: 'resize', columns: 80, rows: 24 }, { sequence: 2 })),
+      ),
+    ).toEqual({ code: 'read-only', reason: 'authority-revoked' });
+    // Nothing was queued, so there is no operation to acknowledge.
+    expect(failureOf(host.acknowledgeOperation(1)).reason).toBe('future-acknowledgement');
+    // The attachment is still live for cleanup.
+    expectOk(host.cleanupResult('complete'));
+  });
+
+  test('does not revoke authority when the process exit could not be sent', () => {
+    const host = new HostEndpoint(
+      {},
+      { inbound: new SequenceCursor(), outbound: new SequenceCursor(MAXIMUM_SEQUENCE) },
+    );
+    expectOk(host.receive(helloFrame()));
+    expectOk(host.issueCapabilities({ generation: 1, capabilities: PTY_CAPABILITIES }));
+    expect(host.processExit(0, null).ok).toBe(false);
+    expect(host.authorityRevoked).toBe(false);
+  });
+
+  test('issues no capabilities once the endpoint is closed', () => {
+    const malformed = new HostEndpoint();
+    expectOk(malformed.receive(helloFrame()));
+    expect(failureOf(malformed.receive('not json')).code).toBe('malformed-frame');
+    expect(
+      failureOf(malformed.issueCapabilities({ generation: 1, capabilities: PTY_CAPABILITIES })),
+    ).toEqual({
+      code: 'stale-generation',
+      reason: 'attachment-revoked',
+    });
+    expect(malformed.phase).toBe('awaiting-capabilities');
+    expect(malformed.terms).toBeUndefined();
+    expect(malformed.output('pty', 'x').ok).toBe(false);
+
+    const failed = new HostEndpoint();
+    expectOk(failed.receive(helloFrame()));
+    expectOk(failed.attachmentError('spawn-failed', 'no shell'));
+    expect(
+      failureOf(failed.issueCapabilities({ generation: 1, capabilities: PTY_CAPABILITIES })),
+    ).toEqual({
+      code: 'stale-generation',
+      reason: 'attachment-revoked',
+    });
+    expect(failed.phase).toBe('awaiting-capabilities');
+    expect(failed.terms).toBeUndefined();
   });
 
   test('can still report exit and cleanup after the client was revoked for a bad frame', () => {

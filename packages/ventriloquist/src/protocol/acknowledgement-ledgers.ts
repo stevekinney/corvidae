@@ -11,11 +11,14 @@ export class OperationLedger {
   #unresolved: number[];
   #lastResolved: number;
   #highestSubmitted: number;
+  /** Every sequence that was ever an operation: sequences of other messages are never in it. */
+  readonly #submitted: Set<number>;
 
   constructor() {
     this.#unresolved = [];
     this.#lastResolved = 0;
     this.#highestSubmitted = 0;
+    this.#submitted = new Set();
   }
 
   get unresolvedCount(): number {
@@ -25,6 +28,7 @@ export class OperationLedger {
   submit(sequence: number): void {
     this.#unresolved.push(sequence);
     this.#highestSubmitted = sequence;
+    this.#submitted.add(sequence);
   }
 
   /** Check that `sequence` is the next operation to be acknowledged or failed before queueing. */
@@ -40,10 +44,15 @@ export class OperationLedger {
     return accept(undefined);
   }
 
-  /** Check that a failure of an already accepted operation names an operation that was submitted. */
+  /**
+   * Check that a failure of an already accepted operation names an operation that was submitted.
+   * Sequences are shared with other messages (such as `output-consumed`), so being no greater than
+   * the highest submitted sequence is not enough: the sequence must itself have been an operation.
+   */
   verifySubmitted(sequence: number): ProtocolResult<void> {
     if (sequence > this.#highestSubmitted)
       return reject('malformed-frame', 'future-acknowledgement');
+    if (!this.#submitted.has(sequence)) return reject('malformed-frame', 'unknown-operation');
     return accept(undefined);
   }
 

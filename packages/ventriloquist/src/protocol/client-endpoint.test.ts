@@ -291,6 +291,26 @@ describe('receiving after the handshake', () => {
     });
   });
 
+  test('revokes authority on a process exit and refuses input and resize locally afterwards', () => {
+    const client = attached();
+    expect(client.authorityRevoked).toBe(false);
+    expectOk(
+      client.receive(
+        serverFrame({ kind: 'process-exit', exitCode: 0, signal: null }, { sequence: 1 }),
+      ),
+    );
+    expect(client.authorityRevoked).toBe(true);
+    expect(failureOf(client.input('x'))).toEqual({
+      code: 'read-only',
+      reason: 'authority-revoked',
+    });
+    expect(failureOf(client.resize(80, 24))).toEqual({
+      code: 'read-only',
+      reason: 'authority-revoked',
+    });
+    expect(client.phase).toBe('attached');
+  });
+
   test('revokes authority on an attachment error and closes on the cleanup result', () => {
     const client = attached();
     expectOk(
@@ -419,6 +439,29 @@ describe('acknowledgements from the host', () => {
     expect(client.authorityRevoked).toBe(false);
     expect(client.phase).toBe('attached');
     expectOk(client.receive(ack(sequences[0]!, 2)));
+  });
+
+  test('closes on a failure after acceptance that names a sequence which was not an operation', () => {
+    const client = attached();
+    const first = expectOk(client.input('a'));
+    expectOk(client.receive(output(1)));
+    const consumed = expectOk(client.consumeOutput(1));
+    expectOk(client.input('b'));
+    expect([first.sequence, consumed.sequence]).toEqual([1, 2]);
+    const failure = serverFrame(
+      {
+        kind: 'operation-failure',
+        operationSequence: consumed.sequence,
+        code: 'backend-failed',
+        message: 'm',
+      },
+      { sequence: 2 },
+    );
+    expect(failureOf(client.receive(failure))).toEqual({
+      code: 'malformed-frame',
+      reason: 'unknown-operation',
+    });
+    expect(client.authorityRevoked).toBe(false);
   });
 
   test('closes on a failure after acceptance that names an operation never submitted', () => {

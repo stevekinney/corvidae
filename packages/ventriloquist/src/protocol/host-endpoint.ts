@@ -22,7 +22,13 @@ import type {
   ProtocolMessage,
 } from './messages.ts';
 import { PROTOCOL_VERSION } from './protocol-constants.ts';
-import { accept, reject, type ProtocolFailure, type ProtocolResult } from './protocol-failure.ts';
+import {
+  accept,
+  reject,
+  type FailureReason,
+  type ProtocolFailure,
+  type ProtocolResult,
+} from './protocol-failure.ts';
 import { SequenceCursor } from './sequence-cursor.ts';
 
 export type HostEndpointOptions = {
@@ -83,7 +89,7 @@ export class HostEndpoint {
     return this.#terms;
   }
 
-  /** Whether the client's authority is gone: it asked to stop, or an operation failed after acceptance. */
+  /** Whether the client's authority is gone: it asked to stop, the process exited, or an operation failed after acceptance. */
   get authorityRevoked(): boolean {
     return this.#authorityRevoked;
   }
@@ -169,7 +175,7 @@ export class HostEndpoint {
       code: 'stale-generation',
       message: reason,
     }));
-    return reject('stale-generation', reason, reply.ok ? (reply.value.frame as string) : undefined);
+    return this.#refusal(reply, 'stale-generation', reason);
   }
 
   #receiveOperation(
@@ -202,7 +208,22 @@ export class HostEndpoint {
       code,
       message: reason,
     }));
-    return reject(code, reason, reply.ok ? (reply.value.frame as string) : undefined);
+    return this.#refusal(reply, code, reason);
+  }
+
+  /**
+   * The soft rejection that carries `reply`. When the reply itself could not be encoded or numbered
+   * (the sequence overflowed, so delivery is unknown) the soft rejection becomes the hard failure
+   * that was hit: it is returned instead, and the generation and authority are revoked.
+   */
+  #refusal(
+    reply: ProtocolResult<SentFrame>,
+    code: 'read-only' | 'fifo-full' | 'stale-generation',
+    reason: FailureReason,
+  ): Rejection {
+    if (reply.ok) return reject(code, reason, reply.value.frame as string);
+    this.#authorityRevoked = true;
+    return this.#close({ ok: false, failure: reply.failure });
   }
 
   /**
@@ -216,6 +237,8 @@ export class HostEndpoint {
     if (this.#phase !== 'awaiting-capabilities' || this.#hello === undefined) {
       return reject('transport-failed', 'unexpected-message');
     }
+    // A closed endpoint (a hard failure, or a startup error already sent) can never become attached.
+    if (this.#inboundClosed) return reject('stale-generation', 'attachment-revoked');
     const broken = validateCapabilities(options.capabilities, this.#hello.requestedMode);
     if (broken !== undefined) return reject('malformed-frame', broken);
     const encoded = encodeFrame(
@@ -336,7 +359,11 @@ export class HostEndpoint {
       exitCode,
       signal,
     }));
-    if (sent.ok) this.#processExitReported = true;
+    if (sent.ok) {
+      this.#processExitReported = true;
+      // Process exit revokes the generation's input authority, ahead of cleanup.
+      this.#authorityRevoked = true;
+    }
     return sent;
   }
 

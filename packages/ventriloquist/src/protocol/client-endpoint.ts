@@ -194,6 +194,8 @@ export class ClientEndpoint {
       case 'process-exit':
         if (this.#processExitReceived) return reject('malformed-frame', 'already-reported');
         this.#processExitReceived = true;
+        // The process is gone, so there is nothing left to receive input or a resize.
+        this.#authorityRevoked = true;
         return undefined;
       case 'attachment-error':
         this.#authorityRevoked = true;

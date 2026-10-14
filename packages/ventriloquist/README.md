@@ -25,7 +25,7 @@ Browser code must import only the root entry. `@lostgradient/terminal` enforces 
 - `encodeFrame` and `decodeFrame`: one complete application frame in or out. Control messages are JSON text frames; `input` and `output` are binary frames with a 40 byte big-endian header (version, kind, direction, channel, session identifier, generation, sequence and payload length). Decoding returns a typed `ProtocolFailure` instead of throwing, checks size before structure, and copies accepted payloads.
 - `HostEndpoint` and `ClientEndpoint`: the two halves of one attachment's conversation. They validate session, generation, strictly consecutive sequence, capabilities, direction, and acknowledgements before the caller sees a message, and build every frame they send. They own no transport, process or timer.
 - `FAILURE_TABLE` and `describeFailure`: the failure and cleanup table as data, including each code's WebSocket close code.
-- `CORPUS` and the partition helpers: the shared byte fixtures that the protocol suite delivers in every two-chunk split, byte by byte, and in 1,000 partitions from a checked-in seed.
+- `CORPUS`, `REQUIRED_CORPUS_FIXTURE_IDS`, `SUPPLEMENTARY_CORPUS_FIXTURE_IDS` and the partition helpers: the shared byte fixtures (the required identifiers are exactly the ten the contract freezes; the supplementary ones are extra cases that also run) that the protocol suite delivers in every two-chunk split, byte by byte, and in 1,000 partitions from a checked-in seed.
 
 An input acknowledgement means the operation entered the host FIFO. Consumed-output acknowledgement means the client parsed those bytes. Process exit is a separate message. None implies another.
 

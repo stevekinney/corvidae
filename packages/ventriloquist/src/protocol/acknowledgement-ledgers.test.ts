@@ -45,6 +45,24 @@ describe('OperationLedger', () => {
     });
   });
 
+  test('refuses a failure that names a sequence which was never a submitted operation', () => {
+    // Sequence 2 belonged to some other message, such as an output-consumed frame.
+    const ledger = new OperationLedger();
+    ledger.submit(1);
+    ledger.submit(3);
+    expect(ledger.verifySubmitted(1).ok).toBe(true);
+    expect(ledger.verifySubmitted(3).ok).toBe(true);
+    expect(ledger.verifySubmitted(2)).toMatchObject({
+      ok: false,
+      failure: { code: 'malformed-frame', reason: 'unknown-operation' },
+    });
+    expect(ledger.verifySubmitted(0).ok).toBe(false);
+    expect(ledger.verifySubmitted(4)).toMatchObject({
+      ok: false,
+      failure: { reason: 'future-acknowledgement' },
+    });
+  });
+
   test('resolving with nothing outstanding changes nothing', () => {
     const ledger = new OperationLedger();
     ledger.resolve();

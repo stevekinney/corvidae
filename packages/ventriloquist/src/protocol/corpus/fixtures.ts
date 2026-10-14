@@ -43,11 +43,13 @@ const emptyChunks = [
   new Uint8Array(0),
 ];
 
-/** The fixture identifiers the protocol suite requires, in the order of the matrix. */
+/**
+ * The ten fixture identifiers `documentation/terminal/contract.md` freezes, in contract order.
+ * Consumers validating the exact contract cells must use this list and nothing wider.
+ */
 export const REQUIRED_CORPUS_FIXTURE_IDS = [
   'utf8-split-alpha',
   'control-split-sgr',
-  'csi-osc-terminators',
   'combining-and-zwj',
   'cjk-width',
   'rtl-logical-order',
@@ -56,14 +58,23 @@ export const REQUIRED_CORPUS_FIXTURE_IDS = [
   'cursor-and-attributes',
   'invalid-utf8',
   'query-reply',
+] as const;
+
+/**
+ * Fixtures the protocol suite also runs and the contract does not freeze. They are outside the
+ * required identifiers, so exact cell identity checks against the contract are unaffected.
+ */
+export const SUPPLEMENTARY_CORPUS_FIXTURE_IDS = [
+  'csi-osc-terminators',
   'nul-and-binary-mouse',
   'empty-chunks',
   'producer-mutation',
 ] as const;
 
-export type CorpusFixtureId = (typeof REQUIRED_CORPUS_FIXTURE_IDS)[number];
+export type CorpusFixtureId =
+  (typeof REQUIRED_CORPUS_FIXTURE_IDS)[number] | (typeof SUPPLEMENTARY_CORPUS_FIXTURE_IDS)[number];
 
-/** Every fixture, keyed by identifier and ordered like `REQUIRED_CORPUS_FIXTURE_IDS`. */
+/** Every fixture: the required ones in contract order, then the supplementary ones. */
 export const CORPUS: readonly (CorpusFixture & { readonly id: CorpusFixtureId })[] = [
   {
     id: 'utf8-split-alpha',
@@ -75,16 +86,6 @@ export const CORPUS: readonly (CorpusFixture & { readonly id: CorpusFixtureId })
     id: 'control-split-sgr',
     description: 'SGR color sequences, including a truecolor one with many parameters.',
     bytes: bytesOf(`${ESC}[31mred${ESC}[0m ${ESC}[38;2;255;100;0morange${ESC}[0m`),
-    channel: 'pty',
-  },
-  {
-    id: 'csi-osc-terminators',
-    description: 'CSI, and OSC strings ended by BEL and by the two-byte string terminator.',
-    bytes: bytesOf(
-      `${ESC}[2J${ESC}[H`,
-      `${ESC}]0;window title\u0007`,
-      `${ESC}]8;;https://example.test/${ESC}\\link${ESC}]8;;${ESC}\\`,
-    ),
     channel: 'pty',
   },
   {
@@ -139,6 +140,16 @@ export const CORPUS: readonly (CorpusFixture & { readonly id: CorpusFixtureId })
     id: 'query-reply',
     description: 'Terminal queries a program writes and expects the terminal to answer.',
     bytes: bytesOf(`${ESC}[6n${ESC}[c${ESC}]10;?\u0007`),
+    channel: 'pty',
+  },
+  {
+    id: 'csi-osc-terminators',
+    description: 'CSI, and OSC strings ended by BEL and by the two-byte string terminator.',
+    bytes: bytesOf(
+      `${ESC}[2J${ESC}[H`,
+      `${ESC}]0;window title\u0007`,
+      `${ESC}]8;;https://example.test/${ESC}\\link${ESC}]8;;${ESC}\\`,
+    ),
     channel: 'pty',
   },
   {

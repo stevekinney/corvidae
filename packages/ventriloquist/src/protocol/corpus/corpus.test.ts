@@ -8,7 +8,12 @@ import {
   PTY_CAPABILITIES,
 } from '../endpoint-pair.test-support.ts';
 import type { HostEndpoint } from '../host-endpoint.ts';
-import { CORPUS, REQUIRED_CORPUS_FIXTURE_IDS, type CorpusFixture } from './fixtures.ts';
+import {
+  CORPUS,
+  REQUIRED_CORPUS_FIXTURE_IDS,
+  SUPPLEMENTARY_CORPUS_FIXTURE_IDS,
+  type CorpusFixture,
+} from './fixtures.ts';
 import {
   byteByByteChunks,
   PARTITION_SEED,
@@ -114,8 +119,38 @@ function assertDelivery(fixture: CorpusFixture, chunks: readonly Uint8Array[]): 
 }
 
 describe('the corpus', () => {
-  test('has exactly the required fixtures, each with a distinct identifier and a description', () => {
-    expect(CORPUS.map((fixture) => fixture.id)).toEqual([...REQUIRED_CORPUS_FIXTURE_IDS]);
+  test('requires exactly the ten identifiers the contract freezes, in the contract order', () => {
+    expect([...REQUIRED_CORPUS_FIXTURE_IDS]).toEqual([
+      'utf8-split-alpha',
+      'control-split-sgr',
+      'combining-and-zwj',
+      'cjk-width',
+      'rtl-logical-order',
+      'soft-wrap-retention',
+      'alternate-screen',
+      'cursor-and-attributes',
+      'invalid-utf8',
+      'query-reply',
+    ]);
+  });
+
+  test('names the extra fixtures as supplementary, outside the required identifiers', () => {
+    expect([...SUPPLEMENTARY_CORPUS_FIXTURE_IDS]).toEqual([
+      'csi-osc-terminators',
+      'nul-and-binary-mouse',
+      'empty-chunks',
+      'producer-mutation',
+    ]);
+    for (const id of SUPPLEMENTARY_CORPUS_FIXTURE_IDS) {
+      expect(REQUIRED_CORPUS_FIXTURE_IDS as readonly string[]).not.toContain(id);
+    }
+  });
+
+  test('runs every required and supplementary fixture, each with a distinct identifier and a description', () => {
+    expect(CORPUS.map((fixture) => fixture.id)).toEqual([
+      ...REQUIRED_CORPUS_FIXTURE_IDS,
+      ...SUPPLEMENTARY_CORPUS_FIXTURE_IDS,
+    ]);
     expect(new Set(CORPUS.map((fixture) => fixture.id)).size).toBe(CORPUS.length);
     for (const fixture of CORPUS) expect(fixture.description.length).toBeGreaterThan(10);
   });
@@ -202,7 +237,7 @@ describe('two channels', () => {
 test('every required fixture and strategy cell ran its full set of deliveries', () => {
   // A cell that never ran, or ran fewer deliveries than the matrix requires, fails the suite.
   const missing: string[] = [];
-  for (const id of REQUIRED_CORPUS_FIXTURE_IDS) {
+  for (const id of [...REQUIRED_CORPUS_FIXTURE_IDS, ...SUPPLEMENTARY_CORPUS_FIXTURE_IDS]) {
     const fixture = CORPUS.find((candidate) => candidate.id === id);
     if (fixture === undefined) {
       missing.push(`${id}: fixture is missing`);

@@ -29,6 +29,7 @@ export type FailureReason =
   | 'out-of-order-sequence'
   | 'sequence-overflow'
   | 'unexpected-message'
+  | 'unknown-operation'
   | 'duplicate-handshake'
   | 'handshake-incomplete'
   | 'operation-not-permitted'
@@ -65,7 +66,11 @@ export function reject(
   return { ok: false, failure: reply === undefined ? { code, reason } : { code, reason, reply } };
 }
 
-/** The failure code a structural problem maps to: an unknown version fails closed, all else is malformed. */
+/**
+ * The failure code a structural problem maps to: an unknown version fails closed with
+ * `protocol-version-unsupported`, an oversized frame is `frame-too-large`, and every other
+ * structural problem is `malformed-frame`.
+ */
 export function codeForReason(reason: FailureReason): FailureCode {
   if (reason === 'wrong-version') return 'protocol-version-unsupported';
   if (reason === 'oversized') return 'frame-too-large';
