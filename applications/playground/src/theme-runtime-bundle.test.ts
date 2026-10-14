@@ -156,7 +156,7 @@ describe('the token runtime browser bundle', () => {
     const outside = graph.filter(
       (file) =>
         !/\/components\/cinder\/src\/tokens\//.test(file.path) &&
-        !/\/node_modules\/(?:\.bun\/[^/]+\/node_modules\/)?postcss-value-parser\//.test(
+        !/\/node_modules\/(?:\.bun\/[^/]+\/node_modules\/)?(?:postcss-value-parser|culori)\//.test(
           file.path,
         ) &&
         !file.path.endsWith('/entry.ts'),

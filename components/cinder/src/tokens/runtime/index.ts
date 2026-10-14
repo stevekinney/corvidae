@@ -40,6 +40,7 @@ export type {
 export { CINDER_BASE } from './base-corpus.ts';
 export type { CinderBase } from './base-corpus.ts';
 export { authoringContexts, authoringLayerStack } from './context-stack.ts';
+export * from './contrast/index.ts';
 export { evaluateTheme, evaluateThemeProperties, validateThemeSources } from './evaluate.ts';
 export type {
   ThemeDiagnostic,

@@ -16,6 +16,7 @@ import {
   type CatalogueFilters,
   type CatalogueGroupId,
 } from './theme-builder-catalogue.ts';
+import type { ExportReadiness } from './theme-check-types.ts';
 import type { ThemePreviewContext, ThemePreviewProperty } from './theme-preview-message.ts';
 import { DEFAULT_THEME_PREVIEW_SCENE_ID, themePreviewSceneById } from './theme-preview-scenes.ts';
 import type { SaveIndicator } from './theme-save-status.ts';
@@ -61,7 +62,10 @@ export class ThemeWorkbenchState {
   saveStatus = $state<SaveStatus>('saved');
   /** Actionable copy for a storage failure; `null` while persistence is healthy. */
   storageNotice = $state.raw<Pick<SaveIndicator, 'notice' | 'actions'> | null>(null);
+  /** Outstanding findings: accessibility errors, items to review and invalid source. */
   findingsCount = $state(0);
+  /** What the checks say about exporting the committed revision (COR-259). */
+  exportReadiness = $state<ExportReadiness>('checking');
   preview = $state.raw<PreviewStatus>({ phase: 'loading', appliedRevision: null, error: null });
 
   /** Per-pane scroll offsets, kept so a pane that was hidden comes back where it was. */
@@ -111,6 +115,12 @@ export class ThemeWorkbenchState {
     this.saveStatus = indicator.label === 'Saved locally' ? 'saved' : 'unsaved';
     this.storageNotice =
       indicator.notice === null ? null : { notice: indicator.notice, actions: indicator.actions };
+  }
+
+  /** Mirror the checks panel's result into the toolbar. */
+  setChecks(summary: { findings: number; readiness: ExportReadiness }): void {
+    this.findingsCount = summary.findings;
+    this.exportReadiness = summary.readiness;
   }
 
   setPane(pane: WorkbenchPane): void {
