@@ -218,3 +218,56 @@ describe('the budget is enforced inside a row', () => {
     expect(projection.bytes).toBe(258);
   });
 });
+
+describe('slices are bounded by bytes before they are materialized (COR-1516)', () => {
+  const MARKS = '\u0301'.repeat(1000);
+
+  /** Every cell is a letter carrying a long run of combining marks, and the fake counts what it hands out. */
+  function markedBuffer() {
+    const counts = { cells: 0, characters: 0, widest: 0 };
+    const buffer: ProjectionBuffer = {
+      length: 1,
+      getLine: () => ({
+        isWrapped: false,
+        length: 100_000,
+        translateToString: (_trimRight, start = 0, end = 100_000) => {
+          const cells = Math.max(0, Math.min(end, 100_000) - start);
+          counts.cells += cells;
+          counts.widest = Math.max(counts.widest, cells);
+          const text = `a${MARKS}`.repeat(cells);
+          counts.characters += text.length;
+          return text;
+        },
+      }),
+    };
+    return { buffer, counts };
+  }
+
+  test('never asks for more cells than the bytes still unspent', () => {
+    const { buffer, counts } = markedBuffer();
+    const projection = projectBuffer(buffer, 8);
+    // "a" is one byte and each combining mark two, so seven bytes is the last whole code point.
+    expect(projection.bytes).toBe(7);
+    expect(projection.truncated).toBe(true);
+    expect(counts.widest).toBeLessThanOrEqual(8);
+    expect(counts.cells).toBeLessThanOrEqual(8);
+  });
+
+  test('clips an oversized slice before it is encoded', () => {
+    const encoded: number[] = [];
+    const original = TextEncoder.prototype.encode;
+    TextEncoder.prototype.encode = function encode(this: TextEncoder, input?: string) {
+      encoded.push(input?.length ?? 0);
+      return original.call(this, input);
+    };
+    try {
+      const { buffer } = markedBuffer();
+      const projection = projectBuffer(buffer, 8);
+      expect(projection.text).toBe('a' + '\u0301'.repeat(3));
+      expect(projection.bytes).toBe(7);
+    } finally {
+      TextEncoder.prototype.encode = original;
+    }
+    expect(Math.max(...encoded)).toBeLessThanOrEqual(8);
+  });
+});

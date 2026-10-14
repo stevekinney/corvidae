@@ -787,7 +787,12 @@ describe('settings and design tokens', () => {
     s.settings.activateLink = activate;
     s.attachment.refresh();
     expect(engine.updates.at(-1)).toMatchObject({ ariaLabel: 'Renamed', announceOutput: true });
-    expect(engine.linkActivations.at(-1)).toBe(activate);
+    // The handler is wrapped in the attachment's guard, so it is the delegate that must match.
+    const urls: string[] = [];
+    s.settings.activateLink = (url) => urls.push(url);
+    s.attachment.refresh();
+    engine.linkActivations.at(-1)!('https://example.test/');
+    expect(urls).toEqual(['https://example.test/']);
     s.attachment.dispose();
   });
 
@@ -811,5 +816,131 @@ describe('reading state', () => {
     s.attachment.dispose();
     expect(s.attachment.readProjection()).toBeUndefined();
     expect(s.attachment.following).toBe(true);
+  });
+});
+
+describe('host callbacks and cleanup that throw (COR-1516)', () => {
+  test('a throwing onLinkActivate fails closed instead of escaping the engine callback', async () => {
+    const s = setup({
+      settings: {
+        activateLink: () => {
+          throw new Error('link handler threw');
+        },
+      },
+    });
+    const engine = await s.load();
+    expect(engine.linkActivations).toHaveLength(1);
+    expect(() => engine.linkActivations[0]!('https://example.test/')).not.toThrow();
+    expect(s.failures).toEqual([{ phase: 'render', message: 'link handler threw' }]);
+    expect(s.controller.failures).toEqual(s.failures);
+    expect(s.controller.unsubscriptions).toBe(1);
+    expect(engine.calls.filter((call) => call === 'dispose')).toHaveLength(1);
+  });
+
+  test('a throwing link handler supplied by a later refresh is guarded too', async () => {
+    const s = setup();
+    const engine = await s.load();
+    s.settings.activateLink = () => {
+      throw new Error('late link handler threw');
+    };
+    s.attachment.refresh();
+    expect(() => engine.linkActivations.at(-1)!('https://example.test/')).not.toThrow();
+    expect(s.failures).toEqual([{ phase: 'render', message: 'late link handler threw' }]);
+  });
+
+  test('a parsed callback that throws inside the engine write completion fails the parse closed', async () => {
+    const s = setup();
+    const engine = await s.load();
+    s.controller.everRegistered[0]!(bytes(65), () => {
+      throw new Error('parsed callback threw');
+    });
+    // The write call already returned; this is the engine finishing the write later.
+    expect(engine.acknowledge).toHaveLength(1);
+    expect(() => engine.acknowledge[0]!()).not.toThrow();
+    expect(s.failures).toEqual([{ phase: 'parse', message: 'parsed callback threw' }]);
+    expect(s.controller.failures).toEqual(s.failures);
+    expect(s.controller.unsubscriptions).toBe(1);
+    expect(engine.calls.filter((call) => call === 'dispose')).toHaveLength(1);
+  });
+
+  test('release finishes every cleanup step when the controller unsubscribe throws', async () => {
+    const s = setup();
+    s.controller.subscribeOutput = () => () => {
+      throw new Error('unsubscribe threw');
+    };
+    const engine = await s.load();
+    expect(s.scheduler.pending).toBe(1);
+    expect(resizeObservers.length).toBeGreaterThan(0);
+    expect(() => s.attachment.dispose()).toThrow('unsubscribe threw');
+    expect(engine.calls.filter((call) => call === 'dispose')).toHaveLength(1);
+    expect(s.scheduler.pending).toBe(0);
+    expect(resizeObservers.every((observer) => observer.disconnected)).toBe(true);
+    expect(s.attachment.ready).toBe(false);
+  });
+
+  test('a failure still reports and revokes the controller when cleanup throws', async () => {
+    const s = setup();
+    s.controller.subscribeOutput = () => () => {
+      throw new Error('unsubscribe threw');
+    };
+    const engine = await s.load();
+    engine.throwOn.update = new Error('theme rejected');
+    expect(() => s.attachment.refresh()).toThrow('unsubscribe threw');
+    expect(s.failures).toEqual([{ phase: 'render', message: 'theme rejected' }]);
+    expect(s.controller.failures).toEqual(s.failures);
+    expect(engine.calls.filter((call) => call === 'dispose')).toHaveLength(1);
+    expect(s.scheduler.pending).toBe(0);
+  });
+});
+
+describe('refresh re-reads the font (COR-1516)', () => {
+  test('applies the computed family and size, then remeasures the cell and the fit', async () => {
+    const s = setup();
+    const engine = await s.load();
+    engine.measurement = { columns: 100, rows: 30 };
+    s.scheduler.flush();
+    const measured = engine.measureCount;
+    const remeasured = engine.calls.filter((call) => call === 'remeasure').length;
+    s.host.style.fontFamily = 'Fira, monospace';
+    s.host.style.fontSize = '17px';
+    s.attachment.refresh();
+    expect(engine.updates.at(-1)).toMatchObject({
+      fontFamily: 'Fira, monospace',
+      fontSize: 17,
+    });
+    expect(engine.calls.filter((call) => call === 'remeasure')).toHaveLength(remeasured + 1);
+    s.scheduler.flush();
+    expect(engine.measureCount).toBe(measured + 1);
+    // An unchanged font is not measured again.
+    s.attachment.refresh();
+    expect(engine.calls.filter((call) => call === 'remeasure')).toHaveLength(remeasured + 1);
+    s.attachment.dispose();
+  });
+});
+
+describe('failure reporting that throws (COR-1516)', () => {
+  test('a throwing onFailure still tells the controller, and the host error stays loud', async () => {
+    const host = makeHost();
+    const factory = createFakeFactory();
+    const controller = createFakeController();
+    const attachment = createTerminalAttachment({
+      host,
+      controller,
+      loadEngine: async () => factory.factory,
+      readSettings: () => defaultSettings,
+      onReady: () => {},
+      onGeometry: () => {},
+      onFailure: () => {
+        throw new Error('onFailure threw');
+      },
+      onTitle: () => {},
+      scheduleFit: createManualScheduler().schedule,
+    });
+    await settle();
+    const engine = factory.created[0]!.engine;
+    engine.throwOn.update = new Error('theme rejected');
+    expect(() => attachment.refresh()).toThrow('onFailure threw');
+    expect(controller.failures).toEqual([{ phase: 'render', message: 'theme rejected' }]);
+    expect(engine.calls.filter((call) => call === 'dispose')).toHaveLength(1);
   });
 });
