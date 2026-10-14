@@ -3,7 +3,7 @@
  * Code 1006 is reserved for a locally observed abnormal closure and never appears here because an
  * application-initiated close frame must not carry it.
  */
-export const FAILURE_CLOSE_CODES = {
+export const FAILURE_CLOSE_CODES = Object.freeze({
   'protocol-version-unsupported': 1002,
   'malformed-frame': 1002,
   'frame-too-large': 1009,
@@ -15,7 +15,7 @@ export const FAILURE_CLOSE_CODES = {
   'backend-failed': 1011,
   'transport-failed': 1011,
   'cleanup-incomplete': 1000,
-} as const;
+} as const);
 
 export type FailureCode = keyof typeof FAILURE_CLOSE_CODES;
 
