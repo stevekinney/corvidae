@@ -114,9 +114,12 @@ async function listenOrRollBack(
     await writeRunLockfile(server.url);
     return server;
   } catch (error) {
+    // Each release is best effort, so a failing one cannot replace the startup error it follows.
     await server?.stop().catch(() => {});
     await engine.shutdown().catch(() => false);
-    storage[Symbol.dispose]();
+    await Promise.resolve()
+      .then(() => storage[Symbol.dispose]())
+      .catch(() => {});
     throw error;
   }
 }
