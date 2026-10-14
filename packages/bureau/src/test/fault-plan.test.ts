@@ -171,15 +171,18 @@ describe('asset work fault targets (COR-794)', () => {
     };
   }
 
-  it('names every asset started-work kind as a Bureau fault operation', () => {
+  it("names the resolved target's work kind as the plan entry's Bureau fault operation", () => {
+    const target = selectAssetWorkFaultTarget([work('work-1'), work('work-2', 'fetch')], 'work-2');
+    // The operation is derived from the selector's answer, so every work kind the registry can start is addressable.
+    const operation: BureauFaultOperation = `asset:${target.workKind}`;
     const entry: BureauFaultPlanEntry = {
-      id: 'scan-blocks',
+      id: 'fetch-blocks',
       boundary: 'before-work',
-      operation: 'asset:scan' satisfies BureauFaultOperation,
+      operation,
       occurrence: { kind: 'nth', n: 1 },
-      effect: { kind: 'block' },
+      effect: { kind: 'block', workId: target.id },
     };
-    expect(entry.operation).toBe('asset:scan');
+    expect(entry).toMatchObject({ operation: 'asset:fetch', effect: { workId: 'work-2' } });
   });
 
   it('resolves an asset work target to exactly one active work snapshot', () => {

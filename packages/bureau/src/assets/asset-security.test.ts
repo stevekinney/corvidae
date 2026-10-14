@@ -31,7 +31,7 @@ import {
   type AssetEvent,
   type AssetFetchResponse,
   type BureauAssetOptions,
-} from './index';
+} from '../index';
 import { isPrivateAddress } from './url-policy';
 
 const cleanups: Array<() => Promise<void>> = [];

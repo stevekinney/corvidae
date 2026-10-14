@@ -16,7 +16,7 @@ import type {
   AssetFetchResponse,
   AssetHostResolver,
   BureauAssetOptions,
-} from '../assets';
+} from '../index';
 import type { AssetService } from '../assets/types';
 import { type BureauTestHarness, createBureauTestHarness } from '../test/harness';
 import { type BureauStorageFixture, createMemoryStorageFixture } from '../test/storage-fixtures';

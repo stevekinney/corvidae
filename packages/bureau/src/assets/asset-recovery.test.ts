@@ -42,7 +42,7 @@ import {
   AssetUnavailableError,
   type AssetStorage,
   type BureauAssetOptions,
-} from './index';
+} from '../index';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {

@@ -54,7 +54,7 @@ import {
   type AssetWorkKind,
   type BureauAssetOptions,
   managedAssetSource,
-} from './index';
+} from '../index';
 
 const cleanups: Array<() => Promise<void>> = [];
 
