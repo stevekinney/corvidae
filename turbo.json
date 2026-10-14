@@ -51,39 +51,6 @@
       "env": ["NODE_ENV"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/mirror/package-map.json"]
     },
-    "@lostgradient/desktop#prepare:devkit": {
-      "dependsOn": ["transit"],
-      "outputs": [".hutch/**"]
-    },
-    "@lostgradient/desktop#lint": {
-      "dependsOn": ["prepare:devkit", "transit"],
-      "outputs": []
-    },
-    "@lostgradient/desktop#typecheck": {
-      "dependsOn": ["prepare:devkit", "transit"],
-      "outputs": []
-    },
-    "@lostgradient/desktop#test": {
-      "dependsOn": ["prepare:devkit", "transit"],
-      "outputs": []
-    },
-    "@lostgradient/desktop#build:renderer": {
-      "dependsOn": ["prepare:devkit", "transit"],
-      "outputs": ["dist/**"]
-    },
-    "@lostgradient/desktop#build": {
-      "dependsOn": ["typecheck", "build:renderer", "transit"],
-      "outputs": ["build/**", "artifacts/**"]
-    },
-    "@lostgradient/desktop#dev": {
-      "persistent": true,
-      "cache": false,
-      "passThroughEnv": ["NODE_ENV", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"]
-    },
-    "@lostgradient/desktop#dev:renderer": {
-      "persistent": true,
-      "cache": false
-    },
     "//#test:self": {
       "dependsOn": ["//#preflight"],
       "env": ["CODEX_CI", "NODE_ENV"],
@@ -168,7 +135,6 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/applications/desktop/src/**",
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
       ]
     },
@@ -179,7 +145,6 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/applications/desktop/src/**",
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
       ]
     }
