@@ -3101,6 +3101,13 @@
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
+  @media (forced-colors: active) {
+    /* Forced colors drop the box-shadow ring; draw the outline inside the region instead. */
+    .readme-content :global(.readme-table-scroll:focus-visible) {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
   .readme-content :global(blockquote) {
     padding-inline-start: var(--cinder-space-4);
     border-inline-start: 2px solid var(--cinder-border);
