@@ -1,342 +1,103 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-
+/*
+ * Replaces the old curated color-token registry test (COR-263). The old registry listed a hand
+ * maintained subset of the color tokens; the catalogue editor is generated from the runtime's
+ * authoring catalogue instead, so this proves the complete surface: every public color record
+ * has a reachable typed or recipe edit route, and the routes really edit.
+ */
 import { describe, expect, test } from 'bun:test';
 
-import { CINDER_COMPONENT_SOURCE } from '../component-sources.ts';
-import {
-  COLOR_TOKEN_GROUPS,
-  COLOR_TOKEN_NAMES,
-  FALLBACK_COLOR_VALUE_PATTERN,
-  isSafeColorTokenValue,
-} from './color-token-registry.ts';
-import { extractRootBlock, readRootTokenNames } from './token-introspection.ts';
+import { AUTHORING_CATALOGUE, evaluateThemeProperties } from '@lostgradient/cinder/tokens/runtime';
 
-/** Token names whose value shape (shadows, gradients) means they can never be
- * a themeable solid/translucent color, regardless of what they reference. */
-const NON_COLOR_TOKEN_NAME_PATTERN = /shadow|gradient/;
+import { cinderThemeBase } from './theme-builder-base.ts';
+import { catalogueRows } from './theme-builder-catalogue.ts';
+import { colorEditRoute, committedColor, type ColorEditRoute } from './theme-color-editing.ts';
+import ColorTokenEditor from './theme-color-editor.svelte';
+import { colorToJson, withChannel } from './theme-color-model.ts';
+import type { ThemeEnvelope } from './theme-draft-types.ts';
+import { applyEdit, createDraft } from './theme-draft.ts';
+import { createEnvelope } from './theme-envelope.ts';
+import { buildThemeSources } from './theme-runtime-evaluator.ts';
+import { buildEdit, defaultScope, overrideScopeFor } from './theme-token-edit.ts';
+import { editorForToken } from './theme-token-editors.ts';
 
-/**
- * Is this declaration value a direct color, by the playground's OWN definition?
- *
- * Reuses `FALLBACK_COLOR_VALUE_PATTERN` rather than restating the accepted
- * syntaxes. A hand-maintained copy drifts in both directions: too narrow and
- * the guard waves through a new `#fff` token it should have caught; too broad
- * (an extra `hwb()`, a 5- or 7-digit hex) and it demands registration for
- * values the playground would reject as overrides. Deriving from the validator
- * makes both impossible by construction.
- *
- * The pattern also accepts a bare `var(--cinder-x)`, but a `var()` reference is
- * not itself evidence of a color — it depends entirely on what it points at —
- * so alias values are excluded here and resolved through their target instead.
- */
-function isDirectColorValue(value: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  if (ALIAS_VALUE_PATTERN.test(normalized)) return false;
-  return FALLBACK_COLOR_VALUE_PATTERN.test(normalized);
-}
+const colorRows = catalogueRows.filter((row) => row.type === 'color');
+const LIGHT = { colorMode: 'light', motion: 'default' } as const;
 
-/** A value that is nothing but a `var(--cinder-x)` reference, optionally with a
- * fallback. These are invisible to the direct value-shape scan, so they are
- * resolved through their target below. */
-const ALIAS_VALUE_PATTERN = /^var\(\s*(--cinder-[a-z0-9-]+)/;
-
-/** Strip CSS comments so a commented-out declaration is never mistaken for a
- * real one — `extractRootBlock` returns the raw `:root` body, comments and all. */
-function stripCssComments(source: string): string {
-  return source.replaceAll(/\/\*[\s\S]*?\*\//g, '');
-}
-
-/**
- * Every `--cinder-*` custom property declared directly in a `:root { … }` body
- * whose value marks it as color-valued, mapped to its raw declared value.
- *
- * Resolves alias chains: a token declared as `var(--cinder-other)` carries no
- * color function of its own, so a direct value-shape scan would miss it
- * entirely. Following the alias to a directly color-valued token catches the
- * pure-alias color tokens this guard exists to notice. Cycles and aliases that
- * bottom out in a non-color value are simply not treated as colors.
- */
-function findColorTokenDeclarations(rootBlock: string): Map<string, string> {
-  const allDeclarations = new Map<string, string>();
-  for (const match of stripCssComments(rootBlock).matchAll(
-    /(--cinder-[a-z0-9-]+)\s*:\s*([^;]+);/g,
-  )) {
-    const [, name, value] = match;
-    if (name === undefined || value === undefined) continue;
-    allDeclarations.set(name, value.trim());
-  }
-
-  function resolvesToColor(name: string, seen: Set<string>): boolean {
-    if (seen.has(name)) return false;
-    seen.add(name);
-
-    const value = allDeclarations.get(name);
-    if (value === undefined) return false;
-    if (isDirectColorValue(value)) return true;
-
-    const alias = ALIAS_VALUE_PATTERN.exec(value)?.[1];
-    return alias === undefined ? false : resolvesToColor(alias, seen);
-  }
-
-  const colorDeclarations = new Map<string, string>();
-  for (const [name, value] of allDeclarations) {
-    if (NON_COLOR_TOKEN_NAME_PATTERN.test(name)) continue;
-    if (!resolvesToColor(name, new Set())) continue;
-    colorDeclarations.set(name, value);
-  }
-
-  return colorDeclarations;
-}
-
-/**
- * The reverse of `COLOR_TOKEN_NAMES`' own drift guard: every color-valued token
- * declared in `:root` must be either registered in `COLOR_TOKEN_GROUPS` or
- * listed in `optOutTokenNames` as a conscious, commented exclusion. A token in
- * neither set is a silent omission from the playground's color panel.
- */
-function findUnregisteredColorTokens(
-  rootBlock: string,
-  registeredTokenNames: ReadonlySet<string>,
-  optOutTokenNames: ReadonlySet<string>,
-): string[] {
-  return [...findColorTokenDeclarations(rootBlock).keys()].filter(
-    (name) => !registeredTokenNames.has(name) && !optOutTokenNames.has(name),
-  );
-}
-
-/**
- * Color-valued tokens declared in `tokens-base.css`'s `:root` block that are
- * deliberately NOT exposed in the playground's color panel. Each entry is a
- * conscious exclusion, not a dumping ground — see the inline justification.
- * `color-token-registry.test.ts` asserts every entry here is still a real
- * color-token candidate (so this list can't rot into stale/typo'd names) and
- * that it never overlaps `COLOR_TOKEN_NAMES` (so a token isn't simultaneously
- * registered and "opted out").
- */
-const INTENTIONALLY_UNREGISTERED_COLOR_TOKENS = new Set([
-  // Calendar-specific derived surface (the "upcoming" day marker), not a
-  // general theme role — same class as the toggle-track tokens below.
-  '--cinder-surface-upcoming-marker',
-  // Component-internal toggle-switch track fill. Mirrors the exclusion of
-  // --cinder-button-background/-fg below: derived, component-scoped, not a general
-  // theme role a user would tweak from the color panel.
-  '--cinder-toggle-track-off-resting',
-  '--cinder-toggle-track-off-hover-resting',
-  // Backs the alpha checkerboard swatch backdrop, not a themeable color.
-  '--cinder-checker-base',
-  '--cinder-checker-tile',
-  // Component-scoped like --cinder-button-background/-fg (already asserted excluded
-  // below): it happens to be the one button-* token with a literal
-  // light-dark() value instead of a var() alias, which is why it's the only
-  // one of the three caught by the color-value-shape scan in the first place.
-  '--cinder-button-border',
-  // Component-scoped button surface/foreground. Pure `var()` aliases, so the
-  // direct value-shape scan never saw them — only alias resolution surfaces
-  // them, and they belong with --cinder-button-border above.
-  '--cinder-button-background',
-  '--cinder-button-foreground',
-  // Component-scoped colors added when the DTCG corpus started modeling
-  // these 22 components' variable surfaces (CIN-472) — same class as the
-  // button/toggle exclusions above: derived, single-consumer, not a general
-  // theme role a playground user would tweak from the global color panel.
-  '--cinder-alert-info',
-  '--cinder-code-block-background',
-  '--cinder-file-upload-background',
-  '--cinder-file-upload-border-color',
-  '--cinder-file-upload-progress-background',
-  '--cinder-file-upload-progress-fill',
-  '--cinder-kanban-column-background',
-  '--cinder-kanban-card-background',
-  '--cinder-kanban-board-scroll-edge',
-  '--cinder-modal-backdrop',
-  '--cinder-spinner-indicator',
-  '--cinder-status-dot-color',
-  '--cinder-table-of-contents-link-color',
-  '--cinder-table-of-contents-link-active-color',
-  '--cinder-tree-drop-line-color',
-  // Component-specific semantic and ANSI palettes. These are public styling
-  // contracts for Badge/CodeLocation and TerminalOutput, not global theme roles
-  // that belong in the playground's general-purpose color override panel.
-  '--cinder-severity-critical',
-  '--cinder-severity-critical-background',
-  '--cinder-terminal-ansi-black',
-  '--cinder-terminal-ansi-red',
-  '--cinder-terminal-ansi-green',
-  '--cinder-terminal-ansi-yellow',
-  '--cinder-terminal-ansi-blue',
-  '--cinder-terminal-ansi-magenta',
-  '--cinder-terminal-ansi-cyan',
-  '--cinder-terminal-ansi-white',
-  '--cinder-terminal-ansi-bright-black',
-  '--cinder-terminal-ansi-bright-red',
-  '--cinder-terminal-ansi-bright-green',
-  '--cinder-terminal-ansi-bright-yellow',
-  '--cinder-terminal-ansi-bright-blue',
-  '--cinder-terminal-ansi-bright-magenta',
-  '--cinder-terminal-ansi-bright-cyan',
-  '--cinder-terminal-ansi-bright-white',
-]);
-
-const TOKENS_BASE_PATH = join(
-  CINDER_COMPONENT_SOURCE.packageRoot,
-  'src',
-  'styles',
-  'tokens-base.css',
-);
-
-describe('color token registry', () => {
-  /**
-   * `COLOR_TOKEN_GROUPS` is generated (CIN-30) from the corpus itself --
-   * `cinder.resolver.json`'s foundation set's
-   * `$extensions["com.lostgradient.cinder"].playgroundGroups` -- not from a
-   * curated list hand-maintained in `generate-artifacts.ts` (see that file's
-   * `readPlaygroundColorTokenGroups`). A hardcoded `toHaveLength(84)` and a
-   * literal group-id array here would need a hand-edit on every corpus
-   * change with no actual protective value -- the ONLY source for either
-   * number is the same generated data this test would be comparing it
-   * against. Structural invariants over that generated data (no duplicate
-   * token across groups, no duplicate/empty group, the derived flat list
-   * actually matches the generated groups) stay meaningful without ever
-   * needing a bump: they catch a broken generator or a bad hand-edit to the
-   * curation list, which a hardcoded count could not.
-   */
-  test('contains a well-formed, non-trivial global color-token inventory', () => {
-    expect(COLOR_TOKEN_GROUPS.length).toBeGreaterThan(0);
-
-    const groupIds = COLOR_TOKEN_GROUPS.map((group) => group.id);
-    expect(new Set(groupIds).size).toBe(groupIds.length);
-
-    for (const group of COLOR_TOKEN_GROUPS) {
-      expect(group.id.length).toBeGreaterThan(0);
-      expect(group.tokens.length).toBeGreaterThan(0);
+/** Edit every typed, alias, and recipe color through its own route in one draft, then evaluate. */
+function editEveryColor() {
+  const envelope: ThemeEnvelope = createEnvelope('t', 'T', cinderThemeBase());
+  let draft = createDraft(envelope);
+  const unreachable: string[] = [];
+  for (const row of colorRows) {
+    if (colorEditRoute(row) === 'css-only') continue;
+    const scope = overrideScopeFor(defaultScope(row), LIGHT);
+    const color = committedColor(row, envelope, LIGHT, scope);
+    if (color === null) {
+      unreachable.push(row.path);
+      continue;
     }
-
-    const expectedTokenCount = COLOR_TOKEN_GROUPS.reduce(
-      (total, group) => total + group.tokens.length,
-      0,
-    );
-    expect(COLOR_TOKEN_NAMES).toHaveLength(expectedTokenCount);
-    expect(new Set(COLOR_TOKEN_NAMES).size).toBe(COLOR_TOKEN_NAMES.length);
-  });
-
-  test('every registered token is declared in tokens-base.css', async () => {
-    const css = await readFile(TOKENS_BASE_PATH, 'utf8');
-    const rootTokenNames = readRootTokenNames(css);
-
-    const missing = COLOR_TOKEN_NAMES.filter((tokenName) => !rootTokenNames.has(tokenName));
-
-    expect(missing).toEqual([]);
-  });
-
-  test('every color token in tokens-base.css is registered or explicitly excluded', async () => {
-    const css = await readFile(TOKENS_BASE_PATH, 'utf8');
-    const rootBlock = extractRootBlock(css);
-    const registeredTokenNames: ReadonlySet<string> = new Set(COLOR_TOKEN_NAMES);
-
-    // The opt-out list itself must stay honest: no entry may double as a
-    // registered token, and every entry must still be a real color-token
-    // candidate in :root (otherwise a stale or typo'd entry silently stops
-    // excluding anything).
-    const registeredAndOptedOut = [...INTENTIONALLY_UNREGISTERED_COLOR_TOKENS].filter((name) =>
-      registeredTokenNames.has(name),
-    );
-    expect(registeredAndOptedOut).toEqual([]);
-
-    const colorTokenDeclarations = findColorTokenDeclarations(rootBlock);
-    const staleOptOuts = [...INTENTIONALLY_UNREGISTERED_COLOR_TOKENS].filter(
-      (name) => !colorTokenDeclarations.has(name),
-    );
-    expect(staleOptOuts).toEqual([]);
-
-    const unregistered = findUnregisteredColorTokens(
-      rootBlock,
-      registeredTokenNames,
-      INTENTIONALLY_UNREGISTERED_COLOR_TOKENS,
-    );
-    expect(unregistered).toEqual([]);
-  });
-
-  test('findUnregisteredColorTokens fails loudly on a new, unregistered color token', () => {
-    const rootBlock = `
-      --cinder-accent-solid: oklch(72% 0.14 270);
-      --cinder-shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.1);
-      --cinder-space-4: 1rem;
-      --cinder-test-new-token: light-dark(oklch(50% 0.1 200), oklch(60% 0.1 200));
-    `;
-    const registeredTokenNames = new Set(['--cinder-accent-solid']);
-    const optOutTokenNames = new Set<string>();
-
-    const unregistered = findUnregisteredColorTokens(
-      rootBlock,
-      registeredTokenNames,
-      optOutTokenNames,
-    );
-
-    expect(unregistered).toEqual(['--cinder-test-new-token']);
-  });
-
-  test('excludes non-color and non-global token namespaces', () => {
-    expect(COLOR_TOKEN_NAMES).not.toContain('--cinder-shadow-sm');
-    expect(COLOR_TOKEN_NAMES).not.toContain('--cinder-space-4');
-    expect(COLOR_TOKEN_NAMES).not.toContain('--cinder-text-sm');
-    expect(COLOR_TOKEN_NAMES).not.toContain('--cinder-z-modal');
-    expect(COLOR_TOKEN_NAMES).not.toContain('--cinder-overlay-padding');
-    expect(COLOR_TOKEN_NAMES).not.toContain('--cinder-scrollbar-size');
-    expect(COLOR_TOKEN_NAMES).not.toContain('--cinder-button-background');
-    expect(COLOR_TOKEN_NAMES.some((tokenName) => tokenName.startsWith('--_cinder-'))).toBe(false);
-  });
-
-  test('fallback color validation requires full value matches', () => {
-    const originalCss = globalThis.CSS;
-    Object.defineProperty(globalThis, 'CSS', {
-      configurable: true,
-      value: undefined,
-      writable: true,
-    });
-
-    try {
-      expect(isSafeColorTokenValue('rgb(1 2 3)')).toBe(true);
-      expect(isSafeColorTokenValue('var(--cinder-accent-solid)')).toBe(true);
-      expect(isSafeColorTokenValue('transparent')).toBe(true);
-      expect(isSafeColorTokenValue('rgb(')).toBe(false);
-      expect(isSafeColorTokenValue('rgb(1 2 3)junk')).toBe(false);
-      expect(isSafeColorTokenValue('var(--cinder-accent-solid)junk')).toBe(false);
-      expect(isSafeColorTokenValue('transparent-junk')).toBe(false);
-    } finally {
-      Object.defineProperty(globalThis, 'CSS', {
-        configurable: true,
-        value: originalCss,
-        writable: true,
-      });
+    const first = Number(color.components[0]);
+    const nudged = withChannel(color, 0, first >= 0.5 ? first - 0.001 : first + 0.001);
+    const built = buildEdit(row, envelope, LIGHT, scope, JSON.stringify(colorToJson(nudged)));
+    if (!built.ok) {
+      unreachable.push(row.path);
+      continue;
     }
+    const result = applyEdit(draft, built.edit);
+    if (!result.ok) unreachable.push(row.path);
+    else draft = result.draft;
+  }
+  const evaluation = evaluateThemeProperties(buildThemeSources(draft.envelope, draft.revision));
+  return { unreachable, evaluation };
+}
+const edited = editEveryColor();
+
+describe('every public color record has an edit route', () => {
+  test('the color records are derived from the authoring catalogue, never a hardcoded count', () => {
+    const fromCatalogue = AUTHORING_CATALOGUE.records.filter(
+      (record) => record.variants[0]?.provenance.effectiveType.type === 'color',
+    );
+    expect(colorRows.length).toBe(fromCatalogue.length);
+    expect(colorRows.length).toBeGreaterThan(83);
+    expect(new Set(colorRows.map((row) => row.path)).size).toBe(colorRows.length);
   });
 
-  test('CSS.supports path still enforces the playground color allowlist', () => {
-    const originalCss = globalThis.CSS;
-    Object.defineProperty(globalThis, 'CSS', {
-      configurable: true,
-      value: {
-        supports: () => true,
-      },
-      writable: true,
-    });
+  test('the color editor is registered for every color record', () => {
+    for (const row of colorRows) expect(editorForToken(row)).toBe(ColorTokenEditor);
+  });
 
-    try {
-      expect(isSafeColorTokenValue('rgb(1 2 3)')).toBe(true);
-      expect(isSafeColorTokenValue('var(--cinder-accent-solid)')).toBe(true);
-      expect(isSafeColorTokenValue('color-mix(in oklch, var(--cinder-accent-solid), white)')).toBe(
-        true,
-      );
-      expect(isSafeColorTokenValue('var(--anything)')).toBe(false);
-      expect(isSafeColorTokenValue('color-mix(in oklch, var(--anything), white)')).toBe(false);
-      expect(isSafeColorTokenValue('rebeccapurple')).toBe(false);
-    } finally {
-      Object.defineProperty(globalThis, 'CSS', {
-        configurable: true,
-        value: originalCss,
-        writable: true,
-      });
+  test('each record has exactly one route, and the routes partition the colors', () => {
+    const routes = new Map<ColorEditRoute, string[]>();
+    for (const row of colorRows) {
+      const route = colorEditRoute(row);
+      routes.set(route, [...(routes.get(route) ?? []), row.path]);
     }
+    expect([...routes.keys()].toSorted()).toEqual([
+      'alias-detach',
+      'css-only',
+      'recipe-replace',
+      'typed-literal',
+    ]);
+    const total = [...routes.values()].reduce((sum, paths) => sum + paths.length, 0);
+    expect(total).toBe(colorRows.length);
+    expect(routes.get('recipe-replace')?.length).toBeGreaterThan(0);
+    expect(routes.get('typed-literal')?.length).toBeGreaterThan(0);
+    expect(routes.get('alias-detach')?.length).toBeGreaterThan(0);
+  });
+
+  test('a recipe color is edited by replacing the recipe with a literal, an alias by detaching', () => {
+    const recipe = colorRows.find((row) => row.edit === 'recipe')!;
+    const alias = colorRows.find((row) => row.edit === 'supported' && row.aliases.length > 0)!;
+    expect(colorEditRoute(recipe)).toBe('recipe-replace');
+    expect(colorEditRoute(alias)).toBe('alias-detach');
+    expect(colorEditRoute(colorRows.find((row) => row.edit === 'css-only')!)).toBe('css-only');
+  });
+
+  test('every non-css-only color resolves to a literal and builds a valid edit', () => {
+    expect(edited.unreachable).toEqual([]);
+  });
+
+  test('editing every color through its route leaves a theme the runtime accepts', () => {
+    expect(edited.evaluation.ok ? [] : edited.evaluation.diagnostics.slice(0, 3)).toEqual([]);
   });
 });

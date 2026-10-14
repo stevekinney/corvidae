@@ -13,22 +13,9 @@ import {
   NAV_FILTER_STORAGE_KEY,
   readInitialTheme,
 } from '../component-page-theme.ts';
-import {
-  applyColorTokenOverridesToDocument,
-  readSessionColorTokenOverrides,
-} from './color-token-overrides.ts';
-import {
-  COMPONENT_SEARCH_LISTENING_ATTRIBUTE,
-  COMPONENT_SEARCH_TRIGGER_ATTRIBUTE,
-  isComponentSearchShortcut,
-} from './component-search-shortcut.ts';
-import { attachDeferredShortcut } from './deferred-shortcut.ts';
-import { attachDeferredToggle } from './deferred-toggle.ts';
 import { attachLandingLiveReload } from './landing-live-reload.ts';
 import { memoizeUntilRejected } from './retryable-promise.ts';
 import { persistScrollPosition } from './sidebar-scroll.ts';
-
-applyColorTokenOverridesToDocument(document, readSessionColorTokenOverrides()[readInitialTheme()]);
 
 // The shell hydrates on interaction, so until then nothing else on this page would hear the
 // dev server's reload events. The hydrated page opens its own stream; this one closes with it.
@@ -46,7 +33,6 @@ if (themeToggle !== null) {
   themeToggle.addEventListener('click', () => {
     const nextTheme = readInitialTheme() === 'dark' ? 'light' : 'dark';
     applyTheme(nextTheme);
-    applyColorTokenOverridesToDocument(document, readSessionColorTokenOverrides()[nextTheme]);
     themeToggle.setAttribute('aria-label', labelForTheme(nextTheme));
     void hydrateShell().catch((error) =>
       console.error('[cinder playground] failed to hydrate landing shell:', error),
@@ -55,19 +41,16 @@ if (themeToggle !== null) {
 }
 
 // While the reader has chosen no theme the page follows the operating system, so a change there
-// must reach the toggle and the session color overrides the way a click on the toggle does. The
-// hydrated shell follows the system itself; this covers the page until then.
+// must reach the toggle the way a click on the toggle does. The hydrated shell follows the
+// system itself; this covers the page until then.
 if (themeToggle !== null) {
   followSystemTheme((systemTheme) => {
-    applyColorTokenOverridesToDocument(document, readSessionColorTokenOverrides()[systemTheme]);
     themeToggle.setAttribute('aria-label', labelForTheme(systemTheme));
     void hydrateShell().catch((error) =>
       console.error('[cinder playground] failed to synchronize landing theme:', error),
     );
   });
 }
-
-let shellHydrated = false;
 
 function hydrateShellOnce(): Promise<void> {
   return Promise.all([
@@ -102,7 +85,6 @@ function hydrateShellOnce(): Promise<void> {
         readmeHtml: initial.readmeHtml,
       },
     });
-    shellHydrated = true;
     landingLiveReload?.close();
     return undefined;
   });
@@ -119,65 +101,6 @@ if (themeToggle !== null && readInitialTheme() === 'dark') {
   void hydrateShell().catch((error) =>
     console.error('[cinder playground] failed to synchronize landing theme:', error),
   );
-}
-
-/**
- * Every panel trigger in the toolbar needs `attachDeferredToggle`, so it is a
- * function rather than a block per button — adding a trigger without its
- * bootstrap produces a button that silently does nothing until some OTHER
- * control happens to hydrate the shell first, which is a genuinely confusing
- * failure to debug.
- */
-function bootstrapDeferredToggle(accessibleName: string): void {
-  attachDeferredToggle(
-    document.querySelector<HTMLButtonElement>(`button[aria-label="${accessibleName}"]`),
-    {
-      hydrate: hydrateShell,
-      isHydrated: () => shellHydrated,
-      onError: (error) =>
-        console.error('[cinder playground] failed to hydrate landing shell:', error),
-    },
-  );
-}
-
-/*
- * Selected by accessible name rather than `data-testid`: this is runtime
- * behaviour, and keying it off a testing affordance means renaming that
- * attribute silently makes a toolbar button inert until some other control
- * happens to hydrate the shell. The theme toggle above and the panels' own
- * focus restoration already select on the accessible name for the same reason.
- */
-bootstrapDeferredToggle('Color token panel');
-bootstrapDeferredToggle('Token inspector');
-
-/** The sidebar's "Search components" button, found by its own runtime hook inside the sidebar. */
-function findComponentSearchTrigger(): HTMLButtonElement | null {
-  return document.querySelector<HTMLButtonElement>(
-    `nav.dx-nav button[${COMPONENT_SEARCH_TRIGGER_ATTRIBUTE}]`,
-  );
-}
-
-const componentSearchTrigger = findComponentSearchTrigger();
-attachDeferredToggle(componentSearchTrigger, {
-  hydrate: hydrateShell,
-  isHydrated: () => shellHydrated,
-  onError: (error) => console.error('[cinder playground] failed to hydrate landing shell:', error),
-});
-
-// The hydrated sidebar owns Cmd/Ctrl+K once its listener marks the trigger; until
-// then a press hydrates the shell (or reuses the finished hydration) and opens the
-// palette through its trigger, exactly once. Keying the hand-off on that mark
-// rather than on hydration leaves no gap between the two listeners.
-if (componentSearchTrigger !== null) {
-  attachDeferredShortcut(window, {
-    matches: (event) => isComponentSearchShortcut(event, document),
-    hydrate: hydrateShell,
-    isLiveListenerAttached: () =>
-      findComponentSearchTrigger()?.hasAttribute(COMPONENT_SEARCH_LISTENING_ATTRIBUTE) === true,
-    activate: () => findComponentSearchTrigger()?.click(),
-    onError: (error) =>
-      console.error('[cinder playground] failed to hydrate landing shell:', error),
-  });
 }
 
 const sidebarNavigation = document.querySelector<HTMLElement>('nav.dx-nav');

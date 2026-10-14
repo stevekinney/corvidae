@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
+import { requireDocument } from '../../src/tokens/runtime/context-order.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { resolveAlias } from '../../src/tokens/runtime/value-color.ts';
+import { serializeEntryValue } from '../../src/tokens/runtime/value-entry.ts';
+import { serializeTypedValue } from '../../src/tokens/runtime/value-formatters.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
-import { requireDocument } from './css-support.ts';
 import { colorEntry } from './generator-test-support.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
-import { resolveAlias } from './value-color.ts';
-import { serializeEntryValue } from './value-entry.ts';
-import { serializeTypedValue } from './value-formatters.ts';
 describe('B1: #/ JSON Pointer aliases resolve like {curly} aliases', () => {
   test('a $value: "#/a/b" alias emits var(...) against the target cssProperty', () => {
     const baseIndex = new Map<string, CorpusEntry>([

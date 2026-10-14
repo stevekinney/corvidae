@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
 import type { DocSection } from './docs-sections.ts';
 import { renderDocTable } from './docs.ts';
 describe('CIN-470: toTableCell escapes pipes by backslash parity, not unconditionally', () => {

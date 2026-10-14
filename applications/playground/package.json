@@ -23,6 +23,7 @@
     "@lostgradient/markdown": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@shikijs/themes": "catalog:",
+    "culori": "catalog:",
     "lucide-svelte": "catalog:",
     "postcss": "catalog:",
     "shiki": "catalog:",
@@ -31,10 +32,12 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@axe-core/playwright": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@playwright/test": "catalog:",
     "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
+    "@types/culori": "catalog:",
     "@types/estree": "catalog:",
     "happy-dom": "catalog:",
     "oxlint": "catalog:",

@@ -72,6 +72,7 @@
     "**/.bun/**",
     "**/node_modules/**",
     "**/*.generated.d.ts",
+    "**/src/tokens/runtime/*-validator.generated.js",
     "*.lock",
     "**/.playwright/**",
     "**/.hutch/**",

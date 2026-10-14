@@ -412,7 +412,7 @@ describe('the files that check cinder’s emitted source', () => {
     (cluster) => cluster.paths,
   );
 
-  test('every declared path is emitted, all thirty-five of them', () => {
+  test('every declared path is emitted, all thirty-eight of them', () => {
     const { plan } = committedPlans.cinder;
     const missing = declared.filter(
       (path) => plan.files[`packages/components/${path}`] === undefined,
@@ -420,7 +420,9 @@ describe('the files that check cinder’s emitted source', () => {
     expect(missing).toEqual([]);
     // 23 before COR-1196's token-generator closure (7 files), preload (1 file),
     // and the four documents read by emitted token tests or linked from them.
-    expect(declared.length).toBe(35);
+    // Then three more for COR-491: the token runtime's catalogue serializer, base-corpus
+    // metadata, and standalone schema-validator generators that `generate-artifacts.ts` imports.
+    expect(declared.length).toBe(38);
   });
 
   test('the generator family goes as a set, since its entry point imports the rest', () => {
@@ -458,6 +460,9 @@ describe('the files that check cinder’s emitted source', () => {
     const knownNonImports = new Set([
       'scripts/generate-root-metadata-exports.ts -> ../../components.json',
       'scripts/tokens/generate-artifacts.ts -> ./registry.generated.json',
+      // `authoring-catalogue-output.ts` (COR-491) writes the generated catalogue module's source
+      // as a template literal whose own `import type` line is text it emits, not an import it makes.
+      'scripts/tokens/authoring-catalogue-output.ts -> ./authoring-types.ts',
     ]);
     const unresolved: string[] = [];
     for (const path of declared) {

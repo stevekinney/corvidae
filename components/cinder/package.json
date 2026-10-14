@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./tokens/runtime": "./src/tokens/runtime/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun run check:prop-conventions && bun run check:test-cleanup",
@@ -36,6 +37,7 @@
     "json-schema-library": "catalog:",
     "libphonenumber-js": "catalog:",
     "lucide-svelte": "catalog:",
+    "postcss-value-parser": "catalog:",
     "qrcode": "catalog:",
     "shiki": "catalog:",
     "svelte": "catalog:",
@@ -60,7 +62,6 @@
     "oxlint-tsgolint": "catalog:",
     "postcss": "catalog:",
     "postcss-selector-parser": "catalog:",
-    "postcss-value-parser": "catalog:",
     "prettier": "catalog:",
     "prettier-plugin-organize-imports": "catalog:",
     "prettier-plugin-svelte": "catalog:",

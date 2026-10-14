@@ -5,7 +5,7 @@ import { committedPlans, corvidaeRoot } from './committed-plans.ts';
 import { layoutFor } from './layout-map.ts';
 import { assertNothingDeferred, discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap } from './package-map.ts';
-import { loadPackageSurface } from './package-surface.ts';
+import { checkPublishedImportGraph, loadPackageSurface } from './package-surface.ts';
 import { isFirstPublish } from './registry-baseline.ts';
 import { nonSourceNames, nonSourcePrefixes } from './source.ts';
 import {
@@ -122,6 +122,114 @@ describe('published dependency edges', () => {
   });
 });
 
+function textOf(content: string | Uint8Array | undefined): string {
+  if (content === undefined) throw new Error('expected the plan to emit this file');
+  return typeof content === 'string' ? content : new TextDecoder().decode(content);
+}
+
+describe('the token runtime subpath (COR-491)', () => {
+  const { plan } = committedPlans.cinder;
+  const cinder = plan.published.find((entry) => entry.publicName === '@lostgradient/cinder')!;
+  const packageRoot = join(corvidaeRoot, 'components', 'cinder');
+  const manifest = JSON.parse(plan.files['packages/components/package.json'] as string) as {
+    version: string;
+    dependencies: Record<string, string>;
+  };
+  const dependencies = new Set(Object.keys(manifest.dependencies));
+
+  test('is exported with source for the browser and import conditions', () => {
+    expect(cinder.exports['./tokens/runtime']).toMatchObject({
+      browser: './src/tokens/runtime/index.ts',
+      import: './src/tokens/runtime/index.ts',
+      svelte: './src/tokens/runtime/index.ts',
+    });
+  });
+
+  test('every file its source import graph reaches is published, and every package it imports is declared', () => {
+    expect(
+      checkPublishedImportGraph({
+        publicName: cinder.publicName,
+        exports: cinder.exports,
+        files: cinder.files,
+        packageRoot,
+        dependencies,
+        subpaths: ['./tokens/runtime'],
+      }),
+    ).toEqual([]);
+    expect(dependencies.has('postcss-value-parser')).toBe(true);
+  });
+
+  test('reaches the generated validators, base digest, catalogue and bundled token sources', () => {
+    const shipped = (path: string) =>
+      cinder.files.length > 0 && Bun.file(join(packageRoot, path)).size > 0;
+    for (const path of [
+      'src/tokens/runtime/format-validator.generated.js',
+      'src/tokens/runtime/resolver-validator.generated.js',
+      'src/tokens/runtime/base-corpus.generated.ts',
+      'src/tokens/runtime/authoring-catalogue.generated.ts',
+      'src/tokens/runtime/package-version.generated.ts',
+      'src/tokens/sets/foundation.tokens.json',
+      'src/tokens/cinder.resolver.json',
+    ]) {
+      expect(shipped(path), path).toBe(true);
+    }
+    expect(cinder.files).toContain('src/tokens/runtime/**/*.js');
+  });
+
+  test('the gate fails when a reached file is not published or a package is undeclared (control)', () => {
+    const options = {
+      publicName: cinder.publicName,
+      exports: cinder.exports,
+      packageRoot,
+      subpaths: ['./tokens/runtime'],
+    };
+    const withoutValidators = checkPublishedImportGraph({
+      ...options,
+      files: cinder.files.filter((pattern) => pattern !== 'src/tokens/runtime/**/*.js'),
+      dependencies,
+    });
+    expect(withoutValidators.map((finding) => finding.reached)).toEqual(
+      expect.arrayContaining([
+        'src/tokens/runtime/format-validator.generated.js',
+        'src/tokens/runtime/resolver-validator.generated.js',
+      ]),
+    );
+    expect(withoutValidators.every((finding) => finding.problem === 'not-shipped')).toBe(true);
+    const withoutParser = checkPublishedImportGraph({
+      ...options,
+      files: cinder.files,
+      dependencies: new Set([...dependencies].filter((name) => name !== 'postcss-value-parser')),
+    });
+    expect(withoutParser.length).toBeGreaterThan(0);
+    expect(
+      withoutParser.every(
+        (finding) =>
+          finding.reached === 'postcss-value-parser' && finding.problem === 'undeclared-dependency',
+      ),
+    ).toBe(true);
+  });
+
+  test('the mirrored package carries the composed manifest version, not the workspace sentinel', async () => {
+    const mirrored = textOf(
+      plan.files['packages/components/src/tokens/runtime/package-version.generated.ts'],
+    );
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(mirrored).toContain(`export const VERSION = '${manifest.version}';`);
+    expect(mirrored).not.toContain("'workspace'");
+    const source = await Bun.file(
+      join(packageRoot, 'src/tokens/runtime/package-version.generated.ts'),
+    ).text();
+    expect(source).toContain("export const VERSION = 'workspace';");
+  });
+
+  test('the substitution cannot change the base source digest', async () => {
+    const digestFile = 'src/tokens/runtime/base-corpus.generated.ts';
+    expect(textOf(plan.files[`packages/components/${digestFile}`])).toBe(
+      await Bun.file(join(packageRoot, digestFile)).text(),
+    );
+  });
+});
+
 describe('surface parity', () => {
   for (const target of mirrorTargets) {
     test(`${target}: no published subpath disappears`, () => {
@@ -152,7 +260,9 @@ describe('surface parity', () => {
     const result = plan.parity.find((entry) => entry.publicName === '@lostgradient/cinder');
     expect(result?.baselineVersion).toBe('0.27.1');
     expect(result?.missing).toEqual([]);
-    expect(result?.added).toEqual([]);
+    // `./tokens/runtime` (COR-491) is the first subpath the registry baseline has not seen; it
+    // joins the baseline when that version is published and the baseline is refreshed.
+    expect(result?.added).toEqual(['./tokens/runtime']);
   });
 
   /**
