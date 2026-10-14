@@ -15,8 +15,9 @@ import type {
  * role throws an `A2AMappingError`. The `messageId` stays `messageId` rather
  * than becoming the local `id`, so appending the result runs conversation
  * plugins and mints a local id. The `metadata` struct becomes message
- * metadata, and each part maps through `fromA2APart`. Context, task, extension, and reference-task fields belong to
- * the A2A task lifecycle and remain on the caller's A2A message.
+ * metadata, and each part maps through `fromA2APart`. Context, task,
+ * extension, and reference-task fields belong to the A2A task lifecycle and
+ * remain on the caller's A2A message.
  */
 export function fromA2AMessage(message: A2AMessage): A2AInboundMessage {
   return {
