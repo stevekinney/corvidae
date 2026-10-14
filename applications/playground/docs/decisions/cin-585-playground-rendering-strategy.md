@@ -1,14 +1,18 @@
 # Playground build costs and rendering strategy (CIN-585)
 
-Status: measurement protocol and tooling ready; recorded results pending (Phase 2). Every _pending_ marker below is filled from the committed raw results before this decision is final.
+Status: decided. The recorded runs, their raw results, and the comparison are committed beside this document in `cin-585-results/`.
 
 ## Decision
 
-_Pending the recorded runs._ The selection rule below decides between retaining the baseline (per-page entry compilation, as merged at the source SHA in the environment table) and adopting the shared multi-entry candidate. This section will name:
+- **Rendering and build strategy: retain the baseline.** The selection rule, applied by `measure-playground.ts compare` to the recorded runs, retains per-page entry compilation. The shared multi-entry candidate cut every timing observation far below the baseline band. Static export fell from a 545.3 to 604.2 s band to 197.4 to 210.8 s, and server spawn-to-ready fell from a 101.7 to 123.5 s band to 8.8 to 9.1 s. But two resident-memory observations put its median above the baseline maximum:
+  - static-export tree peak, warm: candidate median 5.42 GB against a baseline maximum of 5.19 GB;
+  - server tree peak until ready, cold: candidate median 3.98 GB against a baseline maximum of 3.67 GB.
 
-- **Rendering and build strategy**: retain or adopt, with the rule's printed reasons.
-- **CIN-588 mechanism**: the shared documentation graph mechanism CIN-588 should implement, or an explicit retention of the baseline.
-- **CIN-589 contract**: the route-data, CSS, and loading contract progressive client-side navigation should use.
+  The rule permits no trade between a faster build and a higher peak, so the baseline stands.
+
+- **CIN-588 mechanism: a shared multi-entry page graph with a memory gate.** Name the mechanism this experiment measured, not the measured form of it. The single unbounded multi-entry `Bun.build` is rejected. CIN-588 should implement the shared page graph so that its peak resident memory stays inside the baseline bands recorded here, and accept it only when `measure-playground.ts compare` selects it against a fresh baseline under this same rule. The evidence for pursuing it is load-robust: exporter CPU time halves (1,044.8 to 1,074.8 s down to 504.1 to 517.7 s), emitted output shrinks from 4,220 files and 291.3 MB to 2,895 files and 63.7 MB, and server readiness drops by more than an order of magnitude. The memory excess it must remove is small: 0.23 GB on the warm export and 0.31 GB on the cold server. Cross-shard artifact reuse is not part of it (see the matrix).
+- **CIN-589 contract: navigate between prerendered documents.** Fetch the target route's prerendered HTML (`/page/<name>`), which already carries the server-rendered `#app` markup, the `__CINDER_EXAMPLES__` and `__CINDER_SIDEBAR__` data islands, and the fingerprinted page entry URL. Swap `#app` and the islands, then `import()` that entry. Since #188 the entry is one `import` of its content-hashed module, so it evaluates once and its chunks stay cached as immutable. Keep CSS static: every component page links the same fingerprinted `playground-styles/documentation.css` (the landing page links `landing.css`), so component-to-component navigation swaps no stylesheet, and the first move from the landing page adds `documentation.css` once. Keep a plain `<a href>` as the fallback for every link, and own focus and an announcement on each swap. The static `/api/documentation/<name>` and `/api/manifest/<name>` JSON routes remain available for data a document swap does not cover; CIN-589 should confirm the islands it needs before adding a new route-data format.
+- **Leaks: none reproduced.** Two series grew monotonically. Owner-level evidence shows one is a measurement artifact and the other levels off; see Leaks. No issue is filed.
 
 ## Context
 
@@ -46,7 +50,7 @@ Run the commands from `applications/playground`. The phases run in this order:
 - **JS heap**: Chromium's `Runtime.getHeapUsage` through CDP after `HeapProfiler.collectGarbage`. It is never added to RSS.
 - **Host load**: `uptime` load averages and the logical processor count, captured before and after every sample.
 - **Load gate**: before every sample, including a warm sample that follows its cold one, the script waits while the one-minute load average exceeds three times the logical processor count (30 on this host). It polls every 30 s with no deadline and records the wait (threshold, checks, waited milliseconds, and the load at start) with the sample. A warm sample held by the gate starts later than "immediately", and its recorded wait says by how much.
-- **`Bun.build` count**: derived from the source rather than intercepted. A static export makes one shell browser build, one page browser build per documentation route, one shell server-renderer build, one page server-renderer build, and one build per stylesheet (`documentation`, `landing`) inside the exporter process. It also makes one featured-example server build per featured render, and each of those runs in its own spawned `bun` process. Scenario and fixture builds are lazy, and the export never requests them. At the measured source, the smoke runs saw 211 documentation routes (212 sitemap routes including `/`) and 181 featured renders (182 pids observed in the exporter's tree). That gives 1 + 211 + 1 + 1 + 2 + 181 = 397 builds for the baseline, and 1 + 1 + 1 + 1 + 2 + 181 = 187 for the candidate, whose 211 page builds collapse into one. _Pending confirmation against the recorded run._ Emitted artifacts are counted from `build/` on disk, as files and bytes in total and as unique content by SHA-256.
+- **`Bun.build` count**: derived from the source rather than intercepted. A static export makes one shell browser build, one page browser build per documentation route, one shell server-renderer build, one page server-renderer build, and one build per stylesheet (`documentation`, `landing`) inside the exporter process. It also makes one featured-example server build per featured render, and each of those runs in its own spawned `bun` process. Scenario and fixture builds are lazy, and the export never requests them. At the measured source, the smoke runs saw 211 documentation routes (212 sitemap routes including `/`) and 181 featured renders (182 pids observed in the exporter's tree). That gives 1 + 211 + 1 + 1 + 2 + 181 = 397 builds for the baseline, and 1 + 1 + 1 + 1 + 2 + 181 = 187 for the candidate, whose 211 page builds collapse into one. The recorded runs confirm both counts: 212 sitemap routes and 182 observed processes in every export sample. Emitted artifacts are counted from `build/` on disk, as files and bytes in total and as unique content by SHA-256.
 
 ### Selection rule
 
@@ -56,7 +60,7 @@ Each primary metric is weighed separately cold and warm:
 - server spawn-to-ready duration;
 - sampled process-tree peak RSS, for the static export and for the server until ready.
 
-A baseline's variability band is its observed [min, max] across three samples. The candidate is selected only if at least one observation's candidate maximum is below its baseline minimum, while every other observation's candidate median is no greater than its baseline maximum. Otherwise the baseline is retained. There is no percentage target, no limit is raised, and payload budgets, assertions, and timeouts are unchanged; the exporter's own payload budget assertions still gate both runs. `compare` refuses results from different source SHAs, lockfiles, or route inventories, and refuses a baseline taken on a modified tree.
+A baseline's variability band is its observed [min, max] across three samples. The candidate is selected only if at least one observation's candidate maximum is below its baseline minimum, while every other observation's candidate median is no greater than its baseline maximum. Otherwise the baseline is retained. There is no percentage target, no limit is raised, and payload budgets, assertions, and timeouts are unchanged; the exporter's own payload budget assertions still gate both runs. `compare` refuses results from different source SHAs, lockfiles, or route inventories, refuses a baseline taken on a modified tree, and refuses any failed static export or missed readiness. Playwright and probe failures are reported in the run summary but feed no primary metric.
 
 ## Adaptations from the issue text
 
@@ -69,11 +73,10 @@ A baseline's variability band is its observed [min, max] across three samples. T
 
 ## Environment
 
-Recorded by the smoke runs (the recorded runs restate them):
-
 | Field | Value |
 | --- | --- |
-| Source SHA | `3ab0ee522eae2820af6a84d56f9db6f809cbcf7a` (contains #188 and #192) |
+| Measured revision | `f165d12291077b319fdef857376125e9fb1bd66f`: base `3ab0ee522eae2820af6a84d56f9db6f809cbcf7a` (contains #188 and #192) plus only the measurement scripts and this document, so the Playground sources are the base's |
+| Candidate | that revision plus the scratch patch, `git diff HEAD` SHA-256 `7aab234074e7d0da3099dd5ba06c82116944019a7b682d874b8c8f56f02417c7`, recorded in every candidate sample |
 | `bun.lock` SHA-256 | `727e5e3f8e0cf7de983a273e4583a57913dc0d35fd73d005cf17f757e73f2a33` |
 | Bun | 1.4.2 (`packageManager: bun@1.4.2`) |
 | Svelte | 5.57.0 |
@@ -81,49 +84,76 @@ Recorded by the smoke runs (the recorded runs restate them):
 | OS | darwin 27.0.0, arm64 |
 | CPU | Apple M1 Max, 10 logical processors |
 | Memory | 68,719,476,736 bytes; no container limit (no cgroup on darwin) |
-| Routes | 212 sitemap routes: `/` and 211 `/page/<name>` documentation routes (181 sidebar components plus compound-family children); the full list is in the raw results |
+| Routes | 212 sitemap routes, identical for baseline and candidate: `/` and 211 `/page/<name>` documentation routes (181 sidebar components plus compound-family children); the list is `routeInventory` in the raw results |
 
-Workspace package prerequisite cost is the `bun install --frozen-lockfile` preflight alone, reported separately in the raw results.
+Workspace package prerequisite cost is the `bun install --frozen-lockfile` preflight alone: 46 ms, exit 0, with nothing to install. No workspace library has a build task.
+
+The navigation and 20-cycle rebuild diagnostics ran at `591bf0e0`, which adds only the server live-reload subscriber count to the probe snapshot.
 
 ## Host load and variability
 
-_Pending._ This host is shared with many agent sessions, and its load swings between about 20 and over 200 on its logical processors. A band taken under load is wide, and a narrow band does not mean a quiet host. Each band is read against the load recorded beside its samples, and a candidate is never selected on a difference smaller than the overlap the load allows.
+This host is shared with many agent sessions, and its load swung from about 10 to over 340 on 10 logical processors during this work. The smoke runs at load 90 to 290 took two to three times longer than the recorded runs and missed the server's existing 300 s readiness limit, so no sample was recorded above the load gate.
+
+- **Gate waits**: the baseline started at 1-minute load 16.8 to 30.0 and ended at 14.2 to 45.3, and the gate held four of its samples for 60, 60, 30, and 420 s (630 s in all). The candidate started at 9.0 to 24.9 and was never held. The Phase 1 gate rerun waited a further 6,996 s for load to settle before recording began.
+- **Effect on the bands**: the baseline ran under somewhat higher load than the candidate. That widens the baseline's timing bands and favours the candidate's wall times, so wall time alone is not trusted for the CIN-588 evidence. Exporter CPU time, which load inflates far less, tells the same story: 1,044.8 to 1,074.8 s for the baseline against 504.1 to 517.7 s for the candidate. Resident-memory peaks depend on the work, not the load, and the two observations that decided against the candidate are memory observations.
+- **Spread**: within each configuration the timing spread is at most 10 percent (baseline cold export 545.3 to 604.2 s), and the memory spread at most 0.8 GB.
 
 ## Results
 
-_Pending: raw results committed beside this document, with every sample and each median._
+The raw results are `cin-585-results/baseline.json`, `candidate.json`, and `comparison.json`, with every sample, its load wait, its host load before and after, its source state, and the per-process and sampled tree peaks. Every figure below is taken from them; the medians are of three samples.
 
 ### Static export
 
-_Pending._
+| Configuration | Temperature | Wall time (s): samples / min / median / max | Sampled tree peak (GB): samples / median | Exporter's own peak (GB): median | Exporter CPU (s): median |
+| --- | --- | --- | --- | --- | --- |
+| Baseline | cold | 604.2, 558.6, 545.3 / 545.3 / 558.6 / 604.2 | 4.78, 5.11, 5.40 / 5.11 | 4.40 | 1,045.3 |
+| Baseline | warm | 600.0, 583.9, 598.7 / 583.9 / 598.7 / 600.0 | 4.90, 5.19, 4.80 / 4.90 | 4.19 | 1,060.7 |
+| Candidate | cold | 197.4, 210.8, 201.7 / 197.4 / 201.7 / 210.8 | 5.18, 5.48, 4.79 / 5.18 | 4.46 | 510.7 |
+| Candidate | warm | 198.1, 206.0, 206.9 / 198.1 / 206.0 / 206.9 | 5.02, 5.61, 5.42 / 5.42 | 4.71 | 515.8 |
+
+- **Emitted artifacts**: the baseline wrote 4,220 files, 291.3 MB (4,130 unique by content, 289.9 MB) in every sample. The candidate wrote 2,895 files, 63.7 MB (2,881 unique, 62.4 MB). Per-page builds re-emit shared modules under page-specific chunk hashes, and the shared build emits them once. Both passed the exporter's unchanged payload budgets.
+- **Processes**: every export sample's tree held the exporter and 181 short-lived `bun` processes, one per featured-example render. Those processes are the reason the tree peak exceeds the exporter's own peak.
+- **Warm against cold**: warm samples are not faster. The transpiler cache is not where the time goes; `Bun.build` and the featured-example processes are.
 
 ### Server readiness and Playwright
 
-_Pending._
+| Configuration | Temperature | Spawn to ready (s): samples / median | Tree peak until ready (GB): samples / median |
+| --- | --- | --- | --- |
+| Baseline | cold | 123.5, 102.6, 107.1 / 107.1 | 3.63, 3.63, 3.67 / 3.63 |
+| Baseline | warm | 103.8, 103.2, 101.7 / 103.2 | 3.62, 3.56, 4.03 / 3.62 |
+| Candidate | cold | 9.1, 8.9, 9.1 / 9.1 | 3.90, 3.98, 4.03 / 3.98 |
+| Candidate | warm | 8.8, 9.1, 8.8 / 8.8 | 3.79, 4.05, 3.99 / 3.99 |
+
+Every recorded server reached ready inside the existing 300 s limit, and every page bundle prebuilt (181 of 181). The baseline `test:browser` run on `tests/playground-shell-layout.playwright.ts` passed 17 of 17, cold and warm, in 108.7 s and 108.3 s. Of that, 9.97 s and 9.85 s was test execution; the rest is the web server's own startup, which the readiness phase measures. The tree peak, including Chromium, was 5.20 GB and 5.12 GB.
 
 ### Navigation cycles
 
-_Pending._
+After one warm-up cycle, five recorded cycles through home, Button, Action Row, Chat, Modal, and Review Editor each made 189 requests and transferred 2,992,016 encoded bytes, identically. Interaction-ready times (navigation start to a visible hero heading) were 26 to 38 ms for home and, from the second recorded cycle on, 49 to 124 ms for component pages; the first recorded cycle reached 181 ms for Chat and 234 ms for Review Editor. Opening the Playground view took 50 to 165 ms and closing it 46 to 62 ms. Example mount hosts, DOM nodes (2,622), JS event listeners (23), and documents (1) were identical in every cycle, the JS heap held at 1.76 MB, and the server's retained artifacts held at 2,647 entries and 369,993,933 bytes.
 
 ### Edit/rebuild cycles
 
-_Pending._
+Five rewrites of the disposable Button example each reached the watcher's invalidation in 121 to 122 ms and were rebuilt and served in 1.71 to 1.76 s. Retained artifacts held at 2,648 entries and 369,995,056 bytes throughout, with no build left in flight, and fell by one page artifact when the fixture was removed. The server holds about 366 MB of page JavaScript for 181 pages in memory. That is the in-process cost CIN-588's shared graph would also reduce.
 
 ## Comparison matrix
 
 | Candidate | Verdict | Evidence and reason |
 | --- | --- | --- |
-| Shared multi-entry page build | _pending_ | Selection rule on the recorded pairs. |
-| Server-side rendering of documentation | _pending_ |  |
-| Strict prerendering | _pending_ |  |
-| Lazy route code | _pending_ |  |
-| Native-link fallback | _pending_ |  |
-| Intent preloading | _pending_ |  |
-| Focus and announcements on navigation | _pending_ |  |
-| Static hosting | _pending_ |  |
-| Cross-shard artifact reuse | _pending_ | Stays retain/reject unless measurement proves a benefit and a separately scoped issue is approved. |
-| Framework replacement (adapter-static) | _pending_ | A prototype is required only if this decision proposes a replacement. |
+| Shared multi-entry page build | Reject as measured; carry to CIN-588 with a memory gate | Every timing observation improved beyond the baseline band, but two resident-memory medians exceeded the baseline maximum, so the rule retains the baseline. |
+| Server-side rendering of documentation | Retain | Every exported page is server-rendered and asserted pre-rendered by the exporter; warmed component pages reach a visible hero in 49 to 234 ms. |
+| Strict prerendering | Retain | The static export already prerenders all 212 routes and fails the build if any page is blank. |
+| Lazy route code | Retain | Scenarios and the bare component already load on demand; opening the Playground view takes 50 to 165 ms warmed, with no growth across cycles. |
+| Native-link fallback | Retain, and require it in CIN-589 | Every route is a complete static document, so a plain link always works. |
+| Intent preloading | Reject for now | No measured navigation misses a target: after the first recorded cycle, component pages are interactive in at most 124 ms (234 ms in the first), and preloading would add requests to the 189 per cycle without a measured need. CIN-589 may revisit it with its own measurement. |
+| Focus and announcements on navigation | Adopt as a CIN-589 requirement | A full document navigation resets focus natively; a client-side swap must do it itself. |
+| Static hosting | Retain | The exported `build/` is the deployment, and CIN-404's gate serves that output without compiling. |
+| Cross-shard artifact reuse | Reject | CIN-404's shards serve the existing `build/` and never compile, so there is no repeated build to reuse. The repeated cost measured here is inside one export. |
+| Framework replacement (adapter-static) | Reject; no prototype built | The architecture is already a static site generated from prerendered routes. The costs measured here, per-page compilation and the per-render featured-example processes, are addressable inside it, as the candidate's halved CPU time shows. |
 
 ## Leaks
 
-_Pending._ Any series that grows monotonically across the five cycles is reported with its owner and allocation evidence, a reproduction, and a failing check, and is filed as its own issue before this decision is complete. Growth is not labelled caching without evidence.
+No leak was reproduced. Two series grew monotonically in the recorded five-cycle runs, and each was traced to its owner before being classified.
+
+- **Open EventSource count (browser)**: 14, 21, 28, 35, 42, one more per page navigation. The diagnostic run at `591bf0e0` read the server's own owner of those streams, `sseClients` in `src/sse-broadcast.ts`, which held exactly one subscriber at every checkpoint. DOM documents (1), nodes, and listeners were flat. The rise comes from the CDP tracker: a stream torn down with its document emits no `loadingFinished` or `loadingFailed`, so the probe never sees it close. That makes it a measurement artifact, not retention (`cin-585-results/diagnostic-navigation.json`).
+- **Probe process resident memory during edit/rebuild**: rose about 10.9 MB per cycle over five cycles while the JS heap, retained artifacts, and in-flight builds stayed flat. A 20-cycle diagnostic (`cin-585-results/diagnostic-rebuild.json`) shows it levelling off. It rose 23 MB over the first 12 edits (4,056 to 4,079 MB) and then did not change for the last eight, and the JS heap fluctuated between 752 and 755 MB. That is a bounded high-water rise in native memory around `Bun.build`, not unbounded growth. It is recorded here rather than called caching. A longer run would be the next check if edit sessions grow far beyond 20 saves.
+
+Two smaller monotonic readings are below any owner's resolution: the navigation JS heap rose 768 bytes once, and the edit/rebuild page-artifact bytes rose 2 bytes when the fixture's cycle number reached two digits.
