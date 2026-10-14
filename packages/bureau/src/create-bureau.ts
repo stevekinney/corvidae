@@ -3600,6 +3600,36 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           'CONFLICT',
         );
       }
+      // The session was already saved as running this run. If the run then
+      // never starts, it is recorded as failed rather than left a phantom —
+      // decided inside the session's own update, so it applies only while
+      // this very run is still the session's latest: not to a session
+      // deleted meanwhile (saving would recreate it), nor over a newer run
+      // another process started.
+      const markStartFailed = async (error: unknown): Promise<void> => {
+        if (steeringSession === undefined) return;
+        try {
+          await runtime.sessionStore?.update(sessionId, (current) =>
+            current?.incarnation === steeringSession.incarnation &&
+            current.metadata['lastRunId'] === runId
+              ? {
+                  ...current,
+                  metadata: {
+                    ...current.metadata,
+                    lastRunStatus: 'error',
+                    lastError: serializeUnknownError(error),
+                  },
+                }
+              : undefined,
+          );
+        } catch (rollbackError) {
+          diagnose({
+            level: 'error',
+            scope: 'steering',
+            message: `[bureau] Could not mark session "${sessionId}" failed after run "${runId}" failed to start: ${serializeUnknownError(rollbackError)}`,
+          });
+        }
+      };
       if (steeringKv !== undefined && steeringSession !== undefined) {
         try {
           await enqueueSteering(sessionId, () =>
@@ -3610,34 +3640,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             }),
           );
         } catch (error) {
-          // The session was already saved as running this run, which will
-          // now never start: record it as failed rather than leave a phantom —
-          // unless another process deleted it meanwhile, in which case saving
-          // would recreate it.
-          try {
-            // Decided inside the session's own update, so it applies only if
-            // this very run is still the session's latest: not to a session
-            // deleted meanwhile, nor over a newer run another process started.
-            await runtime.sessionStore?.update(sessionId, (current) =>
-              current?.incarnation === steeringSession.incarnation &&
-              current.metadata['lastRunId'] === runId
-                ? {
-                    ...current,
-                    metadata: {
-                      ...current.metadata,
-                      lastRunStatus: 'error',
-                      lastError: serializeUnknownError(error),
-                    },
-                  }
-                : undefined,
-            );
-          } catch (rollbackError) {
-            diagnose({
-              level: 'error',
-              scope: 'steering',
-              message: `[bureau] Could not mark session "${sessionId}" failed after run "${runId}" failed to start: ${serializeUnknownError(rollbackError)}`,
-            });
-          }
+          await markStartFailed(error);
           throw error;
         }
       } else {
@@ -3653,80 +3656,94 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // registered. Everything from here to that registration is synchronous,
       // so a `shutdown()` that started during the awaits above rejects this
       // run instead of letting it start outside shutdown's snapshot.
-      assertRunAdmissionOpen('run');
-      const activeRun = createActiveRun(
-        {
-          generate: runRuntime.generate,
-          toolbox: runToolbox,
-          conversation,
-          maximumSteps: request.maximumSteps ?? runtime.maximumSteps,
-          maximumTokens: request.maximumTokens,
-          stopWhen: options.stopWhen,
-          // AB-260: the bureau's single composed RuntimeServices instance,
-          // snapshotted into every run it starts.
-          runtime: runtimeServices,
-          ...(runSteeringGate ? { steering: runSteeringGate } : {}),
-          // COR-1269 — stamped onto this run's hook-plan observations.
-          sessionId,
-          // COR-1265 criterion 8 — merged AFTER the trailing registration, so
-          // the Bureau tier is complete before it becomes the merge's first
-          // argument. A single-tier merge still copies every entry into a fresh
-          // registry, which is what makes the plan a snapshot: a registration
-          // added to `runRuntime.hooks` afterwards cannot reach this run.
-          hooks: mergeHookRegistries(
-            registerTrailingOnStep(
-              runRuntime.hooks,
-              'bureau:pending-approval-persist',
-              createPendingApprovalPersistHook(
-                runId,
-                sessionId,
-                pendingApprovalOverrides,
-                persistPendingApprovalOverrideWithRetry,
+      let activeRun: ReturnType<typeof createActiveRun>;
+      try {
+        assertRunAdmissionOpen('run');
+        activeRun = createActiveRun(
+          {
+            generate: runRuntime.generate,
+            toolbox: runToolbox,
+            conversation,
+            maximumSteps: request.maximumSteps ?? runtime.maximumSteps,
+            maximumTokens: request.maximumTokens,
+            stopWhen: options.stopWhen,
+            // AB-260: the bureau's single composed RuntimeServices instance,
+            // snapshotted into every run it starts.
+            runtime: runtimeServices,
+            ...(runSteeringGate ? { steering: runSteeringGate } : {}),
+            // COR-1269 — stamped onto this run's hook-plan observations.
+            sessionId,
+            // COR-1265 criterion 8 — merged AFTER the trailing registration, so
+            // the Bureau tier is complete before it becomes the merge's first
+            // argument. A single-tier merge still copies every entry into a fresh
+            // registry, which is what makes the plan a snapshot: a registration
+            // added to `runRuntime.hooks` afterwards cannot reach this run.
+            hooks: mergeHookRegistries(
+              registerTrailingOnStep(
+                runRuntime.hooks,
+                'bureau:pending-approval-persist',
+                createPendingApprovalPersistHook(
+                  runId,
+                  sessionId,
+                  pendingApprovalOverrides,
+                  persistPendingApprovalOverrideWithRetry,
+                ),
               ),
             ),
-          ),
-          executeOptions: requestContext === undefined ? {} : { requestContext },
-          // Thread agentName and runId so curated tool.* bubble events are stamped
-          // with {agentName, runId, step} metadata (C3) and durable launch input
-          // carries the owning agent for audit/recovery attribution (F2). Fall back
-          // to BUREAU_AGENT_NAME when the request omits it, matching the agent the
-          // session is stamped with — otherwise the durable input + tool events
-          // carry an empty agentName while the session says 'bureau'.
-          agentName,
+            executeOptions: requestContext === undefined ? {} : { requestContext },
+            // Thread agentName and runId so curated tool.* bubble events are stamped
+            // with {agentName, runId, step} metadata (C3) and durable launch input
+            // carries the owning agent for audit/recovery attribution (F2). Fall back
+            // to BUREAU_AGENT_NAME when the request omits it, matching the agent the
+            // session is stamped with — otherwise the durable input + tool events
+            // carry an empty agentName while the session says 'bureau'.
+            agentName,
+            runId,
+          },
+          // Route through the durable engine when one was composed (durableExecution
+          // + storage). The conversation already carries the seeded user/system
+          // messages, so no separate `prompt` is passed — the workflow snapshots it.
+          // The run is then checkpointed and resumes from its last step after a crash.
+          runtime.durable
+            ? {
+                engine: runtime.durable.engine,
+                checkpointStore: runtime.durable.checkpointStore,
+                // COR-625: this run's terminal checkpoint-retention step,
+                // folded into its `closed()`. Memoized per run id, so the
+                // listeners below firing it independently costs nothing.
+                ...(durableTerminalCleanup ? { terminalCleanup: durableTerminalCleanup } : {}),
+                runId,
+                // Carry the owning session in the durable input so boot recovery can
+                // correlate a recovered handle back to its session without a side
+                // table (see recoverDurableRuns / resolveRunServices).
+                sessionId,
+                // Lets durable steering in any process find this run as live
+                // for this session incarnation (`liveSessionRunIdsEverywhere`).
+                ...(steeringSession !== undefined
+                  ? { tags: [steeringSessionRunTag(sessionId, steeringSession.incarnation)] }
+                  : {}),
+                ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
+                ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
+              }
+            : undefined,
+          // AB-214 review (PRRT_kwDORvupsc6esZTF): thread the authenticated
+          // principal starting this run into `LivenessSnapshot.owner` — AC4
+          // reserves an absent owner for a standalone (non-Bureau) run, and a
+          // Bureau-started run always has one to give.
+          request.principal !== undefined ? { owner: request.principal } : undefined,
+        );
+      } catch (error) {
+        // Promoted but never started, so no terminal listener will ever log
+        // its end: log it here, or every process would count this run as
+        // starting and keep a pause bound to it accepted.
+        logRunBoundarySteering(sessionId, steeringGate, {
+          type: 'run-ended',
           runId,
-        },
-        // Route through the durable engine when one was composed (durableExecution
-        // + storage). The conversation already carries the seeded user/system
-        // messages, so no separate `prompt` is passed — the workflow snapshots it.
-        // The run is then checkpointed and resumes from its last step after a crash.
-        runtime.durable
-          ? {
-              engine: runtime.durable.engine,
-              checkpointStore: runtime.durable.checkpointStore,
-              // COR-625: this run's terminal checkpoint-retention step,
-              // folded into its `closed()`. Memoized per run id, so the
-              // listeners below firing it independently costs nothing.
-              ...(durableTerminalCleanup ? { terminalCleanup: durableTerminalCleanup } : {}),
-              runId,
-              // Carry the owning session in the durable input so boot recovery can
-              // correlate a recovered handle back to its session without a side
-              // table (see recoverDurableRuns / resolveRunServices).
-              sessionId,
-              // Lets durable steering in any process find this run as live
-              // for this session incarnation (`liveSessionRunIdsEverywhere`).
-              ...(steeringSession !== undefined
-                ? { tags: [steeringSessionRunTag(sessionId, steeringSession.incarnation)] }
-                : {}),
-              ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
-              ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
-            }
-          : undefined,
-        // AB-214 review (PRRT_kwDORvupsc6esZTF): thread the authenticated
-        // principal starting this run into `LivenessSnapshot.owner` — AC4
-        // reserves an absent owner for a standalone (non-Bureau) run, and a
-        // Bureau-started run always has one to give.
-        request.principal !== undefined ? { owner: request.principal } : undefined,
-      );
+          now: runtimeServices.clock.nowISO(),
+        });
+        await markStartFailed(error);
+        throw error;
+      }
       activeRuns.add(activeRun);
       runToolboxes.add(runToolbox);
       runToolboxesByRunId.set(runId, runToolbox);
@@ -7717,11 +7734,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     let liveRunIds: string[];
     try {
-      liveRunIds =
-        durableSteeringStore() === undefined
-          ? liveSessionRunIds(sessionId)
-          : await liveSessionRunIdsEverywhere(sessionId, session.incarnation, request.runId);
+      const steeringKv = durableSteeringStore();
+      if (steeringKv === undefined) {
+        liveRunIds = liveSessionRunIds(sessionId);
+      } else {
+        // Fold the log first: a run promoted elsewhere whose workflow does
+        // not exist yet is known only from its `promoted` entry, and the
+        // terminal decision below must count it.
+        await enqueueSteering(sessionId, () =>
+          catchUpSteering(steeringKv, sessionId, session.incarnation),
+        );
+        liveRunIds = await liveSessionRunIdsEverywhere(
+          sessionId,
+          session.incarnation,
+          request.runId,
+        );
+      }
     } catch (error) {
+      // Deleted meanwhile by another process: its log was read mid-deletion.
+      const afterFailure = await runtime.sessionStore?.load(sessionId);
+      if (afterFailure?.incarnation !== session.incarnation) return { outcome: 'not-found' };
+      // A request naming its run was authorized against that run above, so
+      // the failure is its to see.
+      if (request.runId !== undefined) throw error;
       // An unscoped request's authority depends on which run is live, so a
       // failed query is masked until this caller is shown to be authorized
       // against the run this process can see.
@@ -8056,15 +8091,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // but only within the launch window its promotion time bounds: a missing
     // workflow long after that is a finished one since purged, not one still
     // starting. Each run has its own marker, so concurrent starts all count.
+    //
+    // Admission needs only the named run's membership and whether any run is
+    // live, or, unscoped, whether zero, one, or several are; the reads stop
+    // as soon as that is known. A marker whose workflow exists is dropped,
+    // so each one costs at most one read that does not add a run.
     const cursor = steeringCursors.get(sessionId);
     if (cursor?.incarnation === incarnation) {
       for (const [runId, promotedAt] of cursor.starting) {
         if (runtimeServices.clock.now() - Date.parse(promotedAt) > STEERING_RUN_START_WINDOW_MS) {
           cursor.starting.delete(runId);
-        } else if (!live.has(runId)) {
-          if ((await engine.get(runId)) === null) live.add(runId);
-          else cursor.starting.delete(runId);
         }
+      }
+      let namedChecked = namedRunId === undefined || !cursor.starting.has(namedRunId);
+      const known = () =>
+        namedRunId === undefined
+          ? live.size >= 2
+          : live.has(namedRunId) || (namedChecked && live.size >= 1);
+      const markers = [...cursor.starting.keys()];
+      if (namedRunId !== undefined && !namedChecked) {
+        markers.splice(markers.indexOf(namedRunId), 1);
+        markers.unshift(namedRunId);
+      }
+      for (const runId of markers) {
+        if (known()) break;
+        if (live.has(runId)) continue;
+        if ((await engine.get(runId)) === null) live.add(runId);
+        else cursor.starting.delete(runId);
+        if (runId === namedRunId) namedChecked = true;
       }
     }
     return [...live].toSorted((left, right) => left.localeCompare(right));
@@ -8145,7 +8199,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         cursor.refusals,
         asSubmittedRetry(cursor.ledger, cursor.refusals, cursor.submitted, command, submittedValue),
       );
-      if (answered !== undefined) return answered;
+      if (answered !== undefined) {
+        // The folded answer stands only if the key's binding names this
+        // key's own entry in this log: a binding pointing anywhere else is
+        // corrupt, here exactly as for a key answered from another session.
+        if (await steeringBindingNamesOwnEntry(kv, sessionId, incarnation, principal, id)) {
+          return answered;
+        }
+        const afterRead = await runtime.sessionStore?.load(sessionId);
+        if (afterRead?.incarnation !== incarnation) return { outcome: 'not-found' };
+        throw new SteeringLogCorruptError(
+          `Steering key "${principal}"/"${id}" was decided in session "${sessionId}", but its binding does not name that decision.`,
+        );
+      }
       if (!revisionIsRepresentable && decidedRefusal === undefined) {
         decidedRefusal = {
           outcome: 'rejected',
@@ -8254,6 +8320,44 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * state it reached, so the retry gets the same `conflict` it would have
    * got in-process.
    */
+  /**
+   * Whether `(principal, id)`'s stored binding names this session
+   * incarnation and, at its sequence, an `admit` or `refused` entry for that
+   * same key.
+   */
+  async function steeringBindingNamesOwnEntry(
+    kv: ConditionalTextValueStore,
+    sessionId: string,
+    incarnation: string,
+    principal: string,
+    id: string,
+  ): Promise<boolean> {
+    const stored = await readSteeringKeyBinding(kv, principal, id);
+    if (
+      stored === undefined ||
+      stored.binding.sessionId !== sessionId ||
+      stored.binding.incarnation !== incarnation
+    ) {
+      return false;
+    }
+    const { sequence } = stored.binding;
+    const head = await readSteeringLogHead(kv, sessionId, incarnation);
+    if (sequence > head.sequence) return false;
+    const [named] = await readSteeringLogEntries(
+      kv,
+      sessionId,
+      incarnation,
+      sequence - 1,
+      sequence,
+    );
+    return (
+      named !== undefined &&
+      (named.type === 'admit' || named.type === 'refused') &&
+      named.command.principal === principal &&
+      named.command.id === id
+    );
+  }
+
   async function answerFromOtherSteeringLog(
     kv: ConditionalTextValueStore,
     binding: SteeringKeyBinding,

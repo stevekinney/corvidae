@@ -187,7 +187,7 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
     (value['idOrigin'] === 'caller' || value['idOrigin'] === 'generated') &&
     typeof value['sessionId'] === 'string' &&
     typeof value['principal'] === 'string' &&
-    typeof value['requestedAt'] === 'string' &&
+    isTimestamp(value['requestedAt']) &&
     (value['expectedRevision'] === undefined || isVersion(value['expectedRevision'])) &&
     isOptionalString(value['deadline']) &&
     isOptionalString(value['runId'])

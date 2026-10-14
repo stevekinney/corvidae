@@ -11,13 +11,20 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createSessionStore, type GenerateFunction, type JSONValue } from '@lostgradient/operative';
+import {
+  createAgentSession,
+  createSessionStore,
+  type GenerateFunction,
+  type JSONValue,
+} from '@lostgradient/operative';
+import { createConversationHistory } from 'conversationalist';
 import { encodeStorageKeyComponent } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
+import { createRuntimeComposition } from './runtime-composition';
 import { appendSteeringLogEvent, readSteeringLogHead } from './steering-log';
 
 async function openBureau(path: string) {
@@ -547,6 +554,98 @@ describe('durable steering across two Bureau processes', () => {
     }
   }, 60_000);
 
+  it("folds starting runs before the terminal check, reads markers only as far as admission needs, and surfaces a named run's liveness failure", async () => {
+    // The engine every Bureau composes: its reads are counted, then failed.
+    const probe = await createRuntimeComposition({
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createToolbox([]),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+    const engineType = Object.getPrototypeOf(probe.durable!.engine) as {
+      get: (id: string) => Promise<unknown>;
+    };
+    probe.durable!.engine[Symbol.dispose]?.();
+    probe.disposeStorage?.();
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-starting-terminal-'));
+    const path = join(directory, 'bureau.sqlite');
+    const writer = await openBureau(path);
+    let reader: TestBureau | undefined;
+    const engineGet = spyOn(engineType, 'get');
+    try {
+      // An older run's terminal save made the session terminal, while five
+      // newer runs were promoted elsewhere and have no workflow yet. Bob owns
+      // the older run; alice owns the starting ones.
+      const kv = writer.kv;
+      if (kv === undefined) throw new Error('expected a durable store');
+      const sessionId = 'session-starting-terminal';
+      const starting = ['starting-1', 'starting-2', 'starting-3', 'starting-4', 'starting-5'];
+      const store = createSessionStore(kv);
+      await store.save(
+        createAgentSession({
+          id: sessionId,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: sessionId }),
+          metadata: {
+            lastRunId: 'older',
+            lastRunStatus: 'completed',
+            lastRequestAuthorities: {
+              older: { principalId: 'bob' },
+              ...Object.fromEntries(starting.map((runId) => [runId, { principalId: 'alice' }])),
+            },
+          },
+        }),
+      );
+      const session = await store.load(sessionId);
+      if (session === undefined) throw new Error('expected the session');
+      for (const runId of starting) {
+        const head = await readSteeringLogHead(kv, sessionId, session.incarnation);
+        await appendSteeringLogEvent(kv, sessionId, session.incarnation, head, {
+          type: 'promoted',
+          runId,
+          now: new Date().toISOString(),
+        });
+      }
+
+      // A Bureau with no folded view of the session yet.
+      reader = await openBureau(path);
+      const explicit = await reader.submitSteeringCommand(sessionId, {
+        principal: 'alice',
+        runId: 'starting-3',
+        requestedValue: { target: 'pause' },
+      });
+      expect(explicit.outcome).toBe('accepted');
+
+      // Two starting runs settle "ambiguous"; the other three go unread.
+      engineGet.mockClear();
+      const unscoped = await reader.submitSteeringCommand(sessionId, {
+        principal: 'bob',
+        requestedValue: { target: 'pause' },
+      });
+      expect(unscoped.outcome).toBe('rejected');
+      if (unscoped.outcome !== 'rejected') throw new Error('expected rejected');
+      expect(unscoped.failure.reason).toBe('run-ambiguous');
+      // Liveness is read twice per admission (before and inside the queue).
+      expect(engineGet.mock.calls.length).toBeLessThanOrEqual(4);
+
+      // A backend failure reaches the caller authorized for the run it
+      // named, even though the session's default authority is someone else's.
+      engineGet.mockImplementation(() => Promise.reject(new Error('backend unavailable')));
+      await expect(
+        reader.submitSteeringCommand(sessionId, {
+          principal: 'alice',
+          runId: 'starting-4',
+          requestedValue: { target: 'pause' },
+        }),
+      ).rejects.toThrow('backend unavailable');
+    } finally {
+      engineGet.mockRestore();
+      await writer.dispose();
+      await reader?.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("counts only the current session incarnation's runs as live, and handles any session id", async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-incarnation-liveness-'));
     const path = join(directory, 'bureau.sqlite');
@@ -658,6 +757,12 @@ describe('durable steering across two Bureau processes', () => {
       if (k1Binding === undefined) throw new Error('expected k1 bound');
       const binding = JSON.parse((await kv.get(k1Binding)) ?? '{}') as Record<string, unknown>;
       await kv.set(k1Binding, JSON.stringify({ ...binding, sequence: 3 }));
+
+      // An exact retry in the session that decided k1 fails closed too,
+      // rather than replaying its folded answer past the bad binding.
+      await expect(
+        bureau.submitSteeringCommand(first, model('k1', 'claude-sonnet-5')),
+      ).rejects.toThrow(/does not name that decision/);
 
       const other = await startRunningSession(bureau);
       await expect(
