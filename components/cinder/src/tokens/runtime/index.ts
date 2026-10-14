@@ -18,7 +18,7 @@ export { PROFILES, profileRangeViolation, selectProfile } from './authoring-prof
 export type { ProfileSubject } from './authoring-profiles.ts';
 export { traceProvenance } from './authoring-provenance.ts';
 export type { ProvenanceLayerInput, TraceOptions } from './authoring-provenance.ts';
-export { UNKNOWN, authoringContextId } from './authoring-types.ts';
+export { PALETTE_FAMILIES, UNKNOWN, authoringContextId } from './authoring-types.ts';
 export type {
   AuthoringCatalogue,
   AuthoringContext,
@@ -27,6 +27,8 @@ export type {
   ContributingLayer,
   EffectiveType,
   LayerKind,
+  PaletteFamily,
+  PaletteMembership,
   ProfileDefinition,
   ProfileRange,
   ProvenanceVariant,

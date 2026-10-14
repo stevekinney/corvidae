@@ -101,6 +101,8 @@ type TokenEvaluation = {
 - `PROFILES`, `selectProfile`, `profileRangeViolation`: the CSS usage profiles and their numeric ranges.
 - `traceProvenance(layers)`, `authoringContexts`, `authoringLayerStack`, `evaluateContextProvenance`: the building blocks `evaluateTheme` uses. They expect sources that already passed `validateThemeSources` and throw raw errors on anything else; `evaluateTheme` is the entry point that turns failures into diagnostics.
 
+Each color record carries `palette: { family, role, anchor }`. It comes from the explicit `palette` key in the token's `com.lostgradient.cinder` extension (value-neutral, never inferred from a token name), or is `unknown` when the token declares none. The generator rejects an unknown family, a family without exactly one anchor, a repeated role, a palette on a non-color, and a token that declares different memberships in different contexts.
+
 Presentation grouping and friendly labels are not part of the runtime.
 
 ## What stays in `scripts/tokens/`

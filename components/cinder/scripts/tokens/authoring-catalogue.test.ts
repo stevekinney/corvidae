@@ -83,7 +83,9 @@ describe('the real catalogue', async () => {
     for (const record of catalogue.records) {
       expect(catalogue.profiles[record.profile]).toBeDefined();
       expect(record.category).not.toBe('');
-      if (record.palette) expect(record.palette).toEqual({ family: 'unknown', anchor: 'unknown' });
+      if (record.palette?.family === 'unknown') {
+        expect(record.palette).toEqual({ family: 'unknown', role: 'unknown', anchor: 'unknown' });
+      }
     }
     const colors = catalogue.records.filter((record) => record.profile === 'color');
     expect(colors.length).toBeGreaterThan(0);
@@ -196,7 +198,7 @@ describe('the catalogue over a fixture corpus', () => {
     expect(record.category).toBe('unknown');
     expect(record.description).toBe('unknown');
     expect(record.component).toBeNull();
-    expect(record.palette).toEqual({ family: 'unknown', anchor: 'unknown' });
+    expect(record.palette).toEqual({ family: 'unknown', role: 'unknown', anchor: 'unknown' });
   });
 
   test('the fixture catalogue records its scale, layers, and recipes', () => {
