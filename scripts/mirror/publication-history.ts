@@ -183,6 +183,11 @@ export async function verifyHistoricalCheckout(options: {
           ))
         ) {
           continue;
+        } else if (isPendingChangesetPath(path)) {
+          // COR-1433: a sync delivers corvidae's changesets and a Version Packages commit consumes
+          // them. Neither touches source, and the history policy cannot name the paths because
+          // it is whatever the historical checkout carried.
+          continue;
         } else if (!findTargetOwner(policy, path, target)) {
           throw new Error(`Intervening commit ${commit} changes non-target-owned path ${path}`);
         }
@@ -190,6 +195,11 @@ export async function verifyHistoricalCheckout(options: {
     }
   }
   return sourceCommit;
+}
+
+/** A target-root `.changeset/<name>.md` other than the README. */
+function isPendingChangesetPath(path: string): boolean {
+  return /^\.changeset\/[^/]+\.md$/.test(path) && path !== '.changeset/README.md';
 }
 
 export async function isManifestVersionOnlyChange(
