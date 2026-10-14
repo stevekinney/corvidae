@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { loadPackageMap } from './package-map.ts';
 import { readPackagePayload } from './package-payload.ts';
@@ -255,15 +256,18 @@ async function withPublication(
   }
 }
 
-test('historical declared roots cannot disappear behind the current collector', async () => {
+// Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+const outcome1 = await outcomeOf(async () => {
   await withPublication(async ({ options }) => {
     expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
       'historical source paths or bytes',
     );
   }, true);
 });
+test('historical declared roots cannot disappear behind the current collector', () =>
+  rethrow(outcome1));
 
-test('binds a version-only target release to its historical private source and actual tarball', async () => {
+const outcome2 = await outcomeOf(async () => {
   await withPublication(async ({ options, sourceCommit, gitHead }) => {
     const result = await recordSourceDigest(options);
     expect(result.snapshot.version).toBe('0.12.1');
@@ -275,8 +279,10 @@ test('binds a version-only target release to its historical private source and a
     );
   });
 });
+test('binds a version-only target release to its historical private source and actual tarball', () =>
+  rethrow(outcome2));
 
-test('recorder uses the historical target for provenance verification', async () => {
+const outcome3 = await outcomeOf(async () => {
   await withPublication(
     async ({ options }) => {
       const result = await recordSourceDigest(options);
@@ -286,8 +292,9 @@ test('recorder uses the historical target for provenance verification', async ()
     { mirrorTarget: 'cinder', targetDirectory: 'packages/operative' },
   );
 });
+test('recorder uses the historical target for provenance verification', () => rethrow(outcome3));
 
-test('recorder uses the historical directory for commit comparison', async () => {
+const outcome4 = await outcomeOf(async () => {
   await withPublication(
     async ({ options }) => {
       const result = await recordSourceDigest(options);
@@ -297,8 +304,9 @@ test('recorder uses the historical directory for commit comparison', async () =>
     { mirrorTarget: 'agent-bureau', targetDirectory: 'packages/operative-legacy' },
   );
 });
+test('recorder uses the historical directory for commit comparison', () => rethrow(outcome4));
 
-test('rejects changed historical input, source bytes, dirty checkout, and wrong historical HEAD', async () => {
+const outcome5 = await outcomeOf(async () => {
   await withPublication(async ({ options, current, historical }) => {
     const path = join(current, 'packages/operative/package.json');
     const initial = await Bun.file(path).text();
@@ -321,8 +329,10 @@ test('rejects changed historical input, source bytes, dirty checkout, and wrong 
     expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('HEAD must equal');
   });
 });
+test('rejects changed historical input, source bytes, dirty checkout, and wrong historical HEAD', () =>
+  rethrow(outcome5));
 
-test('rejects tampered tarballs and mismatched registry manifests', async () => {
+const outcome6 = await outcomeOf(async () => {
   await withPublication(async ({ options, registry, setRegistry }) => {
     await setRegistry(registry, true);
     expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('integrity mismatch');
@@ -332,8 +342,9 @@ test('rejects tampered tarballs and mismatched registry manifests', async () => 
     );
   });
 });
+test('rejects tampered tarballs and mismatched registry manifests', () => rethrow(outcome6));
 
-test('rejects altered JavaScript and declarations despite matching manifest and valid registry integrity', async () => {
+const outcome7 = await outcomeOf(async () => {
   await withPublication(async ({ options, registry, setRegistry }) => {
     for (const path of ['dist/index.js', 'dist/index.d.ts']) {
       await setRegistry(registry, false, {
@@ -347,8 +358,10 @@ test('rejects altered JavaScript and declarations despite matching manifest and 
     }
   });
 });
+test('rejects altered JavaScript and declarations despite matching manifest and valid registry integrity', () =>
+  rethrow(outcome7));
 
-test('rejects source changes between the mirror and release commits', async () => {
+const outcome8 = await outcomeOf(async () => {
   await withPublication(async ({ options, target }) => {
     await Bun.write(
       join(target, 'packages/operative/src/index.ts'),
@@ -368,8 +381,9 @@ test('rejects source changes between the mirror and release commits', async () =
     expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('non-target-owned path');
   });
 });
+test('rejects source changes between the mirror and release commits', () => rethrow(outcome8));
 
-test('rejects missing registry commits and invalid publication-map entries', async () => {
+const outcome9 = await outcomeOf(async () => {
   await withPublication(async ({ options }) => {
     const registryRunner: CommandRunner = async (command) => ({
       command: command.join(' '),
@@ -422,8 +436,10 @@ test('rejects missing registry commits and invalid publication-map entries', asy
     ).toThrow('lastPublishedVersion is null');
   });
 });
+test('rejects missing registry commits and invalid publication-map entries', () =>
+  rethrow(outcome9));
 
-test('publication inputs resolve only referenced catalog values and preserve import condition order', async () => {
+const outcome10 = await outcomeOf(async () => {
   await withPublication(async ({ current }) => {
     const rootPath = join(current, 'package.json');
     const packagePath = join(current, 'packages/operative/package.json');
@@ -455,9 +471,12 @@ test('publication inputs resolve only referenced catalog values and preserve imp
     expect(await read()).not.toEqual(ordered);
   });
 });
+test('publication inputs resolve only referenced catalog values and preserve import condition order', () =>
+  rethrow(outcome10));
 
 for (const field of ['type', 'imports']) {
-  test(`explicit mirror boundary rejects a copied provenance trailer with a runtime manifest edit: ${field}`, async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome11 = await outcomeOf(async () => {
     await withPublication(async ({ options, target, sourceCommit, registry }) => {
       const path = join(target, 'packages/operative/package.json');
       const change =
@@ -483,10 +502,13 @@ for (const field of ['type', 'imports']) {
       );
     });
   });
+  test(`explicit mirror boundary rejects a copied provenance trailer with a runtime manifest edit: ${field}`, () =>
+    rethrow(outcome11));
 }
 
 for (const field of ['scripts', 'devDependencies', 'packageManager']) {
-  test(`rejects a historical build input change: ${field}`, async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome12 = await outcomeOf(async () => {
     await withPublication(async ({ options, target, registry, setRegistry }) => {
       const path = join(target, 'packages/operative/package.json');
       const change =
@@ -513,9 +535,11 @@ for (const field of ['scripts', 'devDependencies', 'packageManager']) {
       );
     });
   });
+  test(`rejects a historical build input change: ${field}`, () => rethrow(outcome12));
 }
 
-test('allows a release metadata change beside historical build inputs', async () => {
+// Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+const outcome13 = await outcomeOf(async () => {
   await withPublication(async ({ options, target, registry, setRegistry }) => {
     const path = join(target, 'packages/operative/package.json');
     await Bun.write(path, json({ ...registry, description: 'release metadata' }));
@@ -535,8 +559,9 @@ test('allows a release metadata change beside historical build inputs', async ()
     expect(result.snapshot.gitHead).toBe(changedCommit);
   });
 });
+test('allows a release metadata change beside historical build inputs', () => rethrow(outcome13));
 
-test('accepts a verified mirror commit merged into the old default branch', async () => {
+const outcome14 = await outcomeOf(async () => {
   await withPublication(async ({ options, target, registry }) => {
     const mirrored = await requireGit(target, ['rev-parse', 'HEAD~1']);
     const oldDefault = await requireGit(target, ['rev-parse', `${mirrored}^`]);
@@ -567,6 +592,8 @@ test('accepts a verified mirror commit merged into the old default branch', asyn
     expect(result.snapshot.gitHead).toBe(mergedRelease);
   });
 });
+test('accepts a verified mirror commit merged into the old default branch', () =>
+  rethrow(outcome14));
 
 const mergeSideChangeCases: {
   name: string;
@@ -641,7 +668,8 @@ const mergeSideChangeCases: {
 ];
 
 for (const testCase of mergeSideChangeCases) {
-  test(`rejects a merge-side change: ${testCase.name}`, async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome15 = await outcomeOf(async () => {
     await withPublication(async ({ options, target, registry }) => {
       const slug = testCase.name.replaceAll(' ', '-');
       const mirrored = await requireGit(target, ['rev-parse', 'HEAD~1']);
@@ -698,9 +726,11 @@ for (const testCase of mergeSideChangeCases) {
       expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(testCase.expected);
     });
   });
+  test(`rejects a merge-side change: ${testCase.name}`, () => rethrow(outcome15));
 }
 
-test('publication inputs include emitted build scripts and resolved toolchain versions', async () => {
+// Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+const outcome16 = await outcomeOf(async () => {
   await withPublication(async ({ current }) => {
     const surfacePath = join(current, 'scripts/mirror/package-surface.json');
     const surface = await Bun.file(surfacePath).json();
@@ -726,9 +756,12 @@ test('publication inputs include emitted build scripts and resolved toolchain ve
     expect(await read()).not.toEqual(firstToolchain);
   });
 });
+test('publication inputs include emitted build scripts and resolved toolchain versions', () =>
+  rethrow(outcome16));
 
 for (const configuration of ['library', 'browser'] as const) {
-  test(`publication inputs include effective emitted TypeScript configuration: ${configuration}`, async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome17 = await outcomeOf(async () => {
     await withPublication(async ({ current }) => {
       await mkdir(join(current, 'internal/typescript'), { recursive: true });
       await Bun.write(
@@ -808,9 +841,12 @@ for (const configuration of ['library', 'browser'] as const) {
       ).toEqual(afterBaseConfiguration);
     });
   });
+  test(`publication inputs include effective emitted TypeScript configuration: ${configuration}`, () =>
+    rethrow(outcome17));
 }
 
-test('publication inputs use the historical layout', async () => {
+// Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+const outcome18 = await outcomeOf(async () => {
   await withPublication(async ({ current, historical }) => {
     const writeCompilerInputs = async (root: string) => {
       await mkdir(join(root, 'internal/typescript'), { recursive: true });
@@ -842,8 +878,9 @@ test('publication inputs use the historical layout', async () => {
     expect(relocatedHistoricalContract.digest).not.toBe(currentContract.digest);
   });
 });
+test('publication inputs use the historical layout', () => rethrow(outcome18));
 
-test('publication inputs use the historical target routing', async () => {
+const outcome19 = await outcomeOf(async () => {
   await withPublication(async ({ current, historical }) => {
     const writeCompilerInputs = async (root: string) => {
       await mkdir(join(root, 'internal/typescript'), { recursive: true });
@@ -872,8 +909,9 @@ test('publication inputs use the historical target routing', async () => {
     expect(reroutedHistoricalContract.digest).not.toBe(currentContract.digest);
   });
 });
+test('publication inputs use the historical target routing', () => rethrow(outcome19));
 
-test('publication inputs load historical target routing from manifests', async () => {
+const outcome20 = await outcomeOf(async () => {
   await withPublication(async ({ current, historical }) => {
     const writeCompilerInputs = async (root: string) => {
       await mkdir(join(root, 'internal/typescript'), { recursive: true });
@@ -905,8 +943,9 @@ test('publication inputs load historical target routing from manifests', async (
     expect(historicalContract.digest).not.toBe(currentContract.digest);
   });
 });
+test('publication inputs load historical target routing from manifests', () => rethrow(outcome20));
 
-test('publication inputs use historical routing for workspace dependency ranges', async () => {
+const outcome21 = await outcomeOf(async () => {
   await withPublication(async ({ current, historical }) => {
     for (const root of [current, historical]) {
       await mkdir(join(root, 'internal/typescript'), { recursive: true });
@@ -940,8 +979,10 @@ test('publication inputs use historical routing for workspace dependency ranges'
     expect(historicalContract.digest).not.toBe(currentContract.digest);
   });
 });
+test('publication inputs use historical routing for workspace dependency ranges', () =>
+  rethrow(outcome21));
 
-test('publication inputs fail closed when historical routing facts are missing', async () => {
+const outcome22 = await outcomeOf(async () => {
   await withPublication(async ({ historical }) => {
     await rm(join(historical, 'scripts/mirror/layout-map.json'));
     expect(
@@ -955,8 +996,10 @@ test('publication inputs fail closed when historical routing facts are missing',
     ).toThrow('historical layout is missing');
   });
 });
+test('publication inputs fail closed when historical routing facts are missing', () =>
+  rethrow(outcome22));
 
-test('publication inputs fail closed when historical routing modules are missing', async () => {
+const outcome23 = await outcomeOf(async () => {
   await withPublication(async ({ historical }) => {
     await rm(join(historical, 'scripts/mirror/target-definitions.ts'));
     expect(
@@ -970,8 +1013,10 @@ test('publication inputs fail closed when historical routing modules are missing
     ).toThrow('historical target routing is missing');
   });
 });
+test('publication inputs fail closed when historical routing modules are missing', () =>
+  rethrow(outcome23));
 
-test('publication inputs bind workspace dependencies to their recorded published versions', async () => {
+const outcome24 = await outcomeOf(async () => {
   await withPublication(async ({ current }) => {
     const manifestPath = join(current, 'packages/operative/package.json');
     const manifest = await Bun.file(manifestPath).json();
@@ -1005,8 +1050,10 @@ test('publication inputs bind workspace dependencies to their recorded published
     ).toEqual(after);
   });
 });
+test('publication inputs bind workspace dependencies to their recorded published versions', () =>
+  rethrow(outcome24));
 
-test('publication inputs match the mirror effective cross-target range', async () => {
+const outcome25 = await outcomeOf(async () => {
   await withPublication(async ({ current }) => {
     const manifestPath = join(current, 'packages/operative/package.json');
     const manifest = await Bun.file(manifestPath).json();
@@ -1027,3 +1074,4 @@ test('publication inputs match the mirror effective cross-target range', async (
     expect(await read()).toEqual(workspaceInput);
   });
 });
+test('publication inputs match the mirror effective cross-target range', () => rethrow(outcome25));

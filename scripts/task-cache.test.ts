@@ -3,27 +3,16 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from './module-scope-scenario.test-support.ts';
+
 const root = join(import.meta.dir, '..');
 
-/**
- * These scenarios build synthetic workspaces and run `git`, `bun install` and `turbo` in them, which takes seconds on a loaded host.
- * Each scenario runs here, at module scope, off Bun's five-second per-test clock, and its test
- * re-throws whatever the scenario threw, so a failed assertion still fails under the test that
- * names it.
- */
-async function outcomeOf(scenario: () => Promise<void>): Promise<unknown> {
-  try {
-    await scenario();
-    return undefined;
-  } catch (error) {
-    return error ?? new Error('scenario failed');
-  }
-}
-
-function rethrow(outcome: unknown): void {
-  if (outcome !== undefined) throw outcome;
-}
-
+// These scenarios build synthetic workspaces and run `git`, `bun install` and `turbo` in them,
+// which takes seconds on a loaded host, so each runs at module scope off the per-test clock.
 const scenario1 = await outcomeOf(async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-cache-isolation-'));
   const remoteRequests: string[] = [];
@@ -172,6 +161,7 @@ async function run(
     }
   }
   const child = Bun.spawn(fixtureCommand, {
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cwd: directory,
     stdout: 'pipe',
     stderr: 'pipe',
