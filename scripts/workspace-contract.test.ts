@@ -28,7 +28,6 @@ const libraries = [
   'editor',
   'markdown',
   'testing',
-  'telephone',
 ];
 
 /**
@@ -63,9 +62,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/skills',
   '@lostgradient/testing',
   '@lostgradient/typescript',
-  '@lostgradient/desktop',
   '@lostgradient/playground',
-  '@lostgradient/telephone',
   'armorer',
   'conversationalist',
 ]);
@@ -118,6 +115,51 @@ async function workspaceManifests(): Promise<Map<string, Manifest>> {
   }
   return manifests;
 }
+
+/**
+ * Lists the untracked files git would version in a fixture with every workspace layout and a
+ * personal excludes file. `git init` and `git ls-files` run here at module scope, off Bun's
+ * five-second per-test clock; the test below asserts on the settled results.
+ */
+async function listVersionedFixtureSource() {
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-source-ignores-'));
+  try {
+    await Bun.write(join(directory, '.gitignore'), Bun.file(join(root, '.gitignore')));
+    const personalIgnore = join(directory, 'personal-ignore');
+    await Bun.write(personalIgnore, 'Icon?\n');
+    for (const workspace of ['applications/example', 'components/example', 'packages/example']) {
+      for (const path of [
+        'src/components/icons/index.ts',
+        'src/components/icons/index.test.ts',
+        'src/components/icons/.env.local',
+        'src/components/icons/private.pem',
+        'src/node_modules/dependency/index.ts',
+        'build/index.js',
+        'coverage/index.html',
+      ]) {
+        await Bun.write(join(directory, workspace, path), '');
+      }
+    }
+    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], { cwd: directory });
+    const listed = Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'core.ignoreCase=true',
+        '-c',
+        `core.excludesFile=${personalIgnore}`,
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+      ],
+      { cwd: directory },
+    );
+    return { initialized, listed };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+const versionedFixtureSource = await listVersionedFixtureSource();
 
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
@@ -225,9 +267,6 @@ describe('internal workspace architecture', () => {
     }
     manifests.set('root', await readManifest('.'));
     for (const [name, manifest] of manifests) {
-      // The desktop application builds its renderer with Vite, which is how
-      // Electrobun 2.x builds views; every other workspace stays Vite-free.
-      if (name === '@lostgradient/desktop') continue;
       const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
       expect(dependencies['vite'], name).toBeUndefined();
       expect(dependencies['@sveltejs/vite-plugin-svelte'], name).toBeUndefined();
@@ -282,59 +321,25 @@ describe('internal workspace architecture', () => {
     expect(Object.keys(lock.workspaces).toSorted()).toEqual(expectedPaths.toSorted());
   });
 
-  test('workspace source stays versioned despite personal ignore patterns', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'corvidae-source-ignores-'));
-    try {
-      await Bun.write(join(directory, '.gitignore'), Bun.file(join(root, '.gitignore')));
-      const personalIgnore = join(directory, 'personal-ignore');
-      await Bun.write(personalIgnore, 'Icon?\n');
-      for (const workspace of ['applications/example', 'components/example', 'packages/example']) {
-        for (const path of [
-          'src/components/icons/index.ts',
-          'src/components/icons/index.test.ts',
-          'src/components/icons/.env.local',
-          'src/components/icons/private.pem',
-          'src/node_modules/dependency/index.ts',
-          'build/index.js',
-          'coverage/index.html',
-        ]) {
-          await Bun.write(join(directory, workspace, path), '');
-        }
-      }
-      const initialized = Bun.spawnSync(['git', 'init', '--quiet'], { cwd: directory });
-      expect(initialized.exitCode, initialized.stderr.toString()).toBe(0);
-      const listed = Bun.spawnSync(
-        [
-          'git',
-          '-c',
-          'core.ignoreCase=true',
-          '-c',
-          `core.excludesFile=${personalIgnore}`,
-          'ls-files',
-          '--others',
-          '--exclude-standard',
-        ],
-        { cwd: directory },
+  test('workspace source stays versioned despite personal ignore patterns', () => {
+    const { initialized, listed } = versionedFixtureSource;
+    expect(initialized.exitCode, initialized.stderr.toString()).toBe(0);
+    expect(listed.exitCode, listed.stderr.toString()).toBe(0);
+    const workspaceFiles = listed.stdout
+      .toString()
+      .trim()
+      .split('\n')
+      .filter((path) =>
+        ['applications/', 'components/', 'packages/'].some((prefix) => path.startsWith(prefix)),
       );
-      expect(listed.exitCode, listed.stderr.toString()).toBe(0);
-      const workspaceFiles = listed.stdout
-        .toString()
-        .trim()
-        .split('\n')
-        .filter((path) =>
-          ['applications/', 'components/', 'packages/'].some((prefix) => path.startsWith(prefix)),
-        );
-      expect(workspaceFiles).toEqual([
-        'applications/example/src/components/icons/index.test.ts',
-        'applications/example/src/components/icons/index.ts',
-        'components/example/src/components/icons/index.test.ts',
-        'components/example/src/components/icons/index.ts',
-        'packages/example/src/components/icons/index.test.ts',
-        'packages/example/src/components/icons/index.ts',
-      ]);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    expect(workspaceFiles).toEqual([
+      'applications/example/src/components/icons/index.test.ts',
+      'applications/example/src/components/icons/index.ts',
+      'components/example/src/components/icons/index.test.ts',
+      'components/example/src/components/icons/index.ts',
+      'packages/example/src/components/icons/index.test.ts',
+      'packages/example/src/components/icons/index.ts',
+    ]);
   });
 
   test('project skills have one canonical owner for both providers', async () => {
@@ -483,15 +488,6 @@ describe('internal workspace architecture', () => {
     expect(testWatcher?.command).toContain('turbo watch test');
     expect(testWatcher?.command).not.toContain('--experimental-write-cache');
     expect(testWatcher?.isBackground).toBe(true);
-    const application = await readManifest('applications/desktop');
-    // Electrobun owns the desktop build; Vite only builds the renderer, and
-    // both are gated on the devkit projection that `prepare:devkit` performs.
-    expect(application.scripts?.['prepare:devkit']).toBe(
-      'HUTCH_NO_UPDATE_CHECK=1 electrobun prepare',
-    );
-    expect(application.scripts?.['build:renderer']).toContain('vite build');
-    expect(application.scripts?.['build']).toContain('electrobun build');
-    expect(application.scripts?.['dev']).toContain('electrobun dev');
   });
 
   test('installation does not enable Git hooks or publishing', async () => {
