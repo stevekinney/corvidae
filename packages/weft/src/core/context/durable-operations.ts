@@ -2,7 +2,7 @@ import type { HumanReviewOptions, HumanReviewResult } from '../review/index.ts';
 import { parseDuration } from '../scheduler.ts';
 import type { Duration } from '../types.ts';
 import type { Context } from './index.ts';
-import type { ContextInternals } from './internals.ts';
+import { yieldOperation, type ContextInternals } from './internals.ts';
 import type { ContextOperationRequest } from './operation-request.ts';
 import type { OffloadReference, StreamReference, StreamSink } from './types.ts';
 import { captureCallerStack } from './validation.ts';
@@ -96,12 +96,12 @@ export function* waitForSignal<T = unknown>(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'wait-signal',
     operationId,
     signalName: name,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as T;
@@ -196,14 +196,14 @@ export function* waitUntil(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'wait-condition',
     operationId,
     step,
     predicate,
     ...(deadline !== undefined && { deadline }),
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as boolean | void;
@@ -247,7 +247,7 @@ export function* getVersion(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'get-version' as const,
     operationId,
     changeId,
@@ -255,7 +255,7 @@ export function* getVersion(
     maxSupported,
     version: resolution.version,
     callerStack,
-  };
+  });
 
   return result as number;
 }
@@ -284,12 +284,12 @@ export function* waitForUpdate(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'wait-update',
     operationId,
     updateName: name,
     callerStack,
-  };
+  });
 
   const envelope = result as { payload: unknown; respond: (result: unknown) => void };
   context.accumulatedResults.set(step, { payload: envelope.payload });
@@ -315,12 +315,12 @@ export function* review(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'wait-review' as const,
     operationId,
     reviewOptions: options,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as HumanReviewResult;
@@ -346,13 +346,13 @@ export function* offload<T>(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'offload' as const,
     operationId,
     key,
     fn,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as OffloadReference;
@@ -378,13 +378,13 @@ export function* stream(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'stream' as const,
     operationId,
     key,
     fn,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as StreamReference;
@@ -409,12 +409,12 @@ export function* load<T>(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'load' as const,
     operationId,
     reference,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as T;
@@ -438,13 +438,13 @@ export function* archive(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  yield {
+  yield* yieldOperation(internals, {
     type: 'archive' as const,
     operationId,
     key,
     data,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, undefined);
 }
