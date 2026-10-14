@@ -488,13 +488,26 @@ describe('findLockfileViolations', () => {
 });
 
 describe('import probe', () => {
-  function probe(entrySource: string, extraFiles: Record<string, string> = {}) {
-    const { packageRoot } = workspaceFixture({ 'src/index.ts': entrySource, ...extraFiles });
-    return runImportProbe(packageRoot, join(packageRoot, 'src/index.ts'));
+  type ProbeReport = ReturnType<typeof runImportProbe>;
+
+  // Each probe starts a real Bun process, so it runs once while this block is collected, off Bun's
+  // five-second per-test clock. The returned function hands the report to the test that asserts on
+  // it, or rethrows what the probe threw, so a failure still surfaces under that test.
+  function probe(entrySource: string, extraFiles: Record<string, string> = {}): () => ProbeReport {
+    try {
+      const { packageRoot } = workspaceFixture({ 'src/index.ts': entrySource, ...extraFiles });
+      const report = runImportProbe(packageRoot, join(packageRoot, 'src/index.ts'));
+      return () => report;
+    } catch (error) {
+      return () => {
+        throw error;
+      };
+    }
   }
 
+  const definesOnlyExports = probe('export const value = 1;\n');
   test('reports nothing for a module that only defines exports', () => {
-    expect(probe('export const value = 1;\n')).toEqual({
+    expect(definesOnlyExports()).toEqual({
       forbiddenModules: [],
       trappedCalls: [],
       domGlobals: [],
@@ -502,7 +515,7 @@ describe('import probe', () => {
     });
   });
 
-  test.each([
+  const trappedStatements: [string, string, string[]][] = [
     ['fetch', "await fetch('https://example.invalid/');", ['fetch']],
     [
       'WebAssembly compilation',
@@ -524,34 +537,40 @@ describe('import probe', () => {
     ['an immediate', 'setImmediate(() => {});', ['setImmediate']],
     ['a worker', "new Worker('worker.js');", ['new Worker']],
     ['a socket', "new WebSocket('ws://example.invalid/');", ['new WebSocket']],
-  ])('traps %s made while importing', (_name, statement, calls) => {
-    const report = probe(`try { ${statement} } catch {}\nexport {};\n`);
+  ];
+  const trappedReports = new Map(
+    trappedStatements.map(([name, statement]) => [
+      name,
+      probe(`try { ${statement} } catch {}\nexport {};\n`),
+    ]),
+  );
+  test.each(trappedStatements)('traps %s made while importing', (name, _statement, calls) => {
+    const report = trappedReports.get(name)!();
     expect(report.trappedCalls).toEqual(calls);
   });
 
+  const guardedDomRead = probe("export const live = typeof document !== 'undefined';\n");
   test('reports a read of a DOM global, even behind a typeof guard', () => {
-    expect(probe("export const live = typeof document !== 'undefined';\n").domGlobals).toEqual([
-      'document',
-    ]);
+    expect(guardedDomRead().domGlobals).toEqual(['document']);
   });
 
+  const domLikeRead = probe('export const agent = navigator.userAgent;\n');
   test('reports a read of a DOM-like global Bun already defines', () => {
-    const report = probe('export const agent = navigator.userAgent;\n');
+    const report = domLikeRead();
     expect(report.domGlobals).toEqual(['navigator']);
     expect(report.error).toBeUndefined();
   });
 
+  const definedGlobal = probe('Object.assign(globalThis, { leakedByImport: 1 });\nexport {};\n');
   test('reports a global the import defines', () => {
-    expect(
-      probe('Object.assign(globalThis, { leakedByImport: 1 });\nexport {};\n').addedGlobals,
-    ).toEqual(['leakedByImport']);
+    expect(definedGlobal().addedGlobals).toEqual(['leakedByImport']);
   });
 
+  const definedSymbolGlobal = probe(
+    "(globalThis as Record<symbol, unknown>)[Symbol.for('terminal')] = 1;\nexport {};\n",
+  );
   test('reports a symbol-keyed global the import defines', () => {
-    expect(
-      probe("(globalThis as Record<symbol, unknown>)[Symbol.for('terminal')] = 1;\nexport {};\n")
-        .addedGlobals,
-    ).toEqual(['Symbol(terminal)']);
+    expect(definedSymbolGlobal().addedGlobals).toEqual(['Symbol(terminal)']);
   });
 
   const installedPackages = {
@@ -570,7 +589,7 @@ describe('import probe', () => {
     'node_modules/@lostgradient/ventriloquist/src/websocket/index.ts': 'export const socket = 1;\n',
   };
 
-  test.each([
+  const forbiddenImports: [string, string, string][] = [
     ['the engine', "import '@xterm/xterm';", '/node_modules/@xterm/xterm/lib/xterm.js'],
     [
       'the Bun pipe and PTY entry',
@@ -582,25 +601,40 @@ describe('import probe', () => {
       "import '@lostgradient/ventriloquist/websocket';",
       '/ventriloquist/src/websocket/index.ts',
     ],
-  ])('reports %s when the import graph loads it', (_name, statement, suffix) => {
-    const report = probe(`import './lib/reaches.ts';\nexport {};\n`, {
-      ...installedPackages,
-      'src/lib/reaches.ts': `${statement}\n`,
-    });
-    expect(report.forbiddenModules).toHaveLength(1);
-    expect(report.forbiddenModules[0]).toEndWith(suffix);
-    // The probe replaces a forbidden module with an empty one, so the engine never runs.
-    expect(report.addedGlobals).toEqual([]);
-  });
+  ];
+  const forbiddenImportReports = new Map(
+    forbiddenImports.map(([name, statement]) => [
+      name,
+      probe(`import './lib/reaches.ts';\nexport {};\n`, {
+        ...installedPackages,
+        'src/lib/reaches.ts': `${statement}\n`,
+      }),
+    ]),
+  );
+  test.each(forbiddenImports)(
+    'reports %s when the import graph loads it',
+    (name, _statement, suffix) => {
+      const report = forbiddenImportReports.get(name)!();
+      expect(report.forbiddenModules).toHaveLength(1);
+      expect(report.forbiddenModules[0]).toEndWith(suffix);
+      // The probe replaces a forbidden module with an empty one, so the engine never runs.
+      expect(report.addedGlobals).toEqual([]);
+    },
+  );
 
+  const neutralEntry = probe(
+    "import '@lostgradient/ventriloquist';\nexport {};\n",
+    installedPackages,
+  );
   test('allows the neutral ventriloquist entry', () => {
-    const report = probe("import '@lostgradient/ventriloquist';\nexport {};\n", installedPackages);
+    const report = neutralEntry();
     expect(report.forbiddenModules).toEqual([]);
     expect(report.error).toBeUndefined();
   });
 
+  const throwingImport = probe("throw new Error('boom');\n");
   test('reports an import that throws', () => {
-    expect(probe("throw new Error('boom');\n").error).toBe('boom');
+    expect(throwingImport().error).toBe('boom');
   });
 
   test('turns each finding into a violation against the entry', () => {
