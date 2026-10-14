@@ -108,6 +108,21 @@ describe('the real-process matrix', () => {
     expect(textOf(bytesOnChannel(run.recorder, 'pty'))).toBe('');
     expect(summary.cleanup).toBe('complete');
     expectCleanExit(run, { exitCode: 0, signal: null });
+
+    // A sequence cut on stdout with stderr written in the cut stays whole on its own channel.
+    const split = PIPE_STDIN_FIXTURES.splitSequenceAcrossChannels;
+    const cut = runHosted(createPipeProcess({ profile: split.profile, acceptsInput: true }));
+    await cut.waitForOutput('stdout', split.firstHalf);
+    await cut.waitForOutput('stderr', split.firstDiagnostic);
+    expect(textOf(bytesOnChannel(cut.recorder, 'stdout'))).toBe(split.firstHalf);
+    expect(cut.attachment.write(new TextEncoder().encode(split.input)).disposition).toBe(
+      'accepted',
+    );
+    await finish(cut);
+    expect(textOf(bytesOnChannel(cut.recorder, 'stdout'))).toBe(split.stdout);
+    expect(textOf(bytesOnChannel(cut.recorder, 'stderr'))).toBe(split.stderr);
+    expect(textOf(bytesOnChannel(cut.recorder, 'pty'))).toBe('');
+    expectCleanExit(cut, { exitCode: 0, signal: null });
   });
 
   cell('pty', 'prompt-and-input', async () => {

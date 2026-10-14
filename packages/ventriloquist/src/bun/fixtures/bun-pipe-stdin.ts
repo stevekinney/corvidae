@@ -35,6 +35,21 @@ export const PIPE_STDIN_FIXTURES = {
     stdout: 'name? hello Ada',
     stderr: 'bye',
   },
+  /**
+   * Cuts an escape sequence in two on standard output, writes to standard error between the halves,
+   * and completes the sequence only after one line of input. The test sees both channels hold their
+   * bytes before it lets the second half out, so the cut is real and not a matter of timing.
+   */
+  splitSequenceAcrossChannels: {
+    profile: shellProfile(
+      "printf '\\033[3'; printf 'warn:' >&2; IFS= read -r go; printf '1m'; printf 'done' >&2; exit 0",
+    ),
+    firstHalf: '\u001b[3',
+    firstDiagnostic: 'warn:',
+    input: 'go\n',
+    stdout: '\u001b[31m',
+    stderr: 'warn:done',
+  },
   /** Reads until end of input, so it finishes only when the host closes standard input. */
   untilEndOfInput: {
     profile: shellProfile('printf "ready."; cat; printf "|end"; exit 0'),
