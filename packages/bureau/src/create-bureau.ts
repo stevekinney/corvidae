@@ -1738,6 +1738,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
         return outcome;
       }
+      case 'refused': {
+        const { principal, id } = event.command;
+        let byId = refusals.get(principal);
+        if (byId === undefined) {
+          byId = new Map();
+          refusals.set(principal, byId);
+        }
+        byId.set(id, { command: event.command, outcome: event.outcome, refusedAt: event.now });
+        return event.outcome;
+      }
       case 'applied':
         gate.recordApplied(event.runId, event.configVersion, event.now);
         return undefined;
@@ -1787,6 +1797,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       steeringCursors.set(sessionId, cursor);
     }
     const head = await readSteeringLogHead(kv, sessionId, incarnation);
+    if (head.sequence < cursor.applied) {
+      // Shorter than what this process already folded: the log was deleted
+      // with its session, by another process. Nothing may be appended to it.
+      forgetSessionSteering(sessionId);
+      throw new BureauError(
+        `Session "${sessionId}" was deleted while its steering was in use.`,
+        'CONFLICT',
+      );
+    }
     const events = await readSteeringLogEntries(
       kv,
       sessionId,
@@ -1823,7 +1842,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     kv: ConditionalTextValueStore,
     sessionId: string,
     incarnation: string,
-    event: Exclude<SteeringLogEvent, { type: 'admit' }>,
+    event: Exclude<SteeringLogEvent, { type: 'admit' | 'refused' }>,
   ): Promise<void> {
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
@@ -7307,6 +7326,38 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (isSessionRunTerminal(session.metadata) && liveRunIds.length === 0) {
       return { outcome: 'session-terminal', sessionId };
     }
+    // A refusal Bureau decides here, before the gate, is logged like the
+    // gate's own refusals on a durable session, so a caller-supplied id
+    // stays decided: a later retry is answered from the log, not re-judged
+    // against a catalog or policy that may have changed since.
+    const refuseSteering = async (
+      outcome: SteeringRefusal['outcome'],
+    ): Promise<SteeringCommandAdmissionOutcome> => {
+      const kv = durableSteeringStore();
+      if (kv === undefined || request.id === undefined) return outcome;
+      const refused: ImplementedSteeringCommand = {
+        id: request.id,
+        idOrigin: 'caller',
+        sessionId,
+        principal: request.principal,
+        requestedValue: request.requestedValue,
+        requestedAt: runtimeServices.clock.nowISO(),
+        ...(request.expectedRevision !== undefined
+          ? { expectedRevision: request.expectedRevision }
+          : {}),
+        ...(request.deadline !== undefined ? { deadline: request.deadline } : {}),
+        ...(request.runId !== undefined ? { runId: request.runId } : {}),
+      };
+      return enqueueSteering(sessionId, () =>
+        admitDurableSteeringCommand(
+          kv,
+          session.incarnation,
+          refused,
+          () => liveSessionRunIds(sessionId),
+          outcome,
+        ),
+      );
+    };
     // AB-200/AB-68: all seven targets reach the gate. `agent-identity` is
     // validated against the agents map below, and `model`/`provider`/
     // `effort` are validated against the model catalog; `route` is not,
@@ -7321,7 +7372,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // guessed at — validating an unresolved reference against the agents
     // map would reject every legitimate policy name.
     if (steeringTarget === 'agent-identity' && request.requestedValue.policyRef !== undefined) {
-      return { outcome: 'unsupported-capability', reason: 'selector-unavailable' };
+      return refuseSteering({ outcome: 'unsupported-capability', reason: 'selector-unavailable' });
     }
     // A durably-configured bureau with no resolved storage backend cannot
     // persist a command, and admitting one into the in-memory gate would
@@ -7346,10 +7397,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       steeringTarget === 'agent-identity' &&
       agentsSnapshot[request.requestedValue.override] === undefined
     ) {
-      return {
+      return refuseSteering({
         outcome: 'rejected',
         failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
-      };
+      });
     }
 
     // AB-200 — validate a configuration override against the live model
@@ -7416,10 +7467,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // caller is entitled to tell them apart: one is a typo or a
           // decommissioned profile, the other is a profile that simply
           // says nothing about this coordinate.
-          return {
+          return refuseSteering({
             outcome: 'rejected',
             failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
-          };
+          });
         }
         override =
           steeringTarget === 'model'
@@ -7437,10 +7488,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // The profile exists but specifies nothing for this coordinate.
           // Admitting anything here would be inventing a value the policy
           // never stated.
-          return {
+          return refuseSteering({
             outcome: 'rejected',
             failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
-          };
+          });
         }
         // The resolved value is admitted, not the reference. It still falls
         // through to the identical catalog check the `override` path uses
@@ -7473,10 +7524,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 // cannot contain routes would reject every valid route.
                 true;
       if (!known) {
-        return {
+        return refuseSteering({
           outcome: 'rejected',
           failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
-        };
+        });
       }
     }
 
@@ -7560,11 +7611,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function admitDurableSteeringCommand(
     kv: ConditionalTextValueStore,
     incarnation: string,
-    command: ImplementedSteeringCommand,
+    request: ImplementedSteeringCommand,
     liveRunIdsNow: () => string[],
+    refusal?: SteeringRefusal['outcome'],
   ): Promise<SteeringCommandAdmissionOutcome> {
+    // A private copy: the event appended, the event applied, and what the
+    // caller may later mutate must never differ.
+    const command = structuredClone(request);
     const { sessionId, principal, id } = command;
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
+      // Rechecked here, in the queue: another process may have deleted the
+      // session since the caller loaded it.
+      const current = await runtime.sessionStore?.load(sessionId);
+      if (current?.incarnation !== incarnation) return { outcome: 'not-found' };
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
       const answered = answerSteeringRetry(cursor.ledger, cursor.refusals, command);
       if (answered !== undefined) return answered;
@@ -7582,8 +7641,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ? binding.incarnation === incarnation
             : bindingSession?.incarnation === binding.incarnation;
         if (live) {
-          const elsewhere = await answerFromOtherSteeringLog(kv, binding, command);
+          let elsewhere: SteeringCommandAdmissionOutcome | undefined;
+          try {
+            elsewhere = await answerFromOtherSteeringLog(kv, binding, command);
+          } catch (error) {
+            if (!(error instanceof SteeringLogCorruptError)) throw error;
+          }
           if (elsewhere !== undefined) return elsewhere;
+          // The binding names a live session whose log does not account for
+          // it — unless that session was deleted mid-fold, which is a race,
+          // not corruption: decide again once the deletion is visible.
+          const recheck = await runtime.sessionStore?.load(binding.sessionId);
+          if (recheck?.incarnation !== binding.incarnation) continue;
           throw new SteeringLogCorruptError(
             `Steering key "${principal}"/"${id}" is bound to sequence ${String(binding.sequence)} of session "${binding.sessionId}", which does not admit it.`,
           );
@@ -7596,12 +7665,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // Live runs and the clock are read now, on this attempt, not when the
       // caller queued: a run that ended (and logged it) while this waited
       // must not be bound, and a deadline is judged at the moment of decision.
-      const event = {
-        type: 'admit',
-        command,
-        liveRunIds: liveRunIdsNow(),
-        now: runtimeServices.clock.nowISO(),
-      } as const;
+      const now = runtimeServices.clock.nowISO();
+      const event: Extract<SteeringLogEvent, { type: 'admit' | 'refused' }> =
+        refusal === undefined
+          ? { type: 'admit', command, liveRunIds: liveRunIdsNow(), now }
+          : { type: 'refused', command, outcome: refusal, now };
       const appended = await appendSteeringLogEvent(
         kv,
         sessionId,

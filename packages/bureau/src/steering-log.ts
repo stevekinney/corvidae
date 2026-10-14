@@ -1,6 +1,6 @@
 import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/weft';
 
-import type { ImplementedSteeringCommand } from './steering';
+import type { ImplementedSteeringCommand, SteeringCommandAdmissionOutcome } from './steering';
 
 /**
  * The durable steering log: one append-only log per session incarnation,
@@ -28,6 +28,20 @@ export type SteeringLogEvent =
       readonly type: 'admit';
       readonly command: ImplementedSteeringCommand;
       readonly liveRunIds: readonly string[];
+      readonly now: string;
+    }
+  | {
+      /**
+       * Bureau refused the command before the gate saw it (an agent outside
+       * the catalog, an unknown policy profile or coordinate). Logged so the
+       * caller's id stays decided; the fold only records the refusal.
+       */
+      readonly type: 'refused';
+      readonly command: ImplementedSteeringCommand;
+      readonly outcome: Extract<
+        SteeringCommandAdmissionOutcome,
+        { outcome: 'rejected' | 'unsupported-capability' }
+      >;
       readonly now: string;
     }
   | {
@@ -131,11 +145,13 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
   const requested = value['requestedValue'];
   if (!isRecord(requested) || typeof requested['target'] !== 'string') return false;
   const target = requested['target'];
+  const hasOneValue =
+    (typeof requested['override'] === 'string' && requested['policyRef'] === undefined) ||
+    (typeof requested['policyRef'] === 'string' && requested['override'] === undefined);
   const valueShapeIsValid =
     target === 'pause' || target === 'resume'
       ? true
-      : (target === 'agent-identity' || CONFIGURATION_TARGETS.has(target)) &&
-        typeof requested['override'] === 'string';
+      : (target === 'agent-identity' || CONFIGURATION_TARGETS.has(target)) && hasOneValue;
   return (
     valueShapeIsValid &&
     typeof value['id'] === 'string' &&
@@ -149,10 +165,30 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
   );
 }
 
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
+function isVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isRefusalOutcome(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value['outcome'] === 'unsupported-capability') return typeof value['reason'] === 'string';
+  const failure = value['failure'];
+  return (
+    value['outcome'] === 'rejected' &&
+    isRecord(failure) &&
+    typeof failure['reason'] === 'string' &&
+    isTimestamp(failure['failedAt'])
+  );
+}
+
 function parseEvent(raw: string, sequence: number): SteeringLogEvent {
   const what = `Steering log entry ${String(sequence)}`;
   const parsed = parseJson(raw, what);
-  if (isRecord(parsed) && typeof parsed['now'] === 'string') {
+  if (isRecord(parsed) && isTimestamp(parsed['now'])) {
     switch (parsed['type']) {
       case 'admit': {
         const liveRunIds = parsed['liveRunIds'];
@@ -165,8 +201,13 @@ function parseEvent(raw: string, sequence: number): SteeringLogEvent {
         }
         break;
       }
+      case 'refused':
+        if (isSteeringCommand(parsed['command']) && isRefusalOutcome(parsed['outcome'])) {
+          return parsed as SteeringLogEvent;
+        }
+        break;
       case 'applied':
-        if (typeof parsed['runId'] === 'string' && typeof parsed['configVersion'] === 'number') {
+        if (typeof parsed['runId'] === 'string' && isVersion(parsed['configVersion'])) {
           return parsed as SteeringLogEvent;
         }
         break;
@@ -250,8 +291,8 @@ export type SteeringLogAppendResult =
   | { readonly status: 'key-taken' };
 
 /**
- * Appends `event` immediately after `head`, atomically. An `admit` event
- * also binds its `(principal, id)` key, provided the key's stored value is
+ * Appends `event` immediately after `head`, atomically. An `admit` or
+ * `refused` event also binds its `(principal, id)` key, provided the key's stored value is
  * still `expectedBinding` (`null` for unbound, or a stale binding being
  * replaced).
  */
@@ -272,7 +313,7 @@ export async function appendSteeringLogEvent(
     { type: 'set', key: entryKey(sessionId, incarnation, sequence), value: JSON.stringify(event) },
     { type: 'set', key: headKey(sessionId, incarnation), value: nextHead },
   ];
-  if (event.type === 'admit') {
+  if (event.type === 'admit' || event.type === 'refused') {
     const { principal, id } = event.command;
     const bindingKey = keyBindingKey(principal, id);
     conditions.push({ key: bindingKey, expectedValue: expectedBinding });

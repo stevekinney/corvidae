@@ -124,6 +124,24 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(retriedRefusal).toEqual(refused);
 
+      // A refusal Bureau makes before the gate (a model outside the catalog)
+      // is logged as well, so the id stays decided in every process.
+      const offCatalog = await bureauA.submitSteeringCommand(
+        sessionId,
+        model('off', 'not-a-real-model'),
+      );
+      expect(offCatalog.outcome).toBe('rejected');
+      expect(
+        await bureauB.submitSteeringCommand(sessionId, model('off', 'not-a-real-model')),
+      ).toEqual(offCatalog);
+      const offCatalogReused = await bureauB.submitSteeringCommand(
+        sessionId,
+        model('off', 'claude-sonnet-5'),
+      );
+      expect(offCatalogReused.outcome).toBe('conflict');
+      if (offCatalogReused.outcome !== 'conflict') throw new Error('expected conflict');
+      expect(offCatalogReused.conflict.reason).toBe('requested-value-mismatch');
+
       // A's key sent by B to a session of B's own is a session mismatch.
       const otherSession = await startRunningSession(bureauB);
       const crossSession = await bureauB.submitSteeringCommand(

@@ -125,6 +125,15 @@ describe('steering log', () => {
     await kv.delete(entryKey);
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(/missing/);
 
+    await kv.set(entryKey, JSON.stringify({ ...applied, configVersion: 1.5 }));
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
+    await kv.set(entryKey, JSON.stringify({ ...admit(), now: 'not a timestamp' }));
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
+
     await kv.set(headKey, '{"sequence":"1"}');
     await expect(readSteeringLogHead(kv, 'session-1', 'inc-1')).rejects.toThrow(
       SteeringLogCorruptError,

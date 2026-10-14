@@ -46,7 +46,7 @@ Each durable gate also folds into its own ledger rather than the bureau-wide one
 
 Each admission attempt reads live runs and the clock when it is decided, not when it was queued, so a run that ended (and logged it) meanwhile is never bound.
 
-A refused admission (`rejected` or `unsupported-capability`) is logged like any other, so its id stays decided: an exact retry gets the original refusal back, and a mismatched one is a `conflict` against it.
+A refused admission (`rejected` or `unsupported-capability`) is logged like any other, so its id stays decided: an exact retry gets the original refusal back, and a mismatched one is a `conflict` against it. That includes refusals Bureau makes before the gate — an agent outside the agents map, an unknown policy profile or coordinate, a model outside the catalog — which are logged as `refused` events carrying their outcome, so a later retry is not re-judged against a catalog or policy that has since changed. Only caller-supplied ids are logged this way; a generated id can never be retried.
 
 ## Recovery and growth
 
@@ -83,7 +83,7 @@ Each of these is a test in `packages/bureau`:
   - The same key submitted concurrently from both yields exactly one `accepted` and one `replayed` or `conflict`.
 - **Durable transitions:** a command superseded or applied in one process replays with that state in another process, and after a restart.
 - **Rejections are durable:** a rejected command's id, retried with a different value, is a `conflict`. It is never admitted.
-- **Corruption fails closed:** a malformed head, entry, or index value fails recovery with an error instead of folding from defaults.
+- **Corruption fails closed:** a malformed head, entry, or key binding fails recovery with an error instead of folding from defaults.
 - **Deletion is incarnation-scoped:** delete-then-recreate under the same id never sees, and never deletes, the other incarnation's log.
 - **Every new test is checked against the pre-change sources:** it must fail there for the reason it names.
 
