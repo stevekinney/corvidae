@@ -239,7 +239,11 @@ function parseEvent(raw: string, sequence: number): SteeringLogEvent {
         if (
           isSteeringCommand(parsed['command']) &&
           (submitted === undefined ||
-            isSteeringCommand({ ...(parsed['command'] as object), requestedValue: submitted })) &&
+            (isSteeringCommand({ ...(parsed['command'] as object), requestedValue: submitted }) &&
+              isRecord(submitted) &&
+              submitted['target'] ===
+                (parsed['command'] as { requestedValue: { target: string } }).requestedValue
+                  .target)) &&
           Array.isArray(liveRunIds) &&
           liveRunIds.every((runId) => typeof runId === 'string')
         ) {

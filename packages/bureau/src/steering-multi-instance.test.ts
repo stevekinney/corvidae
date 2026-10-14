@@ -569,4 +569,38 @@ describe('durable steering across two Bureau processes', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it('fails closed on a key binding that does not name its own admission', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-bad-binding-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureau = await openBureau(path);
+    try {
+      const first = await startRunningSession(bureau);
+      const model = (id: string, override: string) =>
+        ({ id, principal: 'alice', requestedValue: { target: 'model', override } }) as const;
+      expect(
+        versionOf(await bureau.submitSteeringCommand(first, model('k1', 'claude-sonnet-5'))),
+      ).toBe(1);
+      expect(
+        versionOf(await bureau.submitSteeringCommand(first, model('k2', 'claude-opus-4-8'))),
+      ).toBe(2);
+
+      // Point k1's binding at k2's admission (sequence 3: promoted, k1, k2).
+      const kv = bureau.kv;
+      if (kv === undefined) throw new Error('expected a durable store');
+      const bindingKeys = await kv.list('steering-key:v1:');
+      const k1Binding = bindingKeys.find((key) => key.endsWith(':k1'));
+      if (k1Binding === undefined) throw new Error('expected k1 bound');
+      const binding = JSON.parse((await kv.get(k1Binding)) ?? '{}') as Record<string, unknown>;
+      await kv.set(k1Binding, JSON.stringify({ ...binding, sequence: 3 }));
+
+      const other = await startRunningSession(bureau);
+      await expect(
+        bureau.submitSteeringCommand(other, model('k1', 'claude-sonnet-5')),
+      ).rejects.toThrow(/does not admit it/);
+    } finally {
+      await bureau.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

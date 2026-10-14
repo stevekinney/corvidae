@@ -230,7 +230,8 @@ export function createActiveRun(
       {
         runId: durable.runId,
         sessionId: durable.sessionId ?? durable.runId,
-        ...(durable.tags !== undefined ? { tags: durable.tags } : {}),
+        // Copied now: the start itself runs a microtask later.
+        ...(durable.tags !== undefined ? { tags: [...durable.tags] } : {}),
         // F2: thread agentName from RunOptions into the durable input. Falls
         // back to '' inside createDurableActiveRun if undefined here.
         agentName: options.agentName,

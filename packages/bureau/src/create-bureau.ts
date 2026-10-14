@@ -1929,9 +1929,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * applies it once logged, in the session's queue. The run's own step does
    * not wait on it: per-run applied tracking lives in the run's state, so a
    * boundary event reaching the gate a moment later changes nothing the
-   * run itself reads. If logging fails for good, the event is still applied
-   * to this process's gate (a run that ended must release its pause here)
-   * and a `steering` diagnostic reports that the log missed it.
+   * run itself reads. If logging fails for good, the event is dropped (never
+   * applied to a gate the log does not reflect) and a `steering` diagnostic
+   * reports it.
    */
   function logRunBoundarySteering(
     sessionId: string,
@@ -1950,10 +1950,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     void enqueueSteering(sessionId, () =>
       appendThenApplySteering(kv, sessionId, incarnation, event),
     ).catch((error: unknown) => {
-      // Still applied here, so a run that ended releases its pause and
-      // waiters in this process; only the log (and so other processes and
-      // a restart) misses it, which the diagnostic reports.
-      applySteeringEvent(gate, new Map(), event);
+      // Not applied locally: the gate must never hold state the log lacks,
+      // or later admissions here would decide differently from every other
+      // process. Nothing waits on it — an ended run's pause waiters are
+      // released by the run's own abort — so the cost is a stale command
+      // state, which the diagnostic reports.
       diagnose({
         level: 'error',
         scope: 'steering',
@@ -3286,6 +3287,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         {
           lastRunId: runId,
           lastRunStatus: 'running',
+          // Bounds how long durable steering treats this run as starting
+          // before its workflow exists (`liveSessionRunIdsEverywhere`).
+          lastRunStartedAt: runtimeServices.clock.nowISO(),
           lastUserMessage: request.message,
           // Always write these keys (null when absent) so a reused session never
           // inherits a stale cap from a previous run. A conditional spread would leave
@@ -3469,19 +3473,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // unless another process deleted it meanwhile, in which case saving
           // would recreate it.
           try {
-            const current = await runtime.sessionStore?.load(sessionId);
-            if (current?.incarnation === steeringSession.incarnation)
-              await saveSession(
-                sessionId,
-                conversation,
-                {
-                  lastRunId: runId,
-                  lastRunStatus: 'error',
-                  lastError: serializeUnknownError(error),
-                },
-                request.agentName,
-                baseConversationHistory,
-              );
+            // Decided inside the session's own update, so it applies only if
+            // this very run is still the session's latest: not to a session
+            // deleted meanwhile, nor over a newer run another process started.
+            await runtime.sessionStore?.update(sessionId, (current) =>
+              current?.incarnation === steeringSession.incarnation &&
+              current.metadata['lastRunId'] === runId
+                ? {
+                    ...current,
+                    metadata: {
+                      ...current.metadata,
+                      lastRunStatus: 'error',
+                      lastError: serializeUnknownError(error),
+                    },
+                  }
+                : undefined,
+            );
           } catch (rollbackError) {
             diagnose({
               level: 'error',
@@ -7815,6 +7822,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * ambiguous apart without paging over a result that can change between
    * pages. Without a durable engine, this process's view is all there is.
    */
+  /**
+   * How long after a run's start is saved it may still lack its workflow.
+   * Launch writes the workflow moments later, so this only needs to outlast
+   * a slow start, while staying far shorter than any workflow's retention.
+   */
+  const STEERING_RUN_START_WINDOW_MS = 60_000;
+
   async function liveSessionRunIdsEverywhere(
     sessionId: string,
     incarnation: string,
@@ -7843,13 +7857,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     for (const workflow of others.items) live.add(workflow.id);
     // A run being started is saved as the session's running run before its
     // tagged workflow exists. Until the engine has any record of it, it is
-    // counted from the session itself; once it does, the engine decides.
+    // counted from the session itself — but only within the launch window
+    // its own start time bounds: a missing workflow long after that is a
+    // finished one since purged, not one still starting.
     const session = await runtime.sessionStore?.load(sessionId);
     const startingRunId = session?.metadata['lastRunId'];
+    const startedAt = session?.metadata['lastRunStartedAt'];
     if (
       session?.incarnation === incarnation &&
       session.metadata['lastRunStatus'] === 'running' &&
       typeof startingRunId === 'string' &&
+      typeof startedAt === 'string' &&
+      runtimeServices.clock.now() - Date.parse(startedAt) <= STEERING_RUN_START_WINDOW_MS &&
       !live.has(startingRunId) &&
       (await engine.get(startingRunId)) === null
     ) {
@@ -8060,6 +8079,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       0,
       head.sequence,
     );
+    // The binding must name this key's own admission in that log; anything
+    // else is a corrupt binding, never an answer.
+    const named = events[binding.sequence - 1];
+    if (
+      named === undefined ||
+      (named.type !== 'admit' && named.type !== 'refused') ||
+      named.command.principal !== command.principal ||
+      named.command.id !== command.id
+    ) {
+      throw new SteeringLogCorruptError(
+        `Steering key "${command.principal}"/"${command.id}" is bound to sequence ${String(binding.sequence)} of session "${binding.sessionId}", which does not admit it.`,
+      );
+    }
     for (const event of events) applySteeringEvent(gate, refusals, event, submitted);
     return answerSteeringRetry(
       ledger,
