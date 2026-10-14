@@ -46,13 +46,12 @@
  *      Cinder component does (e.g. `--cinder-chat-font-size`,
  *      `--cinder-review-editor-popover-width`) — so a stale reference there is
  *      the same defect this audit exists to catch. {@link defaultScanRoots}
- *      additionally walks `components/chat`, `components/editor`,
- *      `applications/desktop`, and `scripts/browser-fixtures/src`: the last two
- *      have no per-directory component-ownership convention of their own (an
- *      application view, a test fixture), but COR-348 found undeclared
- *      `--cinder-border-*` references in exactly those two trees, so leaving
- *      them out would leave the audit blind to the class of site that caused
- *      that bug.
+ *      additionally walks `components/chat`, `components/editor`, and
+ *      `scripts/browser-fixtures/src`: the last has no per-directory
+ *      component-ownership convention of its own (a test fixture), but COR-348
+ *      found undeclared `--cinder-border-*` references in exactly that kind of
+ *      tree, so leaving it out would leave the audit blind to the class of site
+ *      that caused that bug.
  *   2. An inline `style="…"` attribute in a `.svelte` file's markup.
  *      {@link extractStyleSurface} used to blank everything outside a `<style>`
  *      block, which hid a reference like
@@ -485,11 +484,6 @@ export function defaultScanRoots(sourceRoot?: string): ScanRoot[] {
       dir: join(workspaceRoot, 'components/editor/src/lib/components'),
       reportPrefix: 'editor/src/lib/components',
       componentsPrefix: 'editor/src/lib/components',
-    },
-    {
-      dir: join(workspaceRoot, 'applications/desktop/src'),
-      reportPrefix: 'applications/desktop/src',
-      componentsPrefix: null,
     },
     {
       dir: join(workspaceRoot, 'scripts/browser-fixtures/src'),

@@ -17,6 +17,12 @@ import {
   applyColorTokenOverridesToDocument,
   readSessionColorTokenOverrides,
 } from './color-token-overrides.ts';
+import {
+  COMPONENT_SEARCH_LISTENING_ATTRIBUTE,
+  COMPONENT_SEARCH_TRIGGER_ATTRIBUTE,
+  isComponentSearchShortcut,
+} from './component-search-shortcut.ts';
+import { attachDeferredShortcut } from './deferred-shortcut.ts';
 import { attachDeferredToggle } from './deferred-toggle.ts';
 import { attachLandingLiveReload } from './landing-live-reload.ts';
 import { memoizeUntilRejected } from './retryable-promise.ts';
@@ -143,6 +149,36 @@ function bootstrapDeferredToggle(accessibleName: string): void {
  */
 bootstrapDeferredToggle('Color token panel');
 bootstrapDeferredToggle('Token inspector');
+
+/** The sidebar's "Search components" button, found by its own runtime hook inside the sidebar. */
+function findComponentSearchTrigger(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(
+    `nav.dx-nav button[${COMPONENT_SEARCH_TRIGGER_ATTRIBUTE}]`,
+  );
+}
+
+const componentSearchTrigger = findComponentSearchTrigger();
+attachDeferredToggle(componentSearchTrigger, {
+  hydrate: hydrateShell,
+  isHydrated: () => shellHydrated,
+  onError: (error) => console.error('[cinder playground] failed to hydrate landing shell:', error),
+});
+
+// The hydrated sidebar owns Cmd/Ctrl+K once its listener marks the trigger; until
+// then a press hydrates the shell (or reuses the finished hydration) and opens the
+// palette through its trigger, exactly once. Keying the hand-off on that mark
+// rather than on hydration leaves no gap between the two listeners.
+if (componentSearchTrigger !== null) {
+  attachDeferredShortcut(window, {
+    matches: (event) => isComponentSearchShortcut(event, document),
+    hydrate: hydrateShell,
+    isLiveListenerAttached: () =>
+      findComponentSearchTrigger()?.hasAttribute(COMPONENT_SEARCH_LISTENING_ATTRIBUTE) === true,
+    activate: () => findComponentSearchTrigger()?.click(),
+    onError: (error) =>
+      console.error('[cinder playground] failed to hydrate landing shell:', error),
+  });
+}
 
 const sidebarNavigation = document.querySelector<HTMLElement>('nav.dx-nav');
 if (sidebarNavigation !== null) persistScrollPosition(sidebarNavigation);

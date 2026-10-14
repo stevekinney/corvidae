@@ -81,7 +81,7 @@ describe('scanned files', () => {
         'test/harness.ts',
         'src/readme.md',
         'node_modules/e.test.ts',
-        '.hutch/f.test.ts',
+        '.turbo/f.test.ts',
         'dist/g.test.ts',
       ]) {
         const path = join(directory, file);
