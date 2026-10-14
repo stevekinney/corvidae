@@ -11,12 +11,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.15",
+      "lastPublishedVersion": "0.27.17",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.15",
-        "gitHead": "277ba4e3b1326b141e125b6bb8e26f56b946830d",
-        "corvidaeCommit": "c49e89bbc67e7d60b365b40473376c7c15a498a2",
+        "version": "0.27.17",
+        "gitHead": "8472c3fe955e92eed8a5a09a05364c70d138a576",
+        "corvidaeCommit": "30058577208c64dc82a9c8c69fdf20c4ef7fb7a4",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -343,6 +343,7 @@
             "src/core/engine/lifecycle/start-batch.ts",
             "src/core/engine/lifecycle/start-commit-errors.ts",
             "src/core/engine/lifecycle/start-commit.ts",
+            "src/core/engine/lifecycle/start-condition-tags.ts",
             "src/core/engine/lifecycle/start-exec.ts",
             "src/core/engine/lifecycle/start-or-signal-create.ts",
             "src/core/engine/lifecycle/start-or-signal-resolution.ts",
@@ -432,6 +433,8 @@
             "src/core/engine/termination/complete.ts",
             "src/core/engine/termination/finalizer-activity.ts",
             "src/core/engine/termination/finalizer-claim.ts",
+            "src/core/engine/termination/finalizer-dead-letter.ts",
+            "src/core/engine/termination/finalizer-heartbeat.ts",
             "src/core/engine/termination/finalizer-registration.ts",
             "src/core/engine/termination/finalizer.ts",
             "src/core/engine/termination/state-commit-callbacks.ts",
@@ -471,6 +474,7 @@
             "src/core/engine/workflow-indexes.ts",
             "src/core/engine/workflow-retention-deadline.ts",
             "src/core/engine/workflow-state-stream.ts",
+            "src/core/engine/workflow-visibility-maintenance.ts",
             "src/core/engine/workflow-visibility-queries.ts",
             "src/core/event-log-shared.ts",
             "src/core/event-log-verify.ts",
@@ -683,6 +687,7 @@
             "src/core/types/workflow-registries.ts",
             "src/core/types/workflow-registry.ts",
             "src/core/types/workflow-snapshot.ts",
+            "src/core/types/workflow-visibility-index-options.ts",
             "src/core/updates.ts",
             "src/core/validation-issues.ts",
             "src/core/versioning.ts",
@@ -1172,7 +1177,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "f543dc9448ef8953f3c29f0028e65424029405735bc375b7412c55806285543e"
+          "digest": "5e4f331fd6913bc0f5a9076027a97ffea6f5a80d8bde6ef854fba3f16d8cc196"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1180,7 +1185,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "cc34589eeb0267dbc015887b4c47169f851600d86b0ae9df95ab85866d659f08"
+          "digest": "56a02328fa166942ebe2f8e8774deea936c86a032e28390fad07deee25df9106"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -3418,6 +3423,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/lifecycle/start-condition-tags.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-condition-tags.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/lifecycle/start-exec.d.ts",
               "executable": false
             },
@@ -4098,6 +4111,22 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/termination/finalizer-dead-letter.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/finalizer-dead-letter.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/finalizer-heartbeat.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/finalizer-heartbeat.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/termination/finalizer-registration.d.ts",
               "executable": false
             },
@@ -4391,6 +4420,14 @@
             },
             {
               "path": "package/dist/core/engine/workflow-state-stream.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/workflow-visibility-maintenance.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/workflow-visibility-maintenance.js",
               "executable": false
             },
             {
@@ -5807,6 +5844,14 @@
             },
             {
               "path": "package/dist/core/types/workflow-snapshot.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/types/workflow-visibility-index-options.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/types/workflow-visibility-index-options.js",
               "executable": false
             },
             {
@@ -9170,7 +9215,7 @@
               "executable": false
             }
           ],
-          "digest": "17a3014c4c18e56e5efe2f07b5886fac3cb5b3e66c9c84b91183609556cf7713"
+          "digest": "0d36b0785e85bb33b99fb69e18dfda3a9e3cccae995dc92b99c0920f768fa3fd"
         }
       }
     },
@@ -10780,21 +10825,21 @@
       "name": "@lostgradient/cinder",
       "basis": "settled",
       "reason": "Already published under this name. Its exports map is regenerated by the transform per COR-1186, not copied.",
-      "lastPublishedVersion": "0.27.0"
+      "lastPublishedVersion": "0.27.1"
     },
     "@lostgradient/markdown": {
       "disposition": "publish-as",
       "name": "@lostgradient/markdown",
       "basis": "settled",
       "reason": "Already published under this name.",
-      "lastPublishedVersion": "0.6.0"
+      "lastPublishedVersion": "0.6.1"
     },
     "@lostgradient/editor": {
       "disposition": "publish-as",
       "name": "@lostgradient/editor",
       "basis": "settled",
       "reason": "Already published under this name.",
-      "lastPublishedVersion": "0.16.0"
+      "lastPublishedVersion": "0.16.1"
     },
     "@lostgradient/chat": {
       "disposition": "publish-as",
@@ -12667,6 +12712,16 @@
       "disposition": "exclude",
       "basis": "private-application-hosted-in-corvidae",
       "reason": "The playground application moved into corvidae in COR-1200, and COR-1201 moved the cinder.website deployment onto it, building from `applications/playground` in this repository. The public stevekinney/cinder repository's former copy at `packages/playground` was deleted in that repository's own pull request (cinder#1602), because the same change had to remove the copy's references from Cinder-owned release tooling that the transform cannot write; `target-owned.json`'s `retired` list names the directory and its deployment workflow so that a restored copy is removed by the next sync. The entry stays `exclude` because the application is private to corvidae and hosts a deployment, not a published package."
+    },
+    "@lostgradient/terminal": {
+      "disposition": "exclude",
+      "basis": "owner-excluded-from-public-mirror",
+      "reason": "New in COR-482 and never published. Excluded from the mirror by the repository owner's ruling of 2026-09-25 (not published until a later publication project). It is the browser terminal component and controller, and it imports only the platform-neutral root export of `@lostgradient/ventriloquist`. It depends on published workspaces (cinder) but nothing the mirror emits depends on it. Reversible: promote to `private-workspace` or `publish-as` when the later publication project rules on a public home."
+    },
+    "@lostgradient/ventriloquist": {
+      "disposition": "exclude",
+      "basis": "owner-excluded-from-public-mirror",
+      "reason": "New in COR-482 and never published. Excluded from the mirror by the repository owner's ruling of 2026-09-25 (not published until a later publication project). It is the terminal wire protocol and session core with Bun pipe, PTY, and WebSocket host helpers behind `./bun` and `./websocket`. Its only consumer is `@lostgradient/terminal`, which is itself excluded, so nothing the mirror emits depends on it. Reversible: promote to `private-workspace` or `publish-as` when the later publication project rules on a public home."
     },
     "@lostgradient/bureau": {
       "disposition": "private-workspace",
