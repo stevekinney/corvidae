@@ -19,7 +19,7 @@ import type {
 } from '../assets';
 import type { AssetService } from '../assets/types';
 import { type BureauTestHarness, createBureauTestHarness } from '../test/harness';
-import { createMemoryStorageFixture } from '../test/storage-fixtures';
+import { type BureauStorageFixture, createMemoryStorageFixture } from '../test/storage-fixtures';
 
 const encoder = new TextEncoder();
 
@@ -198,12 +198,13 @@ export interface AssetHarness {
 export async function createAssetHarness(
   assets: BureauAssetOptions,
   runtime: ManualRuntimeServices = createManualRuntimeServices(),
+  storage: BureauStorageFixture = createMemoryStorageFixture(),
 ): Promise<AssetHarness> {
   const harness = await createBureauTestHarness({
     agents: {},
     generate,
     runtime,
-    storage: createMemoryStorageFixture(),
+    storage,
     assets,
   });
   const service = harness.bureau.assets;

@@ -13,16 +13,12 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
-import {
-  appendAssistantMessage,
-  appendUserMessage,
-  type ContentSource,
-  createConversationHistory,
-  type JSONValue,
-  type Modality,
-} from 'conversationalist';
+import { waitForRunState } from '@lostgradient/operative';
+import type { BatchOperation, Storage } from '@lostgradient/weft';
+import { type ContentSource, type Modality } from 'conversationalist';
 
 import type { AssetStorageFixture } from '../test/asset-storage-fixtures';
+import { createMemoryStorageFixture } from '../test/storage-fixtures';
 import {
   createDurableAssetStorageFixture,
   createMemoryAssetStorageFixture,
@@ -753,36 +749,91 @@ describe('storage interface fixtures', () => {
   });
 });
 
+/** Wraps Bureau's own storage so every value it ever writes — not just what survives — is recorded. */
+function recordingWrites(storage: Storage, writes: Array<{ key: string; text: string }>): Storage {
+  const decoder = new TextDecoder();
+  const record = (key: string, value: Uint8Array) =>
+    writes.push({ key, text: decoder.decode(value) });
+  const recordBatch = (operations: readonly BatchOperation[]) => {
+    for (const operation of operations) {
+      if (operation.type === 'put') record(operation.key, operation.value);
+    }
+  };
+  return new Proxy(storage, {
+    get(target, property) {
+      if (property === 'put') {
+        return (key: string, value: Uint8Array) => {
+          record(key, value);
+          return target.put(key, value);
+        };
+      }
+      if (property === 'batch') {
+        return (operations: BatchOperation[]) => {
+          recordBatch(operations);
+          return target.batch(operations);
+        };
+      }
+      if (property === 'conditionalBatch' && target.conditionalBatch) {
+        const conditionalBatch = target.conditionalBatch.bind(target);
+        return (...parameters: Parameters<typeof conditionalBatch>) => {
+          recordBatch(parameters[1]);
+          return conditionalBatch(...parameters);
+        };
+      }
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 describe('conversation state holds references, not bytes', () => {
-  it('stores the base64 payload once, in the blob, and never in any conversation snapshot', async () => {
+  it('writes only the reference into every Bureau session snapshot, and stores the payload once', async () => {
     const fixture = memoryFixture();
-    const { assets, harness } = await open({ storage: fixture.storage });
+    const writes: Array<{ key: string; text: string }> = [];
+    const bureauStorage = createMemoryStorageFixture({
+      wrapStorage: (storage) => recordingWrites(storage, writes),
+    });
+    const { assets, harness } = await createAssetHarness(
+      { storage: fixture.storage },
+      createManualRuntimeServices(),
+      bureauStorage,
+    );
+    cleanups.push(() => harness.close().then(() => undefined));
     const bytes = pngBytes(8, 8, 512);
     const payload = base64Of(bytes);
-
     const admission = await assets.admit({ source: { kind: 'inline', bytes } }, alice);
     await admission.work.result();
-    const reference = admission.source as unknown as JSONValue;
 
-    let conversation = createConversationHistory({ id: 'conversation-1' });
-    const snapshots: string[] = [];
-    for (let turn = 0; turn < 5; turn++) {
-      conversation = appendUserMessage(conversation, `turn ${turn}`, { attachment: reference });
-      conversation = appendAssistantMessage(conversation, `ack ${turn}`);
-      snapshots.push(JSON.stringify(conversation));
+    // Two turns on one Bureau session, each naming the asset by its managed-asset reference.
+    const sessionId = 'asset-conversation';
+    const reference = JSON.stringify(admission.source);
+    for (let turn = 0; turn < 2; turn++) {
+      const run = await harness.startSession({
+        message: `turn ${turn}: describe ${reference}`,
+        sessionId,
+      });
+      await waitForRunState(harness.bureau, run.id);
     }
+    const session = await harness.bureau.getSession(sessionId);
+    const userTurns = Object.values(session!.conversationHistory.messages).filter(
+      (message) => message.role === 'user',
+    );
+    expect(userTurns).toHaveLength(2);
 
-    for (const snapshot of snapshots) {
-      expect(snapshot).not.toContain(payload);
-      expect(snapshot).toContain(admission.assetId);
-    }
+    // Every value Bureau ever wrote to its own storage — each session snapshot, run record, and outbox entry.
+    for (const write of writes) expect(write.text).not.toContain(payload);
+    const snapshotsNamingTheAsset = writes.filter(
+      (write) => write.key.startsWith('agent-session') && write.text.includes(admission.assetId),
+    );
+    // One snapshot per turn at least, so the scan above is not vacuous.
+    expect(snapshotsNamingTheAsset.length).toBeGreaterThanOrEqual(2);
+
     const holders: string[] = [];
     for (const key of await fixture.storage.list('')) {
       const value = await fixture.storage.get(key);
       if (value?.includes(payload)) holders.push(key);
     }
-    expect(holders).toHaveLength(1);
-    expect(holders[0]).toStartWith('asset:v1:blob:');
+    expect(holders).toEqual([expect.stringMatching(/^asset:v1:blob:/)]);
     await harness.close();
   });
 });
