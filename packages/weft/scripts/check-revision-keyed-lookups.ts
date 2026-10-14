@@ -141,6 +141,7 @@ type Violation = {
 
 type CliArguments = {
   root: string;
+  showHelp: boolean;
 };
 
 function parseArguments(argv: readonly string[]): CliArguments {
@@ -151,13 +152,12 @@ function parseArguments(argv: readonly string[]): CliArguments {
       root = argv[index + 1] ?? null;
       index += 1;
     } else if (arg === '--help' || arg === '-h') {
-      printUsage();
-      process.exit(0);
+      return { root: root ?? join(import.meta.dir, '..'), showHelp: true };
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
-  return { root: root ?? join(import.meta.dir, '..') };
+  return { root: root ?? join(import.meta.dir, '..'), showHelp: false };
 }
 
 function printUsage(): void {
@@ -299,10 +299,11 @@ async function runEnforcement(args: CliArguments): Promise<number> {
 
 export async function runCli(argv: readonly string[]): Promise<number> {
   const args = parseArguments(argv);
+  if (args.showHelp) {
+    printUsage();
+    return 0;
+  }
   return await runEnforcement(args);
 }
 
-if (import.meta.main) {
-  const exitCode = await runCli(process.argv.slice(2));
-  process.exit(exitCode);
-}
+if (import.meta.main) process.exitCode = await runCli(process.argv.slice(2));

@@ -232,15 +232,15 @@ describe('parseLcov', () => {
     expect(() =>
       parseLcov(
         [
-          'SF:scripts/check-implementation-file-sizes.ts',
+          'SF:scripts/benchmarks/benchmark-subprocess.ts',
           'FNF:0',
           'FNH:0',
-          'DA:470,1',
+          'DA:28,1',
           'end_of_record',
         ].join('\n'),
       ),
     ).toThrow(
-      'Coverage allowance for scripts/check-implementation-file-sizes.ts:470 points at a covered line',
+      'Coverage allowance for scripts/benchmarks/benchmark-subprocess.ts:28 points at a covered line',
     );
   });
 

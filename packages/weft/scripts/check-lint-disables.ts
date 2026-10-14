@@ -53,6 +53,7 @@ type CliArguments = {
   root: string;
   max: number | null;
   emitSnapshot: string | null;
+  showHelp: boolean;
 };
 
 /**
@@ -67,6 +68,7 @@ function parseArguments(argv: readonly string[]): CliArguments {
   let root: string | null = null;
   let max: number | null = null;
   let emitSnapshot: string | null = null;
+  let showHelp = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -84,8 +86,8 @@ function parseArguments(argv: readonly string[]): CliArguments {
       emitSnapshot = argv[index + 1] ?? null;
       index += 1;
     } else if (arg === '--help' || arg === '-h') {
-      printUsage();
-      process.exit(0);
+      showHelp = true;
+      break;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -95,6 +97,7 @@ function parseArguments(argv: readonly string[]): CliArguments {
     root: root ?? join(import.meta.dir, '..'),
     max,
     emitSnapshot,
+    showHelp,
   };
 }
 
@@ -227,6 +230,11 @@ async function writeSnapshot(root: string, outputPath: string): Promise<void> {
 export async function runCli(argv: readonly string[]): Promise<number> {
   const args = parseArguments(argv);
 
+  if (args.showHelp) {
+    printUsage();
+    return 0;
+  }
+
   if (args.emitSnapshot !== null) {
     await writeSnapshot(args.root, args.emitSnapshot);
     return 0;
@@ -235,7 +243,4 @@ export async function runCli(argv: readonly string[]): Promise<number> {
   return await runEnforcement(args);
 }
 
-if (import.meta.main) {
-  const exitCode = await runCli(process.argv.slice(2));
-  process.exit(exitCode);
-}
+if (import.meta.main) process.exitCode = await runCli(process.argv.slice(2));
