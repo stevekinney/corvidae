@@ -426,6 +426,27 @@ describe('changeset emission', () => {
     expect(Object.keys(files)).toEqual([emittedPath(added, 'new-name')]);
   });
 
+  test('a delete and an add of completely different changesets in one commit throws', async () => {
+    const { root } = await corvidae();
+    await write(
+      root,
+      '.changeset/old-name.md',
+      changeset('@lostgradient/weft', 'Alpha beta gamma.'),
+    );
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'rm', '--quiet', '.changeset/old-name.md');
+    await write(
+      root,
+      '.changeset/new-name.md',
+      '---\n"@lostgradient/cinder": major\n---\n\nNothing alike at all: zebra, quartz, voltage.\n',
+    );
+    await commit(root, 'Replace it in one commit');
+    const error = await rejectionOf(emit(root, await target(synced), synced, 'cinder'));
+    expect(error).toBeInstanceOf(ChangesetEmissionError);
+    expect((error as Error).message).toContain('.changeset/old-name.md');
+    expect((error as Error).message).toContain('.changeset/new-name.md');
+  });
+
   describe('a package moving between mirrors', () => {
     const definitionsPath = 'scripts/mirror/target-definitions.ts';
     const packageMapPath = 'scripts/mirror/package-map.json';
@@ -484,7 +505,7 @@ describe('changeset emission', () => {
         expect(message).toContain('weft');
         expect(message).toContain('.changeset/z.md');
         expect(message).toContain(
-          'delete changesets that name a package before moving it between mirrors, and add new ones after the move',
+          'after moving a package between mirrors, or starting or stopping its publication, sync every affected mirror once before adding changesets that name it; delete existing ones first',
         );
       }
     });
@@ -568,6 +589,43 @@ describe('changeset emission', () => {
       await write(root, definitionsPath, definitions({ weft: [weft], cinder: [chat] }));
       await commit(root, 'Move chat back');
       expect(await emit(root, await target(synced), synced)).toEqual({});
+    });
+
+    test('a package that starts publication cannot carry a changeset until a sync has passed it', async () => {
+      const { root, base } = await mapped({ cinder: [chat], weft: [] }, [chat]);
+      await write(root, definitionsPath, definitions({ cinder: [chat], weft: [weft] }));
+      await write(root, packageMapPath, map([chat, weft]));
+      await commit(root, 'Start publishing weft');
+      await write(root, '.changeset/z.md', weftChangeset);
+      await commit(root, 'Add Z');
+      const error = await rejectionOf(emit(root, await target(base), base));
+      expect(error).toBeInstanceOf(ChangesetEmissionError);
+      expect((error as Error).message).toContain('not-published');
+      expect((error as Error).message).toContain(
+        'after moving a package between mirrors, or starting or stopping its publication, sync every affected mirror once before adding changesets that name it; delete existing ones first',
+      );
+    });
+
+    test('a package that stops publication throws while a changeset names it', async () => {
+      const { root, base } = await mapped({ weft: [weft] }, [weft]);
+      await write(root, '.changeset/z.md', weftChangeset);
+      await commit(root, 'Add Z');
+      await write(root, packageMapPath, map([]));
+      await commit(root, 'Stop publishing');
+      expect(await rejectionOf(emit(root, await target(base), base))).toBeInstanceOf(
+        ChangesetEmissionError,
+      );
+    });
+
+    test('after one sync has passed a new package, a changeset naming it is accepted', async () => {
+      const { root } = await mapped({ weft: [weft] }, [weft]);
+      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [chat] }));
+      await write(root, packageMapPath, map([weft, chat]));
+      const trailer = await commit(root, 'Start publishing chat');
+      await write(root, '.changeset/z.md', changeset('@lostgradient/chat'));
+      const adding = await commit(root, 'Add Z');
+      const files = await emit(root, await target(trailer), trailer, 'cinder');
+      expect(Object.keys(files)).toEqual([emittedPath(adding, 'z')]);
     });
 
     test('adding a new publish-as workspace with changesets present passes', async () => {

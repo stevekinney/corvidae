@@ -173,11 +173,42 @@ const immutableRemedy =
  * edit), a rename git detects (50% similarity or more) and a delete followed by a re-add of the
  * same name. A squash-merged pull request contributes one commit, so edits within it pass.
  *
- * Accepted residual: a synced changeset renamed and rewritten by more than half in one commit
- * looks like a fresh changeset to git. The consequence is one extra bump in the target, never a
- * lost release.
+ * A second condition closes the gap rename detection leaves: no single commit may delete one
+ * changeset and add another. That is exactly a replacement made in one pull request, which a
+ * rename plus a rewrite of more than half would otherwise hide as a fresh file. The remedy is the
+ * two pull requests the error spells out.
  */
 async function assertImmutable(corvidaeRoot: string, headFiles: readonly string[]): Promise<void> {
+  const replacements = await requireGit(corvidaeRoot, [
+    'log',
+    '--no-renames',
+    '--name-status',
+    '-z',
+    '--format=%x01%H',
+    '--',
+    `${changesetDirectory}/`,
+  ]);
+  for (const record of replacements.split('\u0001')) {
+    const tokens = record
+      .split('\0')
+      .map((token) => token.replace(/^\n+/, ''))
+      .filter((token) => token.length > 0);
+    const [hash, ...rest] = tokens;
+    if (hash === undefined) continue;
+    const deleted: string[] = [];
+    const added: string[] = [];
+    for (let index = 0; index + 1 < rest.length; index += 2) {
+      const [status, path] = [rest[index]!, rest[index + 1]!];
+      if (!/^\.changeset\/[^/]+\.md$/.test(path) || path === '.changeset/README.md') continue;
+      if (status === 'D') deleted.push(path);
+      if (status === 'A') added.push(path);
+    }
+    if (deleted.length > 0 && added.length > 0) {
+      throw new ChangesetEmissionError(
+        `commit ${hash.slice(0, 12)} deletes ${deleted.join(', ')} and adds ${added.join(', ')}: ${immutableRemedy}.`,
+      );
+    }
+  }
   for (const path of headFiles) {
     const output = await requireGit(corvidaeRoot, [
       'log',
@@ -209,8 +240,8 @@ async function textAt(
   return result.exitCode === 0 ? result.stdout : undefined;
 }
 
-/** A package's mirror, or why it has none: nobody lists it, or several mirrors do. */
-type PackageOwner = MirrorTarget | 'unowned' | 'ambiguous';
+/** A package's mirror, or why it has none: nobody lists it, several mirrors do, or it is not published. */
+type PackageOwner = MirrorTarget | 'unowned' | 'ambiguous' | 'not-published';
 
 /**
  * Each `publish-as` package's npm name mapped to its mirror, under the mapping as it stood at a
@@ -279,18 +310,18 @@ function packagesNamedBy(bytes: Uint8Array): string[] | undefined {
 }
 
 /**
- * Check 2, global: no changeset that still exists may name a package that moved between mirrors.
+ * Check 2, global, deliberately blunt: a package named by a changeset at HEAD must be in the same
+ * state at every inspected revision.
  *
  * Each target has its own trailer, so a changeset delivered to one mirror can later be pending
- * for another once its package moves; the same release would ship twice. Only a changeset at
- * HEAD can be emitted, so only those are considered: deleting the affected changesets and then
- * moving the package is the sanctioned sequence. Comparing the trailer's mapping with HEAD's is
- * not enough (a package that moves A to B and back looks unmoved at both ends), so every commit
- * in `(trailer, HEAD]` that changes a mapping file is compared with its parent. A package's
- * mirror is the owning mirror, `unowned` or `ambiguous`, and any difference between consecutive
- * states is a move, so remove-from-A then add-to-B registers. A package absent from
- * `package-map.json` at one end was added or removed as a workspace, and a publication snapshot
- * changes no mirror; neither is a move. A mapping that cannot be resolved fails closed.
+ * for another once its package moves, and one delivered before a package started publishing can
+ * have been dropped. Rather than reason about which mirror saw what, the state of each named
+ * package (its owning mirror, `unowned`, `ambiguous` or `not-published`) is read at the trailer,
+ * at HEAD, and at every commit in `(trailer, HEAD]` that changes a mapping file together with
+ * that commit's parent. Any difference between consecutive states throws for every target. The
+ * price is that a brand-new package cannot carry a changeset until one sync has passed it.
+ * Publication snapshots change neither disposition nor owner, so recording one is not a change.
+ * A mapping that cannot be resolved at any revision fails closed.
  */
 async function assertNoMovedPackages(
   corvidaeRoot: string,
@@ -308,34 +339,42 @@ async function assertNoMovedPackages(
   const mappingCommits = log.split('\n').filter((line) => line.length > 0);
   if (mappingCommits.length === 0) return;
 
-  const moved = new Map<string, PackageOwner[]>();
-  for (const commit of mappingCommits) {
-    const [before, after] = await Promise.all([
-      packageTargetsAt(corvidaeRoot, `${commit}^`),
-      packageTargetsAt(corvidaeRoot, commit),
-    ]);
-    for (const [name, from] of before) {
-      const to = after.get(name);
-      if (to === undefined || to === from) continue;
-      moved.set(name, [...(moved.get(name) ?? [from]), to]);
-    }
-  }
-  if (moved.size === 0) return;
-
-  const offenders = new Map<string, Set<string>>();
+  const named = new Map<string, Set<string>>();
+  let unreadable = false;
   for (const path of headFiles) {
     const names = packagesNamedBy(await blobBytes(corvidaeRoot, 'HEAD', path));
-    for (const name of names ?? [...moved.keys()]) {
-      if (moved.has(name)) offenders.set(name, (offenders.get(name) ?? new Set()).add(path));
-    }
+    if (names === undefined) unreadable = true;
+    for (const name of names ?? []) named.set(name, (named.get(name) ?? new Set()).add(path));
   }
-  if (offenders.size === 0) return;
-  const lines = [...offenders].map(
-    ([name, paths]) =>
-      `${name} moved ${moved.get(name)!.join(' to ')}, and ${[...paths].toSorted().join(', ')} names it`,
-  );
+
+  const revisions = [
+    trailerSha,
+    ...mappingCommits.flatMap((commit) => [`${commit}^`, commit]),
+    'HEAD',
+  ];
+  const mappings = new Map<string, Map<string, PackageOwner>>();
+  for (const revision of revisions) {
+    if (!mappings.has(revision))
+      mappings.set(revision, await packageTargetsAt(corvidaeRoot, revision));
+  }
+  const universe = new Set<string>(named.keys());
+  if (unreadable)
+    for (const mapping of mappings.values()) for (const name of mapping.keys()) universe.add(name);
+
+  const lines: string[] = [];
+  for (const name of universe) {
+    const chain: PackageOwner[] = [];
+    for (const revision of revisions) {
+      const state = mappings.get(revision)!.get(name) ?? 'not-published';
+      if (chain.at(-1) !== state) chain.push(state);
+    }
+    if (chain.length < 2) continue;
+    const paths = [...(named.get(name) ?? headFiles)].toSorted().join(', ');
+    lines.push(`${name} went ${chain.join(' to ')}, and ${paths} names it`);
+  }
+  if (lines.length === 0) return;
   throw new ChangesetEmissionError(
-    `${lines.join('; ')}: delete changesets that name a package before moving it between mirrors, and add new ones after the move.`,
+    `${lines.join('; ')}: after moving a package between mirrors, or starting or stopping its publication, sync every affected mirror once before adding changesets that name it; delete existing ones first.`,
   );
 }
 

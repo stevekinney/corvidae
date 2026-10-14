@@ -195,6 +195,81 @@ async function findNewerCandidate(
 }
 
 /**
+ * Close every candidate whose corvidae SHA is an ancestor of `newCorvidaeCommit`, commenting
+ * with `commentFor`. A candidate the checkout cannot place is left open with a logged reason and
+ * never fails the job; a failed close is collected and thrown once every candidate was tried.
+ */
+async function closeAncestorCandidates(options: {
+  api: Pick<GitHubApi, 'createIssueComment' | 'closePullRequest'>;
+  corvidaeRoot: string;
+  fullName: string;
+  found: SyncCandidates;
+  newCorvidaeCommit: string;
+  commentFor: (trailerSha: string) => string;
+  closedLine: string;
+  failureHeading: string;
+  log: (line: string) => void;
+}): Promise<{ closed: number[]; left: { number: number; reason: string }[] }> {
+  const { api, corvidaeRoot, fullName, found, newCorvidaeCommit, log } = options;
+  const { candidates, trailers } = found;
+  const closed: number[] = [];
+  const left: { number: number; reason: string }[] = [];
+  const failures: string[] = [];
+  const leave = (number: number, reason: string): void => {
+    left.push({ number, reason });
+    log(`${fullName}#${number}: left open; ${reason}`);
+  };
+  for (const candidate of candidates) {
+    const trailerSha = trailers.get(candidate.number);
+    if (trailerSha === undefined) {
+      leave(
+        candidate.number,
+        `its head commit has no single parsable ${provenanceTrailer} trailer`,
+      );
+      continue;
+    }
+    const ancestry = await tryGit(
+      corvidaeRoot,
+      'merge-base',
+      '--is-ancestor',
+      trailerSha,
+      newCorvidaeCommit,
+    );
+    if (ancestry.exitCode === 128) {
+      leave(candidate.number, `${trailerSha} is not an object in the corvidae checkout`);
+      continue;
+    }
+    if (ancestry.exitCode !== 0) {
+      leave(
+        candidate.number,
+        ancestry.exitCode === 1
+          ? `${trailerSha} is not an ancestor of ${newCorvidaeCommit}`
+          : `git merge-base --is-ancestor exited ${ancestry.exitCode}: ${ancestry.stderr.trim()}`,
+      );
+      continue;
+    }
+    try {
+      await api.createIssueComment({
+        fullName,
+        issueNumber: candidate.number,
+        body: options.commentFor(trailerSha),
+      });
+      await api.closePullRequest(fullName, candidate.number);
+      closed.push(candidate.number);
+      log(`${fullName}#${candidate.number}: closed; ${options.closedLine}`);
+    } catch (error) {
+      failures.push(
+        `#${candidate.number}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new MirrorSyncActionError(`${options.failureHeading}:\n${failures.join('\n')}`);
+  }
+  return { closed, left };
+}
+
+/**
  * Close the older sync pull requests a new one makes redundant.
  *
  * A sync pull request carries the whole target diff, so a newer one built from a descendant of an
@@ -237,14 +312,6 @@ export async function supersedeOlderPullRequests(options: {
     base,
     excludeNumber: newPullRequest.number,
   });
-  const { candidates, trailers } = found;
-  const closed: number[] = [];
-  const left: { number: number; reason: string }[] = [];
-  const failures: string[] = [];
-  const leave = (number: number, reason: string): void => {
-    left.push({ number, reason });
-    log(`${fullName}#${number}: left open; ${reason}`);
-  };
   // A dispatch from an older corvidae ref can finish after a newer one already opened its pull
   // request. Then the new pull request is the stale one: close it and touch nothing else.
   const newer = await findNewerCandidate(corvidaeRoot, newCorvidaeCommit, found);
@@ -263,96 +330,88 @@ export async function supersedeOlderPullRequests(options: {
 
   await options.beforeClosingOlder?.();
 
-  for (const candidate of candidates) {
-    const trailerSha = trailers.get(candidate.number);
-    if (trailerSha === undefined) {
-      leave(
-        candidate.number,
-        `its head commit has no single parsable ${provenanceTrailer} trailer`,
-      );
-      continue;
-    }
-    const ancestry = await tryGit(
-      corvidaeRoot,
-      'merge-base',
-      '--is-ancestor',
-      trailerSha,
-      newCorvidaeCommit,
-    );
-    if (ancestry.exitCode === 128) {
-      leave(candidate.number, `${trailerSha} is not an object in the corvidae checkout`);
-      continue;
-    }
-    if (ancestry.exitCode !== 0) {
-      leave(
-        candidate.number,
-        ancestry.exitCode === 1
-          ? `${trailerSha} is not an ancestor of ${newCorvidaeCommit}`
-          : `git merge-base --is-ancestor exited ${ancestry.exitCode}: ${ancestry.stderr.trim()}`,
-      );
-      continue;
-    }
-    try {
-      await api.createIssueComment({
-        fullName,
-        issueNumber: candidate.number,
-        body: `Superseded by ${newPullRequest.htmlUrl}, which is built from corvidae@${newCorvidaeCommit}, a descendant of the corvidae commit this pull request mirrors (${trailerSha}).`,
-      });
-      await api.closePullRequest(fullName, candidate.number);
-      closed.push(candidate.number);
-      log(`${fullName}#${candidate.number}: closed; superseded by ${newPullRequest.htmlUrl}`);
-    } catch (error) {
-      failures.push(
-        `#${candidate.number}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-  if (failures.length > 0) {
-    throw new MirrorSyncActionError(
-      `${fullName}: ${newPullRequest.htmlUrl} is open, but these superseded pull requests could not be closed:\n${failures.join('\n')}`,
-    );
-  }
-  return { closed, left };
+  return closeAncestorCandidates({
+    api,
+    corvidaeRoot,
+    fullName,
+    found,
+    newCorvidaeCommit,
+    commentFor: (trailerSha) =>
+      `Superseded by ${newPullRequest.htmlUrl}, which is built from corvidae@${newCorvidaeCommit}, a descendant of the corvidae commit this pull request mirrors (${trailerSha}).`,
+    closedLine: `superseded by ${newPullRequest.htmlUrl}`,
+    failureHeading: `${fullName}: ${newPullRequest.htmlUrl} is open, but these superseded pull requests could not be closed`,
+    log,
+  });
 }
 
 /**
- * Dispatch the snapshot workflow for a run that found nothing to sync, unless a strictly newer
- * sync pull request is open. That run has no pull request of its own to close, so the stale check
- * only decides whether to dispatch, and nothing is closed.
+ * Finish a run that found nothing to sync. Corvidae HEAD already matches the target, so any open
+ * sync pull request built from an ancestor of this run's commit is obsolete and is closed, and a
+ * requested snapshot is dispatched first. If a strictly newer sync pull request is open, this run
+ * is the stale one: it dispatches nothing and closes nothing.
  */
-export async function dispatchSkippedSnapshot(options: {
-  api: Pick<GitHubApi, 'dispatchWorkflow' | 'listOpenPullRequests' | 'getCommitMessage'>;
+export async function settleSkippedSync(options: {
+  api: Pick<
+    GitHubApi,
+    | 'dispatchWorkflow'
+    | 'listOpenPullRequests'
+    | 'getCommitMessage'
+    | 'createIssueComment'
+    | 'closePullRequest'
+  >;
   target: MirrorTarget;
   manifest: Pick<PreparedSyncManifest, 'baseBranch' | 'baseCommit' | 'workflowFile'>;
+  snapshot: boolean;
   branch: string;
   corvidaeCommit: string;
   corvidaeRoot: string;
   log?: ((line: string) => void) | undefined;
 }): Promise<string> {
-  const { api, target, manifest, branch, corvidaeCommit, corvidaeRoot } = options;
+  const { api, target, manifest, snapshot, branch, corvidaeCommit, corvidaeRoot } = options;
   const log = options.log ?? ((line: string) => void process.stdout.write(`${line}\n`));
   const fullName = targetRepositoryFullName(target);
-  if (manifest.workflowFile === undefined) {
-    throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
-  }
-  if (api.dispatchWorkflow === undefined) {
-    throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+  if (snapshot) {
+    if (manifest.workflowFile === undefined) {
+      throw new MirrorSyncActionError(`${target}: snapshot artifact lacks a workflow file`);
+    }
+    if (api.dispatchWorkflow === undefined) {
+      throw new MirrorSyncActionError('The GitHub API does not support workflow dispatch');
+    }
   }
   const found = await readSyncCandidates({ api, fullName, base: manifest.baseBranch });
   const newer = await findNewerCandidate(corvidaeRoot, corvidaeCommit, found);
   if (newer !== undefined) {
     const reason = `${fullName}#${newer.candidate.number} is open and built from corvidae@${newer.trailerSha}, a descendant of this run's corvidae@${corvidaeCommit}`;
-    log(`${target}: snapshot not dispatched; ${reason}`);
-    return `${target}: snapshot workflow not dispatched; ${reason}\n`;
+    log(`${target}: nothing dispatched or closed; ${reason}`);
+    return `${target}: nothing dispatched or closed; ${reason}\n`;
   }
-  await api.dispatchWorkflow(
-    snapshotDispatchFor(target, manifest.workflowFile, fullName, branch, {
-      decision: 'skip',
-      baseBranch: manifest.baseBranch,
-      baseCommit: manifest.baseCommit,
-    }),
-  );
-  return `${target}: snapshot workflow dispatched for ${fullName}@${manifest.baseBranch} (${manifest.baseCommit})\n`;
+  let message = `${target}: no change, nothing to open\n`;
+  if (snapshot) {
+    await api.dispatchWorkflow!(
+      snapshotDispatchFor(target, manifest.workflowFile!, fullName, branch, {
+        decision: 'skip',
+        baseBranch: manifest.baseBranch,
+        baseCommit: manifest.baseCommit,
+      }),
+    );
+    message = `${target}: snapshot workflow dispatched for ${fullName}@${manifest.baseBranch} (${manifest.baseCommit})\n`;
+  }
+  const outcome = await closeAncestorCandidates({
+    api,
+    corvidaeRoot,
+    fullName,
+    found,
+    newCorvidaeCommit: corvidaeCommit,
+    commentFor: (trailerSha) =>
+      `Superseded: corvidae@${corvidaeCommit} already matches the target, so this pull request (built from corvidae@${trailerSha}) has nothing left to propose.`,
+    closedLine: 'corvidae HEAD already matches the target',
+    failureHeading: `${fullName}: these obsolete sync pull requests could not be closed`,
+    log,
+  });
+  if (outcome.closed.length > 0) {
+    message += `${target}: closed obsolete sync pull request(s) ${outcome.closed.map((number) => `#${number}`).join(', ')}; corvidae HEAD already matches the target\n`;
+  }
+  return message;
 }
 
 /**
@@ -620,20 +679,17 @@ async function runPublish(argv: readonly string[]): Promise<number> {
   });
   const branch = pullRequestBranchFor(corvidaeCommit);
   if (manifest.decision === 'skip') {
-    if (snapshot) {
-      process.stdout.write(
-        await dispatchSkippedSnapshot({
-          api: installationOnlyApi(),
-          target,
-          manifest,
-          branch,
-          corvidaeCommit,
-          corvidaeRoot,
-        }),
-      );
-    } else {
-      process.stdout.write(`${target}: no change, nothing to open\n`);
-    }
+    process.stdout.write(
+      await settleSkippedSync({
+        api: installationOnlyApi(),
+        target,
+        manifest,
+        snapshot,
+        branch,
+        corvidaeCommit,
+        corvidaeRoot,
+      }),
+    );
     return 0;
   }
   if (bundlePath === undefined || manifest.commit === undefined) {

@@ -6,13 +6,13 @@ import { join } from 'node:path';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import type { GitHubApi, OpenPullRequestRecord } from './github-api.ts';
 import {
-  dispatchSkippedSnapshot,
   dispatchSnapshotWorkflow,
   openSyncPullRequest,
   pullRequestBodyFor,
   pullRequestBranchFor,
   reportDrift,
   runMirrorSyncActionCommand,
+  settleSkippedSync,
   snapshotDispatchFor,
   supersedeOlderPullRequests,
   targetRemoteUrl,
@@ -723,10 +723,11 @@ describe('supersession (COR-1433)', () => {
     await withCorvidae(async ({ older, newer }, root) => {
       const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
       const logged: string[] = [];
-      const message = await dispatchSkippedSnapshot({
+      const message = await settleSkippedSync({
         api,
         target: 'weft',
         manifest: skipManifest,
+        snapshot: true,
         branch: 'mirror-sync-new',
         corvidaeCommit: older,
         corvidaeRoot: root,
@@ -734,7 +735,7 @@ describe('supersession (COR-1433)', () => {
       });
       expect(events).toEqual([]);
       expect(logged.join('\n')).toContain('#11');
-      expect(message).toContain('not dispatched');
+      expect(message).toContain('nothing dispatched or closed');
     });
   });
 
@@ -744,18 +745,73 @@ describe('supersession (COR-1433)', () => {
         'head-11': trailer(older),
         'head-12': trailer(newer),
       });
-      const message = await dispatchSkippedSnapshot({
+      const message = await settleSkippedSync({
         api,
         target: 'weft',
         manifest: skipManifest,
+        snapshot: true,
         branch: 'mirror-sync-new',
         corvidaeCommit: newer,
         corvidaeRoot: root,
         log: () => {},
       });
-      // Nothing is closed on this path, and the older pull request is left alone.
-      expect(events).toEqual(['dispatch']);
+      // The older pull request is obsolete too: dispatch first, then close it.
+      expect(events.filter((event) => /^(dispatch|close)/.test(event))).toEqual([
+        'dispatch',
+        'close 11',
+      ]);
       expect(message).toContain('snapshot workflow dispatched');
+    });
+  });
+
+  test('a non-snapshot skip closes an older sync pull request whose trailer is an ancestor', async () => {
+    await withCorvidae(async ({ older, newer, side }, root) => {
+      const { api, events } = fake(
+        [record(11), record(12), record(13, { author: 'someone-else' })],
+        {
+          'head-11': trailer(older),
+          'head-12': trailer(side),
+          'head-13': trailer(older),
+        },
+      );
+      const message = await settleSkippedSync({
+        api,
+        target: 'weft',
+        manifest: skipManifest,
+        snapshot: false,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: newer,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      expect(events.filter((event) => event.startsWith('close'))).toEqual(['close 11']);
+      expect(events.find((event) => event.startsWith('comment 11'))).toContain(
+        'already matches the target',
+      );
+      expect(events).not.toContain('dispatch');
+      expect(message).toContain('closed');
+    });
+  });
+
+  test('a skip with a strictly newer open sync pull request closes nothing, with or without a snapshot', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      for (const snapshot of [false, true]) {
+        const { api, events } = fake([record(11), record(12)], {
+          'head-11': trailer(newer),
+          'head-12': trailer(older),
+        });
+        await settleSkippedSync({
+          api,
+          target: 'weft',
+          manifest: skipManifest,
+          snapshot,
+          branch: 'mirror-sync-new',
+          corvidaeCommit: older,
+          corvidaeRoot: root,
+          log: () => {},
+        });
+        expect(events).toEqual([]);
+      }
     });
   });
 
