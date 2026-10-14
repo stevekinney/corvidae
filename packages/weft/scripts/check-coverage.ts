@@ -207,10 +207,8 @@ const BASE_COVERAGE_ALLOWANCES = buildAllowanceLayer('BASE_COVERAGE_ALLOWANCES',
     'scripts/generate-operation-client.ts',
     {
       reason:
-        'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report; the exhaustive renderer guard is unreachable by construction. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), then shifted with the generated CatalogOperations docblock (COR-1280): the uncovered CLI entrypoint lines are now 325-337. The exhaustive-renderer-guard miss the original 373/376 covered is not reproduced in corvidae’s copy (no gap remains there).',
+        'Bun reports one function miss in this file. The CLI body is `runGenerateOperationClientCommand`, which the tests run in process (COR-1459), so its lines are covered and no line allowance remains; the one-line `import.meta.main` entry is reported as hit.',
       functions: 1,
-      lines: new Set([325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337]),
-      requireUncoveredLines: true,
     },
   ],
   [
@@ -1147,17 +1145,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
   'AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS',
   [
     [
-      'scripts/lib/workflow-visibility-backfill.ts',
-      {
-        reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
-        lines: new Set([
-          67, 153, 154, 155, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231,
-        ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/cli/conformance.ts',
       {
         reason:
@@ -1235,7 +1222,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining attribute-tag branches reject decoded value shapes excluded by search-attribute boundary validation.',
         functions: 1,
-        lines: new Set([365, 366, 368]),
+        lines: new Set([372, 373, 375]),
         requireUncoveredLines: true,
       },
     ],
@@ -1813,8 +1800,8 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     'scripts/lib/workflow-visibility-backfill.test-support.ts',
     {
       reason:
-        "NoConditionalBatchStorage.get()/put()/delete()/batch() are four one-statement async methods (`return null;`/`return undefined;` ×3) on consecutive lines — batch()'s in particular is byte-identical to put()'s and delete()'s. Directly verified with standalone tests (each calling exactly one of these methods alone, logging the result via console.log immediately before asserting it) that every one of them demonstrably executes and resolves correctly when called. Despite that, this file's function-level tally (FNH/FNF) is short by 2 in the authoritative full-suite run — batch()'s own two interior lines (168-169) are the only LINES ever reported at zero (allowed below), but re-running the same isolated single-method verification in different file combinations shows the SPECIFIC additional line/function that reads as zero shifts (in one combination delete()'s own `return undefined;` line reads zero despite a console.log proving that exact call executed; in the authoritative full-suite run it does not, and some other still-unidentified construct accounts for the second gap instead). That instability — the same underlying LINES and FUNCTIONS read as covered or not depending on what else shares the Bun test process — means the specific second function cannot be pinned down the way batch() was; only that workflow-visibility-backfill.test-support.test.ts (COR-1283) calls get/put/delete/batch/scan/capabilities directly, every one of them is proven by direct console.log verification to execute and return correctly, and the file's LINES are 100% covered once 168-169 are allowed (102 total, 100 otherwise-hit) with no line left unaccounted for. functions: 2 covers both the confirmed batch() gap and this second, situationally-shifting one from the same class of trivial near-identical single-statement methods.",
-      lines: new Set([168, 169]),
+        "NoConditionalBatchStorage.get()/put()/delete()/batch() are four one-statement async methods (`return null;`/`return undefined;` ×3) on consecutive lines — batch()'s in particular is byte-identical to put()'s and delete()'s. Directly verified with standalone tests (each calling exactly one of these methods alone, logging the result via console.log immediately before asserting it) that every one of them demonstrably executes and resolves correctly when called. Despite that, this file's function-level tally (FNH/FNF) is short by 2 in the authoritative full-suite run — batch()'s own two interior lines (175-176) are the only LINES ever reported at zero (allowed below), but re-running the same isolated single-method verification in different file combinations shows the SPECIFIC additional line/function that reads as zero shifts (in one combination delete()'s own `return undefined;` line reads zero despite a console.log proving that exact call executed; in the authoritative full-suite run it does not, and some other still-unidentified construct accounts for the second gap instead). That instability — the same underlying LINES and FUNCTIONS read as covered or not depending on what else shares the Bun test process — means the specific second function cannot be pinned down the way batch() was; only that workflow-visibility-backfill.test-support.test.ts (COR-1283) calls get/put/delete/batch/scan/capabilities directly, every one of them is proven by direct console.log verification to execute and return correctly, and the file's LINES are 100% covered once 175-176 are allowed (107 total, 105 otherwise-hit) with no line left unaccounted for. functions: 2 covers both the confirmed batch() gap and this second, situationally-shifting one from the same class of trivial near-identical single-statement methods.",
+      lines: new Set([175, 176]),
       requireUncoveredLines: true,
       functions: 2,
     },

@@ -67,8 +67,8 @@ const conversationalistRecordedVersion = recordedVersion('conversationalist');
  * while the dependency edges are pared down to the ones each assertion needs.
  */
 const workspaces: Record<string, Record<string, unknown>> = {
-  'applications/desktop': {
-    name: '@lostgradient/desktop',
+  'applications/playground': {
+    name: '@lostgradient/playground',
     private: true,
     dependencies: {
       '@lostgradient/cinder': 'workspace:*',
@@ -516,7 +516,7 @@ describe('workspace and catalog resolution', () => {
 
   test('every edge into weft routes through the one root catalog entry', async () => {
     const plan = await planFor('cinder');
-    // `applications/desktop` is absent deliberately: `package-map.json` excludes it, so nothing
+    // `applications/playground` is absent deliberately: `package-map.json` excludes it, so nothing
     // is emitted for it at all. The test below is what holds that. `packages/operative` is absent
     // for a different reason as of COR-1287 — it ships from the agent-bureau target now, and the
     // test below covers the same edge there, where no catalog exists to route it through.
@@ -1081,36 +1081,36 @@ describe('COR-1229: seeding a released package the target clone does not yet car
 });
 
 /**
- * `@lostgradient/desktop` was the one deferred workspace until the repository owner excluded it
- * from the mirror outright (2026-09-21). Exclusion is decided in `package-map.json` before the
- * layout is ever consulted, so the plan carries no deferred entry and the cinder sync no longer
- * refuses on its account — while the layout entry keeps its `deferred` disposition, so lifting
- * the exclusion would bring the refusal back until the placement is actually ruled on.
+ * `@lostgradient/playground` is excluded from the mirror outright. Exclusion is decided in
+ * `package-map.json` before the layout is ever consulted, so the plan carries no deferred entry
+ * and the cinder sync does not refuse on its account — while the layout entry keeps its
+ * `deferred` disposition, so lifting the exclusion would bring the refusal back until the
+ * placement is actually ruled on.
  */
-describe('the excluded desktop application', () => {
-  test('is emitted nowhere and no longer holds the cinder sync', async () => {
+describe('the excluded playground application', () => {
+  test('is emitted nowhere and does not hold the cinder sync', async () => {
     const plan = await planFor('cinder');
     expect(plan.deferred).toEqual([]);
     expect(
-      Object.keys(plan.files).filter((path) => path.includes('desktop')),
+      Object.keys(plan.files).filter((path) => path.startsWith('applications/')),
       'nothing is emitted for an excluded workspace',
     ).toEqual([]);
     expect(() => assertNothingDeferred(plan)).not.toThrow();
-    const layout = await layoutFor('@lostgradient/desktop');
+    const layout = await layoutFor('@lostgradient/playground');
     expect(layout.disposition).toBe('deferred');
   });
 
   test('a deferred workspace that is not excluded still refuses the sync by name', async () => {
-    const layout = await layoutFor('@lostgradient/desktop');
+    const layout = await layoutFor('@lostgradient/playground');
     if (layout.disposition !== 'deferred') throw new Error('the fixture entry must stay deferred');
-    const plan = { deferred: [{ workspace: '@lostgradient/desktop', layout }] };
+    const plan = { deferred: [{ workspace: '@lostgradient/playground', layout }] };
     expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
     try {
       assertNothingDeferred(plan);
     } catch (error) {
-      expect((error as Error).message).toContain('@lostgradient/desktop');
-      expect((error as Error).message).toContain('applications/desktop');
-      expect((error as Error).message).toContain('COR-1221');
+      expect((error as Error).message).toContain('@lostgradient/playground');
+      expect((error as Error).message).toContain('applications/playground');
+      expect((error as Error).message).toContain('COR-1201');
     }
   });
 

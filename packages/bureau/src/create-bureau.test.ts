@@ -57,6 +57,7 @@ import {
   startDurableRunResult,
   StepCompletedEvent,
   type StepResult,
+  type SteeringRequestedValue,
   stopWhen,
   type StreamEventMap,
   TaskCancelledEvent,
@@ -6719,6 +6720,69 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
       expect(outcome.command.requestedValue).toEqual({
         target: 'model',
         override: 'claude-sonnet-5',
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('admits every one of the seven steering targets through the public verb (AB-200)', async () => {
+    // Pins the contract `Bureau.submitSteeringCommand`'s doc comment and the
+    // README state: no target is refused as unsupported. The `satisfies`
+    // record makes a new `SteeringRequestedValue` target a compile error
+    // here until this test decides how it is admitted.
+    const requestedValues = {
+      pause: { target: 'pause' },
+      resume: { target: 'resume' },
+      'agent-identity': { target: 'agent-identity', override: 'steered' },
+      route: { target: 'route', override: 'primary' },
+      model: { target: 'model', override: 'claude-sonnet-5' },
+      provider: { target: 'provider', override: 'anthropic' },
+      effort: { target: 'effort', override: 'high' },
+    } satisfies {
+      [Target in SteeringRequestedValue['target']]: Extract<
+        SteeringRequestedValue,
+        { target: Target }
+      >;
+    };
+    const steered = createAgent({
+      generate: () => new Promise<never>(() => {}),
+      name: 'steered',
+    });
+    const bureau = await createBureau({
+      agents: { steered },
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+    });
+    try {
+      const run = await bureau.createRun({
+        message: 'Wait forever',
+        agentName: 'steered',
+        principal: 'alice',
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'running';
+      });
+
+      const outcomes: Record<string, string> = {};
+      for (const [target, requestedValue] of Object.entries(requestedValues)) {
+        const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+          principal: 'alice',
+          requestedValue,
+        });
+        outcomes[target] = outcome.outcome;
+      }
+
+      expect(outcomes).toEqual({
+        pause: 'accepted',
+        resume: 'accepted',
+        'agent-identity': 'accepted',
+        route: 'accepted',
+        model: 'accepted',
+        provider: 'accepted',
+        effort: 'accepted',
       });
     } finally {
       await bureau.dispose();

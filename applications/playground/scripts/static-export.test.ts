@@ -430,6 +430,27 @@ describe('static export', () => {
       );
 
       expect(pageHtml).toMatch(/\/assets\/[a-f0-9]{64}\/page-bundle\/chat\.js/);
+      // Every stable page entry is one import of its hashed entry, and each page's top-level code
+      // exists in exactly one exported file; a second copy would hydrate the page twice.
+      const stableEntry = await readFingerprintedAsset('/page-bundle/chat.js');
+      expect(stableEntry).toMatch(
+        /^import "\/assets\/[a-f0-9]{64}\/page-bundle\/page-chat-[a-z0-9]+\.js";\n$/,
+      );
+      const stableEntries = [...rendered].filter((url) =>
+        /\/page-bundle\/(?!page-|chunk-|bundle-)[a-z0-9-]+\.js$/.test(url),
+      );
+      const entryCopies: string[] = [];
+      for (const url of rendered) {
+        if (!url.endsWith('.js')) continue;
+        const code = await readFile(join(outputDirectory, url.slice(1)), 'utf8');
+        // A string literal, not an identifier, so minification cannot rename it away.
+        if (code.includes('data-playground-controls-hydrated')) entryCopies.push(url);
+      }
+      expect(stableEntries.length).toBeGreaterThan(0);
+      expect(entryCopies).toHaveLength(stableEntries.length);
+      expect(entryCopies.every((url) => /\/page-bundle\/page-[a-z0-9-]+\.js$/.test(url))).toBe(
+        true,
+      );
       expect(pageHtml).toMatch(/\/assets\/[a-f0-9]{64}\/package-components\/chat\/chat\/chat\.css/);
       expect(pageHtml).toContain('id="cinder-documentation"');
       expect(pageHtml).toContain('\\u003cp');

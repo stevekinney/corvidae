@@ -14,6 +14,7 @@ import {
   nodeImportableSpecifierEntries,
   PackagingError,
   packWorkspace,
+  readmePublicityScript,
   runCommand,
   runConsumerSmokeTest,
   smokeScript,
@@ -740,9 +741,90 @@ describe('checkReadmePublicity', () => {
         });
         const result = await checkReadmePublicity(tarball);
         expect(result.ok).toBe(false);
-        expect(result.problem).toEqual({ kind: 'internal-marker', marker: 'workspace:*' });
+        expect(result.problem).toEqual({
+          kind: 'internal-marker',
+          marker: 'workspace:*',
+          path: 'package/README.md',
+        });
       },
     );
+  });
+
+  // COR-1446: `@lostgradient/editor@0.16.0` shipped five `dist/components/<name>/README.md`
+  // copies carrying `workspace:*` install instructions, and a check that read only the root
+  // README passed it.
+  test('refuses a tarball whose nested component README carries an internal marker, even with a public root README', async () => {
+    await withPackage(
+      {
+        'package.json': minimalManifest('@fixture/nested-internal-readme'),
+        'dist/index.js': 'export const x = 1;\n',
+        'dist/components/widget/README.md':
+          '# Widget\n\nDeclare `"@fixture/nested-internal-readme": "workspace:*"` in the consuming workspace.\n',
+        'dist/components/gadget/README.md': '# Gadget\n\nInstall from the Corvidae root.\n',
+        'README.md': '# Fixture\n\nInstall with `bun add @fixture/nested-internal-readme`.\n',
+      },
+      async (directory, scratch) => {
+        const tarball = await packWorkspace({
+          packageDirectory: directory,
+          destination: join(scratch, 'tarballs'),
+        });
+        expect(await checkReadmePublicity(tarball)).toEqual({
+          ok: false,
+          problem: {
+            kind: 'internal-marker',
+            marker: 'Corvidae',
+            path: 'package/dist/components/gadget/README.md',
+          },
+        });
+      },
+    );
+  });
+
+  test('passes a tarball whose nested component READMEs are public too', async () => {
+    await withPackage(
+      {
+        'package.json': minimalManifest('@fixture/nested-public-readme'),
+        'dist/index.js': 'export const x = 1;\n',
+        'dist/components/widget/README.md':
+          "# Widget\n\n```ts\nimport { Widget } from '@fixture/nested-public-readme/widget';\n```\n",
+        'README.md': '# Fixture\n\nInstall with `bun add @fixture/nested-public-readme`.\n',
+      },
+      async (directory, scratch) => {
+        const tarball = await packWorkspace({
+          packageDirectory: directory,
+          destination: join(scratch, 'tarballs'),
+        });
+        expect(await checkReadmePublicity(tarball)).toEqual({ ok: true });
+      },
+    );
+  });
+
+  test('reports the root README first when both it and a nested one are internal', async () => {
+    await withPackage(
+      {
+        'package.json': minimalManifest('@fixture/both-internal-readme'),
+        'dist/index.js': 'export const x = 1;\n',
+        'dist/components/a/README.md': 'Install from the Corvidae root.\n',
+        'README.md': 'Declare `"x": "workspace:*"`.\n',
+      },
+      async (directory, scratch) => {
+        const tarball = await packWorkspace({
+          packageDirectory: directory,
+          destination: join(scratch, 'tarballs'),
+        });
+        const result = await checkReadmePublicity(tarball);
+        expect(result.problem).toEqual({
+          kind: 'internal-marker',
+          marker: 'workspace:*',
+          path: 'package/README.md',
+        });
+      },
+    );
+  });
+
+  test('the script embeds in a single-quoted shell argument', () => {
+    expect(readmePublicityScript).not.toContain("'");
+    expect(readmePublicityScript).not.toContain('\\');
   });
 
   test('refuses a tarball with no README at all', async () => {
@@ -781,7 +863,9 @@ describe('checkTarball folds in the README-publicity check', () => {
         expect(report.publint.exitCode).toBe(0);
         expect(report.typeResolution.exitCode).toBe(0);
         expect(report.readme.ok).toBe(false);
-        expect(() => assertTarballsPublishable([report])).toThrow(/internal documentation/);
+        expect(() => assertTarballsPublishable([report])).toThrow(
+          /package\/README\.md still reads as corvidae.s internal documentation/,
+        );
       },
     );
   });
