@@ -7149,14 +7149,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (isSessionRunTerminal(session.metadata) && liveRunIds.length === 0) {
       return { outcome: 'session-terminal', sessionId };
     }
-    // AB-200/AB-68: `agent-identity` joins `pause`/`resume` on the admitted
-    // path. The gate has always accepted it (see `ImplementedSteeringCommand`),
-    // and what was missing was this verb's own catalog validation — the one
-    // piece `ImplementedSteeringCommand`'s doc comment names as still owed.
-    // `route`/`model`/`provider`/`effort` remain unreachable: the gate is
-    // type-narrowed against them on purpose, and widening it is the
-    // separate state-machine slice that owns per-target desired-state
-    // writes and per-run `configVersion` accounting.
+    // AB-200/AB-68: all seven targets reach the gate. `agent-identity` is
+    // validated against the agents map below, and `route`/`model`/
+    // `provider`/`effort` are validated against the model catalog (a
+    // `policyRef` first resolved through `modelPolicy.users`, COR-1227)
+    // before the gate owns their desired-state writes and per-run
+    // `configVersion` accounting.
     const steeringTarget = request.requestedValue.target;
     // A `policyRef` names a pre-approved policy only the AB-66 selector can
     // resolve into a concrete agent name. Until that resolution path exists

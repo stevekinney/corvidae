@@ -19,6 +19,7 @@ import {
   createDefaultWatchdogClock,
   createWebhookNotifier,
   type WebhookDeliveryRecord,
+  type WebhookTriggerType,
   worstAssessment,
   worstProgress,
   worstReachability,
@@ -844,6 +845,35 @@ describe('createWebhookNotifier', () => {
     await notifier.flush();
 
     expect(calls).toHaveLength(0);
+
+    await notifier.dispose();
+  });
+
+  it('a target that omits events receives every WebhookTriggerType', async () => {
+    // `WebhookTarget.events` documents "omit to receive every trigger".
+    // The `satisfies` record makes adding a fifth trigger type a compile
+    // error here until this test (and that doc comment) account for it.
+    const everyTrigger = Object.keys({
+      'elicitation.requested': true,
+      'approval-pending': true,
+      'human-wait.parked': true,
+      'eval.threshold-breached': true,
+    } satisfies Record<WebhookTriggerType, true>) as WebhookTriggerType[];
+    const { bureau } = createStubBureau();
+    const { fetch: fetchImpl, calls } = okFetch();
+    const notifier = createWebhookNotifier(bureau, undefined, undefined, {
+      targets: [{ url: 'https://example.com/hook' }],
+      fetch: fetchImpl,
+    });
+
+    for (const trigger of everyTrigger) {
+      notifier.notify({ runId: 'run-1', subjectId: `subject:${trigger}`, trigger });
+    }
+    await notifier.flush();
+
+    expect(calls.map((call) => JSON.parse(call.body).trigger).sort()).toEqual(
+      [...everyTrigger].sort(),
+    );
 
     await notifier.dispose();
   });
