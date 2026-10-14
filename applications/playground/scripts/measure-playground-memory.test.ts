@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  captureMemoryPressure,
   footprintCategorySeries,
   parseFootprint,
   parseFootprintSize,
@@ -107,5 +108,30 @@ describe('footprintCategorySeries', () => {
 
   it('reports nothing when any checkpoint lacks a footprint', () => {
     expect(footprintCategorySeries([reading(10, 4), null])).toEqual({});
+  });
+});
+
+describe('captureMemoryPressure (4273630258)', () => {
+  it('returns nulls without spawning anything off macOS', () => {
+    let spawned = 0;
+    const pressure = captureMemoryPressure({
+      platform: 'linux',
+      run: () => {
+        spawned += 1;
+        return { exitCode: 0, stdout: '' };
+      },
+    });
+    expect(pressure).toEqual({ availablePercentage: null, vmStat: null });
+    expect(spawned).toBe(0);
+  });
+
+  it('returns nulls when a tool cannot be spawned', () => {
+    const pressure = captureMemoryPressure({
+      platform: 'darwin',
+      run: () => {
+        throw Object.assign(new Error('spawn vm_stat ENOENT'), { code: 'ENOENT' });
+      },
+    });
+    expect(pressure).toEqual({ availablePercentage: null, vmStat: null });
   });
 });

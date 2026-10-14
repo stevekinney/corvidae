@@ -108,15 +108,45 @@ export type MemoryPressure = {
   vmStat: VmStat | null;
 };
 
-export function captureMemoryPressure(): MemoryPressure {
-  const level = Bun.spawnSync(['sysctl', '-n', 'kern.memorystatus_level'], {
-    stdout: 'pipe',
-    stderr: 'ignore',
-  });
-  const parsedLevel = Number(level.stdout.toString().trim());
-  const vmStat = Bun.spawnSync(['vm_stat'], { stdout: 'pipe', stderr: 'ignore' });
+export type CommandResult = { exitCode: number | null; stdout: string };
+
+export type MemoryPressureOptions = {
+  platform?: NodeJS.Platform;
+  /** Runs one command synchronously; it may throw when the executable is missing. */
+  run?: (command: string[]) => CommandResult;
+};
+
+function runCommand(command: string[]): CommandResult {
+  const result = Bun.spawnSync(command, { stdout: 'pipe', stderr: 'ignore' });
+  return { exitCode: result.exitCode, stdout: result.stdout.toString() };
+}
+
+/** Run a command, treating a missing executable or a spawn failure as no reading. */
+function tryRun(
+  run: (command: string[]) => CommandResult,
+  command: string[],
+): CommandResult | null {
+  try {
+    const result = run(command);
+    return result.exitCode === 0 ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read host memory pressure. `kern.memorystatus_level` and `vm_stat` exist only on macOS, so any
+ * other platform, or a tool that cannot be spawned, yields nulls rather than an exception.
+ */
+export function captureMemoryPressure(options: MemoryPressureOptions = {}): MemoryPressure {
+  const platform = options.platform ?? process.platform;
+  if (platform !== 'darwin') return { availablePercentage: null, vmStat: null };
+  const run = options.run ?? runCommand;
+  const level = tryRun(run, ['sysctl', '-n', 'kern.memorystatus_level']);
+  const parsedLevel = level === null ? Number.NaN : Number(level.stdout.trim());
+  const vmStat = tryRun(run, ['vm_stat']);
   return {
-    availablePercentage: level.exitCode === 0 && Number.isFinite(parsedLevel) ? parsedLevel : null,
-    vmStat: vmStat.exitCode === 0 ? parseVmStat(vmStat.stdout.toString()) : null,
+    availablePercentage: Number.isFinite(parsedLevel) ? parsedLevel : null,
+    vmStat: vmStat === null ? null : parseVmStat(vmStat.stdout),
   };
 }
