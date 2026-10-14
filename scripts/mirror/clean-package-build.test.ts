@@ -7,6 +7,7 @@ import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { buildCleanPublishedPackage } from './clean-package-build.ts';
 import { mirrorPlatformEnvironment } from './environment-configuration.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
+import { singleEntrySurface } from './policy-documents.test-support.ts';
 import { requireGit } from './publication-history.ts';
 
 const sourceRoot = join(import.meta.dir, '../..');
@@ -16,10 +17,10 @@ async function fixture(packScript = false, devDependencyCycle = false, binary = 
   const target = join(root, 'target');
   const historical = join(root, 'historical');
   const surface = await Bun.file(new URL('./package-surface.json', import.meta.url)).json();
+  // Fixture names only. Both packages were retired from publication on 2026-10-14, so their
+  // committed surfaces are gone; the single-entry tsdown surface they carried is lent back here.
   const names = ['@lostgradient/cryptography', '@lostgradient/embeddings'];
-  const entries = Object.fromEntries(
-    names.map((name) => [name, structuredClone(surface.packages[name])]),
-  );
+  const entries = Object.fromEntries(names.map((name) => [name, singleEntrySurface(name)]));
   entries[names[1]!].build.packedBy = packScript ? 'pack-script' : 'files';
   await Bun.write(
     join(historical, 'scripts/mirror/package-surface.json'),

@@ -566,7 +566,7 @@ describe('packedBy determines how a published package is packed (COR-1196)', () 
     expect(manifest.dependencies['@lostgradient/cryptography']).toBe(`file:${expectedTarball}`);
   });
 
-  test("cinder's committed plan: cinder, chat, editor and markdown are pack-script; nothing else in it is", () => {
+  test("cinder's committed plan: cinder, editor and markdown are pack-script; nothing else in it is", () => {
     const steps = buildVerifySteps(
       {
         installCommand: ['bun', 'install', '--frozen-lockfile'],
@@ -578,12 +578,7 @@ describe('packedBy determines how a published package is packed (COR-1196)', () 
     const packSteps = steps.filter((step) => step.kind === 'pack');
     expect(
       packSteps.map((step) => step.publicName).toSorted((a, b) => (a ?? '').localeCompare(b ?? '')),
-    ).toEqual([
-      '@lostgradient/chat',
-      '@lostgradient/cinder',
-      '@lostgradient/editor',
-      '@lostgradient/markdown',
-    ]);
+    ).toEqual(['@lostgradient/cinder', '@lostgradient/editor', '@lostgradient/markdown']);
     for (const step of packSteps) {
       expect(step.command).toEqual(['bun', 'run', 'scripts/pack-for-publish.ts']);
     }
@@ -842,13 +837,14 @@ describe('the smoke script attaches the JSON import attribute where it is needed
     const jsonSpecifiers = entries.filter((entry) => entry.json).map((entry) => entry.specifier);
     const plainSpecifiers = entries.filter((entry) => !entry.json).map((entry) => entry.specifier);
     // The real regression: cinder's committed plan carries hundreds of `.json` sidecars, including
-    // COR-1196's own `chat-composer-popover.examples.json` (`@lostgradient/chat`'s vendored
-    // plain-string shape) and cinder's own generated conditional `{ import, default }` shape — not
-    // a synthetic fixture standing in for either.
-    expect(jsonSpecifiers).toContain('@lostgradient/chat/composer-popover/examples');
+    // editor's `markdown-editor.examples.json` (`@lostgradient/editor`'s vendored plain-string
+    // shape, which COR-1196 found on chat before chat stopped publishing) and cinder's own
+    // generated conditional `{ import, default }` shape — not a synthetic fixture standing in for
+    // either.
+    expect(jsonSpecifiers).toContain('@lostgradient/editor/markdown-editor/examples');
     expect(jsonSpecifiers).toContain('@lostgradient/cinder/access-gate/examples');
     expect(jsonSpecifiers.length).toBeGreaterThan(100);
-    expect(plainSpecifiers).toContain('@lostgradient/chat');
+    expect(plainSpecifiers).toContain('@lostgradient/editor');
     expect(plainSpecifiers).toContain('@lostgradient/cinder');
     for (const specifier of jsonSpecifiers) {
       expect(smoke).toContain(`from '${specifier}' with { type: 'json' };`);
