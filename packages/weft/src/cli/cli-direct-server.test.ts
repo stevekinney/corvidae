@@ -133,4 +133,19 @@ describe('CLI direct execution', () => {
       'startCliServerInProcess: the CLI exited 1 instead of serving',
     );
   });
+
+  it('releases the storage and engine when the workflows module cannot be loaded', async () => {
+    expect(
+      await throwingRejectionOf(
+        startCliServerInProcess([
+          '--port',
+          '0',
+          '--database',
+          ':memory:',
+          '--workflows',
+          'src/cli/__fixtures__/does-not-exist.ts',
+        ]),
+      ),
+    ).toThrow();
+  });
 });

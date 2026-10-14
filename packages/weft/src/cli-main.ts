@@ -44,7 +44,12 @@ import type { CliCommand, CommandOutput } from './cli/types.ts';
 import { loadRegistrationsFromModule } from './cli/validation.ts';
 import { Engine, serve } from './index.ts';
 
-/** Where the CLI writes its output and how it ends the process, injected so tests run it in process. */
+/**
+ * Where `runCliMain` writes the output it produces itself (help text, each command's returned
+ * stdout and stderr, and `serve`'s startup and shutdown lines) and how a `serve` run ends the
+ * process. Subcommands that stream while they run, such as `tail` and the interactive workflow
+ * cancellation prompt, still write to `process.stdout` and `process.stderr` directly.
+ */
 export type CliMainIo = {
   readonly stdout: (text: string) => void;
   readonly stderr: (text: string) => void;
@@ -85,6 +90,37 @@ const SUBCOMMANDS: {
   completions: { helpText: COMPLETIONS_HELP_TEXT, execute: executeCompletions },
 };
 
+/**
+ * Registers the workflows module and starts listening. If any step fails, everything created so
+ * far is released before the error propagates: an in-process caller gets no shutdown handler for
+ * a failed start, so the server, the engine's background work and the storage would otherwise leak.
+ */
+async function listenOrRollBack(
+  parsedArguments: Extract<CliCommand, { command: 'serve' }>,
+  storage: Awaited<ReturnType<typeof createStorage>>,
+  engine: Engine,
+  io: CliMainIo,
+): Promise<ReturnType<typeof serve>> {
+  let server: ReturnType<typeof serve> | undefined;
+  try {
+    if (parsedArguments.workflows) {
+      const { registerModuleExports } = await import('./cli/serve-registrations.ts');
+      const loaded = await loadRegistrationsFromModule(parsedArguments.workflows);
+      registerModuleExports(engine, loaded.registrations, loaded.activities);
+    } else {
+      io.stdout('No --workflows module provided; starting in inspect-only mode.\n');
+    }
+    server = serve({ engine, port: Number(parsedArguments.port) });
+    await writeRunLockfile(server.url);
+    return server;
+  } catch (error) {
+    await server?.stop().catch(() => {});
+    await engine.shutdown().catch(() => false);
+    storage[Symbol.dispose]();
+    throw error;
+  }
+}
+
 /** Starts `weft serve`: opens storage, registers the workflows module, and listens. */
 async function startServe(
   parsedArguments: Extract<CliCommand, { command: 'serve' }>,
@@ -97,21 +133,7 @@ async function startServe(
 
   const storage = await createStorage(parsedArguments.storage, parsedArguments.database);
   const engine = new Engine({ storage });
-
-  if (parsedArguments.workflows) {
-    const { registerModuleExports } = await import('./cli/serve-registrations.ts');
-
-    const loaded = await loadRegistrationsFromModule(parsedArguments.workflows);
-    registerModuleExports(engine, loaded.registrations, loaded.activities);
-  } else {
-    io.stdout('No --workflows module provided; starting in inspect-only mode.\n');
-  }
-
-  const server = serve({
-    engine,
-    port: Number(parsedArguments.port),
-  });
-  await writeRunLockfile(server.url);
+  const server = await listenOrRollBack(parsedArguments, storage, engine, io);
 
   io.stdout(`Weft API running at ${new URL('/api/v1', server.url).href}\n`);
   io.stdout(`Health check: ${new URL('/v1/health', server.url).href}\n`);
