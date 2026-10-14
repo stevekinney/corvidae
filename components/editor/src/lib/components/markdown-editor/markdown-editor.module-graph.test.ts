@@ -32,7 +32,8 @@ async function modulesLoadedBy(entry: string): Promise<string[]> {
   `;
   const child = Bun.spawn(
     [process.execPath, '--conditions', 'browser', '--conditions', 'svelte', '-e', childSource],
-    { cwd: PACKAGE_ROOT, stdout: 'pipe', stderr: 'pipe' },
+    // `timeout` is a hang detector for a child that never exits, never a performance bound.
+    { cwd: PACKAGE_ROOT, stdout: 'pipe', stderr: 'pipe', timeout: 120_000 },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -49,19 +50,26 @@ async function modulesLoadedBy(entry: string): Promise<string[]> {
   return loaded;
 }
 
+// Both fresh Bun processes are the behavior under test (a clean module registry), so they run
+// here at module scope, off the per-test clock, and the tests only assert.
+const [componentModules, runtimeModules] = await Promise.all([
+  modulesLoadedBy('./markdown-editor.svelte'),
+  modulesLoadedBy('../../editor/editor.ts'),
+]);
+
 describe('MarkdownEditor runtime module graph (COR-1322)', () => {
-  it('importing markdown-editor.svelte loads no Milkdown or ProseMirror module', async () => {
-    const loaded = await modulesLoadedBy('./markdown-editor.svelte');
+  it('importing markdown-editor.svelte loads no Milkdown or ProseMirror module', () => {
+    const loaded = componentModules;
     expect(loaded.some((path) => path.endsWith('/markdown-editor/markdown-editor.svelte'))).toBe(
       true,
     );
     expect(loaded.some((path) => path.endsWith('/editor/attach.ts'))).toBe(true);
     expect(loaded.filter((path) => PROTECTED_MODULE_PATH.test(path))).toEqual([]);
-  }, 60_000);
+  });
 
-  it('positive control: importing the editor runtime loads Milkdown and ProseMirror', async () => {
-    const loaded = await modulesLoadedBy('../../editor/editor.ts');
+  it('positive control: importing the editor runtime loads Milkdown and ProseMirror', () => {
+    const loaded = runtimeModules;
     expect(loaded.some((path) => /\/node_modules\/@milkdown\//.test(path))).toBe(true);
     expect(loaded.some((path) => /\/node_modules\/prosemirror-/.test(path))).toBe(true);
-  }, 60_000);
+  });
 });

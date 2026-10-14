@@ -96,6 +96,7 @@ import {
   deserializeCheckpoint,
   encode,
   KEYS,
+  type RecoverAllOptions,
   resolveStorage,
   type Storage,
   storageConditionalBatch,
@@ -1306,32 +1307,20 @@ export type RuntimeCompositionDependencies = {
    * goal attempts unfenced and has no goals to overtake them.
    */
   goalAttemptFence?: GoalAttemptFence;
+  /**
+   * COR-1510 — the engine's recovery hook, installed when the engine is created. The engine
+   * reclaims and resumes runs whose claim has lapsed on its own interval, which can be before
+   * `createBureau` calls `recoverAll()` with its hook; a run resumed that way must reach the same
+   * hook before its first step, or the bureau never sees that step. `createBureau` supplies a
+   * late-bound one that waits until its recovery has started.
+   */
+  onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'];
 };
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
   resolveProviderGenerate,
   createSessionStore,
 };
-
-/**
- * AB-260 — the `resolveRunServices` composition-readiness guard, extracted
- * as a pure function so it is directly unit-testable without the retired
- * `RuntimeCompositionTestingSeams.setCompositionReady` mutation backdoor:
- * `resolveRunServices` itself always calls this with `compositionReady`
- * already `true` (nothing outside this module can observe the transient
- * `false` window during construction — see `createRuntimeComposition`'s own
- * comment on the gate), so the branch this guards is proven correct here,
- * directly, rather than by reproducing the real-but-effectively-untriggerable
- * race a private setter used to force.
- */
-export function compositionReadyGuardResult(
-  ready: boolean,
-  workflowId: string,
-): { status: 'unavailable'; reason: string } | undefined {
-  return ready
-    ? undefined
-    : { status: 'unavailable', reason: `run ${workflowId}: composition not ready` };
-}
 
 function messagesAreEqual(
   left: ConversationHistory['messages'][string],
@@ -1982,6 +1971,26 @@ export async function createRuntimeComposition(
   options: RuntimeCompositionOptions,
   suppliedDependencies: Partial<RuntimeCompositionDependencies> = {},
 ): Promise<RuntimeComposition> {
+  // COR-1509: the durable engine starts reclaiming and resuming runs with a lapsed claim as soon
+  // as it exists, on its own interval and independent of `recover`, which is before this
+  // composition finishes. `resolveRunServices` therefore waits on this gate rather than answering
+  // "not ready": a run that reaches the resolver early must be held, not durably failed.
+  const readiness = Promise.withResolvers<void>();
+  // A failed composition rejects the gate; the resolver handles that, and nothing else needs to.
+  readiness.promise.catch(() => {});
+  try {
+    return await buildRuntimeComposition(options, suppliedDependencies, readiness);
+  } catch (error) {
+    readiness.reject(error);
+    throw error;
+  }
+}
+
+async function buildRuntimeComposition(
+  options: RuntimeCompositionOptions,
+  suppliedDependencies: Partial<RuntimeCompositionDependencies>,
+  readiness: PromiseWithResolvers<void>,
+): Promise<RuntimeComposition> {
   const dependencies: RuntimeCompositionDependencies = {
     ...defaultRuntimeCompositionDependencies,
     ...suppliedDependencies,
@@ -1998,13 +2007,13 @@ export async function createRuntimeComposition(
   // before `RuntimeServices` existed.
   const runtimeServices: RuntimeServices = options.runtime ?? createDefaultRuntimeServices();
 
-  // Gate the resolver until the whole composition is assembled. In automatic
-  // mode `createRunEngine` starts its scheduler before later consts (`sessionStore`,
-  // the `createRunRuntime` closure deps) are initialized, so a persisted schedule
-  // could fire `resolveRunServices` mid-build and hit a not-yet-initialized binding.
-  // This flag lets the resolver bail out cleanly until composition is ready. Manual
-  // mode has no background poller, but shares the same gate for consistency.
-  let compositionReady = false;
+  // The resolver waits on `readiness` until the whole composition is assembled. In automatic mode
+  // `createRunEngine` starts its scheduler and claim-reclaim interval before later consts
+  // (`sessionStore`, the `createRunRuntime` closure deps) are initialized, so a persisted schedule
+  // or a lapsed claim can reach `resolveRunServices` mid-build and would hit a not-yet-initialized
+  // binding. Manual mode has no background poller, but shares the same gate for consistency.
+  // Only so the resolver can say, once, that it had to wait; the gate itself is `readiness`.
+  let compositionOpen = false;
   let requestAuthorityValidator = options.requestAuthorityValidator;
   // AB-240: wired by `createBureau` once its agent catalog exists (this
   // function's own contract deliberately excludes `agents` — see
@@ -2154,6 +2163,9 @@ export async function createRuntimeComposition(
       backgroundTasks: options.durableBackgroundTasks ?? 'automatic',
       startScheduler: options.durableBackgroundTasks !== 'manual',
       resolveWorkflowServices: resolveRunServices,
+      ...(dependencies.onRecoveredWorkflow === undefined
+        ? {}
+        : { onRecoveredWorkflow: dependencies.onRecoveredWorkflow }),
       ...(dependencies.goalWorkflow === undefined
         ? {}
         : { goalWorkflow: dependencies.goalWorkflow }),
@@ -3694,13 +3706,28 @@ export async function createRuntimeComposition(
   async function resolveRunServices(
     info: WorkflowServicesResolverInfo,
   ): Promise<WorkflowServicesResolution> {
-    // The scheduler poller is armed at engine construction, before this closure's
-    // later dependencies (sessionStore, createRunRuntime deps) are initialized. If
-    // a persisted schedule fires a tick mid-construction, bail out cleanly — the
-    // fire fails terminally and the next tick (once ready) succeeds. (Accessing a
+    // The engine's background tasks are armed at engine construction, before this closure's later
+    // dependencies (sessionStore, createRunRuntime deps) are initialized. A tick or a reclaim that
+    // reaches this resolver mid-construction waits for the composition instead of being answered
+    // "unavailable", which the engine would turn into a terminal failure of the run. (Reading a
     // not-yet-initialized `const` below would otherwise throw a TDZ error.)
-    const notReady = compositionReadyGuardResult(compositionReady, info.workflowId);
-    if (notReady) return notReady;
+    if (!compositionOpen) {
+      diagnose({
+        level: 'warn',
+        scope: 'recovery',
+        message:
+          `[bureau] Run "${info.workflowId}" reached recovery before the bureau finished ` +
+          `composing; holding it until composition completes.`,
+      });
+    }
+    try {
+      await readiness.promise;
+    } catch {
+      return {
+        status: 'unavailable',
+        reason: `run ${info.workflowId}: composition failed`,
+      };
+    }
     if (!sessionStore) {
       return { status: 'unavailable', reason: 'no session store configured' };
     }
@@ -3912,7 +3939,8 @@ export async function createRuntimeComposition(
 
   // Every closure dependency the resolver reads is now initialized; open the gate
   // so scheduler-poller ticks (and the bureau's subsequent `recoverAll()`) resolve.
-  compositionReady = true;
+  compositionOpen = true;
+  readiness.resolve();
 
   const composition: RuntimeComposition = {
     kv,
