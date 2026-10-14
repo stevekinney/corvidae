@@ -1063,7 +1063,6 @@ describe('requireUncoveredLines on corvidae-authored allowances', () => {
     'src/cli/codegen.ts',
     'src/cli/conformance.ts',
     'src/cli/noun-verb-arguments.ts',
-    'src/cli/serve-registrations.ts',
     'src/cli/server-client.ts',
     'src/cli/server-commands.ts',
     'src/connection.ts',

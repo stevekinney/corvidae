@@ -85,6 +85,53 @@ const SUBCOMMANDS: {
   completions: { helpText: COMPLETIONS_HELP_TEXT, execute: executeCompletions },
 };
 
+/** Starts `weft serve`: opens storage, registers the workflows module, and listens. */
+async function startServe(
+  parsedArguments: Extract<CliCommand, { command: 'serve' }>,
+  io: CliMainIo,
+): Promise<number | ServingCli> {
+  if (parsedArguments.help) {
+    io.stdout(`${HELP_TEXT}\n`);
+    return 0;
+  }
+
+  const storage = await createStorage(parsedArguments.storage, parsedArguments.database);
+  const engine = new Engine({ storage });
+
+  if (parsedArguments.workflows) {
+    const { registerModuleExports } = await import('./cli/serve-registrations.ts');
+
+    const loaded = await loadRegistrationsFromModule(parsedArguments.workflows);
+    registerModuleExports(engine, loaded.registrations, loaded.activities);
+  } else {
+    io.stdout('No --workflows module provided; starting in inspect-only mode.\n');
+  }
+
+  const server = serve({
+    engine,
+    port: Number(parsedArguments.port),
+  });
+  await writeRunLockfile(server.url);
+
+  io.stdout(`Weft API running at ${new URL('/api/v1', server.url).href}\n`);
+  io.stdout(`Health check: ${new URL('/v1/health', server.url).href}\n`);
+  io.stdout(`Storage: ${parsedArguments.storage}\n`);
+  io.stdout(`Database: ${parsedArguments.database}\n`);
+
+  const shutdown = createCliShutdownHandler({
+    stopServer: () => server.stop(),
+    shutdownEngine: async () => {
+      if (!(await engine.shutdown())) throw new Error('the engine lease release did not commit');
+    },
+    removeRunLockfile: () => removeRunLockfile(server.url),
+    disposeStorage: () => storage[Symbol.dispose](),
+    log: (message) => io.stdout(`${message}\n`),
+    reportError: (message, error) => io.stderr(`${message} ${String(error)}\n`),
+    exit: io.exit,
+  });
+  return { url: server.url, shutdown };
+}
+
 /**
  * The `weft` command: parses `argv`, runs the subcommand, and returns its exit code, or, for
  * `serve`, the listening server and its shutdown handler. Exported so tests run the CLI in
@@ -108,46 +155,7 @@ export async function runCliMain(
     io.stdout(result.stdout + '\n');
     return result.exitCode;
   } else if (parsedArguments.command === 'serve') {
-    if (parsedArguments.help) {
-      io.stdout(`${HELP_TEXT}\n`);
-      return 0;
-    }
-
-    const storage = await createStorage(parsedArguments.storage, parsedArguments.database);
-    const engine = new Engine({ storage });
-
-    if (parsedArguments.workflows) {
-      const { registerModuleExports } = await import('./cli/serve-registrations.ts');
-
-      const loaded = await loadRegistrationsFromModule(parsedArguments.workflows);
-      registerModuleExports(engine, loaded.registrations, loaded.activities);
-    } else {
-      io.stdout('No --workflows module provided; starting in inspect-only mode.\n');
-    }
-
-    const server = serve({
-      engine,
-      port: Number(parsedArguments.port),
-    });
-    await writeRunLockfile(server.url);
-
-    io.stdout(`Weft API running at ${new URL('/api/v1', server.url).href}\n`);
-    io.stdout(`Health check: ${new URL('/v1/health', server.url).href}\n`);
-    io.stdout(`Storage: ${parsedArguments.storage}\n`);
-    io.stdout(`Database: ${parsedArguments.database}\n`);
-
-    const shutdown = createCliShutdownHandler({
-      stopServer: () => server.stop(),
-      shutdownEngine: async () => {
-        if (!(await engine.shutdown())) throw new Error('the engine lease release did not commit');
-      },
-      removeRunLockfile: () => removeRunLockfile(server.url),
-      disposeStorage: () => storage[Symbol.dispose](),
-      log: (message) => io.stdout(`${message}\n`),
-      reportError: (message, error) => io.stderr(`${message} ${String(error)}\n`),
-      exit: io.exit,
-    });
-    return { url: server.url, shutdown };
+    return await startServe(parsedArguments, io);
   }
 
   const subcommand = SUBCOMMANDS[parsedArguments.command] as Subcommand<DispatchedCommand>;
