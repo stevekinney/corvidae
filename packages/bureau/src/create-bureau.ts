@@ -1887,11 +1887,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         return structuredClone(event.outcome);
       }
       case 'applied':
-        // A run observes only versions the gate already issued, so a logged
-        // version beyond the fold so far is corruption, never a floor.
-        if (event.configVersion > gate.getRawConfigVersion()) {
+        // A run observes only versions the fold so far made visible to it:
+        // not later ones, and not another run's run-scoped ones. Anything
+        // above that is corruption, never a floor.
+        if (event.configVersion > gate.getRunVisibleVersion(event.runId)) {
           throw new SteeringLogCorruptError(
-            `Steering log for session "${gate.sessionId}" records run "${event.runId}" applying version ${String(event.configVersion)}, which no admission before it issued.`,
+            `Steering log for session "${gate.sessionId}" records run "${event.runId}" applying version ${String(event.configVersion)}, which no admission before it issued to that run.`,
           );
         }
         gate.recordApplied(event.runId, event.configVersion, event.now);
@@ -2164,9 +2165,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           'CONFLICT',
         );
       }
-      if (event.type === 'applied' && event.configVersion > cursor.gate.getRawConfigVersion()) {
+      if (
+        event.type === 'applied' &&
+        event.configVersion > cursor.gate.getRunVisibleVersion(event.runId)
+      ) {
         throw new BureauError(
-          `Run "${event.runId}" cannot have applied steering version ${String(event.configVersion)}: session "${sessionId}" has issued only ${String(cursor.gate.getRawConfigVersion())}.`,
+          `Run "${event.runId}" cannot have applied steering version ${String(event.configVersion)}: session "${sessionId}" has made only ${String(cursor.gate.getRunVisibleVersion(event.runId))} visible to it.`,
           'CONFLICT',
         );
       }
@@ -3583,12 +3587,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
       }
 
-      await saveSession(
+      const savedAsRunning = await saveSession(
         sessionId,
         conversation,
         {
           lastRunId: runId,
           lastRunStatus: 'running',
+          // Bounds how long durable steering counts this run as starting while
+          // the log has no `promoted` entry for it yet.
+          lastRunStartedAt: runtimeServices.clock.nowISO(),
           lastUserMessage: request.message,
           // Always write these keys (null when absent) so a reused session never
           // inherits a stale cap from a previous run. A conditional spread would leave
@@ -3749,9 +3756,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const steeringKv = durableSteeringStore();
       const steeringSession =
         steeringKv === undefined ? undefined : await runtime.sessionStore?.load(sessionId);
-      if (steeringKv !== undefined && steeringSession === undefined) {
-        // Saved just above; gone now only if deleted concurrently. A durable
-        // run must not start on a gate the steering log does not feed.
+      if (
+        steeringKv !== undefined &&
+        (steeringSession === undefined ||
+          steeringSession.incarnation !== savedAsRunning?.incarnation)
+      ) {
+        // Saved just above; gone now, or replaced by a recreated session,
+        // only if deleted concurrently. A durable run must not start on a
+        // gate the steering log does not feed, nor steer, log into, or later
+        // save over a session it was never started in.
         throw new BureauError(
           `Session "${sessionId}" was deleted while run "${runId}" was starting.`,
           'CONFLICT',
@@ -4516,6 +4529,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // the engine itself, so a run left non-terminal by the failure is
     // recorded as unresolved rather than being pruned.
     detachBestEffortPromise(recoveredRun.result.catch(() => runTerminalCheckpointCleanup(runId)));
+    // As for a fresh run: a handle that settles while the store still says
+    // `running` (rejected, or abandoned to another owner) no longer drives
+    // the run, so steering liveness asks the engine instead.
+    detachBestEffortPromise(
+      recoveredRun.result
+        .catch(() => undefined)
+        .finally(() => {
+          if (store.getRun(runId)?.status === 'running') settledLocalRunIds.add(runId);
+        }),
+    );
 
     if (steeringIncarnation !== undefined) steeringRunIncarnations.set(runId, steeringIncarnation);
     if (steeringGate !== undefined) {
@@ -8376,6 +8399,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (workflow === null || isLiveSessionWorkflow(workflow)) live.add(runId);
         else cursor.starting.delete(runId);
         if (runId === namedRunId) namedChecked = true;
+      }
+      // The session is saved as running a run a moment before that run's
+      // `promoted` entry is appended. In that gap the session's latest run
+      // is starting too, bounded by its own start time like any marker.
+      if (!known()) {
+        const saved = await runtime.sessionStore?.load(sessionId);
+        const savedRunId = saved?.metadata['lastRunId'];
+        const savedStartedAt = saved?.metadata['lastRunStartedAt'];
+        if (
+          saved?.incarnation === incarnation &&
+          saved.metadata['lastRunStatus'] === 'running' &&
+          typeof savedRunId === 'string' &&
+          typeof savedStartedAt === 'string' &&
+          !live.has(savedRunId) &&
+          !cursor.history.runs.has(savedRunId) &&
+          runtimeServices.clock.now() - Date.parse(savedStartedAt) <=
+            STEERING_RUN_START_WINDOW_MS &&
+          (await engine.get(savedRunId)) === null
+        ) {
+          live.add(savedRunId);
+        }
       }
     }
     return [...live].toSorted((left, right) => left.localeCompare(right));

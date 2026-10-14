@@ -202,12 +202,16 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
     // process may have deleted the session without knowing this run exists,
     // and an upsert here would silently undo that deletion.
     expectedIncarnation?: string,
-  ): Promise<void> {
-    if (!sessionStore) return;
+  ): Promise<AgentSession | undefined> {
+    if (!sessionStore) return undefined;
     const candidateRunId = metadata['lastRunId'];
-    if (typeof candidateRunId === 'string' && orphanedRunIds.delete(candidateRunId)) return;
+    if (typeof candidateRunId === 'string' && orphanedRunIds.delete(candidateRunId)) {
+      return undefined;
+    }
 
-    await sessionStore.update(sessionId, (existingSession: AgentSession | undefined) => {
+    // The session as this save committed it: its incarnation is the one the
+    // caller's run now belongs to, whatever replaces it afterwards.
+    return sessionStore.update(sessionId, (existingSession: AgentSession | undefined) => {
       if (
         expectedIncarnation !== undefined &&
         existingSession?.incarnation !== expectedIncarnation
@@ -251,7 +255,7 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
    * the producers its outbox entry is replayed through.
    */
   function persistSessionUpdate(
-    saveSessionUpdate: () => Promise<void>,
+    saveSessionUpdate: () => Promise<unknown>,
     context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
   ): void {
     const persisting = (async () => {

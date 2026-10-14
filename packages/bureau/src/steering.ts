@@ -234,10 +234,11 @@ export interface BureauSteeringGate extends SteeringGate {
    *  addition and has no cross-run memory of its own). */
   getAppliedFloor(): number;
   /**
-   * The highest `configVersion` this gate has issued. No run can observe a
-   * version beyond it, so a logged `applied` claiming one is corrupt.
+   * The highest `configVersion` `runId` can observe: what its own
+   * `forRun(runId).getDesiredState()` reports. A run never sees another
+   * run's run-scoped versions, so a logged `applied` above this is corrupt.
    */
-  getRawConfigVersion(): number;
+  getRunVisibleVersion(runId: string): number;
   /**
    * A per-run VIEW of this session's gate, scoped to `runId`: its
    * `getDesiredState().paused` and `awaitResume()` reflect only a pause
@@ -1050,8 +1051,8 @@ export function createSteeringGate(
       return appliedFloor;
     },
 
-    getRawConfigVersion(): number {
-      return rawConfigVersion;
+    getRunVisibleVersion(runId: string): number {
+      return runVisibleVersion(runId);
     },
 
     forRun(runId: string): SteeringGate {

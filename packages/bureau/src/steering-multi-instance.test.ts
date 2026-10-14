@@ -1300,6 +1300,80 @@ describe('durable steering across two Bureau processes', () => {
     }
   }, 60_000);
 
+  it("fails closed on a run applying another run's version, and counts a run saved but not yet promoted", async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-visible-versions-'));
+    const path = join(directory, 'bureau.sqlite');
+    const writer = await openBureau(path);
+    const readers: TestBureau[] = [];
+    try {
+      const kv = writer.kv;
+      if (kv === undefined) throw new Error('expected a durable store');
+      const lastRunIdOf = async (id: string) => {
+        const session = await writer.getSession(id);
+        return session?.metadata['lastRunId'];
+      };
+
+      // A pause bound to the first run is version 1 for that run only.
+      const sessionId = await startRunningSession(writer);
+      const first = await lastRunIdOf(sessionId);
+      await startRunningSession(writer, sessionId);
+      const second = await lastRunIdOf(sessionId);
+      if (typeof first !== 'string' || typeof second !== 'string') throw new Error('expected runs');
+      const paused = await writer.submitSteeringCommand(sessionId, {
+        principal: 'alice',
+        runId: first,
+        requestedValue: { target: 'pause' },
+      });
+      expect(versionOf(paused)).toBe(1);
+      const session = await writer.getSession(sessionId);
+      if (session === undefined) throw new Error('expected the session');
+      await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        session.incarnation,
+        await readSteeringLogHead(kv, sessionId, session.incarnation),
+        { type: 'applied', runId: second, configVersion: 1, now: new Date().toISOString() },
+      );
+      const reader = await openBureau(path);
+      readers.push(reader);
+      await expect(
+        reader.submitSteeringCommand(sessionId, {
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        }),
+      ).rejects.toThrow(/which no admission before it issued to that run/);
+
+      // Saved as running a moment before its promotion is logged: steered
+      // from elsewhere in that gap, the run is starting, not terminal.
+      const store = createSessionStore(kv);
+      const gapSession = 'session-saved-not-promoted';
+      await store.save(
+        createAgentSession({
+          id: gapSession,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: gapSession }),
+          metadata: {
+            lastRunId: 'saved-run',
+            lastRunStatus: 'running',
+            lastRunStartedAt: new Date().toISOString(),
+          },
+        }),
+      );
+      const gapReader = await openBureau(path);
+      readers.push(gapReader);
+      const named = await gapReader.submitSteeringCommand(gapSession, {
+        principal: 'alice',
+        runId: 'saved-run',
+        requestedValue: { target: 'pause' },
+      });
+      expect(named.outcome).toBe('accepted');
+    } finally {
+      await writer.dispose();
+      for (const reader of readers) await reader.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('fails closed on a key binding that does not name its own admission', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-bad-binding-'));
     const path = join(directory, 'bureau.sqlite');
