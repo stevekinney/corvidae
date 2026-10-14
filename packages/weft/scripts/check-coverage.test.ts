@@ -14,6 +14,7 @@ import {
   COVERAGE_ALLOWANCES,
   formatCoverageFailureReason,
   listCoverageTestFiles,
+  memoryFootprintUncoveredOutsideDarwin,
   parseLcov,
   readCoveragePathIgnorePatterns,
   readTestScriptPathIgnorePatterns,
@@ -1162,5 +1163,17 @@ describe('workflowEventFeedUncoveredLines', () => {
     expect(workflowEventFeedUncoveredLines('linux', 'x64')).toEqual([398]);
     expect(workflowEventFeedUncoveredLines('linux', 'arm64')).toEqual([]);
     expect(workflowEventFeedUncoveredLines('darwin', 'arm64')).toEqual([]);
+  });
+});
+
+describe('memoryFootprintUncoveredOutsideDarwin', () => {
+  // COR-1379: on Linux the macOS-only `proc_pid_rusage` path cannot run, and the coverage gate
+  // failed the file in the linux/arm64 Dev Container.
+  it('excuses the macOS-only FFI path everywhere but macOS', () => {
+    expect(memoryFootprintUncoveredOutsideDarwin('darwin')).toEqual({ lines: new Set() });
+    expect(memoryFootprintUncoveredOutsideDarwin('linux')).toEqual({
+      functions: 3,
+      lines: new Set([36, 37, 38, 39, 40, 41, 45, 46, 47, 54, 79]),
+    });
   });
 });
