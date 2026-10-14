@@ -42,22 +42,11 @@ import {
   readEffects,
   REMEMBERED_ANSWER,
 } from './test/process-crash-work-integrity-fixtures';
-import { expectScenarioPassed, settleScenario } from './test/hoisted-scenario';
+import { expectScenarioPassed, settleScenario, waitForBureauState } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
-
-async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 1000,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 5));
-  }
-  return check();
-}
 
 interface Scenario {
   readonly backend: Backend;
@@ -185,9 +174,11 @@ function requireAuditTrail(bureau: Bureau) {
 }
 
 async function recoveredRunCompleted(bureau: Bureau, runId: string): Promise<boolean> {
-  const completed = await pollUntil(() => bureau.getRun(runId)?.status === 'completed');
+  await waitForBureauState([bureau], () => bureau.getRun(runId)?.status === 'completed', {
+    runIds: [runId],
+  });
   await bureau.waitForRecovery?.();
-  return completed;
+  return true;
 }
 
 async function recoverCharge(backend: Backend, scenario: Scenario, wrap: boolean) {
@@ -307,11 +298,13 @@ async function governedMemoryScenario(backend: Backend): Promise<void> {
 async function abortSiblingScenario(backend: Backend): Promise<void> {
   await withScenario(backend, async (scenario) => {
     const marker = await crash<{ xRunId: string; yRunId: string }>(scenario, 'two-parked-runs');
+    const generateObservers = new Set<() => void>();
     const deferreds = new Map<string, PromiseWithResolvers<{ content: string; toolCalls: [] }>>();
     const calls: Array<{ message: string; step: number }> = [];
     const generate: GenerateFunction = async (context) => {
       const message = firstUserMessage(context);
       calls.push({ message, step: context.step });
+      for (const observer of generateObservers) observer();
       if (context.step === 0) return { content: 'step 0', toolCalls: [] };
       const deferred = Promise.withResolvers<{ content: string; toolCalls: [] }>();
       deferreds.set(message, deferred);
@@ -329,25 +322,37 @@ async function abortSiblingScenario(backend: Backend): Promise<void> {
     const shutdown = scenario.onCleanup(() => bureau.shutdown());
     await bureau.waitForRecovery?.();
 
-    const both = await pollUntil(
+    await waitForBureauState(
+      [bureau],
       () =>
         bureau.getRun(marker.xRunId)?.status === 'running' &&
         bureau.getRun(marker.yRunId)?.status === 'running' &&
         deferreds.has('crash harness run X') &&
         deferreds.has('crash harness run Y'),
+      {
+        runIds: [marker.xRunId, marker.yRunId],
+        // A pending `generate` emits no frame while it is held, so its call is the announcement.
+        onChange: (notify) => {
+          generateObservers.add(notify);
+          return () => generateObservers.delete(notify);
+        },
+      },
     );
-    expect(both).toBe(true);
     expect(calls.every((call) => call.step >= 1)).toBe(true);
     const callsBeforeAbort = calls.length;
     const xMessage = 'crash harness run X';
     const xCallsBeforeAbort = calls.filter((call) => call.message === xMessage).length;
 
     expect(bureau.abortRun(marker.xRunId).status).toBe('aborting');
-    expect(await pollUntil(() => bureau.getRun(marker.xRunId)?.status === 'aborted')).toBe(true);
+    await waitForBureauState([bureau], () => bureau.getRun(marker.xRunId)?.status === 'aborted', {
+      runIds: [marker.xRunId],
+    });
     const durableX = await bureau.getDurableRun(marker.xRunId);
     expect(durableX?.status).not.toBe('running');
     expect(durableX?.status).not.toBe('completed');
-    expect(await pollUntil(() => bureau.listAbortingRuns().length === 0)).toBe(true);
+    await waitForBureauState([bureau], () => bureau.listAbortingRuns().length === 0, {
+      runIds: [marker.xRunId],
+    });
 
     const xEvents = await bureau.eventHistory({ kind: 'run', id: marker.xRunId });
     if ('outcome' in xEvents) throw new Error(`expected a page, got ${JSON.stringify(xEvents)}`);
@@ -360,7 +365,9 @@ async function abortSiblingScenario(backend: Backend): Promise<void> {
     expect(calls).toHaveLength(callsBeforeAbort);
 
     deferreds.get('crash harness run Y')?.resolve({ content: 'Y done', toolCalls: [] });
-    expect(await pollUntil(() => bureau.getRun(marker.yRunId)?.status === 'completed')).toBe(true);
+    await waitForBureauState([bureau], () => bureau.getRun(marker.yRunId)?.status === 'completed', {
+      runIds: [marker.yRunId],
+    });
     const yEvents = await bureau.eventHistory({ kind: 'run', id: marker.yRunId });
     if ('outcome' in yEvents) throw new Error(`expected a page, got ${JSON.stringify(yEvents)}`);
     const yKinds = yEvents.events.map((event) => event.kind);
@@ -386,12 +393,24 @@ async function abortSiblingScenario(backend: Backend): Promise<void> {
  * `test/hoisted-scenario.ts`); a scenario's own assertions run there too, and a failure is captured
  * and rethrown by the test that names it.
  */
+// The hang guard is the per-test timeout these tests carried before they were hoisted. It only
+// stops a genuine hang; every wait for a state change is by event (`waitForBureauState`).
+const HANG_GUARD_MILLISECONDS = 120_000;
 async function settleBackend(backend: Backend) {
   return {
-    idempotent: await settleScenario(() => idempotentChargeScenario(backend)),
-    control: await settleScenario(() => controlChargeScenario(backend)),
-    governedMemory: await settleScenario(() => governedMemoryScenario(backend)),
-    abortSibling: await settleScenario(() => abortSiblingScenario(backend)),
+    idempotent: await settleScenario(
+      () => idempotentChargeScenario(backend),
+      HANG_GUARD_MILLISECONDS,
+    ),
+    control: await settleScenario(() => controlChargeScenario(backend), HANG_GUARD_MILLISECONDS),
+    governedMemory: await settleScenario(
+      () => governedMemoryScenario(backend),
+      HANG_GUARD_MILLISECONDS,
+    ),
+    abortSibling: await settleScenario(
+      () => abortSiblingScenario(backend),
+      HANG_GUARD_MILLISECONDS,
+    ),
   };
 }
 const outcomes = {

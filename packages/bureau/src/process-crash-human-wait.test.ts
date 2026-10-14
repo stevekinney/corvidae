@@ -22,7 +22,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import { expectScenarioPassed, settleScenario } from './test/hoisted-scenario';
+import { expectScenarioPassed, settleScenario, waitForBureauState } from './test/hoisted-scenario';
 import {
   CLAIM_TTL_MS,
   createHarnessBureau,
@@ -33,17 +33,6 @@ import type { Bureau } from './types';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
-
-async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 1000,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 5));
-  }
-  return check();
-}
 
 /**
  * The SIGKILLed child and the claim-lapse wait are real time and real processes, and the recovery
@@ -90,8 +79,10 @@ async function humanWaitScenario(backend: Backend): Promise<void> {
     expect(report.perRunFailures).toEqual([]);
 
     const reviewsFor = () => bureau.listPendingReviews().filter((review) => review.runId === runId);
-    expect(await pollUntil(() => reviewsFor().length > 0)).toBe(true);
-    expect(await pollUntil(() => bureau.getRun(runId)?.liveness.status === 'waiting')).toBe(true);
+    await waitForBureauState([bureau], () => reviewsFor().length > 0, { runIds: [runId] });
+    await waitForBureauState([bureau], () => bureau.getRun(runId)?.liveness.status === 'waiting', {
+      runIds: [runId],
+    });
 
     const reviews = reviewsFor();
     expect(reviews).toHaveLength(1);
@@ -108,16 +99,20 @@ async function humanWaitScenario(backend: Backend): Promise<void> {
 
     await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
 
-    expect(await pollUntil(() => bureau.getRun(runId)?.status === 'completed')).toBe(true);
+    await waitForBureauState([bureau], () => bureau.getRun(runId)?.status === 'completed', {
+      runIds: [runId],
+    });
     expect(generateCalls).toBe(1);
     expect(reviewsFor()).toHaveLength(0);
     expect(bureau.getRun(runId)?.liveness.declaredWait).toBeUndefined();
-    expect(
-      await pollUntil(async () => {
+    await waitForBureauState(
+      [bureau],
+      async () => {
         const durableRun = await bureau.getDurableRun(runId);
         return durableRun?.status === 'completed';
-      }),
-    ).toBe(true);
+      },
+      { runIds: [runId] },
+    );
   } finally {
     // allSettled never rejects, so the directory is always removed after shutdown.
     const reports = await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
@@ -130,9 +125,12 @@ async function humanWaitScenario(backend: Backend): Promise<void> {
 }
 
 type Backend = 'sqlite' | 'lmdb';
+// The hang guard is the per-test timeout these tests carried before they were hoisted. It only
+// stops a genuine hang; every wait for a state change is by event (`waitForBureauState`).
+const HANG_GUARD_MILLISECONDS = 120_000;
 const outcomes = {
-  sqlite: await settleScenario(() => humanWaitScenario('sqlite')),
-  lmdb: await settleScenario(() => humanWaitScenario('lmdb')),
+  sqlite: await settleScenario(() => humanWaitScenario('sqlite'), HANG_GUARD_MILLISECONDS),
+  lmdb: await settleScenario(() => humanWaitScenario('lmdb'), HANG_GUARD_MILLISECONDS),
 };
 
 describe.each(['sqlite', 'lmdb'] as const)(

@@ -21,6 +21,10 @@ import { runReleaseGateCommand } from './release-gate';
 import { runReplayCommand } from './replay';
 
 const PACKAGE_DIRECTORY = join(import.meta.dir, '..');
+// The revision is incidental to a replay, so it is read once here and injected into the gate run.
+const HEAD = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: PACKAGE_DIRECTORY })
+  .stdout.toString()
+  .trim();
 
 let directory: string;
 let storePath: string;
@@ -69,6 +73,8 @@ async function gateRun(
     ['--gate', FIXTURE_GATE_ID, '--gates-dir', gates, '--store', storePath],
     {
       loadEvaluator,
+      sourceRevision: HEAD,
+      revisionDistance: () => undefined,
       output: { stdout: { write: (text: string) => (stdout += text) }, stderr: { write: () => 0 } },
     },
   );

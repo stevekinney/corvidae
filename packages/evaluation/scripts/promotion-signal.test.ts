@@ -106,6 +106,19 @@ async function spawnScript(script: string, args: readonly string[]): Promise<Com
   return { exitCode, stdout, stderr };
 }
 
+/**
+ * The checked-out repository as the command would read it, read once at module scope instead of on
+ * each call: `HEAD` is checked out and its package tree is `HEAD_PACKAGE_TREE`.
+ */
+function checkedOut(changes: PromotionSignalCommandOptions = {}): PromotionSignalCommandOptions {
+  return {
+    currentRevision: () => HEAD,
+    packageSourceRevision: (name, revision) =>
+      name === '@lostgradient/evaluation' && revision === HEAD ? HEAD_PACKAGE_TREE : undefined,
+    ...changes,
+  };
+}
+
 /** The repository as a test pins it: `REVISION` checked out, at `ISSUED_AT`. */
 function pinned(changes: PromotionSignalCommandOptions = {}): PromotionSignalCommandOptions {
   return {
@@ -241,6 +254,8 @@ async function expectRefusalsAppendNothing(
 async function committedGateRun(): Promise<string> {
   let stdout = '';
   const exitCode = await runReleaseGateCommand(['--gate', FIXTURE_GATE_ID, '--store', storePath], {
+    sourceRevision: HEAD,
+    revisionDistance: () => undefined,
     output: { stdout: { write: (text: string) => (stdout += text) }, stderr: { write: () => 0 } },
   });
   expect(exitCode).toBe(0);
@@ -308,13 +323,29 @@ describe('promotion-signal (spawned bun process)', () => {
   });
 });
 
+// This scenario exists to prove the command reads the checked-out repository when nothing is
+// injected, so its whole run happens here at module scope to stay off the per-test clock. It
+// borrows the shared directory and store variables, which the hooks above replace before each test.
+const defaultIssue = await (async () => {
+  directory = await mkdtemp(join(tmpdir(), 'promotion-signal-command-default-'));
+  storePath = join(directory, 'history.sqlite');
+  try {
+    const decision = await decide(fixtureGateFile(), { sourceRevision: HEAD });
+    return await runInProcess(['issue', decision.id, '--store', storePath], {
+      now: () => Date.parse(ISSUED_AT),
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
 describe('runPromotionSignalCommand', () => {
   test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', async () => {
     const gateDecisionRecordId = await committedGateRun();
 
     const issued = await runInProcess(
       ['issue', '--gate', FIXTURE_GATE_ID, '--store', storePath],
-      {},
+      checkedOut(),
     );
 
     const report = expectReport(issued, 0, 'issued');
@@ -323,7 +354,7 @@ describe('runPromotionSignalCommand', () => {
 
     const verified = await runInProcess(
       ['verify', report.signal!.signalId, '--store', storePath],
-      {},
+      checkedOut(),
     );
     expect(expectReport(verified, 0, 'valid').signal).toEqual(report.signal);
   });
@@ -331,7 +362,7 @@ describe('runPromotionSignalCommand', () => {
   test('refuses a failing decision with 3 and another revision with 5 on the real clock, appending nothing', async () => {
     // The real clock, as a person's run reads it: the decisions are dated on it too.
     await expectRefusalsAppendNothing(
-      (args) => runInProcess(args, {}),
+      (args) => runInProcess(args, checkedOut()),
       () => Date.now(),
     );
   });
@@ -341,19 +372,13 @@ describe('runPromotionSignalCommand', () => {
     // failing a day later, so this one pins `now` instead.
     const longAfter = Date.parse(DECIDED_AT) + 5 * 365 * 24 * 60 * 60 * 1000;
     await expectRefusalsAppendNothing(
-      (args) => runInProcess(args, { now: () => longAfter }),
+      (args) => runInProcess(args, checkedOut({ now: () => longAfter })),
       () => longAfter,
     );
   });
 
-  test('issues against the checked-out repository by default', async () => {
-    const decision = await decide(fixtureGateFile(), { sourceRevision: HEAD });
-
-    const result = await runInProcess(['issue', decision.id, '--store', storePath], {
-      now: () => Date.parse(ISSUED_AT),
-    });
-
-    expect(expectReport(result, 0, 'issued').signal).toMatchObject({
+  test('issues against the checked-out repository by default', () => {
+    expect(expectReport(defaultIssue, 0, 'issued').signal).toMatchObject({
       package: {
         sourceRevision: HEAD_PACKAGE_TREE,
       },

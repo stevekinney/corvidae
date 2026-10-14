@@ -73,6 +73,10 @@ async function runInProcess(
   let stdout = '';
   let stderr = '';
   const exitCode = await runReleaseGateCommand(args, {
+    // The checked-out revision is incidental to these tests, so it is read once at module scope and
+    // injected; the test that proves the command reads git by default runs at module scope too.
+    sourceRevision: checkedOutHead,
+    revisionDistance: () => undefined,
     ...options,
     output: {
       stdout: { write: (text: string) => (stdout += text) },
@@ -269,6 +273,29 @@ describe('release-gate (spawned bun process, --filter form)', () => {
     expect(output).toContain('release gate: pass (exit 0)');
   });
 });
+
+const OTHER_REVISION = 'b1c2d3e4f5a60718293a4b5c6d7e8f9012345678';
+
+// This scenario exists to prove the command reads git when nothing is injected, so its whole run
+// happens here at module scope to stay off the per-test clock. It borrows the shared directory and
+// store variables, which the hooks above replace before each test.
+const defaultRevisionRecords = await (async () => {
+  directory = await mkdtemp(join(tmpdir(), 'release-gate-command-default-revision-'));
+  storePath = join(directory, 'history.sqlite');
+  try {
+    const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
+    const silent = { stdout: { write: () => 0 }, stderr: { write: () => 0 } };
+    await runReleaseGateCommand(['--gates-dir', gates, '--store', storePath], { output: silent });
+    await runReleaseGateCommand(['--gates-dir', gates, '--store', storePath], {
+      output: silent,
+      sourceRevision: OTHER_REVISION,
+    });
+    const decisions = await gateDecisions();
+    return new Set(decisions.map((entry) => entry.record.sourceRevision));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
 
 describe('runReleaseGateCommand', () => {
   test('defaults to the package’s committed gates directory', () => {
@@ -516,17 +543,8 @@ describe('runReleaseGateCommand', () => {
     expect(none.stderr).toContain(`No gate files in ${empty}`);
   });
 
-  test('records the repository revision it ran at, unless told another', async () => {
-    const head = checkedOutHead;
-    const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
-    await runInProcess(['--gates-dir', gates, '--store', storePath]);
-    await runInProcess(['--gates-dir', gates, '--store', storePath], {
-      sourceRevision: 'b1c2d3e4f5a60718293a4b5c6d7e8f9012345678',
-    });
-    const decisions = await gateDecisions();
-    expect(new Set(decisions.map((entry) => entry.record.sourceRevision))).toEqual(
-      new Set([head, 'b1c2d3e4f5a60718293a4b5c6d7e8f9012345678']),
-    );
+  test('records the repository revision it ran at, unless told another', () => {
+    expect(defaultRevisionRecords).toEqual(new Set([checkedOutHead, OTHER_REVISION]));
   });
 
   test('runs as the current user unless --actor names someone', async () => {

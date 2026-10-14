@@ -26,7 +26,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
-import { expectScenarioPassed, settleScenario } from './test/hoisted-scenario';
+import { expectScenarioPassed, settleScenario, waitForBureauState } from './test/hoisted-scenario';
 import type { Bureau } from './types';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
@@ -42,17 +42,6 @@ interface CrashMarker {
   readonly maxAuditSequence: number;
   readonly sessionCursor: string;
   readonly sessionLastSequence: number;
-}
-
-async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 1000,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 5));
-  }
-  return check();
 }
 
 function createNextTool() {
@@ -155,8 +144,11 @@ async function recoveryScenario(backend: Backend): Promise<void> {
     }
 
     // Recovery: exactly one racer completes the run locally.
-    await pollUntil(() =>
-      racers.some((racer) => racer.bureau.getRun(marker.runId)?.status === 'completed'),
+    const bureaus = racers.map((racer) => racer.bureau);
+    await waitForBureauState(
+      bureaus,
+      () => racers.some((racer) => racer.bureau.getRun(marker.runId)?.status === 'completed'),
+      { runIds: [marker.runId] },
     );
     const winners = racers.filter(
       (racer) => racer.bureau.getRun(marker.runId)?.status === 'completed',
@@ -165,10 +157,14 @@ async function recoveryScenario(backend: Backend): Promise<void> {
     const winner = winners[0] as Racer;
 
     for (const racer of racers) {
-      await pollUntil(async () => {
-        const durable = await racer.bureau.getDurableRun(marker.runId);
-        return durable?.status === 'completed';
-      });
+      await waitForBureauState(
+        bureaus,
+        async () => {
+          const durable = await racer.bureau.getDurableRun(marker.runId);
+          return durable?.status === 'completed';
+        },
+        { runIds: [marker.runId] },
+      );
       const durableRun = await racer.bureau.getDurableRun(marker.runId);
       expect(durableRun?.status).toBe('completed');
     }
@@ -246,9 +242,12 @@ async function recoveryScenario(backend: Backend): Promise<void> {
 }
 
 type Backend = 'sqlite' | 'lmdb';
+// The hang guard is the per-test timeout these tests carried before they were hoisted. It only
+// stops a genuine hang; every wait for a state change is by event (`waitForBureauState`).
+const HANG_GUARD_MILLISECONDS = 120_000;
 const outcomes = {
-  sqlite: await settleScenario(() => recoveryScenario('sqlite')),
-  lmdb: await settleScenario(() => recoveryScenario('lmdb')),
+  sqlite: await settleScenario(() => recoveryScenario('sqlite'), HANG_GUARD_MILLISECONDS),
+  lmdb: await settleScenario(() => recoveryScenario('lmdb'), HANG_GUARD_MILLISECONDS),
 };
 
 describe.each(['sqlite', 'lmdb'] as const)('process crash recovery over %s', (backend) => {
