@@ -4,7 +4,7 @@
    * the Import and Export actions, and the status area (save state, findings, preview
    * revision). It stays visible on every pane.
    */
-  import { Callout, Select } from '@lostgradient/cinder';
+  import { Button, Callout, Select } from '@lostgradient/cinder';
 
   import {
     THEME_PREVIEW_COLOR_MODES,
@@ -90,6 +90,8 @@
     </div>
     {#if controller !== undefined}
       <ThemeInterchange {controller} />
+    {:else}
+      <Button label="Export" variant="secondary" disabled />
     {/if}
   </div>
 

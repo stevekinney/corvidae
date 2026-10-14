@@ -148,9 +148,9 @@ async function classifyEnvelope(
     return unsupported(source, {
       profile: 'dtcg-dialect',
       headline: 'Recognized a Cinder theme with a version this build does not read',
-      detail: `The file is a Cinder theme of version ${String(parsed['version'])}; this build reads version ${THEME_VERSION}. It is not rewritten or downgraded.`,
+      detail: `The file is a Cinder theme of version ${JSON.stringify(parsed['version'])}; this build reads version ${THEME_VERSION}. It is not rewritten or downgraded.`,
       axes: [],
-      unsupported: [`Cinder theme version ${String(parsed['version'])}.`],
+      unsupported: [`Cinder theme version ${JSON.stringify(parsed['version'])}.`],
     });
   }
   const envelope = envelopeFromValue(parsed);

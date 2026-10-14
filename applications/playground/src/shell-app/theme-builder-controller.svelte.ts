@@ -153,7 +153,8 @@ export class ThemeBuilderController extends ThemeBuilderCore {
   /** Import an already-validated envelope as a new theme; a taken name gets a numeric suffix. */
   async importAsCopy(envelope: ThemeEnvelope): Promise<OperationResult> {
     const result = this.#adopt(importThemeCopy(this.library, envelope, this.#newId()));
-    if (result.ok) await this.#afterActiveChange(result.id, `Imported as ${this.#nameOf(result.id)}`);
+    if (result.ok)
+      await this.#afterActiveChange(result.id, `Imported as ${this.#nameOf(result.id)}`);
     return result;
   }
 

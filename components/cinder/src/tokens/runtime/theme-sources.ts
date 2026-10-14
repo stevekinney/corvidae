@@ -51,6 +51,8 @@ function firstSetName(resolver: ResolverShape): string | undefined {
 
 /** The envelope as runtime sources: the embedded base with the override documents inserted. */
 export function buildThemeSources(envelope: ThemeSourceEnvelope, revision: number): ThemeSources {
+  // The sources are validated by the caller before they are evaluated; this only appends refs.
+  // eslint-disable-next-line no-unsafe-type-assertion
   const resolver = structuredClone(envelope.base.resolver) as ResolverShape;
   append(resolver.sets[firstSetName(resolver) ?? '']?.sources, OVERRIDE_DOCUMENTS.shared);
   const theme = resolver.modifiers['theme']?.contexts;
@@ -106,7 +108,10 @@ export function mergedContextDocument(
   sources: ThemeSources,
   context: { theme: string; motion: string },
 ): TokenDocument {
+  // The sources must already have passed validation, which checks every document.
+  // eslint-disable-next-line no-unsafe-type-assertion
   const documents = new Map(Object.entries(sources.documents) as Array<[string, TokenDocument]>);
+  // eslint-disable-next-line no-unsafe-type-assertion
   const layers = authoringLayerStack(sources.resolver as ResolverDocument, documents, {
     id: `${context.theme}/${context.motion}`,
     theme: context.theme,

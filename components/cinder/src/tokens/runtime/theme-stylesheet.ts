@@ -32,14 +32,20 @@ export const THEME_LAYER = 'cinder-theme';
 const LAYER_ORDER = `cinder.tokens, cinder.foundation, cinder.components, cinder.utilities, ${THEME_LAYER}`;
 
 const PROPERTY_NAME = /^--cinder-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const UNSAFE_VALUE =
-  /[;{}\\<>@!]|\/\*|\*\/|url\(|image\(|image-set\(|src\(|expression\(|[\u0000-\u001f]/i;
+const UNSAFE_VALUE = /[;{}\\<>@!]|\/\*|\*\/|url\(|image\(|image-set\(|src\(|expression\(/i;
+
+function hasControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    if (value.charCodeAt(index) < 32) return true;
+  }
+  return false;
+}
 
 export class StylesheetError extends Error {}
 
 function declaration(name: string, value: string): string {
   if (!PROPERTY_NAME.test(name)) throw new StylesheetError(`"${name}" is not a Cinder property.`);
-  if (value.trim() === '' || UNSAFE_VALUE.test(value)) {
+  if (value.trim() === '' || UNSAFE_VALUE.test(value) || hasControlCharacter(value)) {
     throw new StylesheetError(`The value of ${name} is not a plain CSS value.`);
   }
   return `  ${name}: ${value};`;

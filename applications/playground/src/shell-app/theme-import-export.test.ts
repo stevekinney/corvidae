@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { cinderThemeBase } from './theme-builder-base.ts';
 import { THEME_DATA_LIMITS } from './theme-draft-limits.ts';
-import { editableState, type JsonObject, type ThemeEnvelope } from './theme-draft-types.ts';
+import { editableState, type ThemeEnvelope } from './theme-draft-types.ts';
 import { createEnvelope } from './theme-envelope.ts';
 import { applyImport } from './theme-import-apply.ts';
 import { preflightImport } from './theme-import-preflight.ts';
@@ -354,9 +354,10 @@ describe('applying an import is transactional', () => {
       'd.json',
       controller.draft!.envelope,
     );
-    expect((await applyImport(controller, result, 'replace')).ok).toBe(true);
-    const shared = controller.draft!.envelope.overrides.shared as JsonObject;
-    expect(Object.keys(shared).sort()).toEqual(['brand', 'radius']);
+    const applied = await applyImport(controller, result, 'replace');
+    expect(applied.ok).toBe(true);
+    const shared = controller.draft!.envelope.overrides.shared;
+    expect(Object.keys(shared).toSorted()).toEqual(['brand', 'radius']);
     expect(controller.draftValues.get('--cinder-radius-md')).toBe('7px');
     await controller.undo();
     expect(controller.draft!.envelope.overrides.shared).toEqual({});

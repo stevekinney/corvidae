@@ -15,16 +15,15 @@ import { createEnvelope } from './theme-envelope.ts';
 import { planExports, type ExportArtifact } from './theme-export-plan.ts';
 import { takeExportSnapshot } from './theme-export-snapshot.ts';
 import { preflightImport } from './theme-import-preflight.ts';
-import { evaluator, envelopeText } from './theme-interchange-test-support.ts';
+import { envelopeText, evaluator } from './theme-interchange-test-support.ts';
 
 const FIXTURES = join(
   import.meta.dir,
   '../../../../components/cinder/scripts/tokens/fixtures/theme-builder',
 );
-const allTypes = JSON.parse(readFileSync(join(FIXTURES, 'all-types.tokens.json'), 'utf8')) as Record<
-  string,
-  unknown
->;
+const allTypes = JSON.parse(
+  readFileSync(join(FIXTURES, 'all-types.tokens.json'), 'utf8'),
+) as Record<string, unknown>;
 const { $schema: _schema, ...specimen } = allTypes;
 
 const colorFor = (value: number) => ({
@@ -114,7 +113,7 @@ describe('the portable documents', () => {
       }
     };
     walk((documents[0]!.document as any).specimen, undefined);
-    expect([...types].sort()).toEqual(
+    expect([...types].toSorted()).toEqual(
       [
         'border',
         'color',
@@ -129,7 +128,7 @@ describe('the portable documents', () => {
         'strokeStyle',
         'transition',
         'typography',
-      ].sort(),
+      ].toSorted(),
     );
   });
 

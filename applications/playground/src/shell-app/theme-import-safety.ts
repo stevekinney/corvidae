@@ -63,9 +63,16 @@ export function scanStructure(value: unknown): ImportFinding[] {
   return findings;
 }
 
+function hasControlCharacter(text: string): boolean {
+  for (let index = 0; index < text.length; index += 1) {
+    if (text.charCodeAt(index) < 32) return true;
+  }
+  return false;
+}
+
 /** A relative, normalized document path, or `null` when the path could leave the bundle. */
 export function normalizeDocumentPath(raw: string): string | null {
-  if (raw === '' || /[\u0000-\u001f\\]/.test(raw)) return null;
+  if (raw === '' || raw.includes('\\') || hasControlCharacter(raw)) return null;
   if (/%2e|%2f|%5c/i.test(raw)) return null;
   if (raw.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(raw)) return null;
   const segments: string[] = [];
@@ -168,7 +175,7 @@ export function checkTreeBindings(tree: JsonObject, label: string): ImportFindin
       findings.push({
         code: 'foreign-css-binding',
         path: where,
-        message: `${path} binds ${String(property)}, which is not a public Cinder property for this token.`,
+        message: `${path} binds ${JSON.stringify(property)}, which is not a public Cinder property for this token.`,
       });
     }
     if (known === undefined && Object.keys(cinder).some((key) => key !== 'palette')) {

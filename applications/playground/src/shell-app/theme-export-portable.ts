@@ -150,8 +150,10 @@ export function planPortable(snapshot: ExportSnapshot): PortablePlan {
   const byPath = (a: { path: string }, b: { path: string }) => (a.path < b.path ? -1 : 1);
   return {
     documents,
-    omitted: [...walk.omitted].map(([path, reason]) => ({ path, reason })).sort(byPath),
-    recipesNotExported: [...walk.recipes].map(([path, reason]) => ({ path, reason })).sort(byPath),
+    omitted: [...walk.omitted].map(([path, reason]) => ({ path, reason })).toSorted(byPath),
+    recipesNotExported: [...walk.recipes]
+      .map(([path, reason]) => ({ path, reason }))
+      .toSorted(byPath),
     metadataStripped: walk.stripped.size,
     sourceTokensIncluded: walk.sourceTokens.size,
   };

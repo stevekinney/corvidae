@@ -91,9 +91,7 @@ describe('renderThemeStylesheet', () => {
     const darkBlock = output.slice(output.indexOf("\n[data-theme='dark'] {"));
     expect(darkBlock.slice(0, darkBlock.indexOf('}'))).toContain('--cinder-b: var(--cinder-a);');
     const reduced = output.slice(output.indexOf('@media (prefers-reduced-motion'));
-    expect(reduced.slice(0, reduced.indexOf('}'))).toContain(
-      '--cinder-c: var(--cinder-motion-a);',
-    );
+    expect(reduced.slice(0, reduced.indexOf('}'))).toContain('--cinder-c: var(--cinder-motion-a);');
   });
 
   test.each([
