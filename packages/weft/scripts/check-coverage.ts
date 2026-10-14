@@ -207,10 +207,8 @@ const BASE_COVERAGE_ALLOWANCES = buildAllowanceLayer('BASE_COVERAGE_ALLOWANCES',
     'scripts/generate-operation-client.ts',
     {
       reason:
-        'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report; the exhaustive renderer guard is unreachable by construction. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), then shifted with the generated CatalogOperations docblock (COR-1280): the uncovered CLI entrypoint lines are now 325-337. The exhaustive-renderer-guard miss the original 373/376 covered is not reproduced in corvidae’s copy (no gap remains there).',
+        'Bun reports one function miss in this file. The CLI body is `runGenerateOperationClientCommand`, which the tests run in process (COR-1459), so its lines are covered and no line allowance remains; the one-line `import.meta.main` entry is reported as hit.',
       functions: 1,
-      lines: new Set([325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337]),
-      requireUncoveredLines: true,
     },
   ],
   [
