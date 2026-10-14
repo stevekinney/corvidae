@@ -74,6 +74,16 @@ const SECRET_NAME_CLASSES = 'TOKEN|SECRET|PASSWORD|PASSPHRASE|API_KEY|PRIVATE_KE
 const CONNECTION_NAME_PATTERN = '.*DATABASE_URL|.*_DSN|.*CONNECTION_STRING|.*_CONNECTION_URL';
 
 /**
+ * Package-manager registry credentials: `npm_config_*` names carrying an auth token, basic auth,
+ * or a password (`npm_config__authToken`, `npm_config_//host/:_authToken`, `NPM_CONFIG__AUTH`),
+ * and `NODE_AUTH_TOKEN`. npm and Bun accept these in any case, so this one class matches
+ * case-insensitively; the rest stay case-sensitive so Bun's lowercase `npm_*` script metadata
+ * (`npm_package_name`, `npm_lifecycle_event`) is kept.
+ */
+export const PACKAGE_MANAGER_CREDENTIAL_NAME =
+  /^(npm_config_.*(auth|password).*|node_auth_token)$/i;
+
+/**
  * Names that can carry a credential. The static production gate scrubs every matching variable
  * from the environment it gives its child processes (the static server, and Playwright with its
  * browsers), and also any variable whose value is a URL carrying a password. Its served-byte leak
@@ -111,7 +121,9 @@ export function urlPassword(value: string): string | undefined {
 export function secretEntriesOf(environment: EnvironmentRecord): [name: string, value: string][] {
   return Object.entries(environment).flatMap(([name, value]): [string, string][] => {
     if (value === undefined) return [];
-    if (SECRET_VALUE_NAME.test(name)) return [[name, value]];
+    if (SECRET_VALUE_NAME.test(name) || PACKAGE_MANAGER_CREDENTIAL_NAME.test(name)) {
+      return [[name, value]];
+    }
     const password = urlPassword(value);
     return password === undefined ? [] : [[name, password]];
   });
@@ -119,7 +131,11 @@ export function secretEntriesOf(environment: EnvironmentRecord): [name: string, 
 
 /** Whether a variable is withheld from the gate's child processes. */
 export function isCredentialShaped(name: string, value: string): boolean {
-  return SECRET_ENVIRONMENT_NAME.test(name) || urlPassword(value) !== undefined;
+  return (
+    SECRET_ENVIRONMENT_NAME.test(name) ||
+    PACKAGE_MANAGER_CREDENTIAL_NAME.test(name) ||
+    urlPassword(value) !== undefined
+  );
 }
 
 /** `environment` with every credential-shaped variable removed. */

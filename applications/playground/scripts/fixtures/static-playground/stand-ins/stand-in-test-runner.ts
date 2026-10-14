@@ -8,6 +8,7 @@
  * `--environment-record <file>` writes the names of the credential-shaped variables it inherited.
  * `--stubborn` (with `--record`) also starts a sleeper that ignores SIGTERM.
  * `--unmarked-detached` (with `--record`) also starts a detached sleeper with no run-directory marker.
+ * `--late-diagnostic` records the first case as passed but with a browser diagnostic.
  *
  * With `--record <dir>` it behaves like a browser run under lifecycle test: it starts a sleeper in
  * its own group and a detached one that names the run-owned `TMPDIR` (as Chromium's profile does),
@@ -33,6 +34,16 @@ import {
 const mode = argumentValue('--mode') ?? 'pass';
 const record = argumentValue('--record');
 const environment = readEnvironmentConfiguration();
+
+/**
+ * With `--late-diagnostic`, the first case passes but carries a console error, the shape of a
+ * diagnostic that arrives after a case's last assertion and before its fixtures tear down.
+ */
+function lateDiagnostic(caseId: string, cases: readonly StaticCase[]): string[] {
+  return process.argv.includes('--late-diagnostic') && caseId === cases[0]?.id
+    ? ['console error: a late failure']
+    : [];
+}
 const environmentRecord = argumentValue('--environment-record');
 
 // Proves what the runner hands its children: the names of every credential-shaped variable
@@ -84,7 +95,7 @@ if (mode === 'hang') {
   for (const testCase of cases) {
     appendFileSync(
       environment.playgroundStaticResults ?? '',
-      `${JSON.stringify({ caseId: testCase.id, status: 'passed', errors: [], diagnostics: [], screenshot: null })}\n`,
+      `${JSON.stringify({ caseId: testCase.id, status: 'passed', errors: [], diagnostics: lateDiagnostic(testCase.id, cases), screenshot: null })}\n`,
     );
   }
   process.exit(mode === 'fail' ? 3 : 0);

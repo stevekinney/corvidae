@@ -89,6 +89,37 @@ describe('readEnvironmentConfiguration', () => {
   });
 });
 
+describe('package-manager credentials', () => {
+  const environment = {
+    npm_config__authToken: 'npm-registry-token',
+    'npm_config_//registry.example/:_authToken': 'scoped-registry-token',
+    NPM_CONFIG__AUTH: 'basic-auth-credential',
+    npm_config_password: 'registry-password',
+    NODE_AUTH_TOKEN: 'node-auth-token',
+    npm_config_cache: '/Users/example/.npm',
+    npm_package_name: '@lostgradient/playground',
+    npm_lifecycle_event: 'test',
+  };
+
+  it('scrubs registry credentials from child environments, case-insensitively', () => {
+    expect(scrubbedEnvironmentOf(environment)).toEqual({
+      npm_config_cache: '/Users/example/.npm',
+      npm_package_name: '@lostgradient/playground',
+      npm_lifecycle_event: 'test',
+    });
+  });
+
+  it('scans their values, and never Bun and npm script metadata', () => {
+    expect(secretEntriesOf(environment).map(([name]) => name)).toEqual([
+      'npm_config__authToken',
+      'npm_config_//registry.example/:_authToken',
+      'NPM_CONFIG__AUTH',
+      'npm_config_password',
+      'NODE_AUTH_TOKEN',
+    ]);
+  });
+});
+
 describe('credential-bearing connection strings', () => {
   const environment = {
     DATABASE_URL: 'postgres://playground:database-password@db.example/app',

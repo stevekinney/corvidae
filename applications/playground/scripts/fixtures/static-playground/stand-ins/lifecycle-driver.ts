@@ -65,6 +65,7 @@ process.exitCode = await runStaticPlaygroundGate({
             : ['--environment-record', argumentValue('--environment-record') ?? '']),
           ...(process.argv.includes('--stubborn') ? ['--stubborn'] : []),
           ...(process.argv.includes('--unmarked-detached') ? ['--unmarked-detached'] : []),
+          ...(process.argv.includes('--late-diagnostic') ? ['--late-diagnostic'] : []),
         ],
       }),
 });

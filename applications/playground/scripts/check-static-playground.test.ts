@@ -18,7 +18,7 @@ import {
 import { parseExportReport } from './export-report.ts';
 import { createCaseList, parseShard, selectShard } from './static-playground-cases.ts';
 import { runPreflight } from './static-playground-preflight.ts';
-import { exitedWithin } from './static-playground-processes.ts';
+import { exitedWithin, interruptRunner } from './static-playground-processes.ts';
 import { loadStaticHostConfiguration, startStaticServer } from './static-playground-server.ts';
 
 const FIXTURES = join(import.meta.dirname, 'fixtures', 'static-playground');
@@ -30,7 +30,22 @@ type GateRun = { exitCode: number; report: GateReport; stderr: string };
 /** Below the test's 5 s timeout, so a stuck gate fails the case rather than leaking it. */
 const GATE_RUN_MILLISECONDS = 4_500;
 
-async function runGate(command: string[], environment: Record<string, string>): Promise<GateRun> {
+type GateRunOptions = { guardMilliseconds?: number };
+
+class GateHang extends Error {
+  constructor(
+    readonly stop: Awaited<ReturnType<typeof interruptRunner>>,
+    readonly exitCode: number | null,
+  ) {
+    super('the gate did not exit within the hang guard');
+  }
+}
+
+async function runGate(
+  command: string[],
+  environment: Record<string, string>,
+  options: GateRunOptions = {},
+): Promise<GateRun> {
   const output = await mkdtemp(join(tmpdir(), 'static-gate-test-'));
   try {
     const gate = Bun.spawn([...command, '--output', output], {
@@ -38,10 +53,17 @@ async function runGate(command: string[], environment: Record<string, string>): 
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    const exitCode = await exitedWithin(gate, GATE_RUN_MILLISECONDS);
+    let stdout = '';
+    void (async () => {
+      for await (const chunk of gate.stdout) stdout += new TextDecoder().decode(chunk);
+    })();
+    const exitCode = await exitedWithin(gate, options.guardMilliseconds ?? GATE_RUN_MILLISECONDS);
     if (exitCode === undefined) {
-      gate.kill('SIGKILL');
-      throw new Error(`the gate did not exit within ${GATE_RUN_MILLISECONDS} ms`);
+      // Stop it the way a reader's Ctrl-C would, so its own cleanup runs, then kill anything
+      // still attributable to its run directory; never SIGKILL the driver alone.
+      const runDirectory = /run directory (\S+)/.exec(stdout)?.[1];
+      const stop = await interruptRunner(gate, runDirectory, { graceMilliseconds: 1_000 });
+      throw new GateHang(stop, gate.exitCode);
     }
     const stderr = await new Response(gate.stderr).text();
     const report = (await Bun.file(join(output, 'report.json')).json()) as GateReport;
@@ -247,6 +269,37 @@ describe('static production gate over fixtures', () => {
     ).not.toThrow();
   });
 
+  it('stops a gate that outlives its hang guard gracefully, leaving nothing behind', async () => {
+    // The stand-in test runner hangs, so the gate never finishes on its own.
+    const outcome = await runGate(
+      [process.execPath, DRIVER, '--fixture', 'good', '--mode', 'hang'],
+      readScrubbedEnvironment(),
+      { guardMilliseconds: 1_500 },
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(outcome).toBeInstanceOf(GateHang);
+    const hang = outcome as GateHang;
+    expect(hang.stop).toEqual({ survivors: [], runnerExited: true });
+    // 130 is the gate's own exit for SIGINT: it ran its cleanup, rather than being SIGKILLed.
+    expect(hang.exitCode).toBe(130);
+  });
+
+  it('fails a case that passed but recorded a browser diagnostic', async () => {
+    // A console error that arrives after a case's last assertion still reaches the reporter.
+    const { exitCode, report } = await runGate(
+      [process.execPath, DRIVER, '--fixture', 'good', '--late-diagnostic'],
+      readScrubbedEnvironment(),
+    );
+
+    expect(exitCode).toBe(1);
+    expect(report.failedCases.map((failure) => failure.diagnostics)).toEqual([
+      ['console error: a late failure'],
+    ]);
+  });
+
   it('fails when the export report is missing', async () => {
     const { exitCode, report } = await runGate(
       [
@@ -403,6 +456,16 @@ describe('case evidence', () => {
     expect(summarizeCaseResults(cases, [passed('/ page 1440px'), failure])).toEqual({
       passed: 1,
       failed: [failure],
+      missing: [],
+    });
+  });
+
+  it('counts a passed result with browser diagnostics as failed', () => {
+    const late: CaseResult = { ...passed('/ page 390px'), diagnostics: ['pageerror: boom'] };
+
+    expect(summarizeCaseResults(cases, [passed('/ page 1440px'), late])).toEqual({
+      passed: 1,
+      failed: [late],
       missing: [],
     });
   });

@@ -155,7 +155,11 @@ export function summarizeCaseResults(
   for (const result of results)
     byId.set(result.caseId, [...(byId.get(result.caseId) ?? []), result]);
   const missing = cases.filter((testCase) => byId.get(testCase.id)?.length !== 1).map((c) => c.id);
-  const failed = results.filter((result) => result.status !== 'passed');
+  // A browser diagnostic that arrives after a case's last assertion (before its fixtures tear
+  // down) never fails the case in Playwright, so a passed result that carries one is a failure.
+  const failed = results.filter(
+    (result) => result.status !== 'passed' || result.diagnostics.length > 0,
+  );
   return { passed: results.length - failed.length, failed, missing };
 }
 
