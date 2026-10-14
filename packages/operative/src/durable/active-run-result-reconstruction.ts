@@ -233,6 +233,29 @@ export function emptyRunState(): RunState {
 }
 
 /**
+ * COR-1390: whether another engine took this run's `workflow-lease` claim from
+ * this one, so the completed outcome `handle.result()` reports (which Weft
+ * reads from the store whoever committed it) is the other engine's to publish.
+ * The caller then stays write-free, exactly as for a lost checkpoint race, so
+ * the run's terminal events, session status, and audit records are written
+ * once. Asked only of a completed outcome: completion is committed under the
+ * committing engine's own claim, while a cancel or timeout rotates the claim
+ * whoever commits it, so a rotation proves nothing about who drove the run. A
+ * failed claim read keeps the caller publishing: it proves no loss, and
+ * suppressing the only publisher would leave the run looking `running`.
+ */
+export async function lostRunToAnotherEngine(
+  context: DurableActiveRunContext,
+  runId: string,
+): Promise<boolean> {
+  try {
+    return await context.engine.lostWorkflowClaim(runId);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Build the error message for a `WorkflowTimeoutError`, distinguishing a history
  * circuit-breaker kill from a genuine execution-deadline timeout. The error class
  * itself carries no `terminationReason`, so the distinction comes from the
