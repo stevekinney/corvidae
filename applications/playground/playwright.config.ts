@@ -13,6 +13,9 @@ const origin = `http://localhost:${port}`;
 export default defineConfig({
   testDir: './tests',
   testMatch: '**/*.playwright.ts',
+  // The static production gate's spec needs the case list and static server that
+  // `scripts/check-static-playground.ts` provides, so only `test:production` runs it.
+  testIgnore: 'playground-production.playwright.ts',
   timeout: 60_000,
   use: { baseURL: origin, trace: 'retain-on-failure' },
   webServer: {

@@ -1,0 +1,5608 @@
+{
+  "schema": "cin-585-playground-measurements/1",
+  "label": "diagnostic-rebuild-2",
+  "startedAt": "2026-10-14T13:18:01.814Z",
+  "finishedAt": "2026-10-14T13:26:12.358Z",
+  "environment": {
+    "sourceSha": "b68efe09da184e2660ac30feca337e370393a4cc",
+    "dirtyPaths": [],
+    "untrackedPaths": [],
+    "workingTreeDiffSha256": null,
+    "lockfileSha256": "727e5e3f8e0cf7de983a273e4583a57913dc0d35fd73d005cf17f757e73f2a33",
+    "versions": {
+      "bun": "1.4.2",
+      "svelte": "5.57.0",
+      "playwright": "1.63.0"
+    },
+    "operatingSystem": {
+      "platform": "darwin",
+      "release": "27.0.0",
+      "architecture": "arm64",
+      "cpuModel": "Apple M1 Max"
+    },
+    "logicalProcessors": 10,
+    "totalMemoryBytes": 68719476736,
+    "containerMemoryLimit": "none detected (no /sys/fs/cgroup/memory.max on darwin)",
+    "playgroundEnvironment": {}
+  },
+  "routeInventory": [],
+  "definitions": {
+    "cold": "This checkout's applications/playground/.tmp removed and BUN_RUNTIME_TRANSPILER_CACHE_PATH set to a new empty run-owned directory; the exporter clears build/ itself; no OS cache flush.",
+    "warm": "Immediately after the cold sample, a new process with the same transpiler cache directory and the same disk inputs.",
+    "childMaxResidentBytes": "Bun.Subprocess.resourceUsage().maxRSS, bytes on every platform: one process's own high-water mark.",
+    "treePeakResidentBytes": "Largest sum of ps rss (KiB x 1024) across the child and its descendants, sampled every 100 ms by one observer for baseline and candidate.",
+    "spawnToReadyMilliseconds": "Spawn of bun src/playground-server.ts to the first GET /ready answering 200 \"ready\", polled every 100 ms.",
+    "jsHeap": "Chromium JS heap through CDP Runtime.getHeapUsage after HeapProfiler.collectGarbage; never summed with RSS.",
+    "hostLoad": "uptime load averages and os.availableParallelism() captured before and after every sample."
+  },
+  "prerequisites": [],
+  "staticExport": [],
+  "serverReady": [],
+  "playwright": [],
+  "probes": {
+    "rebuild": {
+      "loadWait": {
+        "thresholdOneMinute": 10000,
+        "waitedMilliseconds": 17.915333999999973,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T13:18:01.989Z",
+          "uptime": "7:18  up 12 days, 14:43, 1 user, load averages: 174.11 152.53 120.75",
+          "loadAverages": {
+            "oneMinute": 174.11,
+            "fiveMinutes": 152.53,
+            "fifteenMinutes": 120.75
+          },
+          "logicalProcessors": 10,
+          "memory": {
+            "availablePercentage": 67,
+            "vmStat": {
+              "pageSizeBytes": 16384,
+              "freeBytes": 11688689664,
+              "activeBytes": 17100963840,
+              "inactiveBytes": 17038442496,
+              "wiredBytes": 4919525376,
+              "occupiedByCompressorBytes": 17040408576,
+              "swapins": 8016123,
+              "swapouts": 9907158
+            }
+          }
+        }
+      },
+      "child": {
+        "command": [
+          "bun",
+          "scripts/measure-playground-probe.ts",
+          "rebuild",
+          "--cycles",
+          "20",
+          "--output",
+          "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/diagnostic-rebuild-2-2026-10-14T13-18-01-739Z/probe-rebuild.json",
+          "--port",
+          "5610"
+        ],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 490306.78320899996,
+        "childMaxResidentBytes": 3254337536,
+        "userCpuMicroseconds": 257361876,
+        "systemCpuMicroseconds": 169337571,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 4736,
+          "skippedTicks": 81,
+          "peakResidentBytes": 3832217600,
+          "peakProcessCount": 2,
+          "observedPids": [
+            9805, 44140, 44932, 45035, 45886, 45952, 46710, 46763, 47641, 47721, 48454, 48507,
+            49257, 49324, 50031, 50111, 50763, 50774, 50823, 51415, 51474, 52230, 52282, 53090,
+            53168, 53704, 53738, 53803, 54388, 54560, 55391, 55529, 56544, 56558, 56616, 57502,
+            57579, 58289, 58433, 59264, 60267, 60420, 61311, 61429, 62201, 62314
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/diagnostic-rebuild-2-2026-10-14T13-18-01-739Z/probe-rebuild.log"
+      },
+      "result": {
+        "probe": "rebuild",
+        "component": "button",
+        "scenario": "measure-rebuild-9805",
+        "before": {
+          "server": {
+            "page": {
+              "entryPointers": 181,
+              "artifacts": 2613,
+              "artifactBytes": 365888170
+            },
+            "shell": {
+              "entryPointers": 1,
+              "artifacts": 35,
+              "artifactBytes": 4106878
+            },
+            "scenario": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "fixture": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "totalArtifacts": 2648,
+            "totalArtifactBytes": 369995048,
+            "inFlightBuilds": 0,
+            "cachedManifests": 1,
+            "liveReloadSubscribers": 0
+          },
+          "probeProcess": {
+            "residentBytes": 3200253952,
+            "heapUsedBytes": 750234009
+          },
+          "footprint": {
+            "footprintBytes": 1795162112,
+            "categories": {
+              "App-Specific Tag 1": {
+                "dirtyBytes": 1742733312,
+                "cleanBytes": 0,
+                "reclaimableBytes": 1458569216,
+                "regions": 49
+              },
+              "JS JIT Generated Code": {
+                "dirtyBytes": 25165824,
+                "cleanBytes": 0,
+                "reclaimableBytes": 131072,
+                "regions": 3
+              },
+              "WebKit Malloc": {
+                "dirtyBytes": 8028160,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 34
+              },
+              "WebAssembly Memory": {
+                "dirtyBytes": 6848512,
+                "cleanBytes": 0,
+                "reclaimableBytes": 49152,
+                "regions": 32
+              },
+              "Untagged": {
+                "dirtyBytes": 2703360,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 5
+              },
+              "page table": {
+                "dirtyBytes": 2674688,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "Stack": {
+                "dirtyBytes": 2129920,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 82
+              },
+              "Malloc Small": {
+                "dirtyBytes": 1916928,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 11
+              },
+              "Malloc Metadata": {
+                "dirtyBytes": 720896,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 10
+              },
+              "__DATA": {
+                "dirtyBytes": 455680,
+                "cleanBytes": 16384,
+                "reclaimableBytes": 0,
+                "regions": 337
+              },
+              "__DATA_DIRTY": {
+                "dirtyBytes": 339968,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 286
+              },
+              "Malloc Tiny": {
+                "dirtyBytes": 131072,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "Dispatch Continuations": {
+                "dirtyBytes": 98304,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "unused dyld shared cache area": {
+                "dirtyBytes": 90112,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 973
+              },
+              "__TPRO_CONST": {
+                "dirtyBytes": 49152,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 4
+              },
+              "__OBJC_RW": {
+                "dirtyBytes": 48128,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "Deferred Reclaim": {
+                "dirtyBytes": 16384,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "OS Alloc Once": {
+                "dirtyBytes": 16384,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "Activity Tracing": {
+                "dirtyBytes": 16384,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "__AUTH": {
+                "dirtyBytes": 48,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 168
+              },
+              "__TEXT": {
+                "dirtyBytes": 0,
+                "cleanBytes": 36700160,
+                "reclaimableBytes": 0,
+                "regions": 390
+              },
+              "__DATA_CONST": {
+                "dirtyBytes": 0,
+                "cleanBytes": 950272,
+                "reclaimableBytes": 0,
+                "regions": 325
+              },
+              "mapped file": {
+                "dirtyBytes": 0,
+                "cleanBytes": 819200,
+                "reclaimableBytes": 0,
+                "regions": 4
+              },
+              "__BUN": {
+                "dirtyBytes": 0,
+                "cleanBytes": 16384,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "__LINKEDIT": {
+                "dirtyBytes": 0,
+                "cleanBytes": 16384,
+                "reclaimableBytes": 0,
+                "regions": 2
+              },
+              "__CTF": {
+                "dirtyBytes": 0,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "__AUTH_CONST": {
+                "dirtyBytes": 0,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 327
+              },
+              "__FONT_DATA": {
+                "dirtyBytes": 0,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "__OBJC_RO": {
+                "dirtyBytes": 0,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              }
+            }
+          },
+          "hostLoad": {
+            "capturedAt": "2026-10-14T13:23:41.611Z",
+            "uptime": "7:23  up 12 days, 14:48, 1 user, load averages: 191.24 177.08 142.93",
+            "loadAverages": {
+              "oneMinute": 191.24,
+              "fiveMinutes": 177.08,
+              "fifteenMinutes": 142.93
+            },
+            "logicalProcessors": 10,
+            "memory": {
+              "availablePercentage": 63,
+              "vmStat": {
+                "pageSizeBytes": 16384,
+                "freeBytes": 64602112,
+                "activeBytes": 21392277504,
+                "inactiveBytes": 21356167168,
+                "wiredBytes": 5124440064,
+                "occupiedByCompressorBytes": 19875135488,
+                "swapins": 8020174,
+                "swapouts": 9907158
+              }
+            }
+          }
+        },
+        "cycles": [
+          {
+            "cycle": 1,
+            "generation": 2,
+            "invalidatedMilliseconds": 127.43449999997392,
+            "rebuiltAndServedMilliseconds": 7027.299500000023,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 3248422912,
+              "heapUsedBytes": 750632708
+            },
+            "footprint": {
+              "footprintBytes": 1161822208,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1110441984,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 2134900736,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 114688,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1949696,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1835008,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:23:49.066Z",
+              "uptime": "7:23  up 12 days, 14:49, 1 user, load averages: 191.92 177.70 143.55",
+              "loadAverages": {
+                "oneMinute": 191.92,
+                "fiveMinutes": 177.7,
+                "fifteenMinutes": 143.55
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 63,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 692092928,
+                  "activeBytes": 21156020224,
+                  "inactiveBytes": 21125185536,
+                  "wiredBytes": 5010259968,
+                  "occupiedByCompressorBytes": 19827916800,
+                  "swapins": 8020174,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 2,
+            "generation": 3,
+            "invalidatedMilliseconds": 109.0091249999823,
+            "rebuiltAndServedMilliseconds": 5958.805999999982,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 3127902208,
+              "heapUsedBytes": 750831682
+            },
+            "footprint": {
+              "footprintBytes": 1225785344,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1174405120,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1958739968,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1949696,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1835008,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:23:55.308Z",
+              "uptime": "7:23  up 12 days, 14:49, 1 user, load averages: 193.77 178.32 143.97",
+              "loadAverages": {
+                "oneMinute": 193.77,
+                "fiveMinutes": 178.32,
+                "fifteenMinutes": 143.97
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 63,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 188841984,
+                  "activeBytes": 21510242304,
+                  "inactiveBytes": 21490352128,
+                  "wiredBytes": 5046583296,
+                  "occupiedByCompressorBytes": 19584647168,
+                  "swapins": 8020178,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 3,
+            "generation": 4,
+            "invalidatedMilliseconds": 127.29304100002628,
+            "rebuiltAndServedMilliseconds": 7345.013083000027,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2992406528,
+              "heapUsedBytes": 749316290
+            },
+            "footprint": {
+              "footprintBytes": 1205862400,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1154482176,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1844445184,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1949696,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1835008,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:03.159Z",
+              "uptime": "7:24  up 12 days, 14:49, 1 user, load averages: 194.49 179.01 144.62",
+              "loadAverages": {
+                "oneMinute": 194.49,
+                "fiveMinutes": 179.01,
+                "fifteenMinutes": 144.62
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 64,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 2433761280,
+                  "activeBytes": 20666122240,
+                  "inactiveBytes": 20639514624,
+                  "wiredBytes": 4964007936,
+                  "occupiedByCompressorBytes": 19109298176,
+                  "swapins": 8020178,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 4,
+            "generation": 5,
+            "invalidatedMilliseconds": 114.1610830000136,
+            "rebuiltAndServedMilliseconds": 6227.00320799998,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 3037528064,
+              "heapUsedBytes": 749250946
+            },
+            "footprint": {
+              "footprintBytes": 1169162240,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1117782016,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1924136960,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1949696,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:09.721Z",
+              "uptime": "7:24  up 12 days, 14:49, 1 user, load averages: 195.65 179.51 145.00",
+              "loadAverages": {
+                "oneMinute": 195.65,
+                "fiveMinutes": 179.51,
+                "fifteenMinutes": 145
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 66,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 5436833792,
+                  "activeBytes": 19801522176,
+                  "inactiveBytes": 19765149696,
+                  "wiredBytes": 4935188480,
+                  "occupiedByCompressorBytes": 17873846272,
+                  "swapins": 8020178,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 5,
+            "generation": 6,
+            "invalidatedMilliseconds": 128.81279200001154,
+            "rebuiltAndServedMilliseconds": 6185.618332999991,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 3067084800,
+              "heapUsedBytes": 749464286
+            },
+            "footprint": {
+              "footprintBytes": 1147142144,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1095761920,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1975517184,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 16384,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1949696,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1835008,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:16.309Z",
+              "uptime": "7:24  up 12 days, 14:49, 1 user, load averages: 196.00 179.85 145.32",
+              "loadAverages": {
+                "oneMinute": 196,
+                "fiveMinutes": 179.85,
+                "fifteenMinutes": 145.32
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 66,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 3750002688,
+                  "activeBytes": 20707491840,
+                  "inactiveBytes": 20670283776,
+                  "wiredBytes": 4936155136,
+                  "occupiedByCompressorBytes": 17748115456,
+                  "swapins": 8020178,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 6,
+            "generation": 7,
+            "invalidatedMilliseconds": 115.93366700003389,
+            "rebuiltAndServedMilliseconds": 6804.340500000049,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 3092348928,
+              "heapUsedBytes": 749458555
+            },
+            "footprint": {
+              "footprintBytes": 1149239296,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1097859072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1998585856,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 16384,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1949696,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1835008,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:23.456Z",
+              "uptime": "7:24  up 12 days, 14:49, 1 user, load averages: 193.35 179.79 145.70",
+              "loadAverages": {
+                "oneMinute": 193.35,
+                "fiveMinutes": 179.79,
+                "fifteenMinutes": 145.7
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 66,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 1004208128,
+                  "activeBytes": 22126116864,
+                  "inactiveBytes": 22098673664,
+                  "wiredBytes": 4934844416,
+                  "occupiedByCompressorBytes": 17647927296,
+                  "swapins": 8020178,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 7,
+            "generation": 8,
+            "invalidatedMilliseconds": 123.96654200000921,
+            "rebuiltAndServedMilliseconds": 5746.8216250000405,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 3108290560,
+              "heapUsedBytes": 747503379
+            },
+            "footprint": {
+              "footprintBytes": 1133510656,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1082130432,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 2028994560,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 294912,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:29.719Z",
+              "uptime": "7:24  up 12 days, 14:49, 1 user, load averages: 193.17 179.98 145.97",
+              "loadAverages": {
+                "oneMinute": 193.17,
+                "fiveMinutes": 179.98,
+                "fifteenMinutes": 145.97
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 67,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 70270976,
+                  "activeBytes": 22735896576,
+                  "inactiveBytes": 22710059008,
+                  "wiredBytes": 4939792384,
+                  "occupiedByCompressorBytes": 17362141184,
+                  "swapins": 8020178,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 8,
+            "generation": 9,
+            "invalidatedMilliseconds": 114.02791699999943,
+            "rebuiltAndServedMilliseconds": 5809.861124999996,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2758803456,
+              "heapUsedBytes": 747698027
+            },
+            "footprint": {
+              "footprintBytes": 1378877440,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1327497216,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1435500544,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 327680,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:35.899Z",
+              "uptime": "7:24  up 12 days, 14:49, 1 user, load averages: 189.15 179.36 145.95",
+              "loadAverages": {
+                "oneMinute": 189.15,
+                "fiveMinutes": 179.36,
+                "fifteenMinutes": 145.95
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 66,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 63832064,
+                  "activeBytes": 22595158016,
+                  "inactiveBytes": 22567337984,
+                  "wiredBytes": 5040619520,
+                  "occupiedByCompressorBytes": 17551294464,
+                  "swapins": 8020178,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 9,
+            "generation": 10,
+            "invalidatedMilliseconds": 114.15412500000093,
+            "rebuiltAndServedMilliseconds": 6026.222499999974,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888170
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995048,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2824077312,
+              "heapUsedBytes": 747120380
+            },
+            "footprint": {
+              "footprintBytes": 1226833920,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1175453696,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1653604352,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 311296,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6815744,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1835008,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:42.431Z",
+              "uptime": "7:24  up 12 days, 14:49, 1 user, load averages: 185.77 178.96 146.19",
+              "loadAverages": {
+                "oneMinute": 185.77,
+                "fiveMinutes": 178.96,
+                "fifteenMinutes": 146.19
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 65,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 82296832,
+                  "activeBytes": 22261055488,
+                  "inactiveBytes": 22235840512,
+                  "wiredBytes": 5070520320,
+                  "occupiedByCompressorBytes": 18168725504,
+                  "swapins": 8020182,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 10,
+            "generation": 11,
+            "invalidatedMilliseconds": 116.57762500003446,
+            "rebuiltAndServedMilliseconds": 6421.073499999999,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2727624704,
+              "heapUsedBytes": 744934939
+            },
+            "footprint": {
+              "footprintBytes": 1399848960,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1348468736,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1384120320,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 376832,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 98304,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:49.278Z",
+              "uptime": "7:24  up 12 days, 14:50, 1 user, load averages: 190.35 180.02 146.76",
+              "loadAverages": {
+                "oneMinute": 190.35,
+                "fiveMinutes": 180.02,
+                "fifteenMinutes": 146.76
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 65,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 386482176,
+                  "activeBytes": 22027288576,
+                  "inactiveBytes": 21984280576,
+                  "wiredBytes": 4939300864,
+                  "occupiedByCompressorBytes": 18480103424,
+                  "swapins": 8020182,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 11,
+            "generation": 12,
+            "invalidatedMilliseconds": 120.15370800002711,
+            "rebuiltAndServedMilliseconds": 5547.8357500000275,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2810789888,
+              "heapUsedBytes": 745390281
+            },
+            "footprint": {
+              "footprintBytes": 1244659712,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1193279488,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1622147072,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 393216,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 98304,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1835008,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:24:55.233Z",
+              "uptime": "7:24  up 12 days, 14:50, 1 user, load averages: 190.64 180.25 147.04",
+              "loadAverages": {
+                "oneMinute": 190.64,
+                "fiveMinutes": 180.25,
+                "fifteenMinutes": 147.04
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 65,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 2212560896,
+                  "activeBytes": 21284339712,
+                  "inactiveBytes": 21258289152,
+                  "wiredBytes": 4962385920,
+                  "occupiedByCompressorBytes": 18097963008,
+                  "swapins": 8020182,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 12,
+            "generation": 13,
+            "invalidatedMilliseconds": 125.75620800000615,
+            "rebuiltAndServedMilliseconds": 5565.452707999968,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2843574272,
+              "heapUsedBytes": 745223893
+            },
+            "footprint": {
+              "footprintBytes": 1182793728,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1131413504,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1716518912,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 458752,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 98304,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1835008,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:25:01.234Z",
+              "uptime": "7:25  up 12 days, 14:50, 1 user, load averages: 186.11 179.48 146.96",
+              "loadAverages": {
+                "oneMinute": 186.11,
+                "fiveMinutes": 179.48,
+                "fifteenMinutes": 146.96
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 66,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 2024407040,
+                  "activeBytes": 21432156160,
+                  "inactiveBytes": 21399076864,
+                  "wiredBytes": 5051252736,
+                  "occupiedByCompressorBytes": 17906909184,
+                  "swapins": 8020182,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 13,
+            "generation": 14,
+            "invalidatedMilliseconds": 121.88074999995297,
+            "rebuiltAndServedMilliseconds": 7920.622832999972,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2700279808,
+              "heapUsedBytes": 745144270
+            },
+            "footprint": {
+              "footprintBytes": 1457520640,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1407188992,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1301282816,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 458752,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 98304,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1736704,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 60
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:25:09.862Z",
+              "uptime": "7:25  up 12 days, 14:50, 1 user, load averages: 182.40 178.92 147.14",
+              "loadAverages": {
+                "oneMinute": 182.4,
+                "fiveMinutes": 178.92,
+                "fifteenMinutes": 147.14
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 65,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 78381056,
+                  "activeBytes": 22054977536,
+                  "inactiveBytes": 22036938752,
+                  "wiredBytes": 5091475456,
+                  "occupiedByCompressorBytes": 18558959616,
+                  "swapins": 8020182,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 14,
+            "generation": 15,
+            "invalidatedMilliseconds": 114.58350000000792,
+            "rebuiltAndServedMilliseconds": 7233.109209000017,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2703097856,
+              "heapUsedBytes": 745223449
+            },
+            "footprint": {
+              "footprintBytes": 1291845632,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1240465408,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1455423488,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 409600,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 98304,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1802240,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 64
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:25:17.669Z",
+              "uptime": "7:25  up 12 days, 14:50, 1 user, load averages: 181.48 178.84 147.48",
+              "loadAverages": {
+                "oneMinute": 181.48,
+                "fiveMinutes": 178.84,
+                "fifteenMinutes": 147.48
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 65,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 102727680,
+                  "activeBytes": 22055256064,
+                  "inactiveBytes": 22026534912,
+                  "wiredBytes": 5025316864,
+                  "occupiedByCompressorBytes": 18606915584,
+                  "swapins": 8020182,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 15,
+            "generation": 16,
+            "invalidatedMilliseconds": 111.34175000002142,
+            "rebuiltAndServedMilliseconds": 7396.6664580000215,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2689417216,
+              "heapUsedBytes": 745441152
+            },
+            "footprint": {
+              "footprintBytes": 1365245952,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1313865728,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1386217472,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 360448,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 81920,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:25:25.564Z",
+              "uptime": "7:25  up 12 days, 14:50, 1 user, load averages: 179.92 178.56 147.57",
+              "loadAverages": {
+                "oneMinute": 179.92,
+                "fiveMinutes": 178.56,
+                "fifteenMinutes": 147.57
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 64,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 541196288,
+                  "activeBytes": 21650636800,
+                  "inactiveBytes": 21616836608,
+                  "wiredBytes": 5048385536,
+                  "occupiedByCompressorBytes": 18961907712,
+                  "swapins": 8020186,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 16,
+            "generation": 17,
+            "invalidatedMilliseconds": 119.54570799996145,
+            "rebuiltAndServedMilliseconds": 6370.102291999967,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2639855616,
+              "heapUsedBytes": 745534694
+            },
+            "footprint": {
+              "footprintBytes": 1320157184,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1268776960,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1385168896,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 131072,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:25:32.417Z",
+              "uptime": "7:25  up 12 days, 14:50, 1 user, load averages: 186.26 179.92 148.41",
+              "loadAverages": {
+                "oneMinute": 186.26,
+                "fiveMinutes": 179.92,
+                "fifteenMinutes": 148.41
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 65,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 3234791424,
+                  "activeBytes": 19314032640,
+                  "inactiveBytes": 21553954816,
+                  "wiredBytes": 5046927360,
+                  "occupiedByCompressorBytes": 18663342080,
+                  "swapins": 8020194,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 17,
+            "generation": 18,
+            "invalidatedMilliseconds": 122.8724579999689,
+            "rebuiltAndServedMilliseconds": 6691.593999999983,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2706046976,
+              "heapUsedBytes": 745626344
+            },
+            "footprint": {
+              "footprintBytes": 1212153856,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1160773632,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1559232512,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 131072,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:25:39.544Z",
+              "uptime": "7:25  up 12 days, 14:50, 1 user, load averages: 186.16 180.00 148.62",
+              "loadAverages": {
+                "oneMinute": 186.16,
+                "fiveMinutes": 180,
+                "fifteenMinutes": 148.62
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 65,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 1946664960,
+                  "activeBytes": 21034713088,
+                  "inactiveBytes": 21494382592,
+                  "wiredBytes": 4997611520,
+                  "occupiedByCompressorBytes": 18346754048,
+                  "swapins": 8020194,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 18,
+            "generation": 19,
+            "invalidatedMilliseconds": 124.58091699995566,
+            "rebuiltAndServedMilliseconds": 6501.936207999999,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2750889984,
+              "heapUsedBytes": 745713666
+            },
+            "footprint": {
+              "footprintBytes": 1191182336,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1139802112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1624244224,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 25165824,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 163840,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:25:46.449Z",
+              "uptime": "7:25  up 12 days, 14:50, 1 user, load averages: 187.26 180.33 148.93",
+              "loadAverages": {
+                "oneMinute": 187.26,
+                "fiveMinutes": 180.33,
+                "fifteenMinutes": 148.93
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 66,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 5644582912,
+                  "activeBytes": 18783420416,
+                  "inactiveBytes": 20731461632,
+                  "wiredBytes": 5187239936,
+                  "occupiedByCompressorBytes": 17471913984,
+                  "swapins": 8020202,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 19,
+            "generation": 20,
+            "invalidatedMilliseconds": 116.2772920000134,
+            "rebuiltAndServedMilliseconds": 6859.981084000028,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2777726976,
+              "heapUsedBytes": 745922960
+            },
+            "footprint": {
+              "footprintBytes": 1179648000,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1128267776,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1658847232,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 26214400,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 147456,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1736704,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 60
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:25:53.728Z",
+              "uptime": "7:25  up 12 days, 14:51, 1 user, load averages: 188.79 180.86 149.48",
+              "loadAverages": {
+                "oneMinute": 188.79,
+                "fiveMinutes": 180.86,
+                "fifteenMinutes": 149.48
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 67,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 3333095424,
+                  "activeBytes": 21101068288,
+                  "inactiveBytes": 21057634304,
+                  "wiredBytes": 4929306624,
+                  "occupiedByCompressorBytes": 17390419968,
+                  "swapins": 8020202,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          },
+          {
+            "cycle": 20,
+            "generation": 21,
+            "invalidatedMilliseconds": 116.80037499999162,
+            "rebuiltAndServedMilliseconds": 8476.863499999978,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888172
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995050,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 2823684096,
+              "heapUsedBytes": 745902428
+            },
+            "footprint": {
+              "footprintBytes": 1209008128,
+              "categories": {
+                "App-Specific Tag 1": {
+                  "dirtyBytes": 1157627904,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 1674575872,
+                  "regions": 49
+                },
+                "JS JIT Generated Code": {
+                  "dirtyBytes": 26214400,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 147456,
+                  "regions": 3
+                },
+                "WebKit Malloc": {
+                  "dirtyBytes": 8028160,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 34
+                },
+                "WebAssembly Memory": {
+                  "dirtyBytes": 6799360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 32
+                },
+                "Untagged": {
+                  "dirtyBytes": 2703360,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 5
+                },
+                "page table": {
+                  "dirtyBytes": 2674688,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Malloc Small": {
+                  "dirtyBytes": 1966080,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 11
+                },
+                "Stack": {
+                  "dirtyBytes": 1785856,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 62
+                },
+                "Malloc Metadata": {
+                  "dirtyBytes": 720896,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 10
+                },
+                "__DATA": {
+                  "dirtyBytes": 455680,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 337
+                },
+                "__DATA_DIRTY": {
+                  "dirtyBytes": 339968,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 286
+                },
+                "Malloc Tiny": {
+                  "dirtyBytes": 131072,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Dispatch Continuations": {
+                  "dirtyBytes": 98304,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "unused dyld shared cache area": {
+                  "dirtyBytes": 90112,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 973
+                },
+                "__TPRO_CONST": {
+                  "dirtyBytes": 49152,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__OBJC_RW": {
+                  "dirtyBytes": 48128,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Deferred Reclaim": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "OS Alloc Once": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "Activity Tracing": {
+                  "dirtyBytes": 16384,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH": {
+                  "dirtyBytes": 48,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 168
+                },
+                "__TEXT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 36700160,
+                  "reclaimableBytes": 0,
+                  "regions": 390
+                },
+                "__DATA_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 950272,
+                  "reclaimableBytes": 0,
+                  "regions": 325
+                },
+                "mapped file": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 819200,
+                  "reclaimableBytes": 0,
+                  "regions": 4
+                },
+                "__BUN": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__LINKEDIT": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 16384,
+                  "reclaimableBytes": 0,
+                  "regions": 2
+                },
+                "__CTF": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__AUTH_CONST": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 327
+                },
+                "__FONT_DATA": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                },
+                "__OBJC_RO": {
+                  "dirtyBytes": 0,
+                  "cleanBytes": 0,
+                  "reclaimableBytes": 0,
+                  "regions": 1
+                }
+              }
+            },
+            "hostLoad": {
+              "capturedAt": "2026-10-14T13:26:02.739Z",
+              "uptime": "7:26  up 12 days, 14:51, 1 user, load averages: 187.71 180.87 149.84",
+              "loadAverages": {
+                "oneMinute": 187.71,
+                "fiveMinutes": 180.87,
+                "fifteenMinutes": 149.84
+              },
+              "logicalProcessors": 10,
+              "memory": {
+                "availablePercentage": 67,
+                "vmStat": {
+                  "pageSizeBytes": 16384,
+                  "freeBytes": 2414182400,
+                  "activeBytes": 21560475648,
+                  "inactiveBytes": 21551546368,
+                  "wiredBytes": 4974624768,
+                  "occupiedByCompressorBytes": 17309728768,
+                  "swapins": 8020202,
+                  "swapouts": 9907158
+                }
+              }
+            }
+          }
+        ],
+        "afterFixtureRemoved": {
+          "server": {
+            "page": {
+              "entryPointers": 181,
+              "artifacts": 2612,
+              "artifactBytes": 365887055
+            },
+            "shell": {
+              "entryPointers": 1,
+              "artifacts": 35,
+              "artifactBytes": 4106878
+            },
+            "scenario": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "fixture": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "totalArtifacts": 2647,
+            "totalArtifactBytes": 369993933,
+            "inFlightBuilds": 0,
+            "cachedManifests": 1,
+            "liveReloadSubscribers": 0
+          },
+          "probeProcess": {
+            "residentBytes": 2843983872,
+            "heapUsedBytes": 745966607
+          },
+          "footprint": {
+            "footprintBytes": 1178599424,
+            "categories": {
+              "App-Specific Tag 1": {
+                "dirtyBytes": 1127219200,
+                "cleanBytes": 0,
+                "reclaimableBytes": 1725956096,
+                "regions": 49
+              },
+              "JS JIT Generated Code": {
+                "dirtyBytes": 26214400,
+                "cleanBytes": 0,
+                "reclaimableBytes": 163840,
+                "regions": 3
+              },
+              "WebKit Malloc": {
+                "dirtyBytes": 8028160,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 34
+              },
+              "WebAssembly Memory": {
+                "dirtyBytes": 6799360,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 32
+              },
+              "Untagged": {
+                "dirtyBytes": 2703360,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 5
+              },
+              "page table": {
+                "dirtyBytes": 2674688,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "Malloc Small": {
+                "dirtyBytes": 1966080,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 11
+              },
+              "Stack": {
+                "dirtyBytes": 1736704,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 60
+              },
+              "Malloc Metadata": {
+                "dirtyBytes": 720896,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 10
+              },
+              "__DATA": {
+                "dirtyBytes": 455680,
+                "cleanBytes": 16384,
+                "reclaimableBytes": 0,
+                "regions": 337
+              },
+              "__DATA_DIRTY": {
+                "dirtyBytes": 339968,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 286
+              },
+              "Malloc Tiny": {
+                "dirtyBytes": 131072,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "Dispatch Continuations": {
+                "dirtyBytes": 98304,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "unused dyld shared cache area": {
+                "dirtyBytes": 90112,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 973
+              },
+              "__TPRO_CONST": {
+                "dirtyBytes": 49152,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 4
+              },
+              "__OBJC_RW": {
+                "dirtyBytes": 48128,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "Deferred Reclaim": {
+                "dirtyBytes": 16384,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "OS Alloc Once": {
+                "dirtyBytes": 16384,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "Activity Tracing": {
+                "dirtyBytes": 16384,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "__AUTH": {
+                "dirtyBytes": 48,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 168
+              },
+              "__TEXT": {
+                "dirtyBytes": 0,
+                "cleanBytes": 36700160,
+                "reclaimableBytes": 0,
+                "regions": 390
+              },
+              "__DATA_CONST": {
+                "dirtyBytes": 0,
+                "cleanBytes": 950272,
+                "reclaimableBytes": 0,
+                "regions": 325
+              },
+              "mapped file": {
+                "dirtyBytes": 0,
+                "cleanBytes": 819200,
+                "reclaimableBytes": 0,
+                "regions": 4
+              },
+              "__BUN": {
+                "dirtyBytes": 0,
+                "cleanBytes": 16384,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "__LINKEDIT": {
+                "dirtyBytes": 0,
+                "cleanBytes": 16384,
+                "reclaimableBytes": 0,
+                "regions": 2
+              },
+              "__CTF": {
+                "dirtyBytes": 0,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "__AUTH_CONST": {
+                "dirtyBytes": 0,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 327
+              },
+              "__FONT_DATA": {
+                "dirtyBytes": 0,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              },
+              "__OBJC_RO": {
+                "dirtyBytes": 0,
+                "cleanBytes": 0,
+                "reclaimableBytes": 0,
+                "regions": 1
+              }
+            }
+          },
+          "hostLoad": {
+            "capturedAt": "2026-10-14T13:26:12.196Z",
+            "uptime": "7:26  up 12 days, 14:51, 1 user, load averages: 186.79 180.91 150.22",
+            "loadAverages": {
+              "oneMinute": 186.79,
+              "fiveMinutes": 180.91,
+              "fifteenMinutes": 150.22
+            },
+            "logicalProcessors": 10,
+            "memory": {
+              "availablePercentage": 67,
+              "vmStat": {
+                "pageSizeBytes": 16384,
+                "freeBytes": 4405559296,
+                "activeBytes": 20433977344,
+                "inactiveBytes": 20891025408,
+                "wiredBytes": 4890148864,
+                "occupiedByCompressorBytes": 17185718272,
+                "swapins": 8020202,
+                "swapouts": 9907158
+              }
+            }
+          }
+        },
+        "growth": {
+          "pageArtifacts": {
+            "series": [
+              2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613,
+              2613, 2613, 2613, 2613, 2613, 2613
+            ],
+            "classification": "stable"
+          },
+          "pageArtifactBytes": {
+            "series": [
+              365888170, 365888170, 365888170, 365888170, 365888170, 365888170, 365888170,
+              365888170, 365888170, 365888172, 365888172, 365888172, 365888172, 365888172,
+              365888172, 365888172, 365888172, 365888172, 365888172, 365888172
+            ],
+            "classification": "monotonic-growth"
+          },
+          "totalArtifacts": {
+            "series": [
+              2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648,
+              2648, 2648, 2648, 2648, 2648, 2648
+            ],
+            "classification": "stable"
+          },
+          "totalArtifactBytes": {
+            "series": [
+              369995048, 369995048, 369995048, 369995048, 369995048, 369995048, 369995048,
+              369995048, 369995048, 369995050, 369995050, 369995050, 369995050, 369995050,
+              369995050, 369995050, 369995050, 369995050, 369995050, 369995050
+            ],
+            "classification": "monotonic-growth"
+          },
+          "inFlightBuilds": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "probeResidentBytes": {
+            "series": [
+              3248422912, 3127902208, 2992406528, 3037528064, 3067084800, 3092348928, 3108290560,
+              2758803456, 2824077312, 2727624704, 2810789888, 2843574272, 2700279808, 2703097856,
+              2689417216, 2639855616, 2706046976, 2750889984, 2777726976, 2823684096
+            ],
+            "classification": "fluctuating"
+          },
+          "probeHeapUsedBytes": {
+            "series": [
+              750632708, 750831682, 749316290, 749250946, 749464286, 749458555, 747503379,
+              747698027, 747120380, 744934939, 745390281, 745223893, 745144270, 745223449,
+              745441152, 745534694, 745626344, 745713666, 745922960, 745902428
+            ],
+            "classification": "fluctuating"
+          },
+          "footprint total": {
+            "series": [
+              1161822208, 1225785344, 1205862400, 1169162240, 1147142144, 1149239296, 1133510656,
+              1378877440, 1226833920, 1399848960, 1244659712, 1182793728, 1457520640, 1291845632,
+              1365245952, 1320157184, 1212153856, 1191182336, 1179648000, 1209008128
+            ],
+            "classification": "fluctuating"
+          },
+          "footprint App-Specific Tag 1 dirty": {
+            "series": [
+              1110441984, 1174405120, 1154482176, 1117782016, 1095761920, 1097859072, 1082130432,
+              1327497216, 1175453696, 1348468736, 1193279488, 1131413504, 1407188992, 1240465408,
+              1313865728, 1268776960, 1160773632, 1139802112, 1128267776, 1157627904
+            ],
+            "classification": "fluctuating"
+          },
+          "footprint JS JIT Generated Code dirty": {
+            "series": [
+              25165824, 25165824, 25165824, 25165824, 25165824, 25165824, 25165824, 25165824,
+              25165824, 25165824, 25165824, 25165824, 25165824, 25165824, 25165824, 25165824,
+              25165824, 25165824, 26214400, 26214400
+            ],
+            "classification": "monotonic-growth"
+          },
+          "footprint WebKit Malloc dirty": {
+            "series": [
+              8028160, 8028160, 8028160, 8028160, 8028160, 8028160, 8028160, 8028160, 8028160,
+              8028160, 8028160, 8028160, 8028160, 8028160, 8028160, 8028160, 8028160, 8028160,
+              8028160, 8028160
+            ],
+            "classification": "stable"
+          },
+          "footprint WebAssembly Memory dirty": {
+            "series": [
+              6815744, 6815744, 6815744, 6815744, 6815744, 6815744, 6815744, 6815744, 6815744,
+              6799360, 6799360, 6799360, 6799360, 6799360, 6799360, 6799360, 6799360, 6799360,
+              6799360, 6799360
+            ],
+            "classification": "fluctuating"
+          },
+          "footprint Untagged dirty": {
+            "series": [
+              2703360, 2703360, 2703360, 2703360, 2703360, 2703360, 2703360, 2703360, 2703360,
+              2703360, 2703360, 2703360, 2703360, 2703360, 2703360, 2703360, 2703360, 2703360,
+              2703360, 2703360
+            ],
+            "classification": "stable"
+          },
+          "footprint page table dirty": {
+            "series": [
+              2674688, 2674688, 2674688, 2674688, 2674688, 2674688, 2674688, 2674688, 2674688,
+              2674688, 2674688, 2674688, 2674688, 2674688, 2674688, 2674688, 2674688, 2674688,
+              2674688, 2674688
+            ],
+            "classification": "stable"
+          },
+          "footprint Malloc Small dirty": {
+            "series": [
+              1949696, 1949696, 1949696, 1949696, 1949696, 1949696, 1966080, 1966080, 1966080,
+              1966080, 1966080, 1966080, 1966080, 1966080, 1966080, 1966080, 1966080, 1966080,
+              1966080, 1966080
+            ],
+            "classification": "monotonic-growth"
+          },
+          "footprint Stack dirty": {
+            "series": [
+              1835008, 1835008, 1835008, 1785856, 1835008, 1835008, 1785856, 1785856, 1835008,
+              1785856, 1835008, 1835008, 1736704, 1802240, 1785856, 1785856, 1785856, 1785856,
+              1736704, 1785856
+            ],
+            "classification": "fluctuating"
+          },
+          "footprint Malloc Metadata dirty": {
+            "series": [
+              720896, 720896, 720896, 720896, 720896, 720896, 720896, 720896, 720896, 720896,
+              720896, 720896, 720896, 720896, 720896, 720896, 720896, 720896, 720896, 720896
+            ],
+            "classification": "stable"
+          },
+          "footprint __DATA dirty": {
+            "series": [
+              455680, 455680, 455680, 455680, 455680, 455680, 455680, 455680, 455680, 455680,
+              455680, 455680, 455680, 455680, 455680, 455680, 455680, 455680, 455680, 455680
+            ],
+            "classification": "stable"
+          },
+          "footprint __DATA_DIRTY dirty": {
+            "series": [
+              339968, 339968, 339968, 339968, 339968, 339968, 339968, 339968, 339968, 339968,
+              339968, 339968, 339968, 339968, 339968, 339968, 339968, 339968, 339968, 339968
+            ],
+            "classification": "stable"
+          },
+          "footprint Malloc Tiny dirty": {
+            "series": [
+              131072, 131072, 131072, 131072, 131072, 131072, 131072, 131072, 131072, 131072,
+              131072, 131072, 131072, 131072, 131072, 131072, 131072, 131072, 131072, 131072
+            ],
+            "classification": "stable"
+          },
+          "footprint Dispatch Continuations dirty": {
+            "series": [
+              98304, 98304, 98304, 98304, 98304, 98304, 98304, 98304, 98304, 98304, 98304, 98304,
+              98304, 98304, 98304, 98304, 98304, 98304, 98304, 98304
+            ],
+            "classification": "stable"
+          },
+          "footprint unused dyld shared cache area dirty": {
+            "series": [
+              90112, 90112, 90112, 90112, 90112, 90112, 90112, 90112, 90112, 90112, 90112, 90112,
+              90112, 90112, 90112, 90112, 90112, 90112, 90112, 90112
+            ],
+            "classification": "stable"
+          },
+          "footprint __TPRO_CONST dirty": {
+            "series": [
+              49152, 49152, 49152, 49152, 49152, 49152, 49152, 49152, 49152, 49152, 49152, 49152,
+              49152, 49152, 49152, 49152, 49152, 49152, 49152, 49152
+            ],
+            "classification": "stable"
+          },
+          "footprint __OBJC_RW dirty": {
+            "series": [
+              48128, 48128, 48128, 48128, 48128, 48128, 48128, 48128, 48128, 48128, 48128, 48128,
+              48128, 48128, 48128, 48128, 48128, 48128, 48128, 48128
+            ],
+            "classification": "stable"
+          },
+          "footprint Deferred Reclaim dirty": {
+            "series": [
+              16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384,
+              16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384
+            ],
+            "classification": "stable"
+          },
+          "footprint OS Alloc Once dirty": {
+            "series": [
+              16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384,
+              16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384
+            ],
+            "classification": "stable"
+          },
+          "footprint Activity Tracing dirty": {
+            "series": [
+              16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384,
+              16384, 16384, 16384, 16384, 16384, 16384, 16384, 16384
+            ],
+            "classification": "stable"
+          },
+          "footprint __AUTH dirty": {
+            "series": [
+              48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48, 48
+            ],
+            "classification": "stable"
+          },
+          "footprint __TEXT dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "footprint __DATA_CONST dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "footprint mapped file dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "footprint __BUN dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "footprint __LINKEDIT dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "footprint __CTF dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "footprint __AUTH_CONST dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "footprint __FONT_DATA dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "footprint __OBJC_RO dirty": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          }
+        }
+      }
+    }
+  }
+}

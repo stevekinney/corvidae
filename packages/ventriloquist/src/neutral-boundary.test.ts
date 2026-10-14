@@ -79,9 +79,36 @@ for (const [name, source, message] of rejectedReferences) {
   ]);
 }
 
+// Listing the program's files starts a real `tsc` process, so it runs once at module scope, off
+// Bun's five-second per-test clock; the test rethrows whatever the scenario threw.
+const coveredFiles = await outcomeOf(() => {
+  const result = Bun.spawnSync(
+    [process.execPath, typescriptCompiler, '--listFilesOnly', '-p', 'tsconfig.neutral.json'],
+    { cwd: packageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+  );
+  expect(result.exitCode).toBe(0);
+  const files = result.stdout
+    .toString()
+    .split('\n')
+    .filter((file) => file.startsWith(packageRoot));
+  const relative = files.map((file) => file.slice(packageRoot.length + 1));
+  expect(relative).toContain('src/session/session.ts');
+  expect(relative).toContain('src/session/fixtures/fixture-transport.ts');
+  expect(relative.some((file) => file.startsWith('src/bun/'))).toBe(false);
+  expect(relative.some((file) => file.startsWith('src/websocket/'))).toBe(false);
+  expect(
+    relative.some((file) => file.endsWith('.test.ts') || file.endsWith('.test-support.ts')),
+  ).toBe(false);
+});
+
 describe('platform-neutral TypeScript program', () => {
   test('accepts source that uses only the ECMAScript library', () =>
     rethrow(acceptsEcmaScriptOnly));
 
   test.each(rejectedOutcomes)('rejects a reference to %s', (_name, outcome) => rethrow(outcome));
+});
+
+describe('files the neutral program covers', () => {
+  test('include the session core and its fixtures, and exclude the Bun and WebSocket entries', () =>
+    rethrow(coveredFiles));
 });

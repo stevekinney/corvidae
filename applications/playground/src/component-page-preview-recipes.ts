@@ -56,6 +56,14 @@ export type PreviewRecipe = {
    * `target` / `disabled` / `inheritAttributes` listed.
    */
   prefersFeaturedExample?: boolean;
+  /**
+   * True when the component mounts bare even though its manifest marks it compound. The manifest
+   * does that for any component whose required `children` is a snippet, which the generator
+   * cannot synthesize; a recipe that supplies `childrenHtml` satisfies it, so the component gets a
+   * live preview instead of an empty stage. Not for real compound roots, whose children must be
+   * structured sub-components.
+   */
+  mountsBare?: boolean;
 };
 
 /** Three numbered placeholder boxes, so a layout's tracks and gutters are visible. */
@@ -84,6 +92,26 @@ export const PREVIEW_RECIPES: Readonly<Record<string, PreviewRecipe>> = {
   'pin-input': { props: { id: 'playground-pin-input', label: 'Verification code' } },
   progress: { props: { ariaLabel: 'Task progress' } },
   rating: { props: { id: 'playground-rating', label: 'Rating' } },
+  // Bare inputs with no visible label: give the previewed control an accessible name, as the
+  // authored examples do, so the live preview is not an unlabeled form field.
+  checkbox: { props: { label: 'Accept the terms' } },
+  'color-field': { props: { 'aria-label': 'Brand color' } },
+  combobox: { props: { label: 'Assignee' } },
+  'file-upload': { props: { 'aria-label': 'Attachments' } },
+  input: { props: { label: 'Email address' } },
+  'number-input': { props: { label: 'Quantity' } },
+  'search-field': { props: { 'aria-label': 'Search components' } },
+  select: { props: { label: 'Priority' } },
+  'tag-input': { props: { 'aria-label': 'Tags' } },
+  textarea: { props: { label: 'Description' } },
+  'time-field': { props: { label: 'Start time' } },
+  // Label has no authored example (Input and Textarea examples cover it) and a required
+  // `children` snippet, so without this it had no preview at all.
+  label: {
+    mountsBare: true,
+    childrenHtml: 'Email address',
+    snippetChildren: 'Email address',
+  },
   container: LAYOUT_RECIPE,
   grid: LAYOUT_RECIPE,
   'grid-item': LAYOUT_RECIPE,
@@ -115,10 +143,20 @@ export const PREVIEW_RECIPES: Readonly<Record<string, PreviewRecipe>> = {
   'focus-trap': { prefersFeaturedExample: true },
   'click-away-listener': { prefersFeaturedExample: true },
   portal: { prefersFeaturedExample: true },
-  // LocaleProvider renders a bare `{@render children?.()}` and ships no example,
-  // so there is nothing to show either way. Marking it keeps the stage from
-  // reserving a frame that never fills.
-  'locale-provider': { prefersFeaturedExample: true },
+  // LocaleProvider renders a bare `{@render children?.()}` and ships no example. Give it content
+  // to provide a locale to, so its Playground mounts something rather than an empty reserved frame.
+  'locale-provider': {
+    childrenHtml: 'Dates and numbers inside this provider format for its locale.',
+    snippetChildren: 'Dates and numbers inside this provider format for its locale.',
+  },
+  // NavigationItem has no authored example (NavigationBar examples cover it) and a required
+  // `children` snippet; like Label, the recipe supplies it so the item mounts as a real link.
+  'navigation-item': {
+    mountsBare: true,
+    props: { href: '#navigation-item-preview' },
+    childrenHtml: 'Projects',
+    snippetChildren: 'Projects',
+  },
 };
 
 /** The recipe for a component, or `undefined` when it needs no scaffolding. */

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "routes": ["/", "/page/button"],
+  "sourceSha": null,
+  "dirty": null,
+  "nodeEnv": "production",
+  "exportDurationMilliseconds": 1250,
+  "peakResidentSetBytes": 104857600,
+  "buildDigest": "b82ec33b20bb257f10a955ea71bcfd92ad05b701b9dc69c5d77d0a3867301141"
+}

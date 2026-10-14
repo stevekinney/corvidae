@@ -555,6 +555,77 @@ describe('import probe', () => {
   });
 
   const domLikeRead = probe('export const agent = navigator.userAgent;\n');
+
+  const dependencyDomRead = probe(
+    "import { read } from 'dependency';\nexport const live = read();\n",
+    {
+      'node_modules/dependency/package.json': JSON.stringify({
+        name: 'dependency',
+        type: 'module',
+        exports: './index.js',
+      }),
+      'node_modules/dependency/index.js':
+        "export const read = () => typeof document !== 'undefined';\n",
+    },
+  );
+  test('counts a DOM read made on the package behalf by a dependency it calls', () => {
+    expect(dependencyDomRead().domGlobals).toEqual(['document']);
+  });
+
+  const dependencyGuardedImportRead = probe("import 'dependency';\nexport {};\n", {
+    'node_modules/dependency/package.json': JSON.stringify({
+      name: 'dependency',
+      type: 'module',
+      exports: './index.js',
+    }),
+    'node_modules/dependency/index.js': "export const live = typeof document !== 'undefined';\n",
+  });
+  test('does not count a guarded DOM read a dependency makes by itself while importing', () => {
+    const report = dependencyGuardedImportRead();
+    expect(report.domGlobals).toEqual([]);
+    expect(report.error).toBeUndefined();
+  });
+
+  const throwingPackageComponent = probe("import './lib/component.svelte';\nexport {};\n", {
+    'src/lib/component.svelte':
+      '<script lang="ts" module>\n  throw new Error("component module evaluated");\n</script>\n<p>hi</p>\n',
+  });
+  const quietPackageComponent = probe(
+    "import Component from './lib/component.svelte';\nexport const kind = typeof Component;\n",
+    {
+      'src/lib/component.svelte':
+        '<script lang="ts">\n  const { label }: { label: string } = $props();\n</script>\n<p>{label}</p>\n',
+    },
+  );
+  test('evaluates the package own Svelte components, compiled for the server', () => {
+    expect(throwingPackageComponent().error).toBe('component module evaluated');
+    const quiet = quietPackageComponent();
+    expect(quiet.error).toBeUndefined();
+    expect(quiet.domGlobals).toEqual([]);
+  });
+
+  const componentDomRead = probe("import './lib/component.svelte';\nexport {};\n", {
+    'src/lib/component.svelte':
+      '<script lang="ts" module>\n  export const live = typeof document !== "undefined";\n</script>\n<p>hi</p>\n',
+  });
+  test('reports a DOM read a package Svelte component makes while importing', () => {
+    expect(componentDomRead().domGlobals).toEqual(['document']);
+  });
+
+  const dependencyComponentImport = probe("import 'dependency';\nexport {};\n", {
+    'node_modules/dependency/package.json': JSON.stringify({
+      name: 'dependency',
+      type: 'module',
+      exports: './index.js',
+    }),
+    'node_modules/dependency/index.js': "import './widget.svelte';\nexport {};\n",
+    'node_modules/dependency/widget.svelte':
+      '<script lang="ts" module>\n  throw new Error("dependency component evaluated");\n</script>\n',
+  });
+  test('leaves another workspace component unevaluated, because its import behavior is its own', () => {
+    expect(dependencyComponentImport().error).toBeUndefined();
+  });
+
   test('reports a read of a DOM-like global Bun already defines', () => {
     const report = domLikeRead();
     expect(report.domGlobals).toEqual(['navigator']);
