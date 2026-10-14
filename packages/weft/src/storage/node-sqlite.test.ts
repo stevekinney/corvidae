@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 
@@ -311,7 +312,10 @@ function resolveNativeNode(searchPath: string): string {
   throw new Error('Native SQLite integration requires Node.js.');
 }
 
-it('resolves native Node when a filesystem Bun shim shadows PATH', () => {
+// These scenarios run real Node processes, which takes seconds on a loaded host, so they run
+// here at module scope, off Bun's five-second per-test clock; each test rethrows its outcome.
+
+const scenario1 = await outcomeOf(async () => {
   const directory = mkdtempSync(join(tmpdir(), 'weft-node-runtime-'));
   try {
     symlinkSync(process.execPath, join(directory, 'node'));
@@ -326,7 +330,9 @@ it('resolves native Node when a filesystem Bun shim shadows PATH', () => {
   }
 });
 
-it('rejects a PATH containing only a filesystem Bun shim', () => {
+it('resolves native Node when a filesystem Bun shim shadows PATH', () => rethrow(scenario1));
+
+const scenario2 = await outcomeOf(async () => {
   const directory = mkdtempSync(join(tmpdir(), 'weft-node-runtime-'));
   try {
     symlinkSync(process.execPath, join(directory, 'node'));
@@ -337,6 +343,8 @@ it('rejects a PATH containing only a filesystem Bun shim', () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+it('rejects a PATH containing only a filesystem Bun shim', () => rethrow(scenario2));
 
 /**
  * Summarize a failed integration child for the assertion message.
@@ -364,7 +372,7 @@ function describeChildFailure(stdout: string, stderr: string): string {
   return sections.filter((section) => section.length > 0).join('\n\n');
 }
 
-it('runs all native SQLite integration cases under Node', async () => {
+const scenario3 = await outcomeOf(async () => {
   // Bun's run.bun setting can inject both virtual and filesystem Node shims.
   // Verify runtime identity while preserving the inherited runtime managers.
   const environment = {
@@ -393,3 +401,5 @@ it('runs all native SQLite integration cases under Node', async () => {
   expect(stdout).toContain('# pass 21');
   expect(stdout).toContain('# skipped 0');
 });
+
+it('runs all native SQLite integration cases under Node', () => rethrow(scenario3));
