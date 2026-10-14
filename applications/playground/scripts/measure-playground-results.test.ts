@@ -118,7 +118,7 @@ function serverSample(
     readyOutcome: 'ready',
     readyDeadlineMilliseconds: 300_000,
     treeUntilReady: { ...tree, peakResidentBytes: peak },
-    prebuildSummary: null,
+    prebuildSummary: { succeeded: 181, total: 181, selfReportedPeakResidentMegabytes: 1 },
   };
 }
 
@@ -162,7 +162,14 @@ function complete(overrides: Partial<MeasurementResults> = {}, dirty = false): M
       serverReady.push({ ...serverSample(temperature, 50, 500), pair });
     }
   }
-  return results({ staticExport, serverReady, ...overrides });
+  const result = results({ staticExport, serverReady, ...overrides });
+  if (dirty) {
+    result.environment = { ...result.environment, workingTreeDiffSha256: 'patch' };
+    for (const sample of [...result.staticExport, ...result.serverReady]) {
+      sample.source = { ...sample.source, workingTreeDiffSha256: 'patch' };
+    }
+  }
+  return result;
 }
 
 describe('observationsFromResults', () => {
@@ -254,7 +261,7 @@ describe('comparability scope', () => {
       probes: { navigation: { loadWait, child: child(1, 1), result: null, error: 'See log.' } },
     });
     expect(runFailures(subject)).toHaveLength(2);
-    expect(comparabilityProblems(subject, complete())).toEqual([]);
+    expect(comparabilityProblems(subject, complete({ label: 'candidate' }, true))).toEqual([]);
   });
 });
 
@@ -381,5 +388,85 @@ describe('harness integrity (PR #222)', () => {
     expect(treeReadWarnings(blind)).toEqual([
       'Static export pair 1 cold: 4 process-tree reads failed (first: ps: busy).',
     ]);
+  });
+});
+
+describe('harness integrity, second review (PR #222)', () => {
+  it('refuses results whose measured children ran with different normalized environments (4274040392)', () => {
+    const baseline = complete();
+    baseline.environment = { ...baseline.environment, childEnvironment: { NODE_ENV: null } };
+    const candidate = complete({ label: 'candidate' }, true);
+    candidate.environment = {
+      ...candidate.environment,
+      childEnvironment: { NODE_ENV: 'production' },
+    };
+    expect(comparabilityProblems(baseline, candidate)).toContain(
+      'Measured children ran with different environments: baseline {"NODE_ENV":null}, candidate {"NODE_ENV":"production"}.',
+    );
+  });
+
+  it("refuses a candidate with no working-tree change, or the baseline's own (4274040412)", () => {
+    expect(comparabilityProblems(complete(), complete({ label: 'candidate' }))).toContain(
+      'The candidate has no working-tree change of its own, so there is nothing to select.',
+    );
+    const baseline = complete({}, true);
+    expect(comparabilityProblems(baseline, complete({ label: 'candidate' }, true))).toContain(
+      'The candidate has no working-tree change of its own, so there is nothing to select.',
+    );
+  });
+
+  it('refuses a candidate that changes the measurement harness or its dependencies (4274040420)', () => {
+    const candidate = complete({ label: 'candidate' }, true);
+    candidate.staticExport[0] = {
+      ...candidate.staticExport[0]!,
+      source: {
+        ...candidate.staticExport[0]!.source,
+        dirtyPaths: ['applications/playground/scripts/measure-playground-results.ts'],
+        untrackedPaths: ['applications/playground/src/playground-paths.ts'],
+      },
+    };
+    const problems = comparabilityProblems(complete(), candidate);
+    expect(problems).toContain(
+      'The candidate changes the measurement harness: applications/playground/scripts/measure-playground-results.ts, applications/playground/src/playground-paths.ts.',
+    );
+  });
+
+  it('refuses a baseline with untracked files, which can change what is built (4274040383)', () => {
+    const baseline = complete();
+    baseline.staticExport[0] = {
+      ...baseline.staticExport[0]!,
+      source: {
+        ...baseline.staticExport[0]!.source,
+        untrackedPaths: ['applications/playground/src/examples/button/new.example.svelte'],
+      },
+    };
+    expect(comparabilityProblems(baseline, complete({ label: 'candidate' }, true))).toContain(
+      'A baseline sample ran with untracked files in the working tree.',
+    );
+  });
+
+  it('fails a sample whose untracked-content digest differs from its result (4274040383)', () => {
+    const drifted = complete();
+    drifted.staticExport[1] = {
+      ...drifted.staticExport[1]!,
+      source: { ...drifted.staticExport[1]!.source, untrackedSha256: 'added-later' },
+    };
+    expect(
+      runFailures(drifted).some((failure) =>
+        failure.startsWith('Static export pair 2 cold ran on source'),
+      ),
+    ).toBe(true);
+  });
+
+  it('counts a readiness sample only when every page bundle prebuilt (4274040417)', () => {
+    const subject = complete();
+    subject.serverReady[0] = { ...subject.serverReady[0]!, prebuildSummary: null };
+    subject.serverReady[1] = {
+      ...subject.serverReady[1]!,
+      prebuildSummary: { succeeded: 180, total: 181, selfReportedPeakResidentMegabytes: 1 },
+    };
+    const failures = runFailures(subject);
+    expect(failures).toContain('Server readiness pair 1 cold reported no prebuild summary.');
+    expect(failures).toContain('Server readiness pair 2 cold prebuilt 180 of 181 page bundles.');
   });
 });

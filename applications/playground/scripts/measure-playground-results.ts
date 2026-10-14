@@ -187,6 +187,14 @@ export function comparabilityProblems(
     (sample) => sample.source.dirtyPaths.length > 0,
   );
   if (dirtyBaseline) problems.push('A baseline sample ran against a dirty working tree.');
+  const untrackedBaseline = [...baseline.staticExport, ...baseline.serverReady].some(
+    (sample) => sample.source.untrackedPaths.length > 0,
+  );
+  if (untrackedBaseline) {
+    problems.push('A baseline sample ran with untracked files in the working tree.');
+  }
+  problems.push(...childEnvironmentProblems(baseline, candidate));
+  problems.push(...candidateChangeProblems(baseline, candidate));
   // Only failures in the samples the selection rule reads make results incomparable. Playwright
   // and probe failures are reported by `runFailures` but feed no primary metric.
   for (const [label, results] of [
@@ -196,6 +204,66 @@ export function comparabilityProblems(
     for (const failure of primaryMetricFailures(results)) problems.push(`${label}: ${failure}`);
   }
   problems.push(...coverageProblems(baseline, candidate));
+  return problems;
+}
+
+/** Measured children must have run with the same forced environment (`NODE_ENV` and the rest). */
+function childEnvironmentProblems(
+  baseline: MeasurementResults,
+  candidate: MeasurementResults,
+): string[] {
+  const baselineEnvironment = JSON.stringify(baseline.environment.childEnvironment ?? null);
+  const candidateEnvironment = JSON.stringify(candidate.environment.childEnvironment ?? null);
+  return baselineEnvironment === candidateEnvironment
+    ? []
+    : [
+        `Measured children ran with different environments: baseline ${baselineEnvironment}, candidate ${candidateEnvironment}.`,
+      ];
+}
+
+/** The working-tree change a result ran against: its diff and untracked-content digests. */
+function workingTreeFingerprint(results: MeasurementResults): string | null {
+  const diff = results.environment.workingTreeDiffSha256;
+  const untracked = results.environment.untrackedSha256 ?? null;
+  return diff === null && untracked === null ? null : `${diff ?? 'none'}+${untracked ?? 'none'}`;
+}
+
+/**
+ * Paths whose change would alter the measurement rather than the measured code: the harness
+ * modules and the Playground modules they import.
+ */
+export function isMeasurementHarnessPath(path: string): boolean {
+  return (
+    /^applications\/playground\/scripts\/measure-playground[^/]*$/u.test(path) ||
+    path === 'applications/playground/src/playground-paths.ts' ||
+    path === 'applications/playground/src/environment-configuration.ts'
+  );
+}
+
+/** A candidate must change something of its own, and never the harness that measures it. */
+function candidateChangeProblems(
+  baseline: MeasurementResults,
+  candidate: MeasurementResults,
+): string[] {
+  const problems: string[] = [];
+  const candidateFingerprint = workingTreeFingerprint(candidate);
+  if (candidateFingerprint === null || candidateFingerprint === workingTreeFingerprint(baseline)) {
+    problems.push(
+      'The candidate has no working-tree change of its own, so there is nothing to select.',
+    );
+  }
+  const changedPaths = new Set([
+    ...candidate.environment.dirtyPaths,
+    ...candidate.environment.untrackedPaths,
+    ...primarySamples(candidate).flatMap(({ source }) => [
+      ...source.dirtyPaths,
+      ...source.untrackedPaths,
+    ]),
+  ]);
+  const harnessPaths = [...changedPaths].filter(isMeasurementHarnessPath).toSorted();
+  if (harnessPaths.length > 0) {
+    problems.push(`The candidate changes the measurement harness: ${harnessPaths.join(', ')}.`);
+  }
   return problems;
 }
 
@@ -279,10 +347,13 @@ function primarySamples(results: MeasurementResults): LabelledSample[] {
 function sourceDriftFailures(results: MeasurementResults): string[] {
   const expectedSha = results.environment.sourceSha;
   const expectedDiff = results.environment.workingTreeDiffSha256;
+  const expectedUntracked = results.environment.untrackedSha256 ?? null;
   return primarySamples(results)
     .filter(
       ({ source }) =>
-        source.sourceSha !== expectedSha || source.workingTreeDiffSha256 !== expectedDiff,
+        source.sourceSha !== expectedSha ||
+        source.workingTreeDiffSha256 !== expectedDiff ||
+        (source.untrackedSha256 ?? null) !== expectedUntracked,
     )
     .map(
       ({ label, source }) =>
@@ -368,9 +439,17 @@ export function runFailures(results: MeasurementResults): string[] {
     }
   }
   for (const sample of results.serverReady) {
+    const label = `Server readiness pair ${sample.pair} ${sample.temperature}`;
     if (sample.readyOutcome !== 'ready') {
       failures.push(
-        `Server readiness pair ${sample.pair} ${sample.temperature}: ${sample.readyOutcome} (limit ${sample.readyDeadlineMilliseconds} ms).`,
+        `${label}: ${sample.readyOutcome} (limit ${sample.readyDeadlineMilliseconds} ms).`,
+      );
+    } else if (sample.prebuildSummary === null) {
+      // Readiness only counts when the eager prebuild finished every page bundle.
+      failures.push(`${label} reported no prebuild summary.`);
+    } else if (sample.prebuildSummary.succeeded !== sample.prebuildSummary.total) {
+      failures.push(
+        `${label} prebuilt ${sample.prebuildSummary.succeeded} of ${sample.prebuildSummary.total} page bundles.`,
       );
     }
   }
