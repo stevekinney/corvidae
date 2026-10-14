@@ -11,12 +11,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.15",
+      "lastPublishedVersion": "0.27.17",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.15",
-        "gitHead": "277ba4e3b1326b141e125b6bb8e26f56b946830d",
-        "corvidaeCommit": "c49e89bbc67e7d60b365b40473376c7c15a498a2",
+        "version": "0.27.17",
+        "gitHead": "8472c3fe955e92eed8a5a09a05364c70d138a576",
+        "corvidaeCommit": "30058577208c64dc82a9c8c69fdf20c4ef7fb7a4",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -343,6 +343,7 @@
             "src/core/engine/lifecycle/start-batch.ts",
             "src/core/engine/lifecycle/start-commit-errors.ts",
             "src/core/engine/lifecycle/start-commit.ts",
+            "src/core/engine/lifecycle/start-condition-tags.ts",
             "src/core/engine/lifecycle/start-exec.ts",
             "src/core/engine/lifecycle/start-or-signal-create.ts",
             "src/core/engine/lifecycle/start-or-signal-resolution.ts",
@@ -432,6 +433,8 @@
             "src/core/engine/termination/complete.ts",
             "src/core/engine/termination/finalizer-activity.ts",
             "src/core/engine/termination/finalizer-claim.ts",
+            "src/core/engine/termination/finalizer-dead-letter.ts",
+            "src/core/engine/termination/finalizer-heartbeat.ts",
             "src/core/engine/termination/finalizer-registration.ts",
             "src/core/engine/termination/finalizer.ts",
             "src/core/engine/termination/state-commit-callbacks.ts",
@@ -471,6 +474,7 @@
             "src/core/engine/workflow-indexes.ts",
             "src/core/engine/workflow-retention-deadline.ts",
             "src/core/engine/workflow-state-stream.ts",
+            "src/core/engine/workflow-visibility-maintenance.ts",
             "src/core/engine/workflow-visibility-queries.ts",
             "src/core/event-log-shared.ts",
             "src/core/event-log-verify.ts",
@@ -683,6 +687,7 @@
             "src/core/types/workflow-registries.ts",
             "src/core/types/workflow-registry.ts",
             "src/core/types/workflow-snapshot.ts",
+            "src/core/types/workflow-visibility-index-options.ts",
             "src/core/updates.ts",
             "src/core/validation-issues.ts",
             "src/core/versioning.ts",
@@ -1172,7 +1177,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "f543dc9448ef8953f3c29f0028e65424029405735bc375b7412c55806285543e"
+          "digest": "5e4f331fd6913bc0f5a9076027a97ffea6f5a80d8bde6ef854fba3f16d8cc196"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1180,7 +1185,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "cc34589eeb0267dbc015887b4c47169f851600d86b0ae9df95ab85866d659f08"
+          "digest": "56a02328fa166942ebe2f8e8774deea936c86a032e28390fad07deee25df9106"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -3418,6 +3423,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/lifecycle/start-condition-tags.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-condition-tags.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/lifecycle/start-exec.d.ts",
               "executable": false
             },
@@ -4098,6 +4111,22 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/termination/finalizer-dead-letter.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/finalizer-dead-letter.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/finalizer-heartbeat.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/finalizer-heartbeat.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/termination/finalizer-registration.d.ts",
               "executable": false
             },
@@ -4391,6 +4420,14 @@
             },
             {
               "path": "package/dist/core/engine/workflow-state-stream.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/workflow-visibility-maintenance.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/workflow-visibility-maintenance.js",
               "executable": false
             },
             {
@@ -5807,6 +5844,14 @@
             },
             {
               "path": "package/dist/core/types/workflow-snapshot.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/types/workflow-visibility-index-options.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/types/workflow-visibility-index-options.js",
               "executable": false
             },
             {
@@ -9170,7 +9215,7 @@
               "executable": false
             }
           ],
-          "digest": "17a3014c4c18e56e5efe2f07b5886fac3cb5b3e66c9c84b91183609556cf7713"
+          "digest": "0d36b0785e85bb33b99fb69e18dfda3a9e3cccae995dc92b99c0920f768fa3fd"
         }
       }
     },
