@@ -615,7 +615,21 @@ function readOption(argv: readonly string[], name: string): string {
   return value;
 }
 
-export async function runGuard(argv: readonly string[]): Promise<number> {
+/** Where the command line writes; tests pass collectors so the command runs in process. */
+export type CommandWriters = {
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+};
+
+const processWriters: CommandWriters = {
+  stdout: (text) => void process.stdout.write(text),
+  stderr: (text) => void process.stderr.write(text),
+};
+
+export async function runGuard(
+  argv: readonly string[],
+  writers: CommandWriters = processWriters,
+): Promise<number> {
   try {
     const policy = await loadTargetOwnedPolicy();
     const target = readOption(argv, 'target');
@@ -629,10 +643,10 @@ export async function runGuard(argv: readonly string[]): Promise<number> {
         Object.entries(plan).map(([path, contents]) => [path, decodePlanContents(contents)]),
       ),
     });
-    process.stdout.write(`Wrote ${written.length} file(s) to ${directory}\n`);
+    writers.stdout(`Wrote ${written.length} file(s) to ${directory}\n`);
     return 0;
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    writers.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
 }

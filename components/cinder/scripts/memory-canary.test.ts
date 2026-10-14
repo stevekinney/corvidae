@@ -49,14 +49,21 @@ describe('formatCanaryReport', () => {
   });
 });
 
+// The real child processes are what is measured, so they run once at module scope, off bun's
+// per-test clock; the tests below only assert on the settled results.
+const allocationBytes = 64 * ONE_MEBIBYTE;
+const [allocatingChild, failingChild] = await Promise.all([
+  runMemoryCanaryCommand([
+    process.execPath,
+    '-e',
+    `const buffer = Buffer.alloc(${allocationBytes}, 1); if (buffer[7] !== 1) process.exit(2);`,
+  ]),
+  runMemoryCanaryCommand([process.execPath, '-e', 'process.exit(3)']),
+]);
+
 describe('runMemoryCanaryCommand', () => {
-  test('measures a real child in bytes', async () => {
-    const allocationBytes = 64 * ONE_MEBIBYTE;
-    const result = await runMemoryCanaryCommand([
-      process.execPath,
-      '-e',
-      `const buffer = Buffer.alloc(${allocationBytes}, 1); if (buffer[7] !== 1) process.exit(2);`,
-    ]);
+  test('measures a real child in bytes', () => {
+    const result = allocatingChild;
 
     expect(result.exitCode).toBe(0);
     // The child holds the whole buffer resident, so its high-water mark is at
@@ -68,8 +75,8 @@ describe('runMemoryCanaryCommand', () => {
     expect(result.peakRssBytes).toBeLessThan(allocationBytes * 512);
   });
 
-  test('preserves a failing child exit code', async () => {
-    const result = await runMemoryCanaryCommand([process.execPath, '-e', 'process.exit(3)']);
+  test('preserves a failing child exit code', () => {
+    const result = failingChild;
     expect(result.exitCode).toBe(3);
   });
 });

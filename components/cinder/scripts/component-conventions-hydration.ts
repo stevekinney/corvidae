@@ -118,7 +118,7 @@ function isBrowserGuardExpression(test: Record<string, unknown> | undefined): bo
 
 /**
  * Returns `true` when the test file contains a `render` call from
- * `svelte/server` OR a `renderThenHydrate` call.
+ * `svelte/server` OR a `renderThenHydrate` / `hydrateServerHtml` call.
  * A test merely named "hydrates" does not satisfy this.
  */
 export function hasHydrationTest(testFilePath: string): boolean {
@@ -139,7 +139,7 @@ export function hasHydrationTest(testFilePath: string): boolean {
       const expression = node.getExpression();
       if (!Node.isIdentifier(expression)) return;
       const name = expression.getText();
-      if (name === 'renderThenHydrate') {
+      if (name === 'renderThenHydrate' || name === 'hydrateServerHtml') {
         found = true;
       } else if (name === 'render' && renderIsFromSvelteServer) {
         found = true;

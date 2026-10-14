@@ -3,9 +3,17 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from './module-scope-scenario.test-support.ts';
+
 const root = join(import.meta.dir, '..');
 
-test('temporary task fixtures never access an inherited remote cache', async () => {
+// These scenarios build synthetic workspaces and run `git`, `bun install` and `turbo` in them,
+// which takes seconds on a loaded host, so each runs at module scope off the per-test clock.
+const scenario1 = await outcomeOf(async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-cache-isolation-'));
   const remoteRequests: string[] = [];
   const remote = Bun.serve({
@@ -37,8 +45,9 @@ test('temporary task fixtures never access an inherited remote cache', async () 
     await rm(directory, { recursive: true, force: true });
   }
 });
+test('temporary task fixtures never access an inherited remote cache', () => rethrow(scenario1));
 
-test('application hosts and tests receive only their owned configuration', async () => {
+const scenario2 = await outcomeOf(async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-host-environment-'));
   try {
     await createWorkspace(directory);
@@ -70,8 +79,10 @@ test('application hosts and tests receive only their owned configuration', async
     await rm(directory, { recursive: true, force: true });
   }
 });
+test('application hosts and tests receive only their owned configuration', () =>
+  rethrow(scenario2));
 
-test('an inherited TURBO_FORCE cannot make a fixture re-execute instead of restoring', async () => {
+const scenario3 = await outcomeOf(async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-force-isolation-'));
   try {
     await createWorkspace(directory);
@@ -115,6 +126,8 @@ await Bun.write(file, String((await file.exists() ? Number(await file.text()) : 
     await rm(directory, { recursive: true, force: true });
   }
 });
+test('an inherited TURBO_FORCE cannot make a fixture re-execute instead of restoring', () =>
+  rethrow(scenario3));
 
 async function run(
   directory: string,
@@ -148,6 +161,7 @@ async function run(
     }
   }
   const child = Bun.spawn(fixtureCommand, {
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     cwd: directory,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -232,7 +246,7 @@ async function createWorkspace(directory: string): Promise<void> {
   await run(directory, [process.execPath, 'install']);
 }
 
-test('source task hashes follow transitive libraries, internal configuration and shared tooling', async () => {
+const scenario4 = await outcomeOf(async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-task-cache-'));
   try {
     await createWorkspace(directory);
@@ -257,8 +271,10 @@ test('source task hashes follow transitive libraries, internal configuration and
     await rm(directory, { recursive: true, force: true });
   }
 });
+test('source task hashes follow transitive libraries, internal configuration and shared tooling', () =>
+  rethrow(scenario4));
 
-test('test tasks preserve and hash the benchmark runner environment', async () => {
+const scenario5 = await outcomeOf(async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-task-environment-'));
   try {
     await createWorkspace(directory);
@@ -285,8 +301,9 @@ test('test tasks preserve and hash the benchmark runner environment', async () =
     await rm(directory, { recursive: true, force: true });
   }
 });
+test('test tasks preserve and hash the benchmark runner environment', () => rethrow(scenario5));
 
-test('root browser test caches restore their generated catalogs and follow provider source', async () => {
+const scenario6 = await outcomeOf(async () => {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-browser-cache-'));
   try {
     await createWorkspace(directory);
@@ -342,6 +359,8 @@ for (const output of ${JSON.stringify(outputs)}) await Bun.write(output, 'genera
     await rm(directory, { recursive: true, force: true });
   }
 });
+test('root browser test caches restore their generated catalogs and follow provider source', () =>
+  rethrow(scenario6));
 
 function taskHash(output: string, taskId: string): string {
   const summary = JSON.parse(output) as { tasks: Array<{ taskId: string; hash: string }> };
@@ -350,7 +369,7 @@ function taskHash(output: string, taskId: string): string {
   return task.hash;
 }
 
-test('a change leaves the cache keys of packages it cannot affect untouched', async () => {
+const scenario7 = await outcomeOf(async () => {
   // Every task's key once included the whole repository three ways: `//#preflight` hashed every
   // tracked file, `scripts/**` was a global dependency, and the root depended on workspaces,
   // whose files turbo folds into the global hash. Any commit then re-ran every package's suite.
@@ -380,6 +399,8 @@ test('a change leaves the cache keys of packages it cannot affect untouched', as
     await rm(directory, { recursive: true, force: true });
   }
 });
+test('a change leaves the cache keys of packages it cannot affect untouched', () =>
+  rethrow(scenario7));
 
 test('the root package depends on no workspace but its compiler configuration', async () => {
   // Turbo hashes the files of every workspace the root package depends on, transitively, into
