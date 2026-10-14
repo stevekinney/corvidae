@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
+  captureSourceState,
   loadExceedsLimit,
   parseContainerMemoryLimit,
   parseLoadAverages,
@@ -96,5 +100,58 @@ describe('waitForSettledLoad', () => {
     expect(wait.checks).toBe(3);
     expect(wait.waitedMilliseconds).toBe(60_000);
     expect(wait.loadAtStart.loadAverages.oneMinute).toBe(29);
+  });
+});
+
+describe('captureSourceState untracked content (4274040383)', () => {
+  let repository: string | undefined;
+  afterEach(async () => {
+    if (repository !== undefined) await rm(repository, { recursive: true, force: true });
+  });
+
+  async function git(...args: string[]): Promise<void> {
+    const child = Bun.spawn(['git', '-C', repository!, ...args], {
+      stdout: 'ignore',
+      stderr: 'pipe',
+    });
+    if ((await child.exited) !== 0) throw new Error(await new Response(child.stderr).text());
+  }
+
+  it('fingerprints the contents of untracked, non-ignored files and ignores ignored ones', async () => {
+    repository = await mkdtemp(join(tmpdir(), 'measure-playground-source-'));
+    await git('init', '-q');
+    await git(
+      '-c',
+      'user.email=t@example.com',
+      '-c',
+      'user.name=t',
+      'commit',
+      '-q',
+      '--allow-empty',
+      '-m',
+      'root',
+    );
+    await writeFile(join(repository, '.gitignore'), 'ignored.txt\n');
+    await git('add', '.gitignore');
+    await git(
+      '-c',
+      'user.email=t@example.com',
+      '-c',
+      'user.name=t',
+      'commit',
+      '-q',
+      '-m',
+      'ignore',
+    );
+    expect(captureSourceState(repository).untrackedSha256).toBeNull();
+
+    await writeFile(join(repository, 'ignored.txt'), 'not measured');
+    expect(captureSourceState(repository).untrackedSha256).toBeNull();
+
+    await writeFile(join(repository, 'added.ts'), 'export const value = 1;\n');
+    const first = captureSourceState(repository).untrackedSha256;
+    expect(first).toMatch(/^[0-9a-f]{64}$/);
+    await writeFile(join(repository, 'added.ts'), 'export const value = 2;\n');
+    expect(captureSourceState(repository).untrackedSha256).not.toBe(first);
   });
 });

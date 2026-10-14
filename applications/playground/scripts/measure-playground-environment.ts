@@ -135,11 +135,31 @@ export type SourceState = {
   sourceSha: string;
   /** Tracked paths that differ from HEAD; non-empty while a candidate patch is applied. */
   dirtyPaths: string[];
-  /** Untracked paths, which cannot change what HEAD's sources build. */
+  /** Untracked, non-ignored paths. They can change what is built (a new example, for one). */
   untrackedPaths: string[];
   /** SHA-256 of `git diff HEAD`, so a sample names the exact patch it ran against. */
   workingTreeDiffSha256: string | null;
+  /**
+   * SHA-256 over the path and contents of every untracked, non-ignored file, or null when there
+   * are none. Absent from results recorded before it existed.
+   */
+  untrackedSha256?: string | null;
 };
+
+/** Hash the path and contents of every untracked, non-ignored file in sorted order. */
+export function untrackedContentSha256(repositoryRoot: string): string | null {
+  const paths = git(repositoryRoot, ['ls-files', '--others', '--exclude-standard', '-z'])
+    .split('\0')
+    .filter((path) => path !== '')
+    .toSorted();
+  if (paths.length === 0) return null;
+  const hash = createHash('sha256');
+  for (const path of paths) {
+    hash.update(path).update('\0');
+    hash.update(readFileSync(join(repositoryRoot, path))).update('\0');
+  }
+  return hash.digest('hex');
+}
 
 /** Split `git status --porcelain` lines into tracked changes and untracked paths. */
 export function partitionPorcelainStatus(porcelain: string): {
@@ -159,6 +179,7 @@ export function captureSourceState(repositoryRoot: string): SourceState {
     sourceSha: git(repositoryRoot, ['rev-parse', 'HEAD']).trim(),
     ...partitionPorcelainStatus(git(repositoryRoot, ['status', '--porcelain'])),
     workingTreeDiffSha256: diff === '' ? null : createHash('sha256').update(diff).digest('hex'),
+    untrackedSha256: untrackedContentSha256(repositoryRoot),
   };
 }
 
@@ -187,6 +208,11 @@ export type PinnedEnvironment = SourceState & {
    * port, port file, and component scope explicitly, so none of these can change a measured child.
    */
   playgroundEnvironment: Record<string, string | undefined>;
+  /**
+   * The variables `measure-playground.ts` forces on every measured child, with null meaning removed.
+   * Absent from results recorded before children were normalized.
+   */
+  childEnvironment?: Record<string, string | null>;
 };
 
 export function capturePinnedEnvironment(
