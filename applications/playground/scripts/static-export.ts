@@ -596,6 +596,8 @@ export async function runStaticExport(options: StaticExportOptions = {}): Promis
   collect(themePreviewHtml);
   await renderJsBundleGraph('/theme-builder-bundle/theme-builder.js', context);
   await renderJsBundleGraph('/theme-builder-bundle/theme-preview.js', context);
+  // The evaluation worker is created by URL, so no import in the entry names it.
+  await renderJsBundleGraph('/theme-builder-bundle/theme-runtime-worker.js', context);
   await render('/ping', context);
   // NOTE: the full `/api/manifest` array is intentionally NOT rendered. The UI
   // only ever fetches the per-component `/api/manifest/<name>` route, and

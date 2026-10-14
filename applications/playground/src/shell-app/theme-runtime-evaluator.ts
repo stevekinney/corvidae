@@ -45,6 +45,25 @@ export function applyCssOverrides(
 const toList = (properties: Record<string, string>): ThemeProperty[] =>
   Object.entries(properties).map(([name, value]) => ({ name, value }));
 
+let installed: ThemeEvaluator | null = null;
+let shared: ThemeEvaluator | null = null;
+
+/**
+ * Make `evaluator` the one every builder surface shares. The builder entry installs the
+ * off-thread evaluator before anything mounts; without one (unit tests, server rendering) the
+ * in-thread evaluator is used.
+ */
+export function installThemeEvaluator(evaluator: ThemeEvaluator | null): void {
+  installed = evaluator;
+}
+
+/** The shared evaluator: the installed one, otherwise a single in-thread evaluator. */
+export function defaultThemeEvaluator(): ThemeEvaluator {
+  if (installed !== null) return installed;
+  shared ??= createRuntimeEvaluator();
+  return shared;
+}
+
 /**
  * Evaluates an envelope for one context. Results are kept per envelope object (every commit
  * makes a new one), so asking again for the same revision and context costs nothing, and

@@ -18,10 +18,13 @@ import {
   type ThemeContextId,
   type ThemeEnvelope,
 } from './theme-draft-types.ts';
-import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
+import { defaultThemeEvaluator } from './theme-runtime-evaluator.ts';
 
 /** One evaluator for every proposal, so the current revision's contexts are evaluated once. */
-export const checksEvaluator: ThemeEvaluator = createRuntimeEvaluator();
+export const checksEvaluator: ThemeEvaluator = {
+  evaluate: (source, revision, context) =>
+    defaultThemeEvaluator().evaluate(source, revision, context),
+};
 
 export type FindingSummary = {
   id: string;
