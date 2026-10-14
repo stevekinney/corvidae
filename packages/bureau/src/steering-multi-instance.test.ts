@@ -674,7 +674,9 @@ describe('durable steering across two Bureau processes', () => {
       );
       const appearingTag = steeringSessionRunTag(appearingSession, appearing.incarnation);
       engineGet.mockImplementation((id: string) =>
-        Promise.resolve(id === 'appearing' ? { status: 'running', tags: [appearingTag] } : null),
+        Promise.resolve(
+          id === 'appearing' ? { type: 'agentRun', status: 'running', tags: [appearingTag] } : null,
+        ),
       );
       const bound = await reader.submitSteeringCommand(appearingSession, {
         principal: 'alice',
@@ -683,6 +685,38 @@ describe('durable steering across two Bureau processes', () => {
       expect(bound.outcome).toBe('accepted');
       if (bound.outcome !== 'accepted') throw new Error('expected accepted');
       expect(bound.command.runId).toBe('appearing');
+
+      // A workflow of another type that happens to carry the tag is not a
+      // run of the session, whichever way it is read.
+      const foreignSession = 'session-foreign';
+      await store.save(
+        createAgentSession({
+          id: foreignSession,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: foreignSession }),
+          metadata: { lastRunId: 'older', lastRunStatus: 'completed' },
+        }),
+      );
+      const foreign = await store.load(foreignSession);
+      if (foreign === undefined) throw new Error('expected the session');
+      await appendSteeringLogEvent(
+        kv,
+        foreignSession,
+        foreign.incarnation,
+        await readSteeringLogHead(kv, foreignSession, foreign.incarnation),
+        { type: 'promoted', runId: 'foreign', now: new Date().toISOString() },
+      );
+      const foreignTag = steeringSessionRunTag(foreignSession, foreign.incarnation);
+      engineGet.mockImplementation((id: string) =>
+        Promise.resolve(
+          id === 'foreign' ? { type: 'goalRun', status: 'running', tags: [foreignTag] } : null,
+        ),
+      );
+      const notARun = await reader.submitSteeringCommand(foreignSession, {
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(notARun.outcome).toBe('session-terminal');
     } finally {
       engineGet.mockRestore();
       await writer.dispose();
@@ -712,6 +746,15 @@ describe('durable steering across two Bureau processes', () => {
       const recreatedRunId = recreated?.metadata['lastRunId'];
       if (typeof recreatedRunId !== 'string') throw new Error('expected a run id');
       expect(pause.command.runId).toBe(recreatedRunId);
+      // A still runs the deleted incarnation's run, but it is not live for
+      // the recreated session, so A binds an unscoped pause the same way.
+      const pauseFromA = await bureauA.submitSteeringCommand(sessionId, {
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(pauseFromA.outcome).toBe('accepted');
+      if (pauseFromA.outcome !== 'accepted') throw new Error('expected accepted');
+      expect(pauseFromA.command.runId).toBe(recreatedRunId);
 
       // A session id far beyond Weft's per-tag size still starts and steers.
       const longId = `session-${'x'.repeat(300)}`;

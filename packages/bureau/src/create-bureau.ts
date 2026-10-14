@@ -1777,6 +1777,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     applied: number;
   }
   const steeringCursors = new Map<string, SteeringCursor>();
+  /**
+   * The session incarnation each of this process's durably steered runs
+   * belongs to, until its `run-ended` is logged. A session deleted and
+   * recreated under the same id while an old run is still settling must
+   * not count that run as live for the new incarnation.
+   */
+  const steeringRunIncarnations = new Map<string, string>();
   /** One log operation at a time per session, in this process. */
   const steeringQueues = new Map<string, Promise<unknown>>();
 
@@ -2046,6 +2053,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     gate: BureauSteeringGate,
     event: Extract<SteeringLogEvent, { type: 'applied' | 'run-ended' }>,
   ): void {
+    if (event.type === 'run-ended') steeringRunIncarnations.delete(event.runId);
     const kv = durableSteeringStore();
     const cursor = steeringCursors.get(sessionId);
     if (kv === undefined || cursor === undefined || cursor.gate !== gate) {
@@ -3646,6 +3654,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           await markStartFailed(error);
           throw error;
         }
+        steeringRunIncarnations.set(runId, steeringSession.incarnation);
       } else {
         getSessionSteeringGate(sessionId).promoteForNewRun(runId, runtimeServices.clock.nowISO());
       }
@@ -4352,6 +4361,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // recorded as unresolved rather than being pruned.
     detachBestEffortPromise(recoveredRun.result.catch(() => runTerminalCheckpointCleanup(runId)));
 
+    if (steeringIncarnation !== undefined) steeringRunIncarnations.set(runId, steeringIncarnation);
     if (steeringGate !== undefined) {
       recoveredRun.addEventListener(SteeringAppliedEvent.type, (event) => {
         logRunBoundarySteering(sessionId, steeringGate, {
@@ -8067,11 +8077,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     incarnation: string,
     namedRunId?: string,
   ): Promise<string[]> {
-    const live = new Set(liveSessionRunIds(sessionId));
+    const live = new Set(
+      liveSessionRunIds(sessionId).filter(
+        (runId) => (steeringRunIncarnations.get(runId) ?? incarnation) === incarnation,
+      ),
+    );
     const engine = runtime.durable?.engine;
     if (engine === undefined) return [...live].toSorted((left, right) => left.localeCompare(right));
     const tag = steeringSessionRunTag(sessionId, incarnation);
-    const isLiveSessionWorkflow = (workflow: { status: string; tags?: readonly string[] }) =>
+    // The same filter the tag listing applies: a live `agentRun` of this
+    // incarnation. Another workflow type carrying the tag is not a run.
+    const isLiveSessionWorkflow = (workflow: {
+      type: string;
+      status: string;
+      tags?: readonly string[];
+    }) =>
+      workflow.type === 'agentRun' &&
       ['pending', 'running', 'suspended'].includes(workflow.status) &&
       workflow.tags?.includes(tag) === true;
     if (namedRunId !== undefined && !live.has(namedRunId)) {
@@ -8206,11 +8227,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // The folded answer stands only if the key's binding names this
         // key's own entry in this log: a binding pointing anywhere else is
         // corrupt, here exactly as for a key answered from another session.
-        if (await steeringBindingNamesOwnEntry(kv, sessionId, incarnation, principal, id)) {
-          return answered;
+        let bindingHolds: boolean;
+        try {
+          bindingHolds = await steeringBindingNamesOwnEntry(
+            kv,
+            sessionId,
+            incarnation,
+            principal,
+            id,
+          );
+        } catch (error) {
+          // A deletion by another process removes the entry mid-read: that
+          // is the session going away, not corruption.
+          const afterFailure = await runtime.sessionStore?.load(sessionId);
+          if (afterFailure?.incarnation !== incarnation) return { outcome: 'not-found' };
+          throw error;
         }
+        // Authority may have changed while this waited in the queue or
+        // folded the log: a replay is answered only to a caller still
+        // authorized against the run it was decided for, read just now.
         const afterRead = await runtime.sessionStore?.load(sessionId);
         if (afterRead?.incarnation !== incarnation) return { outcome: 'not-found' };
+        if (bindingHolds) {
+          const decidedFor =
+            answered.outcome === 'replayed' ? answered.command.runId : command.runId;
+          return isSessionAuthorityAuthorized(afterRead.metadata, principal, decidedFor)
+            ? answered
+            : { outcome: 'not-found' };
+        }
         throw new SteeringLogCorruptError(
           `Steering key "${principal}"/"${id}" was decided in session "${sessionId}", but its binding does not name that decision.`,
         );
