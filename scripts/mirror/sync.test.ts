@@ -1772,92 +1772,90 @@ describe('pruning what corvidae no longer carries', async () => {
     rethrow(outcome29));
 });
 
-describe('changeset emission through the sync (COR-1433)', () => {
+describe('changeset emission through the sync (COR-1433)', async () => {
   const emittedAfter = (adding: string): string =>
     `.changeset/corvidae-${adding.slice(0, 12)}-note.md`;
   const changesetText =
     '---\n"@lostgradient/cryptography": patch\n---\n\nFix a thing in cryptography.\n';
 
-  test(
-    'delivers a pending changeset, leaves the target-authored ones, and accepts the target consuming it',
-    async () => {
-      const targetFiles = targetFixture();
-      targetFiles['.changeset/config.json'] = '{}\n';
-      targetFiles['.changeset/mcp-x.md'] =
-        '---\n"@lostgradient/cinder-mcp": patch\n---\n\nTarget.\n';
-      await withHarness(async (harness) => {
-        const corvidaeGit = (...arguments_: string[]) => git(harness.corvidae, ...arguments_);
-        await corvidaeGit('init', '--quiet', '--initial-branch=main');
-        await corvidaeGit('add', '--all');
-        await corvidaeGit('commit', '--quiet', '--message', 'Corvidae before the changeset');
-        const startHead = await corvidaeGit('rev-parse', 'HEAD');
-        const start = startHead.trim();
-        await Bun.write(join(harness.corvidae, '.changeset/note.md'), changesetText);
-        await corvidaeGit('add', '--all');
-        await corvidaeGit('commit', '--quiet', '--message', 'Add a changeset');
-        const addingHead = await corvidaeGit('rev-parse', 'HEAD');
-        const adding = addingHead.trim();
+  // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
+  const outcomeChangesetDelivery = await outcomeOf(async () => {
+    const targetFiles = targetFixture();
+    targetFiles['.changeset/config.json'] = '{}\n';
+    targetFiles['.changeset/mcp-x.md'] = '---\n"@lostgradient/cinder-mcp": patch\n---\n\nTarget.\n';
+    await withHarness(async (harness) => {
+      const corvidaeGit = (...arguments_: string[]) => git(harness.corvidae, ...arguments_);
+      await corvidaeGit('init', '--quiet', '--initial-branch=main');
+      await corvidaeGit('add', '--all');
+      await corvidaeGit('commit', '--quiet', '--message', 'Corvidae before the changeset');
+      const startHead = await corvidaeGit('rev-parse', 'HEAD');
+      const start = startHead.trim();
+      await Bun.write(join(harness.corvidae, '.changeset/note.md'), changesetText);
+      await corvidaeGit('add', '--all');
+      await corvidaeGit('commit', '--quiet', '--message', 'Add a changeset');
+      const addingHead = await corvidaeGit('rev-parse', 'HEAD');
+      const adding = addingHead.trim();
 
-        // A target the mirror has already written to, as of `start`.
-        const seed = await cloneTarget({
-          remote: harness.remote,
-          directory: harness.runDirectory('seed'),
-        });
-        await git(
-          seed,
-          'commit',
-          '--quiet',
-          '--allow-empty',
-          '--message',
-          `Sync agent-bureau from corvidae\n\n${provenanceTrailer}: ${start}`,
-        );
-        await git(seed, 'push', '--quiet', 'origin', 'HEAD:main');
+      // A target the mirror has already written to, as of `start`.
+      const seed = await cloneTarget({
+        remote: harness.remote,
+        directory: harness.runDirectory('seed'),
+      });
+      await git(
+        seed,
+        'commit',
+        '--quiet',
+        '--allow-empty',
+        '--message',
+        `Sync agent-bureau from corvidae\n\n${provenanceTrailer}: ${start}`,
+      );
+      await git(seed, 'push', '--quiet', 'origin', 'HEAD:main');
 
-        const clone = await cloneTarget({
-          remote: harness.remote,
-          directory: harness.runDirectory('stage'),
-        });
-        const provenance = await newestMirrorProvenance(clone, 'agent-bureau', { strict: true });
-        expect(provenance?.trailerSha).toBe(start);
-        const outcome = await stageSurface({
+      const clone = await cloneTarget({
+        remote: harness.remote,
+        directory: harness.runDirectory('stage'),
+      });
+      const provenance = await newestMirrorProvenance(clone, 'agent-bureau', { strict: true });
+      expect(provenance?.trailerSha).toBe(start);
+      const outcome = await stageSurface({
+        corvidaeRoot: harness.corvidae,
+        target: 'agent-bureau',
+        directory: clone,
+        provenance,
+      });
+
+      expect(outcome.written).toContain(emittedAfter(adding));
+      expect(await Bun.file(join(clone, emittedAfter(adding))).text()).toBe(changesetText);
+      // Neither pruned nor retired: nothing under the target's `.changeset/` is ever deleted.
+      expect(
+        [...outcome.deleted, ...outcome.retired].filter((path) => path.startsWith('.changeset/')),
+      ).toEqual([]);
+      expect(await Bun.file(join(clone, '.changeset/mcp-x.md')).exists()).toBe(true);
+      expect(await Bun.file(join(clone, '.changeset/config.json')).exists()).toBe(true);
+
+      // The sync lands, then the target's release tooling consumes the changeset.
+      await git(clone, 'add', '--all');
+      await git(
+        clone,
+        'commit',
+        '--quiet',
+        '--message',
+        `Sync agent-bureau from corvidae\n\n${provenanceTrailer}: ${adding}`,
+      );
+      await git(clone, 'rm', '--quiet', emittedAfter(adding));
+      await git(clone, 'commit', '--quiet', '--message', 'Version Packages');
+      await assertNoForeignCommits(
+        clone,
+        await foreignCommitOwnership({
           corvidaeRoot: harness.corvidae,
           target: 'agent-bureau',
-          directory: clone,
-          provenance,
-        });
-
-        expect(outcome.written).toContain(emittedAfter(adding));
-        expect(await Bun.file(join(clone, emittedAfter(adding))).text()).toBe(changesetText);
-        // Neither pruned nor retired: nothing under the target's `.changeset/` is ever deleted.
-        expect(
-          [...outcome.deleted, ...outcome.retired].filter((path) => path.startsWith('.changeset/')),
-        ).toEqual([]);
-        expect(await Bun.file(join(clone, '.changeset/mcp-x.md')).exists()).toBe(true);
-        expect(await Bun.file(join(clone, '.changeset/config.json')).exists()).toBe(true);
-
-        // The sync lands, then the target's release tooling consumes the changeset.
-        await git(clone, 'add', '--all');
-        await git(
           clone,
-          'commit',
-          '--quiet',
-          '--message',
-          `Sync agent-bureau from corvidae\n\n${provenanceTrailer}: ${adding}`,
-        );
-        await git(clone, 'rm', '--quiet', emittedAfter(adding));
-        await git(clone, 'commit', '--quiet', '--message', 'Version Packages');
-        await assertNoForeignCommits(
-          clone,
-          await foreignCommitOwnership({
-            corvidaeRoot: harness.corvidae,
-            target: 'agent-bureau',
-            clone,
-          }),
-        );
-      }, targetFiles);
-    },
-    endToEndTimeout,
-  );
+        }),
+      );
+    }, targetFiles);
+  }, END_TO_END_BUDGET_MILLISECONDS);
+  test('delivers a pending changeset, leaves the target-authored ones, and accepts the target consuming it', () =>
+    rethrow(outcomeChangesetDelivery));
 });
 
 describe('newestMirrorProvenance (COR-1433)', () => {
