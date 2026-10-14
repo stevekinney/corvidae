@@ -1,8 +1,8 @@
 /**
- * AB-200 — the child half of the durable-steering SIGKILL tests.
+ * AB-200 — the child half of the durable-steering SIGKILL test.
  *
  * Stands up a real durable Bureau on the SQLite path given as `argv[2]`,
- * submits a steering command through the public verb, writes the marker
+ * admits a steering command through the public verb, writes the marker
  * file at `argv[3]`, and then kills itself with SIGKILL.
  *
  * The self-kill is the point. Every other durability test in this package
@@ -14,19 +14,6 @@
  * and no flush, so whatever the parent finds afterwards was genuinely on
  * disk before the process died.
  *
- * `argv[4]` selects the mode and `argv[5]` a comma-separated list of
- * commands from `COMMANDS`, submitted in order:
- *
- * - `admit` (the default, with `pause` by default) starts a run and admits
- *   each command, which must be accepted.
- * - `retry` reopens an existing backend and submits each command against
- *   the session named by `argv[6]`. The first submission drives steering
- *   recovery, replaying and acknowledging whatever an earlier crash left in
- *   the mailbox. Crashing afterwards produces a restart whose mailbox is
- *   already drained.
- *
- * Either way the marker records the session id and every outcome.
- *
  * Not a test file: it is spawned by `steering-crash-recovery.test.ts`.
  */
 import { writeFileSync } from 'node:fs';
@@ -35,49 +22,17 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createToolbox } from 'armorer';
 
 import { createBureau } from '../create-bureau';
-import type { SteeringCommandRequest } from '../steering';
 
-const COMMANDS = {
-  pause: { id: 'crash-cmd-1', principal: 'alice', requestedValue: { target: 'pause' } },
-  model: {
-    id: 'crash-cmd-2',
-    principal: 'alice',
-    requestedValue: { target: 'model', override: 'claude-sonnet-5' },
-  },
-  opus: {
-    id: 'crash-cmd-3',
-    principal: 'alice',
-    requestedValue: { target: 'model', override: 'claude-opus-4-8' },
-  },
-  probe: {
-    id: 'crash-cmd-4',
-    principal: 'alice',
-    requestedValue: { target: 'model', override: 'claude-sonnet-5' },
-  },
-} as const satisfies Record<string, SteeringCommandRequest>;
-
-const [storagePath, markerPath, mode = 'admit', commandList = 'pause', sessionArgument] =
-  process.argv.slice(2);
-const commandNames = commandList.split(',');
+const storagePath = process.argv[2];
+const markerPath = process.argv[3];
 const runtime = createDefaultRuntimeServices();
 
-if (
-  storagePath === undefined ||
-  markerPath === undefined ||
-  (mode !== 'admit' && mode !== 'retry') ||
-  !commandNames.every((name) => name in COMMANDS) ||
-  (mode === 'retry' && sessionArgument === undefined)
-) {
-  process.stderr.write(
-    'usage: steering-crash-child <storagePath> <markerPath> [admit|retry] [command,...] [sessionId]\n',
-  );
+if (storagePath === undefined || markerPath === undefined) {
+  process.stderr.write('usage: steering-crash-child <storagePath> <markerPath>\n');
   process.exit(2);
 }
 
-// A fixed id models one Bureau restarting: a restarted process with the same
-// id reclaims its own steering lease at once instead of waiting out the TTL.
 const bureau = await createBureau({
-  id: 'crash-bureau',
   agents: {},
   generate: () => new Promise<never>(() => {}),
   toolbox: createToolbox([]),
@@ -85,40 +40,30 @@ const bureau = await createBureau({
   durableExecution: true,
 });
 
-let sessionId: string;
-if (mode === 'retry') {
-  await bureau.waitForRecovery?.();
-  sessionId = sessionArgument ?? '';
-} else {
-  const run = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
-  sessionId = run.sessionId;
-  // Poll rather than sleep: the run must actually be live before a pause is
-  // admissible, and a fixed delay would either be flaky or slow.
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const session = await bureau.getSession(sessionId);
-    if (session?.metadata['lastRunStatus'] === 'running') break;
-    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));
-  }
+const run = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
+
+// Poll rather than sleep: the run must actually be live before a pause is
+// admissible, and a fixed delay would either be flaky or slow.
+for (let attempt = 0; attempt < 200; attempt += 1) {
+  const session = await bureau.getSession(run.sessionId);
+  if (session?.metadata['lastRunStatus'] === 'running') break;
+  await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 10));
 }
 
-const outcomes = [];
-for (const name of commandNames) {
-  const outcome = await bureau.submitSteeringCommand(
-    sessionId,
-    COMMANDS[name as keyof typeof COMMANDS],
-  );
-  if (mode === 'admit' && outcome.outcome !== 'accepted') {
-    process.stderr.write(`child: expected accepted for ${name}, got ${outcome.outcome}\n`);
-    process.exit(3);
-  }
-  outcomes.push(outcome);
+const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+  id: 'crash-cmd-1',
+  principal: 'alice',
+  requestedValue: { target: 'pause' },
+});
+
+if (outcome.outcome !== 'accepted') {
+  process.stderr.write(`child: expected accepted, got ${outcome.outcome}\n`);
+  process.exit(3);
 }
 
-// The parent reads this to learn the session id and the outcomes. Written
-// synchronously so it is on disk before the kill.
-const markedSession = await bureau.getSession(sessionId);
-const incarnation = markedSession?.incarnation;
-writeFileSync(markerPath, JSON.stringify({ sessionId, incarnation, outcomes }), 'utf8');
+// The parent reads this to learn the session id and that admission
+// returned. Written synchronously so it is on disk before the kill.
+writeFileSync(markerPath, JSON.stringify({ sessionId: run.sessionId }), 'utf8');
 
 // No `bureau.dispose()`, deliberately. SIGKILL cannot be trapped, so no
 // cleanup, no flush, no graceful close runs after this line.

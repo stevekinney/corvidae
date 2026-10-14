@@ -1445,32 +1445,23 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *
    * Durable sessions are admitted too: the command is persisted in the
    * session's steering mailbox before it enters desired state, so recovery
-   * can replay it, and the session's desired configuration and agent
-   * identity are snapshotted after every admission, so they and their
-   * `configVersion` survive every later restart, not only the first.
-   * Run-scoped `pause`/`resume` state is not carried across a restart. An
-   * exact `(principal, id)` retry still replays (reporting the command's
-   * latest durable state), and a mismatched one still conflicts, after any
-   * number of restarts, across sessions, and across Bureau processes.
-   *
-   * One Bureau process at a time owns a durable session's steering: a
-   * per-session-incarnation lease, taken on admission (and on starting a
-   * run) and released on shutdown, fences every durable steering write. A
-   * different process returns `{ outcome: 'unsupported-capability', reason:
-   * 'steering-owned-elsewhere' }` until the owner's lease is released or
-   * lapses after a minute without renewal; a restarted process keeping the
-   * same Bureau `id` reclaims its own lease at once. The lease fences
-   * admission only: a live run reads its own process's gate, so steering
-   * admitted by another process reaches it at that process's next run.
-   * `{ outcome: 'unsupported-capability', reason:
+   * can replay it. `{ outcome: 'unsupported-capability', reason:
    * 'durable-steering-unavailable' }` is returned only by the guard for a
    * durably-configured Bureau with no resolved storage backend, which
    * normal composition does not produce. A durable command the session's
    * mailbox rejects at admission (for example, an exhausted backlog) returns
    * `unsupported-capability` with the mailbox's own rejection reason and
-   * never enters desired state. A reused `id` is not one of those: it is
-   * resolved before anything is written, as the `replayed` or typed
-   * `conflict` described below.
+   * never enters desired state. A reused `id` whose persisted identity
+   * differs is not one of those: it falls through to the gate and returns
+   * the typed `conflict` described below.
+   *
+   * Known limit: durability holds across ONE restart. Recovery replays the
+   * mailbox and acknowledges what it replays, so after a second restart the
+   * session's mailbox and in-memory gate are both empty: desired
+   * configuration and agent identity fall back to defaults, and a reused
+   * `(principal, id)` — exact or not — is admitted as a new command rather
+   * than `replayed` or a `conflict`. Steering is also process-local: two
+   * Bureau processes sharing a backend each admit into their own gate.
    *
    * A `pause` against an authorized, non-terminal session is
    * accepted, increments the session's `configVersion` by exactly one, and

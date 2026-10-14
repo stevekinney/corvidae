@@ -221,43 +221,6 @@ export interface SteeringAdmissionContext {
  * see `types.ts`'s doc comment on that method) and {@link promoteForNewRun}
  * (identity-deferral promotion) at the two points named on each method.
  */
-/** See {@link BureauSteeringGate.exportDurableState}. Plain JSON data. */
-export interface SteeringDurableState {
-  readonly rawConfigVersion: number;
-  readonly effectiveConfigVersion: number;
-  readonly lastConfigurationVersion: number;
-  readonly lastIdentityVersion: number;
-  readonly configuration: {
-    readonly route?: string;
-    readonly model?: string;
-    readonly provider?: string;
-    readonly effort?: Effort;
-  };
-  readonly agentName?: string;
-  readonly agentNameDeadline?: string;
-  readonly pendingAgentName?: string;
-  readonly pendingAgentDeadline?: string;
-  /**
-   * The `(principal, id)` keys of the commands still pending for each
-   * target, so a command admitted after a restart supersedes them exactly
-   * as it would have in the process that admitted them (their durable
-   * records are what it then marks `superseded`).
-   */
-  readonly pendingIdentityKey?: { readonly principal: string; readonly id: string };
-  readonly pendingConfigurationKeys?: Readonly<
-    Partial<Record<ConfigurationTargetKind, readonly { principal: string; id: string }[]>>
-  >;
-}
-
-/** See `createSteeringGate`'s `hooks` parameter. */
-export interface SteeringGateHooks {
-  readonly onTransition?: (stored: StoredSteeringCommand) => void;
-  readonly onUnloadedSupersession?: (
-    key: { readonly principal: string; readonly id: string },
-    failure: SteeringCommandFailure,
-  ) => void;
-}
-
 export interface BureauSteeringGate extends SteeringGate {
   /** Admit one validated `pause`/`resume`/`agent-identity` command. Called
    *  by `submitSteeringCommand` for `pause`/`resume` only; `agent-identity`
@@ -272,22 +235,6 @@ export interface BureauSteeringGate extends SteeringGate {
    *  third-party `SteeringGate` that predates AB-199's cross-run dedupe
    *  addition and has no cross-run memory of its own). */
   getAppliedFloor(): number;
-  /**
-   * The session-scoped desired state a restart must not lose: the four
-   * configuration coordinates, the current and pending agent identity with
-   * their deadlines, and the version counters they were reached at.
-   * Run-scoped pause/resume state is deliberately absent — it is bound to
-   * runs that do not survive the process.
-   */
-  exportDurableState(): SteeringDurableState;
-  /**
-   * Restores {@link exportDurableState}'s output into a FRESH gate, before
-   * any command has been admitted to it. Throws on a gate that has already
-   * admitted something, since merging a snapshot into live state could
-   * move `configVersion` backwards. A restored pending identity whose
-   * deadline has already passed is dropped rather than restored.
-   */
-  restoreDurableState(state: SteeringDurableState, now?: string): void;
   /**
    * A per-run VIEW of this session's gate, scoped to `runId`: its
    * `getDesiredState().paused` and `awaitResume()` reflect only a pause
@@ -469,77 +416,7 @@ export function createSteeringCommandLedger(): SteeringCommandLedger {
   return new Map();
 }
 
-/** The ledger's entry for `(principal, id)`, or `undefined` when it has none. */
-export function getSteeringLedgerEntry(
-  ledger: SteeringCommandLedger,
-  principal: string,
-  id: string,
-): StoredSteeringCommand | undefined {
-  return ledger.get(principal)?.get(id);
-}
-
-/**
- * Resolves a same-`(principal, id)` retry against the command already
- * recorded under that key: a typed `conflict` when the session, target,
- * requested run, or requested value disagrees, otherwise `replayed`.
- *
- * {@link BureauSteeringGate.admit} uses this for a key its ledger holds.
- * `submitSteeringCommand` also uses it for a key only a durable record
- * remembers — after a restart whose recovery already drained the mailbox,
- * the in-memory ledger is empty but the mailbox still binds the id — so
- * both paths classify a retry identically.
- */
-export function resolveSteeringRetry(
-  existing: StoredSteeringCommand,
-  command: Pick<ImplementedSteeringCommand, 'id' | 'sessionId' | 'requestedValue' | 'runId'>,
-): Extract<SteeringCommandAdmissionOutcome, { outcome: 'conflict' | 'replayed' }> {
-  if (existing.sessionId !== command.sessionId) {
-    return {
-      outcome: 'conflict',
-      conflict: { id: command.id, reason: 'session-mismatch', original: snapshotOf(existing) },
-    };
-  }
-  if (existing.requestedValue.target !== command.requestedValue.target) {
-    return {
-      outcome: 'conflict',
-      conflict: { id: command.id, reason: 'target-mismatch', original: snapshotOf(existing) },
-    };
-  }
-  // A pause/resume retry naming a DIFFERENT run than the original request is
-  // a typed conflict, not a replay — runId determines which run the command
-  // actually affects (review finding, PR #430 — Codex P2, "Include the bound
-  // run in replay matching"). Compares the RAW requested runId (undefined
-  // when omitted), not the resolved bound run — an omitted runId that
-  // resolves differently across two admissions (the session's sole live run
-  // changed between them) is a liveness/binding question `run-terminal`/
-  // `run-ambiguous` already own, not an idempotency conflict.
-  // Only `pause`/`resume` bind to a run; every other target is
-  // session-scoped and ignores `runId`, so a retry that changes or omits it
-  // asks for exactly the same thing.
-  const runScoped =
-    command.requestedValue.target === 'pause' || command.requestedValue.target === 'resume';
-  if (
-    (!runScoped || existing.requestedRunId === command.runId) &&
-    sameRequestedValue(existing.requestedValue, command.requestedValue)
-  ) {
-    return { outcome: 'replayed', command: snapshotOf(existing) };
-  }
-  return {
-    outcome: 'conflict',
-    conflict: {
-      id: command.id,
-      reason: 'requested-value-mismatch',
-      original: snapshotOf(existing),
-    },
-  };
-}
-
-/**
- * One `(principal, id)` ledger entry. Plain data with no functions, so a
- * durable Bureau can persist it verbatim (`steering-durability.ts`'s
- * steering command records) and hand it back to {@link resolveSteeringRetry}.
- */
-export interface StoredSteeringCommand {
+interface StoredSteeringCommand {
   readonly id: string;
   readonly sessionId: string;
   readonly principal: string;
@@ -687,17 +564,7 @@ export function createSteeringGate(
   // real-globals-default injection pattern `RuntimeServices` establishes
   // everywhere else.
   clock: RuntimeClock = createDefaultRuntimeServices().clock,
-  // Durable bookkeeping hooks, both synchronous. `onTransition` fires
-  // whenever an already-recorded command changes state (`superseded`,
-  // `applied`, or `failed`) — never for the admission that first records
-  // it, whose outcome the caller already has. `onUnloadedSupersession` fires
-  // when a new command supersedes a pending key restored from a durable
-  // snapshot that has no ledger entry in this process, so the caller can
-  // mark that command's durable record instead.
-  hooks: SteeringGateHooks = {},
 ): BureauSteeringGate {
-  const onTransition = hooks.onTransition ?? (() => {});
-  const onUnloadedSupersession = hooks.onUnloadedSupersession ?? (() => {});
   let rawConfigVersion = 0;
   let effectiveConfigVersion = 0;
   let appliedFloor = 0;
@@ -770,16 +637,9 @@ export function createSteeringGate(
     for (const key of pendingConfigurationKeys.get(target) ?? []) {
       if (key.id === successorId) continue;
       const prior = ledgerGet(key.principal, key.id);
-      if (prior === undefined) {
-        onUnloadedSupersession(key, {
-          failedAt: now,
-          reason: 'superseded-by',
-          supersededBy: successorId,
-        });
-      } else if (prior.state === 'accepted') {
+      if (prior && prior.state === 'accepted') {
         prior.state = 'superseded';
         prior.failure = { failedAt: now, reason: 'superseded-by', supersededBy: successorId };
-        onTransition(prior);
       }
     }
     pendingConfigurationKeys.set(target, []);
@@ -887,7 +747,6 @@ export function createSteeringGate(
       if (prior && prior.state === 'accepted') {
         prior.state = 'superseded';
         prior.failure = { failedAt: now, reason: 'superseded-by', supersededBy };
-        onTransition(prior);
       }
     }
     runPauseOwners.delete(runId);
@@ -1069,64 +928,6 @@ export function createSteeringGate(
       return appliedFloor;
     },
 
-    exportDurableState(): SteeringDurableState {
-      return {
-        rawConfigVersion,
-        effectiveConfigVersion,
-        lastConfigurationVersion,
-        lastIdentityVersion,
-        configuration: { ...desiredConfiguration },
-        ...(agentName !== undefined ? { agentName } : {}),
-        ...(agentNameDeadline !== undefined ? { agentNameDeadline } : {}),
-        ...(pendingAgentName !== undefined ? { pendingAgentName } : {}),
-        ...(pendingAgentDeadline !== undefined ? { pendingAgentDeadline } : {}),
-        ...(pendingIdentityKey !== undefined
-          ? { pendingIdentityKey: { ...pendingIdentityKey } }
-          : {}),
-        pendingConfigurationKeys: Object.fromEntries(
-          [...pendingConfigurationKeys].map(([target, keys]) => [
-            target,
-            keys.map((key) => ({ ...key })),
-          ]),
-        ),
-      };
-    },
-
-    restoreDurableState(state: SteeringDurableState, now: string = clock.nowISO()): void {
-      if (rawConfigVersion !== 0) {
-        throw new Error(
-          `Steering gate for session "${sessionId}" has already admitted commands; desired state can only be restored into a fresh gate.`,
-        );
-      }
-      rawConfigVersion = state.rawConfigVersion;
-      effectiveConfigVersion = state.effectiveConfigVersion;
-      lastConfigurationVersion = state.lastConfigurationVersion;
-      lastIdentityVersion = state.lastIdentityVersion;
-      const { route, model, provider, effort } = state.configuration;
-      if (route !== undefined) desiredConfiguration.route = route;
-      if (model !== undefined) desiredConfiguration.model = model;
-      if (provider !== undefined) desiredConfiguration.provider = provider;
-      if (effort !== undefined) desiredConfiguration.effort = effort;
-      agentName = state.agentName;
-      agentNameDeadline = state.agentNameDeadline;
-      const pendingExpired =
-        state.pendingAgentDeadline !== undefined &&
-        Date.parse(now) > Date.parse(state.pendingAgentDeadline);
-      if (state.pendingAgentName !== undefined && !pendingExpired) {
-        pendingAgentName = state.pendingAgentName;
-        pendingAgentDeadline = state.pendingAgentDeadline;
-        if (state.pendingIdentityKey !== undefined) {
-          pendingIdentityKey = { ...state.pendingIdentityKey };
-        }
-      }
-      for (const [target, keys] of Object.entries(state.pendingConfigurationKeys ?? {})) {
-        pendingConfigurationKeys.set(
-          target as ConfigurationTargetKind,
-          (keys ?? []).map((key) => ({ ...key })),
-        );
-      }
-    },
-
     forRun(runId: string): SteeringGate {
       return {
         sessionId,
@@ -1184,7 +985,54 @@ export function createSteeringGate(
 
     admit(command, context) {
       const existing = ledgerGet(command.principal, command.id);
-      if (existing) return resolveSteeringRetry(existing, command);
+      if (existing) {
+        if (existing.sessionId !== command.sessionId) {
+          return {
+            outcome: 'conflict',
+            conflict: {
+              id: command.id,
+              reason: 'session-mismatch',
+              original: snapshotOf(existing),
+            },
+          };
+        }
+        if (existing.requestedValue.target !== command.requestedValue.target) {
+          return {
+            outcome: 'conflict',
+            conflict: { id: command.id, reason: 'target-mismatch', original: snapshotOf(existing) },
+          };
+        }
+        // A pause/resume retry naming a DIFFERENT run than the original
+        // request is a typed conflict, not a replay — runId determines
+        // which run the command actually affects (review finding, PR #430
+        // — Codex P2, "Include the bound run in replay matching"). Compares
+        // the RAW requested runId (undefined when omitted), not the
+        // resolved bound run — an omitted runId that resolves differently
+        // across two admissions (the session's sole live run changed
+        // between them) is a liveness/binding question `run-terminal`/
+        // `run-ambiguous` already own, not an idempotency conflict.
+        if (existing.requestedRunId !== command.runId) {
+          return {
+            outcome: 'conflict',
+            conflict: {
+              id: command.id,
+              reason: 'requested-value-mismatch',
+              original: snapshotOf(existing),
+            },
+          };
+        }
+        if (sameRequestedValue(existing.requestedValue, command.requestedValue)) {
+          return { outcome: 'replayed', command: snapshotOf(existing) };
+        }
+        return {
+          outcome: 'conflict',
+          conflict: {
+            id: command.id,
+            reason: 'requested-value-mismatch',
+            original: snapshotOf(existing),
+          },
+        };
+      }
 
       // AB-67/AB-199 review finding (PR #430 — Codex P2, second wave,
       // "Reject commands addressed to another gate"): the existing-ledger
@@ -1384,20 +1232,13 @@ export function createSteeringGate(
       // identity commands").
       if (pendingIdentityKey !== undefined) {
         const prior = ledgerGet(pendingIdentityKey.principal, pendingIdentityKey.id);
-        if (prior === undefined) {
-          onUnloadedSupersession(pendingIdentityKey, {
-            failedAt: context.now,
-            reason: 'superseded-by',
-            supersededBy: command.id,
-          });
-        } else if (prior.state === 'accepted') {
+        if (prior && prior.state === 'accepted') {
           prior.state = 'superseded';
           prior.failure = {
             failedAt: context.now,
             reason: 'superseded-by',
             supersededBy: command.id,
           };
-          onTransition(prior);
         }
       }
       // Guaranteed present — the `policyRef` variant already returned above.
@@ -1499,11 +1340,9 @@ export function createSteeringGate(
             }
             stored.state = 'failed';
             stored.failure = { failedAt: now, reason: 'deadline-passed' };
-            onTransition(stored);
             continue;
           }
           stored.state = 'applied';
-          onTransition(stored);
         }
       }
     },
@@ -1528,21 +1367,8 @@ export function createSteeringGate(
         ) {
           pending.state = 'failed';
           pending.failure = { failedAt: now, reason: 'deadline-passed' };
-          onTransition(pending);
           pendingAgentName = undefined;
         }
-      }
-      // A pending identity restored from a durable snapshot has no ledger
-      // entry in this process to carry its deadline, so the deadline it was
-      // restored with is checked directly instead.
-      if (
-        (pendingIdentityKey === undefined ||
-          ledgerGet(pendingIdentityKey.principal, pendingIdentityKey.id) === undefined) &&
-        pendingAgentDeadline !== undefined &&
-        Date.parse(now) > Date.parse(pendingAgentDeadline)
-      ) {
-        pendingAgentName = undefined;
-        pendingAgentDeadline = undefined;
       }
       if (pendingAgentName !== undefined) {
         agentName = pendingAgentName;
@@ -1625,7 +1451,6 @@ export function createSteeringGate(
         ) {
           stored.state = 'failed';
           stored.failure = { failedAt: now, reason: 'run-terminal' };
-          onTransition(stored);
         }
       }
     }
