@@ -414,3 +414,55 @@ describe('component-page .dx-nav compound-family grouping', () => {
     unmount();
   });
 });
+
+describe('component-page .dx-nav component search', () => {
+  function searchTriggers(): HTMLButtonElement[] {
+    return [...document.querySelectorAll('button')].filter(
+      (button) => button.textContent?.trim() === 'Search components',
+    );
+  }
+
+  test('places one "Search components" trigger between the brand and the filter', async () => {
+    const { unmount } = render(ComponentPage, {
+      componentName: 'button',
+      documentation: null,
+      sidebarComponents: ['button', 'chat'],
+    });
+    await tick();
+
+    const triggers = searchTriggers();
+    expect(triggers).toHaveLength(1);
+    const trigger = triggers[0]!;
+    const navigation = document.querySelector('nav.dx-nav');
+    expect(navigation?.contains(trigger)).toBe(true);
+    expect(trigger.getAttribute('aria-keyshortcuts')).toBe('Meta+K Control+K');
+
+    const brand = navigation?.querySelector('.dx-nav__brand');
+    const filter = navigation?.querySelector('#sidebar-filter');
+    expect(brand).not.toBeNull();
+    expect(filter).not.toBeNull();
+    const follows = (earlier: Node, later: Node) =>
+      (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(follows(brand!, trigger)).toBe(true);
+    expect(follows(trigger, filter!)).toBe(true);
+
+    // The palette module is not loaded until the reader reaches for it.
+    expect(document.querySelector('dialog')).toBeNull();
+
+    unmount();
+  });
+
+  test('renders no trigger and no palette without a sidebar (snapshot and preview surfaces)', async () => {
+    const { unmount } = render(ComponentPage, {
+      componentName: 'button',
+      documentation: null,
+      sidebarComponents: [],
+    });
+    await tick();
+
+    expect(searchTriggers()).toHaveLength(0);
+    expect(document.querySelector('dialog')).toBeNull();
+
+    unmount();
+  });
+});
