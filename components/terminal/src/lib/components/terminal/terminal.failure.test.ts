@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
   destroyAllHarnesses,
@@ -7,39 +7,30 @@ import {
 } from '../../../test/mount-harness.ts';
 import { reactiveProps } from '../../../test/reactive-props.svelte.ts';
 import { createFakeController } from './terminal-attachment-test-support.ts';
-import * as realLoader from './terminal-engine-loader.ts';
+import { engineLoader, loadRendererEngineFactory } from './terminal-engine-loader.ts';
 import { waitFor } from './terminal-test-support.ts';
+import Terminal from './terminal.svelte';
 import type { TerminalProps } from './terminal.types.ts';
 
-// Mocking replaces the module's exports in place, so keep the real function before it happens.
-const loadRealEngine = realLoader.loadRendererEngineFactory;
-
 /** How the next engine load behaves. Swapped per test. */
-let behavior: () => Promise<unknown> = () => loadRealEngine();
+let behavior: () => ReturnType<typeof loadRendererEngineFactory> = () =>
+  loadRendererEngineFactory();
 let loads = 0;
+const originalLoad = engineLoader.load;
 
-beforeAll(() => {
-  mock.module('./terminal-engine-loader.ts', () => ({
-    loadRendererEngineFactory: () => {
-      loads += 1;
-      return behavior();
-    },
-  }));
-});
-
-// Mocked modules persist for the whole test process, so put the real loader back for any file
-// that runs after this one.
-afterAll(() => {
-  mock.module('./terminal-engine-loader.ts', () => ({ loadRendererEngineFactory: loadRealEngine }));
+beforeEach(() => {
+  engineLoader.load = () => {
+    loads += 1;
+    return behavior();
+  };
 });
 
 afterEach(() => {
   destroyAllHarnesses();
-  behavior = () => loadRealEngine();
+  engineLoader.load = originalLoad;
+  behavior = () => loadRendererEngineFactory();
   loads = 0;
 });
-
-const { default: Terminal } = await import('./terminal.svelte');
 
 async function failed(harness: MountedHarness): Promise<void> {
   await waitFor(
@@ -91,7 +82,7 @@ describe('engine failure fails closed', () => {
     let attempt = 0;
     behavior = () => {
       attempt += 1;
-      return attempt === 1 ? Promise.reject(new Error('flaky asset')) : loadRealEngine();
+      return attempt === 1 ? Promise.reject(new Error('flaky asset')) : loadRendererEngineFactory();
     };
     const controller = createFakeController();
     const harness = mountHarness(Terminal, {

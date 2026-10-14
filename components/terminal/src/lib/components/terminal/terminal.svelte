@@ -26,7 +26,7 @@
   import { untrack } from 'svelte';
 
   import { createTerminalAttachment, type AttachmentSettings } from './terminal-attachment.ts';
-  import { loadRendererEngineFactory } from './terminal-engine-loader.ts';
+  import { engineLoader } from './terminal-engine-loader.ts';
   import { acceptsInput, isErrorState, mountsEngine, ownsGrid } from './terminal-state.ts';
   import {
     TERMINAL_FRAME_STATUS,
@@ -114,7 +114,7 @@
       createTerminalAttachment({
         host,
         controller: borrowed,
-        loadEngine: loadRendererEngineFactory,
+        loadEngine: () => engineLoader.load(),
         readSettings,
         onReady: () => {
           ready = true;

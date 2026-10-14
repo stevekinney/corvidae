@@ -61,12 +61,26 @@ async function sweep(
   }
 }
 
+const SEEDED_QUARTERS = [0, 1, 2, 3] as const;
+
+function seededQuarter(bytes: Uint8Array, quarter: number): Uint8Array[][] {
+  const all = seededPartitions(bytes);
+  const size = Math.ceil(all.length / SEEDED_QUARTERS.length);
+  return all.slice(quarter * size, (quarter + 1) * size);
+}
+
 describe('corpus coverage', () => {
   test('declares an oracle for every required corpus fixture, and no other', () => {
     expect(Object.keys(CORPUS_ORACLES).toSorted()).toEqual(
       [...REQUIRED_CORPUS_FIXTURE_IDS].toSorted(),
     );
     expect(CORPUS.map((fixture) => fixture.id)).toEqual([...REQUIRED_CORPUS_FIXTURE_IDS]);
+  });
+
+  test('the seeded quarters together are exactly the fixed-seed partitions', () => {
+    const bytes = CORPUS[0]!.bytes;
+    const joined = SEEDED_QUARTERS.flatMap((quarter) => seededQuarter(bytes, quarter));
+    expect(joined).toEqual(seededPartitions(bytes));
   });
 
   test('every case has a unique id, and the renderer adds cases beyond the corpus', () => {

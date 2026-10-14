@@ -19,3 +19,12 @@ export async function loadRendererEngineFactory(
   ]);
   return (options) => createRendererEngine({ Terminal, FitAddon }, options);
 }
+
+/**
+ * The loader the component calls. Nothing in the package changes `load`; tests replace it to
+ * decide when, and whether, the engine import resolves, and put it back afterwards. It is not
+ * exported from the package entry.
+ */
+export const engineLoader: { load: () => Promise<RendererEngineFactory> } = {
+  load: () => loadRendererEngineFactory(),
+};

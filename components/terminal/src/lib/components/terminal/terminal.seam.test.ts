@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
   destroyAllHarnesses,
@@ -11,8 +11,9 @@ import {
   createFakeFactory,
   type FakeEngine,
 } from './terminal-attachment-test-support.ts';
-import * as realLoader from './terminal-engine-loader.ts';
+import { engineLoader } from './terminal-engine-loader.ts';
 import { waitFor } from './terminal-test-support.ts';
+import Terminal from './terminal.svelte';
 import type { TerminalGeometry, TerminalProps } from './terminal.types.ts';
 
 /**
@@ -20,25 +21,18 @@ import type { TerminalGeometry, TerminalProps } from './terminal.types.ts';
  * measurable size, and an engine that fails while a session is running. The real engine is
  * covered by the other terminal tests and by the corpus.
  */
-const loadRealEngine = realLoader.loadRendererEngineFactory;
 const fake = createFakeFactory();
+const originalLoad = engineLoader.load;
 
-beforeAll(() => {
-  mock.module('./terminal-engine-loader.ts', () => ({
-    loadRendererEngineFactory: () => Promise.resolve(fake.factory),
-  }));
-});
-
-afterAll(() => {
-  mock.module('./terminal-engine-loader.ts', () => ({ loadRendererEngineFactory: loadRealEngine }));
+beforeEach(() => {
+  engineLoader.load = () => Promise.resolve(fake.factory);
 });
 
 afterEach(() => {
   destroyAllHarnesses();
+  engineLoader.load = originalLoad;
   fake.created.length = 0;
 });
-
-const { default: Terminal } = await import('./terminal.svelte');
 
 const engine = (): FakeEngine => fake.created.at(-1)!.engine;
 const message = (harness: MountedHarness) =>
