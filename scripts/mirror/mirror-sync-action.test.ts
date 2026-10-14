@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import type { GitHubApi, OpenPullRequestRecord } from './github-api.ts';
 import {
+  dispatchSkippedSnapshot,
   dispatchSnapshotWorkflow,
   openSyncPullRequest,
   pullRequestBodyFor,
@@ -709,6 +710,52 @@ describe('supersession (COR-1433)', () => {
       });
       const order = events.filter((event) => /^(create|dispatch|close)/.test(event));
       expect(order).toEqual(['create', 'dispatch', 'close 11']);
+    });
+  });
+
+  const skipManifest = {
+    baseBranch: 'main',
+    baseCommit: 'base-sha',
+    workflowFile: 'release.yaml',
+  } as const;
+
+  test('a skip-path snapshot is not dispatched while a strictly newer sync pull request is open', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
+      const logged: string[] = [];
+      const message = await dispatchSkippedSnapshot({
+        api,
+        target: 'weft',
+        manifest: skipManifest,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: older,
+        corvidaeRoot: root,
+        log: (line) => logged.push(line),
+      });
+      expect(events).toEqual([]);
+      expect(logged.join('\n')).toContain('#11');
+      expect(message).toContain('not dispatched');
+    });
+  });
+
+  test('a skip-path snapshot is dispatched when no open sync pull request is newer', async () => {
+    await withCorvidae(async ({ older, newer }, root) => {
+      const { api, events } = fake([record(11), record(12, { author: 'someone-else' })], {
+        'head-11': trailer(older),
+        'head-12': trailer(newer),
+      });
+      const message = await dispatchSkippedSnapshot({
+        api,
+        target: 'weft',
+        manifest: skipManifest,
+        branch: 'mirror-sync-new',
+        corvidaeCommit: newer,
+        corvidaeRoot: root,
+        log: () => {},
+      });
+      // Nothing is closed on this path, and the older pull request is left alone.
+      expect(events).toEqual(['dispatch']);
+      expect(message).toContain('snapshot workflow dispatched');
     });
   });
 
