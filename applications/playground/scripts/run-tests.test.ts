@@ -6,6 +6,7 @@ import {
   BUILD_PIPELINE_MODULE_NAMES,
   createTestProcessPlan,
   requiresFreshProcess,
+  selectLaneFiles,
   type PlaygroundTestFile,
 } from './run-tests.ts';
 
@@ -90,5 +91,26 @@ describe('playground test process isolation', () => {
     expect(callers.length).toBeGreaterThan(0);
     const listed: readonly string[] = BUILD_PIPELINE_MODULE_NAMES;
     expect(callers.filter((moduleName) => !listed.includes(moduleName)).toSorted()).toEqual([]);
+  });
+});
+
+describe('playground test lanes', () => {
+  const files = [
+    testFile('src/analyze.test.ts'),
+    testFile('src/analyze.slow.test.ts'),
+    testFile('scripts/run-tests.test.ts'),
+  ];
+
+  it('keeps slow files out of the fast lane', () => {
+    expect(selectLaneFiles(files, 'fast').map(({ path }) => path)).toEqual([
+      'src/analyze.test.ts',
+      'scripts/run-tests.test.ts',
+    ]);
+  });
+
+  it('runs only slow files in the slow lane', () => {
+    expect(selectLaneFiles(files, 'slow').map(({ path }) => path)).toEqual([
+      'src/analyze.slow.test.ts',
+    ]);
   });
 });

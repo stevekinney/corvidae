@@ -173,6 +173,10 @@ describe('internal workspace architecture', () => {
       'bun run lint',
       'bun run typecheck',
       'bun run test',
+      // COR-1499: slow correctness tests run serially after the fast phase, then the duration ratchet
+      // reads the fast phase's reports.
+      'bun run test:slow',
+      'bun run check:test-durations',
       'bun run coverage',
       'bun run build',
       'bun run format:check',
@@ -184,7 +188,7 @@ describe('internal workspace architecture', () => {
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
     expect(scripts['test:self']).toBe(
-      'bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
+      'bun scripts/bun-test-junit.ts --report-name=self ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
     );
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
@@ -248,12 +252,14 @@ describe('internal workspace architecture', () => {
         // The playground isolates build-driving test files in fresh Bun processes, so its `test`
         // script names the runner, and the runner is what must spawn `bun test`.
         expect(scripts['test'], directory).toBe('bun scripts/run-tests.ts');
+        expect(scripts['test:slow'], directory).toBe('bun scripts/run-tests.ts --slow');
         expect(
           await Bun.file(join(root, directory, 'scripts/run-tests.ts')).text(),
           directory,
         ).toContain("['bun', 'test',");
       } else {
-        expect(scripts['test'], directory).toMatch(/\bbun test\b/);
+        // Fast-lane tests run through the JUnit wrapper, which spawns `bun test` (COR-1499).
+        expect(scripts['test'], directory).toMatch(/\bbun test\b|\bbun-test-junit\.ts\b/);
       }
       expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
 

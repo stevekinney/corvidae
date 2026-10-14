@@ -17,7 +17,6 @@ import {
   CINDER_COMPONENT_SOURCE,
   EDITOR_COMPONENT_SOURCE,
 } from './component-sources.ts';
-import { discoverComponentDefinitions } from './discover.ts';
 import { REPOSITORY_ROOT } from './playground-paths.ts';
 import type { ComponentManifest } from './types.ts';
 
@@ -106,23 +105,6 @@ describe('buildComponentDocumentation', () => {
     const payload = await buildComponentDocumentation('table', await componentManifest('table'));
 
     expect(payload.readme.html).toContain('<h2 id="readme-usage">Usage</h2>');
-  });
-
-  it('points a README link to its own headings at their README ids', async () => {
-    const manifest = await analyzeComponent(
-      join(CHAT_COMPONENT_SOURCE.componentsRoot, 'chat', 'chat.svelte'),
-      { importPath: '@lostgradient/chat' },
-    );
-    const payload = await buildComponentDocumentation(
-      'chat',
-      manifest,
-      await loadPackageManifestForDocumentation(CHAT_COMPONENT_SOURCE),
-      CHAT_COMPONENT_SOURCE,
-    );
-
-    expect(payload.readme.html).toContain('href="#readme-layout-and-sizing"');
-    expect(payload.readme.html).toContain('id="readme-layout-and-sizing"');
-    expect(payload.readme.html).not.toContain('href="#layout-and-sizing"');
   });
 
   it('keeps a component route link without a fragment as it was', () => {
@@ -348,39 +330,6 @@ describe('buildComponentDocumentation', () => {
 
       expect(html).not.toContain('href="/page/command-menu"');
     });
-  });
-
-  it('builds valid documentation for every extracted Chat component', async () => {
-    const allDefinitions = await discoverComponentDefinitions();
-    const definitions = allDefinitions.filter(
-      (definition) => definition.source.id === CHAT_COMPONENT_SOURCE.id,
-    );
-    const packageManifest = await loadPackageManifestForDocumentation(CHAT_COMPONENT_SOURCE);
-    const failures: string[] = [];
-
-    for (const definition of definitions) {
-      const manifest = await analyzeComponent(definition.filePath, {
-        importPath: definition.importPath,
-      });
-      const payload = await buildComponentDocumentation(
-        definition.name,
-        manifest,
-        packageManifest,
-        CHAT_COMPONENT_SOURCE,
-      );
-      const errors = validateComponentDocumentationPayload(payload);
-      if (errors.length > 0) failures.push(`${definition.name}: ${errors.join('; ')}`);
-    }
-
-    expect(definitions.map((definition) => definition.name)).toEqual([
-      'chat',
-      'chat-composer-popover',
-      'chat-conversation-header',
-      'chat-conversation-list',
-      'chat-navigation-rail',
-      'chat-sub-session',
-    ]);
-    expect(failures).toEqual([]);
   });
 
   it('renders generated README tag references without marking the README unsafe', () => {

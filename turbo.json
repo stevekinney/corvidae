@@ -22,6 +22,11 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
     },
     "test": {
+      "outputs": ["test-output/junit/**"],
+      "dependsOn": ["transit"],
+      "env": ["CODEX_CI", "NODE_ENV"]
+    },
+    "test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV"]
@@ -54,14 +59,15 @@
     "//#test:self": {
       "dependsOn": ["//#preflight"],
       "env": ["CODEX_CI", "NODE_ENV"],
-      "outputs": []
+      "outputs": ["test-output/junit/self.xml"]
     },
     "//#test:browser-fixtures": {
       "dependsOn": ["//#preflight", "@lostgradient/browser-fixtures#transit"],
       "env": ["CODEX_CI", "TMPDIR"],
       "outputs": [
         "scripts/browser-fixtures/.playwright/manifest.json",
-        "scripts/browser-fixtures/.playwright/fixture-modules.ts"
+        "scripts/browser-fixtures/.playwright/fixture-modules.ts",
+        "test-output/junit/browser-fixtures.xml"
       ]
     },
     "//#dev:browser-fixtures": {
@@ -82,6 +88,7 @@
       "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]
     },
     "@lostgradient/weft#test": {
+      "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
       "env": [
         "CODEX_CI",
@@ -148,6 +155,7 @@
       ]
     },
     "@lostgradient/cinder#test": {
+      "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
       "inputs": [
