@@ -871,8 +871,9 @@ describe('createWebhookNotifier', () => {
     }
     await notifier.flush();
 
-    expect(calls.map((call) => JSON.parse(call.body).trigger).sort()).toEqual(
-      [...everyTrigger].sort(),
+    const byName = (left: string, right: string): number => left.localeCompare(right);
+    expect(calls.map((call): string => JSON.parse(call.body).trigger).toSorted(byName)).toEqual(
+      everyTrigger.toSorted(byName),
     );
 
     await notifier.dispose();

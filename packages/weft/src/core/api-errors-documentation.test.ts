@@ -68,14 +68,17 @@ describe('documentation/reference/api-errors.md', () => {
       ];
     });
 
-    expect(documented.toSorted()).toEqual(expected.toSorted());
+    const byCode = (left: readonly unknown[], right: readonly unknown[]): number =>
+      String(left[0]).localeCompare(String(right[0]));
+    expect(documented.toSorted(byCode)).toEqual(expected.toSorted(byCode));
   });
 
   it('lists every public WeftErrorCode exactly once, each in the file that defines it', () => {
     const rows = tableRows('WeftErrorCode');
-    const documented = rows.map(([code]) => code);
+    const documented = rows.map(([code = '']) => code);
 
-    expect(documented.toSorted()).toEqual(publicWeftErrorCodes().toSorted());
+    const byName = (left: string, right: string): number => left.localeCompare(right);
+    expect(documented.toSorted(byName)).toEqual(publicWeftErrorCodes().toSorted(byName));
     for (const [code = '', file = ''] of rows) {
       expect(isWeftErrorCode(code)).toBe(true);
       const path = join(sourceDirectory, file);
