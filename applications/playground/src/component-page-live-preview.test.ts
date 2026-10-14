@@ -535,8 +535,19 @@ describe('canBareMount', () => {
     ['grid-list-item', undefined, false],
     ['side-navigation-item', undefined, false],
     ['statistic', undefined, true],
+    ['navigation-item', true, true],
+    ['locale-provider', undefined, true],
   ] as const)('decides whether %s mounts bare', (kebabName, isCompound, expected) => {
     expect(canBareMount(kebabName, isCompound, previewRecipeFor(kebabName))).toBe(expected);
+  });
+
+  test('gives LocaleProvider and NavigationItem recipe children, so their stage mounts content', () => {
+    // Both rendered no mounted preview: LocaleProvider reserved a frame nothing filled, and
+    // NavigationItem (compound only by its required snippet, with no example) had no stage.
+    expect(previewRecipeFor('locale-provider')?.childrenHtml).toBeDefined();
+    expect(previewRecipeFor('locale-provider')?.prefersFeaturedExample).toBeUndefined();
+    expect(canBareMount('navigation-item', true)).toBe(false);
+    expect(previewRecipeFor('navigation-item')?.childrenHtml).toBe('Projects');
   });
 
   test('mounts Label bare through its recipe, which supplies the required children', () => {
@@ -548,28 +559,62 @@ describe('canBareMount', () => {
   });
 });
 
+/**
+ * The accessible name a form control would get: `aria-label`, then `aria-labelledby`, then a
+ * `<label for>` or an enclosing `<label>`. Enough of the accessible-name algorithm for the
+ * controls the Playground mounts bare.
+ */
+function accessibleName(control: Element): string {
+  const ariaLabel = control.getAttribute('aria-label');
+  if (ariaLabel) return ariaLabel;
+  const labelledBy = control.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    return labelledBy
+      .split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+      .join(' ')
+      .trim();
+  }
+  const id = control.getAttribute('id');
+  const forLabel = id === null ? null : document.querySelector(`label[for="${id}"]`);
+  return (forLabel ?? control.closest('label'))?.textContent?.trim() ?? '';
+}
+
 describe('live preview accessible names', () => {
   test.each([
+    ['checkbox', 'Accept the terms'],
+    ['color-field', 'Brand color'],
+    ['combobox', 'Assignee'],
+    ['file-upload', 'Attachments'],
+    ['input', 'Email address'],
+    ['number-input', 'Quantity'],
     ['search-field', 'Search components'],
+    ['select', 'Priority'],
     ['tag-input', 'Tags'],
-  ] as const)('labels the %s input the Playground mounts', async (kebabName, name) => {
+    ['textarea', 'Description'],
+    ['time-field', 'Start time'],
+  ] as const)('labels the %s control the Playground mounts', async (kebabName, name) => {
     // The component file rather than the package root, so the test compiles one component graph.
     const module: { default: unknown } = await import(
       join(CINDER_COMPONENT_SOURCE.componentsRoot, kebabName, `${kebabName}.svelte`)
     );
-    const component = module.default;
     const mountErrors: MountErrorRecord = {};
     const element = document.createElement('div');
     element.id = LIVE_MOUNT_CONTAINER_ID;
     document.body.append(element);
 
-    const teardown = createLivePreviewMount({ mountErrors })(
-      component,
-      toMountProps([], {}, [], previewRecipeFor(kebabName)),
-    )(element);
+    // The page seeds a required `id` control as `<name>-example` (and Select's options); the
+    // recipe supplies the name.
+    const teardown = createLivePreviewMount({ mountErrors })(module.default, {
+      id: `${kebabName}-example`,
+      ...(kebabName === 'select' ? { options: [{ value: 'one', label: 'Label one' }] } : {}),
+      ...toMountProps([], {}, [], previewRecipeFor(kebabName)),
+    })(element);
 
     expect(mountErrors[LIVE_MOUNT_CONTAINER_ID]).toBeUndefined();
-    expect(element.querySelector('input')?.getAttribute('aria-label')).toBe(name);
+    const control = element.querySelector('input, select, textarea');
+    expect(control).not.toBeNull();
+    expect(accessibleName(control!)).toContain(name);
     teardown();
     element.remove();
   });
