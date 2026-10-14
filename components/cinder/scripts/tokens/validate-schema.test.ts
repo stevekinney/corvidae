@@ -3,13 +3,27 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { CINDER_BASE } from '../../src/tokens/runtime/base-corpus.ts';
+import { authoringContexts } from '../../src/tokens/runtime/context-stack.ts';
+import { evaluateThemeProperties } from '../../src/tokens/runtime/evaluate.ts';
+import { buildThemeSources } from '../../src/tokens/runtime/theme-sources.ts';
 import { TokenValidationError } from '../../src/tokens/runtime/types.ts';
 import {
   validateResolverDocumentSchema,
   validateTokenDocumentSchema,
 } from '../../src/tokens/runtime/validate-schema.ts';
 import { validateTokenDocument } from '../../src/tokens/runtime/validate-tokens.ts';
-import { assertValidTokenDocument } from '../../src/tokens/runtime/validate.ts';
+import {
+  assertValidResolverDocument,
+  assertValidTokenDocument,
+} from '../../src/tokens/runtime/validate.ts';
+import {
+  assertFixtureIntegrity,
+  loadInteroperabilityManifest,
+  readFixtureBytes,
+  readVerifiedFixture,
+  type InteroperabilityFixture,
+} from './interoperability-fixtures.ts';
 
 const inheritedTypeCases = [
   ['color', { colorSpace: 'oklch', components: [0.5, 0.1, 255] }],
@@ -671,5 +685,112 @@ describe('JSON Schema validation (resolver)', () => {
         resolutionOrder: [{ $ref: '#/sets/foundation' }],
       }),
     ).toThrow();
+  });
+});
+
+describe('interoperability fixture matrix (COR-486, R5)', () => {
+  const fixtures = loadInteroperabilityManifest();
+  const byId = (id: string): InteroperabilityFixture => {
+    const fixture = fixtures.find((candidate) => candidate.id === id);
+    if (fixture === undefined) throw new Error(`no fixture ${id}`);
+    return fixture;
+  };
+  const issuesOf = (document: unknown): Array<{ path: string; reason: string }> => {
+    try {
+      assertValidTokenDocument(document);
+    } catch (error) {
+      return (error as { issues: Array<{ path: string; reason: string }> }).issues;
+    }
+    return [];
+  };
+  const emptyOverrides = { shared: {}, light: {}, dark: {}, reduced: {}, forcedReduced: {} };
+  const propertiesWith = (shared: unknown) => {
+    const result = evaluateThemeProperties(
+      buildThemeSources({ base: CINDER_BASE, overrides: { ...emptyOverrides, shared } }, 1),
+    );
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics.slice(0, 2)));
+    return result.properties;
+  };
+
+  test('the manifest pins source, version, hash, license, disposition and reason for every fixture', () => {
+    expect(fixtures.length).toBeGreaterThanOrEqual(11);
+    for (const fixture of fixtures) {
+      expect(fixture.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(fixture.license.spdx).toBe('MIT');
+      expect(fixture.license.attribution.length).toBeGreaterThan(10);
+      expect(fixture.expected.reason.length).toBeGreaterThan(20);
+      if (fixture.kind === 'positive-document') {
+        expect(fixture.source.url).toContain(fixture.source.commit ?? 'missing');
+        expect(fixture.source.commit).toMatch(/^[0-9a-f]{40}$/);
+      }
+    }
+    expect(new Set(fixtures.map((fixture) => fixture.id)).size).toBe(fixtures.length);
+  });
+
+  test('every fixture matches its pinned SHA-256, and a changed byte fails the check', () => {
+    for (const fixture of fixtures) {
+      expect(() => assertFixtureIntegrity(fixture, readFixtureBytes(fixture))).not.toThrow();
+    }
+    const first = fixtures[0]!;
+    const tampered = Buffer.concat([Buffer.from(readFixtureBytes(first)), Buffer.from(' ')]);
+    expect(() => assertFixtureIntegrity(first, tampered)).toThrow(/hashes to/);
+  });
+
+  test.each(['terrazzo-figma-sds-size', 'terrazzo-figma-sds-color'])(
+    '%s passes the schema-first boundary, round-trips its source and acquires no CSS binding',
+    (id) => {
+      const document = JSON.parse(readVerifiedFixture(byId(id)));
+      expect(issuesOf(document)).toEqual([]);
+      expect(JSON.parse(JSON.stringify(document))).toEqual(document);
+      expect(JSON.stringify(document)).not.toContain('com.lostgradient.cinder');
+      const withFixture = propertiesWith(document);
+      const baseline = propertiesWith({});
+      for (const context of authoringContexts(CINDER_BASE.resolver).map((c) => c.id)) {
+        expect(withFixture[context]).toEqual(baseline[context]);
+      }
+    },
+  );
+
+  test.each([
+    ['synthetic-em-typography'],
+    ['synthetic-legacy-dimension-string'],
+    ['negative-missing-type'],
+    ['negative-stroke-style'],
+  ])('%s fails with the pinned path', (id) => {
+    const fixture = byId(id);
+    const issues = issuesOf(JSON.parse(readVerifiedFixture(fixture)));
+    expect(issues.length).toBeGreaterThan(0);
+    expect(issues.some((issue) => issue.path.includes(fixture.expected.pathContains ?? '\0'))).toBe(
+      true,
+    );
+  });
+
+  test('COR-245: an inherited strokeStyle source token validates and round-trips with its metadata', () => {
+    const document = JSON.parse(readVerifiedFixture(byId('synthetic-inherited-stroke-style')));
+    expect(issuesOf(document)).toEqual([]);
+    const properties = propertiesWith(document);
+    expect(Object.keys(properties['light/default']!).some((name) => name.includes('stroke'))).toBe(
+      false,
+    );
+    expect(document.$extensions).toEqual({ 'com.example.editor': { untouched: true } });
+    expect(document.stroke.dashed.$description).toBe('Inherits strokeStyle.');
+  });
+
+  test('the extra-axis resolver is valid DTCG 2025.10 and outside the Cinder profile', () => {
+    const resolver = JSON.parse(readVerifiedFixture(byId('synthetic-extra-axis-resolver')));
+    expect(() => validateResolverDocumentSchema(resolver)).not.toThrow();
+    // Cinder's profile asks for more than the standard: sources by $ref, and exactly the
+    // theme and motion axes. Those are profile limits, not DTCG violations.
+    expect(() => assertValidResolverDocument(resolver)).toThrow(/non-empty array of \$ref sources/);
+    expect(() => authoringContexts(resolver)).toThrow(/theme.*motion|modifiers/);
+    expect(byId('synthetic-extra-axis-resolver').expected.disposition).toBe('unsupported-profile');
+  });
+
+  test('custom dialects are not DTCG token documents and are never evaluated', () => {
+    expect(() => JSON.parse(readVerifiedFixture(byId('synthetic-json5-like')))).toThrow();
+    for (const id of ['synthetic-acronis-like', 'synthetic-spectrum-like']) {
+      const text = readVerifiedFixture(byId(id));
+      expect(text).not.toContain('"$value"');
+    }
   });
 });

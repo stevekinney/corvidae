@@ -32,3 +32,5 @@ components/cinder/src/tokens/runtime/*-validator.generated.js
 components/editor/src/lib/export/__fixtures__/diff-review/
 .env
 .env.*
+# Interoperability fixtures are pinned by SHA-256 (manifest.json); formatting would change their bytes.
+components/cinder/scripts/tokens/fixtures/theme-builder/interoperability/

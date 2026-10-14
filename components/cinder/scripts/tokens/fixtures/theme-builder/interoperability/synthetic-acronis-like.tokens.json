@@ -1,0 +1,8 @@
+{
+  "color": {
+    "brand": {
+      "values": { "light": "#336699", "dark": "#99ccff" },
+      "platforms": ["web", "ios"]
+    }
+  }
+}
