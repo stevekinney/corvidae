@@ -14,6 +14,7 @@ import {
   stringifyCatalogSnapshot,
 } from '../src/server/operation-catalog-snapshot.ts';
 import { MAX_BATCH_OPERATIONS, MAX_SCAN_LIMIT } from '../src/storage/interface.ts';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { assignAliasNames } from './operation-client-aliases.ts';
 import { canonicalKey, schemaToNode } from './operation-client-schema.ts';
 
@@ -229,8 +230,10 @@ describe('createOperationClientSources — generated output', () => {
       );
 
       // Check drift without rewriting the source checkout as part of a test.
-      const written = (await readdir(directory)).toSorted();
-      expect(written).toEqual((await readdir(OPERATION_CLIENT_DIRECTORY)).toSorted());
+      const writtenEntries = await readdir(directory);
+      const checkedInEntries = await readdir(OPERATION_CLIENT_DIRECTORY);
+      const written = writtenEntries.toSorted();
+      expect(written).toEqual(checkedInEntries.toSorted());
       expect(written).toContain(OPERATION_CLIENT_FILE);
       expect(lines.toSorted()).toEqual(
         written.map((fileName) => `wrote ${join(directory, fileName)}`),
@@ -247,9 +250,11 @@ describe('createOperationClientSources — generated output', () => {
 
   it('rejects an unknown CLI option before writing anything', async () => {
     const lines: string[] = [];
-    await expect(
-      runGenerateOperationClientCommand(['--output-dir', 'unused'], (line) => lines.push(line)),
-    ).rejects.toThrow("Unknown option '--output-dir'");
+    expect(
+      await throwingRejectionOf(
+        runGenerateOperationClientCommand(['--output-dir', 'unused'], (line) => lines.push(line)),
+      ),
+    ).toThrow("Unknown option '--output-dir'");
     expect(lines).toEqual([]);
   });
 });
