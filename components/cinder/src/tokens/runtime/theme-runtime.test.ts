@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
@@ -359,9 +360,9 @@ describe('runtime evaluation of the theme-builder fixtures', () => {
       path: '$',
       reason: expect.stringContaining('has "motion" before "theme"'),
     });
-    await expect(buildTokensBaseCss(reorder.resolver, reorder.documentsByPath)).rejects.toThrow(
-      'has "motion" before "theme"',
-    );
+    expect(
+      await throwingRejectionOf(buildTokensBaseCss(reorder.resolver, reorder.documentsByPath)),
+    ).toThrow('has "motion" before "theme"');
     const halo = (id: string) =>
       result.provenance.tokens[id]!.find((t) => t.path === 'palette.halo')!.provenance.winner;
     expect(halo('dark/default').document).toBe('profile-dark.tokens.json');
