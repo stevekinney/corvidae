@@ -19,7 +19,7 @@ Status: decided. The recorded runs, their raw results, and the comparison are co
 
   Keep a plain `<a href>` as the fallback for every link. The static `/api/documentation/<name>` and `/api/manifest/<name>` JSON routes remain available for data a document swap does not cover; CIN-589 should confirm the islands it needs before adding a new route-data format.
 
-- **Leaks: none reproduced.** Two series grew monotonically. Owner-level evidence shows one is a measurement artifact and the other levels off; see Leaks. No issue is filed.
+- **Leaks: none reproduced.** Every monotonic series is listed in Leaks with its owner-level evidence. The browser EventSource count was a tracking artifact (the server held one stream), and the rebuild memory growth is allocator behaviour: constant region count, a large reclaimable share, and a footprint that moves both ways. No issue is proposed.
 
 ## Context
 
@@ -56,6 +56,8 @@ Run the commands from `applications/playground`. The phases run in this order:
 - **Sampled tree peak**: the largest sum of `ps` `rss` (kibibytes times 1024) across the child and all its descendants, sampled every 100 ms. One observer runs identically for baseline and candidate, and its own cost is one `ps` spawn per sample. This figure includes the short-lived `bun` processes the featured-example renderer spawns, which the exporter's own peak does not.
 - **JS heap**: Chromium's `Runtime.getHeapUsage` through CDP after `HeapProfiler.collectGarbage`. It is never added to RSS.
 - **Host load**: `uptime` load averages and the logical processor count, captured before and after every sample.
+- **Memory pressure**: from `b68efe09`'s parent `f35758e1` on, every host-load reading also records `kern.memorystatus_level` (the percentage of memory the kernel counts as available) and `vm_stat` (free, active, inactive, wired, and compressor-occupied bytes, and the swap counters). The recorded decision runs predate this and carry no memory-pressure field.
+- **Playground environment**: the pinned environment records the Playground's own configuration as its registered reader (`src/environment-configuration.ts`) sees it: `CINDER_TEST_COMPONENTS`, `PLAYGROUND_BASE_URL`, `PLAYGROUND_PORT_FILE`, `PORT`, and `NODE_ENV`. Children set the base URL, port, and port file explicitly, and from `f35758e1` on they also set `CINDER_TEST_COMPONENTS` to empty (the server's default of every component), so an inherited value cannot narrow a measured prebuild.
 - **Load gate**: before every sample, including a warm sample that follows its cold one, the script waits while the one-minute load average exceeds three times the logical processor count (30 on this host). It polls every 30 s with no deadline and records the wait (threshold, checks, waited milliseconds, and the load at start) with the sample. A warm sample held by the gate starts later than "immediately", and its recorded wait says by how much.
 - **`Bun.build` count**: derived from the source rather than intercepted. A static export makes one shell browser build, one page browser build per documentation route, one shell server-renderer build, one page server-renderer build, and one build per stylesheet (`documentation`, `landing`) inside the exporter process. It also makes one featured-example server build per featured render, and each of those runs in its own spawned `bun` process. Scenario and fixture builds are lazy, and the export never requests them. At the measured source, the smoke runs saw 211 documentation routes (212 sitemap routes including `/`) and 181 featured renders (182 pids observed in the exporter's tree). That gives 1 + 211 + 1 + 1 + 2 + 181 = 397 builds for the baseline, and 1 + 1 + 1 + 1 + 2 + 181 = 187 for the candidate, whose 211 page builds collapse into one. The recorded runs confirm both counts: 212 sitemap routes and 182 observed processes in every export sample. Emitted artifacts are counted from `build/` on disk, as files and bytes in total and as unique content by SHA-256.
 
@@ -135,7 +137,25 @@ Every recorded server reached ready inside the existing 300 s limit, and every p
 
 ### Navigation cycles
 
-After one warm-up cycle, five recorded cycles through home, Button, Action Row, Chat, Modal, and Review Editor each made 189 requests and transferred 2,992,016 encoded bytes, identically. Interaction-ready times (navigation start to a visible hero heading) were 26 to 38 ms for home and, from the second recorded cycle on, 49 to 124 ms for component pages; the first recorded cycle reached 181 ms for Chat and 234 ms for Review Editor. Opening the Playground view took 50 to 165 ms and closing it 46 to 62 ms. Example mount hosts, DOM nodes (2,622), JS event listeners (23), and documents (1) were identical in every cycle, the JS heap held at 1.76 MB, and the server's retained artifacts held at 2,647 entries and 369,993,933 bytes.
+The recorded baseline run (`baseline.json`, probe as of `f165d122`) went through one warm-up cycle and five recorded cycles over home, Button, Action Row, Chat, Modal, and Review Editor. Each cycle made 189 requests and transferred 2,992,016 encoded bytes, identically.
+
+- **Hero visible (paint, not interactivity)**: the time from navigation start to a visible prerendered hero heading. Home took 26 to 38 ms. From the second recorded cycle on, component pages took 49 to 124 ms; the first recorded cycle reached 181 ms for Chat and 234 ms for Review Editor. The heading is server-rendered, so this measures first paint of the content, not when the page responds to input.
+- **Playground view**: opening it took 50 to 165 ms and closing it 46 to 62 ms.
+- **Counters at the cycle checkpoint**: example mount hosts, DOM nodes (2,622), JS event listeners (23), and documents (1) were identical in every cycle, the JS heap held at 1.76 MB, and the server's retained artifacts held at 2,647 entries and 369,993,933 bytes.
+
+### What each navigation counter can observe
+
+That probe took its only browser checkpoint on home, after a full document navigation. A full navigation discards the previous document, so the browser counters there could not show retention inside a component page; they are vacuous for that question. `f35758e1` changes the probe to close that gap and to time readiness properly:
+
+- **Hydrated**: navigation start to `#app[data-playground-controls-hydrated]`, which `page-bundle.ts` sets when the page's controls are hydrated. This is the interactivity signal. Home's shell sets no hydration marker, so home reports hero-visible time only.
+- **Component-page checkpoint**: taken on each component page after the Playground view has opened, settled, and closed, before navigating away. Across cycles, a series there can show retention inside a page that one open-and-close leaves behind.
+- **Live example mounts**: `[id^="example-mount-"]` hosts with children. They count mounts present in the DOM, but cannot see a component instance that stays alive after its host is removed.
+- **DOM nodes, documents, JS event listeners**: Chromium's `Memory.getDOMCounters` after a forced collection. Detached-but-retained nodes still count, but listeners on non-DOM targets do not.
+- **Open EventSource streams**: from CDP network events. The ledger now forgets a document's streams when the main frame navigates, so the count is the current document's open streams. The server-side `liveReloadSubscribers` (`sseClients.size`) is the owner's own count and the check against it.
+- **Observers and timers**: not observable at any owner boundary without patching, so not counted.
+- **JS heap**: `Runtime.getHeapUsage` after `HeapProfiler.collectGarbage`; never added to RSS.
+
+The gated five-cycle rerun with these counters (`diagnostic-navigation-2.json`) is pending: it runs only when the 1-minute load is at most 30, and the 30 s Playwright navigation default stays unchanged.
 
 ### Edit/rebuild cycles
 
@@ -150,7 +170,7 @@ Five rewrites of the disposable Button example each reached the watcher's invali
 | Strict prerendering | Retain | The static export already prerenders all 212 routes and fails the build if any page is blank. |
 | Lazy route code | Retain | Scenarios and the bare component already load on demand; opening the Playground view takes 50 to 165 ms warmed, with no growth across cycles. |
 | Native-link fallback | Retain, and require it in CIN-589 | Every route is a complete static document, so a plain link always works. |
-| Intent preloading | Reject for now | No measured navigation misses a target: after the first recorded cycle, component pages are interactive in at most 124 ms (234 ms in the first), and preloading would add requests to the 189 per cycle without a measured need. CIN-589 may revisit it with its own measurement. |
+| Intent preloading | Reject for now | No measured navigation misses a target: after the first recorded cycle, component pages show their hero within 124 ms (234 ms in the first; paint, not hydration), and preloading would add requests to the 189 per cycle without a measured need. CIN-589 may revisit it with its own measurement. |
 | Focus and announcements on navigation | Adopt as a CIN-589 requirement | A full document navigation resets focus natively; a client-side swap must do it itself. |
 | Static hosting | Retain | The exported `build/` is the deployment, and CIN-404's gate serves that output without compiling. |
 | Cross-shard artifact reuse | Reject | CIN-404's shards serve the existing `build/` and never compile, so there is no repeated build to reuse. The repeated cost measured here is inside one export. |
@@ -158,9 +178,28 @@ Five rewrites of the disposable Button example each reached the watcher's invali
 
 ## Leaks
 
-No leak was reproduced. Two series grew monotonically in the recorded five-cycle runs, and each was traced to its owner before being classified.
+No leak was reproduced, and no issue is proposed. Every series the growth classifier marked `monotonic-growth` (never fell, ended higher) in any committed run is listed here with its owner-level evidence.
 
-- **Open EventSource count (browser)**: 14, 21, 28, 35, 42, one more per page navigation. The diagnostic run at `591bf0e0` read the server's own owner of those streams, `sseClients` in `src/sse-broadcast.ts`, which held exactly one subscriber at every checkpoint. DOM documents (1), nodes, and listeners were flat. The rise comes from the CDP tracker: a stream torn down with its document emits no `loadingFinished` or `loadingFailed`, so the probe never sees it close. That makes it a measurement artifact, not retention (`cin-585-results/diagnostic-navigation.json`).
-- **Probe process resident memory during edit/rebuild**: rose about 10.9 MB per cycle over five cycles while the JS heap, retained artifacts, and in-flight builds stayed flat. A 20-cycle diagnostic (`cin-585-results/diagnostic-rebuild.json`) shows it levelling off. It rose 23 MB over the first 12 edits (4,056 to 4,079 MB) and then did not change for the last eight, and the JS heap fluctuated between 752 and 755 MB. That is a bounded high-water rise in native memory around `Bun.build`, not unbounded growth. It is recorded here rather than called caching. A longer run would be the next check if edit sessions grow far beyond 20 saves.
+| Run | Series | Change | Owner-level evidence | Classification |
+| --- | --- | --- | --- | --- |
+| `baseline.json` navigation | `openEventSources` (browser) | 14 to 42, +7 per cycle | The server's `sseClients` held exactly one stream at every checkpoint (`diagnostic-navigation.json`) | CDP tracking artifact: a stream torn down with its document emits no close event. Fixed in `f35758e1`, which forgets a document's streams at each main-frame navigation. |
+| `baseline.json` navigation | `jsHeapUsedBytes` | +768 bytes, once, in cycle 5 | DOM nodes, documents, and listeners identical in every cycle | Below any owner's resolution |
+| `baseline.json` navigation | `probeResidentBytes` | +0.18 MB over five cycles (3,739.78 to 3,739.96 MB) | Retained server artifacts flat at 2,647 entries and 369,993,933 bytes | Below any owner's resolution |
+| `baseline.json` rebuild | `probeResidentBytes` | +43.5 MB over five edits | JS heap and retained artifacts flat; attributed below | Bounded allocator behaviour |
+| `diagnostic-navigation.json` | `openEventSources` (browser) | 14 to 42 | Server `sseClients` stayed at 1 | Same CDP artifact |
+| `diagnostic-rebuild.json` | `pageArtifactBytes`, `totalArtifactBytes` | +2 bytes from cycle 10 | Entry and artifact counts flat | The fixture's own text: its cycle number gains a digit and appears twice |
+| `diagnostic-rebuild.json` | `probeResidentBytes` | +31.4 MB over 22 readings | Never fell across all 22 readings; rose 0.85 MB over the last eight intervals (4,078.31 to 4,079.16 MB); JS heap 752 to 755 MB; artifacts flat | Bounded allocator behaviour, attributed below |
+| `diagnostic-rebuild-footprint.json` | `footprint JS JIT Generated Code dirty` | 24 to 25 MB, one 1 MB step at edit 19 | JIT code is allocated in chunks; one step in 20 edits | Below the resolution of a 20-edit run |
+| `diagnostic-rebuild-footprint.json` | `footprint Malloc Small dirty` | 1.83 to 1.88 MB, flat after edit 7 | System malloc small zone | Plateau |
 
-Two smaller monotonic readings are below any owner's resolution: the navigation JS heap rose 768 bytes once, and the edit/rebuild page-artifact bytes rose 2 bytes when the fixture's cycle number reached two digits.
+### Allocation evidence for the rebuild growth
+
+`diagnostic-rebuild-footprint.json` repeats the 20-edit rebuild at `b68efe09` with `footprint <pid>` read for the server's process at every checkpoint (before the edits, after each edit, and after the fixture is removed: 22 readings), each after a forced collection, and with host load and memory pressure recorded beside it.
+
+It ran ungated, at 1-minute load 174 (start) and 180 to 196 (checkpoints), on the coordinator's instruction. Region attribution and retained counts do not depend on CPU load, and the gate had held the rerun for over an hour. Memory pressure was high: 63 to 67 percent available, 16.0 to 18.5 GB in the compressor. Under that pressure the kernel compresses idle pages, so this run's resident size (2,518 to 3,098 MB, fluctuating) cannot be compared with the gated run's 4,048 to 4,079 MB. `footprint` counts compressed dirty pages, so it is the attribution measure here.
+
+- **Where the memory is**: one category, `App-Specific Tag 1`, is almost all of the server's footprint (1,032 to 1,662 MB dirty across the 22 readings). It is an application-tagged VM region: not a system malloc zone, a mapped file, or JIT code. `footprint` does not attribute it further, but it belongs to the process's own runtime allocator, not to any measured Playground owner. The next largest are `JS JIT Generated Code` (24 to 25 MB), `WebKit Malloc` (7.7 MB), and `WebAssembly Memory` (6.5 MB).
+- **Why it is bounded**: across all 22 readings `App-Specific Tag 1` kept exactly 49 regions, so no new memory was mapped. It carried 1.24 to 2.04 GB marked reclaimable (freed by the allocator, not yet taken back by the kernel), and its dirty size moved both ways: 1,108 MB after the first edit, 1,390 MB at its highest, and 1,124 MB after the fixture was removed. The total footprint followed it (1,081 to 1,390 MB across the edits) and never trended upward. Retained artifacts held at 2,648 entries, and the JS heap stayed between 710 and 716 MB.
+- **Reading of the gated run's rise**: the +31.4 MB resident rise in `diagnostic-rebuild.json` is smaller than the 300 MB swings the same allocator region shows from one edit to the next. That fits pages being reused and released lazily, not a retained owner.
+
+Every series is bounded or allocator behaviour, so there is no owner to file against. If edit sessions grow far beyond 20 saves, a longer `footprint` run is the next check, and the JIT region is the one to watch.
