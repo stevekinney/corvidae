@@ -21,7 +21,7 @@ import type {
   OutputChannel,
   ProtocolMessage,
 } from './messages.ts';
-import { PROTOCOL_VERSION } from './protocol-constants.ts';
+import { MAXIMUM_FRAME_PAYLOAD_BYTES, PROTOCOL_VERSION } from './protocol-constants.ts';
 import {
   accept,
   reject,
@@ -102,7 +102,12 @@ export class HostEndpoint {
   /** Decode and validate one frame from the client. */
   receive(frame: Uint8Array | string): ProtocolResult<ClientMessage> {
     if (this.#inboundClosed) return reject('stale-generation', 'attachment-revoked');
-    const decoded = decodeFrame(frame, 'host', { maxFrameBytes: this.#limits.maxFrameBytes });
+    // The advertised limit binds only once attachment terms exist: `hello` precedes it, and any
+    // limit up to the protocol-wide maximum must still be able to complete a handshake.
+    const decoded = decodeFrame(frame, 'host', {
+      maxFrameBytes:
+        this.#terms === undefined ? MAXIMUM_FRAME_PAYLOAD_BYTES : this.#limits.maxFrameBytes,
+    });
     if (!decoded.ok) return this.#close(decoded);
     const message = decoded.value;
     if (message.kind === 'hello') {
@@ -254,7 +259,7 @@ export class HostEndpoint {
         maxFrameBytes: this.#limits.maxFrameBytes,
         maxQueuedOperations: this.#limits.maxQueuedOperations,
       },
-      { maxFrameBytes: this.#limits.maxFrameBytes },
+      { maxFrameBytes: MAXIMUM_FRAME_PAYLOAD_BYTES },
     );
     if (!encoded.ok) return encoded;
     this.#terms = {
@@ -347,8 +352,10 @@ export class HostEndpoint {
       message,
     }));
     if (sent.ok) {
-      if (submitted) this.#authorityRevoked = true;
-      else this.#operations.refuse();
+      if (submitted) {
+        this.#authorityRevoked = true;
+        this.#operations.retire(operationSequence);
+      } else this.#operations.refuse();
     }
     return sent;
   }
@@ -392,7 +399,7 @@ export class HostEndpoint {
           code,
           message,
         },
-        { maxFrameBytes: this.#limits.maxFrameBytes },
+        { maxFrameBytes: MAXIMUM_FRAME_PAYLOAD_BYTES },
       );
       if (!encoded.ok) return encoded;
       this.#inboundClosed = true;
@@ -425,6 +432,7 @@ export class HostEndpoint {
     if (sent.ok) {
       this.#cleanupReported = true;
       this.#inboundClosed = true;
+      this.#authorityRevoked = true;
     }
     return sent;
   }

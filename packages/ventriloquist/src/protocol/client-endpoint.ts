@@ -191,8 +191,10 @@ export class ClientEndpoint {
           ? this.#operations.verifySubmitted(message.operationSequence)
           : this.#operations.verifyResolution(message.operationSequence);
         if (!verified.ok) return verified;
-        if (submitted) this.#authorityRevoked = true;
-        else this.#operations.refuse();
+        if (submitted) {
+          this.#authorityRevoked = true;
+          this.#operations.retire(message.operationSequence);
+        } else this.#operations.refuse();
         return undefined;
       }
       case 'process-exit':

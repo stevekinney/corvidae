@@ -61,6 +61,14 @@ export class OperationLedger {
   }
 
   /**
+   * Retire an operation that has received its terminal failure. A second terminal failure naming
+   * it is then `unknown-operation`: one operation never reports two terminal results.
+   */
+  retire(sequence: number): void {
+    this.#submitted.delete(sequence);
+  }
+
+  /**
    * Resolve the oldest unresolved operation because it was refused before it was queued. It never
    * entered the host FIFO, so it is no longer an operation a later `backend-failed` or
    * `transport-failed` may name.

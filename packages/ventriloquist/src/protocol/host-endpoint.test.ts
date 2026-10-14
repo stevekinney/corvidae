@@ -962,3 +962,45 @@ describe('an operation refused before it was queued', () => {
     },
   );
 });
+
+describe('a terminal failure is reported once per operation', () => {
+  test.each(['backend-failed', 'transport-failed'] as const)(
+    'rejects a second %s naming an acknowledged operation',
+    (code) => {
+      const { host, client } = connect();
+      expectOk(host.receive(expectOk(client.input('a')).frame));
+      expectOk(client.receive(expectOk(host.acknowledgeOperation(1)).frame));
+      expectOk(host.failOperation(1, code, 'first'));
+      expect(failureOf(host.failOperation(1, code, 'second'))).toEqual({
+        code: 'malformed-frame',
+        reason: 'unknown-operation',
+      });
+    },
+  );
+});
+
+describe('final cleanup', () => {
+  test('revokes authority without a prior terminate, exit or failure', () => {
+    const { host } = connect();
+    expect(host.authorityRevoked).toBe(false);
+    expectOk(host.cleanupResult('complete'));
+    expect(host.authorityRevoked).toBe(true);
+  });
+});
+
+describe('a small advertised frame limit', () => {
+  test('still completes the handshake, then binds the attachment', () => {
+    const { host, client } = connect({ host: { maxFrameBytes: 128 } });
+    expect(host.terms?.maxFrameBytes).toBe(128);
+    expect(client.terms?.maxFrameBytes).toBe(128);
+    expect(failureOf(host.receive(`{"padding":"${'x'.repeat(200)}"}`)).code).toBe(
+      'frame-too-large',
+    );
+  });
+
+  test('still reports a startup failure before capabilities', () => {
+    const host = new HostEndpoint({ maxFrameBytes: 16 });
+    expectOk(host.receive(helloFrame()));
+    expectOk(host.attachmentError('unsupported-runtime', 'windows'));
+  });
+});

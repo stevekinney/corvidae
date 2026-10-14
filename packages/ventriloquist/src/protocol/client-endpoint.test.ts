@@ -478,6 +478,31 @@ describe('acknowledgements from the host', () => {
     },
   );
 
+  test.each(['backend-failed', 'transport-failed'])(
+    'rejects a second %s naming an acknowledged operation',
+    (code) => {
+      const { client, sequences } = withOperations(1);
+      expectOk(client.receive(ack(sequences[0]!, 1)));
+      const failure = (sequence: number) =>
+        serverFrame(
+          { kind: 'operation-failure', operationSequence: sequences[0], code, message: 'm' },
+          { sequence },
+        );
+      expectOk(client.receive(failure(2)));
+      expect(failureOf(client.receive(failure(3)))).toEqual({
+        code: 'malformed-frame',
+        reason: 'unknown-operation',
+      });
+    },
+  );
+
+  test('accepts capabilities larger than the limit they advertise', () => {
+    const client = newClient();
+    expectOk(client.hello());
+    expectOk(client.receive(capabilitiesFrame({ maxFrameBytes: 8 })));
+    expect(client.terms?.maxFrameBytes).toBe(8);
+  });
+
   test('surfaces a stale-generation failure without touching the operation ledger or authority', () => {
     const { client, sequences } = withOperations(1);
     const stale = serverFrame(
