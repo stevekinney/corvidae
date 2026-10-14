@@ -60,6 +60,11 @@ import type { Browser, BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
 
 import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../testing/module-scope-scenario.test-support.ts';
 
 const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -86,7 +91,13 @@ async function buildClientScript(): Promise<string> {
   try {
     const proc = Bun.spawn(
       ['bun', 'build', entryPath, '--target=browser', '--format=esm', `--outfile=${outfilePath}`],
-      { cwd: repositoryRoot, stdout: 'pipe', stderr: 'pipe' },
+      // The scenario hang guard: a stalled build is killed rather than holding the smoke run.
+      {
+        cwd: repositoryRoot,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+      },
     );
     const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
     if (exitCode !== 0) {
@@ -149,7 +160,7 @@ async function startSmokeEnvironment(): Promise<void> {
   context = await browser.newContext();
 }
 
-if (browserSmokeEnabled) await startSmokeEnvironment();
+const smokeSetup = browserSmokeEnabled ? await outcomeOf(startSmokeEnvironment) : undefined;
 
 describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction', () => {
   afterAll(async () => {
@@ -159,6 +170,7 @@ describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction
   });
 
   it('new HttpClient({ baseUrl, token }) does not throw with no Bun global and no Node built-ins', async () => {
+    rethrow(smokeSetup);
     const page = await context.newPage();
     const pageErrors: Error[] = [];
     page.on('pageerror', (error) => pageErrors.push(error));
@@ -210,6 +222,7 @@ describe.skipIf(!browserSmokeEnabled)('HttpClient — real Chromium construction
   }, 30_000);
 
   it('a browser-constructed HttpClient can make a real request against a live server', async () => {
+    rethrow(smokeSetup);
     const page = await context.newPage();
     try {
       await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
