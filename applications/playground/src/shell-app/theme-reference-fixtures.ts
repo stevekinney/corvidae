@@ -22,9 +22,7 @@ export const SOURCE_TOKENS: JsonObject = {
     text: { $type: 'color', $value: '{surface.base}' },
     diamond: {
       $type: 'shadow',
-      $value: [
-        { color: black, offsetX: '{fx.b}', offsetY: '{fx.c}', blur: px(2), spread: px(0) },
-      ],
+      $value: [{ color: black, offsetX: '{fx.b}', offsetY: '{fx.c}', blur: px(2), spread: px(0) }],
     },
     shadow: {
       $type: 'shadow',

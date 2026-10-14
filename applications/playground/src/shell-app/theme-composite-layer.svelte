@@ -24,8 +24,19 @@
     announce: (message: string) => void;
     onenter: () => void;
   };
-  let { specs, layer, at, errors, idBase, subject, disabled, onchange, literalFor, announce, onenter }: Props =
-    $props();
+  let {
+    specs,
+    layer,
+    at,
+    errors,
+    idBase,
+    subject,
+    disabled,
+    onchange,
+    literalFor,
+    announce,
+    onenter,
+  }: Props = $props();
 
   const set = (key: string, member: Member): void =>
     onchange({ ...layer, members: { ...layer.members, [key]: member } });

@@ -174,7 +174,10 @@ describe('the browser stage', () => {
   test('a failing property rejects the value and names it', () => {
     const supports: SupportsFunction = (property) => property !== 'fill';
     const result = validateCssUserValue('oklch(55% 0.2 270)', color, { ...options, supports });
-    expect(result).toEqual({ ok: false, message: '“oklch(55% 0.2 270)” is not a valid fill value.' });
+    expect(result).toEqual({
+      ok: false,
+      message: '“oklch(55% 0.2 270)” is not a valid fill value.',
+    });
   });
 
   test('supports is never reached for a value the grammar rejected', () => {

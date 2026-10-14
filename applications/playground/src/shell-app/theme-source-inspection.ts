@@ -27,12 +27,12 @@ import {
   type ThemeEnvelope,
 } from './theme-draft-types.ts';
 import { expandVariables } from './theme-impact.ts';
+import { getNode } from './theme-override-tree.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';
 import { untrustedRecipes, type RecipeSite } from './theme-recipe-trust.ts';
-import { buildThemeSources, applyCssOverrides } from './theme-runtime-evaluator.ts';
+import { applyCssOverrides, buildThemeSources } from './theme-runtime-evaluator.ts';
 import { evaluatedThemeOf, tokenEvaluationOf } from './theme-token-dependents.ts';
 import { authoredValueOf, resolvedValueOf, sourcePathOf, valueToText } from './theme-token-edit.ts';
-import { getNode } from './theme-override-tree.ts';
 
 export type ContextInspection = {
   context: ThemeContextId;
@@ -146,7 +146,9 @@ export function inspectToken(
       references: [
         ...provenance.inputs.aliases,
         ...provenance.inputs.refs,
-        ...provenance.inputs.extends.map((entry) => `${entry.target} ($extends from ${entry.group})`),
+        ...provenance.inputs.extends.map(
+          (entry) => `${entry.target} ($extends from ${entry.group})`,
+        ),
       ],
       recipeInputs: provenance.inputs.recipes.map((input) => input.path),
       dependents: token.dependents.map((dependent) => dependent.path),
@@ -180,5 +182,7 @@ function roleOf(row: Pick<CatalogueRow, 'component' | 'group' | 'path'>): string
   if (row.component !== null) return `Component token (${row.component})`;
   const category = recordByPath.get(row.path)?.category;
   if (category === undefined) return null;
-  return row.group === 'semantic' ? `Semantic token (${category})` : `Foundation token (${category})`;
+  return row.group === 'semantic'
+    ? `Semantic token (${category})`
+    : `Foundation token (${category})`;
 }

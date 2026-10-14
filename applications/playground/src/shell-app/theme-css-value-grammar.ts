@@ -68,7 +68,10 @@ function kindOfType(type: string): CssValueKind {
 }
 
 /** What a token's value may be, from its effective type and its usage profile. */
-export function contractFor(type: string, profile: ProfileDefinition | undefined): CssValueContract {
+export function contractFor(
+  type: string,
+  profile: ProfileDefinition | undefined,
+): CssValueContract {
   const id = profile?.id;
   return {
     kind: kindOfType(type),
@@ -206,7 +209,19 @@ function tokenize(text: string): Token[] | string {
   return tokens;
 }
 
-const LENGTH_UNITS = new Set(['px', 'rem', 'em', 'ch', 'vw', 'vh', 'dvh', 'svh', 'lvh', 'vmin', 'vmax']);
+const LENGTH_UNITS = new Set([
+  'px',
+  'rem',
+  'em',
+  'ch',
+  'vw',
+  'vh',
+  'dvh',
+  'svh',
+  'lvh',
+  'vmin',
+  'vmax',
+]);
 const TIME_UNITS = new Set(['ms', 's']);
 const ANGLE_UNITS = new Set(['deg', 'turn', 'rad', 'grad']);
 
@@ -226,10 +241,42 @@ const COLOR_FUNCTIONS = new Set([
   'light-dark',
 ]);
 const COLOR_WORDS = new Set([
-  'none', 'from', 'in', 'to', 'srgb', 'srgb-linear', 'display-p3', 'a98-rgb', 'prophoto-rgb',
-  'rec2020', 'xyz', 'xyz-d50', 'xyz-d65', 'oklab', 'oklch', 'lab', 'lch', 'hsl', 'hwb', 'shorter',
-  'longer', 'increasing', 'decreasing', 'specified', 'l', 'a', 'b', 'c', 'h', 's', 'w', 'r', 'g',
-  'alpha', 'transparent', 'currentcolor',
+  'none',
+  'from',
+  'in',
+  'to',
+  'srgb',
+  'srgb-linear',
+  'display-p3',
+  'a98-rgb',
+  'prophoto-rgb',
+  'rec2020',
+  'xyz',
+  'xyz-d50',
+  'xyz-d65',
+  'oklab',
+  'oklch',
+  'lab',
+  'lch',
+  'hsl',
+  'hwb',
+  'shorter',
+  'longer',
+  'increasing',
+  'decreasing',
+  'specified',
+  'l',
+  'a',
+  'b',
+  'c',
+  'h',
+  's',
+  'w',
+  'r',
+  'g',
+  'alpha',
+  'transparent',
+  'currentcolor',
 ]);
 
 class Parser {

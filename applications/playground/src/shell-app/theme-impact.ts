@@ -29,8 +29,8 @@ import {
 import { applyEdit, type DraftEdit } from './theme-draft.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';
 import { applyCssOverrides, buildThemeSources } from './theme-runtime-evaluator.ts';
-import { authoredValueOf, resolvedValueOf } from './theme-token-edit.ts';
 import { evaluatedThemeOf, tokenEvaluationOf } from './theme-token-dependents.ts';
+import { authoredValueOf, resolvedValueOf } from './theme-token-edit.ts';
 
 export type ImpactRow = {
   path: string;
@@ -157,7 +157,9 @@ export function computeImpact(
         : expandVariables(afterMaps[context] ?? {}, afterMaps[context]?.[property] ?? '');
       const role = path === target ? 'target' : reads.has(path) ? 'dependent' : 'other';
       const authoredBefore = sourceText(authoredValueOf(draft.envelope, contextOf(context), path));
-      const authoredAfter = sourceText(authoredValueOf(candidate.envelope, contextOf(context), path));
+      const authoredAfter = sourceText(
+        authoredValueOf(candidate.envelope, contextOf(context), path),
+      );
       const representation = role === 'target' && authoredBefore !== authoredAfter;
       if (oldValue === newValue && !representation) {
         if (role === 'dependent') unchanged += 1;
@@ -170,7 +172,9 @@ export function computeImpact(
         after: newValue,
         role,
         sourceOnly,
-        ...(role === 'target' ? { authored: { before: authoredBefore, after: authoredAfter } } : {}),
+        ...(role === 'target'
+          ? { authored: { before: authoredBefore, after: authoredAfter } }
+          : {}),
       });
     }
   }

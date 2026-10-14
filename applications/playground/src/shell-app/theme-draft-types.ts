@@ -25,7 +25,6 @@ export const OVERRIDE_DOCUMENTS = {
   forcedReduced: 'overrides/forced-reduced-motion.tokens.json',
 } as const;
 
-
 /** A concrete context id, as used by the authoring catalogue (for example `dark/reduced`). */
 export type ThemeContextId =
   | 'light/default'

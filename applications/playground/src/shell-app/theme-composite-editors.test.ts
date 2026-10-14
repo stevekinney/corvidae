@@ -50,13 +50,25 @@ describe('the field model round-trips every fixture exactly', () => {
   test('a named strokeStyle and a single-object shadow round-trip', () => {
     const named = compositeFromValue('strokeStyle', 'dashed')!;
     expect(compositeToValue(named)).toEqual({ ok: true, value: 'dashed' });
-    const single = { color: { colorSpace: 'srgb', components: [0, 0, 0] }, offsetX: { value: 0, unit: 'px' }, offsetY: { value: 0, unit: 'px' }, blur: { value: 1, unit: 'px' }, spread: { value: 0, unit: 'px' } };
+    const single = {
+      color: { colorSpace: 'srgb', components: [0, 0, 0] },
+      offsetX: { value: 0, unit: 'px' },
+      offsetY: { value: 0, unit: 'px' },
+      blur: { value: 1, unit: 'px' },
+      spread: { value: 0, unit: 'px' },
+    };
     const fields = compositeFromValue('shadow', single)!;
     expect(compositeToValue(fields)).toEqual({ ok: true, value: single });
   });
 
   test('unknown member keys and their order survive', () => {
-    const value = { z: 1, width: { value: 1, unit: 'px' }, color: { colorSpace: 'srgb', components: [0, 0, 0] }, style: 'solid', a: [1, 2] };
+    const value = {
+      z: 1,
+      width: { value: 1, unit: 'px' },
+      color: { colorSpace: 'srgb', components: [0, 0, 0] },
+      style: 'solid',
+      a: [1, 2],
+    };
     const rebuilt = compositeToValue(compositeFromValue('border', value)!);
     expect(JSON.stringify(rebuilt.ok ? rebuilt.value : null)).toBe(JSON.stringify(value));
   });
@@ -93,9 +105,15 @@ describe('malformed members are named by path', () => {
   const layer = (value: JsonValue, index: number) => (value as JsonObject[])[index]!;
 
   /** Fields whose scalar text was typed wrongly: the text is kept, so the value is rejected. */
-  function typed(type: 'shadow' | 'transition' | 'typography', member: string, amount: string, at = 0) {
+  function typed(
+    type: 'shadow' | 'transition' | 'typography',
+    member: string,
+    amount: string,
+    at = 0,
+  ) {
     const fields = compositeFromValue(type, valueOf(type))!;
-    const target = fields.type === 'shadow' ? fields.layers[at]! : (fields as { layer: Layer }).layer;
+    const target =
+      fields.type === 'shadow' ? fields.layers[at]! : (fields as { layer: Layer }).layer;
     const entry = target.members[member] as { fields: { amount: string } };
     entry.fields.amount = amount;
     const result = compositeToValue(fields);
@@ -129,7 +147,10 @@ describe('malformed members are named by path', () => {
     expect(named.ok ? {} : named.errors).toHaveProperty('stroke');
     const empty = errorsFor('strokeStyle', () => ({ dashArray: [], lineCap: 'round' }));
     expect(empty['stroke']).toBe('Add at least one dash length.');
-    const cap = errorsFor('strokeStyle', (value) => ({ ...(value as JsonObject), lineCap: 'pointy' }));
+    const cap = errorsFor('strokeStyle', (value) => ({
+      ...(value as JsonObject),
+      lineCap: 'pointy',
+    }));
     expect(cap['stroke.lineCap']).toContain('round');
   });
 

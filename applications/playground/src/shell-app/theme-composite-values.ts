@@ -14,12 +14,7 @@
 
 import { PROFILES, type ProfileDefinition } from '@lostgradient/cinder/tokens/runtime';
 
-import {
-  authoredText,
-  colorToJson,
-  parseColorText,
-  readDtcgColor,
-} from './theme-color-model.ts';
+import { authoredText, colorToJson, parseColorText, readDtcgColor } from './theme-color-model.ts';
 import type { JsonObject, JsonValue } from './theme-draft-types.ts';
 import {
   blankFields,
@@ -57,13 +52,7 @@ export const STROKE_KEYWORDS = [
 export const LINE_CAPS = ['round', 'butt', 'square'] as const;
 
 type ScalarKind = Extract<FoundationKind, 'dimension' | 'duration' | 'number' | 'fontWeight'>;
-export type MemberKind =
-  | ScalarKind
-  | 'color'
-  | 'fontFamily'
-  | 'cubicBezier'
-  | 'boolean'
-  | 'stroke';
+export type MemberKind = ScalarKind | 'color' | 'fontFamily' | 'cubicBezier' | 'boolean' | 'stroke';
 
 export type MemberSpec = {
   key: string;
@@ -108,7 +97,12 @@ export const MEMBER_SPECS: Record<Exclude<CompositeType, 'strokeStyle'>, readonl
   typography: [
     { key: 'fontFamily', label: 'Font family', kind: 'fontFamily' },
     { key: 'fontSize', label: 'Font size', kind: 'dimension', profile: PROFILES['font-size'] },
-    { key: 'fontWeight', label: 'Font weight', kind: 'fontWeight', profile: PROFILES['font-weight'] },
+    {
+      key: 'fontWeight',
+      label: 'Font weight',
+      kind: 'fontWeight',
+      profile: PROFILES['font-weight'],
+    },
     {
       key: 'letterSpacing',
       label: 'Letter spacing',
@@ -230,7 +224,9 @@ export function readMember(spec: MemberSpec, raw: JsonValue | undefined): Member
         : { kind: 'color', text: authoredText(color), original: raw };
     }
     case 'boolean':
-      return typeof raw === 'boolean' ? { kind: 'boolean', value: raw } : { kind: 'opaque', value: raw };
+      return typeof raw === 'boolean'
+        ? { kind: 'boolean', value: raw }
+        : { kind: 'opaque', value: raw };
     case 'stroke': {
       const stroke = readStroke(raw);
       return stroke === null ? { kind: 'opaque', value: raw } : { kind: 'stroke', stroke };
@@ -388,7 +384,12 @@ function buildLayer(
 ): JsonObject {
   const built: JsonObject = {};
   for (const spec of specs) {
-    const value = buildMember(spec, layer.members[spec.key] ?? { kind: 'absent' }, `${at}${spec.key}`, errors);
+    const value = buildMember(
+      spec,
+      layer.members[spec.key] ?? { kind: 'absent' },
+      `${at}${spec.key}`,
+      errors,
+    );
     if (value !== undefined) built[spec.key] = value;
   }
   const result: JsonObject = {};
@@ -411,7 +412,9 @@ export function compositeToValue(fields: CompositeFields): CompositeBuild {
   } else if (fields.type === 'shadow' || fields.type === 'gradient') {
     if (fields.layers.length < MIN_LAYERS[fields.type]) {
       errors['layers'] =
-        fields.type === 'shadow' ? 'A shadow needs at least one layer.' : 'A gradient needs at least two stops.';
+        fields.type === 'shadow'
+          ? 'A shadow needs at least one layer.'
+          : 'A gradient needs at least two stops.';
     }
     const specs = MEMBER_SPECS[fields.type];
     const built = fields.layers.map((layer, index) =>

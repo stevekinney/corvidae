@@ -53,10 +53,10 @@
     const message = errors[key];
     return message === undefined ? {} : { amount: message, x1: message, families: message };
   };
-  const parsedColor = $derived(
-    member.kind === 'color' ? parseColorText(member.text) : null,
+  const parsedColor = $derived(member.kind === 'color' ? parseColorText(member.text) : null);
+  const colorError = $derived(
+    errors[at] ?? (parsedColor?.ok === false ? parsedColor.message : undefined),
   );
-  const colorError = $derived(errors[at] ?? (parsedColor?.ok === false ? parsedColor.message : undefined));
   const bezierPoints = $derived(
     member.kind === 'bezier' && member.fields.kind === 'cubicBezier'
       ? member.fields.points.map(Number)
@@ -139,7 +139,7 @@
       <ThemeColorChannels
         color={parsedColor.color}
         shipped={null}
-        subject={subject}
+        {subject}
         idPrefix={idBase}
         onChange={(color: DtcgColor) => onchange({ ...member, text: authoredText(color) })}
       />
@@ -150,7 +150,8 @@
       label={subject}
       checked={member.kind === 'boolean' && member.value}
       {disabled}
-      onValueChange={(checked) => onchange(checked ? { kind: 'boolean', value: true } : { kind: 'absent' })}
+      onValueChange={(checked) =>
+        onchange(checked ? { kind: 'boolean', value: true } : { kind: 'absent' })}
     />
   {/if}
 </div>

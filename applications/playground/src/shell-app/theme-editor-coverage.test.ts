@@ -2,17 +2,17 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { flushSync, mount, tick, unmount } from 'svelte';
 
-import { setupHappyDom } from '@lostgradient/testing';
 import { AUTHORING_CATALOGUE, TOKEN_TYPES } from '@lostgradient/cinder/tokens/runtime';
+import { setupHappyDom } from '@lostgradient/testing';
 
 import { catalogueRows, type CatalogueRow } from './theme-builder-catalogue.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
-import { validateCssForRow } from './theme-token-edit.ts';
 import type { JsonObject } from './theme-draft-types.ts';
 import { editableState } from './theme-draft-types.ts';
 import { fixtureEnvelope } from './theme-reference-fixtures.ts';
 import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
 import { sourceTokenRow } from './theme-source-token-row.ts';
+import { validateCssForRow } from './theme-token-edit.ts';
 import GenericTokenEditor from './theme-token-editor-generic.svelte';
 import { editorForToken, hasTypedEditor } from './theme-token-editors.ts';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
@@ -44,7 +44,10 @@ function editingPathsOf(row: CatalogueRow): EditingPath[] {
       break;
     }
     case 'css-only':
-      if (row.shippedCssValue !== undefined && validateCssForRow(row, row.shippedCssValue, null).ok) {
+      if (
+        row.shippedCssValue !== undefined &&
+        validateCssForRow(row, row.shippedCssValue, null).ok
+      ) {
         paths.push('css-override');
       }
       break;
@@ -63,7 +66,9 @@ describe('the coverage gate', () => {
   });
 
   test('every disposition the catalogue declares has an editor path', () => {
-    const dispositions = new Set(AUTHORING_CATALOGUE.records.map((record) => record.disposition.edit));
+    const dispositions = new Set(
+      AUTHORING_CATALOGUE.records.map((record) => record.disposition.edit),
+    );
     expect([...dispositions].toSorted()).toEqual(['css-only', 'recipe', 'supported']);
   });
 

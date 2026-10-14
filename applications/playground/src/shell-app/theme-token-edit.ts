@@ -10,18 +10,18 @@ import { AUTHORING_CATALOGUE, profileRangeViolation } from '@lostgradient/cinder
 
 import type { CatalogueRow } from './theme-builder-catalogue.ts';
 import {
+  contractFor,
+  validateCssUserValue,
+  type CssValueResult,
+  type SupportsFunction,
+} from './theme-css-value-grammar.ts';
+import {
   contextId,
   type JsonObject,
   type JsonValue,
   type OverrideScope,
   type ThemeEnvelope,
 } from './theme-draft-types.ts';
-import {
-  contractFor,
-  validateCssUserValue,
-  type CssValueResult,
-  type SupportsFunction,
-} from './theme-css-value-grammar.ts';
 import type { DraftEdit } from './theme-draft.ts';
 import { getNode } from './theme-override-tree.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';

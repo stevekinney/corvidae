@@ -5,16 +5,13 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { setupHappyDom } from '@lostgradient/testing';
 
 import { cinderThemeBase } from './theme-builder-base.ts';
-import { createEnvelope } from './theme-envelope.ts';
-import { isTrustedRecipe, untrustedRecipes } from './theme-recipe-trust.ts';
-import ThemeReferencePanel from './theme-reference-panel.svelte';
-import ThemeSourceDisclosure from './theme-source-disclosure.svelte';
-import ThemeWorkbenchEditor from './theme-workbench-editor.svelte';
 import { catalogueRowByPath } from './theme-builder-catalogue.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
-import { jsonEquals } from './theme-override-tree.ts';
-import { THEME_CONTEXT_IDS, editableState, type JsonObject } from './theme-draft-types.ts';
+import { editableState, THEME_CONTEXT_IDS, type JsonObject } from './theme-draft-types.ts';
+import { createEnvelope } from './theme-envelope.ts';
 import { computeImpact, impactIsCurrent } from './theme-impact.ts';
+import { jsonEquals } from './theme-override-tree.ts';
+import { isTrustedRecipe, untrustedRecipes } from './theme-recipe-trust.ts';
 import {
   aliasCandidates,
   incompatibility,
@@ -23,10 +20,13 @@ import {
   proposeRebind,
 } from './theme-reference-edits.ts';
 import { fixtureDraft, SOURCE_TOKENS } from './theme-reference-fixtures.ts';
+import ThemeReferencePanel from './theme-reference-panel.svelte';
 import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
-import { sourceTokenRow } from './theme-source-token-row.ts';
+import ThemeSourceDisclosure from './theme-source-disclosure.svelte';
 import { inspectToken } from './theme-source-inspection.ts';
+import { sourceTokenRow } from './theme-source-token-row.ts';
 import { evaluatedThemeOf } from './theme-token-dependents.ts';
+import ThemeWorkbenchEditor from './theme-workbench-editor.svelte';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
 setupHappyDom();
@@ -106,7 +106,12 @@ describe('rejections carry a path-addressed diagnostic', () => {
 
   test('the runtime refuses what the pre-checks cannot see', () => {
     const impact = computeImpact(draft, 'fx.b', [
-      { kind: 'set-override', scope: 'shared', path: 'fx.b', node: { $type: 'dimension', $value: '{fx.c}' } },
+      {
+        kind: 'set-override',
+        scope: 'shared',
+        path: 'fx.b',
+        node: { $type: 'dimension', $value: '{fx.c}' },
+      },
     ]);
     expect(impact.ok).toBe(false);
     expect(impact.ok ? '' : impact.message).toContain('fx');
@@ -201,7 +206,12 @@ describe('impact preview', () => {
 
   test('an invalid or cyclic result is a diagnostic, not a preview', () => {
     const cyclic = computeImpact(withProbe, 'fx.a', [
-      { kind: 'set-override', scope: 'shared', path: 'fx.a', node: { $type: 'dimension', $value: '{fx.c}' } },
+      {
+        kind: 'set-override',
+        scope: 'shared',
+        path: 'fx.a',
+        node: { $type: 'dimension', $value: '{fx.c}' },
+      },
     ]);
     expect(cyclic.ok).toBe(false);
     expect(cyclic.ok ? '' : cyclic.message).toMatch(/cycle|circular/i);
@@ -211,9 +221,9 @@ describe('impact preview', () => {
     const proposal = proposeRebind(withProbe, rowOf('fx.b'), light, 'shared', 'fx.other');
     if (!proposal.ok) throw new Error(proposal.message);
     expect(impactIsCurrent(proposal.impact, withProbe)).toBe(true);
-    expect(impactIsCurrent(proposal.impact, { ...withProbe, revision: withProbe.revision + 1 })).toBe(
-      false,
-    );
+    expect(
+      impactIsCurrent(proposal.impact, { ...withProbe, revision: withProbe.revision + 1 }),
+    ).toBe(false);
     expect(impactIsCurrent(proposal.impact, null)).toBe(false);
   });
 });
@@ -252,9 +262,14 @@ describe('apply and undo through the controller', () => {
     const row = rowOf('fx.b');
     const before = controller.draft!;
     const beforeGraph = JSON.stringify(
-      [...(evaluatedThemeOf(before.envelope).ok ? (evaluatedThemeOf(before.envelope) as never as { index: Map<string, unknown> }).index : [])].map(
-        ([context, tokens]) => [context, [...(tokens as Map<string, { dependents: unknown }>)].map(([p, t]) => [p, t.dependents])],
-      ),
+      [
+        ...(evaluatedThemeOf(before.envelope).ok
+          ? (evaluatedThemeOf(before.envelope) as never as { index: Map<string, unknown> }).index
+          : []),
+      ].map(([context, tokens]) => [
+        context,
+        [...(tokens as Map<string, { dependents: unknown }>)].map(([p, t]) => [p, t.dependents]),
+      ]),
     );
     const proposal = proposeRebind(before, row, light, 'shared', 'fx.other');
     if (!proposal.ok) throw new Error(proposal.message);
@@ -272,10 +287,12 @@ describe('apply and undo through the controller', () => {
     const afterUndo = evaluatedThemeOf(controller.draft!.envelope);
     expect(afterUndo.ok).toBe(true);
     const graph = JSON.stringify(
-      [...(afterUndo as never as { index: Map<string, unknown> }).index].map(([context, tokens]) => [
-        context,
-        [...(tokens as Map<string, { dependents: unknown }>)].map(([p, t]) => [p, t.dependents]),
-      ]),
+      [...(afterUndo as never as { index: Map<string, unknown> }).index].map(
+        ([context, tokens]) => [
+          context,
+          [...(tokens as Map<string, { dependents: unknown }>)].map(([p, t]) => [p, t.dependents]),
+        ],
+      ),
     );
     expect(graph).toBe(beforeGraph);
   });
@@ -292,7 +309,10 @@ describe('apply and undo through the controller', () => {
         ...editableState(before.envelope),
         overrides: {
           ...before.envelope.overrides,
-          shared: { ...before.envelope.overrides.shared, fx: { a: { $type: 'dimension', $value: '{fx.c}' } } },
+          shared: {
+            ...before.envelope.overrides.shared,
+            fx: { a: { $type: 'dimension', $value: '{fx.c}' } },
+          },
         },
       },
     });
@@ -304,7 +324,10 @@ describe('apply and undo through the controller', () => {
 });
 
 describe('the Source and dependencies model', () => {
-  const chain = fixtureDraft(overlayTokens({ probe: { $type: 'dimension', $value: '{fx.c}' } }), 'inspect');
+  const chain = fixtureDraft(
+    overlayTokens({ probe: { $type: 'dimension', $value: '{fx.c}' } }),
+    'inspect',
+  );
 
   test('shows authored and resolved values, effective type origin, and the winning layer', () => {
     const result = inspectToken(chain.envelope, rowOf('fx.b'));
@@ -346,7 +369,9 @@ describe('the Source and dependencies model', () => {
   test('a token with no dependents has an empty list in every context', () => {
     const result = inspectToken(chain.envelope, rowOf('fx.probe'));
     if (!result.ok) throw new Error('not ok');
-    expect(result.inspection.contexts.every((context) => context.dependents.length === 0)).toBe(true);
+    expect(result.inspection.contexts.every((context) => context.dependents.length === 0)).toBe(
+      true,
+    );
   });
 
   test('an overridden context names the later winning layer and the layers it beat', () => {
@@ -442,7 +467,9 @@ const aliasRow = () => ({ ...rowOf('fx.b'), aliases: ['fx.a'], themeAware: true 
 const lightFx = (controller: ThemeBuilderController) =>
   (controller.draft!.envelope.overrides.light as JsonObject)['fx'] as JsonObject | undefined;
 
-async function mountPanel(row: ReturnType<typeof aliasRow> | ReturnType<typeof catalogueRowByPath>) {
+async function mountPanel(
+  row: ReturnType<typeof aliasRow> | ReturnType<typeof catalogueRowByPath>,
+) {
   const { controller, workbench } = await start();
   mounted = mount(ThemeReferencePanel, { target, props: { controller, workbench, row: row! } });
   await settle();
@@ -616,7 +643,11 @@ describe('recipe trust', () => {
     const blank = createEnvelope('imported', 'Imported', cinderThemeBase());
     const envelope = { ...blank, overrides: { ...blank.overrides, light: imported } };
     expect(untrustedRecipes(envelope)).toEqual([
-      { document: 'overrides/light.tokens.json', path: 'border.ink', recipe: 'red; background: url(x)' },
+      {
+        document: 'overrides/light.tokens.json',
+        path: 'border.ink',
+        recipe: 'red; background: url(x)',
+      },
     ]);
     // The envelope still carries the recipe, unchanged.
     expect(JSON.stringify(envelope.overrides.light)).toContain('url(x)');

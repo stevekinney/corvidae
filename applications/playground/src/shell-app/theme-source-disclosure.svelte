@@ -27,9 +27,7 @@
   const draft = $derived(controller.draft);
   const open = $derived(workbench.sourceDisclosureOpen);
   const idBase = $derived(`theme-source-${row.path.replaceAll('.', '-')}`);
-  const stale = $derived(
-    result !== null && draft !== null && result.revision !== draft.revision,
-  );
+  const stale = $derived(result !== null && draft !== null && result.revision !== draft.revision);
 
   $effect(() => {
     const envelope = draft?.envelope;
@@ -73,7 +71,8 @@
         {@const inspection = result.inspected.inspection}
         {#if stale}
           <p class="note" role="status" data-testid="source-stale">
-            Showing revision {result.revision}; the draft is at revision {draft?.revision}. Updating.
+            Showing revision {result.revision}; the draft is at revision {draft?.revision}.
+            Updating.
           </p>
         {:else}
           <p class="note" data-testid="source-revision">Evaluated at revision {result.revision}.</p>
@@ -81,7 +80,10 @@
 
         <dl class="facts">
           {#if inspection.role !== null}
-            <div><dt>Role</dt><dd>{inspection.role}</dd></div>
+            <div>
+              <dt>Role</dt>
+              <dd>{inspection.role}</dd>
+            </div>
           {/if}
           <div>
             <dt>CSS property</dt>
@@ -146,8 +148,14 @@
             <li class="context" data-context={context.context}>
               <h5 class="context__title">{context.context}</h5>
               <dl class="facts">
-                <div><dt>Authored</dt><dd><code>{context.authored}</code></dd></div>
-                <div><dt>Resolved</dt><dd><code>{context.resolved}</code></dd></div>
+                <div>
+                  <dt>Authored</dt>
+                  <dd><code>{context.authored}</code></dd>
+                </div>
+                <div>
+                  <dt>Resolved</dt>
+                  <dd><code>{context.resolved}</code></dd>
+                </div>
                 <div>
                   <dt>Effective type</dt>
                   <dd>
@@ -156,7 +164,9 @@
                 </div>
                 <div>
                   <dt>Winning source</dt>
-                  <dd><code>{context.winner.path}</code> in <code>{context.winner.document}</code></dd>
+                  <dd>
+                    <code>{context.winner.path}</code> in <code>{context.winner.document}</code>
+                  </dd>
                 </div>
                 <div>
                   <dt>Overridden layers</dt>
@@ -174,7 +184,10 @@
                     {#if context.references.length === 0 && context.recipeInputs.length === 0}
                       Nothing
                     {:else}
-                      {[...context.references, ...context.recipeInputs.map((path) => `${path} (recipe input)`)].join(', ')}
+                      {[
+                        ...context.references,
+                        ...context.recipeInputs.map((path) => `${path} (recipe input)`),
+                      ].join(', ')}
                     {/if}
                   </dd>
                 </div>
@@ -182,7 +195,9 @@
                   <dt>Dependents</dt>
                   <dd>
                     {#if context.dependents.length === 0}
-                      <span data-testid="no-dependents">No dependents in the evaluated contexts.</span>
+                      <span data-testid="no-dependents"
+                        >No dependents in the evaluated contexts.</span
+                      >
                     {:else}
                       <ul class="plain" aria-label={`Dependents in ${context.context}`}>
                         {#each context.dependents.slice(0, shown) as path (path)}

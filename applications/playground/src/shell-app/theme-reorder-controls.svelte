@@ -30,7 +30,9 @@
     onmove(delta);
     announce(`Moved ${subject} to position ${target + 1} of ${count}`);
     await tick();
-    const preferred = document.getElementById(`${idBase}-${delta === -1 ? 'up' : 'down'}-${target}`);
+    const preferred = document.getElementById(
+      `${idBase}-${delta === -1 ? 'up' : 'down'}-${target}`,
+    );
     const fallback = document.getElementById(`${idBase}-${delta === -1 ? 'down' : 'up'}-${target}`);
     for (const candidate of [preferred, fallback]) {
       if (candidate instanceof HTMLButtonElement && !candidate.disabled) {

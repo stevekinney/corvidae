@@ -58,9 +58,7 @@
   );
   // The candidate list needs the full provenance, so it is only computed once the picker opens.
   const candidates = $derived(
-    picking && draft !== null
-      ? aliasCandidates(draft, row, search)
-      : { items: [], total: 0 },
+    picking && draft !== null ? aliasCandidates(draft, row, search) : { items: [], total: 0 },
   );
 
   $effect(() => {
@@ -105,7 +103,11 @@
       picking = false;
       search = '';
     } else {
-      proposal = { ok: false, message: `${outcome.path ?? row.path}: ${outcome.message}`, path: outcome.path };
+      proposal = {
+        ok: false,
+        message: `${outcome.path ?? row.path}: ${outcome.message}`,
+        path: outcome.path,
+      };
       controller.announcement = proposal.message;
     }
   }
@@ -181,7 +183,11 @@
           {#if candidates.items.length === 0}
             <p class="references__note" data-testid="alias-empty">No compatible token matches.</p>
           {:else}
-            <ul class="references__list" aria-label="Compatible tokens" data-testid="alias-candidates">
+            <ul
+              class="references__list"
+              aria-label="Compatible tokens"
+              data-testid="alias-candidates"
+            >
               {#each candidates.items as candidate (candidate.path)}
                 <li>
                   <Button

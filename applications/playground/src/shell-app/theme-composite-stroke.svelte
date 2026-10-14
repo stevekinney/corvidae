@@ -32,8 +32,18 @@
     announce: (message: string) => void;
     onenter: () => void;
   };
-  let { stroke, at, errors, idBase, subject, disabled, onchange, literalFor, announce, onenter }: Props =
-    $props();
+  let {
+    stroke,
+    at,
+    errors,
+    idBase,
+    subject,
+    disabled,
+    onchange,
+    literalFor,
+    announce,
+    onenter,
+  }: Props = $props();
 
   const structured = $derived(stroke.named === null);
 
@@ -75,9 +85,9 @@
       id={`${idBase}-named`}
       label={`${subject} style`}
       options={[
-        ...(STROKE_KEYWORDS as readonly string[]).includes(stroke.named)
+        ...((STROKE_KEYWORDS as readonly string[]).includes(stroke.named)
           ? []
-          : [{ value: stroke.named, label: `${stroke.named} (not a stroke style)` }],
+          : [{ value: stroke.named, label: `${stroke.named} (not a stroke style)` }]),
         ...STROKE_KEYWORDS.map((keyword) => ({ value: keyword, label: keyword })),
       ]}
       value={stroke.named}
@@ -98,7 +108,8 @@
             idBase={`${idBase}-dash-${index}`}
             subject={name}
             {disabled}
-            onchange={(next) => setDash(stroke.dash.map((entry, at2) => (at2 === index ? next : entry)))}
+            onchange={(next) =>
+              setDash(stroke.dash.map((entry, at2) => (at2 === index ? next : entry)))}
             onreplace={() =>
               setDash(stroke.dash.map((entry, at2) => (at2 === index ? literalFor(entry) : entry)))}
             {announce}
@@ -140,9 +151,9 @@
       id={`${idBase}-cap`}
       label={`${subject} line cap`}
       options={[
-        ...(LINE_CAPS as readonly string[]).includes(stroke.lineCap)
+        ...((LINE_CAPS as readonly string[]).includes(stroke.lineCap)
           ? []
-          : [{ value: stroke.lineCap, label: `${stroke.lineCap} (not a line cap)` }],
+          : [{ value: stroke.lineCap, label: `${stroke.lineCap} (not a line cap)` }]),
         ...LINE_CAPS.map((cap) => ({ value: cap, label: cap })),
       ]}
       value={stroke.lineCap}

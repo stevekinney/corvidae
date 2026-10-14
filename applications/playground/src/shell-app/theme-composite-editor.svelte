@@ -56,7 +56,9 @@
   const type = $derived(row.type as CompositeType);
 
   let scopeChoice = $state<EditScope>(untrack(() => defaultScope(row)));
-  let fields = $state.raw<CompositeFields>(untrack(() => blankComposite(row.type as CompositeType)));
+  let fields = $state.raw<CompositeFields>(
+    untrack(() => blankComposite(row.type as CompositeType)),
+  );
 
   const draft = $derived(controller.draft);
   const envelope = $derived(draft?.envelope ?? null);
@@ -92,7 +94,9 @@
       ? null
       : compositeFromValue(type, committedValue),
   );
-  const committedText = $derived(committedFields === null ? '' : serializeComposite(committedFields));
+  const committedText = $derived(
+    committedFields === null ? '' : serializeComposite(committedFields),
+  );
   const unreadable = $derived(committedValue !== undefined && committedFields === null);
 
   const shipped = $derived(
@@ -111,7 +115,9 @@
   $effect(() => {
     void committedText;
     void key;
-    const pending = untrack(() => deserializeComposite(type, controller.draft?.inputBuffer[key]?.text));
+    const pending = untrack(() =>
+      deserializeComposite(type, controller.draft?.inputBuffer[key]?.text),
+    );
     fields = pending ?? committedFields ?? blankComposite(type);
   });
 
@@ -189,7 +195,8 @@
   }
 
   const enter = (): void => void apply();
-  const layerLabel = (kind: 'shadow' | 'gradient'): string => (kind === 'shadow' ? 'Shadow layer' : 'Gradient stop');
+  const layerLabel = (kind: 'shadow' | 'gradient'): string =>
+    kind === 'shadow' ? 'Shadow layer' : 'Gradient stop';
 </script>
 
 <div
@@ -263,7 +270,8 @@
               disabled={locked}
               canRemove={list.layers.length > (kind === 'gradient' ? 2 : 1)}
               onmove={(delta) => edited({ ...list, layers: moved(list.layers, index, delta) })}
-              onremove={() => edited({ ...list, layers: list.layers.filter((_, at) => at !== index) })}
+              onremove={() =>
+                edited({ ...list, layers: list.layers.filter((_, at) => at !== index) })}
               {announce}
             />
             <ThemeCompositeLayer
@@ -275,7 +283,10 @@
               subject={`${subject} ${name.toLowerCase()}`}
               disabled={locked}
               onchange={(next) =>
-                edited({ ...list, layers: list.layers.map((entry, at) => (at === index ? next : entry)) })}
+                edited({
+                  ...list,
+                  layers: list.layers.map((entry, at) => (at === index ? next : entry)),
+                })}
               {literalFor}
               {announce}
               onenter={enter}

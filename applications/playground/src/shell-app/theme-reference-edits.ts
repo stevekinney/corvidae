@@ -7,21 +7,17 @@
  */
 
 import type { CatalogueRow } from './theme-builder-catalogue.ts';
-import type { ThemeContextId, ThemeDraft, OverrideScope } from './theme-draft-types.ts';
+import type { OverrideScope, ThemeContextId, ThemeDraft } from './theme-draft-types.ts';
 import { THEME_CONTEXT_IDS } from './theme-draft-types.ts';
-import { computeImpact, type Impact } from './theme-impact.ts';
 import type { DraftEdit } from './theme-draft.ts';
+import { computeImpact, type Impact } from './theme-impact.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';
 import { evaluatedThemeOf, tokenEvaluationOf } from './theme-token-dependents.ts';
 import { buildEdit, literalValueOf, validateCssForRow, valueToText } from './theme-token-edit.ts';
 
 export type AliasCandidate = { path: string; type: string };
 
-const typeIn = (
-  draft: ThemeDraft,
-  context: ThemeContextId,
-  path: string,
-): string | undefined => {
+const typeIn = (draft: ThemeDraft, context: ThemeContextId, path: string): string | undefined => {
   const evaluated = evaluatedThemeOf(draft.envelope);
   return tokenEvaluationOf(evaluated, context, path)?.provenance.effectiveType.type;
 };
@@ -80,7 +76,9 @@ export function incompatibility(
     if (own !== undefined && other !== own) {
       return `${row.path}: ${target} is ${other ?? 'untyped'} in ${context}, but this token is ${own}.`;
     }
-    if (tokenEvaluationOf(evaluated, context, row.path)?.dependents.some((d) => d.path === target)) {
+    if (
+      tokenEvaluationOf(evaluated, context, row.path)?.dependents.some((d) => d.path === target)
+    ) {
       return `${row.path}: ${target} already reads this token, so aliasing it would be a cycle.`;
     }
   }

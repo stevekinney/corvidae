@@ -22,7 +22,11 @@ import type {
   ThemeEvaluator,
   ThemeProperty,
 } from './theme-draft-evaluation.ts';
-import { OVERRIDE_DOCUMENTS, type ThemeContextId, type ThemeEnvelope } from './theme-draft-types.ts';
+import {
+  OVERRIDE_DOCUMENTS,
+  type ThemeContextId,
+  type ThemeEnvelope,
+} from './theme-draft-types.ts';
 import { themePreviewValueProblem } from './theme-preview-message.ts';
 import { trustedDocuments } from './theme-recipe-trust.ts';
 
@@ -57,14 +61,17 @@ export function buildThemeSources(envelope: ThemeEnvelope, revision: number): Th
     revision,
     resolver,
     // Untrusted recipes stay in the envelope but are inert here (see theme-recipe-trust.ts).
-    documents: trustedDocuments({
-      ...envelope.base.documents,
-      [OVERRIDE_DOCUMENTS.shared]: envelope.overrides.shared,
-      [OVERRIDE_DOCUMENTS.light]: envelope.overrides.light,
-      [OVERRIDE_DOCUMENTS.dark]: envelope.overrides.dark,
-      [OVERRIDE_DOCUMENTS.reduced]: envelope.overrides.reduced,
-      [OVERRIDE_DOCUMENTS.forcedReduced]: envelope.overrides.forcedReduced,
-    }, envelope.base),
+    documents: trustedDocuments(
+      {
+        ...envelope.base.documents,
+        [OVERRIDE_DOCUMENTS.shared]: envelope.overrides.shared,
+        [OVERRIDE_DOCUMENTS.light]: envelope.overrides.light,
+        [OVERRIDE_DOCUMENTS.dark]: envelope.overrides.dark,
+        [OVERRIDE_DOCUMENTS.reduced]: envelope.overrides.reduced,
+        [OVERRIDE_DOCUMENTS.forcedReduced]: envelope.overrides.forcedReduced,
+      },
+      envelope.base,
+    ),
   };
 }
 
