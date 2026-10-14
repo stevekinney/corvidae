@@ -805,6 +805,31 @@ describe('retiring a directory the target still carries', async () => {
   test('a restored cinder playground copy and its deployment workflow are collected for deletion', () =>
     rethrow(outcome14));
 
+  const outcome14b = await outcomeOf(async () => {
+    await withFixtureTarget(
+      async (directory) => {
+        const policy = await loadTargetOwnedPolicy();
+        // The owner stopped publishing @lostgradient/chat on 2026-10-14. Excluding it only stops
+        // the transform emitting it, so the cinder mirror's existing copy, and its own release
+        // flow, must be removed by the retirement rather than left to survive every sync.
+        expect(
+          await collectRetiredPaths({
+            policy,
+            target: 'cinder',
+            directory,
+            directories: retiredDirectoriesFor(policy, 'cinder'),
+          }),
+        ).toEqual(['packages/chat/package.json', 'packages/chat/src/index.ts']);
+      },
+      {
+        'packages/chat/package.json': '{"name":"@lostgradient/chat"}\n',
+        'packages/chat/src/index.ts': 'export {};\n',
+      },
+    );
+  });
+  test("the cinder mirror's packages/chat copy is collected for deletion", () =>
+    rethrow(outcome14b));
+
   test('the committed enumeration retires each target only what its own issue ruled on', async () => {
     const policy = await loadTargetOwnedPolicy();
     const retired = retiredDirectoriesFor(policy, 'weft');
