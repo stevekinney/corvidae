@@ -1771,6 +1771,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
      * start concurrently on the session.
      */
     readonly starting: Map<string, string>;
+    /** Every run's lifecycle stage in the log, checked as each event folds. */
+    readonly lifecycle: Map<string, 'promoted' | 'ended'>;
     /** The last head read or written. Appends are conditioned on it. */
     head: SteeringLogHead;
     /** How many entries have been applied to `gate`. */
@@ -1784,6 +1786,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * not count that run as live for the new incarnation.
    */
   const steeringRunIncarnations = new Map<string, string>();
+  /**
+   * Runs whose local handle has settled. A durable run abandoned to another
+   * owner (a lost checkpoint race, a disposed engine) settles with no
+   * terminal event and stays `running` in the store, so the store alone
+   * cannot say whether this process still drives it.
+   */
+  const settledLocalRunIds = new Set<string>();
   /** One log operation at a time per session, in this process. */
   const steeringQueues = new Map<string, Promise<unknown>>();
 
@@ -1828,7 +1837,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     refusals: Map<string, Map<string, SteeringRefusal>>,
     event: SteeringLogEvent,
     submitted?: Map<string, Map<string, SteeringRequestedValue>>,
+    // Each run's place in its life, as the log so far has it, when the whole
+    // log is being folded: an ending must follow its run's one promotion.
+    lifecycle?: Map<string, 'promoted' | 'ended'>,
   ): SteeringCommandAdmissionOutcome | undefined {
+    if (lifecycle !== undefined) checkSteeringLifecycle(gate.sessionId, lifecycle, event);
     switch (event.type) {
       case 'admit': {
         const outcome = gate.admit(event.command, {
@@ -1892,6 +1905,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /**
+   * Fails closed on a run lifecycle no process could have logged: a second
+   * promotion of a run, or an ending without a promotion or after one.
+   * Folding either would fail or release a real command for a run that
+   * never existed or already ended.
+   */
+  function checkSteeringLifecycle(
+    sessionId: string,
+    lifecycle: Map<string, 'promoted' | 'ended'>,
+    event: SteeringLogEvent,
+  ): void {
+    if (event.type !== 'promoted' && event.type !== 'run-ended') return;
+    const stage = lifecycle.get(event.runId);
+    const valid = event.type === 'promoted' ? stage === undefined : stage === 'promoted';
+    if (!valid) {
+      throw new SteeringLogCorruptError(
+        `Steering log for session "${sessionId}" records run "${event.runId}" ${event.type === 'promoted' ? 'promoted again' : stage === 'ended' ? 'ending twice' : 'ending without a promotion'}.`,
+      );
+    }
+    lifecycle.set(event.runId, event.type === 'promoted' ? 'promoted' : 'ended');
+  }
+
   /** Applies a logged event to a cursor's gate and its launch markers. */
   function applyToCursor(
     cursor: SteeringCursor,
@@ -1899,7 +1934,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): SteeringCommandAdmissionOutcome | undefined {
     if (event.type === 'promoted') cursor.starting.set(event.runId, event.now);
     if (event.type === 'run-ended') cursor.starting.delete(event.runId);
-    return applySteeringEvent(cursor.gate, cursor.refusals, event, cursor.submitted);
+    return applySteeringEvent(
+      cursor.gate,
+      cursor.refusals,
+      event,
+      cursor.submitted,
+      cursor.lifecycle,
+    );
   }
 
   function nestedSet<T>(
@@ -1980,6 +2021,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         refusals: new Map(),
         submitted: new Map(),
         starting: new Map(),
+        lifecycle: new Map(),
         head: { raw: null, sequence: 0 },
         applied: 0,
       };
@@ -2047,7 +2089,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           void releaseIfDeleted();
         }, STEERING_DELETION_WATCH_MS);
         watch.unref?.();
-        void resumed.finally(() => clearInterval(watch));
+        // The wait ends on resume, or on abort, which leaves `resumed`
+        // pending for good: either one stops the watch.
+        const stopWatching = () => clearInterval(watch);
+        void resumed.finally(stopWatching);
+        if (signal?.aborted === true) stopWatching();
+        signal?.addEventListener('abort', stopWatching, { once: true });
         return resumed;
       },
     };
@@ -2080,6 +2127,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
       // Refused before it is written, never after: a version this gate never
       // issued would leave the log unfoldable everywhere.
+      if (event.type === 'run-ended' && cursor.lifecycle.get(event.runId) !== 'promoted') {
+        throw new BureauError(
+          `Run "${event.runId}" cannot end in session "${sessionId}": the steering log has no live promotion of it.`,
+          'CONFLICT',
+        );
+      }
       if (event.type === 'applied' && event.configVersion > cursor.gate.getRawConfigVersion()) {
         throw new BureauError(
           `Run "${event.runId}" cannot have applied steering version ${String(event.configVersion)}: session "${sessionId}" has issued only ${String(cursor.gate.getRawConfigVersion())}.`,
@@ -4054,7 +4107,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // cut off the `run.completed` the forwarder and the run event feed are waiting for. The
       // disposers drain as they run, which makes this a no-op after a terminal listener ran.
       detachBestEffortPromise(
-        activeRun.result.finally(() => disposeRegisteredStreamListeners(disposeStreamListeners)),
+        activeRun.result.finally(() => {
+          disposeRegisteredStreamListeners(disposeStreamListeners);
+          // A quietly settled run can stay `running` in the store; this
+          // process no longer drives it, so its liveness is the engine's.
+          // Only an abandoned one is kept: a terminal event already left
+          // `running` before the result settled.
+          if (store.getRun(runId)?.status === 'running') settledLocalRunIds.add(runId);
+        }),
       );
 
       store.register(activeRun, runId);
@@ -8162,7 +8222,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   function liveSessionRunIdsOfIncarnation(sessionId: string, incarnation: string): string[] {
     return liveSessionRunIds(sessionId).filter(
-      (runId) => (steeringRunIncarnations.get(runId) ?? incarnation) === incarnation,
+      (runId) =>
+        !settledLocalRunIds.has(runId) &&
+        (steeringRunIncarnations.get(runId) ?? incarnation) === incarnation,
     );
   }
 
@@ -8600,7 +8662,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         `Steering key "${command.principal}"/"${command.id}" is bound to sequence ${String(binding.sequence)} of session "${binding.sessionId}", which does not admit it.`,
       );
     }
-    for (const event of events) applySteeringEvent(gate, refusals, event, submitted);
+    const lifecycle = new Map<string, 'promoted' | 'ended'>();
+    for (const event of events) applySteeringEvent(gate, refusals, event, submitted, lifecycle);
     return answerSteeringRetry(
       ledger,
       refusals,

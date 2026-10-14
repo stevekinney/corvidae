@@ -241,6 +241,11 @@ describe('durable steering across two Bureau processes', () => {
     const toolGate = new Promise<void>((resolve) => {
       releaseTool = resolve;
     });
+    let releaseSecondTool: (() => void) | undefined;
+    const secondToolGate = new Promise<void>((resolve) => {
+      releaseSecondTool = resolve;
+    });
+    let toolCalls = 0;
     let generateCalls = 0;
     const generate: GenerateFunction = async ({ step }) => {
       generateCalls += 1;
@@ -257,7 +262,8 @@ describe('durable steering across two Bureau processes', () => {
           description: 'waits for the test',
           input: z.object({}),
           execute: async () => {
-            await toolGate;
+            toolCalls += 1;
+            await (toolCalls === 1 ? toolGate : secondToolGate);
             return 'ok';
           },
         }),
@@ -293,8 +299,39 @@ describe('durable steering across two Bureau processes', () => {
       // Its terminal save is fenced to the deleted incarnation.
       await bureauA.waitForDurableRun(run.id);
       expect(await bureauB.getSession(run.sessionId)).toBeUndefined();
+
+      // A paused run that is aborted instead stops its watch with the wait.
+      const intervals = spyOn(globalThis, 'setInterval');
+      const cleared = spyOn(globalThis, 'clearInterval');
+      try {
+        const second = await bureauA.createRun({ message: 'again', principal: 'alice' });
+        for (let attempt = 0; attempt < 200 && generateCalls < 3; attempt += 1) await Bun.sleep(10);
+        const pausedAgain = await bureauA.submitSteeringCommand(second.sessionId, {
+          principal: 'alice',
+          requestedValue: { target: 'pause' },
+        });
+        expect(pausedAgain.outcome).toBe('accepted');
+        releaseSecondTool?.();
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+          if (intervals.mock.calls.some(([, delay]) => delay === 2_000)) break;
+          await Bun.sleep(10);
+        }
+        const watchIndex = intervals.mock.calls.findIndex(([, delay]) => delay === 2_000);
+        expect(watchIndex).toBeGreaterThanOrEqual(0);
+        const watch = intervals.mock.results[watchIndex]?.value;
+        bureauA.abortRun(second.id);
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+          if (cleared.mock.calls.some(([handle]) => handle === watch)) break;
+          await Bun.sleep(10);
+        }
+        expect(cleared.mock.calls.some(([handle]) => handle === watch)).toBe(true);
+      } finally {
+        intervals.mockRestore();
+        cleared.mockRestore();
+      }
     } finally {
       releaseTool?.();
+      releaseSecondTool?.();
       await bureauA.dispose();
       await bureauB.dispose();
       rmSync(directory, { recursive: true, force: true });
@@ -1110,6 +1147,37 @@ describe('durable steering across two Bureau processes', () => {
           requestedValue: { target: 'model', override: 'claude-sonnet-5' },
         }),
       ).rejects.toThrow(/no admission before it issued/);
+    } finally {
+      await writer.dispose();
+      await reader?.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('fails closed on a run ending the log never promoted', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-ghost-ending-'));
+    const path = join(directory, 'bureau.sqlite');
+    const writer = await openBureau(path);
+    let reader: TestBureau | undefined;
+    try {
+      const sessionId = await startRunningSession(writer);
+      const session = await writer.getSession(sessionId);
+      const kv = writer.kv;
+      if (session === undefined || kv === undefined) throw new Error('expected a durable session');
+      await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        session.incarnation,
+        await readSteeringLogHead(kv, sessionId, session.incarnation),
+        { type: 'run-ended', runId: 'never-promoted', now: new Date().toISOString() },
+      );
+      reader = await openBureau(path);
+      await expect(
+        reader.submitSteeringCommand(sessionId, {
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        }),
+      ).rejects.toThrow(/ending without a promotion/);
     } finally {
       await writer.dispose();
       await reader?.dispose();
