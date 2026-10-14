@@ -104,16 +104,27 @@ export const SECRET_VALUE_NAME = new RegExp(`(${SECRET_NAME_CLASSES})`);
 type EnvironmentRecord = Readonly<Record<string, string | undefined>>;
 
 /**
- * The password a `scheme://user:password@host` value carries, or `undefined`. Only the password
- * is a secret: scanning the whole URL would flag a public origin such as `PLAYGROUND_BASE_URL`.
+ * Every form of the password a `scheme://user:password@host` value carries: the percent-encoded
+ * form as written, then the decoded form when it differs. Either form can reach served bytes, so
+ * the leak check scans both. A malformed escape cannot be decoded, but the value still carries a
+ * password, so it yields the written form alone rather than passing as credential-free. Only the
+ * password is a secret: scanning the whole URL would flag a public origin such as
+ * `PLAYGROUND_BASE_URL`.
  */
-export function urlPassword(value: string): string | undefined {
-  if (!value.includes('://')) return undefined;
+export function urlPasswords(value: string): string[] {
+  if (!value.includes('://')) return [];
+  let password: string;
   try {
-    const password = new URL(value).password;
-    return password === '' ? undefined : decodeURIComponent(password);
+    password = new URL(value).password;
   } catch {
-    return undefined;
+    return [];
+  }
+  if (password === '') return [];
+  try {
+    const decoded = decodeURIComponent(password);
+    return decoded === password ? [password] : [password, decoded];
+  } catch {
+    return [password];
   }
 }
 
@@ -124,8 +135,7 @@ export function secretEntriesOf(environment: EnvironmentRecord): [name: string, 
     if (SECRET_VALUE_NAME.test(name) || PACKAGE_MANAGER_CREDENTIAL_NAME.test(name)) {
       return [[name, value]];
     }
-    const password = urlPassword(value);
-    return password === undefined ? [] : [[name, password]];
+    return urlPasswords(value).map((password): [string, string] => [name, password]);
   });
 }
 
@@ -134,7 +144,7 @@ export function isCredentialShaped(name: string, value: string): boolean {
   return (
     SECRET_ENVIRONMENT_NAME.test(name) ||
     PACKAGE_MANAGER_CREDENTIAL_NAME.test(name) ||
-    urlPassword(value) !== undefined
+    urlPasswords(value).length > 0
   );
 }
 

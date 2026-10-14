@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import {
   readScrubbedEnvironment,
@@ -429,8 +429,47 @@ describe('case list and shards', () => {
     expect(options.workers).toBe(4);
     expect(options.allowSourceMismatch).toBe(false);
     expect(parseGateArguments(['--shard', '2/8']).output).toEndWith(
-      join('test-results', 'static-production', 'shard-2-of-8'),
+      join('production-gate-results', 'shard-2-of-8'),
     );
+  });
+
+  it('keeps the default output out of every directory the development Playwright run cleans', async () => {
+    // Playwright empties its `outputDir` (default `test-results/`) before each run, so a gate
+    // report written inside it is destroyed by the next `test:browser`.
+    const playgroundRoot = join(import.meta.dirname, '..');
+    // The configuration deletes `NO_COLOR` from its process when loaded, so read it in a child
+    // rather than let that leak into this file's gate runs.
+    const loaded = Bun.spawnSync(
+      [
+        process.execPath,
+        '-e',
+        "const { default: c } = await import('./playwright.config.ts'); console.log(JSON.stringify([c.outputDir ?? null, ...(c.projects ?? []).map((p) => p.outputDir ?? null)]))",
+      ],
+      { cwd: playgroundRoot, stdout: 'pipe', stderr: 'pipe' },
+    );
+    expect(loaded.exitCode).toBe(0);
+    const [configured, ...projects] = JSON.parse(loaded.stdout.toString()) as (string | null)[];
+    // Playwright's own default when a configuration names no `outputDir`.
+    const cleaned = [configured ?? 'test-results', ...projects]
+      .filter((directory) => directory !== null)
+      .map((directory) => resolve(playgroundRoot, directory));
+    const overlaps = (first: string, second: string): boolean =>
+      [relative(first, second), relative(second, first)].some(
+        (path) => path === '' || (!path.startsWith('..') && !isAbsolute(path)),
+      );
+
+    for (const output of [
+      parseGateArguments([]).output,
+      parseGateArguments(['--shard', '2/8']).output,
+    ]) {
+      for (const directory of cleaned) {
+        expect({ output, directory, overlaps: overlaps(output, directory) }).toEqual({
+          output,
+          directory,
+          overlaps: false,
+        });
+      }
+    }
   });
 });
 
