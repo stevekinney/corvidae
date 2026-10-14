@@ -46,16 +46,27 @@ import type {
 const STEERING_NAMESPACE = 'corvidae.bureau.steering';
 
 /**
- * One session's steering mailbox. Sessions get their own `resourceId`
- * because FIFO order is meaningful within a session and meaningless
- * across unrelated ones.
+ * One session incarnation's steering mailbox. Sessions get their own
+ * `resourceId` because FIFO order is meaningful within a session and
+ * meaningless across unrelated ones, and the resource includes the
+ * session's `incarnation` so a deleted-then-recreated session id never
+ * inherits its predecessor's undrained log.
  */
-export function createSteeringMailbox(storage: Storage, sessionId: string): Mailbox {
+export function createSteeringMailbox(
+  storage: Storage,
+  sessionId: string,
+  incarnation: string,
+): Mailbox {
   return new Mailbox({
     storage,
     namespace: STEERING_NAMESPACE,
-    resourceId: sessionId,
+    resourceId: sessionScope(sessionId, incarnation),
   });
+}
+
+/** `(sessionId, incarnation)` as one unambiguous key component pair. */
+function sessionScope(sessionId: string, incarnation: string): string {
+  return `${encodeStorageKeyComponent(sessionId)}:${encodeStorageKeyComponent(incarnation)}`;
 }
 
 /** The payload a steering command persists as. */
@@ -224,164 +235,394 @@ function readInlinePayload(payload: {
 }
 
 /**
- * Steering command records: the durable memory of what each admitted
- * `(principal, id)` meant, kept in `runtime.kv` beside the mailbox.
+ * The durable steering bookkeeping a durably-configured Bureau keeps in
+ * `runtime.kv` beside each session incarnation's mailbox. Recovery
+ * acknowledges what it replays, so the mailbox alone carries neither
+ * desired state nor idempotency past one restart; these records do.
  *
- * The mailbox alone cannot answer "what did this id originally ask for?"
- * once recovery has replayed and acknowledged a command: a receipt carries
- * no payload, and the payload is delivered only on `claim()`. And a later
- * restart starts with an empty in-memory ledger. Without these records a
- * reused id after such a restart — an exact retry, a different value, or
- * the same key sent to another session — would be admitted again as a
- * brand-new command instead of `replayed` or a typed `conflict`.
+ * - A **lease** per session incarnation: the single Bureau process allowed
+ *   to admit steering for it. Every other write below is fenced on it, so
+ *   two processes sharing one backend can never both advance one session's
+ *   durable state. The lease fences admission only: a live run reads its
+ *   own process's gate, so steering admitted elsewhere reaches it at that
+ *   process's next recovery.
+ * - A **desired-state snapshot** per session incarnation: the gate's
+ *   session-scoped desired state plus the highest mailbox `sequence` it
+ *   reflects. Recovery restores it and replays only later entries.
+ * - A **command record** per `(principal, id)`, keyed bureau-wide exactly
+ *   as the in-memory ledger is, and indexed per session incarnation for
+ *   deletion. It is reserved before the mailbox write — so a concurrent or
+ *   orphaned admission of the same key is detected before anything is
+ *   logged — and then kept current through every state transition.
  *
- * Each record is the gate's own ledger entry, as of the admission (live or
- * replayed) that wrote it, and is keyed exactly as the ledger is:
- * bureau-wide by `(principal, id)`, so `session-mismatch` survives a
- * restart too. A per-session index key lets session deletion remove that
- * session's records, the same lifetime its mailbox and ledger entries
- * have. A record answers idempotency questions only: it never enters the
- * gate's ledger or desired state, so a stale `state` cannot be re-applied.
+ * Everything is keyed by session incarnation as well as id, so cleanup
+ * after a deletion can never touch a recreated session's state, and a
+ * recreated session never inherits the deleted one's.
  */
-const STEERING_RECORD_KEY_PREFIX = 'steering-command:v1';
-const STEERING_RECORD_INDEX_PREFIX = 'steering-command-session:v1';
+const STEERING_LEASE_PREFIX = 'steering-lease:v1';
+const STEERING_DESIRED_STATE_PREFIX = 'steering-desired-state:v2';
+const STEERING_RECORD_PREFIX = 'steering-command:v2';
+const STEERING_RECORD_INDEX_PREFIX = 'steering-command-session:v2';
+
+/**
+ * How long a steering lease is honored without renewal before another
+ * process may take it over. Admission renews it, so it only lapses for a
+ * session nobody is steering, or one whose owner died. A restarted process
+ * keeping the same Bureau `id` reclaims its own lease immediately; any
+ * other process waits this long after an owner's crash.
+ */
+export const STEERING_LEASE_TTL_MS = 60_000;
+
+function steeringLeaseKey(sessionId: string, incarnation: string): string {
+  return `${STEERING_LEASE_PREFIX}:${sessionScope(sessionId, incarnation)}`;
+}
+
+function steeringDesiredStateKey(sessionId: string, incarnation: string): string {
+  return `${STEERING_DESIRED_STATE_PREFIX}:${sessionScope(sessionId, incarnation)}`;
+}
 
 function steeringRecordKey(principal: string, id: string): string {
-  return `${STEERING_RECORD_KEY_PREFIX}:${encodeStorageKeyComponent(principal)}:${encodeStorageKeyComponent(id)}`;
+  return `${STEERING_RECORD_PREFIX}:${encodeStorageKeyComponent(principal)}:${encodeStorageKeyComponent(id)}`;
 }
 
-function steeringRecordIndexPrefix(sessionId: string): string {
-  return `${STEERING_RECORD_INDEX_PREFIX}:${encodeStorageKeyComponent(sessionId)}:`;
+function steeringRecordIndexPrefix(sessionId: string, incarnation: string): string {
+  return `${STEERING_RECORD_INDEX_PREFIX}:${sessionScope(sessionId, incarnation)}:`;
 }
 
-/** Writes (or refreshes) the record for one admitted command, with its session index entry. */
-export async function persistSteeringCommandRecord(
+function steeringRecordIndexKey(
+  sessionId: string,
+  incarnation: string,
+  principal: string,
+  id: string,
+): string {
+  return `${steeringRecordIndexPrefix(sessionId, incarnation)}${encodeStorageKeyComponent(principal)}:${encodeStorageKeyComponent(id)}`;
+}
+
+/** A held steering lease, as this process last wrote it. */
+export interface SteeringLease {
+  readonly key: string;
+  /** The exact stored value, the precondition every fenced write uses. */
+  readonly raw: string;
+}
+
+interface SteeringLeaseValue {
+  readonly owner: string;
+  readonly token: string;
+  readonly expiresAtMs: number;
+}
+
+function parseSteeringLease(raw: string | null): SteeringLeaseValue | undefined {
+  if (raw === null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as { owner?: unknown }).owner === 'string' &&
+      typeof (parsed as { token?: unknown }).token === 'string' &&
+      typeof (parsed as { expiresAtMs?: unknown }).expiresAtMs === 'number'
+    ) {
+      return parsed as SteeringLeaseValue;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export type SteeringLeaseAcquisition =
+  | {
+      readonly acquired: true;
+      readonly lease: SteeringLease;
+      /** False when this process did not hold the lease up to now — a fresh acquisition, a takeover, or a reclaim after a restart — so its in-memory gate must be rebuilt from durable state. */
+      readonly continuous: boolean;
+    }
+  | { readonly acquired: false };
+
+/**
+ * Acquires or renews `owner`'s steering lease for one session incarnation.
+ * `held` is the lease this process last wrote, if any; the acquisition is
+ * `continuous` only when the stored value is still exactly that. Another
+ * owner's unexpired lease is refused. A malformed, expired, or same-owner
+ * lease is taken over.
+ */
+export async function acquireSteeringLease(
   kv: ConditionalTextValueStore,
-  record: StoredSteeringCommand,
+  sessionId: string,
+  incarnation: string,
+  options: {
+    readonly owner: string;
+    readonly token: string;
+    readonly nowMs: number;
+    readonly held: SteeringLease | undefined;
+  },
+): Promise<SteeringLeaseAcquisition> {
+  const key = steeringLeaseKey(sessionId, incarnation);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const currentRaw = await kv.get(key);
+    const current = parseSteeringLease(currentRaw);
+    const continuous = options.held !== undefined && currentRaw === options.held.raw;
+    if (
+      !continuous &&
+      current !== undefined &&
+      current.owner !== options.owner &&
+      current.expiresAtMs > options.nowMs
+    ) {
+      return { acquired: false };
+    }
+    const raw = JSON.stringify({
+      owner: options.owner,
+      token: options.token,
+      expiresAtMs: options.nowMs + STEERING_LEASE_TTL_MS,
+    } satisfies SteeringLeaseValue);
+    const committed = await kv.conditionalBatch(
+      [{ key, expectedValue: currentRaw }],
+      [{ type: 'set', key, value: raw }],
+    );
+    if (committed) return { acquired: true, lease: { key, raw }, continuous };
+  }
+  return { acquired: false };
+}
+
+/** Releases `lease` if it is still exactly what this process wrote. */
+export async function releaseSteeringLease(
+  kv: ConditionalTextValueStore,
+  lease: SteeringLease,
 ): Promise<void> {
-  const key = steeringRecordKey(record.principal, record.id);
   await kv.conditionalBatch(
-    [],
-    [
-      { type: 'set', key, value: JSON.stringify(record) },
-      {
-        type: 'set',
-        key: `${steeringRecordIndexPrefix(record.sessionId)}${encodeStorageKeyComponent(record.principal)}:${encodeStorageKeyComponent(record.id)}`,
-        value: key,
-      },
-    ],
+    [{ key: lease.key, expectedValue: lease.raw }],
+    [{ type: 'delete', key: lease.key }],
   );
 }
 
+/** A record as stored: reserved before the mailbox write, admitted after. */
+export interface SteeringCommandRecord {
+  readonly phase: 'reserved' | 'admitted';
+  readonly incarnation: string;
+  readonly command: StoredSteeringCommand;
+}
+
+function parseSteeringCommandRecord(
+  raw: string,
+  principal: string,
+  id: string,
+): SteeringCommandRecord {
+  const parsed: unknown = JSON.parse(raw);
+  const command = (parsed as { command?: Partial<StoredSteeringCommand> } | null)?.command;
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    ((parsed as { phase?: unknown }).phase !== 'reserved' &&
+      (parsed as { phase?: unknown }).phase !== 'admitted') ||
+    typeof (parsed as { incarnation?: unknown }).incarnation !== 'string' ||
+    command?.id !== id ||
+    command.principal !== principal ||
+    typeof command.sessionId !== 'string' ||
+    typeof command.requestedValue?.target !== 'string'
+  ) {
+    throw new Error(`Steering command record for "${principal}"/"${id}" is malformed.`);
+  }
+  return parsed as SteeringCommandRecord;
+}
+
 /**
- * Reads the record for `(principal, id)`, whichever session it belongs to.
- * A missing or malformed record reads as `undefined`, which leaves
- * admission exactly where it was before records existed.
+ * Reads the record for `(principal, id)`, whichever session it belongs to,
+ * or `undefined` when there is none. A malformed record throws: it stands
+ * for an admission whose identity can no longer be checked, and treating
+ * it as absent would let a mismatched retry through.
  */
 export async function loadSteeringCommandRecord(
   kv: ConditionalTextValueStore,
   principal: string,
   id: string,
-): Promise<StoredSteeringCommand | undefined> {
+): Promise<SteeringCommandRecord | undefined> {
   const raw = await kv.get(steeringRecordKey(principal, id));
-  if (raw === null) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      (parsed as { id?: unknown }).id === id &&
-      (parsed as { principal?: unknown }).principal === principal &&
-      typeof (parsed as { sessionId?: unknown }).sessionId === 'string' &&
-      typeof (parsed as { requestedValue?: { target?: unknown } }).requestedValue?.target ===
-        'string'
-    ) {
-      return parsed as StoredSteeringCommand;
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
+  return raw === null ? undefined : parseSteeringCommandRecord(raw, principal, id);
 }
 
-/** Deletes every steering command record that belongs to `sessionId`. */
-export async function deleteSteeringCommandRecords(
+export type SteeringFencedWrite = 'committed' | 'fence-lost';
+
+/**
+ * Reserves `(principal, id)` for `command`, fenced on `lease`, before the
+ * command is written to the mailbox. `exists` carries the record that
+ * already holds the key; `fence-lost` means this process no longer owns the
+ * session's steering.
+ */
+export async function reserveSteeringCommandRecord(
   kv: ConditionalTextValueStore,
-  sessionId: string,
-): Promise<void> {
-  const indexKeys = await kv.list(steeringRecordIndexPrefix(sessionId));
-  for (const indexKey of indexKeys) {
-    const recordKey = await kv.get(indexKey);
-    if (recordKey !== null) await kv.delete(recordKey);
-    await kv.delete(indexKey);
-  }
+  lease: SteeringLease,
+  incarnation: string,
+  command: StoredSteeringCommand,
+): Promise<
+  | { readonly status: 'reserved' }
+  | { readonly status: 'exists'; readonly record: SteeringCommandRecord }
+  | { readonly status: 'fence-lost' }
+> {
+  const key = steeringRecordKey(command.principal, command.id);
+  const record: SteeringCommandRecord = { phase: 'reserved', incarnation, command };
+  const committed = await kv.conditionalBatch(
+    [
+      { key: lease.key, expectedValue: lease.raw },
+      { key, expectedValue: null },
+    ],
+    [
+      { type: 'set', key, value: JSON.stringify(record) },
+      {
+        type: 'set',
+        key: steeringRecordIndexKey(command.sessionId, incarnation, command.principal, command.id),
+        value: key,
+      },
+    ],
+  );
+  if (committed) return { status: 'reserved' };
+  if ((await kv.get(lease.key)) !== lease.raw) return { status: 'fence-lost' };
+  const existing = await loadSteeringCommandRecord(kv, command.principal, command.id);
+  // The key was taken and released again between the failed write and
+  // this read; reporting the fence as lost makes the caller refuse rather
+  // than admit without a reservation.
+  return existing === undefined ? { status: 'fence-lost' } : { status: 'exists', record: existing };
 }
 
 /**
- * A session's durable desired steering state: the gate's own
- * {@link SteeringDurableState}, plus the highest mailbox `sequence` it
- * reflects.
- *
- * Recovery acknowledges every command it replays, so the mailbox alone
- * carries desired state across exactly one restart. This snapshot carries
- * it across every later one. It is written after each accepted admission
- * and after each replayed command, before that command is acknowledged;
- * recovery restores it into the fresh gate first and then replays only
- * the mailbox commands with a higher `sequence`, so nothing is applied
- * twice and `configVersion` matches what the previous process reported.
+ * Deletes a record (and its index entry) left by a session incarnation that
+ * no longer exists. Unfenced: no live session's lease covers a deleted one.
  */
+export async function discardSteeringCommandRecord(
+  kv: ConditionalTextValueStore,
+  record: SteeringCommandRecord,
+): Promise<void> {
+  const { command } = record;
+  await kv.delete(
+    steeringRecordIndexKey(command.sessionId, record.incarnation, command.principal, command.id),
+  );
+  await kv.delete(steeringRecordKey(command.principal, command.id));
+}
+
+/** Writes the current state of a command's record, fenced on `lease`. */
+export async function writeSteeringCommandRecord(
+  kv: ConditionalTextValueStore,
+  lease: SteeringLease,
+  record: SteeringCommandRecord,
+): Promise<SteeringFencedWrite> {
+  const { command } = record;
+  const key = steeringRecordKey(command.principal, command.id);
+  const committed = await kv.conditionalBatch(
+    [{ key: lease.key, expectedValue: lease.raw }],
+    [
+      { type: 'set', key, value: JSON.stringify(record) },
+      {
+        type: 'set',
+        key: steeringRecordIndexKey(
+          command.sessionId,
+          record.incarnation,
+          command.principal,
+          command.id,
+        ),
+        value: key,
+      },
+    ],
+  );
+  return committed ? 'committed' : 'fence-lost';
+}
+
+/** Removes a reservation the gate then declined to record, fenced on `lease`. */
+export async function releaseSteeringCommandReservation(
+  kv: ConditionalTextValueStore,
+  lease: SteeringLease,
+  incarnation: string,
+  command: StoredSteeringCommand,
+): Promise<SteeringFencedWrite> {
+  const committed = await kv.conditionalBatch(
+    [{ key: lease.key, expectedValue: lease.raw }],
+    [
+      { type: 'delete', key: steeringRecordKey(command.principal, command.id) },
+      {
+        type: 'delete',
+        key: steeringRecordIndexKey(command.sessionId, incarnation, command.principal, command.id),
+      },
+    ],
+  );
+  return committed ? 'committed' : 'fence-lost';
+}
+
+/** See the section comment above. */
 export interface SteeringDesiredStateSnapshot {
   readonly mailboxSequence: number;
   readonly state: SteeringDurableState;
 }
 
-const STEERING_DESIRED_STATE_KEY_PREFIX = 'steering-desired-state:v1';
-
-function steeringDesiredStateKey(sessionId: string): string {
-  return `${STEERING_DESIRED_STATE_KEY_PREFIX}:${encodeStorageKeyComponent(sessionId)}`;
-}
-
-/** Writes `sessionId`'s desired-state snapshot. */
+/** Writes one session incarnation's desired-state snapshot, fenced on `lease`. */
 export async function persistSteeringDesiredState(
   kv: ConditionalTextValueStore,
+  lease: SteeringLease,
   sessionId: string,
+  incarnation: string,
   snapshot: SteeringDesiredStateSnapshot,
-): Promise<void> {
-  await kv.set(steeringDesiredStateKey(sessionId), JSON.stringify(snapshot));
+): Promise<SteeringFencedWrite> {
+  const committed = await kv.conditionalBatch(
+    [{ key: lease.key, expectedValue: lease.raw }],
+    [
+      {
+        type: 'set',
+        key: steeringDesiredStateKey(sessionId, incarnation),
+        value: JSON.stringify(snapshot),
+      },
+    ],
+  );
+  return committed ? 'committed' : 'fence-lost';
 }
 
 /**
- * Reads `sessionId`'s desired-state snapshot. A missing or malformed one
- * reads as `undefined`, so recovery falls back to replaying the mailbox
- * alone, exactly as before snapshots existed.
+ * Reads one session incarnation's desired-state snapshot, or `undefined`
+ * when none was ever written. A malformed snapshot throws rather than
+ * reading as absent: once recovery has acknowledged the commands it
+ * reflects, it is the only durable copy of the session's desired state,
+ * and silently starting from defaults would route later work differently
+ * without anyone noticing.
  */
 export async function loadSteeringDesiredState(
   kv: ConditionalTextValueStore,
   sessionId: string,
+  incarnation: string,
 ): Promise<SteeringDesiredStateSnapshot | undefined> {
-  const raw = await kv.get(steeringDesiredStateKey(sessionId));
+  const raw = await kv.get(steeringDesiredStateKey(sessionId, incarnation));
   if (raw === null) return undefined;
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      typeof (parsed as { mailboxSequence?: unknown }).mailboxSequence === 'number' &&
-      typeof (parsed as { state?: { rawConfigVersion?: unknown } }).state?.rawConfigVersion ===
-        'number'
-    ) {
-      return parsed as SteeringDesiredStateSnapshot;
-    }
-    return undefined;
+    parsed = JSON.parse(raw);
   } catch {
-    return undefined;
+    parsed = undefined;
   }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as { mailboxSequence?: unknown }).mailboxSequence !== 'number' ||
+    typeof (parsed as { state?: { rawConfigVersion?: unknown } }).state?.rawConfigVersion !==
+      'number'
+  ) {
+    throw new Error(
+      `Steering desired-state snapshot for session "${sessionId}" is malformed; refusing to recover from defaults.`,
+    );
+  }
+  return parsed as SteeringDesiredStateSnapshot;
 }
 
-/** Deletes `sessionId`'s desired-state snapshot. */
-export async function deleteSteeringDesiredState(
+/**
+ * Deletes everything durable steering keeps for one session incarnation:
+ * its command records (through their index), snapshot, and lease. Keyed by
+ * incarnation, so it never touches a recreated session's state.
+ */
+export async function deleteSteeringSessionState(
   kv: ConditionalTextValueStore,
   sessionId: string,
+  incarnation: string,
 ): Promise<void> {
-  await kv.delete(steeringDesiredStateKey(sessionId));
+  const indexKeys = await kv.list(steeringRecordIndexPrefix(sessionId, incarnation));
+  for (const indexKey of indexKeys) {
+    const recordKey = await kv.get(indexKey);
+    if (recordKey !== null) await kv.delete(recordKey);
+    await kv.delete(indexKey);
+  }
+  await kv.delete(steeringDesiredStateKey(sessionId, incarnation));
+  await kv.delete(steeringLeaseKey(sessionId, incarnation));
 }

@@ -61,14 +61,15 @@ describe('durable steering survives SIGKILL', () => {
       expect(child.signalCode ?? stderr).toBe('SIGKILL');
       expect(existsSync(markerPath)).toBe(true);
 
-      const { sessionId } = JSON.parse(readFileSync(markerPath, 'utf8')) as {
+      const { sessionId, incarnation } = JSON.parse(readFileSync(markerPath, 'utf8')) as {
         sessionId: string;
+        incarnation: string;
       };
 
       // Fresh handle on the same backend, in this process. Nothing is
       // shared with the dead one but the bytes it left on disk.
       const storage = await resolveStorage({ type: 'sqlite', path: storagePath });
-      const mailbox = createSteeringMailbox(storage, sessionId);
+      const mailbox = createSteeringMailbox(storage, sessionId, incarnation);
       const recovered: PersistedSteeringCommand[] = [];
       await recoverSteeringCommands(mailbox, (command) => recovered.push(command));
 
@@ -117,6 +118,7 @@ describe('durable steering survives SIGKILL', () => {
       expect(retryAgain.outcomes.map(({ outcome }) => outcome)).toEqual(['replayed']);
 
       const bureau = await createBureau({
+        id: 'crash-bureau',
         agents: {},
         generate: () => new Promise<never>(() => {}),
         toolbox: createToolbox([]),
@@ -190,6 +192,7 @@ describe('durable steering survives SIGKILL', () => {
       expect(probe.outcomes[0]?.command.configVersion).toBe(2);
 
       const bureau = await createBureau({
+        id: 'crash-bureau',
         agents: {},
         generate: () => new Promise<never>(() => {}),
         toolbox: createToolbox([]),

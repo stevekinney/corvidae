@@ -74,7 +74,10 @@ if (
   process.exit(2);
 }
 
+// A fixed id models one Bureau restarting: a restarted process with the same
+// id reclaims its own steering lease at once instead of waiting out the TTL.
 const bureau = await createBureau({
+  id: 'crash-bureau',
   agents: {},
   generate: () => new Promise<never>(() => {}),
   toolbox: createToolbox([]),
@@ -113,7 +116,9 @@ for (const name of commandNames) {
 
 // The parent reads this to learn the session id and the outcomes. Written
 // synchronously so it is on disk before the kill.
-writeFileSync(markerPath, JSON.stringify({ sessionId, outcomes }), 'utf8');
+const markedSession = await bureau.getSession(sessionId);
+const incarnation = markedSession?.incarnation;
+writeFileSync(markerPath, JSON.stringify({ sessionId, incarnation, outcomes }), 'utf8');
 
 // No `bureau.dispose()`, deliberately. SIGKILL cannot be trapped, so no
 // cleanup, no flush, no graceful close runs after this line.

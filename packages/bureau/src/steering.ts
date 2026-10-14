@@ -237,6 +237,25 @@ export interface SteeringDurableState {
   readonly agentNameDeadline?: string;
   readonly pendingAgentName?: string;
   readonly pendingAgentDeadline?: string;
+  /**
+   * The `(principal, id)` keys of the commands still pending for each
+   * target, so a command admitted after a restart supersedes them exactly
+   * as it would have in the process that admitted them (their durable
+   * records are what it then marks `superseded`).
+   */
+  readonly pendingIdentityKey?: { readonly principal: string; readonly id: string };
+  readonly pendingConfigurationKeys?: Readonly<
+    Partial<Record<ConfigurationTargetKind, readonly { principal: string; id: string }[]>>
+  >;
+}
+
+/** See `createSteeringGate`'s `hooks` parameter. */
+export interface SteeringGateHooks {
+  readonly onTransition?: (stored: StoredSteeringCommand) => void;
+  readonly onUnloadedSupersession?: (
+    key: { readonly principal: string; readonly id: string },
+    failure: SteeringCommandFailure,
+  ) => void;
 }
 
 export interface BureauSteeringGate extends SteeringGate {
@@ -668,7 +687,17 @@ export function createSteeringGate(
   // real-globals-default injection pattern `RuntimeServices` establishes
   // everywhere else.
   clock: RuntimeClock = createDefaultRuntimeServices().clock,
+  // Durable bookkeeping hooks, both synchronous. `onTransition` fires
+  // whenever an already-recorded command changes state (`superseded`,
+  // `applied`, or `failed`) — never for the admission that first records
+  // it, whose outcome the caller already has. `onUnloadedSupersession` fires
+  // when a new command supersedes a pending key restored from a durable
+  // snapshot that has no ledger entry in this process, so the caller can
+  // mark that command's durable record instead.
+  hooks: SteeringGateHooks = {},
 ): BureauSteeringGate {
+  const onTransition = hooks.onTransition ?? (() => {});
+  const onUnloadedSupersession = hooks.onUnloadedSupersession ?? (() => {});
   let rawConfigVersion = 0;
   let effectiveConfigVersion = 0;
   let appliedFloor = 0;
@@ -741,9 +770,16 @@ export function createSteeringGate(
     for (const key of pendingConfigurationKeys.get(target) ?? []) {
       if (key.id === successorId) continue;
       const prior = ledgerGet(key.principal, key.id);
-      if (prior && prior.state === 'accepted') {
+      if (prior === undefined) {
+        onUnloadedSupersession(key, {
+          failedAt: now,
+          reason: 'superseded-by',
+          supersededBy: successorId,
+        });
+      } else if (prior.state === 'accepted') {
         prior.state = 'superseded';
         prior.failure = { failedAt: now, reason: 'superseded-by', supersededBy: successorId };
+        onTransition(prior);
       }
     }
     pendingConfigurationKeys.set(target, []);
@@ -851,6 +887,7 @@ export function createSteeringGate(
       if (prior && prior.state === 'accepted') {
         prior.state = 'superseded';
         prior.failure = { failedAt: now, reason: 'superseded-by', supersededBy };
+        onTransition(prior);
       }
     }
     runPauseOwners.delete(runId);
@@ -1043,6 +1080,15 @@ export function createSteeringGate(
         ...(agentNameDeadline !== undefined ? { agentNameDeadline } : {}),
         ...(pendingAgentName !== undefined ? { pendingAgentName } : {}),
         ...(pendingAgentDeadline !== undefined ? { pendingAgentDeadline } : {}),
+        ...(pendingIdentityKey !== undefined
+          ? { pendingIdentityKey: { ...pendingIdentityKey } }
+          : {}),
+        pendingConfigurationKeys: Object.fromEntries(
+          [...pendingConfigurationKeys].map(([target, keys]) => [
+            target,
+            keys.map((key) => ({ ...key })),
+          ]),
+        ),
       };
     },
 
@@ -1069,6 +1115,15 @@ export function createSteeringGate(
       if (state.pendingAgentName !== undefined && !pendingExpired) {
         pendingAgentName = state.pendingAgentName;
         pendingAgentDeadline = state.pendingAgentDeadline;
+        if (state.pendingIdentityKey !== undefined) {
+          pendingIdentityKey = { ...state.pendingIdentityKey };
+        }
+      }
+      for (const [target, keys] of Object.entries(state.pendingConfigurationKeys ?? {})) {
+        pendingConfigurationKeys.set(
+          target as ConfigurationTargetKind,
+          (keys ?? []).map((key) => ({ ...key })),
+        );
       }
     },
 
@@ -1329,13 +1384,20 @@ export function createSteeringGate(
       // identity commands").
       if (pendingIdentityKey !== undefined) {
         const prior = ledgerGet(pendingIdentityKey.principal, pendingIdentityKey.id);
-        if (prior && prior.state === 'accepted') {
+        if (prior === undefined) {
+          onUnloadedSupersession(pendingIdentityKey, {
+            failedAt: context.now,
+            reason: 'superseded-by',
+            supersededBy: command.id,
+          });
+        } else if (prior.state === 'accepted') {
           prior.state = 'superseded';
           prior.failure = {
             failedAt: context.now,
             reason: 'superseded-by',
             supersededBy: command.id,
           };
+          onTransition(prior);
         }
       }
       // Guaranteed present — the `policyRef` variant already returned above.
@@ -1437,9 +1499,11 @@ export function createSteeringGate(
             }
             stored.state = 'failed';
             stored.failure = { failedAt: now, reason: 'deadline-passed' };
+            onTransition(stored);
             continue;
           }
           stored.state = 'applied';
+          onTransition(stored);
         }
       }
     },
@@ -1464,14 +1528,16 @@ export function createSteeringGate(
         ) {
           pending.state = 'failed';
           pending.failure = { failedAt: now, reason: 'deadline-passed' };
+          onTransition(pending);
           pendingAgentName = undefined;
         }
       }
       // A pending identity restored from a durable snapshot has no ledger
-      // entry (and so no `pendingIdentityKey`) to carry its deadline, so
-      // the deadline it was restored with is checked directly instead.
+      // entry in this process to carry its deadline, so the deadline it was
+      // restored with is checked directly instead.
       if (
-        pendingIdentityKey === undefined &&
+        (pendingIdentityKey === undefined ||
+          ledgerGet(pendingIdentityKey.principal, pendingIdentityKey.id) === undefined) &&
         pendingAgentDeadline !== undefined &&
         Date.parse(now) > Date.parse(pendingAgentDeadline)
       ) {
@@ -1559,6 +1625,7 @@ export function createSteeringGate(
         ) {
           stored.state = 'failed';
           stored.failure = { failedAt: now, reason: 'run-terminal' };
+          onTransition(stored);
         }
       }
     }

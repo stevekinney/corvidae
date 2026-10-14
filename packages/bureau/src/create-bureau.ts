@@ -94,6 +94,7 @@ import {
   SkillRejectedEvent,
 } from '@lostgradient/skills';
 import {
+  type ConditionalTextValueStore,
   decode,
   KEYS,
   type ListFilter,
@@ -223,15 +224,21 @@ import {
   type SteeringCommandRequest,
 } from './steering';
 import {
+  acquireSteeringLease,
   createSteeringMailbox,
-  deleteSteeringCommandRecords,
-  deleteSteeringDesiredState,
+  deleteSteeringSessionState,
+  discardSteeringCommandRecord,
   loadSteeringCommandRecord,
   loadSteeringDesiredState,
   persistSteeringCommand,
-  persistSteeringCommandRecord,
   persistSteeringDesiredState,
   recoverSteeringCommands,
+  releaseSteeringCommandReservation,
+  releaseSteeringLease,
+  reserveSteeringCommandRecord,
+  type SteeringCommandRecord,
+  type SteeringLease,
+  writeSteeringCommandRecord,
 } from './steering-durability';
 import type {
   AbortingRun,
@@ -1626,7 +1633,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * and constructing a second one for the same `(namespace, resourceId)`
    * would defeat the FIFO ordering that is the point of using one.
    */
-  const steeringMailboxes = new Map<string, Mailbox>();
+  const steeringMailboxes = new Map<string, { incarnation: string; mailbox: Mailbox }>();
   /**
    * Sessions whose durable steering log has already been drained into a
    * gate in this process. Recovery is once per session per boot: the
@@ -1636,15 +1643,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   const steeringRecoveries = new Map<string, Promise<void>>();
 
-  /** `undefined` for a non-durable bureau — nothing to persist against. */
-  function getSteeringMailbox(sessionId: string): Mailbox | undefined {
+  /**
+   * `undefined` for a non-durable bureau — nothing to persist against.
+   * Cached per session, and replaced when the session's incarnation changes.
+   */
+  function getSteeringMailbox(sessionId: string, incarnation: string): Mailbox | undefined {
     const storage = runtime.durableStorage;
-    if (!runtime.durable || storage === undefined) return undefined;
-    let mailbox = steeringMailboxes.get(sessionId);
-    if (!mailbox) {
-      mailbox = createSteeringMailbox(storage, sessionId);
-      steeringMailboxes.set(sessionId, mailbox);
-    }
+    if (!runtime.durable || storage === undefined || runtime.kv === undefined) return undefined;
+    const cached = steeringMailboxes.get(sessionId);
+    if (cached !== undefined && cached.incarnation === incarnation) return cached.mailbox;
+    cached?.mailbox.dispose();
+    const mailbox = createSteeringMailbox(storage, sessionId, incarnation);
+    steeringMailboxes.set(sessionId, { incarnation, mailbox });
     return mailbox;
   }
 
@@ -1672,26 +1682,185 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Resolves this session's gate, replaying its durable steering log into
-   * a freshly-created one first.
+   * The steering lease this process holds per session, with the
+   * incarnation it was taken for. See `steering-durability.ts`.
+   */
+  const steeringLeases = new Map<string, { incarnation: string; lease: SteeringLease }>();
+  /** Fresh per process, so a restarted process never mistakes its predecessor's lease for one it still holds. */
+  const steeringLeaseToken = runtimeServices.identifiers.next('steering-lease');
+
+  /**
+   * Acquires or renews this process's steering lease for one session
+   * incarnation. A non-continuous acquisition — first use, takeover, or
+   * reclaim after a restart — discards any local gate state for the
+   * session, so recovery rebuilds it from durable state instead of
+   * trusting a view another process may have advanced since.
+   */
+  async function acquireSessionSteeringLease(
+    sessionId: string,
+    incarnation: string,
+  ): Promise<SteeringLease | undefined> {
+    const kv = runtime.kv;
+    if (kv === undefined) return undefined;
+    const held = steeringLeases.get(sessionId);
+    const acquisition = await acquireSteeringLease(kv, sessionId, incarnation, {
+      owner: bureauId,
+      token: steeringLeaseToken,
+      nowMs: runtimeServices.clock.now(),
+      held: held?.incarnation === incarnation ? held.lease : undefined,
+    });
+    if (!acquisition.acquired) {
+      relinquishSessionSteering(sessionId);
+      return undefined;
+    }
+    if (!acquisition.continuous) resetSessionSteering(sessionId);
+    steeringLeases.set(sessionId, { incarnation, lease: acquisition.lease });
+    return acquisition.lease;
+  }
+
+  /** Forgets this process's lease for a session and its gate's durable view. */
+  function relinquishSessionSteering(sessionId: string): void {
+    if (steeringLeases.delete(sessionId)) resetSessionSteering(sessionId);
+  }
+
+  /**
+   * Replaces the session's gate with a fresh one and forgets its recovery,
+   * so the next steering operation rebuilds from durable state. Runs that
+   * already started keep the gate they were handed; they observe steering
+   * from the rebuilt gate from their next run onward.
+   */
+  function resetSessionSteering(sessionId: string): void {
+    const gate = steeringGates.get(sessionId);
+    if (gate !== undefined && gate.exportDurableState().rawConfigVersion !== 0) {
+      gate.purgeFromLedger();
+      steeringGates.delete(sessionId);
+    }
+    steeringRecoveries.delete(sessionId);
+    steeringSnapshotSequences.delete(sessionId);
+  }
+
+  /** Creates a session's gate with the durable bookkeeping hooks attached. */
+  function createSessionSteeringGate(sessionId: string): BureauSteeringGate {
+    return createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock, {
+      onTransition: (stored) => {
+        queueSteeringRecordWrite(sessionId, async (kv, lease, incarnation) =>
+          writeSteeringCommandRecord(kv, lease, {
+            phase: 'admitted',
+            incarnation,
+            command: { ...stored },
+          }),
+        );
+      },
+      onUnloadedSupersession: (key, failure) => {
+        queueSteeringRecordWrite(sessionId, async (kv, lease, incarnation) => {
+          const record = await loadSteeringCommandRecord(kv, key.principal, key.id);
+          if (record === undefined || record.command.state !== 'accepted') return 'committed';
+          return writeSteeringCommandRecord(kv, lease, {
+            phase: record.phase,
+            incarnation: record.incarnation === '' ? incarnation : record.incarnation,
+            command: { ...record.command, state: 'superseded', failure },
+          });
+        });
+      },
+    });
+  }
+
+  /** The session's gate, created with durable hooks on first use. */
+  function getSessionSteeringGate(sessionId: string): BureauSteeringGate {
+    let gate = steeringGates.get(sessionId);
+    if (gate === undefined) {
+      gate = createSessionSteeringGate(sessionId);
+      steeringGates.set(sessionId, gate);
+    }
+    return gate;
+  }
+
+  type SteeringRecordWrite = (
+    kv: ConditionalTextValueStore,
+    lease: SteeringLease,
+    incarnation: string,
+  ) => Promise<'committed' | 'fence-lost'>;
+
+  /** Command-record writes queued by gate transitions, per session, in order. */
+  const steeringRecordWrites = new Map<string, SteeringRecordWrite[]>();
+  /** The in-flight drain of each session's queue, so drains never overlap. */
+  const steeringRecordDrains = new Map<string, Promise<void>>();
+
+  /**
+   * Queues a record write for a gate transition and starts draining it in
+   * the background. Run-boundary transitions happen synchronously inside a
+   * run's step, so their writes are best-effort: a failure is a
+   * diagnostic, and the cost is a stale `state` in a replay after a restart.
+   * Admission awaits the same queue strictly (see `flushSteeringRecordWrites`).
+   */
+  function queueSteeringRecordWrite(sessionId: string, write: SteeringRecordWrite): void {
+    if (runtime.kv === undefined) return;
+    const queue = steeringRecordWrites.get(sessionId);
+    if (queue === undefined) steeringRecordWrites.set(sessionId, [write]);
+    else queue.push(write);
+    void flushSteeringRecordWrites(sessionId).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'steering',
+        message: `[bureau] Could not persist a steering command transition for session "${sessionId}": ${serializeUnknownError(error)}`,
+      });
+    });
+  }
+
+  /**
+   * Drains a session's queued record writes, fenced on this process's
+   * lease. A process without the lease has no authority to write them, so
+   * they are dropped: the owner keeps its own records current.
+   */
+  async function flushSteeringRecordWrites(sessionId: string): Promise<void> {
+    const kv = runtime.kv;
+    if (kv === undefined) return;
+    const previous = steeringRecordDrains.get(sessionId) ?? Promise.resolve();
+    const drainQueue = async (): Promise<void> => {
+      // A previous drain's failure was already reported to its own caller.
+      await previous.catch(() => undefined);
+      for (;;) {
+        const queue = steeringRecordWrites.get(sessionId);
+        const write = queue?.shift();
+        if (write === undefined) return;
+        const held = steeringLeases.get(sessionId);
+        if (held === undefined) continue;
+        if ((await write(kv, held.lease, held.incarnation)) === 'fence-lost') {
+          relinquishSessionSteering(sessionId);
+        }
+      }
+    };
+    const drain = drainQueue();
+    steeringRecordDrains.set(sessionId, drain);
+    try {
+      await drain;
+    } finally {
+      if (steeringRecordDrains.get(sessionId) === drain) steeringRecordDrains.delete(sessionId);
+    }
+  }
+
+  /**
+   * Resolves this session's gate, rebuilding it from durable state first
+   * when it has not been recovered under the current lease.
    *
    * Recovery is lazy rather than a boot sweep, and deliberately: a bureau
    * may hold thousands of sessions whose steering logs are empty, and
    * draining every one at startup would pay for all of them to recover the
    * few that need it. The first steering operation on a session after a
    * restart is exactly when its log matters.
+   *
+   * Only the lease holder drains the mailbox and writes durable state. A
+   * process without the lease (a run starting while another process owns
+   * the session's steering) restores the snapshot read-only, which is the
+   * owner's view as of its last admission.
    */
   async function ensureSteeringGate(
     sessionId: string,
+    incarnation: string,
     liveRunIds: readonly string[],
   ): Promise<BureauSteeringGate> {
-    let gate = steeringGates.get(sessionId);
-    if (gate === undefined) {
-      gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
-      steeringGates.set(sessionId, gate);
-    }
-
-    const mailbox = getSteeringMailbox(sessionId);
+    const gate = getSessionSteeringGate(sessionId);
+    const mailbox = getSteeringMailbox(sessionId, incarnation);
     if (mailbox === undefined) return gate;
 
     // Every caller awaits the SAME recovery promise, including one that
@@ -1703,15 +1872,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // the order the mailbox exists to preserve.
     let recovery = steeringRecoveries.get(sessionId);
     if (recovery === undefined) {
-      recovery = replaySteeringLog(sessionId, gate, mailbox, liveRunIds).catch((error: unknown) => {
-        // A failed recovery must not be cached as done: a transient
-        // storage fault would otherwise leave this session permanently
-        // unrecoverable for the life of the process. Clearing lets the
-        // next caller retry, and rethrowing fails this one closed rather
-        // than admitting into a gate whose durable history is unknown.
-        steeringRecoveries.delete(sessionId);
-        throw error;
-      });
+      recovery = replaySteeringLog(sessionId, incarnation, gate, mailbox, liveRunIds).catch(
+        (error: unknown) => {
+          // A failed recovery must not be cached as done, and the gate it
+          // was restoring into must not be reused: a snapshot may already
+          // have been restored into it, and a retry restoring again into a
+          // used gate would throw forever. Dropping both lets the next
+          // caller retry from scratch; rethrowing fails this one closed
+          // rather than admitting into a gate whose durable history is
+          // unknown.
+          if (steeringGates.get(sessionId) === gate) {
+            gate.purgeFromLedger();
+            steeringGates.delete(sessionId);
+          }
+          steeringRecoveries.delete(sessionId);
+          steeringSnapshotSequences.delete(sessionId);
+          throw error;
+        },
+      );
       steeringRecoveries.set(sessionId, recovery);
     }
     await recovery;
@@ -1719,22 +1897,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Restores one session's durable desired-state snapshot into its fresh
-   * gate, then drains the steering mailbox into it in order, skipping the
-   * commands the snapshot already reflects.
+   * Restores one session incarnation's durable desired-state snapshot into
+   * its fresh gate and, when this process holds the steering lease, drains
+   * the mailbox into it in order, skipping the commands the snapshot
+   * already reflects.
    */
   async function replaySteeringLog(
     sessionId: string,
+    incarnation: string,
     gate: BureauSteeringGate,
     mailbox: Mailbox,
     liveRunIds: readonly string[],
   ): Promise<void> {
     const kv = runtime.kv;
-    const snapshot = kv === undefined ? undefined : await loadSteeringDesiredState(kv, sessionId);
-    if (snapshot !== undefined) {
+    if (kv === undefined) return;
+    const snapshot = await loadSteeringDesiredState(kv, sessionId, incarnation);
+    if (snapshot !== undefined && gate.exportDurableState().rawConfigVersion === 0) {
       gate.restoreDurableState(snapshot.state, runtimeServices.clock.nowISO());
       steeringSnapshotSequences.set(sessionId, snapshot.mailboxSequence);
     }
+    const held = steeringLeases.get(sessionId);
+    if (held === undefined || held.incarnation !== incarnation) return;
     const reflectedThrough = snapshot?.mailboxSequence ?? 0;
     const now = runtimeServices.clock.nowISO();
     // The replay is handed to `recoverSteeringCommands` as a callback so
@@ -1767,13 +1950,67 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         },
         { liveRunIds, now },
       );
-      // A command admitted live already has a record; this covers a
-      // process that crashed after the mailbox write but before its own.
-      if (replayed.outcome === 'accepted') {
-        await recordSteeringCommand(recovered.principal, recovered.id);
-      }
-      await snapshotSteeringState(sessionId, gate, sequence);
+      await persistAdmittedSteeringRecord(
+        sessionId,
+        incarnation,
+        held.lease,
+        recovered.principal,
+        recovered.id,
+        replayed.outcome === 'accepted',
+      );
+      await flushSteeringRecordWrites(sessionId);
+      await snapshotSteeringState(sessionId, incarnation, held.lease, gate, sequence);
     });
+  }
+
+  /**
+   * After an admission (live or replayed), makes the command's record match
+   * the gate: the ledger entry when it was accepted, or no record at all
+   * when the gate declined it, so a retry is evaluated afresh. Load-bearing:
+   * the snapshot written next lets recovery skip this mailbox entry, so a
+   * record that failed to land here would never be written later.
+   */
+  async function persistAdmittedSteeringRecord(
+    sessionId: string,
+    incarnation: string,
+    lease: SteeringLease,
+    principal: string,
+    id: string,
+    accepted: boolean,
+  ): Promise<void> {
+    const kv = runtime.kv;
+    if (kv === undefined) return;
+    const entry = getSteeringLedgerEntry(steeringCommandLedger, principal, id);
+    const write =
+      accepted && entry !== undefined
+        ? await writeSteeringCommandRecord(kv, lease, {
+            phase: 'admitted',
+            incarnation,
+            command: { ...entry },
+          })
+        : await releaseSteeringCommandRecordIfReserved(kv, lease, incarnation, principal, id);
+    if (write === 'fence-lost') throw steeringOwnershipLost(sessionId);
+  }
+
+  /** Deletes `(principal, id)`'s record only while it is still a reservation. */
+  async function releaseSteeringCommandRecordIfReserved(
+    kv: ConditionalTextValueStore,
+    lease: SteeringLease,
+    incarnation: string,
+    principal: string,
+    id: string,
+  ): Promise<'committed' | 'fence-lost'> {
+    const record = await loadSteeringCommandRecord(kv, principal, id);
+    if (record?.phase !== 'reserved') return 'committed';
+    return releaseSteeringCommandReservation(kv, lease, incarnation, record.command);
+  }
+
+  function steeringOwnershipLost(sessionId: string): BureauError {
+    relinquishSessionSteering(sessionId);
+    return new BureauError(
+      `Steering for session "${sessionId}" was taken over by another Bureau process mid-admission.`,
+      'CONFLICT',
+    );
   }
 
   /**
@@ -1783,23 +2020,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const steeringSnapshotSequences = new Map<string, number>();
 
   /**
-   * Persists `sessionId`'s desired-state snapshot as of mailbox `sequence`.
-   * Unlike a command record, this write is load-bearing — recovery skips
-   * every mailbox command at or below the sequence it names — so a failure
-   * propagates rather than being reduced to a diagnostic.
+   * Persists a session's desired-state snapshot as of mailbox `sequence`,
+   * fenced on the steering lease. Load-bearing: recovery skips every
+   * mailbox command at or below the sequence it names, so a failure
+   * propagates. A lost fence means another process took the session over;
+   * this process lets go of it, and the new owner's recovery folds in the
+   * mailbox entry this admission already wrote.
    */
   async function snapshotSteeringState(
     sessionId: string,
+    incarnation: string,
+    lease: SteeringLease,
     gate: BureauSteeringGate,
     sequence: number,
-  ): Promise<void> {
-    if (runtime.kv === undefined) return;
+  ): Promise<'committed' | 'fence-lost'> {
+    const kv = runtime.kv;
+    if (kv === undefined) return 'committed';
     const mailboxSequence = Math.max(steeringSnapshotSequences.get(sessionId) ?? 0, sequence);
-    steeringSnapshotSequences.set(sessionId, mailboxSequence);
-    await persistSteeringDesiredState(runtime.kv, sessionId, {
+    const written = await persistSteeringDesiredState(kv, lease, sessionId, incarnation, {
       mailboxSequence,
       state: gate.exportDurableState(),
     });
+    if (written === 'committed') steeringSnapshotSequences.set(sessionId, mailboxSequence);
+    else relinquishSessionSteering(sessionId);
+    return written;
   }
 
   /**
@@ -1808,7 +2052,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * with another admission on the same session: a later command could
    * otherwise reach the gate first and have its snapshot claim a mailbox
    * sequence an earlier, not-yet-admitted command holds, which recovery
-   * would then skip.
+   * would then skip. Across processes the steering lease plays this role.
    */
   const steeringAdmissionTails = new Map<string, Promise<void>>();
 
@@ -3253,23 +3497,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // that durable steering persists and recovers, excluding them would
       // be the actual bug: a command admitted and durably recovered would
       // never reach the run it was meant to steer.
-      let steeringGate = steeringGates.get(sessionId);
-      if (!steeringGate) {
-        steeringGate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
-        steeringGates.set(sessionId, steeringGate);
-      }
       // A durable run starting after a restart must see the recovered
       // desired state at its own step 0, not merely at the next steering
-      // call, so the log is drained before the run begins.
-      const steeringMailboxForRun = getSteeringMailbox(sessionId);
-      if (steeringMailboxForRun !== undefined) {
-        await ensureSteeringGate(sessionId, [runId]);
+      // call, so the gate is recovered before the run begins — draining the
+      // log when this process can take the session's steering lease, and
+      // restoring the owner's snapshot read-only when another process holds
+      // it.
+      let steeringGate: BureauSteeringGate | undefined;
+      if (runtime.durable && runtime.kv !== undefined && runtime.sessionStore !== undefined) {
+        const steeringSession = await runtime.sessionStore.load(sessionId);
+        if (steeringSession !== undefined) {
+          await acquireSessionSteeringLease(sessionId, steeringSession.incarnation);
+          steeringGate = await ensureSteeringGate(sessionId, steeringSession.incarnation, [runId]);
+        }
       }
-      steeringGate?.promoteForNewRun(runId, runtimeServices.clock.nowISO());
+      steeringGate ??= getSessionSteeringGate(sessionId);
+      steeringGate.promoteForNewRun(runId, runtimeServices.clock.nowISO());
       // AB-67/AB-199 — a per-run VIEW of the shared session gate (see
       // `steering.ts`'s `forRun` doc comment): a pause bound to a DIFFERENT
       // concurrent run on this same session must never block this one.
-      const runSteeringGate = steeringGate?.forRun(runId);
+      const runSteeringGate = steeringGate.forRun(runId);
 
       // COR-690: the last admission check before the run and its toolbox are
       // registered. Everything from here to that registration is synchronous,
@@ -6972,13 +7219,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // Dropping the recovery promise alongside it keeps the two in step;
       // a future session under this id recovers from the durable log
       // rather than from a resolved promise about a session that is gone.
-      steeringMailboxes.get(id)?.dispose();
+      steeringMailboxes.get(id)?.mailbox.dispose();
       steeringMailboxes.delete(id);
       steeringRecoveries.delete(id);
       steeringSnapshotSequences.delete(id);
+      steeringLeases.delete(id);
+      steeringRecordWrites.delete(id);
+      // Keyed by the DELETED body's incarnation, captured before the store
+      // delete: a session recreated under this id in the meantime has a new
+      // incarnation, so this cleanup can never touch its durable steering
+      // state, and a crash before it finishes leaves only state no live
+      // incarnation will ever read.
       if (runtime.durable && runtime.kv !== undefined) {
-        await deleteSteeringCommandRecords(runtime.kv, id);
-        await deleteSteeringDesiredState(runtime.kv, id);
+        await deleteSteeringSessionState(runtime.kv, id, session.incarnation);
       }
 
       await Promise.allSettled(runTerminals);
@@ -7415,8 +7668,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
-    const gate = await ensureSteeringGate(sessionId, liveRunIds);
-
     const now = runtimeServices.clock.nowISO();
     const id = request.id ?? runtimeServices.identifiers.next('steering-command');
     const command: ImplementedSteeringCommand = {
@@ -7439,93 +7690,177 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     // Serialized per session from here on — see `withSteeringAdmissionLock`.
     return withSteeringAdmissionLock(sessionId, async () => {
-      // Idempotency is decided BEFORE anything is written. A key the ledger
-      // already holds — or, after a restart, one only its durable steering
-      // command record remembers — is a replay or a typed conflict, resolved
-      // by the same classification the gate uses. Checking first matters for
-      // durability: a conflicting command written to this session's mailbox
-      // and only then refused would still be replayed by the next recovery,
-      // into a ledger too empty to refuse it again. The record is consulted
-      // whenever the ledger has no entry, not only when the mailbox reports a
-      // mismatch, because a reused id may target a different session (and so
-      // a different mailbox) or match the original payload exactly.
-      const steeringMailbox = getSteeringMailbox(sessionId);
-      const prior =
-        getSteeringLedgerEntry(steeringCommandLedger, command.principal, command.id) ??
-        (steeringMailbox !== undefined && runtime.kv !== undefined
-          ? await loadSteeringCommandRecord(runtime.kv, command.principal, command.id)
-          : undefined);
-      if (prior !== undefined) return resolveSteeringRetry(prior, command);
-
-      // AB-200 durable steering: persist BEFORE admitting into desired
-      // state. A crash between the two then loses nothing — recovery finds
-      // the command still unconsumed and replays it. The reverse order
-      // would put a command into desired state that no restart could
-      // recover, which is precisely the failure the durable contract exists
-      // to rule out.
-      let persistedSequence: number | undefined;
-      if (steeringMailbox !== undefined) {
-        const persistence = await persistSteeringCommand(steeringMailbox, command);
-        if (!persistence.persisted && persistence.reason !== 'idempotency-identity-mismatch') {
-          // Backlog exhaustion: nothing was written, so nothing may enter
-          // desired state either.
-          return { outcome: 'unsupported-capability', reason: persistence.reason };
-        }
-        // A mailbox idempotency mismatch with no ledger entry and no record
-        // is a command whose earlier admission never completed (the process
-        // died between the mailbox write and the gate). Recovery has already
-        // replayed whatever that write left, so admitting through the gate
-        // below is correct.
-        if (persistence.persisted) persistedSequence = persistence.sequence;
+      const kv = runtime.kv;
+      if (!runtime.durable || runtime.durableStorage === undefined || kv === undefined) {
+        const gate = getSessionSteeringGate(sessionId);
+        const outcome = gate.admit(command, { liveRunIds, now });
+        if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
+        return outcome;
       }
-
-      const outcome = gate.admit(command, { liveRunIds, now });
-      // AB-68: give `steering.accepted` its first production dispatch site.
-      // Only the `accepted` transition is dispatched here, and deliberately:
-      // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
-      // are documented as `accepted → X` transitions, so a PRE-admission
-      // rejection (an unknown agent name, an ambiguous run) never reached
-      // `accepted` and must not be reported as having left it. Those three
-      // belong to the gate's own post-admission transitions.
-      if (outcome.outcome === 'accepted') {
-        emitter.dispatch(
-          new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
-        );
-        if (steeringMailbox !== undefined) {
-          await recordSteeringCommand(command.principal, command.id);
-        }
-      }
-      // Whatever the gate decided, the command is now in the mailbox, so the
-      // snapshot advances past it: recovery must neither re-apply an accepted
-      // command nor resurrect one this gate refused under the conditions it
-      // was actually submitted in.
-      if (persistedSequence !== undefined) {
-        await snapshotSteeringState(sessionId, gate, persistedSequence);
-      }
-      return outcome;
+      return admitDurableSteeringCommand(kv, session.incarnation, command, liveRunIds, now);
     });
   }
 
+  // AB-68: give `steering.accepted` its first production dispatch site.
+  // Only the `accepted` transition is dispatched here, and deliberately:
+  // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
+  // are documented as `accepted → X` transitions, so a PRE-admission
+  // rejection (an unknown agent name, an ambiguous run) never reached
+  // `accepted` and must not be reported as having left it. Those three
+  // belong to the gate's own post-admission transitions.
+  function dispatchSteeringAccepted(
+    sessionId: string,
+    outcome: Extract<SteeringCommandAdmissionOutcome, { outcome: 'accepted' }>,
+  ): void {
+    emitter.dispatch(
+      new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
+    );
+  }
+
   /**
-   * Persists the ledger's entry for `(principal, id)` as its durable steering
-   * command record (see `steering-durability.ts`). The command is already
-   * admitted and durable in the mailbox by now, so a failed write is
-   * reported as a diagnostic rather than failing an admission that
-   * succeeded; the only cost is that a reused id after two restarts falls
-   * back to being treated as new.
+   * Durable admission, under the session's admission lock:
+   *
+   * 1. Take or renew the session incarnation's steering lease; another
+   *    process's live lease refuses with `steering-owned-elsewhere`.
+   * 2. Recover the gate from durable state if this lease tenure has not.
+   * 3. Decide idempotency before anything is logged: from the ledger, else
+   *    from the key's durable record, else by atomically reserving the key.
+   *    A conflicting command must never reach the mailbox, where the next
+   *    recovery would replay it into a ledger too empty to refuse it.
+   * 4. Log to the mailbox, admit into the gate, make the record match the
+   *    gate, persist any transitions the admission caused, and advance the
+   *    desired-state snapshot past the logged entry.
    */
-  async function recordSteeringCommand(principal: string, id: string): Promise<void> {
-    const entry = getSteeringLedgerEntry(steeringCommandLedger, principal, id);
-    if (runtime.kv === undefined || entry === undefined) return;
-    try {
-      await persistSteeringCommandRecord(runtime.kv, entry);
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'steering',
-        message: `[bureau] Could not persist steering command record "${id}": ${serializeUnknownError(error)}`,
-      });
+  async function admitDurableSteeringCommand(
+    kv: ConditionalTextValueStore,
+    incarnation: string,
+    command: ImplementedSteeringCommand,
+    liveRunIds: readonly string[],
+    now: string,
+  ): Promise<SteeringCommandAdmissionOutcome> {
+    const { sessionId, principal, id } = command;
+    const lease = await acquireSessionSteeringLease(sessionId, incarnation);
+    if (lease === undefined) {
+      return { outcome: 'unsupported-capability', reason: 'steering-owned-elsewhere' };
     }
+    const gate = await ensureSteeringGate(sessionId, incarnation, liveRunIds);
+    const mailbox = getSteeringMailbox(sessionId, incarnation);
+    if (mailbox === undefined) {
+      return { outcome: 'unsupported-capability', reason: 'durable-steering-unavailable' };
+    }
+
+    const ledgerPrior = getSteeringLedgerEntry(steeringCommandLedger, principal, id);
+    if (ledgerPrior !== undefined) return resolveSteeringRetry(ledgerPrior, command);
+
+    let existing = await loadLiveSteeringCommandRecord(kv, principal, id, sessionId, incarnation);
+    if (existing === undefined) {
+      const reservation = await reserveSteeringCommandRecord(kv, lease, incarnation, {
+        id,
+        sessionId,
+        principal,
+        requestedValue: { ...command.requestedValue },
+        runId: undefined,
+        requestedRunId: command.runId,
+        requestedAt: command.requestedAt,
+        deadline: command.deadline,
+        configVersion: 0,
+        state: 'accepted',
+        failure: undefined,
+      });
+      if (reservation.status === 'fence-lost') {
+        relinquishSessionSteering(sessionId);
+        return { outcome: 'unsupported-capability', reason: 'steering-owned-elsewhere' };
+      }
+      if (reservation.status === 'exists') existing = reservation.record;
+    }
+    if (existing !== undefined) {
+      const resolved = resolveSteeringRetry(existing.command, command);
+      // An admitted record is the original's answer. A reservation that
+      // conflicts is someone else's in-flight or orphaned admission. A
+      // reservation that matches is an earlier attempt of this very command
+      // that died before logging it (recovery would otherwise have replayed
+      // it into the ledger), so this attempt picks it up and carries on.
+      if (existing.phase === 'admitted' || resolved.outcome === 'conflict') return resolved;
+    }
+
+    // AB-200 durable steering: persist BEFORE admitting into desired
+    // state. A crash between the two then loses nothing — recovery finds
+    // the command still unconsumed and replays it. The reverse order
+    // would put a command into desired state that no restart could
+    // recover, which is precisely the failure the durable contract exists
+    // to rule out.
+    const persistence = await persistSteeringCommand(mailbox, command);
+    if (!persistence.persisted && persistence.reason !== 'idempotency-identity-mismatch') {
+      // Backlog exhaustion: nothing was logged, so nothing may enter
+      // desired state, and the key is released for a later retry.
+      if (
+        (await releaseSteeringCommandRecordIfReserved(kv, lease, incarnation, principal, id)) ===
+        'fence-lost'
+      ) {
+        relinquishSessionSteering(sessionId);
+      }
+      return { outcome: 'unsupported-capability', reason: persistence.reason };
+    }
+
+    const outcome = gate.admit(command, { liveRunIds, now });
+    if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
+    await persistAdmittedSteeringRecord(
+      sessionId,
+      incarnation,
+      lease,
+      principal,
+      id,
+      outcome.outcome === 'accepted',
+    );
+    // Supersessions this admission caused, persisted before the snapshot
+    // that lets recovery skip it.
+    await flushSteeringRecordWrites(sessionId);
+    // Whatever the gate decided, the command is now in the mailbox, so the
+    // snapshot advances past it: recovery must neither re-apply an accepted
+    // command nor resurrect one this gate refused under the conditions it
+    // was actually submitted in.
+    if (persistence.persisted) {
+      const snapshotted = await snapshotSteeringState(
+        sessionId,
+        incarnation,
+        lease,
+        gate,
+        persistence.sequence,
+      );
+      if (snapshotted === 'fence-lost') {
+        diagnose({
+          level: 'warn',
+          scope: 'steering',
+          message: `[bureau] Steering for session "${sessionId}" moved to another Bureau process while command "${id}" was being admitted; that process folds the logged command in when it recovers.`,
+        });
+      }
+    }
+    return outcome;
+  }
+
+  /**
+   * The durable record for `(principal, id)`, ignoring (and discarding) one
+   * left behind by a session incarnation that no longer exists — a deletion
+   * that died before its cleanup finished must not hold the key forever.
+   */
+  async function loadLiveSteeringCommandRecord(
+    kv: ConditionalTextValueStore,
+    principal: string,
+    id: string,
+    sessionId: string,
+    incarnation: string,
+  ): Promise<SteeringCommandRecord | undefined> {
+    const record = await loadSteeringCommandRecord(kv, principal, id);
+    if (record === undefined) return undefined;
+    const owningSession =
+      record.command.sessionId === sessionId
+        ? undefined
+        : await runtime.sessionStore?.load(record.command.sessionId);
+    const owningIncarnation =
+      record.command.sessionId === sessionId ? incarnation : owningSession?.incarnation;
+    if (owningIncarnation === record.incarnation) return record;
+    await discardSteeringCommandRecord(kv, record);
+    return undefined;
   }
 
   function listPendingReviews(): PendingReview[] {
@@ -8935,7 +9270,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // backend itself is. Disposing a mailbox does not delete its
             // durable log — the commands stay recoverable by the next
             // process, which is the whole point of persisting them.
-            for (const mailbox of steeringMailboxes.values()) mailbox.dispose();
+            // Steering leases are released while the backend is still open,
+            // so another process can take a session over at once rather than
+            // waiting out the lease's TTL after a clean shutdown.
+            const leaseStore = runtime.kv;
+            if (leaseStore !== undefined) {
+              for (const [sessionId, { lease }] of steeringLeases) {
+                try {
+                  await releaseSteeringLease(leaseStore, lease);
+                } catch (error) {
+                  diagnose({
+                    level: 'warn',
+                    scope: 'steering',
+                    message: `[bureau] Could not release the steering lease for session "${sessionId}": ${serializeUnknownError(error)}`,
+                  });
+                }
+              }
+            }
+            steeringLeases.clear();
+            for (const { mailbox } of steeringMailboxes.values()) mailbox.dispose();
             steeringMailboxes.clear();
             steeringRecoveries.clear();
           } finally {

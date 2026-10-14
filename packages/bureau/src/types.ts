@@ -1449,8 +1449,19 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * identity are snapshotted after every admission, so they and their
    * `configVersion` survive every later restart, not only the first.
    * Run-scoped `pause`/`resume` state is not carried across a restart. An
-   * exact `(principal, id)` retry still replays, and a mismatched one still
-   * conflicts, after any number of restarts and across sessions.
+   * exact `(principal, id)` retry still replays (reporting the command's
+   * latest durable state), and a mismatched one still conflicts, after any
+   * number of restarts, across sessions, and across Bureau processes.
+   *
+   * One Bureau process at a time owns a durable session's steering: a
+   * per-session-incarnation lease, taken on admission (and on starting a
+   * run) and released on shutdown, fences every durable steering write. A
+   * different process returns `{ outcome: 'unsupported-capability', reason:
+   * 'steering-owned-elsewhere' }` until the owner's lease is released or
+   * lapses after a minute without renewal; a restarted process keeping the
+   * same Bureau `id` reclaims its own lease at once. The lease fences
+   * admission only: a live run reads its own process's gate, so steering
+   * admitted by another process reaches it at that process's next run.
    * `{ outcome: 'unsupported-capability', reason:
    * 'durable-steering-unavailable' }` is returned only by the guard for a
    * durably-configured Bureau with no resolved storage backend, which
