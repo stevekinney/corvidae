@@ -838,6 +838,32 @@ describe('durable steering across two Bureau processes', () => {
           requestedValue: { target: 'pause' },
         }),
       ).rejects.toThrow('backend unavailable');
+      // ...unless that run's authority was taken from the caller while the
+      // query was failing: then the answer is `not-found`, not the failure.
+      engineGet.mockImplementation(async () => {
+        await store.update(sessionId, (current) => {
+          if (current === undefined) return undefined;
+          const authorities = current.metadata['lastRequestAuthorities'] as Record<
+            string,
+            JSONValue
+          >;
+          return {
+            ...current,
+            metadata: {
+              ...current.metadata,
+              lastRequestAuthorities: { ...authorities, 'starting-5': { principalId: 'bob' } },
+            },
+          };
+        });
+        throw new Error('backend unavailable');
+      });
+      expect(
+        await reader.submitSteeringCommand(sessionId, {
+          principal: 'alice',
+          runId: 'starting-5',
+          requestedValue: { target: 'pause' },
+        }),
+      ).toEqual({ outcome: 'not-found' });
 
       // A run whose workflow became queryable after the tag listing is
       // counted from the marker's own read, not dropped with its marker.

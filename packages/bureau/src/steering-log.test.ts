@@ -258,6 +258,19 @@ describe('steering log', () => {
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
     );
+
+    // A concrete value is not a selector: retrying it must not replay a
+    // decision made for a different concrete value.
+    await kv.set(
+      entryKey,
+      JSON.stringify({
+        ...refused,
+        submittedValue: { target: 'model', override: 'claude-opus-4-8' },
+      }),
+    );
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
   });
 
   it('deletes only its own incarnation, and never a key another log has since rebound', async () => {

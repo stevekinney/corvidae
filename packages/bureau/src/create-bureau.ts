@@ -7944,7 +7944,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * `SteeringGate` is ever consulted or created — see
    * `SteeringCommandAdmissionOutcome`'s doc comment for the exact reasons.
    */
+  /** Durable steering submissions in progress, which shutdown awaits. */
+  const inFlightSteeringSubmissions = new Set<Promise<SteeringCommandAdmissionOutcome>>();
+
   async function submitSteeringCommand(
+    sessionId: string,
+    request: SteeringCommandRequest,
+  ): Promise<SteeringCommandAdmissionOutcome> {
+    // A durable submission reads the engine and the log from its first
+    // await to its last, so shutdown waits for the whole of it before it
+    // disposes either; once shutdown starts, none begins.
+    if (durableSteeringStore() === undefined) return admitSteeringRequest(sessionId, request);
+    if (runAdmissionClosed) {
+      throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
+    }
+    const submission = admitSteeringRequest(sessionId, request);
+    inFlightSteeringSubmissions.add(submission);
+    try {
+      return await submission;
+    } finally {
+      inFlightSteeringSubmissions.delete(submission);
+    }
+  }
+
+  async function admitSteeringRequest(
     sessionId: string,
     request: SteeringCommandRequest,
   ): Promise<SteeringCommandAdmissionOutcome> {
@@ -7990,11 +8013,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     ) {
       return { outcome: 'not-found' };
     }
-    // A durable admission reads the engine, which shutdown disposes once
-    // the admissions already queued have drained.
-    if (durableSteeringStore() !== undefined && runAdmissionClosed) {
-      throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
-    }
     // A key the log already decided is answered by admission from the log,
     // which authorizes the caller against the run that answer discloses:
     // nothing here depends on which runs are live now, so a backend that is
@@ -8029,9 +8047,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // Deleted meanwhile by another process: its log was read mid-deletion.
         const afterFailure = await runtime.sessionStore?.load(sessionId);
         if (afterFailure?.incarnation !== session.incarnation) return { outcome: 'not-found' };
-        // A request naming its run was authorized against that run above, so
-        // the failure is its to see.
-        if (request.runId !== undefined) throw error;
+        // A request naming its run sees the failure if it is still authorized
+        // against that run on the session as it stands now.
+        if (request.runId !== undefined) {
+          if (
+            !isSessionAuthorityAuthorized(afterFailure.metadata, request.principal, request.runId)
+          ) {
+            return { outcome: 'not-found' };
+          }
+          throw error;
+        }
         // An unscoped request's authority depends on which run is live, so a
         // failed query is masked until this caller is shown to be authorized
         // against the run this process can see.
@@ -8619,11 +8644,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // the session as it stands now.
             const boundNow = await runtime.sessionStore?.load(binding.sessionId);
             if (boundNow?.incarnation !== binding.incarnation) continue;
-            return isSessionAuthorityAuthorized(
-              boundNow.metadata,
-              principal,
-              steeringAnswerRunId(elsewhere, command),
-            )
+            if (
+              !isSessionAuthorityAuthorized(
+                boundNow.metadata,
+                principal,
+                steeringAnswerRunId(elsewhere, command),
+              )
+            ) {
+              return { outcome: 'not-found' };
+            }
+            // It also tells the caller this session exists, so the caller
+            // must still be authorized here, against the run this request
+            // targets, on this session as it stands now.
+            const targetLiveRunIds = command.runId === undefined ? await liveRunIdsNow() : [];
+            const targetNow = await runtime.sessionStore?.load(sessionId);
+            if (targetNow?.incarnation !== incarnation) return { outcome: 'not-found' };
+            const targetRun =
+              command.runId ?? (targetLiveRunIds.length === 1 ? targetLiveRunIds[0] : undefined);
+            return isSessionAuthorityAuthorized(targetNow.metadata, principal, targetRun)
               ? elsewhere
               : { outcome: 'not-found' };
           }
@@ -10205,7 +10243,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // The steering pollers stop first, so none queues a fold after it.
           for (const poller of steeringPollers.values()) clearInterval(poller.timer);
           steeringPollers.clear();
-          await Promise.allSettled(steeringQueues.values());
+          await Promise.allSettled([...inFlightSteeringSubmissions, ...steeringQueues.values()]);
           if (runtime.durable) {
             const engine = runtime.durable.engine;
             await settleOwner('durable-engine', () => engine[Symbol.asyncDispose]());

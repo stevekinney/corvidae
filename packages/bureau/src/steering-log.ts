@@ -236,17 +236,25 @@ function isRefusalOutcome(value: unknown): boolean {
  * command against a session it was never submitted to.
  */
 /**
- * A `submittedValue`, when present, must be a valid requested value for the
- * command with the same target as the command's own.
+ * A `submittedValue`, when present, is the selector Bureau resolved the
+ * command's concrete value from: a valid requested value for the command,
+ * with the same target, naming a `policyRef` and no override, while the
+ * command itself carries the resolved override and no `policyRef`. Any
+ * other pairing could make a retry of one value replay another's decision.
  */
 function hasValidSubmittedValue(parsed: Record<string, unknown>): boolean {
   const submitted = parsed['submittedValue'];
   if (submitted === undefined) return true;
+  const resolved = (parsed['command'] as { requestedValue: Record<string, unknown> })
+    .requestedValue;
   return (
     isSteeringCommand({ ...(parsed['command'] as object), requestedValue: submitted }) &&
     isRecord(submitted) &&
-    submitted['target'] ===
-      (parsed['command'] as { requestedValue: { target: string } }).requestedValue.target
+    submitted['target'] === resolved['target'] &&
+    typeof submitted['policyRef'] === 'string' &&
+    submitted['override'] === undefined &&
+    resolved['policyRef'] === undefined &&
+    resolved['override'] !== undefined
   );
 }
 
