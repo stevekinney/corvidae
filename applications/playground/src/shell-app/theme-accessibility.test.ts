@@ -90,7 +90,7 @@ describe('the default Cinder theme', () => {
     expect(shippedReport.stamp.contexts).toEqual(THEME_CONTEXT_IDS);
     expect(shippedReport.sourceValidity.status).toBe('valid');
     const seen = new Set(shippedReport.records.wcag.map((record) => record.context));
-    expect([...seen].sort()).toEqual([...THEME_CONTEXT_IDS].sort());
+    expect([...seen].toSorted()).toEqual([...THEME_CONTEXT_IDS].toSorted());
   });
 
   it('reports zero accessibility errors and zero invalid-source findings', () => {

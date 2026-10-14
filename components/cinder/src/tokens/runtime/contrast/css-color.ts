@@ -64,6 +64,7 @@ function callArguments(value: string, name: string): string | null {
   return value.slice(name.length + 1, -1);
 }
 
+const CHANNELS = ['l', 'c', 'h', 'alpha'] as const;
 type Variables = { l: number; c: number; h: number; alpha: number };
 
 /** `calc()`, `min()`, `max()` over numbers and the relative-color channel keywords. */
@@ -95,7 +96,8 @@ function evaluateExpression(source: string, variables: Variables): number | null
       const value = primary();
       return value === null ? null : -value;
     }
-    if (token in variables) return variables[token as keyof Variables];
+    const channel = CHANNELS.find((name) => name === token);
+    if (channel !== undefined) return variables[channel];
     const number = Number.parseFloat(token);
     if (/^\d|^\./.test(token) && Number.isFinite(number))
       return token.endsWith('%') ? number : number;
@@ -231,8 +233,8 @@ function evaluate(
     if (space?.replace(/\s+/g, ' ').toLowerCase() !== 'in oklch' || rest.length !== 2) {
       return fail('unsupported-syntax', `${value} mixes outside oklch or has not two colors.`);
     }
-    const arguments_ = rest.map(mixArgument);
-    const [firstArgument, secondArgument] = arguments_;
+    const mixArguments = rest.map(mixArgument);
+    const [firstArgument, secondArgument] = mixArguments;
     if (!firstArgument || !secondArgument) {
       return fail('unsupported-syntax', `${value} has a misplaced percentage.`);
     }

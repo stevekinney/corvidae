@@ -38,11 +38,11 @@
     /** Supplies the evaluations; the real runtime unless a test passes another. */
     evaluator?: ThemeEvaluator;
     /** The seam for COR-487's fix actions, rendered once per finding. */
-    actions?: Snippet<[ReportRecord]>;
+    actions?: Snippet<[ReportRecord]> | undefined;
   };
   let { workbench, controller, evaluator = createRuntimeEvaluator(), actions }: Props = $props();
 
-  const session = new ThemeChecksSession(evaluator);
+  const session = new ThemeChecksSession(untrack(() => evaluator));
 
   const SEVERITY_TITLES: Record<Severity, string> = {
     'invalid-source': 'Invalid source',

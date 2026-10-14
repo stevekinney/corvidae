@@ -14,7 +14,7 @@
   type Props = {
     record: ReportRecord;
     onshow: (record: ReportRecord) => void;
-    actions?: Snippet<[ReportRecord]>;
+    actions?: Snippet<[ReportRecord]> | undefined;
   };
   let { record, onshow, actions }: Props = $props();
 

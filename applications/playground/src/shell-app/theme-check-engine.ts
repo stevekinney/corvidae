@@ -208,6 +208,7 @@ function profileRecords(
     const reason = profileRangeViolation(profile, Number(match[1]));
     if (reason === undefined) continue;
     const rule = ruleById('cinder-profile-range');
+    const profilePath = tokenPathForProperty(property);
     records.push({
       id: `cinder-profile-range:${property}:${context.context}`,
       ruleId: rule.id,
@@ -218,7 +219,7 @@ function profileRecords(
       measured: Number(match[1]),
       required: null,
       unit: 'none',
-      tokenPaths: tokenPathForProperty(property) ?? [],
+      tokenPaths: profilePath === null ? [] : [profilePath],
       cssProperties: [property],
       pairingId: null,
       classification: null,

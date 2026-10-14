@@ -8,7 +8,7 @@
  * reported as `needs-review`, never as a ratio.
  */
 
-import { converter } from 'culori';
+import { converter, type Oklch } from 'culori';
 
 import { contrastRatio, decodeSrgb, relativeLuminance, type Rgb } from './color-math.ts';
 import {
@@ -76,15 +76,23 @@ function resolveLayer(
   return { ok: true, layer: toLayer(role, property, value, evaluated.color) };
 }
 
+/** An OKLCH value for culori; an achromatic color has no hue, and the key is left off. */
+function oklchSource(color: CssColor): Oklch {
+  return color.h === undefined
+    ? { mode: 'oklch', l: color.l, c: color.c }
+    : { mode: 'oklch', l: color.l, c: color.c, h: color.h };
+}
+
 function toLayer(
   role: StackLayer['role'],
   property: string,
   value: string,
   color: CssColor,
 ): StackLayer {
-  const { r, g, b } = toSrgb({ mode: 'oklch', l: color.l, c: color.c, h: color.h });
+  const source = oklchSource(color);
+  const { r, g, b } = toSrgb(source);
   // The gamut test is on linear channels, with the same tolerance the Cinder gamut suite uses.
-  const linear = toLinear({ mode: 'oklch', l: color.l, c: color.c, h: color.h });
+  const linear = toLinear(source);
   const inGamut = [linear.r, linear.g, linear.b].every(
     (channel) => channel >= -GAMUT_EPSILON && channel <= 1 + GAMUT_EPSILON,
   );
