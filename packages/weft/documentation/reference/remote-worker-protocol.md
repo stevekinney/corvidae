@@ -516,23 +516,26 @@ A server can run the same checks on request through two operations, so a console
 | `weft.conformance.targets` | `GET /api/v1/conformance/targets` | `system:read` | `{ targets: Array<{ name: string; timeoutMs: number }> }`. Commands are never returned. |
 | `weft.conformance.report` | `POST /api/v1/conformance/targets/:target/report` | `system:admin` | The `ConformanceReport` above plus `target`, `startedAt`, and `completedAt` (epoch milliseconds). `NotFound` for an unregistered target. |
 
-A request selects a **target** by name and supplies nothing else. Targets are worker commands that the host registers when it starts the server:
+A request selects a **target** by name and supplies nothing else. Targets are worker commands that the host registers when it starts the server. The host builds them with `createConformanceTargets` from `@lostgradient/weft/testing` and passes the result to `serve()`:
 
 ```ts
 import { Engine, MemoryStorage, serve } from '@lostgradient/weft';
+import { createConformanceTargets } from '@lostgradient/weft/testing';
 
 const engine = new Engine({ storage: new MemoryStorage() });
 await using server = serve({
   engine,
   port: 0,
-  conformanceTargets: {
+  conformanceTargets: createConformanceTargets({
     'python-sdk': { command: ['python', '-m', 'my_worker'], timeoutMs: 15_000 },
-  },
+  }),
 });
 console.log(server.url);
 ```
 
-Each target's `command` is spawned directly with no shell. `timeoutMs` bounds each individual wait in the sequence, as `--timeout` does for the CLI, and defaults to `15000`. `serve()` throws before it binds a port if a target name is not 1 to 128 characters of letters, digits, `.`, `_`, or `-`, if a command is empty, or if a timeout is not a positive integer. If you omit `conformanceTargets`, the server registers no targets: `weft.conformance.targets` returns an empty list and `weft.conformance.report` answers `NotFound`.
+The factory lives in the testing subpath, next to the other helpers that spawn processes, because the package root must stay free of `Bun.spawn` so that it still bundles for the browser. `serve()` accepts only the runner the factory returns.
+
+Each target's `command` is spawned directly with no shell. `timeoutMs` bounds each individual wait in the sequence, as `--timeout` does for the CLI, and defaults to `15000`. `createConformanceTargets` throws, before `serve()` is ever called, if a target name is not 1 to 128 characters of letters, digits, `.`, `_`, or `-`, if a command is empty, or if a timeout is not a positive integer. If you omit `conformanceTargets`, the server registers no targets: `weft.conformance.targets` returns an empty list and `weft.conformance.report` answers `NotFound`.
 
 These rules keep the operation from becoming a way to run arbitrary code on the server host:
 

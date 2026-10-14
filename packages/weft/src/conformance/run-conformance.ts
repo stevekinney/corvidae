@@ -10,9 +10,11 @@
  * check kills a worker process and the graceful-shutdown check disconnects
  * one, so a run must never point at a live fleet or a production engine.
  *
- * `serve` is a parameter rather than an import: the server composition root
- * builds a target runner around this module, and importing `serve()` here
- * would close a runtime import cycle through it.
+ * Nothing reachable from the package root imports this module at runtime:
+ * it spawns processes, and the root must still bundle for the browser
+ * (COR-1192). Hosts reach it through `createConformanceTargets` in the
+ * testing subpath, and the CLI imports it directly. `serve` is a parameter
+ * so tests can hand a run a sandbox server that fails to start.
  *
  * @module conformance/run-conformance
  */

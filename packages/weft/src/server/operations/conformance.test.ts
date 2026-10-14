@@ -18,6 +18,7 @@ import { createWeftClient } from '../../client/generated/operation-client.genera
 import { createConformanceTargetRunner } from '../../conformance/targets.ts';
 import { Engine } from '../../core/engine.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
+import { createConformanceTargets } from '../../testing/conformance-targets.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,
@@ -321,9 +322,9 @@ describe('weft.conformance.* — served through serve() and the generated client
         hostname: '127.0.0.1',
         auth: adminAuth(),
         trustedHosts: [],
-        conformanceTargets: {
+        conformanceTargets: createConformanceTargets({
           reference: { command: conformingWorker, timeoutMs: PASSING_RUN_TIMEOUT_MS },
-        },
+        }),
       });
       try {
         const client = createWeftClient({
@@ -371,20 +372,9 @@ describe('weft.conformance.* — served through serve() and the generated client
     }
   });
 
-  it('fails serve() before binding when a target is invalid', () => {
-    const engine = new Engine({ storage: new MemoryStorage() });
-    try {
-      expect(() =>
-        serve({
-          engine,
-          port: 0,
-          unauthenticatedAccess: 'allow',
-          trustedHosts: [],
-          conformanceTargets: { reference: { command: [] } },
-        }),
-      ).toThrow('conformanceTargets.reference.command');
-    } finally {
-      engine[Symbol.dispose]();
-    }
+  it('rejects an invalid target before serve() is ever called', () => {
+    expect(() => createConformanceTargets({ reference: { command: [] } })).toThrow(
+      'conformanceTargets.reference.command',
+    );
   });
 });

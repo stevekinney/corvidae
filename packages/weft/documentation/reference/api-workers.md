@@ -754,7 +754,7 @@ The JSON-RPC operation name is `weft.workers.rejections`.
 
 ### `GET /api/v1/conformance/targets` and `POST /api/v1/conformance/targets/:target/report`
 
-Remote-worker protocol conformance reports (COR-1365). `GET` lists the conformance targets registered with `serve({ conformanceTargets })` and requires `system:read`. `POST` runs the `weft conformance` check sequence against one target in a private sandbox server and requires `system:admin`. A request names a target only. It can never supply a worker command.
+Remote-worker protocol conformance reports (COR-1365). `GET` lists the conformance targets registered with `serve({ conformanceTargets: createConformanceTargets({ ... }) })` and requires `system:read`. `POST` runs the `weft conformance` check sequence against one target in a private sandbox server and requires `system:admin`. A request names a target only. It can never supply a worker command.
 
 ```ts
 type ListConformanceTargetsResponse = {

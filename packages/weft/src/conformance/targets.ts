@@ -3,8 +3,10 @@
  * server operations.
  *
  * A remote caller selects a target by name and nothing else. The command a
- * target spawns, and its timeout, come only from `serve({ conformanceTargets })`
- * — configuration the host process owns — never from a request. Accepting a
+ * target spawns, and its timeout, come only from the runner the host builds
+ * with `createConformanceTargets` (in `testing/conformance-targets.ts`) and
+ * passes to `serve({ conformanceTargets })` — configuration the host process
+ * owns — never from a request. Accepting a
  * command over the wire would turn the operation into remote code execution
  * on the server host; naming a pre-registered command keeps the set of
  * processes a request can start fixed at boot.
@@ -89,8 +91,8 @@ function resolveTarget(name: string, target: ConformanceTarget): ResolvedTarget 
 
 /**
  * Validate `targets` and build the runner the conformance operations call.
- * Throws a `TypeError` for an invalid name, command, or timeout, so `serve()`
- * fails before binding a port rather than on the first request.
+ * Throws a `TypeError` for an invalid name, command, or timeout, so a bad
+ * target fails before `serve()` binds a port rather than on the first request.
  *
  * The targets are copied: mutating the object passed in after this returns
  * does not change what a request can run.
