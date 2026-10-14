@@ -14,7 +14,8 @@
  *   by `delete()`, unless a hold is present; a second deletion is a no-op
  *   that returns the same tombstone;
  * - a deletion's provider copies → deleted after the tombstone commits,
- *   best-effort; collection retries any a provider did not confirm;
+ *   best-effort; collection deletes an expired asset's copies, and retries
+ *   any copy a provider did not confirm;
  * - any terminal record with no hold and no provider copy left to delete →
  *   purged once its `tombstoneUntil` passes; a hold keeps the record (a quarantined asset under legal hold,
  *   say) until the hold is released;
@@ -454,14 +455,18 @@ function isExpired(record: AssetRecord, now: number): boolean {
   );
 }
 
-/** Retries the provider-copy deletions a tombstone still lists. */
+/**
+ * Deletes (or retries deleting) the provider copies a deleted or expired
+ * record still lists — either way the asset is gone, so its copies are too.
+ */
 async function retryProviderCopies(
   internals: AssetInternals,
   context: AssetWorkContext,
   assetId: string,
 ): Promise<void> {
   const loaded = await context.track(loadRecord(internals.storage, assetId));
-  if (loaded?.record.state !== 'deleted') return;
+  const state = loaded?.record.state;
+  if (!loaded || (state !== 'deleted' && state !== 'expired')) return;
   if (deletableCopies(internals, loaded.record).length === 0) return;
   await deleteProviderCopies(internals, context, loaded.record);
 }

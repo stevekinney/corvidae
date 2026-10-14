@@ -259,6 +259,36 @@ describe('tombstones', () => {
     await opened.close();
   });
 
+  it("deletes an expired asset's provider copy, so its tombstone still purges", async () => {
+    const deletedCopies: string[] = [];
+    const opened = await open({
+      policy: { defaultRetentionMilliseconds: 1_000, tombstoneRetentionMilliseconds: 1_000 },
+      ports: {
+        providers: {
+          openai: {
+            download: async () => ({ bytes: new Uint8Array() }),
+            upload: async () => ({ providerFileId: 'file-9' }),
+            delete: async ({ providerFileId }) => {
+              deletedCopies.push(providerFileId);
+            },
+          },
+        },
+      },
+    });
+    const admission = await admitted(opened);
+    const transfer = opened.assets.transferToProvider(admission.assetId, alice, {
+      provider: 'openai',
+    });
+    expect(await transfer.result()).toMatchObject({ outcome: 'completed' });
+
+    await opened.runtime.advance(1_000);
+    expect(await collect(opened)).toMatchObject({ expired: [admission.assetId] });
+    await opened.runtime.advance(1_000);
+    expect(await collect(opened)).toMatchObject({ purgedTombstones: [admission.assetId] });
+    expect(deletedCopies).toEqual(['file-9']);
+    await opened.close();
+  });
+
   it('treats a second, concurrent deletion as the same tombstone', async () => {
     const opened = await open();
     const admission = await admitted(opened);
