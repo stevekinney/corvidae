@@ -204,6 +204,48 @@ export function comparabilityProblems(
     for (const failure of primaryMetricFailures(results)) problems.push(`${label}: ${failure}`);
   }
   problems.push(...coverageProblems(baseline, candidate));
+  problems.push(...prebuildWorkloadProblems(baseline, candidate));
+  return problems;
+}
+
+/**
+ * Both sides must have prebuilt the same workload, and that workload must be every sidebar
+ * component the static export documents. A candidate that narrows the eager prebuild would read
+ * as faster while doing less, so it is refused rather than selectable.
+ */
+export function prebuildWorkloadProblems(
+  baseline: MeasurementResults,
+  candidate: MeasurementResults,
+): string[] {
+  const both = [baseline, candidate];
+  const totals = [
+    ...new Set(
+      both.flatMap((results) =>
+        results.serverReady.flatMap((sample) =>
+          sample.prebuildSummary === null ? [] : [sample.prebuildSummary.total],
+        ),
+      ),
+    ),
+  ].toSorted((left, right) => left - right);
+  const exportedComponents = both.flatMap((results) =>
+    results.staticExport.map((sample) => sample.exporterSummary?.sidebarComponents ?? null),
+  );
+  const expected = [...new Set(exportedComponents)];
+  const problems: string[] = [];
+  if (totals.length > 1) {
+    problems.push(
+      `Readiness samples prebuilt different workloads: ${totals.join(', ')} page bundles.`,
+    );
+  }
+  if (expected.length !== 1 || expected[0] === null) {
+    problems.push(
+      'Static exports do not report one sidebar component count to check the prebuild workload against.',
+    );
+  } else if (totals.length === 1 && totals[0] !== expected[0]) {
+    problems.push(
+      `Readiness samples prebuilt ${totals[0]} page bundles, but the static exports document ${expected[0]} sidebar components.`,
+    );
+  }
   return problems;
 }
 
@@ -272,6 +314,7 @@ function environmentFields(results: MeasurementResults): [string, unknown][] {
   const environment = results.environment;
   return [
     ['Bun version', environment.versions.bun],
+    ['Svelte version', environment.versions.svelte],
     ['platform', environment.operatingSystem.platform],
     ['OS release', environment.operatingSystem.release],
     ['architecture', environment.operatingSystem.architecture],

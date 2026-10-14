@@ -97,7 +97,7 @@ function exportSample(
       groups: {},
     },
     routeCount: 2,
-    exporterSummary: null,
+    exporterSummary: { renderedFiles: 10, sidebarComponents: 181, reportedSeconds: 1 },
   };
 }
 
@@ -468,5 +468,48 @@ describe('harness integrity, second review (PR #222)', () => {
     const failures = runFailures(subject);
     expect(failures).toContain('Server readiness pair 1 cold reported no prebuild summary.');
     expect(failures).toContain('Server readiness pair 2 cold prebuilt 180 of 181 page bundles.');
+  });
+});
+
+describe('harness integrity, third review (PR #222)', () => {
+  it('refuses a candidate that prebuilds a narrower workload than the baseline (4275577710)', () => {
+    const candidate = complete({ label: 'candidate' }, true);
+    for (const sample of candidate.serverReady) {
+      sample.prebuildSummary = { succeeded: 12, total: 12, selfReportedPeakResidentMegabytes: 1 };
+    }
+    const problems = comparabilityProblems(complete(), candidate);
+    expect(problems).toContain(
+      'Readiness samples prebuilt different workloads: 12, 181 page bundles.',
+    );
+  });
+
+  it('refuses a prebuild that does not cover the exported sidebar components (4275577710)', () => {
+    const baseline = complete();
+    const candidate = complete({ label: 'candidate' }, true);
+    for (const sample of [...baseline.serverReady, ...candidate.serverReady]) {
+      sample.prebuildSummary = { succeeded: 150, total: 150, selfReportedPeakResidentMegabytes: 1 };
+    }
+    expect(comparabilityProblems(baseline, candidate)).toContain(
+      'Readiness samples prebuilt 150 page bundles, but the static exports document 181 sidebar components.',
+    );
+  });
+
+  it('refuses results without an exporter component count to check the prebuild against (4275577710)', () => {
+    const baseline = complete();
+    for (const sample of baseline.staticExport) sample.exporterSummary = null;
+    expect(comparabilityProblems(baseline, complete({ label: 'candidate' }, true))).toContain(
+      'Static exports do not report one sidebar component count to check the prebuild workload against.',
+    );
+  });
+
+  it('refuses results resolved against a different Svelte version (4275577716)', () => {
+    const candidate = complete({ label: 'candidate' }, true);
+    candidate.environment = {
+      ...candidate.environment,
+      versions: { ...candidate.environment.versions, svelte: '6' },
+    };
+    expect(comparabilityProblems(complete(), candidate)).toContain(
+      'Environment differs in Svelte version: baseline "5", candidate "6".',
+    );
   });
 });
