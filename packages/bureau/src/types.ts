@@ -531,10 +531,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * COR-424 — how long a run-creation request id stays bound to its run after
    * the run settles, in milliseconds: a positive integer, default 86400000
    * (24 hours, the same as Weft's mailbox `terminalRetentionMs`). Measured on
-   * the runtime clock, from when the ledger first observes the run settled;
-   * a run still in progress holds its binding. Once the window has passed,
-   * {@link Bureau.locateRunCreationReceipt} reports `expired` and the same
-   * request id creates a new run. `createBureau` throws
+   * the runtime clock from the run's terminal action; a run that settled
+   * before a restart and was not reattached is measured from when the ledger
+   * first observes it settled. A run still in progress holds its binding.
+   * Once the window has passed, {@link Bureau.locateRunCreationReceipt}
+   * reports `expired`, the same request id creates a new run, and durable
+   * maintenance deletes the binding. `createBureau` throws
    * `BureauError(..., 'BAD_REQUEST')` for any other value.
    */
   runCreationTerminalRetentionMs?: number | undefined;
@@ -1279,8 +1281,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * retention window has passed (the same request id then creates a new
    * run), or `not-found`. Scoped like the ledger key, to the principal and
    * published agent (`agentName`, default `bureau`). A query that finds the
-   * run started records its receipt, and one that first finds the run
-   * settled starts the retention window, exactly as a retry would. Rejects
+   * run started records its receipt, exactly as a retry would. Rejects
    * with `BureauError` (`BAD_REQUEST`) for a blank principal or request id,
    * and (`NOT_CONFIGURED`, subject `durable`) without a durable engine.
    */
@@ -1425,7 +1426,10 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * retention floor (AB-363) — never on a run's terminal transition, and
    * never on a count. AB-388: also prunes the durable audit trail per
    * `BureauOptions.auditRetention` (default `'forever'`, a no-op) — see
-   * that option's own doc comment.
+   * that option's own doc comment. COR-424: also deletes run-creation
+   * receipts whose `runCreationTerminalRetentionMs` window has passed, with
+   * their conflict records; the automatic profile does the same on its own
+   * maintenance interval.
    *
    * AB-388 (Codex review, PR #597, "Document the KV-only maintenance
    * return value"): resolves `true` whenever there was ANY maintenance

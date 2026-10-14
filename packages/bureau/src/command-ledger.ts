@@ -67,10 +67,14 @@
  * A run-creation binding's retention window starts when its run settles, so
  * a delayed retry of a long-running run never starts a second one: a run
  * still in progress, or a claim this process is still settling, holds the
- * binding however old it is. The ledger does not hear about a run settling
- * as it happens; it records `settledAt` the first time a retry, a receipt
- * query ({@link RunCreationLedger.locate}), or a prune observes the run
- * settled, and the window runs from there. A claim whose run never started,
+ * binding however old it is. The settlement time is the run's own: the
+ * runtime-clock timestamp of its terminal action, which this process's run
+ * store keeps for every run it ran or reattached. Nobody has to observe the
+ * run in time for its window to start there. Only a run that settled where
+ * this process cannot see when, one that ran before a restart and was not
+ * reattached, is anchored at the first retry, receipt query
+ * ({@link RunCreationLedger.locate}), or prune that observes it settled, and
+ * that moment is recorded as `settledAt`. A claim whose run never started,
  * or whose run no longer exists, is measured from its own latest timestamp.
  */
 import { sha256HexSync } from '@lostgradient/cryptography';
@@ -127,9 +131,9 @@ export interface CommandLedgerCompletedEntry<TClaim, TResult> {
   readonly completedAt: string;
   readonly result: TResult;
   /**
-   * When the ledger first observed the command's effect settled, if it has.
-   * The retention window of a command whose effect outlives its
-   * acknowledgement, such as a run, starts here.
+   * When the command's effect settled, once the ledger has recorded it. The
+   * retention window of a command whose effect outlives its acknowledgement,
+   * such as a run, starts here.
    */
   readonly settledAt?: string | undefined;
 }
@@ -263,16 +267,18 @@ export interface CommandLedger<TClaim, TResult> {
   complete(
     entry: CommandLedgerPendingEntry<TClaim>,
     result: TResult,
-    options?: { readonly settled?: boolean },
+    options?: { readonly settledAt?: string | undefined },
   ): Promise<CommandLedgerCompletedEntry<TClaim, TResult>>;
   /**
-   * Record, once, that a completed command's effect has settled, so its
-   * retention window starts now. Resolves with the entry as stored; an entry
-   * already settled keeps its first `settledAt`. Resolves `undefined`,
-   * writing nothing, when the stored entry is no longer this completed claim.
+   * Record, once, that a completed command's effect settled at `settledAt`,
+   * so its retention window starts there. Resolves with the entry as stored;
+   * an entry already settled keeps its first `settledAt`. Resolves
+   * `undefined`, writing nothing, when the stored entry is no longer this
+   * completed claim.
    */
   settle(
     entry: CommandLedgerCompletedEntry<TClaim, TResult>,
+    settledAt: string,
   ): Promise<CommandLedgerCompletedEntry<TClaim, TResult> | undefined>;
   /**
    * Remove a pending entry whose command produced no effect, so a retry claims
@@ -615,7 +621,7 @@ export function createCommandLedger<TClaim, TResult>(
         state: 'completed',
         completedAt,
         result,
-        ...(completion.settled === true ? { settledAt: completedAt } : {}),
+        ...(completion.settledAt === undefined ? {} : { settledAt: completion.settledAt }),
       };
       const committed = await kv.conditionalBatch(
         [{ key, expectedValue: JSON.stringify(entry) }],
@@ -635,7 +641,7 @@ export function createCommandLedger<TClaim, TResult>(
       );
     },
 
-    async settle(entry) {
+    async settle(entry, settledAt) {
       const key = entryKey(entry.identity);
       for (let attempt = 0; attempt < COMMAND_LEDGER_MAX_CAS_ATTEMPTS; attempt += 1) {
         const stored = await readStored(key);
@@ -643,7 +649,7 @@ export function createCommandLedger<TClaim, TResult>(
           return undefined;
         }
         if (stored.entry.settledAt !== undefined) return stored.entry;
-        const settled: Completed = { ...stored.entry, settledAt: clock.nowISO() };
+        const settled: Completed = { ...stored.entry, settledAt };
         const committed = await kv.conditionalBatch(
           [{ key, expectedValue: stored.raw }],
           [{ type: 'set', key, value: JSON.stringify(settled) }],
@@ -790,6 +796,13 @@ export interface RunCreationObservation {
   readonly live: RunSummary | undefined;
   /** The durable engine's status, `null` when it has no such run, `undefined` without an engine. */
   readonly durableStatus: WorkflowState['status'] | null | undefined;
+  /**
+   * When the run reached its terminal status, in epoch milliseconds on the
+   * runtime clock, when the observer knows: the live run's terminal action.
+   * `undefined` for a run still in progress, and for one observed only in
+   * the durable engine, whose timestamps are not on the runtime clock.
+   */
+  readonly settledAt?: number | undefined;
 }
 
 /** One run-creation request's identity and payload, with what it would claim. */
@@ -858,8 +871,8 @@ export interface RunCreationLedger {
   begin(input: BeginRunCreationInput): Promise<RunCreationAttempt>;
   /**
    * Where the request's receipt stands. Like a retry, a query that finds the
-   * claimed run started records its receipt, and one that first finds the
-   * run settled starts the binding's retention window.
+   * claimed run started records its receipt, and one that finds the run
+   * settled records when it settled.
    */
   locate(input: LocateRunCreationReceiptInput): Promise<RunCreationReceiptLocation>;
   /** Delete expired bindings and their conflict records. */
@@ -972,34 +985,55 @@ export function createRunCreationLedger(
   });
 
   /**
+   * When `observation`'s settled run settled, as an ISO timestamp: the run's
+   * own terminal time when the observer knows it, otherwise now, the moment
+   * this observation proves it settled by. Never before the entry's latest
+   * recorded timestamp, nor after now.
+   */
+  function settlementTime(entry: RunCreationEntry, observation: RunCreationObservation): string {
+    const now = clock.now();
+    const floor = Date.parse(latestTimestamp(entry));
+    const settled = Math.min(Math.max(observation.settledAt ?? now, floor), now);
+    return new Date(settled).toISOString();
+  }
+
+  /**
    * When a binding's retention window starts: once its run has settled, or,
    * for a run that never started or no longer exists, at the entry's own
    * latest timestamp. A run still in progress, or a claim this process is
-   * still settling, holds the binding. The ledger records no run's settlement
-   * as it happens, so the window starts when the ledger first observes it:
-   * on a retry, a receipt query, or a prune. That is never before the run
-   * settled, so a delayed retry of a long-running run never starts another.
+   * still settling, holds the binding. A run whose terminal time the
+   * observer knows starts the window there, and nothing is written, so a
+   * prune deletes an expired binding in one pass. A run settled at a time the
+   * observer cannot see starts it now, recorded so later checks agree.
    */
   async function retentionStart(entry: RunCreationEntry): Promise<number | undefined> {
     if (entry.state === 'completed' && entry.settledAt !== undefined) {
       return Date.parse(entry.settledAt);
     }
     if (inFlight.has(entryKey(entry.identity))) return undefined;
-    const status = observedStatus(await observe(entry.claim));
+    const observation = await observe(entry.claim);
+    const status = observedStatus(observation);
     if (status === undefined) return Date.parse(latestTimestamp(entry));
-    // A started run whose claim is still pending is recorded by the next
-    // retry, which then settles it; until then it holds the binding.
-    if (!SETTLED_RUN_STATUSES.has(status) || entry.state === 'pending') return undefined;
-    // `undefined` when the entry changed under this read; the claim's
-    // compare-and-swap then fails against it and re-reads.
-    const settled = await ledger.settle(entry);
-    return Date.parse(settled?.settledAt ?? latestTimestamp(entry));
+    if (!SETTLED_RUN_STATUSES.has(status)) return undefined;
+    const settledAt = settlementTime(entry, observation);
+    if (observation.settledAt === undefined) {
+      // Recorded so the window does not restart at every later check. When
+      // the entry changed under this read, the caller's compare-and-swap
+      // fails against it and re-reads.
+      if (entry.state === 'completed') await ledger.settle(entry, settledAt);
+      else await recordStartedRun(entry, observation, status);
+    }
+    return Date.parse(settledAt);
   }
 
   /** Records that a completed entry's run has settled, the first time a retry or query sees it. */
-  async function settleIfObserved(entry: RunCreationCompletedEntry, status: string): Promise<void> {
-    if (entry.settledAt === undefined && SETTLED_RUN_STATUSES.has(status)) {
-      await ledger.settle(entry);
+  async function settleIfObserved(
+    entry: RunCreationCompletedEntry,
+    observation: RunCreationObservation,
+  ): Promise<void> {
+    const status = observedStatus(observation);
+    if (entry.settledAt === undefined && status !== undefined && SETTLED_RUN_STATUSES.has(status)) {
+      await ledger.settle(entry, settlementTime(entry, observation));
     }
   }
 
@@ -1023,37 +1057,52 @@ export function createRunCreationLedger(
   }
 
   async function replayCompleted(entry: RunCreationCompletedEntry): Promise<CreatedRunSummary> {
-    const { live, durableStatus } = await observe(entry.claim);
+    const observation = await observe(entry.claim);
     const stored = entry.result.summary;
-    const summary = live ?? {
+    const summary = observation.live ?? {
       ...stored,
-      status: runStatusFromDurable(durableStatus) ?? stored.status,
+      status: runStatusFromDurable(observation.durableStatus) ?? stored.status,
     };
-    await settleIfObserved(entry, summary.status);
+    await settleIfObserved(entry, observation);
     return { ...summary, receipt: entry.result.receipt };
   }
 
   /**
+   * Records the receipt of a pending entry's run, observed `status`, once, so
+   * later retries replay it instead of each building their own. A settled
+   * run's entry is recorded settled.
+   */
+  async function recordStartedRun(
+    entry: RunCreationPendingEntry,
+    observation: RunCreationObservation,
+    status: string,
+  ): Promise<CreatedRunSummary> {
+    // Without a live run this process has observed none of the run's work,
+    // so it reports none.
+    const summary: RunSummary = observation.live ?? { ...notStartedSummary(entry), status };
+    const settledAt = SETTLED_RUN_STATUSES.has(status)
+      ? settlementTime(entry, observation)
+      : undefined;
+    const recorded = await ledger.complete(
+      entry,
+      { receipt: receiptFor(entry, status), summary },
+      { settledAt },
+    );
+    return { ...summary, receipt: recorded.result.receipt };
+  }
+
+  /**
    * A pending entry nobody in this process is settling: its claimant crashed
-   * (or lives elsewhere). When the run exists, its receipt is recorded now,
-   * once, so later retries replay it instead of each building their own.
+   * (or lives elsewhere). When the run exists, its receipt is recorded now.
    */
   async function replayPending(entry: RunCreationPendingEntry): Promise<CreatedRunSummary> {
-    const { live, durableStatus } = await observe(entry.claim);
-    const status = live?.status ?? runStatusFromDurable(durableStatus);
+    const observation = await observe(entry.claim);
+    const status = observedStatus(observation);
     if (status === undefined) {
       const summary = notStartedSummary(entry);
       return { ...summary, receipt: receiptFor(entry, summary.status) };
     }
-    // Without a live run this process has observed none of the run's work,
-    // so it reports none.
-    const summary: RunSummary = live ?? { ...notStartedSummary(entry), status };
-    const recorded = await ledger.complete(
-      entry,
-      { receipt: receiptFor(entry, status), summary },
-      { settled: SETTLED_RUN_STATUSES.has(status) },
-    );
-    return { ...summary, receipt: recorded.result.receipt };
+    return recordStartedRun(entry, observation, status);
   }
 
   async function locate(input: LocateRunCreationReceiptInput): Promise<RunCreationReceiptLocation> {
@@ -1064,8 +1113,7 @@ export function createRunCreationLedger(
     }
     const { entry } = location;
     if (entry.state === 'completed') {
-      const status = observedStatus(await observe(entry.claim));
-      if (status !== undefined) await settleIfObserved(entry, status);
+      await settleIfObserved(entry, await observe(entry.claim));
       return { status: 'recorded', receipt: entry.result.receipt };
     }
     if (inFlight.has(entryKey(entry.identity))) {

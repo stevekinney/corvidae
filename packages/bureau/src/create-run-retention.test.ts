@@ -27,7 +27,7 @@ import {
   createSqliteStorageFixture,
 } from './test/storage-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau, CreateRunRequest } from './types';
+import type { Bureau, BureauOptions, CreateRunRequest } from './types';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);
@@ -50,6 +50,14 @@ const BACKENDS: readonly (readonly [string, FixtureFactory])[] = [
 
 const finishes: GenerateFunction = async () => ({ content: 'done', toolCalls: [] });
 
+/** A model that answers once `gate` opens, so a test decides when its run settles. */
+function finishesAfter(gate: Promise<void>): GenerateFunction {
+  return async () => {
+    await gate;
+    return { content: 'done', toolCalls: [] };
+  };
+}
+
 /**
  * Runs `body` against a durable bureau over a fresh store whose runs finish
  * at their first step, then tears both down.
@@ -57,7 +65,7 @@ const finishes: GenerateFunction = async () => ({ content: 'done', toolCalls: []
 async function withBureau(
   factory: FixtureFactory,
   body: (bureau: Bureau, runtime: ManualRuntimeServices) => Promise<void>,
-  runCreationTerminalRetentionMs?: number,
+  overrides: Partial<BureauOptions> = {},
 ): Promise<void> {
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = factory(runtime);
@@ -69,7 +77,7 @@ async function withBureau(
     storage: fixture.configuration,
     durableExecution: true,
     durableOwnership: { ownership: 'none' },
-    ...(runCreationTerminalRetentionMs === undefined ? {} : { runCreationTerminalRetentionMs }),
+    ...overrides,
   });
   try {
     await body(bureau, runtime);
@@ -180,7 +188,56 @@ describe.each(BACKENDS)('run-creation retention over %s', (_backend, factory) =>
         const fresh = await bureau.createRun(REQUEST);
         expect(fresh.id).not.toBe(created.id);
       },
-      60_000,
+      { runCreationTerminalRetentionMs: 60_000 },
+    );
+  });
+
+  it('expires a run nobody queried at its terminal time plus the window', async () => {
+    const gate = Promise.withResolvers<void>();
+    await withBureau(
+      factory,
+      async (bureau, runtime) => {
+        const created = await bureau.createRun(REQUEST);
+        const settledAt = ORIGIN_MS + 5_000;
+        runtime.setTime(settledAt);
+        gate.resolve();
+        expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+
+        // No retry or query observes the run until a week later.
+        runtime.setTime(ORIGIN_MS + 7 * DAY_MS);
+        expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual({
+          status: 'expired',
+          requestId: 'request-1',
+          expiredAt: new Date(settledAt + DAY_MS).toISOString(),
+        });
+        const fresh = await bureau.createRun(REQUEST);
+        expect(fresh.id).not.toBe(created.id);
+      },
+      { generate: finishesAfter(gate.promise) },
+    );
+  });
+
+  it('deletes an expired binding and its conflict records in durable maintenance', async () => {
+    await withBureau(
+      factory,
+      async (bureau, runtime) => {
+        const created = await settledRun(bureau);
+        expect(
+          await rejectionOf(bureau.createRun({ ...REQUEST, message: 'Summarize the year.' })),
+        ).toBeInstanceOf(BureauLedgerConflictError);
+
+        runtime.setTime(ORIGIN_MS + DAY_MS - 1);
+        expect(await bureau.runDurableMaintenance()).toBe(true);
+        expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual(recorded(created.receipt));
+
+        runtime.setTime(ORIGIN_MS + DAY_MS);
+        expect(await bureau.runDurableMaintenance()).toBe(true);
+        expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual({
+          status: 'not-found',
+          requestId: 'request-1',
+        });
+      },
+      { durableBackgroundTasks: 'manual' },
     );
   });
 });

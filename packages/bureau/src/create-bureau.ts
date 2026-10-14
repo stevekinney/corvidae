@@ -1248,6 +1248,24 @@ function validateRunCreationRetentionOption(value: number | undefined): void {
   }
 }
 
+/** The action types a run records as it reaches its terminal status. */
+const TERMINAL_RUN_ACTION_TYPES: ReadonlySet<string> = new Set([
+  'run.completed',
+  'run.aborted',
+  'run.error',
+]);
+
+/**
+ * COR-424 — when a run reached its terminal status, by the runtime-clock
+ * timestamp of its terminal action; `undefined` until it has recorded one.
+ * A run-creation binding's retention window starts here.
+ */
+function terminalActionTimestamp(
+  actions: readonly { readonly type: string; readonly timestamp: number }[],
+): number | undefined {
+  return actions.findLast((action) => TERMINAL_RUN_ACTION_TYPES.has(action.type))?.timestamp;
+}
+
 /**
  * COR-772 — `BureauOptions.children.delegation` signs every child's grant, so
  * an empty secret or a lifetime that expires every grant on issue is a
@@ -1748,6 +1766,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   runAttribution.get(runId),
                 ),
                 durableStatus: undefined,
+                settledAt: terminalActionTimestamp(runState.actions),
               };
             }
             const durableState = await getDurableRun(runId);
@@ -6802,6 +6821,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      try {
+        await runCreationLedger?.prune();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual run-creation receipt pruning pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
     })();
 
     manualDurableMaintenancePasses.add(pass);
@@ -6979,6 +7008,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic audit-trail pruning pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        // COR-424 — expired run-creation receipts ride the same pass.
+        try {
+          await runCreationLedger?.prune();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic run-creation receipt pruning pass failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }

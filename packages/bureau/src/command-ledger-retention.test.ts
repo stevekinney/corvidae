@@ -237,17 +237,17 @@ describe('command ledger retention', () => {
     const { fixture, runtime, ledger } = memoryLedger();
     try {
       const completed = await completedBinding(ledger);
-      runtime.setTime(ORIGIN_MS + 5_000);
-      const settled = await ledger.settle(completed);
+      runtime.setTime(ORIGIN_MS + 9_000);
+      const settled = await ledger.settle(completed, new Date(ORIGIN_MS + 5_000).toISOString());
       if (settled === undefined) throw new Error('expected the settlement to be recorded');
       expect(settled).toEqual({
         ...completed,
         settledAt: new Date(ORIGIN_MS + 5_000).toISOString(),
       });
 
-      runtime.setTime(ORIGIN_MS + 9_000);
-      expect(await ledger.settle(completed)).toEqual(settled);
-      expect(await ledger.settle(settled)).toEqual(settled);
+      const later = new Date(ORIGIN_MS + 9_000).toISOString();
+      expect(await ledger.settle(completed, later)).toEqual(settled);
+      expect(await ledger.settle(settled, later)).toEqual(settled);
 
       runtime.setTime(ORIGIN_MS + 5_000 + DAY_MS - 1);
       expect(await ledger.locate(IDENTITY)).toMatchObject({ state: 'retained' });
@@ -384,7 +384,7 @@ describe('run-creation ledger retention', () => {
     }
   });
 
-  it('starts the window when it first observes the run settled, then admits the request id afresh', async () => {
+  it('starts the window when it first observes the run settled at a time it cannot see, then admits the request id afresh', async () => {
     let live: RunSummary | undefined = summary();
     const { fixture, runtime, ledger } = runCreationLedger(async () => ({
       live,
@@ -442,6 +442,125 @@ describe('run-creation ledger retention', () => {
       expect(await after.locate(LOCATE)).toMatchObject({ status: 'recorded' });
       runtime.setTime(ORIGIN_MS + 1_000 + DAY_MS);
       expect(await after.locate(LOCATE)).toMatchObject({ status: 'expired' });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it("starts the window at the run's terminal time when nobody observed the run settle", async () => {
+    // The run settled at +1s and nothing queried it until a week later.
+    const settledAt = ORIGIN_MS + 1_000;
+    const { fixture, runtime, ledger } = runCreationLedger(async () => ({
+      live: summary({ status: 'completed', steps: 1 }),
+      durableStatus: undefined,
+      settledAt,
+    }));
+    try {
+      const attempt = await ledger.begin(beginInput());
+      if (attempt.kind !== 'claimed') throw new Error('expected a fresh claim');
+      await attempt.complete(summary());
+
+      runtime.setTime(ORIGIN_MS + 7 * DAY_MS);
+      expect(await ledger.locate(LOCATE)).toEqual({
+        status: 'expired',
+        requestId: 'request-1',
+        expiredAt: new Date(settledAt + DAY_MS).toISOString(),
+      });
+      const fresh = await ledger.begin(beginInput({ claim: { runId: 'run-2', sessionId: 's-2' } }));
+      expect(fresh.kind).toBe('claimed');
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it("keeps the binding until the window measured from the run's terminal time has passed", async () => {
+    const settledAt = ORIGIN_MS + 1_000;
+    const { fixture, runtime, ledger } = runCreationLedger(async () => ({
+      live: summary({ status: 'completed', steps: 1 }),
+      durableStatus: undefined,
+      settledAt,
+    }));
+    try {
+      const attempt = await ledger.begin(beginInput());
+      if (attempt.kind !== 'claimed') throw new Error('expected a fresh claim');
+      const created = await attempt.complete(summary());
+
+      runtime.setTime(settledAt + DAY_MS - 1);
+      expect(await ledger.locate(LOCATE)).toEqual(recorded(created.receipt));
+      runtime.setTime(settledAt + DAY_MS);
+      expect(await ledger.locate(LOCATE)).toMatchObject({ status: 'expired' });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('prunes a settled binding nobody observed in one pass', async () => {
+    const settledAt = ORIGIN_MS + 1_000;
+    const { fixture, kv, runtime, ledger } = runCreationLedger(async () => ({
+      live: summary({ status: 'completed', steps: 1 }),
+      durableStatus: undefined,
+      settledAt,
+    }));
+    try {
+      const attempt = await ledger.begin(beginInput());
+      if (attempt.kind !== 'claimed') throw new Error('expected a fresh claim');
+      await attempt.complete(summary());
+
+      runtime.setTime(settledAt + DAY_MS - 1);
+      expect(await ledger.prune()).toEqual({ entries: 0, conflicts: 0 });
+      runtime.setTime(settledAt + DAY_MS);
+      expect(await ledger.prune()).toEqual({ entries: 1, conflicts: 0 });
+      expect(await ledger.locate(LOCATE)).toEqual({ status: 'not-found', requestId: 'request-1' });
+      expect(await keys(kv)).toEqual([]);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it("prunes a pending claim whose run settled after its claimant died, from the run's terminal time", async () => {
+    const settledAt = ORIGIN_MS + 2_000;
+    const { fixture, runtime, ledger, create } = runCreationLedger(async () => ({
+      live: undefined,
+      durableStatus: null,
+    }));
+    try {
+      // The claimant dies after the run started: its claim is never completed.
+      expect(await ledger.begin(beginInput())).toMatchObject({ kind: 'claimed' });
+      const after = create(async () => ({
+        live: summary({ status: 'completed', steps: 1 }),
+        durableStatus: undefined,
+        settledAt,
+      }));
+
+      runtime.setTime(settledAt + DAY_MS);
+      expect(await after.prune()).toEqual({ entries: 1, conflicts: 0 });
+      expect(await after.locate(LOCATE)).toMatchObject({ status: 'not-found' });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('records the receipt of a pending claim whose run settled at a time it cannot see, and prunes it a window later', async () => {
+    const { fixture, runtime, ledger, create } = runCreationLedger(async () => ({
+      live: undefined,
+      durableStatus: null,
+    }));
+    try {
+      expect(await ledger.begin(beginInput())).toMatchObject({ kind: 'claimed' });
+      // After a restart the run is only in the durable engine, already finished.
+      const after = create(async () => ({ live: undefined, durableStatus: 'completed' }));
+
+      const firstPrune = ORIGIN_MS + 30 * DAY_MS;
+      runtime.setTime(firstPrune);
+      expect(await after.prune()).toEqual({ entries: 0, conflicts: 0 });
+      expect(await after.ledger.read(IDENTITY)).toMatchObject({
+        state: 'completed',
+        settledAt: new Date(firstPrune).toISOString(),
+        result: { receipt: { runId: 'run-1', status: 'completed' } },
+      });
+
+      runtime.setTime(firstPrune + DAY_MS);
+      expect(await after.prune()).toEqual({ entries: 1, conflicts: 0 });
     } finally {
       await fixture.dispose();
     }
