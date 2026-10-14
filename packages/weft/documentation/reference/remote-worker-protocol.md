@@ -543,6 +543,8 @@ These rules keep the operation from becoming a way to run arbitrary code on the 
 
 The spawned worker inherits the server process's environment plus the variables in the table above, exactly as it does under the CLI. Register only commands you would trust to run with the server's own privileges.
 
+The sandbox server is unauthenticated, because the protocol under test carries no worker credentials. It binds only `127.0.0.1` on an ephemeral port and exists for one run. A process that sets `WEFT_SERVER_AUTHENTICATION_REQUIRED` forbids any unauthenticated server, including this one. Under that setting every run reports a single failed `conformance` check that carries the refusal. Run conformance from a process without that setting, or use the CLI.
+
 `weft.conformance.report` does not return until the run finishes, which can take several multiples of `timeoutMs` for a worker that keeps failing late in the sequence. Set the target's timeout with your HTTP client's request timeout in mind.
 
 ### Required activities

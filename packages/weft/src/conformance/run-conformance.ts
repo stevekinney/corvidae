@@ -144,6 +144,11 @@ async function runConformanceChecks(
       engine,
       port: 0,
       hostname: '127.0.0.1',
+      // The protocol under test carries no credentials, so the sandbox is
+      // deliberately unauthenticated; it binds loopback only and lives for
+      // one run. Saying so explicitly keeps every run from logging the
+      // no-authentication warning into the host server's output.
+      unauthenticatedAccess: 'allow',
       workerReconnectGracePeriodMs: 100,
       workerShutdownTimeoutMs: timeoutMs,
     });
