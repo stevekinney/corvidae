@@ -488,6 +488,46 @@ describe('changeset emission', () => {
     expect(Object.keys(files)).toContain(emittedPath(second, 'two'));
   });
 
+  test('a past same-commit replacement stops blocking once its added file is deleted', async () => {
+    const { root, start } = await corvidae();
+    await write(root, '.changeset/old-name.md', changeset('@lostgradient/weft', 'Alpha beta.'));
+    await commit(root, 'Add a changeset');
+    await git(root, 'rm', '--quiet', '.changeset/old-name.md');
+    await write(
+      root,
+      '.changeset/new-name.md',
+      '---\n"@lostgradient/cinder": major\n---\n\nNothing alike: zebra, quartz.\n',
+    );
+    await commit(root, 'Replace it in one commit (a mistake)');
+    // While the added file exists the mistake still blocks.
+    expect(await rejectionOf(emit(root, await target(start), start))).toBeInstanceOf(
+      ChangesetEmissionError,
+    );
+    await git(root, 'rm', '--quiet', '.changeset/new-name.md');
+    await commit(root, 'Corrective: delete the added file');
+    await write(root, '.changeset/fresh.md', changeset('@lostgradient/weft', 'A fresh one.'));
+    const fresh = await commit(root, 'Add a fresh changeset');
+    const files = await emit(root, await target(start), start);
+    expect(Object.keys(files)).toEqual([emittedPath(fresh, 'fresh')]);
+  });
+
+  test('a past rename stops blocking once its destination is deleted, and blocks while it exists', async () => {
+    const { root, start } = await corvidae();
+    await write(root, '.changeset/old-name.md', weftChangeset);
+    await commit(root, 'Add a changeset');
+    await git(root, 'mv', '.changeset/old-name.md', '.changeset/new-name.md');
+    await commit(root, 'Rename it');
+    expect(await rejectionOf(emit(root, await target(start), start))).toBeInstanceOf(
+      ChangesetEmissionError,
+    );
+    await git(root, 'rm', '--quiet', '.changeset/new-name.md');
+    await commit(root, 'Corrective: delete the destination');
+    await write(root, '.changeset/fresh.md', changeset('@lostgradient/weft', 'A fresh one.'));
+    const fresh = await commit(root, 'Add a fresh changeset');
+    const files = await emit(root, await target(start), start);
+    expect(Object.keys(files)).toEqual([emittedPath(fresh, 'fresh')]);
+  });
+
   test('a merge commit that itself edits an existing changeset throws', async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);

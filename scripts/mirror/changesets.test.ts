@@ -130,6 +130,13 @@ describe('assertChangesetFileName', () => {
     }
   });
 
+  test('caps the filename at 200 characters so the emitted name stays under 255 bytes', () => {
+    const ofLength = (length: number): string =>
+      `.changeset/${'a'.repeat(length - '.md'.length)}.md`;
+    expect(() => assertChangesetFileName(ofLength(200))).not.toThrow();
+    expect(() => assertChangesetFileName(ofLength(201))).toThrow(/200 characters/);
+  });
+
   test.each(['fix[1].md', 'Fix.md', '-lead.md', 'a b.md', 'a*.md', 'é.md', '.hidden.md', 'a.txt'])(
     'rejects %s',
     (name) => {

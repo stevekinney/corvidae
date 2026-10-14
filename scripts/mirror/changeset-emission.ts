@@ -184,6 +184,7 @@ export async function assertImmutable(
   corvidaeRoot: string,
   headFiles: readonly string[],
 ): Promise<void> {
+  const present = new Set(headFiles);
   const replacements = await requireGit(corvidaeRoot, [
     'log',
     '--first-parent',
@@ -210,7 +211,9 @@ export async function assertImmutable(
       if (status === 'D') deleted.push(path);
       if (status === 'A') added.push(path);
     }
-    if (deleted.length > 0 && added.length > 0) {
+    // A past mistake blocks only while the file it added is still here; a corrective pull request
+    // that deletes it recovers the history.
+    if (deleted.length > 0 && added.some((path) => present.has(path))) {
       throw new ChangesetEmissionError(
         `commit ${hash.slice(0, 12)} deletes ${deleted.join(', ')} and adds ${added.join(', ')}: ${immutableRemedy}.`,
       );

@@ -132,6 +132,13 @@ export async function listChangesetFiles(root: string): Promise<string[]> {
 export function assertChangesetFileName(path: string): void {
   const name = path.slice(path.lastIndexOf('/') + 1);
   if (name === 'README.md') return;
+  // Emission prepends `corvidae-<12 hex>-` (22 bytes); 200 leaves the result well under the
+  // 255-byte limit on a path component.
+  if (name.length > 200) {
+    throw new ChangesetError(
+      `${path}: the filename is ${name.length} characters; the limit is 200 characters, so the emitted corvidae-<12 hex>-<name> stays under 255 bytes`,
+    );
+  }
   if (!/^[a-z0-9][a-z0-9._-]*\.md$/.test(name)) {
     throw new ChangesetError(
       `${path}: the filename must be lowercase letters, digits, dots, underscores and hyphens, start with a letter or digit, and end in .md (^[a-z0-9][a-z0-9._-]*\\.md$)`,
