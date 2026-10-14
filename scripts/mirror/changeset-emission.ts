@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
+  assertChangesetFileName,
   ChangesetError,
   listChangesetFiles,
   parseChangeset,
@@ -68,7 +69,9 @@ const changesetDirectory = '.changeset';
 
 /** Read-only git against a repository whose configuration must not change the answer. */
 async function readGit(directory: string, arguments_: readonly string[]) {
-  return runCommand(['git', ...arguments_], {
+  // `--literal-pathspecs`: every path handed to git here is a file name, never a pattern, so
+  // `fix[1].md` cannot also match `fix1.md`.
+  return runCommand(['git', '--literal-pathspecs', ...arguments_], {
     cwd: directory,
     env: { ...Bun.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
   });
@@ -168,8 +171,7 @@ const immutableRemedy =
  * Check 1, global for every target: a changeset on `main` is immutable until it is deleted.
  *
  * Delivery state is not inferred from content, name or mapping. Instead the history of each
- * changeset at HEAD must be a single commit, which `git log --follow -M` over the full history
- * answers directly. One rule therefore covers an edit after the add, a retarget (which is an
+ * changeset at HEAD must be a single commit, and none may have been created by a rename. One rule therefore covers an edit after the add, a retarget (which is an
  * edit), a rename git detects (50% similarity or more) and a delete followed by a re-add of the
  * same name. A squash-merged pull request contributes one commit, so edits within it pass.
  *
@@ -178,11 +180,15 @@ const immutableRemedy =
  * rename plus a rewrite of more than half would otherwise hide as a fresh file. The remedy is the
  * two pull requests the error spells out.
  */
-async function assertImmutable(corvidaeRoot: string, headFiles: readonly string[]): Promise<void> {
+export async function assertImmutable(
+  corvidaeRoot: string,
+  headFiles: readonly string[],
+): Promise<void> {
   const replacements = await requireGit(corvidaeRoot, [
     'log',
     '--no-renames',
     '--name-status',
+    '--diff-merges=first-parent',
     '-z',
     '--format=%x01%H',
     '--',
@@ -209,11 +215,40 @@ async function assertImmutable(corvidaeRoot: string, headFiles: readonly string[
       );
     }
   }
+  // Renames git detects (50% similarity or more), as destination paths anywhere in history. This
+  // is not `git log --follow`: follow also reports a new file as a copy of any similar existing
+  // one, which would make two similar changesets from different pull requests block every sync.
+  const renames = await requireGit(corvidaeRoot, [
+    'log',
+    '--find-renames',
+    '--diff-filter=R',
+    '--name-status',
+    '--diff-merges=first-parent',
+    '-z',
+    '--format=%x01',
+    '--',
+    `${changesetDirectory}/`,
+  ]);
+  const renamedTo = new Set<string>();
+  for (const record of renames.split('\u0001')) {
+    const tokens = record
+      .split('\0')
+      .map((token) => token.replace(/^\n+/, ''))
+      .filter((token) => token.length > 0);
+    for (let index = 0; index + 2 < tokens.length; index += 3) {
+      if (/^R\d*$/.test(tokens[index]!)) renamedTo.add(tokens[index + 2]!);
+    }
+  }
   for (const path of headFiles) {
+    if (renamedTo.has(path)) {
+      throw new ChangesetEmissionError(
+        `${path} was created by a rename. A changeset merged to main is immutable until deleted: ${immutableRemedy}.`,
+      );
+    }
     const output = await requireGit(corvidaeRoot, [
       'log',
-      '--follow',
-      '-M',
+      '--no-merges',
+      '--full-history',
       '--format=%H',
       '--',
       path,
@@ -221,7 +256,7 @@ async function assertImmutable(corvidaeRoot: string, headFiles: readonly string[
     const commits = output.split('\n').filter((line) => line.length > 0);
     if (commits.length > 1) {
       throw new ChangesetEmissionError(
-        `${path} has ${commits.length} commits in its history (a rename, an edit, a retarget or a re-added name). A changeset merged to main is immutable until deleted: ${immutableRemedy}.`,
+        `${path} has ${commits.length} commits in its history (an edit, a retarget or a re-added name). A changeset merged to main is immutable until deleted: ${immutableRemedy}.`,
       );
     }
   }
@@ -410,6 +445,7 @@ export async function planChangesetEmission({
     changesetsAt(corvidaeRoot, 'HEAD'),
     changesetsAt(corvidaeRoot, trailerSha),
   ]);
+  for (const path of headFiles) assertChangesetFileName(path);
   await assertImmutable(corvidaeRoot, headFiles);
   await assertNoMovedPackages(corvidaeRoot, trailerSha, headFiles);
   const synced = new Set(syncedFiles);

@@ -122,3 +122,19 @@ export async function listChangesetFiles(root: string): Promise<string[]> {
     .toSorted()
     .map((entry) => `.changeset/${entry}`);
 }
+
+/**
+ * A changeset file's name must be conservative: lowercase letters, digits, dots, underscores and
+ * hyphens, starting with a letter or digit. Git reads paths as patterns unless told otherwise, the
+ * emitted name is built from this one, and a name no tool can mistake for something else is cheaper
+ * than a rule about which characters are dangerous where.
+ */
+export function assertChangesetFileName(path: string): void {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  if (name === 'README.md') return;
+  if (!/^[a-z0-9][a-z0-9._-]*\.md$/.test(name)) {
+    throw new ChangesetError(
+      `${path}: the filename must be lowercase letters, digits, dots, underscores and hyphens, start with a letter or digit, and end in .md (^[a-z0-9][a-z0-9._-]*\\.md$)`,
+    );
+  }
+}

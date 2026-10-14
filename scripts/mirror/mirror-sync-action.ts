@@ -481,6 +481,21 @@ export async function openSyncPullRequest(options: {
   return message;
 }
 
+/**
+ * A sync dispatched from a ref other than main records a trailer that is not on main's history,
+ * which would block every later sync. The workflow refuses first; this is the second line.
+ */
+export function refusePrepareOffMain(
+  environment: Record<string, string | undefined> = Bun.env,
+): void {
+  const ref = environment['GITHUB_REF'];
+  if (ref !== undefined && ref !== '' && ref !== 'refs/heads/main') {
+    throw new MirrorSyncActionError(
+      `Refusing to prepare a sync from ${ref}: a sync records its corvidae commit as provenance, so it must run from refs/heads/main.`,
+    );
+  }
+}
+
 function isMirrorTarget(value: string): value is MirrorTarget {
   return (mirrorTargets as readonly string[]).includes(value);
 }
@@ -624,6 +639,7 @@ async function corvidaeCommitFor(argv: readonly string[], corvidaeRoot: string):
 }
 
 async function runPrepare(argv: readonly string[]): Promise<number> {
+  refusePrepareOffMain();
   const target = requiredTarget(argv);
   const snapshot = snapshotOption(argv);
   const corvidaeRoot = defaultCorvidaeRoot(argv);

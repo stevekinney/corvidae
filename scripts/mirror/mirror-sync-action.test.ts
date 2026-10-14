@@ -10,6 +10,7 @@ import {
   openSyncPullRequest,
   pullRequestBodyFor,
   pullRequestBranchFor,
+  refusePrepareOffMain,
   reportDrift,
   runMirrorSyncActionCommand,
   settleSkippedSync,
@@ -26,6 +27,20 @@ describe('targetRepositoryFullName and targetRemoteUrl', () => {
     expect(targetRepositoryFullName('cinder')).toBe('stevekinney/cinder');
     expect(targetRepositoryFullName('agent-bureau')).toBe('stevekinney/agent-bureau');
     expect(targetRemoteUrl('weft')).toBe('https://github.com/stevekinney/weft.git');
+  });
+});
+
+describe('refusePrepareOffMain', () => {
+  test('refuses a ref other than main and says why', () => {
+    expect(() => refusePrepareOffMain({ GITHUB_REF: 'refs/heads/feature' })).toThrow(
+      /refs\/heads\/feature.*main/,
+    );
+    expect(() => refusePrepareOffMain({ GITHUB_REF: 'refs/tags/v1' })).toThrow();
+  });
+
+  test('allows main, and an unset ref outside Actions', () => {
+    expect(() => refusePrepareOffMain({ GITHUB_REF: 'refs/heads/main' })).not.toThrow();
+    expect(() => refusePrepareOffMain({})).not.toThrow();
   });
 });
 

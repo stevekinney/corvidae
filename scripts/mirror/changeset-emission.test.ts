@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { rejectionOf } from '../promise-outcome.test-support.ts';
-import { ChangesetEmissionError, planChangesetEmission } from './changeset-emission.ts';
+import {
+  assertImmutable,
+  ChangesetEmissionError,
+  planChangesetEmission,
+} from './changeset-emission.ts';
 import { ChangesetError } from './changesets.ts';
 import { findForeignCommits, git, provenanceTrailer } from './sync.ts';
 import { loadTargetOwnedPolicy } from './target-owned.ts';
@@ -445,6 +449,53 @@ describe('changeset emission', () => {
     expect(error).toBeInstanceOf(ChangesetEmissionError);
     expect((error as Error).message).toContain('.changeset/old-name.md');
     expect((error as Error).message).toContain('.changeset/new-name.md');
+  });
+
+  test('a merge commit whose first-parent diff deletes one changeset and adds another throws', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/old-name.md', weftChangeset);
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'checkout', '--quiet', '-b', 'side');
+    await git(root, 'rm', '--quiet', '.changeset/old-name.md');
+    await commit(root, 'Side: delete');
+    await write(
+      root,
+      '.changeset/new-name.md',
+      changeset('@lostgradient/weft', 'Different words.'),
+    );
+    await commit(root, 'Side: add');
+    await git(root, 'checkout', '--quiet', 'main');
+    await write(root, 'unrelated.txt', 'main moved\n');
+    await commit(root, 'Main moves');
+    await git(root, 'merge', '--quiet', '--no-ff', '--message', 'Merge side', 'side');
+    const error = await rejectionOf(emit(root, await target(synced), synced));
+    expect(error).toBeInstanceOf(ChangesetEmissionError);
+    expect((error as Error).message).toContain('.changeset/new-name.md');
+  });
+
+  test('two similar changesets added in different pull requests do not block each other', async () => {
+    const { root, start } = await corvidae();
+    await write(root, '.changeset/one.md', changeset('@lostgradient/weft', 'Fix the first thing.'));
+    await commit(root, 'Add one');
+    await write(
+      root,
+      '.changeset/two.md',
+      changeset('@lostgradient/weft', 'Fix the second thing.'),
+    );
+    const second = await commit(root, 'Add two');
+    const files = await emit(root, await target(start), start);
+    expect(Object.keys(files)).toHaveLength(2);
+    expect(Object.keys(files)).toContain(emittedPath(second, 'two'));
+  });
+
+  test('changeset paths are literal: names that only collide as patterns do not cross-match', async () => {
+    const { root } = await corvidae();
+    // Written directly: the validator would refuse the bracketed name.
+    await write(root, '.changeset/fix[1].md', weftChangeset);
+    await commit(root, 'Add the bracketed name');
+    await write(root, '.changeset/fix1.md', weftChangeset);
+    await commit(root, 'Add the plain name');
+    await assertImmutable(root, ['.changeset/fix[1].md', '.changeset/fix1.md']);
   });
 
   describe('a package moving between mirrors', () => {

@@ -130,6 +130,21 @@ describe('mirror-sync.yaml', () => {
     for (const checkout of checkouts) expect(checkout[1]).toMatch(/^ {10}fetch-depth: 0$/m);
   });
 
+  test('refuses a dispatch from any ref but main before doing anything else', async () => {
+    const text = await readWorkflow();
+    const prepare =
+      text.match(/  prepare-pull-request:\n([\s\S]+?)\n\n  publish-pull-request:/)?.[1] ?? '';
+    const guard = prepare.indexOf("if: github.ref != 'refs/heads/main'");
+    expect(guard).toBeGreaterThan(-1);
+    expect(prepare).toMatch(/steps:\n\s+- name: Refuse a dispatch from any ref but main/);
+    expect(prepare.slice(guard, guard + 400)).toContain('exit 1');
+    expect(prepare.indexOf('actions/checkout')).toBeGreaterThan(guard);
+    // `publish-pull-request` needs the prepare job, so refusing there refuses both.
+    expect(text).toMatch(
+      /publish-pull-request:\n\s+if: github\.event_name == 'workflow_dispatch'\n\s+needs: prepare-pull-request/,
+    );
+  });
+
   test('serializes a manual dispatch at workflow scope rather than per job', async () => {
     const text = await readWorkflow();
     expect(text).toMatch(/concurrency:\n\s+group: mirror-sync-\$\{\{ github\.event_name \}\}-/);

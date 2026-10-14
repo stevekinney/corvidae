@@ -88,6 +88,14 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
+      - name: Refuse a dispatch from any ref but main
+        if: github.ref != 'refs/heads/main'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::A mirror sync records its corvidae commit as provenance and must be dispatched from refs/heads/main, not $REF."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:

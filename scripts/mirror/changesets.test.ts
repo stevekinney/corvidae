@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { rejectionOf } from '../promise-outcome.test-support.ts';
 import {
   ChangesetError,
+  assertChangesetFileName,
   listChangesetFiles,
   parseChangeset,
   targetOfChangeset,
@@ -122,11 +123,27 @@ describe('validateChangeset', () => {
   });
 });
 
+describe('assertChangesetFileName', () => {
+  test('accepts conservative lowercase names', () => {
+    for (const name of ['fix-a.md', 'a.md', 'v2.fix_1.md', '0-first.md']) {
+      expect(() => assertChangesetFileName(`.changeset/${name}`)).not.toThrow();
+    }
+  });
+
+  test.each(['fix[1].md', 'Fix.md', '-lead.md', 'a b.md', 'a*.md', 'é.md', '.hidden.md', 'a.txt'])(
+    'rejects %s',
+    (name) => {
+      expect(() => assertChangesetFileName(`.changeset/${name}`)).toThrow(/lowercase|filename/i);
+    },
+  );
+});
+
 describe('the corvidae .changeset directory', () => {
   test('every real changeset validates', async () => {
     const root = join(import.meta.dir, '..', '..');
     for (const file of await listChangesetFiles(root)) {
       const text = await Bun.file(join(root, file)).text();
+      assertChangesetFileName(file);
       await validateChangeset(text, file);
     }
   });
