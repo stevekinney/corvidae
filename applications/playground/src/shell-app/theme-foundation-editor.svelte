@@ -110,6 +110,12 @@
   const built = $derived(valueFromFields(row, fields));
   const fieldErrors = $derived(dirty && !built.ok ? built.errors : {});
   const runtimeError = $derived(buffered?.error ?? undefined);
+  // A rejection from the runtime rides on one field so it is read through that field's error
+  // association (aria-invalid and aria-describedby) rather than a loose message.
+  const withRuntime = (errors: Record<string, string | undefined>, part: string) =>
+    runtimeError !== undefined && errors[part] === undefined
+      ? { ...errors, [part]: runtimeError }
+      : errors;
 
   function edited(next: FoundationFields): void {
     fields = next;
@@ -150,27 +156,36 @@
     return false;
   }
 
+  // A slider gesture is begin, any number of commits, then end. They share one chain so the
+  // end can never run while a commit is still evaluating and be overwritten when it lands.
+  let pending: Promise<unknown> = Promise.resolve();
+  const chained = <T,>(work: () => T | Promise<T>): Promise<T> => {
+    const run = pending.then(work);
+    pending = run.catch(() => undefined);
+    return run;
+  };
+
   function apply(): Promise<boolean> {
-    return commitFields(fields, `Edit ${row.name}`);
+    return chained(() => commitFields(fields, `Edit ${row.name}`));
   }
 
   function slide(amount: string): void {
     if (fields.kind !== 'number' && fields.kind !== 'fontWeight') return;
     const next = { ...fields, amount };
     fields = next;
-    void commitFields(next, `Adjust ${row.name}`);
+    void chained(() => commitFields(next, `Adjust ${row.name}`));
   }
 
   const ongesture = {
     begin(): void {
       if (gesture || !editable) return;
       gesture = true;
-      controller.beginGesture('edit', `Adjust ${row.name}`);
+      void chained(() => controller.beginGesture('edit', `Adjust ${row.name}`));
     },
     end(): void {
       if (!gesture) return;
       gesture = false;
-      controller.endGesture();
+      void chained(() => controller.endGesture());
     },
   };
   onDestroy(() => ongesture.end());
@@ -249,12 +264,7 @@
         <ThemeFoundationScalarField
           {row}
           {fields}
-          errors={{
-            ...fieldErrors,
-            ...(runtimeError !== undefined && fieldErrors['amount'] === undefined
-              ? { amount: runtimeError }
-              : {}),
-          }}
+          errors={withRuntime(fieldErrors, 'amount')}
           {idBase}
           label={fieldLabel}
           disabled={locked}
@@ -266,7 +276,7 @@
       {:else if fields.kind === 'fontFamily'}
         <ThemeFoundationFontStack
           {fields}
-          errors={fieldErrors}
+          errors={withRuntime(fieldErrors, 'families')}
           {idBase}
           label={fieldLabel}
           disabled={locked}
@@ -277,7 +287,7 @@
       {:else if fields.kind === 'cubicBezier'}
         <ThemeFoundationBezierField
           {fields}
-          errors={fieldErrors}
+          errors={withRuntime(fieldErrors, 'x1')}
           {idBase}
           label={fieldLabel}
           disabled={locked}
@@ -285,9 +295,6 @@
           onchange={edited}
           onenter={() => void apply()}
         />
-      {/if}
-      {#if runtimeError !== undefined && (fields.kind === 'fontFamily' || fields.kind === 'cubicBezier')}
-        <p class="error" role="alert" data-testid="foundation-error">{runtimeError}</p>
       {/if}
     {/if}
 
@@ -339,16 +346,10 @@
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
   }
-  .note,
-  .error {
+  .note {
     margin: 0;
     font-size: var(--cinder-text-sm);
-  }
-  .note {
     color: var(--cinder-text-muted);
-  }
-  .error {
-    color: var(--cinder-text-danger, var(--cinder-text-default));
   }
   .actions {
     display: flex;

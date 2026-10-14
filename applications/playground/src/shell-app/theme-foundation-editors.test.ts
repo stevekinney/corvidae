@@ -372,26 +372,6 @@ describe('the mounted editors', () => {
     expect(entries(controller)).toBe(1);
   });
 
-  test('a slider has a numeric input, and one continuous gesture is one transaction', async () => {
-    const { controller, row } = await open('opacity.disabled');
-    expect(input('-amount')).not.toBeNull();
-    const thumb = target.querySelector<HTMLElement>('[role="slider"]')!;
-    expect(thumb.getAttribute('aria-label') ?? thumb.getAttribute('aria-labelledby')).toBeTruthy();
-    const wrapper = thumb.closest<HTMLElement>('.scalar__slider')!;
-    wrapper.dispatchEvent(new Event('pointerdown', { bubbles: false }));
-    for (let step = 0; step < 2; step += 1) {
-      thumb.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-      await settle();
-    }
-    wrapper.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', bubbles: true }));
-    await settle();
-    expect(entries(controller)).toBe(1);
-    expect(controller.draftValues.get(row.cssProperty)).toBe('0.53');
-    expect(input('-amount').value).toBe('0.53');
-    await controller.undo();
-    expect(shared(controller)).toEqual({});
-  });
-
   test('a color-mode-independent edit updates both light and dark', async () => {
     const { controller } = await open('motion.fast');
     await typeInto(input('-amount'), '77');

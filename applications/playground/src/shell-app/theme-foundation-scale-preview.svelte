@@ -87,8 +87,8 @@
     inline-size: 32px;
     block-size: 32px;
     border: 2px solid var(--cinder-text-muted);
-    border-right: 0;
-    border-bottom: 0;
+    border-inline-end: 0;
+    border-block-end: 0;
   }
   code {
     font-family: var(--cinder-font-mono);
