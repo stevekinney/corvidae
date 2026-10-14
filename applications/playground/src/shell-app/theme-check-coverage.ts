@@ -116,7 +116,17 @@ const NON_COLOR_PROFILES: Record<string, ProfileRule> = {
   ),
 };
 
+/** Tokens whose absence from the contrast table is a decision, with the reason it was taken. */
+const DELIBERATE_EXCLUSIONS = new Map<string, string>([
+  [
+    '--cinder-accent-solid-active',
+    'Not paired with the accent label on purpose: it falls below 4.5:1 against that label in the dark contexts, and the buttons paint the pressed fill with accent.solid.active.on-fill instead.',
+  ],
+]);
+
 function colorRule(record: AuthoringRecord): ProfileRule {
+  const exclusion = DELIBERATE_EXCLUSIONS.get(record.cssProperty);
+  if (exclusion !== undefined) return NOT_CHECKABLE(exclusion);
   const references = referencesByProperty.get(record.cssProperty) ?? [];
   const wcag = references.filter((reference) => reference.scope === 'wcag');
   if (wcag.length > 0) {
