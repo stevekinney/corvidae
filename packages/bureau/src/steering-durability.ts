@@ -1,7 +1,11 @@
 import type { ConditionalTextValueStore, Storage } from '@lostgradient/weft';
 import { encodeStorageKeyComponent, Mailbox } from '@lostgradient/weft';
 
-import type { ImplementedSteeringCommand, StoredSteeringCommand } from './steering';
+import type {
+  ImplementedSteeringCommand,
+  SteeringDurableState,
+  StoredSteeringCommand,
+} from './steering';
 
 /**
  * AB-200 — durable steering: the mailbox a durably-configured Bureau
@@ -26,7 +30,11 @@ import type { ImplementedSteeringCommand, StoredSteeringCommand } from './steeri
  * state* — it owns `configVersion` accounting, per-run pause scoping and
  * supersession, and none of that belongs in a durable queue. The mailbox
  * is the durable *log*: what was admitted, by whom, and whether it has
- * been consumed. On restart the log is replayed back into a fresh gate.
+ * been consumed. Two small `runtime.kv` records complete the picture,
+ * because recovery acknowledges what it replays: a per-session snapshot of
+ * the gate's desired state (restored before the log is replayed) and a
+ * per-command record answering idempotency questions after the log has
+ * been drained. Both are defined at the end of this module.
  *
  * That ordering matters. A command is written to the mailbox *before* it
  * reaches the gate, so a crash between the two loses nothing — recovery
@@ -64,8 +72,8 @@ export interface PersistedSteeringCommand {
 
 /**
  * Persists one admitted steering command. Returns the mailbox's own
- * command id, or `undefined` when the backlog rejected it before writing
- * anything.
+ * command id and its per-session FIFO `sequence`, or the reason nothing
+ * was written.
  *
  * `idempotencyKey` is the caller-facing command id, so an exact retry
  * replays the original receipt rather than creating a second command —
@@ -75,7 +83,9 @@ export interface PersistedSteeringCommand {
 export async function persistSteeringCommand(
   mailbox: Mailbox,
   command: ImplementedSteeringCommand,
-): Promise<{ persisted: true; commandId: string } | { persisted: false; reason: string }> {
+): Promise<
+  { persisted: true; commandId: string; sequence: number } | { persisted: false; reason: string }
+> {
   const payload: PersistedSteeringCommand = {
     id: command.id,
     sessionId: command.sessionId,
@@ -100,7 +110,11 @@ export async function persistSteeringCommand(
   switch (admission.status) {
     case 'admitted':
     case 'duplicate':
-      return { persisted: true, commandId: admission.receipt.commandId };
+      return {
+        persisted: true,
+        commandId: admission.receipt.commandId,
+        sequence: admission.receipt.sequence,
+      };
     case 'conflict':
       return { persisted: false, reason: 'idempotency-identity-mismatch' };
     case 'rejected':
@@ -127,12 +141,16 @@ export async function persistSteeringCommand(
  * the same desired state, and the gate's own value-idempotency check
  * declines to advance `configVersion` for a value already in force.
  *
+ * `apply` receives each command with its mailbox `sequence`, so a caller
+ * holding a durable desired-state snapshot can skip commands that snapshot
+ * already reflects.
+ *
  * `maximumCommands` bounds one drain so a pathological backlog cannot
  * stall boot indefinitely; the remainder stays durable for the next pass.
  */
 export async function recoverSteeringCommands(
   mailbox: Mailbox,
-  apply: (command: PersistedSteeringCommand) => void,
+  apply: (command: PersistedSteeringCommand, sequence: number) => unknown,
   maximumCommands = 1000,
 ): Promise<number> {
   let applied = 0;
@@ -153,10 +171,13 @@ export async function recoverSteeringCommands(
       // That contradicted this function's own crash-safety claim, and the
       // window was up to `maximumCommands` wide.
       //
-      // `apply` is synchronous by contract for the same reason: an async
-      // replay would reintroduce an await between the gate write and the
-      // acknowledgement.
-      apply(command);
+      // `apply` may be asynchronous — the caller persists its desired-state
+      // snapshot there — and is awaited before the acknowledgement, which
+      // is the property that matters: the command is reflected durably
+      // before the mailbox forgets it. The caller keeps its own gate write
+      // synchronous within `apply`, so no other admission can interleave
+      // between a replayed command and its gate write.
+      await apply(command, claim.receipt.sequence);
       applied += 1;
       await mailbox.acknowledge({
         commandId: claim.receipt.commandId,
@@ -208,53 +229,61 @@ function readInlinePayload(payload: {
  *
  * The mailbox alone cannot answer "what did this id originally ask for?"
  * once recovery has replayed and acknowledged a command: a receipt carries
- * no payload, and the payload is delivered only on `claim()`. Its
- * idempotency binding, however, outlives the drain. Without these records a
- * restart whose mailbox an earlier recovery already drained starts with an
- * empty in-memory ledger, so a reused id — exact retry or not — would be
- * admitted again as a brand-new command instead of `replayed` or a typed
- * `conflict`.
+ * no payload, and the payload is delivered only on `claim()`. And a later
+ * restart starts with an empty in-memory ledger. Without these records a
+ * reused id after such a restart — an exact retry, a different value, or
+ * the same key sent to another session — would be admitted again as a
+ * brand-new command instead of `replayed` or a typed `conflict`.
  *
  * Each record is the gate's own ledger entry, as of the admission (live or
- * replayed) that wrote it. It answers idempotency questions only: it never
- * enters the gate's ledger or desired state, so a stale `state` cannot be
- * re-applied. Records are keyed per session and deleted with the session
- * (`deleteSteeringCommandRecords`), the same lifetime as the session's
- * mailbox and its bindings.
+ * replayed) that wrote it, and is keyed exactly as the ledger is:
+ * bureau-wide by `(principal, id)`, so `session-mismatch` survives a
+ * restart too. A per-session index key lets session deletion remove that
+ * session's records, the same lifetime its mailbox and ledger entries
+ * have. A record answers idempotency questions only: it never enters the
+ * gate's ledger or desired state, so a stale `state` cannot be re-applied.
  */
 const STEERING_RECORD_KEY_PREFIX = 'steering-command:v1';
+const STEERING_RECORD_INDEX_PREFIX = 'steering-command-session:v1';
 
-function steeringRecordSessionPrefix(sessionId: string): string {
-  return `${STEERING_RECORD_KEY_PREFIX}:${encodeStorageKeyComponent(sessionId)}:`;
+function steeringRecordKey(principal: string, id: string): string {
+  return `${STEERING_RECORD_KEY_PREFIX}:${encodeStorageKeyComponent(principal)}:${encodeStorageKeyComponent(id)}`;
 }
 
-function steeringRecordKey(sessionId: string, principal: string, id: string): string {
-  return `${steeringRecordSessionPrefix(sessionId)}${encodeStorageKeyComponent(principal)}:${encodeStorageKeyComponent(id)}`;
+function steeringRecordIndexPrefix(sessionId: string): string {
+  return `${STEERING_RECORD_INDEX_PREFIX}:${encodeStorageKeyComponent(sessionId)}:`;
 }
 
-/** Writes (or refreshes) the record for one admitted command. */
+/** Writes (or refreshes) the record for one admitted command, with its session index entry. */
 export async function persistSteeringCommandRecord(
   kv: ConditionalTextValueStore,
   record: StoredSteeringCommand,
 ): Promise<void> {
-  await kv.set(
-    steeringRecordKey(record.sessionId, record.principal, record.id),
-    JSON.stringify(record),
+  const key = steeringRecordKey(record.principal, record.id);
+  await kv.conditionalBatch(
+    [],
+    [
+      { type: 'set', key, value: JSON.stringify(record) },
+      {
+        type: 'set',
+        key: `${steeringRecordIndexPrefix(record.sessionId)}${encodeStorageKeyComponent(record.principal)}:${encodeStorageKeyComponent(record.id)}`,
+        value: key,
+      },
+    ],
   );
 }
 
 /**
- * Reads the record for `(principal, id)` in `sessionId`. A missing or
- * malformed record reads as `undefined`, which leaves admission exactly
- * where it was before records existed.
+ * Reads the record for `(principal, id)`, whichever session it belongs to.
+ * A missing or malformed record reads as `undefined`, which leaves
+ * admission exactly where it was before records existed.
  */
 export async function loadSteeringCommandRecord(
   kv: ConditionalTextValueStore,
-  sessionId: string,
   principal: string,
   id: string,
 ): Promise<StoredSteeringCommand | undefined> {
-  const raw = await kv.get(steeringRecordKey(sessionId, principal, id));
+  const raw = await kv.get(steeringRecordKey(principal, id));
   if (raw === null) return undefined;
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -275,10 +304,84 @@ export async function loadSteeringCommandRecord(
   }
 }
 
-/** Deletes every steering command record for `sessionId`. */
+/** Deletes every steering command record that belongs to `sessionId`. */
 export async function deleteSteeringCommandRecords(
   kv: ConditionalTextValueStore,
   sessionId: string,
 ): Promise<void> {
-  await kv.deletePrefix(steeringRecordSessionPrefix(sessionId));
+  const indexKeys = await kv.list(steeringRecordIndexPrefix(sessionId));
+  for (const indexKey of indexKeys) {
+    const recordKey = await kv.get(indexKey);
+    if (recordKey !== null) await kv.delete(recordKey);
+    await kv.delete(indexKey);
+  }
+}
+
+/**
+ * A session's durable desired steering state: the gate's own
+ * {@link SteeringDurableState}, plus the highest mailbox `sequence` it
+ * reflects.
+ *
+ * Recovery acknowledges every command it replays, so the mailbox alone
+ * carries desired state across exactly one restart. This snapshot carries
+ * it across every later one. It is written after each accepted admission
+ * and after each replayed command, before that command is acknowledged;
+ * recovery restores it into the fresh gate first and then replays only
+ * the mailbox commands with a higher `sequence`, so nothing is applied
+ * twice and `configVersion` matches what the previous process reported.
+ */
+export interface SteeringDesiredStateSnapshot {
+  readonly mailboxSequence: number;
+  readonly state: SteeringDurableState;
+}
+
+const STEERING_DESIRED_STATE_KEY_PREFIX = 'steering-desired-state:v1';
+
+function steeringDesiredStateKey(sessionId: string): string {
+  return `${STEERING_DESIRED_STATE_KEY_PREFIX}:${encodeStorageKeyComponent(sessionId)}`;
+}
+
+/** Writes `sessionId`'s desired-state snapshot. */
+export async function persistSteeringDesiredState(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+  snapshot: SteeringDesiredStateSnapshot,
+): Promise<void> {
+  await kv.set(steeringDesiredStateKey(sessionId), JSON.stringify(snapshot));
+}
+
+/**
+ * Reads `sessionId`'s desired-state snapshot. A missing or malformed one
+ * reads as `undefined`, so recovery falls back to replaying the mailbox
+ * alone, exactly as before snapshots existed.
+ */
+export async function loadSteeringDesiredState(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+): Promise<SteeringDesiredStateSnapshot | undefined> {
+  const raw = await kv.get(steeringDesiredStateKey(sessionId));
+  if (raw === null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as { mailboxSequence?: unknown }).mailboxSequence === 'number' &&
+      typeof (parsed as { state?: { rawConfigVersion?: unknown } }).state?.rawConfigVersion ===
+        'number'
+    ) {
+      return parsed as SteeringDesiredStateSnapshot;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Deletes `sessionId`'s desired-state snapshot. */
+export async function deleteSteeringDesiredState(
+  kv: ConditionalTextValueStore,
+  sessionId: string,
+): Promise<void> {
+  await kv.delete(steeringDesiredStateKey(sessionId));
 }

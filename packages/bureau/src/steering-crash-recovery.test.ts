@@ -105,16 +105,16 @@ describe('durable steering survives SIGKILL', () => {
       const retry = (await runCrashingChild(
         [storagePath, retried, 'retry', 'model', sessionId],
         retried,
-      )) as { outcome: { outcome: string } };
-      expect(retry.outcome.outcome).toBe('replayed');
+      )) as { outcomes: { outcome: string }[] };
+      expect(retry.outcomes.map(({ outcome }) => outcome)).toEqual(['replayed']);
       // A third crash, this time starting from an already-drained mailbox:
       // the exact retry must still replay rather than be admitted afresh.
       const retriedAgain = join(directory, 'retried-again.json');
       const retryAgain = (await runCrashingChild(
         [storagePath, retriedAgain, 'retry', 'model', sessionId],
         retriedAgain,
-      )) as { outcome: { outcome: string } };
-      expect(retryAgain.outcome.outcome).toBe('replayed');
+      )) as { outcomes: { outcome: string }[] };
+      expect(retryAgain.outcomes.map(({ outcome }) => outcome)).toEqual(['replayed']);
 
       const bureau = await createBureau({
         agents: {},
@@ -138,6 +138,82 @@ describe('durable steering survives SIGKILL', () => {
           target: 'model',
           override: 'claude-sonnet-5',
         });
+
+        // The idempotency key is bureau-wide, so the same key sent to a
+        // different session is a `session-mismatch`, even though that
+        // session's own mailbox has never seen it.
+        const other = await bureau.createRun({ message: 'Wait forever', principal: 'alice' });
+        const elsewhere = await bureau.submitSteeringCommand(other.sessionId, {
+          id: 'crash-cmd-2',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        });
+        expect(elsewhere.outcome).toBe('conflict');
+        if (elsewhere.outcome !== 'conflict') throw new Error('expected conflict');
+        expect(elsewhere.conflict.reason).toBe('session-mismatch');
+      } finally {
+        await bureau.dispose();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('keeps desired configuration and its configVersion across restarts after the mailbox is drained', async () => {
+    // The first process steers the model twice (configVersion 1, then 2)
+    // and dies. The second restores, replays nothing it already reflects,
+    // and dies too. Desired state must survive both, at the same version
+    // the first process reported: a restore that also re-applied the
+    // drained commands would report 4, and no restore at all would fall
+    // back to the default model at version 0.
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-desired-'));
+    const storagePath = join(directory, 'bureau.sqlite');
+
+    try {
+      const admitted = join(directory, 'admitted.json');
+      const first = (await runCrashingChild(
+        [storagePath, admitted, 'admit', 'opus,model'],
+        admitted,
+      )) as { sessionId: string; outcomes: { command: { configVersion: number } }[] };
+      expect(first.outcomes.map(({ command }) => command.configVersion)).toEqual([1, 2]);
+      const { sessionId } = first;
+
+      // A fresh id re-requesting the desired value is accepted without
+      // advancing configVersion, which is how these assertions observe
+      // both the restored value and the restored version.
+      const probed = join(directory, 'probed.json');
+      const probe = (await runCrashingChild(
+        [storagePath, probed, 'retry', 'probe', sessionId],
+        probed,
+      )) as { outcomes: { outcome: string; command: { configVersion: number } }[] };
+      expect(probe.outcomes[0]?.outcome).toBe('accepted');
+      expect(probe.outcomes[0]?.command.configVersion).toBe(2);
+
+      const bureau = await createBureau({
+        agents: {},
+        generate: () => new Promise<never>(() => {}),
+        toolbox: createToolbox([]),
+        storage: { type: 'sqlite', path: storagePath },
+        durableExecution: true,
+      });
+      try {
+        await bureau.waitForRecovery?.();
+        const again = await bureau.submitSteeringCommand(sessionId, {
+          id: 'after-two-restarts',
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        });
+        expect(again.outcome).toBe('accepted');
+        if (again.outcome !== 'accepted') throw new Error('expected accepted');
+        expect(again.command.configVersion).toBe(2);
+
+        const next = await bureau.submitSteeringCommand(sessionId, {
+          id: 'next-coordinate',
+          principal: 'alice',
+          requestedValue: { target: 'provider', override: 'anthropic' },
+        });
+        if (next.outcome !== 'accepted') throw new Error(`expected accepted, got ${next.outcome}`);
+        expect(next.command.configVersion).toBe(3);
       } finally {
         await bureau.dispose();
       }

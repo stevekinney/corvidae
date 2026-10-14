@@ -1161,6 +1161,21 @@ describe('createSteeringGate', () => {
       expect(gate.forRun('run-a').getDesiredState().paused).toBe(true);
     });
 
+    it('a session-scoped retry that only changes runId replays, since those targets ignore runId', () => {
+      const gate = createSteeringGate('session-1');
+      const first = gate.admit(configurationCommand('model', 'claude-sonnet-5', { id: 'y' }), {
+        liveRunIds: ['run-a'],
+        now: NOW,
+      });
+      expect(first.outcome).toBe('accepted');
+
+      const second = gate.admit(
+        configurationCommand('model', 'claude-sonnet-5', { id: 'y', runId: 'run-a' }),
+        { liveRunIds: ['run-a'], now: NOW },
+      );
+      expect(second.outcome).toBe('replayed');
+    });
+
     it('an exact retry naming the SAME explicit runId still replays normally', () => {
       const gate = createSteeringGate('session-1');
       const first = gate.admit(pauseCommand({ id: 'x', runId: 'run-a' }), {
@@ -1806,5 +1821,67 @@ describe('configuration-target supersession (AB-200)', () => {
     const replayEffort = gate.admit(configurationCommand('effort', 'low', { id: 'e' }), context);
     if (replayEffort.outcome !== 'replayed') throw new Error('expected replayed');
     expect(replayEffort.command.state).toBe('accepted');
+  });
+});
+
+describe('durable desired state (exportDurableState / restoreDurableState)', () => {
+  it('round-trips configuration, identity, and version counters into a fresh gate', () => {
+    const source = createSteeringGate('session-1');
+    source.admit(configurationCommand('model', 'claude-sonnet-5', { id: 'm' }), {
+      liveRunIds: [],
+      now: NOW,
+    });
+    source.admit(configurationCommand('effort', 'high', { id: 'e' }), {
+      liveRunIds: [],
+      now: NOW,
+    });
+    source.admit(
+      {
+        id: 'agent',
+        idOrigin: 'caller',
+        sessionId: 'session-1',
+        principal: 'alice',
+        requestedValue: { target: 'agent-identity', override: 'reviewer' },
+        requestedAt: NOW,
+      },
+      { liveRunIds: [], now: NOW },
+    );
+    const exported = source.exportDurableState();
+
+    const restored = createSteeringGate('session-1');
+    restored.restoreDurableState(JSON.parse(JSON.stringify(exported)), NOW);
+
+    expect(restored.exportDurableState()).toEqual(exported);
+    expect(restored.getDesiredState()).toEqual(source.getDesiredState());
+  });
+
+  it('refuses to restore into a gate that has already admitted a command', () => {
+    const gate = createSteeringGate('session-1');
+    const state = gate.exportDurableState();
+    gate.admit(configurationCommand('model', 'claude-sonnet-5'), { liveRunIds: [], now: NOW });
+
+    expect(() => gate.restoreDurableState(state, NOW)).toThrow(/fresh gate/);
+  });
+
+  it('drops a restored pending identity whose deadline has passed, and checks it again at promotion', () => {
+    const state = {
+      rawConfigVersion: 1,
+      effectiveConfigVersion: 0,
+      lastConfigurationVersion: 0,
+      lastIdentityVersion: 1,
+      configuration: {},
+      pendingAgentName: 'reviewer',
+      pendingAgentDeadline: '2026-09-02T00:00:00.500Z',
+    };
+
+    const expiredAtRestore = createSteeringGate('session-1');
+    expiredAtRestore.restoreDurableState(state, NOW);
+    expect(expiredAtRestore.getDesiredState().agentName).toBeUndefined();
+
+    const expiredAtPromotion = createSteeringGate('session-1');
+    expiredAtPromotion.restoreDurableState(state, '2026-09-02T00:00:00.000Z');
+    expect(expiredAtPromotion.getDesiredState().agentName).toBe('reviewer');
+    expiredAtPromotion.promoteForNewRun('run-1', NOW);
+    expect(expiredAtPromotion.forRun('run-1').getDesiredState().agentName).toBeUndefined();
   });
 });

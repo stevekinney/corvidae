@@ -8,14 +8,20 @@
  * reopening it is exactly what a restart does to it.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { resolveStorage } from '@lostgradient/weft';
+import { MemoryStorage, resolveStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { ImplementedSteeringCommand } from './steering';
 import type { PersistedSteeringCommand } from './steering-durability';
 import {
   createSteeringMailbox,
+  deleteSteeringCommandRecords,
+  deleteSteeringDesiredState,
+  loadSteeringCommandRecord,
+  loadSteeringDesiredState,
   persistSteeringCommand,
+  persistSteeringCommandRecord,
+  persistSteeringDesiredState,
   recoverSteeringCommands,
 } from './steering-durability';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
@@ -289,5 +295,78 @@ describe('durable steering crash safety', () => {
     } finally {
       await fixture.dispose();
     }
+  });
+});
+
+describe('steering command records and desired-state snapshots', () => {
+  const record = {
+    id: 'cmd-1',
+    sessionId: 'session-1',
+    principal: 'alice',
+    requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+    runId: undefined,
+    requestedRunId: undefined,
+    requestedAt: '2026-09-02T00:00:00.000Z',
+    deadline: undefined,
+    configVersion: 1,
+    state: 'accepted',
+    failure: undefined,
+  } as const;
+
+  it('finds a record by (principal, id) regardless of session, and deletes it with its session', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    await persistSteeringCommandRecord(kv, { ...record });
+    await persistSteeringCommandRecord(kv, { ...record, id: 'cmd-2', sessionId: 'session-2' });
+
+    const found = await loadSteeringCommandRecord(kv, 'alice', 'cmd-1');
+    expect(found?.sessionId).toBe('session-1');
+    expect(await loadSteeringCommandRecord(kv, 'bob', 'cmd-1')).toBeUndefined();
+
+    await deleteSteeringCommandRecords(kv, 'session-1');
+    expect(await loadSteeringCommandRecord(kv, 'alice', 'cmd-1')).toBeUndefined();
+    const survivor = await loadSteeringCommandRecord(kv, 'alice', 'cmd-2');
+    expect(survivor?.sessionId).toBe('session-2');
+  });
+
+  it('round-trips a desired-state snapshot and reads a malformed one as absent', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const snapshot = {
+      mailboxSequence: 3,
+      state: {
+        rawConfigVersion: 2,
+        effectiveConfigVersion: 2,
+        lastConfigurationVersion: 2,
+        lastIdentityVersion: 0,
+        configuration: { model: 'claude-sonnet-5' },
+      },
+    };
+    await persistSteeringDesiredState(kv, 'session-1', snapshot);
+    expect(await loadSteeringDesiredState(kv, 'session-1')).toEqual(snapshot);
+
+    await kv.set('steering-desired-state:v1:session-2', '{"mailboxSequence":"x"}');
+    expect(await loadSteeringDesiredState(kv, 'session-2')).toBeUndefined();
+
+    await deleteSteeringDesiredState(kv, 'session-1');
+    expect(await loadSteeringDesiredState(kv, 'session-1')).toBeUndefined();
+  });
+
+  it('hands each recovered command its mailbox sequence, in FIFO order', async () => {
+    const storage = new MemoryStorage();
+    const mailbox = createSteeringMailbox(storage, 'session-1');
+    const first = await persistSteeringCommand(mailbox, steeringCommand({ id: 'a' }));
+    const second = await persistSteeringCommand(mailbox, steeringCommand({ id: 'b' }));
+    if (!first.persisted || !second.persisted) throw new Error('expected both persisted');
+
+    const seen: [string, number][] = [];
+    await recoverSteeringCommands(mailbox, (command, sequence) => {
+      seen.push([command.id, sequence]);
+    });
+
+    expect(seen).toEqual([
+      ['a', first.sequence],
+      ['b', second.sequence],
+    ]);
+    expect(second.sequence).toBeGreaterThan(first.sequence);
+    mailbox.dispose();
   });
 });

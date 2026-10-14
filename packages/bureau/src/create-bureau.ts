@@ -225,9 +225,12 @@ import {
 import {
   createSteeringMailbox,
   deleteSteeringCommandRecords,
+  deleteSteeringDesiredState,
   loadSteeringCommandRecord,
+  loadSteeringDesiredState,
   persistSteeringCommand,
   persistSteeringCommandRecord,
+  persistSteeringDesiredState,
   recoverSteeringCommands,
 } from './steering-durability';
 import type {
@@ -1700,7 +1703,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // the order the mailbox exists to preserve.
     let recovery = steeringRecoveries.get(sessionId);
     if (recovery === undefined) {
-      recovery = replaySteeringLog(gate, mailbox, liveRunIds).catch((error: unknown) => {
+      recovery = replaySteeringLog(sessionId, gate, mailbox, liveRunIds).catch((error: unknown) => {
         // A failed recovery must not be cached as done: a transient
         // storage fault would otherwise leave this session permanently
         // unrecoverable for the life of the process. Clearing lets the
@@ -1715,20 +1718,35 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return gate;
   }
 
-  /** Drains one session's durable steering log into its gate, in order. */
+  /**
+   * Restores one session's durable desired-state snapshot into its fresh
+   * gate, then drains the steering mailbox into it in order, skipping the
+   * commands the snapshot already reflects.
+   */
   async function replaySteeringLog(
+    sessionId: string,
     gate: BureauSteeringGate,
     mailbox: Mailbox,
     liveRunIds: readonly string[],
   ): Promise<void> {
+    const kv = runtime.kv;
+    const snapshot = kv === undefined ? undefined : await loadSteeringDesiredState(kv, sessionId);
+    if (snapshot !== undefined) {
+      gate.restoreDurableState(snapshot.state, runtimeServices.clock.nowISO());
+      steeringSnapshotSequences.set(sessionId, snapshot.mailboxSequence);
+    }
+    const reflectedThrough = snapshot?.mailboxSequence ?? 0;
     const now = runtimeServices.clock.nowISO();
-    const replayedKeys: { principal: string; id: string }[] = [];
     // The replay is handed to `recoverSteeringCommands` as a callback so
-    // each command reaches the gate BEFORE its mailbox acknowledgement.
-    // Collecting the batch first and admitting afterwards would leave a
-    // window where a crash loses a command from both sides: durably
-    // acknowledged, never applied.
-    await recoverSteeringCommands(mailbox, (recovered) => {
+    // each command reaches the gate — and its snapshot reaches storage —
+    // BEFORE its mailbox acknowledgement. Collecting the batch first and
+    // admitting afterwards would leave a window where a crash loses a
+    // command from both sides: durably acknowledged, never applied.
+    await recoverSteeringCommands(mailbox, async (recovered, sequence) => {
+      // Already folded into the restored snapshot: replaying it again would
+      // apply it twice and advance `configVersion` past what the previous
+      // process reported.
+      if (sequence <= reflectedThrough) return;
       // Replayed through the gate's ordinary admission, not a private
       // back door, so a recovered command is subject to every invariant
       // a live one is. A pause bound to a run this process no longer has
@@ -1749,16 +1767,70 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         },
         { liveRunIds, now },
       );
+      // A command admitted live already has a record; this covers a
+      // process that crashed after the mailbox write but before its own.
       if (replayed.outcome === 'accepted') {
-        replayedKeys.push({ principal: recovered.principal, id: recovered.id });
+        await recordSteeringCommand(recovered.principal, recovered.id);
       }
+      await snapshotSteeringState(sessionId, gate, sequence);
     });
-    // Records are written after the drain because `apply` must stay
-    // synchronous. A command admitted live already has one; this covers a
-    // process that crashed after the mailbox write but before its own
-    // record write, and refreshes the rest with their replayed state.
-    for (const { principal, id } of replayedKeys) {
-      await recordSteeringCommand(principal, id);
+  }
+
+  /**
+   * The highest mailbox sequence each session's durable desired-state
+   * snapshot reflects, so a write never moves it backwards.
+   */
+  const steeringSnapshotSequences = new Map<string, number>();
+
+  /**
+   * Persists `sessionId`'s desired-state snapshot as of mailbox `sequence`.
+   * Unlike a command record, this write is load-bearing — recovery skips
+   * every mailbox command at or below the sequence it names — so a failure
+   * propagates rather than being reduced to a diagnostic.
+   */
+  async function snapshotSteeringState(
+    sessionId: string,
+    gate: BureauSteeringGate,
+    sequence: number,
+  ): Promise<void> {
+    if (runtime.kv === undefined) return;
+    const mailboxSequence = Math.max(steeringSnapshotSequences.get(sessionId) ?? 0, sequence);
+    steeringSnapshotSequences.set(sessionId, mailboxSequence);
+    await persistSteeringDesiredState(runtime.kv, sessionId, {
+      mailboxSequence,
+      state: gate.exportDurableState(),
+    });
+  }
+
+  /**
+   * One steering admission at a time per session. Persisting to the
+   * mailbox, admitting into the gate, and snapshotting must not interleave
+   * with another admission on the same session: a later command could
+   * otherwise reach the gate first and have its snapshot claim a mailbox
+   * sequence an earlier, not-yet-admitted command holds, which recovery
+   * would then skip.
+   */
+  const steeringAdmissionTails = new Map<string, Promise<void>>();
+
+  async function withSteeringAdmissionLock<T>(
+    sessionId: string,
+    admit: () => Promise<T>,
+  ): Promise<T> {
+    const previous = steeringAdmissionTails.get(sessionId) ?? Promise.resolve();
+    let release: () => void = () => {};
+    const tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chained = previous.then(() => tail);
+    steeringAdmissionTails.set(sessionId, chained);
+    await previous;
+    try {
+      return await admit();
+    } finally {
+      release();
+      if (steeringAdmissionTails.get(sessionId) === chained) {
+        steeringAdmissionTails.delete(sessionId);
+      }
     }
   }
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
@@ -6903,8 +6975,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       steeringMailboxes.get(id)?.dispose();
       steeringMailboxes.delete(id);
       steeringRecoveries.delete(id);
+      steeringSnapshotSequences.delete(id);
       if (runtime.durable && runtime.kv !== undefined) {
         await deleteSteeringCommandRecords(runtime.kv, id);
+        await deleteSteeringDesiredState(runtime.kv, id);
       }
 
       await Promise.allSettled(runTerminals);
@@ -7363,66 +7437,73 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(request.runId !== undefined ? { runId: request.runId } : {}),
     };
 
-    // AB-200 durable steering: persist BEFORE admitting into desired
-    // state. A crash between the two then loses nothing — recovery finds
-    // the command still unconsumed and replays it. The reverse order
-    // would put a command into desired state that no restart could
-    // recover, which is precisely the failure the durable contract exists
-    // to rule out.
-    const steeringMailbox = getSteeringMailbox(sessionId);
-    if (steeringMailbox !== undefined) {
-      const persistence = await persistSteeringCommand(steeringMailbox, command);
-      if (!persistence.persisted && persistence.reason !== 'idempotency-identity-mismatch') {
-        // Backlog exhaustion: nothing was written, so nothing may enter
-        // desired state either.
-        return { outcome: 'unsupported-capability', reason: persistence.reason };
-      }
-      // A mailbox idempotency conflict deliberately falls through to the
-      // gate rather than returning here. The gate's ledger is the
-      // authority on conflict *shape* — only it holds the original
-      // command's snapshot, which `SteeringCommandConflict` requires — and
-      // the mailbox and gate conflicts are the same fact seen twice; the
-      // gate reports it in the contract's own terms.
-      //
-      // Except when the ledger no longer holds the original. Recovery
-      // replays the mailbox and acknowledges what it replays, so after a
-      // SECOND restart the mailbox is drained and the ledger starts empty
-      // while the mailbox's binding for this id survives. Falling through
-      // then would admit the reused id as a brand-new command, so the
-      // durable steering command record answers instead, through the same
-      // classification the gate itself uses.
-      if (
-        !persistence.persisted &&
-        runtime.kv !== undefined &&
-        getSteeringLedgerEntry(steeringCommandLedger, command.principal, command.id) === undefined
-      ) {
-        const original = await loadSteeringCommandRecord(
-          runtime.kv,
-          sessionId,
-          command.principal,
-          command.id,
-        );
-        if (original !== undefined) return resolveSteeringRetry(original, command);
-      }
-    }
+    // Serialized per session from here on — see `withSteeringAdmissionLock`.
+    return withSteeringAdmissionLock(sessionId, async () => {
+      // Idempotency is decided BEFORE anything is written. A key the ledger
+      // already holds — or, after a restart, one only its durable steering
+      // command record remembers — is a replay or a typed conflict, resolved
+      // by the same classification the gate uses. Checking first matters for
+      // durability: a conflicting command written to this session's mailbox
+      // and only then refused would still be replayed by the next recovery,
+      // into a ledger too empty to refuse it again. The record is consulted
+      // whenever the ledger has no entry, not only when the mailbox reports a
+      // mismatch, because a reused id may target a different session (and so
+      // a different mailbox) or match the original payload exactly.
+      const steeringMailbox = getSteeringMailbox(sessionId);
+      const prior =
+        getSteeringLedgerEntry(steeringCommandLedger, command.principal, command.id) ??
+        (steeringMailbox !== undefined && runtime.kv !== undefined
+          ? await loadSteeringCommandRecord(runtime.kv, command.principal, command.id)
+          : undefined);
+      if (prior !== undefined) return resolveSteeringRetry(prior, command);
 
-    const outcome = gate.admit(command, { liveRunIds, now });
-    // AB-68: give `steering.accepted` its first production dispatch site.
-    // Only the `accepted` transition is dispatched here, and deliberately:
-    // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
-    // are documented as `accepted → X` transitions, so a PRE-admission
-    // rejection (an unknown agent name, an ambiguous run) never reached
-    // `accepted` and must not be reported as having left it. Those three
-    // belong to the gate's own post-admission transitions.
-    if (outcome.outcome === 'accepted') {
-      emitter.dispatch(
-        new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
-      );
+      // AB-200 durable steering: persist BEFORE admitting into desired
+      // state. A crash between the two then loses nothing — recovery finds
+      // the command still unconsumed and replays it. The reverse order
+      // would put a command into desired state that no restart could
+      // recover, which is precisely the failure the durable contract exists
+      // to rule out.
+      let persistedSequence: number | undefined;
       if (steeringMailbox !== undefined) {
-        await recordSteeringCommand(command.principal, command.id);
+        const persistence = await persistSteeringCommand(steeringMailbox, command);
+        if (!persistence.persisted && persistence.reason !== 'idempotency-identity-mismatch') {
+          // Backlog exhaustion: nothing was written, so nothing may enter
+          // desired state either.
+          return { outcome: 'unsupported-capability', reason: persistence.reason };
+        }
+        // A mailbox idempotency mismatch with no ledger entry and no record
+        // is a command whose earlier admission never completed (the process
+        // died between the mailbox write and the gate). Recovery has already
+        // replayed whatever that write left, so admitting through the gate
+        // below is correct.
+        if (persistence.persisted) persistedSequence = persistence.sequence;
       }
-    }
-    return outcome;
+
+      const outcome = gate.admit(command, { liveRunIds, now });
+      // AB-68: give `steering.accepted` its first production dispatch site.
+      // Only the `accepted` transition is dispatched here, and deliberately:
+      // `SteeringRejectedEvent`/`SteeringSupersededEvent`/`SteeringFailedEvent`
+      // are documented as `accepted → X` transitions, so a PRE-admission
+      // rejection (an unknown agent name, an ambiguous run) never reached
+      // `accepted` and must not be reported as having left it. Those three
+      // belong to the gate's own post-admission transitions.
+      if (outcome.outcome === 'accepted') {
+        emitter.dispatch(
+          new SteeringAcceptedEvent(sessionId, outcome.command.id, outcome.command.configVersion),
+        );
+        if (steeringMailbox !== undefined) {
+          await recordSteeringCommand(command.principal, command.id);
+        }
+      }
+      // Whatever the gate decided, the command is now in the mailbox, so the
+      // snapshot advances past it: recovery must neither re-apply an accepted
+      // command nor resurrect one this gate refused under the conditions it
+      // was actually submitted in.
+      if (persistedSequence !== undefined) {
+        await snapshotSteeringState(sessionId, gate, persistedSequence);
+      }
+      return outcome;
+    });
   }
 
   /**

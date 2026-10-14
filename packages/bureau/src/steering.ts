@@ -221,6 +221,24 @@ export interface SteeringAdmissionContext {
  * see `types.ts`'s doc comment on that method) and {@link promoteForNewRun}
  * (identity-deferral promotion) at the two points named on each method.
  */
+/** See {@link BureauSteeringGate.exportDurableState}. Plain JSON data. */
+export interface SteeringDurableState {
+  readonly rawConfigVersion: number;
+  readonly effectiveConfigVersion: number;
+  readonly lastConfigurationVersion: number;
+  readonly lastIdentityVersion: number;
+  readonly configuration: {
+    readonly route?: string;
+    readonly model?: string;
+    readonly provider?: string;
+    readonly effort?: Effort;
+  };
+  readonly agentName?: string;
+  readonly agentNameDeadline?: string;
+  readonly pendingAgentName?: string;
+  readonly pendingAgentDeadline?: string;
+}
+
 export interface BureauSteeringGate extends SteeringGate {
   /** Admit one validated `pause`/`resume`/`agent-identity` command. Called
    *  by `submitSteeringCommand` for `pause`/`resume` only; `agent-identity`
@@ -235,6 +253,22 @@ export interface BureauSteeringGate extends SteeringGate {
    *  third-party `SteeringGate` that predates AB-199's cross-run dedupe
    *  addition and has no cross-run memory of its own). */
   getAppliedFloor(): number;
+  /**
+   * The session-scoped desired state a restart must not lose: the four
+   * configuration coordinates, the current and pending agent identity with
+   * their deadlines, and the version counters they were reached at.
+   * Run-scoped pause/resume state is deliberately absent — it is bound to
+   * runs that do not survive the process.
+   */
+  exportDurableState(): SteeringDurableState;
+  /**
+   * Restores {@link exportDurableState}'s output into a FRESH gate, before
+   * any command has been admitted to it. Throws on a gate that has already
+   * admitted something, since merging a snapshot into live state could
+   * move `configVersion` backwards. A restored pending identity whose
+   * deadline has already passed is dropped rather than restored.
+   */
+  restoreDurableState(state: SteeringDurableState, now?: string): void;
   /**
    * A per-run VIEW of this session's gate, scoped to `runId`: its
    * `getDesiredState().paused` and `awaitResume()` reflect only a pause
@@ -460,8 +494,13 @@ export function resolveSteeringRetry(
   // resolves differently across two admissions (the session's sole live run
   // changed between them) is a liveness/binding question `run-terminal`/
   // `run-ambiguous` already own, not an idempotency conflict.
+  // Only `pause`/`resume` bind to a run; every other target is
+  // session-scoped and ignores `runId`, so a retry that changes or omits it
+  // asks for exactly the same thing.
+  const runScoped =
+    command.requestedValue.target === 'pause' || command.requestedValue.target === 'resume';
   if (
-    existing.requestedRunId === command.runId &&
+    (!runScoped || existing.requestedRunId === command.runId) &&
     sameRequestedValue(existing.requestedValue, command.requestedValue)
   ) {
     return { outcome: 'replayed', command: snapshotOf(existing) };
@@ -993,6 +1032,46 @@ export function createSteeringGate(
       return appliedFloor;
     },
 
+    exportDurableState(): SteeringDurableState {
+      return {
+        rawConfigVersion,
+        effectiveConfigVersion,
+        lastConfigurationVersion,
+        lastIdentityVersion,
+        configuration: { ...desiredConfiguration },
+        ...(agentName !== undefined ? { agentName } : {}),
+        ...(agentNameDeadline !== undefined ? { agentNameDeadline } : {}),
+        ...(pendingAgentName !== undefined ? { pendingAgentName } : {}),
+        ...(pendingAgentDeadline !== undefined ? { pendingAgentDeadline } : {}),
+      };
+    },
+
+    restoreDurableState(state: SteeringDurableState, now: string = clock.nowISO()): void {
+      if (rawConfigVersion !== 0) {
+        throw new Error(
+          `Steering gate for session "${sessionId}" has already admitted commands; desired state can only be restored into a fresh gate.`,
+        );
+      }
+      rawConfigVersion = state.rawConfigVersion;
+      effectiveConfigVersion = state.effectiveConfigVersion;
+      lastConfigurationVersion = state.lastConfigurationVersion;
+      lastIdentityVersion = state.lastIdentityVersion;
+      const { route, model, provider, effort } = state.configuration;
+      if (route !== undefined) desiredConfiguration.route = route;
+      if (model !== undefined) desiredConfiguration.model = model;
+      if (provider !== undefined) desiredConfiguration.provider = provider;
+      if (effort !== undefined) desiredConfiguration.effort = effort;
+      agentName = state.agentName;
+      agentNameDeadline = state.agentNameDeadline;
+      const pendingExpired =
+        state.pendingAgentDeadline !== undefined &&
+        Date.parse(now) > Date.parse(state.pendingAgentDeadline);
+      if (state.pendingAgentName !== undefined && !pendingExpired) {
+        pendingAgentName = state.pendingAgentName;
+        pendingAgentDeadline = state.pendingAgentDeadline;
+      }
+    },
+
     forRun(runId: string): SteeringGate {
       return {
         sessionId,
@@ -1387,6 +1466,17 @@ export function createSteeringGate(
           pending.failure = { failedAt: now, reason: 'deadline-passed' };
           pendingAgentName = undefined;
         }
+      }
+      // A pending identity restored from a durable snapshot has no ledger
+      // entry (and so no `pendingIdentityKey`) to carry its deadline, so
+      // the deadline it was restored with is checked directly instead.
+      if (
+        pendingIdentityKey === undefined &&
+        pendingAgentDeadline !== undefined &&
+        Date.parse(now) > Date.parse(pendingAgentDeadline)
+      ) {
+        pendingAgentName = undefined;
+        pendingAgentDeadline = undefined;
       }
       if (pendingAgentName !== undefined) {
         agentName = pendingAgentName;

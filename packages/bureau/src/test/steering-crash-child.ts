@@ -14,15 +14,18 @@
  * and no flush, so whatever the parent finds afterwards was genuinely on
  * disk before the process died.
  *
- * `argv[4]` selects the mode and `argv[5]` the command (see `COMMANDS`):
+ * `argv[4]` selects the mode and `argv[5]` a comma-separated list of
+ * commands from `COMMANDS`, submitted in order:
  *
- * - `admit` (the default, with the `pause` command by default) starts a run,
- *   admits the command, and records the session id in the marker.
- * - `retry` reopens an existing backend and re-submits the identical
- *   command against the session named by `argv[6]`. That drives steering
- *   recovery — replaying and acknowledging the command an earlier crash
- *   left in the mailbox — and the marker records the retry's outcome.
- *   Crashing afterwards produces a restart whose mailbox is already drained.
+ * - `admit` (the default, with `pause` by default) starts a run and admits
+ *   each command, which must be accepted.
+ * - `retry` reopens an existing backend and submits each command against
+ *   the session named by `argv[6]`. The first submission drives steering
+ *   recovery, replaying and acknowledging whatever an earlier crash left in
+ *   the mailbox. Crashing afterwards produces a restart whose mailbox is
+ *   already drained.
+ *
+ * Either way the marker records the session id and every outcome.
  *
  * Not a test file: it is spawned by `steering-crash-recovery.test.ts`.
  */
@@ -41,26 +44,36 @@ const COMMANDS = {
     principal: 'alice',
     requestedValue: { target: 'model', override: 'claude-sonnet-5' },
   },
+  opus: {
+    id: 'crash-cmd-3',
+    principal: 'alice',
+    requestedValue: { target: 'model', override: 'claude-opus-4-8' },
+  },
+  probe: {
+    id: 'crash-cmd-4',
+    principal: 'alice',
+    requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+  },
 } as const satisfies Record<string, SteeringCommandRequest>;
 
-const [storagePath, markerPath, mode = 'admit', commandName = 'pause', sessionArgument] =
+const [storagePath, markerPath, mode = 'admit', commandList = 'pause', sessionArgument] =
   process.argv.slice(2);
+const commandNames = commandList.split(',');
 const runtime = createDefaultRuntimeServices();
 
 if (
   storagePath === undefined ||
   markerPath === undefined ||
   (mode !== 'admit' && mode !== 'retry') ||
-  !(commandName in COMMANDS) ||
+  !commandNames.every((name) => name in COMMANDS) ||
   (mode === 'retry' && sessionArgument === undefined)
 ) {
   process.stderr.write(
-    'usage: steering-crash-child <storagePath> <markerPath> [admit|retry] [pause|model] [sessionId]\n',
+    'usage: steering-crash-child <storagePath> <markerPath> [admit|retry] [command,...] [sessionId]\n',
   );
   process.exit(2);
 }
 
-const command = COMMANDS[commandName as keyof typeof COMMANDS];
 const bureau = await createBureau({
   agents: {},
   generate: () => new Promise<never>(() => {}),
@@ -85,16 +98,22 @@ if (mode === 'retry') {
   }
 }
 
-const outcome = await bureau.submitSteeringCommand(sessionId, command);
-
-if (mode === 'admit' && outcome.outcome !== 'accepted') {
-  process.stderr.write(`child: expected accepted, got ${outcome.outcome}\n`);
-  process.exit(3);
+const outcomes = [];
+for (const name of commandNames) {
+  const outcome = await bureau.submitSteeringCommand(
+    sessionId,
+    COMMANDS[name as keyof typeof COMMANDS],
+  );
+  if (mode === 'admit' && outcome.outcome !== 'accepted') {
+    process.stderr.write(`child: expected accepted for ${name}, got ${outcome.outcome}\n`);
+    process.exit(3);
+  }
+  outcomes.push(outcome);
 }
 
-// The parent reads this to learn the session id and the outcome. Written
+// The parent reads this to learn the session id and the outcomes. Written
 // synchronously so it is on disk before the kill.
-writeFileSync(markerPath, JSON.stringify({ sessionId, outcome }), 'utf8');
+writeFileSync(markerPath, JSON.stringify({ sessionId, outcomes }), 'utf8');
 
 // No `bureau.dispose()`, deliberately. SIGKILL cannot be trapped, so no
 // cleanup, no flush, no graceful close runs after this line.

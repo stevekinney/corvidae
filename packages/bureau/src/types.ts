@@ -1445,15 +1445,21 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *
    * Durable sessions are admitted too: the command is persisted in the
    * session's steering mailbox before it enters desired state, so recovery
-   * can replay it. `{ outcome: 'unsupported-capability', reason:
+   * can replay it, and the session's desired configuration and agent
+   * identity are snapshotted after every admission, so they and their
+   * `configVersion` survive every later restart, not only the first.
+   * Run-scoped `pause`/`resume` state is not carried across a restart. An
+   * exact `(principal, id)` retry still replays, and a mismatched one still
+   * conflicts, after any number of restarts and across sessions.
+   * `{ outcome: 'unsupported-capability', reason:
    * 'durable-steering-unavailable' }` is returned only by the guard for a
    * durably-configured Bureau with no resolved storage backend, which
    * normal composition does not produce. A durable command the session's
    * mailbox rejects at admission (for example, an exhausted backlog) returns
    * `unsupported-capability` with the mailbox's own rejection reason and
-   * never enters desired state. A reused `id` whose persisted identity
-   * differs is not one of those: it falls through to the gate and returns
-   * the typed `conflict` described below.
+   * never enters desired state. A reused `id` is not one of those: it is
+   * resolved before anything is written, as the `replayed` or typed
+   * `conflict` described below.
    *
    * A `pause` against an authorized, non-terminal session is
    * accepted, increments the session's `configVersion` by exactly one, and
