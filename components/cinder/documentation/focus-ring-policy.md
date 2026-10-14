@@ -12,11 +12,11 @@ Five tokens in `src/styles/tokens-base.css` (the `/* Focus ring */` block) are t
 | --- | --- | --- |
 | `--cinder-ring-width` | `2px` | Accent ring thickness. Never hard-code `2px` or `3px` in new rules — use this token. Pre-existing fallbacks (e.g. `var(--cinder-ring-width, 2px)`) are tolerated but should be cleaned up opportunistically. |
 | `--cinder-ring-offset` | `0px` | Distance between element edge and accent ring. Zero by default, so the ring is tight: one 2px band directly on the control edge. Used as `outline-offset` in Strategy A and as the offset-band thickness in Strategy B. Not used in Strategy B-inset. Emitted as `0px` rather than a bare `0` because Strategy B adds it to the width inside `calc()`. |
-| `--cinder-ring-offset-color` | `var(--cinder-surface-raised)` | Color of the offset band in Strategy B. Unused while the offset is `0px`: the first stop then has no spread and paints nothing. Kept because removing a public token would break consumers who set a non-zero offset. Not used in A or B-inset. |
+| `--cinder-ring-offset-color` | `var(--cinder-surface-raised)` | Color of the gap band between a filled control and its ring (see [Filled Variants and States](#filled-variants-and-states)), and of the Strategy B offset band if a theme sets a non-zero offset. Unfilled controls paint no gap. Not used in A or B-inset. |
 | `--cinder-ring-color` | `light-dark(…)` accent | The ring color. Per-variant overrides should use a private `--_cinder-<component>-ring` custom property whose fallback is `var(--cinder-ring-color)`. |
-| `--cinder-ring-on-accent` | `light-dark(…)` near-black / white | The ring color on a solid accent or danger fill. See [Filled Variants and States](#filled-variants-and-states). |
+| `--cinder-ring-on-accent` | `light-dark(…)` near-black / white | The ring FloatingAction `primary` paints directly on its accent fill. It measures about 3:1 (light) and 2.5:1 (dark) against that fill, so other filled controls use the gap below instead. |
 
-The default ring is tight. There is no offset band between the control and the ring, so a focused control shows a single 2px line rather than a 4px double band. The width stays `2px`, the WCAG 2.4.13 floor.
+The default ring is tight. There is no offset band between the control and the ring, so a focused control shows a single 2px line rather than a 4px double band. Filled controls are the exception: they keep a 2px gap (below). The width stays `2px`, the WCAG 2.4.13 floor.
 
 ## Strategy A — Outline ring (foundation-only)
 
@@ -136,47 +136,54 @@ Variants that change foreground or background **should not** change the ring col
 
 ## Filled Variants and States
 
-The tight ring sits directly on the control edge. When the focused element's own background is a solid accent or danger fill, an accent-hued ring measures about 1.1 to 1.3:1 against that fill, and the control reads as growing by 2px rather than as focused. So the rule is this: any focused element whose own background at focus time is a solid accent or danger fill paints its ring in `var(--cinder-ring-on-accent)` through its private `--_cinder-<component>-ring` hook. The same element without the fill (unchecked, off, `aria-disabled`) keeps `--cinder-ring-color`.
+When the focused element's own background is a solid accent, danger or status fill, a tight ring in the accent-hued `--cinder-ring-color` measures about 1.0 to 1.5:1 against that fill, and the control reads as growing by 2px rather than as focused. So the rule is this: any focused element whose own background at focus time is a solid fill paints a `--cinder-ring-offset-color` gap and then the standard `--cinder-ring-color` ring. With the gap the ring sits on the page, where it measures at least 4:1. The same element without the fill (unchecked, off, `aria-disabled`) keeps the tight ring.
 
-Because `--_cinder-focus-ring-shadow` is resolved on `:root`, setting a hook cannot retint a rule that uses it. A component with a filled state writes the two stops inline instead:
+The recipe is `var(--_cinder-focus-ring-filled-shadow)`, a private formula in `foundation.css`:
 
 ```css
-.cinder-component:focus-visible {
-  outline: var(--cinder-ring-width) solid transparent;
-  box-shadow:
-    0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-    0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
-      var(--_cinder-component-ring, var(--cinder-ring-color));
-}
-
-.cinder-component[data-filled] {
-  --_cinder-component-ring: var(--cinder-ring-on-accent);
+.cinder-component[data-filled]:focus-visible {
+  box-shadow: var(--_cinder-focus-ring-filled-shadow);
 }
 ```
 
-Filled variants and states that use the on-accent ring today:
+The gap width is the private constant `--_cinder-focus-ring-filled-gap` (`2px`), not a public token. No consumer has needed to tune it, and a public token would be one more knob to keep consistent across themes; promote it through the token source if that changes. The formula resolves its colors on `:root` (and again under `[data-theme]`), so a component whose filled ring must keep a per-state hook color, such as an invalid checked Checkbox keeping its danger ring, writes the two stops inline with the gap constant and its hook:
 
-- Button `primary` and `danger` (`--_cinder-button-ring`). A focusable `aria-disabled` button that is not loading has an inset fill and returns to `--cinder-ring-color`.
-- Checkbox checked and indeterminate (`--_cinder-checkbox-ring`), including when invalid, because the fill is what the ring has to contrast against.
-- Radio checked (`--_cinder-radio-ring`).
-- Toggle (switch) on (`--_cinder-toggle-ring`, behind the consumer-facing `--cinder-toggle-ring`).
-- SegmentedControl selected, pressed, and current options outside the tablist variant (`--_cinder-segmented-control-option-ring`).
-- Chip pressed in the `accent` and `danger` variants (`--_cinder-chip-ring`).
-- Pagination current page (`--_cinder-pagination-ring`).
-- Calendar range start and end days (`--_cinder-calendar-day-ring`).
-- SelectionPopover add-comment button and submit (`--_cinder-selection-popover-button-ring`, `--_cinder-selection-popover-action-ring`).
-- SchemaForm submit (`--_cinder-schema-form-submit-ring`).
-- FileUpload browse button (`--_cinder-file-upload-button-ring`).
-- CapabilityGate primary action (`--_cinder-capability-gate-ring`).
-- FloatingAction `primary` (`--_cinder-floating-action-ring`), which set the precedent.
-- Chat's send button and new-message indicator in `@lostgradient/chat` (`--_cinder-chat-input-send-ring`, `--_cinder-chat-new-indicator-ring`).
+```css
+.cinder-checkbox:checked:focus-visible {
+  box-shadow:
+    0 0 0 var(--_cinder-focus-ring-filled-gap) var(--cinder-ring-offset-color),
+    0 0 0 calc(var(--_cinder-focus-ring-filled-gap) + var(--cinder-ring-width))
+      var(--_cinder-checkbox-ring, var(--cinder-ring-color));
+}
+```
+
+Filled variants and states that paint the gap today:
+
+- Button `primary` and `danger`. A focusable `aria-disabled` button that is not loading has an inset fill and keeps the tight ring.
+- Checkbox checked and indeterminate, and Radio checked (inline, so an invalid control keeps its danger ring).
+- Toggle (switch) on (inline, so a consumer's `--cinder-toggle-ring` still applies).
+- SegmentedControl selected, pressed, and current options outside the tablist variant.
+- Chip pressed in the `accent`, `danger`, `success`, `warning`, and `info` variants.
+- Pagination current page.
+- Calendar range start and end days.
+- SelectionPopover add-comment button and submit.
+- SchemaForm submit.
+- FileUpload browse button.
+- CapabilityGate primary action.
+- Chat's send button and new-message indicator in `@lostgradient/chat`.
+
+FloatingAction `primary` predates this rule and keeps its tight `--cinder-ring-on-accent` ring.
 
 Considered and excluded:
 
-- Chip pressed in the `success`, `warning`, and `info` variants. These are solid status fills, but not accent or danger, so the accent-hued ring is a distinct hue against them.
+- Chip pressed in the `neutral` variant, a surface shift rather than a fill.
 - The slider thumb (a raised fill with an accent border), the tablist SegmentedControl's selected tab (transparent), and pseudo-element fills such as the tab indicator and carousel dot. None of them is a solid fill on the focused element itself.
 - Command items. Focus stays on the palette input through `aria-activedescendant`, and the active item draws its own `--cinder-accent-contrast` inset ring.
 - Transient fills: a `soft-danger` Button while pressed and Chat's attachment-remove button on hover. They last only as long as the press or hover.
+
+## Borders Under the Tight Ring
+
+A bordered control's resting border must not show inside the tight ring: together they read as one heavier 3px shape. On focus the border turns transparent, which paints the control's own fill, in every state (default, invalid, read-only), and hover rules exclude the focused state so they cannot repaint it. This covers `_input-frame.css` (Select, Textarea, the MultiSelect trigger), Input, its host, and the input group (NumberInput, SearchField), TagInput, Combobox, and PinInput segments. DatePicker needs no change: its ring belongs to the borderless inner input and covers the control's border on that side.
 
 ## Exception: Command Palette Search
 
@@ -200,7 +207,7 @@ Forced-colors fallbacks are exempt from the lint rule because `box-shadow` is su
 
 ## Deviations Appendix
 
-**Tight ring and filled variants (resolved, 2026-10, COR-1498).** The default `--cinder-ring-offset` dropped from `2px` to `0px`, so the ring sits directly on the control edge instead of floating behind a 2px `--cinder-ring-offset-color` halo. Solid accent and danger fills moved to `--cinder-ring-on-accent` (see [Filled Variants and States](#filled-variants-and-states)); the Danger Button's danger-hued ring was the same-hue problem and moved with them. Input, the input-group host, and the input group now make their border transparent on focus, as `_input-frame.css` and Button already did, so the ring never stacks on a visible border. The command palette search became a documented no-ring exception.
+**Tight ring and filled gap (resolved, 2026-10, COR-1498).** The default `--cinder-ring-offset` dropped from `2px` to `0px`, so the ring sits directly on the control edge instead of floating behind a 2px `--cinder-ring-offset-color` halo. Solid fills keep a 2px gap through `--_cinder-focus-ring-filled-shadow` (see [Filled Variants and States](#filled-variants-and-states)); an on-accent ring directly on the fill was measured first and rejected, because it fell below 3:1 against the fills in dark mode. Bordered controls now keep their border transparent while focused (see [Borders Under the Tight Ring](#borders-under-the-tight-ring)). The command palette search became a documented no-ring exception.
 
 **Dropdown (resolved, 2026-05).** `.cinder-dropdown-trigger` and `.cinder-dropdown-item` previously used `outline: none` with a bare `0 0 0 2px var(--cinder-ring-color)` box-shadow — skipping `--cinder-ring-width`, omitting the transparent outline, and hard-coding `2px`. Both selectors were realigned: the trigger now follows Strategy B (matches `.cinder-button`), and the items follow Strategy B-inset (they live inside `.cinder-dropdown__menu` which sets `overflow: hidden`). The forced-colors override was updated to use variant-attribute selectors so it wins over the base rules' higher specificity.
 

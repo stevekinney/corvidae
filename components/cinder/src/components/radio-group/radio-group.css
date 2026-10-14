@@ -209,11 +209,20 @@
     border-color: var(--cinder-status-danger-solid);
   }
 
-  /* A checked radio is a solid accent fill with the tight ring directly on it,
-     so the ring uses the on-accent colour. Follows the invalid rule so the fill
-     decides at equal specificity. */
-  .cinder-radio:checked {
-    --_cinder-radio-ring: var(--cinder-ring-on-accent);
+  /* A checked radio is a solid accent fill, so the ring gets a page-coloured
+     gap (COR-1498). Inline so an invalid radio keeps its danger ring. */
+  .cinder-radio:checked:focus-visible {
+    box-shadow:
+      0 0 0 var(--_cinder-focus-ring-filled-gap) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--_cinder-focus-ring-filled-gap) + var(--cinder-ring-width))
+        var(--_cinder-radio-ring, var(--cinder-ring-color));
+  }
+
+  @media (forced-colors: active) {
+    .cinder-radio:checked:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 1px;
+    }
   }
 
   /* Also carries FormFieldFrame's generic `.cinder-form-field__label` class;

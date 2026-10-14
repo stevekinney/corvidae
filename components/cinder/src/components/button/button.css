@@ -194,11 +194,10 @@
  * ---------------------------------------- */
 
   .cinder-button[data-cinder-variant='primary'] {
-    /* The ring sits directly on the accent face (no offset band), and the
-       accent-hued --cinder-ring-color measures ~1.1-1.3:1 against that fill,
-       so the button would read as growing rather than focused. The on-accent
-       ring contrasts both the fill and the page (focus-ring-policy.md). */
-    --_cinder-button-ring: var(--cinder-ring-on-accent);
+    /* Ring uses the dedicated --cinder-ring-color (not the fill-accent):
+       the accent is the button face, so an accent ring would be invisible
+       against it and fail WCAG 1.4.11 (3:1) against the page. */
+    --_cinder-button-ring: var(--cinder-ring-color);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
     border-color: transparent;
@@ -209,9 +208,6 @@
  */
   .cinder-button[data-cinder-variant='primary']:disabled:not([data-cinder-loading]),
   .cinder-button[data-cinder-variant='primary'][aria-disabled='true']:not([data-cinder-loading]) {
-    /* No accent fill here, so the default ring applies again. An
-       aria-disabled link button stays focusable. */
-    --_cinder-button-ring: var(--cinder-ring-color);
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-disabled);
     border-color: var(--cinder-border-muted);
@@ -224,8 +220,7 @@
   }
 
   .cinder-button[data-cinder-variant='danger'] {
-    /* A danger ring on a danger fill is the same-hue problem as primary. */
-    --_cinder-button-ring: var(--cinder-ring-on-accent);
+    --_cinder-button-ring: var(--cinder-status-danger-solid);
     background: var(--cinder-status-danger-solid);
     color: var(--cinder-status-danger-contrast);
     border-color: transparent;
@@ -233,7 +228,6 @@
 
   .cinder-button[data-cinder-variant='danger']:disabled:not([data-cinder-loading]),
   .cinder-button[data-cinder-variant='danger'][aria-disabled='true']:not([data-cinder-loading]) {
-    --_cinder-button-ring: var(--cinder-ring-color);
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-disabled);
     border-color: var(--cinder-border-muted);
@@ -481,6 +475,31 @@
    * the `:active` block for the same reason. */
   .cinder-button:focus-visible:not(:disabled):not([aria-disabled='true']) {
     border-color: transparent;
+  }
+
+  /* Filled faces (primary, danger) get a page-coloured gap between the fill and
+   * the ring, so the accent-hued ring sits on the page instead of on a same-hue
+   * fill (COR-1498, focus-ring-policy.md). An aria-disabled button that is not
+   * loading has no fill and keeps the tight ring. */
+  .cinder-button[data-cinder-variant='primary']:focus-visible:not(:disabled):not(
+      [aria-disabled='true']:not([data-cinder-loading])
+    ),
+  .cinder-button[data-cinder-variant='danger']:focus-visible:not(:disabled):not(
+      [aria-disabled='true']:not([data-cinder-loading])
+    ) {
+    box-shadow: var(--_cinder-focus-ring-filled-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-button[data-cinder-variant='primary']:focus-visible:not(:disabled):not(
+        [aria-disabled='true']:not([data-cinder-loading])
+      ),
+    .cinder-button[data-cinder-variant='danger']:focus-visible:not(:disabled):not(
+        [aria-disabled='true']:not([data-cinder-loading])
+      ) {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
   }
 
   @media (forced-colors: active) {

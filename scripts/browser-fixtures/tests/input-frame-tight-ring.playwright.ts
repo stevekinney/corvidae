@@ -18,6 +18,13 @@
  * None of Input, Select or NumberInput styles a read-only state; each passes
  * `readonly` through to its native control, so the read-only case sets that
  * attribute on the rendered control, exactly as a consumer prop would.
+ *
+ * The same border-under-ring rule covers the other bordered controls with an
+ * outer ring (Textarea, TagInput, Combobox, PinInput, the MultiSelect trigger
+ * and SearchField). Their fixtures render the default state only, so their
+ * invalid cases set the attribute each component renders when invalid. Each
+ * keeps the ring colour its own CSS assigns to the invalid state: a danger
+ * ring where the control defines one, the standard ring where it does not.
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
@@ -40,8 +47,19 @@ type FrameCase = {
   frame: (page: Page) => Locator;
   /** Runs after focus lands. */
   afterFocus?: (page: Page, focusTarget: Locator) => Promise<void>;
-  prepare?: (focusTarget: Locator) => Promise<void>;
+  prepare?: (focusTarget: Locator, page: Page) => Promise<void>;
+  /** Overrides the ring token implied by `state`. */
+  ringToken?: string;
 };
+
+function setAttribute(locate: (page: Page) => Locator, name: string, value: string) {
+  return async (_focusTarget: Locator, page: Page): Promise<void> => {
+    await locate(page).evaluate(
+      (element, [attribute, attributeValue]) => element.setAttribute(attribute, attributeValue),
+      [name, value] as const,
+    );
+  };
+}
 
 async function makeReadOnly(focusTarget: Locator): Promise<void> {
   await focusTarget.evaluate((element) => element.setAttribute('readonly', ''));
@@ -51,6 +69,114 @@ const inputControl = (page: Page) => page.locator('input.cinder-input').first();
 const schemaSelect = (page: Page) => page.locator('select.cinder-select').first();
 const numberInput = (page: Page) => page.locator('#number-input');
 const numberFrame = (page: Page) => page.locator('.cinder-input-group.cinder-number-input');
+
+function otherBorderedCases(): FrameCase[] {
+  const textarea = (page: Page) => page.locator('textarea.cinder-textarea').first();
+  const tagInput = (page: Page) => page.locator('.cinder-tag-input__input').first();
+  const tagControl = (page: Page) => page.locator('.cinder-tag-input__control').first();
+  const combobox = (page: Page) => page.locator('.cinder-combobox__input').first();
+  const pinSegment = (page: Page) => page.locator('.cinder-pin-input__segment').first();
+  const multiSelect = (page: Page) => page.locator('.cinder-multi-select__trigger').first();
+  const search = (page: Page) => page.locator('.cinder-search-field__input').first();
+  const searchGroup = (page: Page) =>
+    page.locator('.cinder-search-field .cinder-input-group').first();
+  return [
+    {
+      control: 'Textarea',
+      state: 'default',
+      slug: 'textarea',
+      focusTarget: textarea,
+      frame: textarea,
+    },
+    {
+      control: 'Textarea',
+      state: 'invalid',
+      slug: 'textarea',
+      focusTarget: textarea,
+      frame: textarea,
+      prepare: setAttribute(textarea, 'aria-invalid', 'true'),
+    },
+    {
+      control: 'TagInput',
+      state: 'default',
+      slug: 'tag-input',
+      focusTarget: tagInput,
+      frame: tagControl,
+    },
+    {
+      control: 'TagInput',
+      state: 'invalid',
+      slug: 'tag-input',
+      focusTarget: tagInput,
+      frame: tagControl,
+      prepare: setAttribute(
+        (page) => page.locator('.cinder-tag-input').first(),
+        'data-invalid',
+        '',
+      ),
+    },
+    {
+      control: 'Combobox',
+      state: 'default',
+      slug: 'combobox',
+      focusTarget: combobox,
+      frame: combobox,
+    },
+    {
+      control: 'Combobox',
+      state: 'invalid',
+      slug: 'combobox',
+      focusTarget: combobox,
+      frame: combobox,
+      prepare: setAttribute(combobox, 'aria-invalid', 'true'),
+      // Combobox has no danger focus ring of its own; only its border signals invalid.
+      ringToken: '--cinder-ring-color',
+    },
+    {
+      control: 'PinInput segment',
+      state: 'default',
+      slug: 'pin-input',
+      focusTarget: pinSegment,
+      frame: pinSegment,
+    },
+    {
+      control: 'PinInput segment',
+      state: 'invalid',
+      slug: 'pin-input',
+      focusTarget: pinSegment,
+      frame: pinSegment,
+      prepare: setAttribute(
+        (page) => page.locator('.cinder-pin-input').first(),
+        'aria-invalid',
+        'true',
+      ),
+      // PinInput has no danger focus ring of its own; only its border signals invalid.
+      ringToken: '--cinder-ring-color',
+    },
+    {
+      control: 'MultiSelect trigger',
+      state: 'default',
+      slug: 'multi-select',
+      focusTarget: multiSelect,
+      frame: multiSelect,
+    },
+    {
+      control: 'MultiSelect trigger',
+      state: 'invalid',
+      slug: 'multi-select',
+      focusTarget: multiSelect,
+      frame: multiSelect,
+      prepare: setAttribute(multiSelect, 'aria-invalid', 'true'),
+    },
+    {
+      control: 'SearchField',
+      state: 'default',
+      slug: 'search-field',
+      focusTarget: search,
+      frame: searchGroup,
+    },
+  ];
+}
 
 const CASES: readonly FrameCase[] = [
   {
@@ -132,6 +258,7 @@ const CASES: readonly FrameCase[] = [
     frame: numberFrame,
     prepare: makeReadOnly,
   },
+  ...otherBorderedCases(),
 ];
 
 type FrameReading = {
@@ -213,20 +340,37 @@ for (const theme of THEMES) {
           const focusTarget = frameCase.focusTarget(page);
           const frame = frameCase.frame(page);
           await expect(focusTarget).toBeVisible();
-          await frameCase.prepare?.(focusTarget);
+          await frameCase.prepare?.(focusTarget, page);
           await focusByKeyboard(page, focusTarget, `${frameCase.control} (${frameCase.state})`);
           await frameCase.afterFocus?.(page, focusTarget);
-          // Park a text caret at the end so it never sits in the sampled column
-          // (End on a <select> would change its value instead).
-          if (await focusTarget.evaluate((element) => element instanceof HTMLInputElement)) {
-            await page.keyboard.press('End');
-          }
+          // Park a text caret at the end so it never sits in the sampled column.
+          // Set the selection directly: an End key press would change a
+          // <select>'s value or move PinInput's focus to its last segment.
+          await focusTarget.evaluate((element) => {
+            if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+              const end = element.value.length;
+              try {
+                element.setSelectionRange(end, end);
+              } catch {
+                // Input types without a text selection (none here) keep their caret.
+              }
+            }
+          });
+          await expect(focusTarget).toBeFocused();
           await page.evaluate(
             () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
           );
+          // Frames transition border-color and box-shadow on focus; sample the
+          // settled paint, not a mid-transition frame.
+          await frame.evaluate(async (element) => {
+            await Promise.all(element.getAnimations().map((animation) => animation.finished));
+          });
 
           const ringToken =
-            frameCase.state === 'invalid' ? '--cinder-status-danger-solid' : '--cinder-ring-color';
+            frameCase.ringToken ??
+            (frameCase.state === 'invalid'
+              ? '--cinder-status-danger-solid'
+              : '--cinder-ring-color');
           const reading = await readFrame(frame, ringToken);
           expect(reading.borderWidth, 'frames keep a 1px border').toBe(1);
           expect(reading.ringWidth, 'the ring is 2px').toBe(2);

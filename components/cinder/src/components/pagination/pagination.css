@@ -96,13 +96,19 @@
     /* Ring replaces the border while focused rather than stacking on it — the two
        together read as one heavier shape than either was designed to be. */
     border-color: transparent;
-    /* Inline two-stop recipe instead of the shared --_cinder-focus-ring-shadow:
-       that formula resolves on :root, so a filled state could not retint it.
-       The --_cinder-pagination-ring hook switches to the on-accent colour on a solid fill. */
-    box-shadow:
-      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
-        var(--_cinder-pagination-ring, var(--cinder-ring-color));
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* The current page is a solid accent fill: gap, then ring (COR-1498). */
+  .cinder-pagination__page[data-cinder-current]:focus-visible {
+    box-shadow: var(--_cinder-focus-ring-filled-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-pagination__page[data-cinder-current]:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
   }
 
   @media (forced-colors: active) {
@@ -118,7 +124,6 @@
  * ---------------------------------------- */
 
   .cinder-pagination__page[data-cinder-current] {
-    --_cinder-pagination-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-accent-solid);
     border-color: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);

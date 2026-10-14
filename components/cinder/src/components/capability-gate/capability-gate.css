@@ -95,7 +95,6 @@
   }
 
   .cinder-capability-gate__primary {
-    --_cinder-capability-gate-ring: var(--cinder-ring-on-accent);
     background-color: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
     border-color: var(--cinder-accent-solid);
@@ -114,8 +113,12 @@
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow:
       0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
-        var(--_cinder-capability-gate-ring, var(--cinder-ring-color));
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  /* The primary action is a solid accent fill: gap, then ring (COR-1498). */
+  .cinder-capability-gate__primary:focus-visible {
+    box-shadow: var(--_cinder-focus-ring-filled-shadow);
   }
 
   @media (forced-colors: active) {

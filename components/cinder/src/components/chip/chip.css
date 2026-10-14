@@ -192,7 +192,6 @@
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='danger'] {
-    --_cinder-chip-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-status-danger-solid);
     color: var(--cinder-status-danger-contrast);
     border-color: var(--cinder-status-danger-solid);
@@ -205,7 +204,6 @@
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='accent'] {
-    --_cinder-chip-ring: var(--cinder-ring-on-accent);
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
     border-color: var(--cinder-accent-solid);
@@ -221,13 +219,21 @@
     /* Ring replaces the border while focused rather than stacking on it — the two
        together read as one heavier shape than either was designed to be. */
     border-color: transparent;
-    /* Inline two-stop recipe instead of the shared --_cinder-focus-ring-shadow:
-       that formula resolves on :root, so a filled state could not retint it.
-       The --_cinder-chip-ring hook switches to the on-accent colour on a solid fill. */
-    box-shadow:
-      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
-      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width))
-        var(--_cinder-chip-ring, var(--cinder-ring-color));
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* Pressed accent, danger, success, warning and info chips are solid fills, so
+   * the ring gets a page-coloured gap (COR-1498). Neutral pressed is a surface
+   * shift, not a fill, and keeps the tight ring. */
+  button.cinder-chip[aria-pressed='true']:not([data-cinder-variant='neutral']):focus-visible {
+    box-shadow: var(--_cinder-focus-ring-filled-shadow);
+  }
+
+  @media (forced-colors: active) {
+    button.cinder-chip[aria-pressed='true']:not([data-cinder-variant='neutral']):focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
   }
 
   @media (forced-colors: active) {

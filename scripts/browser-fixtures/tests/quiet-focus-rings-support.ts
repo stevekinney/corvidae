@@ -130,7 +130,9 @@ export function outerBands(layers: readonly ShadowLayer[]): ShadowLayer[] {
 export type RingReading = {
   boxShadow: string;
   ringWidth: number;
+  filledGap: number;
   ringColor: string;
+  offsetColor: string;
   onAccentColor: string;
 };
 
@@ -155,7 +157,9 @@ export async function readRing(target: Locator): Promise<RingReading> {
       return {
         boxShadow: styles.boxShadow,
         ringWidth: Number.parseFloat(styles.getPropertyValue('--cinder-ring-width')),
+        filledGap: Number.parseFloat(styles.getPropertyValue('--_cinder-focus-ring-filled-gap')),
         ringColor: resolve('--cinder-ring-color'),
+        offsetColor: resolve('--cinder-ring-offset-color'),
         onAccentColor: resolve('--cinder-ring-on-accent'),
       };
     } finally {
@@ -165,21 +169,33 @@ export async function readRing(target: Locator): Promise<RingReading> {
 }
 
 /**
- * Assert the element paints exactly one tight outer band of
- * `--cinder-ring-width`, in the expected token colour, with no offset band.
+ * The expected focus ring:
+ * - `tight`: one hard-edged band of `--cinder-ring-width` in `--cinder-ring-color`
+ *   directly on the edge, with no offset band (unfilled controls);
+ * - `gap`: a `--cinder-ring-offset-color` gap band, then the
+ *   `--cinder-ring-color` ring outside it (filled controls);
+ * - `on-accent`: one tight band in `--cinder-ring-on-accent` (FloatingAction
+ *   primary, which predates COR-1498 and keeps its own ring).
  */
-export function expectTightRing(
-  reading: RingReading,
-  expected: 'ring' | 'on-accent',
-  label: string,
-): void {
+export type RingExpectation = 'tight' | 'gap' | 'on-accent';
+
+export function expectRing(reading: RingReading, expected: RingExpectation, label: string): void {
   const bands = outerBands(parseBoxShadow(reading.boxShadow));
-  expect(bands, `${label}: exactly one hard-edged outer band (${reading.boxShadow})`).toHaveLength(
-    1,
-  );
-  const [band] = bands;
-  expect(band?.spread, `${label}: the band is exactly --cinder-ring-width`).toBe(reading.ringWidth);
-  const expectedColor = expected === 'ring' ? reading.ringColor : reading.onAccentColor;
-  expect(band?.color, `${label}: ring colour`).toBe(expectedColor);
-  expect(reading.ringColor, `${label}: the two ring tokens differ`).not.toBe(reading.onAccentColor);
+  const shape = bands.map((band) => ({ spread: band.spread, color: band.color }));
+  if (expected === 'gap') {
+    expect(reading.filledGap, `${label}: the filled gap is positive`).toBeGreaterThan(0);
+    expect(shape, `${label}: gap band then ring (${reading.boxShadow})`).toEqual([
+      { spread: reading.filledGap, color: reading.offsetColor },
+      { spread: reading.filledGap + reading.ringWidth, color: reading.ringColor },
+    ]);
+    expect(reading.offsetColor, `${label}: the gap is distinct from the ring`).not.toBe(
+      reading.ringColor,
+    );
+    return;
+  }
+  const color = expected === 'tight' ? reading.ringColor : reading.onAccentColor;
+  expect(shape, `${label}: one tight band, no offset band (${reading.boxShadow})`).toEqual([
+    { spread: reading.ringWidth, color },
+  ]);
+  expect(reading.ringColor, `${label}: the ring tokens differ`).not.toBe(reading.onAccentColor);
 }

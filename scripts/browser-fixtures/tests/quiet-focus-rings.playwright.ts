@@ -4,10 +4,12 @@
  *
  * 1. The default ring is tight: one 2px band of `--cinder-ring-color` sitting
  *    directly on the control edge, with no `--cinder-ring-offset-color` halo.
- * 2. A focused control whose own background is a solid accent or danger fill
- *    paints that band in `--cinder-ring-on-accent` instead, because an accent
- *    ring directly against an accent fill reads as the control growing. The
- *    same control unfilled (unchecked, off, aria-disabled) keeps the default.
+ * 2. A focused control whose own background is a solid accent, danger or
+ *    status fill paints a `--cinder-ring-offset-color` gap and then the
+ *    standard ring, because an accent ring directly against a same-hue fill
+ *    reads as the control growing. The same control unfilled (unchecked, off,
+ *    aria-disabled) keeps the tight ring. FloatingAction primary predates this
+ *    and keeps its own tight `--cinder-ring-on-accent` ring.
  * 3. The command palette's search field paints no ring at all; under
  *    `forced-colors: active` it keeps a visible `Highlight` outline.
  *
@@ -21,19 +23,20 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import {
   THEMES,
-  expectTightRing,
+  expectRing,
   focusByKeyboard,
   openThemedFixture,
   outerBands,
   parseBoxShadow,
   readRing,
+  type RingExpectation,
 } from './quiet-focus-rings-support.ts';
 
 type RingCase = {
   label: string;
   slug: string;
   fixtureName?: string;
-  expected: 'ring' | 'on-accent';
+  expected: RingExpectation;
   target: (page: Page) => Locator;
   /** Runs before the keyboard walk (state setup). */
   prepare?: (page: Page, target: Locator) => Promise<void>;
@@ -61,26 +64,26 @@ const TIGHT_DEFAULT_CASES: readonly RingCase[] = [
   {
     label: 'secondary Button',
     slug: 'button',
-    expected: 'ring',
+    expected: 'tight',
     target: (page) => page.locator('button.cinder-button[data-cinder-variant="secondary"]').first(),
   },
   {
     label: 'Input',
     slug: 'input',
     fixtureName: 'empty',
-    expected: 'ring',
+    expected: 'tight',
     target: (page) => page.locator('input.cinder-input').first(),
   },
   {
     label: 'Select trigger',
     slug: 'schema-form',
-    expected: 'ring',
+    expected: 'tight',
     target: (page) => page.locator('select.cinder-select').first(),
   },
   {
     label: 'unchecked Checkbox',
     slug: 'checkbox',
-    expected: 'ring',
+    expected: 'tight',
     target: (page) => page.locator('#terms'),
   },
 ];
@@ -90,32 +93,32 @@ const FILLED_CASES: readonly RingCase[] = [
     label: 'primary Button',
     slug: 'button',
     fixtureName: 'primary',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-button[data-cinder-variant="primary"]'),
   },
   {
     label: 'danger Button',
     slug: 'button',
     fixtureName: 'danger',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-button[data-cinder-variant="danger"]'),
   },
   {
     label: 'checked Checkbox',
     slug: 'checkbox',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('#newsletter'),
   },
   {
     label: 'checked Radio',
     slug: 'radio-group',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('input.cinder-radio:checked').first(),
   },
   {
     label: 'on Switch',
     slug: 'toggle',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('button.cinder-toggle'),
     afterFocus: async (page) => {
       await page.keyboard.press('Space');
@@ -125,14 +128,14 @@ const FILLED_CASES: readonly RingCase[] = [
   {
     label: 'selected SegmentedControl option',
     slug: 'segmented-control',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) =>
       page.locator('.cinder-segmented-control-option[data-cinder-selected]').first(),
   },
   {
     label: 'pressed SegmentedControl option (multiple mode)',
     slug: 'segmented-control',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-segmented-control-option[tabindex="0"]').first(),
     prepare: (_page, target) =>
       setAttributes(target, { 'data-cinder-pressed': '' }, ['data-cinder-selected']),
@@ -140,7 +143,7 @@ const FILLED_CASES: readonly RingCase[] = [
   {
     label: 'current SegmentedControl option (navigation)',
     slug: 'segmented-control',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-segmented-control-option[tabindex="0"]').first(),
     prepare: (_page, target) =>
       setAttributes(target, { 'data-cinder-current': '' }, ['data-cinder-selected']),
@@ -148,7 +151,7 @@ const FILLED_CASES: readonly RingCase[] = [
   {
     label: 'pressed accent Chip',
     slug: 'chip',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('button.cinder-chip[data-cinder-mode="toggle"]').first(),
     prepare: (_page, target) =>
       setAttributes(target, { 'aria-pressed': 'true', 'data-cinder-variant': 'accent' }, [
@@ -158,7 +161,7 @@ const FILLED_CASES: readonly RingCase[] = [
   {
     label: 'pressed danger Chip',
     slug: 'chip',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('button.cinder-chip[data-cinder-mode="toggle"]').first(),
     prepare: (_page, target) =>
       setAttributes(target, { 'aria-pressed': 'true', 'data-cinder-variant': 'danger' }, [
@@ -166,29 +169,59 @@ const FILLED_CASES: readonly RingCase[] = [
       ]),
   },
   {
+    label: 'pressed success Chip',
+    slug: 'chip',
+    expected: 'gap',
+    target: (page) => page.locator('button.cinder-chip[data-cinder-mode="toggle"]').first(),
+    prepare: (_page, target) =>
+      setAttributes(target, { 'aria-pressed': 'true', 'data-cinder-variant': 'success' }, [
+        'disabled',
+      ]),
+  },
+  {
+    label: 'pressed warning Chip',
+    slug: 'chip',
+    expected: 'gap',
+    target: (page) => page.locator('button.cinder-chip[data-cinder-mode="toggle"]').first(),
+    prepare: (_page, target) =>
+      setAttributes(target, { 'aria-pressed': 'true', 'data-cinder-variant': 'warning' }, [
+        'disabled',
+      ]),
+  },
+  {
+    label: 'pressed info Chip',
+    slug: 'chip',
+    expected: 'gap',
+    target: (page) => page.locator('button.cinder-chip[data-cinder-mode="toggle"]').first(),
+    prepare: (_page, target) =>
+      setAttributes(target, { 'aria-pressed': 'true', 'data-cinder-variant': 'info' }, [
+        'disabled',
+      ]),
+  },
+  {
     label: 'current Pagination page',
     slug: 'pagination',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-pagination__page[data-cinder-current]'),
   },
   {
     label: 'Calendar range-start day',
     slug: 'calendar',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-calendar__day[tabindex="0"]'),
     prepare: (_page, target) => setAttributes(target, { 'data-range-start': '' }),
   },
   {
     label: 'Calendar range-end day',
     slug: 'calendar',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-calendar__day[tabindex="0"]'),
     prepare: (_page, target) => setAttributes(target, { 'data-range-end': '' }),
   },
   {
     label: 'SelectionPopover add-comment button',
     slug: 'selection-popover',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('#toggled-selection-popover .cinder-selection-popover__button'),
     prepare: async (page, target) => {
       await page.getByRole('button', { name: 'Open popover' }).click();
@@ -198,17 +231,17 @@ const FILLED_CASES: readonly RingCase[] = [
   {
     label: 'SchemaForm submit',
     slug: 'schema-form',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-schema-form__submit'),
   },
   {
     label: 'FileUpload browse button',
     slug: 'file-upload',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.cinder-file-upload__button'),
   },
   {
-    label: 'primary FloatingAction',
+    label: 'primary FloatingAction (pre-existing on-accent ring, unchanged)',
     slug: 'floating-action',
     expected: 'on-accent',
     target: (page) => page.locator('.cinder-floating-action[data-cinder-variant="primary"]'),
@@ -216,7 +249,7 @@ const FILLED_CASES: readonly RingCase[] = [
   {
     label: 'enabled Chat send button',
     slug: 'chat',
-    expected: 'on-accent',
+    expected: 'gap',
     target: (page) => page.locator('.chat-input-send').first(),
     prepare: async (page) => {
       await page.locator('.chat-input textarea').first().fill('Hello');
@@ -230,13 +263,13 @@ const UNFILLED_CASES: readonly RingCase[] = [
   {
     label: 'off Switch',
     slug: 'toggle',
-    expected: 'ring',
+    expected: 'tight',
     target: (page) => page.locator('button.cinder-toggle'),
   },
   {
     label: 'unchecked Radio',
     slug: 'radio-group',
-    expected: 'ring',
+    expected: 'tight',
     target: (page) => page.locator('input.cinder-radio').first(),
     prepare: async (page) => {
       await page.evaluate(() => {
@@ -250,7 +283,7 @@ const UNFILLED_CASES: readonly RingCase[] = [
     label: 'aria-disabled primary Button (inset fill, still focusable)',
     slug: 'button',
     fixtureName: 'primary',
-    expected: 'ring',
+    expected: 'tight',
     target: (page) => page.locator('.cinder-button[data-cinder-variant="primary"]'),
     prepare: (_page, target) => setAttributes(target, { 'aria-disabled': 'true' }),
   },
@@ -270,14 +303,14 @@ async function measureCase(page: Page, ringCase: RingCase): Promise<void> {
   }
   await ringCase.afterFocus?.(page);
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-  expectTightRing(await readRing(target), ringCase.expected, ringCase.label);
+  expectRing(await readRing(target), ringCase.expected, ringCase.label);
 }
 
 for (const theme of THEMES) {
   test.describe(`COR-1498 quiet focus rings (${theme})`, () => {
     const groups = [
       ['tight default ring', TIGHT_DEFAULT_CASES],
-      ['filled control uses the on-accent ring', FILLED_CASES],
+      ['filled control has a gap before the ring', FILLED_CASES],
       ['unfilled control keeps the default ring', UNFILLED_CASES],
     ] as const;
     for (const [group, cases] of groups) {
