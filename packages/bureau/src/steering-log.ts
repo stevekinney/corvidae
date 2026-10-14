@@ -4,7 +4,7 @@ import {
   encodeStorageKeyComponent,
 } from '@lostgradient/weft';
 
-import type { SteeringRequestedValue } from '@lostgradient/operative';
+import type { Effort, SteeringRequestedValue } from '@lostgradient/operative';
 
 import type { ImplementedSteeringCommand, SteeringCommandAdmissionOutcome } from './steering';
 
@@ -150,6 +150,13 @@ function parseJson(raw: string, what: string): unknown {
 }
 
 const CONFIGURATION_TARGETS = new Set(['route', 'model', 'provider', 'effort']);
+const EFFORTS = new Set<string>([
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] satisfies readonly Effort[]);
 
 /** Fails closed unless `value` is a complete, well-typed steering command. */
 function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand {
@@ -160,10 +167,18 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
   const hasOneValue =
     (typeof requested['override'] === 'string' && requested['policyRef'] === undefined) ||
     (typeof requested['policyRef'] === 'string' && requested['override'] === undefined);
+  // An effort override must be a real effort level; a corrupt one must not
+  // reach provider selection.
+  const effortIsValid =
+    target !== 'effort' ||
+    requested['override'] === undefined ||
+    EFFORTS.has(String(requested['override']));
   const valueShapeIsValid =
     target === 'pause' || target === 'resume'
       ? true
-      : (target === 'agent-identity' || CONFIGURATION_TARGETS.has(target)) && hasOneValue;
+      : (target === 'agent-identity' || CONFIGURATION_TARGETS.has(target)) &&
+        hasOneValue &&
+        effortIsValid;
   return (
     valueShapeIsValid &&
     typeof value['id'] === 'string' &&

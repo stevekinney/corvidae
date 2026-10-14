@@ -358,6 +358,17 @@ describe('durable steering across two Bureau processes', () => {
       },
     });
     const withoutPolicy = await openBureau(path);
+    const withChangedPolicy = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createToolbox([]),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+      modelPolicy: {
+        policyRevision: 2,
+        users: { 'fast-tier': { exactOverride: { model: 'claude-opus-4-8' } } },
+      },
+    });
     try {
       const sessionId = await startRunningSession(withPolicy);
       const viaPolicy = {
@@ -371,9 +382,20 @@ describe('durable steering across two Bureau processes', () => {
       // would refuse it; it repeats the original request, so it replays.
       const retried = await withoutPolicy.submitSteeringCommand(sessionId, viaPolicy);
       expect(retried.outcome).toBe('replayed');
+      // Nor does a process where the same profile now names another model.
+      const retriedChanged = await withChangedPolicy.submitSteeringCommand(sessionId, viaPolicy);
+      expect(retriedChanged.outcome).toBe('replayed');
+
+      // A policy-resolved command the gate rejected stays rejected for an
+      // exact retry where the policy is gone.
+      const late = { ...viaPolicy, id: 'p2', deadline: '2000-01-01T00:00:00.000Z' } as const;
+      const rejected = await withPolicy.submitSteeringCommand(sessionId, late);
+      expect(rejected.outcome).toBe('rejected');
+      expect(await withoutPolicy.submitSteeringCommand(sessionId, late)).toEqual(rejected);
     } finally {
       await withPolicy.dispose();
       await withoutPolicy.dispose();
+      await withChangedPolicy.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);

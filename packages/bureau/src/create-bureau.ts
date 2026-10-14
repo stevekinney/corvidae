@@ -1740,8 +1740,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             outcome: structuredClone(outcome),
             refusedAt: event.now,
           });
-        } else if (event.submittedValue !== undefined && submitted !== undefined) {
-          nestedSet(submitted, principal, id, event.submittedValue);
+        }
+        // Accepted or refused alike: an exact retry of the submission must
+        // be recognized whichever way the gate decided.
+        if (event.submittedValue !== undefined && submitted !== undefined) {
+          nestedSet(submitted, principal, id, structuredClone(event.submittedValue));
         }
         return outcome;
       }
@@ -1787,19 +1790,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   function asSubmittedRetry(
     ledger: ReturnType<typeof createSteeringCommandLedger>,
+    refusals: Map<string, Map<string, SteeringRefusal>>,
     submitted: Map<string, Map<string, SteeringRequestedValue>>,
     command: ImplementedSteeringCommand,
+    rawSubmission: SteeringRequestedValue = command.requestedValue,
   ): ImplementedSteeringCommand {
     const original = submitted.get(command.principal)?.get(command.id);
-    const accepted = getSteeringLedgerEntry(ledger, command.principal, command.id);
-    if (original === undefined || accepted === undefined) return command;
-    const asked = command.requestedValue as Record<string, unknown>;
+    if (original === undefined) return command;
+    const decided =
+      getSteeringLedgerEntry(ledger, command.principal, command.id)?.requestedValue ??
+      refusals.get(command.principal)?.get(command.id)?.command.requestedValue;
+    if (decided === undefined) return command;
+    // Compared against what the caller sent, never against a value resolved
+    // afresh: a changed policy must not turn an exact retry into a conflict.
+    const asked = rawSubmission as Record<string, unknown>;
     const first = original as Record<string, unknown>;
     const same =
       asked['target'] === first['target'] &&
       asked['override'] === first['override'] &&
       asked['policyRef'] === first['policyRef'];
-    return same ? { ...command, requestedValue: accepted.requestedValue } : command;
+    return same ? { ...command, requestedValue: decided } : command;
   }
 
   /**
@@ -7780,11 +7790,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     request: ImplementedSteeringCommand,
     liveRunIdsNow: () => string[],
     refusal?: SteeringRefusal['outcome'],
-    submittedValue?: SteeringRequestedValue,
+    submittedValueAsSent?: SteeringRequestedValue,
   ): Promise<SteeringCommandAdmissionOutcome> {
     // A private copy: the event appended, the event applied, and what the
     // caller may later mutate must never differ.
     const command = structuredClone(request);
+    const submittedValue =
+      submittedValueAsSent === undefined ? undefined : structuredClone(submittedValueAsSent);
     const { sessionId, principal, id } = command;
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
       // Rechecked here, in the queue: another process may have deleted the
@@ -7795,7 +7807,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const answered = answerSteeringRetry(
         cursor.ledger,
         cursor.refusals,
-        asSubmittedRetry(cursor.ledger, cursor.submitted, command),
+        asSubmittedRetry(cursor.ledger, cursor.refusals, cursor.submitted, command, submittedValue),
       );
       if (answered !== undefined) return answered;
 
@@ -7814,7 +7826,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (live) {
           let elsewhere: SteeringCommandAdmissionOutcome | undefined;
           try {
-            elsewhere = await answerFromOtherSteeringLog(kv, binding, command);
+            elsewhere = await answerFromOtherSteeringLog(kv, binding, command, submittedValue);
           } catch (error) {
             if (!(error instanceof SteeringLogCorruptError)) throw error;
           }
@@ -7844,6 +7856,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // before the deletion.
       const stillLive = await runtime.sessionStore?.load(sessionId);
       if (stillLive?.incarnation !== incarnation) return { outcome: 'not-found' };
+      // The session's last run may have finished while this waited: the same
+      // terminal check `submitSteeringCommand` made up front, made again.
+      if (isSessionRunTerminal(stillLive.metadata) && liveRunIdsNow().length === 0) {
+        return { outcome: 'session-terminal', sessionId };
+      }
       const now = runtimeServices.clock.nowISO();
       const event: Extract<SteeringLogEvent, { type: 'admit' | 'refused' }> =
         refusal === undefined
@@ -7884,6 +7901,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     kv: ConditionalTextValueStore,
     binding: SteeringKeyBinding,
     command: ImplementedSteeringCommand,
+    submittedValue?: SteeringRequestedValue,
   ): Promise<SteeringCommandAdmissionOutcome | undefined> {
     const ledger = createSteeringCommandLedger();
     const refusals = new Map<string, Map<string, SteeringRefusal>>();
@@ -7898,7 +7916,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       head.sequence,
     );
     for (const event of events) applySteeringEvent(gate, refusals, event, submitted);
-    return answerSteeringRetry(ledger, refusals, asSubmittedRetry(ledger, submitted, command));
+    return answerSteeringRetry(
+      ledger,
+      refusals,
+      asSubmittedRetry(ledger, refusals, submitted, command, submittedValue),
+    );
   }
 
   function listPendingReviews(): PendingReview[] {
