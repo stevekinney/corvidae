@@ -480,6 +480,8 @@
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "ajv": "catalog:",
+        "ajv-formats": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
