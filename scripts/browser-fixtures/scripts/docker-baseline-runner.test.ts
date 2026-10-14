@@ -90,12 +90,15 @@ describe('container command and run arguments', () => {
     expect(command).toStartWith(
       'mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && touch /tmp/baseline-marker && bun run test:browser:update -- ',
     );
-    expect(command).toContain(`'--grep' 'it'\\''s'`);
+    expect(command).toContain(`-- '--reporter=line,json' '--grep' 'it'\\''s'`);
     expect(command.indexOf('status=$?')).toBeLessThan(command.indexOf('cp -R'));
     expect(command).toContain('-newer /tmp/baseline-marker > /out/regenerated.txt');
+    expect(command).toContain('/out/manifest.json');
     expect(command).toContain('chown -R "$BASELINE_HOST_UID:$BASELINE_HOST_GID" /out');
     expect(command).toEndWith('exit $status');
-    expect(containerCommand('visual', [])).toContain('bun run test:browser:visual; status=$?');
+    expect(containerCommand('visual', [])).toContain(
+      "bun run test:browser:visual -- '--reporter=line,json'; status=$?",
+    );
   });
 
   it('mounts only the output directory and names the container for cleanup', () => {
@@ -125,14 +128,18 @@ describe('container command and run arguments', () => {
     expect(containerNameForRun(1, 2)).toBe('corvidae-baselines-1-2');
   });
 
-  it('parses the wrapper flag and forwards the rest', () => {
-    expect(parseWrapperArguments(['--source', 'abc', '--grep', 'x'])).toEqual({
+  it('parses the wrapper flags and forwards the rest', () => {
+    expect(
+      parseWrapperArguments(['--source', 'abc', '--accept-behavioural-failures', '--grep', 'x']),
+    ).toEqual({
       source: 'abc',
+      acceptBehaviouralFailures: true,
       forwarded: ['--grep', 'x'],
     });
     expect(parseWrapperArguments(['--source=def']).source).toBe('def');
     expect(parseWrapperArguments([])).toEqual({
       source: 'HEAD',
+      acceptBehaviouralFailures: false,
       forwarded: [],
     });
   });
@@ -221,7 +228,7 @@ describe('kill on signal', () => {
 });
 
 describe('applyBaselines', () => {
-  it('copies only the listed baselines and provenance into the host tree', async () => {
+  it('copies the listed baselines and provenance and deletes the orphans', async () => {
     const root = mkdtempSync(join(tmpdir(), 'apply-baselines-'));
     const source = join(root, 'source');
     const target = join(root, 'target');
@@ -231,7 +238,9 @@ describe('applyBaselines', () => {
     }
     mkdirSync(join(target, 'button'), { recursive: true });
     writeFileSync(join(target, 'button/b.png'), 'committed b');
-    await applyBaselines(source, target, ['button/a.png']);
+    writeFileSync(join(target, 'button/orphan-default.png'), 'orphan');
+    await applyBaselines(source, target, ['button/a.png'], ['button/orphan-default.png']);
+    expect(existsSync(join(target, 'button/orphan-default.png'))).toBe(false);
     expect(readFileSync(join(target, 'button/a.png'), 'utf8')).toBe('new button/a.png');
     expect(readFileSync(join(target, 'button/b.png'), 'utf8')).toBe('committed b');
     expect(readFileSync(join(target, 'provenance.json'), 'utf8')).toBe('new provenance.json');

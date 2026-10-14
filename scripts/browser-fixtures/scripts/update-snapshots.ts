@@ -7,7 +7,12 @@
  * instructions, because a development host renders different pixels.
  *
  * Inside the image it runs the suite with `--update-snapshots=all --retries=0`
- * (a retry-passing run is never authoritative), then records provenance. The
+ * (a retry-passing run is never authoritative), then records provenance,
+ * including the suite's exit code. Provenance is written when Playwright
+ * completed, whether every case passed (0) or some failed (1); a crash or an
+ * interrupt writes none. The host wrapper decides whether a run with failures
+ * may be applied (`--accept-behavioural-failures`; never for a screenshot
+ * failure). The
  * source has no `.git` (it arrives as a `git archive`), so the rendered commit
  * comes from `BASELINE_SOURCE_SHA`.
  */
@@ -53,6 +58,11 @@ export function snapshotUpdateEnvironment(
   return { ...environment, CINDER_VISUAL_DIFF: 'block', CINDER_UPDATE_SNAPSHOTS: '1' };
 }
 
+/** Playwright exits 0 when every case passed and 1 when the run completed with failures. */
+export function completedSuite(exitCode: number): boolean {
+  return exitCode === 0 || exitCode === 1;
+}
+
 export function provenanceComponentScope(rawScope: string | undefined): string {
   return rawScope !== undefined && rawScope.trim().length > 0 ? rawScope : 'all';
 }
@@ -81,7 +91,7 @@ async function main(): Promise<number> {
     stderr: 'inherit',
   });
   const exitCode = await child.exited;
-  if (exitCode !== 0) return exitCode;
+  if (!completedSuite(exitCode)) return exitCode;
   await writeBaselineProvenance(
     resolve(REPOSITORY_ROOT, LINUX_BASELINE_DIRECTORY, PROVENANCE_FILE_NAME),
     createBaselineProvenance({
@@ -91,9 +101,10 @@ async function main(): Promise<number> {
       osCodename: readOsCodename() ?? '<missing /etc/os-release>',
       architecture: process.arch,
       dockerImageTag: dockerImageTagForPlaywrightVersion(result.playwrightVersion),
+      suiteExitCode: exitCode,
     }),
   );
-  return 0;
+  return exitCode;
 }
 
 if (import.meta.main) {

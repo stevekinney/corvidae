@@ -21,19 +21,21 @@ const INPUT = {
   osCodename: 'jammy',
   architecture: 'arm64',
   dockerImageTag: dockerImageTagForPlaywrightVersion('1.63.0'),
+  suiteExitCode: 1,
 };
 
 describe('baseline provenance', () => {
   it('creates deterministic provenance for a scoped baseline set', () => {
     const provenance = createBaselineProvenance({ ...INPUT, componentScope: 'button,button' });
     expect(provenance).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       componentScope: ['button'],
       renderedSourceSha: 'abc123',
       playwrightVersion: '1.63.0',
       osCodename: 'jammy',
       architecture: 'arm64',
       dockerImageTag: 'corvidae-browser-fixtures:1.63.0-jammy-arm64',
+      suiteExitCode: 1,
     });
     expect(JSON.stringify(provenance)).not.toContain('timestamp');
   });
@@ -70,10 +72,15 @@ describe('baseline provenance', () => {
   });
 
   it('rejects provenance with a missing field or another schema version', () => {
-    expect(() => parseBaselineProvenance('{"schemaVersion":1}')).toThrow(/renderedSourceSha/);
+    expect(() => parseBaselineProvenance('{"schemaVersion":2}')).toThrow(/renderedSourceSha/);
+    const withoutExitCode: Record<string, unknown> = {
+      ...createBaselineProvenance({ ...INPUT, componentScope: 'all' }),
+    };
+    delete withoutExitCode['suiteExitCode'];
+    expect(() => parseBaselineProvenance(JSON.stringify(withoutExitCode))).toThrow(/suiteExitCode/);
     const wrongSchema = JSON.stringify({
       ...createBaselineProvenance({ ...INPUT, componentScope: 'all' }),
-      schemaVersion: 2,
+      schemaVersion: 1,
     });
     expect(() => parseBaselineProvenance(wrongSchema)).toThrow(/schemaVersion/);
   });

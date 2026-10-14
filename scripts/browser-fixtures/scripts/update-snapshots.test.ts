@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { REPOSITORY_ROOT } from './baseline-provenance.ts';
 import {
+  completedSuite,
   playwrightUpdateArguments,
   provenanceComponentScope,
   snapshotUpdateEnvironment,
@@ -38,6 +39,15 @@ describe('update-snapshots helpers', () => {
     expect(provenanceComponentScope(undefined)).toBe('all');
     expect(provenanceComponentScope('  ')).toBe('all');
     expect(provenanceComponentScope('button')).toBe('button');
+  });
+});
+
+describe('completedSuite', () => {
+  it('treats a passing suite and one that completed with failures as complete', () => {
+    expect(completedSuite(0)).toBe(true);
+    expect(completedSuite(1)).toBe(true);
+    expect(completedSuite(130)).toBe(false);
+    expect(completedSuite(2)).toBe(false);
   });
 });
 

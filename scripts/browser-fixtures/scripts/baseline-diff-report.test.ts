@@ -9,8 +9,11 @@ import {
   buildBaselineDiffReport,
   compareBaselinePair,
   filesToApply,
+  filesToDelete,
   listBaselines,
+  orphanEvidence,
   parseRegeneratedList,
+  renameTarget,
   renderReportMarkdown,
   writeBaselineDiffReport,
 } from './baseline-diff-report.ts';
@@ -93,73 +96,143 @@ describe('compareBaselinePair', () => {
 });
 
 describe('buildBaselineDiffReport', () => {
-  it('classifies a refresh and names only the files a commit should carry', async () => {
+  it('classifies a refresh and names exactly the files a commit writes and deletes', async () => {
     const root = mkdtempSync(join(tmpdir(), 'baseline-diff-report-'));
     const oldDirectory = join(root, 'old');
     const newDirectory = join(root, 'new');
-    write(oldDirectory, 'button/same.png', png(white));
-    write(newDirectory, 'button/same.png', png(white));
-    write(oldDirectory, 'button/reencoded.png', png(white, { deflateLevel: 9 }));
-    write(newDirectory, 'button/reencoded.png', png(white, { deflateLevel: 0 }));
-    write(oldDirectory, 'chip/changed.png', png(white));
-    write(newDirectory, 'chip/changed.png', png(twoBlack));
-    write(oldDirectory, 'chip/resized.png', png(white));
-    write(newDirectory, 'chip/resized.png', png(white, { size: 12 }));
-    write(newDirectory, 'tabs/added.png', png(white));
-    write(oldDirectory, 'tabs/orphan.png', png(white));
-    write(newDirectory, 'tabs/orphan.png', png(white));
+    write(oldDirectory, 'button/light-desktop-same.png', png(white));
+    write(newDirectory, 'button/light-desktop-same.png', png(white));
+    write(oldDirectory, 'button/light-desktop-reencoded.png', png(white, { deflateLevel: 9 }));
+    write(newDirectory, 'button/light-desktop-reencoded.png', png(white, { deflateLevel: 0 }));
+    write(oldDirectory, 'chip/light-desktop-changed.png', png(white));
+    write(newDirectory, 'chip/light-desktop-changed.png', png(twoBlack));
+    write(oldDirectory, 'chip/light-desktop-resized.png', png(white));
+    write(newDirectory, 'chip/light-desktop-resized.png', png(white, { size: 12 }));
+    write(newDirectory, 'tabs/light-desktop-added.png', png(white));
+    // A cinder-era rename: `default` became `assertion`, once with the same pixels, once changed.
+    write(oldDirectory, 'select/light-desktop-default.png', png(white));
+    write(newDirectory, 'select/light-desktop-assertion.png', png(white));
+    write(oldDirectory, 'input/dark-mobile-default.png', png(white));
+    write(newDirectory, 'input/dark-mobile-assertion.png', png(twoBlack));
+    // An orphan with no rename partner.
+    write(oldDirectory, 'access-gate/light-desktop-inline-denied.png', png(white));
 
     const report = await buildBaselineDiffReport({
       oldDirectory,
       newDirectory,
       regenerated: [
-        'button/same.png',
-        'button/reencoded.png',
-        'chip/changed.png',
-        'chip/resized.png',
-        'tabs/added.png',
+        'button/light-desktop-same.png',
+        'button/light-desktop-reencoded.png',
+        'chip/light-desktop-changed.png',
+        'chip/light-desktop-resized.png',
+        'tabs/light-desktop-added.png',
+        'select/light-desktop-assertion.png',
+        'input/dark-mobile-assertion.png',
       ],
       diffDirectory: join(root, 'diffs'),
+      namingSources: {
+        manifestFixtures: new Map([['access-gate', ['assertion']]]),
+        specText: "test('inline-granted', () => {});",
+      },
     });
 
     expect(report.counts).toEqual({
-      regenerated: 5,
+      regenerated: 7,
       changed: 1,
       dimensionChanged: 1,
       unchanged: 2,
       byteIdentical: 1,
       added: 1,
-      orphaned: 1,
-      needsClassification: 2,
+      renamed: 2,
+      renamedUnchanged: 1,
+      renamedChanged: 1,
+      deletedOrphans: 3,
+      unpairedOrphans: 1,
+      needsClassification: 3,
     });
-    expect(report.orphaned).toEqual(['tabs/orphan.png']);
-    expect(filesToApply(report)).toEqual([
-      'chip/changed.png',
-      'chip/resized.png',
-      'tabs/added.png',
+    expect(
+      report.renamed.map((rename) => [rename.from, rename.to, rename.comparison.kind]),
+    ).toEqual([
+      ['input/dark-mobile-default.png', 'input/dark-mobile-assertion.png', 'changed'],
+      ['select/light-desktop-default.png', 'select/light-desktop-assertion.png', 'unchanged'],
     ]);
-    expect(existsSync(join(root, 'diffs', 'chip/changed-diff.png'))).toBe(true);
+    expect(report.unpairedOrphans).toEqual([
+      {
+        path: 'access-gate/light-desktop-inline-denied.png',
+        slug: 'access-gate',
+        fixture: 'inline-denied',
+        slugInManifest: true,
+        fixtureInManifest: false,
+        fixtureNamedInSpecs: false,
+      },
+    ]);
+    expect(filesToApply(report)).toEqual([
+      'chip/light-desktop-changed.png',
+      'chip/light-desktop-resized.png',
+      'input/dark-mobile-assertion.png',
+      'select/light-desktop-assertion.png',
+      'tabs/light-desktop-added.png',
+    ]);
+    expect(filesToDelete(report)).toEqual([
+      'access-gate/light-desktop-inline-denied.png',
+      'input/dark-mobile-default.png',
+      'select/light-desktop-default.png',
+    ]);
+    expect(existsSync(join(root, 'diffs', 'chip/light-desktop-changed-diff.png'))).toBe(true);
+    expect(existsSync(join(root, 'diffs', 'input/dark-mobile-assertion-diff.png'))).toBe(true);
 
-    const markdown = renderReportMarkdown(report, 'Refresh');
+    const suite = {
+      exitCode: 1,
+      results: {
+        expected: 6,
+        unexpected: 1,
+        flaky: 0,
+        skipped: 0,
+        failures: [
+          {
+            title: 'tree.playwright.ts › windowing',
+            file: 'tree.playwright.ts',
+            line: 26,
+            status: 'failed',
+            errors: ['Error: row | missing'],
+            screenshot: false,
+          },
+        ],
+        flakyTests: [],
+      },
+      decision: { apply: true, reason: 'Applied with 1 accepted behavioural failure(s).' },
+    };
+    const markdown = renderReportMarkdown(report, 'Refresh', { suite });
     expect(markdown).toContain('| Changed (pixels) | 1 |');
-    expect(markdown).toContain('| `chip/changed.png` | 2 | 2.000% | to classify |');
-    expect(markdown).toContain('- `chip/resized.png`: 10x10 to 12x12');
-    expect(markdown).toContain('- `tabs/added.png`');
-    expect(markdown).toContain('- `tabs/orphan.png`');
+    expect(markdown).toContain('| `chip/light-desktop-changed.png` | 2 | 2.000% | to classify |');
+    expect(markdown).toContain(
+      '| `chip/light-desktop-resized.png` | dimensions | 10x10 to 12x12 | to classify |',
+    );
+    expect(markdown).toContain('| `input/dark-mobile-assertion.png` | 2 | 2.000% | to classify |');
+    expect(markdown).toContain('- `tabs/light-desktop-added.png`');
+    expect(markdown).toContain(
+      '- `select/light-desktop-default.png` renamed to `select/light-desktop-assertion.png`',
+    );
+    expect(markdown).toContain('| `access-gate/light-desktop-inline-denied.png` | yes | no | no |');
+    expect(markdown).toContain(
+      'Playwright exited 1. Applied with 1 accepted behavioural failure(s).',
+    );
+    expect(markdown).toContain(
+      '| `tree.playwright.ts › windowing` | behavioural | Error: row \\| missing |',
+    );
 
     const hostLoad = {
       start: { oneMinuteLoad: 11.5, logicalCpus: 10 },
       end: { oneMinuteLoad: 42, logicalCpus: 10 },
     };
-    const written = await writeBaselineDiffReport(
-      report,
-      join(root, 'report'),
-      'Refresh',
+    const written = await writeBaselineDiffReport(report, join(root, 'report'), 'Refresh', {
       hostLoad,
-    );
+      suite,
+    });
     const json = JSON.parse(readFileSync(written.json, 'utf8'));
-    expect(json.counts.changed).toBe(1);
+    expect(json.counts.renamed).toBe(2);
     expect(json.hostLoad).toEqual(hostLoad);
+    expect(json.suite.exitCode).toBe(1);
     expect(readFileSync(written.markdown, 'utf8')).toContain(
       'Host 1-minute load: 11.50 on 10 logical CPUs at the start of the run, 42.00 on 10 logical CPUs at the end.',
     );
@@ -178,6 +251,33 @@ describe('buildBaselineDiffReport', () => {
     });
     expect(report.counts.needsClassification).toBe(0);
     expect(renderReportMarkdown(report, 'Refresh')).toContain('| 0.250% | below threshold |');
+  });
+});
+
+describe('renames and orphan evidence', () => {
+  it('maps only cinder-era default baselines to their assertion name', () => {
+    expect(renameTarget('select/dark-mobile-default.png')).toBe('select/dark-mobile-assertion.png');
+    expect(renameTarget('access-gate/dark-mobile-inline-denied.png')).toBeUndefined();
+  });
+
+  it('records whether the manifest or a spec still names an orphaned fixture', () => {
+    const sources = {
+      manifestFixtures: new Map([['popover', ['assertion', 'shell']]]),
+      specText: "captureScreenshot(page, 'popover', 'transformed-ancestor-shell');",
+    };
+    expect(orphanEvidence('popover/light-desktop-shell.png', sources).fixtureInManifest).toBe(true);
+    expect(
+      orphanEvidence('popover/light-desktop-transformed-ancestor-shell.png', sources)
+        .fixtureNamedInSpecs,
+    ).toBe(true);
+    expect(orphanEvidence('gone/light-desktop-x.png', sources)).toEqual({
+      path: 'gone/light-desktop-x.png',
+      slug: 'gone',
+      fixture: 'x',
+      slugInManifest: false,
+      fixtureInManifest: false,
+      fixtureNamedInSpecs: false,
+    });
   });
 });
 

@@ -2,19 +2,40 @@
  * `bun run test:browser:visual:docker [--source <ref>] [-- playwright args]`
  *
  * Runs the whole browser suite in block mode inside the authoritative renderer
- * (native linux/arm64, Playwright jammy) against an exact commit. Every
- * behavioural and screenshot case must pass; this is the stability control and
- * the post-merge verification for the committed Linux baselines. Ported from
- * cinder's `run-browser-docker.ts` (COR-1512). Failure artefacts (traces, diff
- * images) are left in the printed container output directory.
+ * (native linux/arm64, Playwright jammy) against an exact commit. Ported from
+ * cinder's `run-browser-docker.ts` (COR-1512).
+ *
+ * It exits with the suite's status and writes `suite-results.json` (every
+ * failing test, screenshot or behavioural) into the run directory. The
+ * stability rule compares that with an `origin/main` control run the same way:
+ * `bun scripts/browser-fixtures/scripts/suite-results.ts compare <run> <control>`.
+ * Failure artefacts (traces, diff images) stay in the printed output directory.
  */
+import { join } from 'node:path';
+
 import { describeHostLoad } from './docker-baseline-runner.ts';
 import { startRendererRun } from './update-snapshots-docker.ts';
 
+export const SUITE_RESULTS_FILE_NAME = 'suite-results.json';
+
 async function main(): Promise<number> {
-  const { exitCode, sha, hostLoad } = await startRendererRun('visual', process.argv.slice(2));
+  const { exitCode, sha, runDirectory, hostLoad, results } = await startRendererRun(
+    'visual',
+    process.argv.slice(2),
+  );
+  const resultsPath = join(runDirectory, SUITE_RESULTS_FILE_NAME);
+  await Bun.write(
+    resultsPath,
+    `${JSON.stringify({ sha, exitCode, hostLoad, results: results ?? null }, null, 2)}\n`,
+  );
+  const failures = results?.failures ?? [];
+  for (const failure of failures) {
+    process.stdout.write(
+      `  ${failure.screenshot ? 'screenshot' : 'behavioural'}: ${failure.title}\n`,
+    );
+  }
   process.stdout.write(
-    `Visual run against ${sha} exited ${exitCode}. Host load: start ${describeHostLoad(hostLoad.start)}; end ${describeHostLoad(hostLoad.end)}.\n`,
+    `Visual run against ${sha} exited ${exitCode} with ${failures.length} failing test(s). Host load: start ${describeHostLoad(hostLoad.start)}; end ${describeHostLoad(hostLoad.end)}. Results: ${resultsPath}\n`,
   );
   return exitCode;
 }

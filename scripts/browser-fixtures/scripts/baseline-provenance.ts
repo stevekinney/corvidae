@@ -13,7 +13,11 @@ import { dirname, resolve } from 'node:path';
 
 import { parseComponentScopeValue } from '@lostgradient/testing';
 
-export const BASELINE_PROVENANCE_SCHEMA_VERSION = 1;
+/**
+ * Version 2 adds `suiteExitCode` (COR-1512): an update may complete with accepted
+ * behavioural failures, and provenance records how the suite exited.
+ */
+export const BASELINE_PROVENANCE_SCHEMA_VERSION = 2;
 
 /**
  * Every committed baseline is rendered on this architecture. Cinder required x64
@@ -42,6 +46,8 @@ export type BaselineProvenance = {
   osCodename: string;
   architecture: string;
   dockerImageTag: string;
+  /** 0 when every case passed; 1 when the suite completed with failures. */
+  suiteExitCode: number;
 };
 
 export type BaselineProvenanceInput = Omit<
@@ -128,6 +134,7 @@ export function createBaselineProvenance(input: BaselineProvenanceInput): Baseli
     osCodename: input.osCodename,
     architecture: input.architecture,
     dockerImageTag: input.dockerImageTag,
+    suiteExitCode: input.suiteExitCode,
   };
 }
 
@@ -146,6 +153,9 @@ export function parseBaselineProvenance(text: string): BaselineProvenance {
     'dockerImageTag',
   ]) {
     if (typeof record[key] !== 'string') throw new Error(`provenance.json is missing "${key}"`);
+  }
+  if (typeof record['suiteExitCode'] !== 'number') {
+    throw new Error('provenance.json is missing "suiteExitCode"');
   }
   if (record['schemaVersion'] !== BASELINE_PROVENANCE_SCHEMA_VERSION) {
     throw new Error(`provenance.json schemaVersion must be ${BASELINE_PROVENANCE_SCHEMA_VERSION}`);

@@ -8,7 +8,7 @@
  * directory the container copies its results into. See
  * `scripts/browser-fixtures/visual-baselines.md`.
  */
-import { copyFile, mkdir, mkdtemp } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { constants, cpus, loadavg, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
@@ -113,6 +113,8 @@ function shellQuote(value: string): string {
 
 export type ContainerMode = 'update' | 'visual';
 
+export const PLAYWRIGHT_REPORTERS = '--reporter=line,json';
+
 /**
  * The command the container runs. It unpacks the archived commit from stdin,
  * installs from the lockfile, runs the suite, and copies results into `/out`
@@ -121,14 +123,16 @@ export type ContainerMode = 'update' | 'visual';
  */
 export function containerCommand(mode: ContainerMode, extraArguments: readonly string[]): string {
   const script = mode === 'update' ? 'test:browser:update' : 'test:browser:visual';
-  const forwarded =
-    extraArguments.length > 0 ? ` -- ${extraArguments.map(shellQuote).join(' ')}` : '';
+  // The JSON reporter writes to PLAYWRIGHT_JSON_OUTPUT_FILE (/out/results.json) so the
+  // host can name each failure and tell screenshot failures from behavioural ones.
+  const forwarded = ` -- ${[PLAYWRIGHT_REPORTERS, ...extraArguments].map(shellQuote).join(' ')}`;
   return [
     `mkdir -p /work && cd /work && tar -x && bun install --frozen-lockfile && touch /tmp/baseline-marker && bun run ${script}${forwarded}`,
     'status=$?',
     `find ${LINUX_BASELINE_DIRECTORY} -name '*.png' -newer /tmp/baseline-marker > /out/regenerated.txt 2>/dev/null`,
     `mkdir -p /out/linux && cp -R ${LINUX_BASELINE_DIRECTORY}/. /out/linux/ 2>/dev/null`,
     'if [ -d scripts/browser-fixtures/test-results ]; then cp -R scripts/browser-fixtures/test-results /out/test-results; fi',
+    'cp scripts/browser-fixtures/.playwright/manifest.json /out/manifest.json 2>/dev/null',
     'chown -R "$BASELINE_HOST_UID:$BASELINE_HOST_GID" /out 2>/dev/null',
     'exit $status',
   ].join('; ');
@@ -273,29 +277,37 @@ export function containerNameForRun(now: number = Date.now(), pid: number = proc
   return `corvidae-baselines-${now}-${pid}`;
 }
 
-/** Copy the refreshed baselines and provenance into the host tree; nothing else is touched. */
+/**
+ * Copy the refreshed baselines and provenance into the host tree and delete the
+ * orphans (committed baselines no test regenerated). Nothing else is touched.
+ */
 export async function applyBaselines(
   sourceDirectory: string,
   targetDirectory: string,
   relativePaths: readonly string[],
+  deletions: readonly string[] = [],
 ): Promise<void> {
   for (const path of [...relativePaths, PROVENANCE_FILE_NAME]) {
     const target = join(targetDirectory, path);
     await mkdir(dirname(target), { recursive: true });
     await copyFile(join(sourceDirectory, path), target);
   }
+  for (const path of deletions) await rm(join(targetDirectory, path), { force: true });
 }
 
-/** Split the wrapper's own flag from the arguments forwarded to Playwright. */
+/** Split the wrapper's own flags from the arguments forwarded to Playwright. */
 export function parseWrapperArguments(dockerArguments: readonly string[]): {
   source: string;
+  acceptBehaviouralFailures: boolean;
   forwarded: string[];
 } {
   let source = 'HEAD';
+  let acceptBehaviouralFailures = false;
   const forwarded: string[] = [];
   for (let index = 0; index < dockerArguments.length; index += 1) {
     const argument = dockerArguments[index] ?? '';
-    if (argument === '--source') {
+    if (argument === '--accept-behavioural-failures') acceptBehaviouralFailures = true;
+    else if (argument === '--source') {
       const value = dockerArguments[index + 1];
       if (value === undefined) throw new Error('--source needs a commit reference.');
       source = value;
@@ -303,5 +315,5 @@ export function parseWrapperArguments(dockerArguments: readonly string[]): {
     } else if (argument.startsWith('--source=')) source = argument.slice('--source='.length);
     else forwarded.push(argument);
   }
-  return { source, forwarded };
+  return { source, acceptBehaviouralFailures, forwarded };
 }
