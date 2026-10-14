@@ -146,7 +146,7 @@ Publication is the deployment's choice and description is the agent's. `createBu
 
 ## Operation taxonomy
 
-Operations are commands (mutate state and return a receipt), queries (read state), subscriptions (stream events), terminal-result waits, or background notifications. An operation a deployment does not serve is absent from its capability documents; a call to it anyway returns one typed unsupported result: `UnsupportedOperationError` on the A2A surface (except `GetExtendedAgentCard`, which A2A answers with `ExtendedAgentCardNotConfiguredError`, `-32007`) and the `NotImplemented` fault on the management plane.
+Operations are commands (mutate state and return a receipt), queries (read state), subscriptions (stream events), terminal-result waits, or background notifications. An operation a deployment does not serve is absent from its capability documents; a call to it anyway returns one typed unsupported result: on the A2A surface, `UnsupportedOperationError`, except that push notification configuration operations return `PushNotificationNotSupportedError` (`-32003`) when push is not declared (A2A 1.0.1 §3.3.4); on the management plane, the `NotImplemented` fault. `ExtendedAgentCardNotConfiguredError` (`-32007`) applies only to an agent that declares the extended card without configuring one, which v1 never does.
 
 ### A2A operations
 
