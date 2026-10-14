@@ -19,7 +19,9 @@
  * history survives it. Retention purge and dead-letter clearing delete the
  * history key in the same batch as the ledger record.
  *
- * **Best effort.** Recording never changes the answer the worker gets. A
+ * **Best effort.** Recording never changes the answer the worker gets. It
+ * can delay a long-poll answer, which waits for the write; a WebSocket answer
+ * is sent first (see `documentation/guides/remote-task-recovery.md`). A
  * storage failure is logged and dropped; a lost compare-and-swap is retried a
  * bounded number of times against fresh state.
  *

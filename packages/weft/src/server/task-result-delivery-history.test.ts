@@ -392,6 +392,21 @@ describe('weft.tasks.deadletters.get', () => {
     expect(output.error).toBe('boom');
   });
 
+  it('reports a completed dead letter whose value is undefined as absent, with no error', async () => {
+    const storage = new MemoryStorage();
+    await using engine = createEngine(storage);
+    const { value: _value, ...withoutValue } = deadLetteredFixture();
+    await putLedgerRecord(storage, withoutValue);
+    const result = await invoke(engine, 'weft.tasks.deadletters.get', { operationId: 'op-dead' }, [
+      'system:admin',
+    ]);
+    if (!result.ok) throw new Error(`Expected success, got ${result.fault.code}`);
+    const output = result.value as GetTaskDeadLetterOutput;
+    expect(output.payload).toEqual({ kind: 'absent' });
+    expect(output.pendingStatus).toBe('completed');
+    expect(output.error).toBeUndefined();
+  });
+
   it('answers NotFound for a missing task and for a task that is not dead-lettered', async () => {
     const storage = new MemoryStorage();
     await using engine = createEngine(storage);

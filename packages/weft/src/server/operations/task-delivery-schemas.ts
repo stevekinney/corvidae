@@ -103,7 +103,10 @@ const deadLetterPayloadValueSchema = z
 
 const deadLetterPayloadAbsentSchema = z
   .object({
-    // A `failed` result carries no value — its `error` text is the whole result.
+    // The dead letter retained no value: either a `failed` result (its `error`
+    // text is the whole result) or a `completed` result whose value is
+    // `undefined`, such as an activity that returned nothing. `pendingStatus`
+    // tells the two apart.
     kind: z.literal('absent'),
   })
   .strict();

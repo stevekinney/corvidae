@@ -142,12 +142,14 @@ type TaskResultDelivery = {
         | 'revision-mismatch'
         | 'conflicting-content'
         | 'commit-rejected';
-      reason: string; // the rejection text the worker received, with the raw token redacted
+      reason: string; // WebSocket: the protocolError text the worker received; long-poll: server-composed (see below); raw token redacted
     }
 );
 ```
 
-The response wraps the entries, oldest first, as `{ operationId, deliveries, historyLimit, droppedCount }`. The server keeps the most recent 32 deliveries per operation. `droppedCount` counts older entries it no longer holds, so `0` means the history is complete. A submission for an operation with no ledger record is never recorded. The `operationId` comes from the worker, and recording it would let any worker create storage for arbitrary identifiers. Delivery history follows the same retention as attempt history: it is deleted in the same batch as its ledger record, by retention purge or by clearing a dead letter. Recording never changes or delays the answer a worker receives. On WebSocket the entry is written after the answer is sent, so a read made at the same moment may not show it yet.
+The response wraps the entries, oldest first, as `{ operationId, deliveries, historyLimit, droppedCount }`. The server keeps the most recent 32 deliveries per operation. `droppedCount` counts older entries it no longer holds, so `0` means the history is complete. A submission for an operation with no ledger record is never recorded. The `operationId` comes from the worker, and recording it would let any worker create storage for arbitrary identifiers. Delivery history follows the same retention as attempt history: it is deleted in the same batch as its ledger record, by retention purge or by clearing a dead letter. Recording never changes the answer a worker receives: a storage failure is logged and dropped, and the response is the same either way. The two transports differ in when the entry is written. On WebSocket it is written after the answer is sent, so the acknowledgement is not delayed, and a read made at the same moment may not show the entry yet. On long-poll it is written before the response is returned, so the `200` or `403` waits for the write, which can take up to three compare-and-swap rounds of storage I/O. The reason for that choice is that a long-poll worker or operator who reads the history after the response arrives finds the entry for it, unless the write failed and was logged.
+
+The `reason` text is also transport-specific. On WebSocket it is the `protocolError` message the worker received. A long-poll `403` body carries only `{ error: 'Forbidden', operationId, attemptToken, reason? }`, where `reason` is the bare code. The recorded long-poll `reason` is therefore composed by the server, for example `taskResult for operation "…" rejected — stale-attempt`, and the worker never sees that text.
 
 Every delivery except a first-time `applied` also fires `task:result-delivery` (`TaskResultDeliveryEvent`). That covers duplicates, dead-lettered acknowledgements, and rejections. A result that dead-letters on its first delivery therefore fires both `task:dead-lettered`, for the ledger's decision, and `task:result-delivery`, for the acknowledgement the worker received. The event is client-visible, so fleet and workflow event subscribers see it live. A first-time `applied` delivery does not fire it, because every remote activity produces one and the activity's own completion already reports it.
 
@@ -160,7 +162,7 @@ Every delivery except a first-time `applied` also fires `task:result-delivery` (
 - **Size-limited, never truncated.** The value is returned inline up to `maxBytes`: 64 KiB by default, 1 MiB at most. A larger value comes back as `{ kind: 'omitted', reason: 'exceeds-max-bytes', serializedBytes, maxBytes }`, and the caller can retry with a higher limit. A truncated value would look like the real one, so the server never returns one.
 - **Not exposed to MCP.**
 
-The `payload` field is `{ kind: 'value', value, serializedBytes }`, or `{ kind: 'absent' }` for a `failed` result. A failed result has no value, and its `error` text is returned alongside. A task that is not dead-lettered answers `NotFound`.
+The `payload` field is `{ kind: 'value', value, serializedBytes }`, or `{ kind: 'absent' }` when the dead letter retained no value. That happens in two cases. A `failed` result has no value, and its `error` text is returned alongside. A `completed` result whose value is `undefined`, such as an activity that returns nothing, also has no value; its `pendingStatus` is `completed` and it has no `error`. Read `pendingStatus` to tell the two apart. A task that is not dead-lettered answers `NotFound`.
 
 ## Reading a result
 

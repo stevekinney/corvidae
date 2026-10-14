@@ -308,6 +308,13 @@ function payloadSizeExceededResponse(error: {
 /**
  * Record how a long-poll `taskResult` was answered in the operation's
  * delivery history (COR-1366), before the response is returned.
+ *
+ * Awaited deliberately, unlike the WebSocket transport's post-send write: the
+ * response waits for up to three compare-and-swap rounds of storage I/O, so
+ * a caller who reads the history after the response arrives finds this entry
+ * unless the write itself failed (and was logged). Recording never throws, so it cannot change the answer. The `reason`
+ * recorded for a rejection is composed here, because the `403` body carries
+ * only the bare reason code.
  */
 function recordLongPollDelivery(
   options: ServeOptions,

@@ -136,7 +136,13 @@ export type TaskResultDeliveryRejected = TaskResultDeliveryCommon &
   Readonly<{
     outcome: 'rejected';
     rejectionCode: TaskResultDeliveryRejectionCode;
-    /** The rejection text the worker was sent, with the raw attempt token redacted. Bounded to `MAX_TASK_REASON_BYTES`. */
+    /**
+     * Why the submission was rejected, with the raw attempt token redacted.
+     * Bounded to `MAX_TASK_REASON_BYTES`. On WebSocket this is the
+     * `protocolError` text the worker received. On long-poll it is composed by
+     * the server: the `403` body carries only the bare `reason` code, so the
+     * worker never sees this text.
+     */
     reason: string;
   }>;
 
