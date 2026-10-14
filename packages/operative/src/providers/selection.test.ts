@@ -186,6 +186,15 @@ describe('select: hard constraints filter before soft preferences rank', () => {
   });
 });
 
+describe('select: access-restricted models', () => {
+  it('keeps a Mythos row, whose availability is unknown, eligible rather than excluding it', () => {
+    const mythos = descriptor('anthropic', 'claude-mythos-5-1');
+    expect(mythos.availability).toBe('unknown');
+    const plan = select(baseRequest(), baseOptions(catalogOf([mythos])));
+    expect(plan.candidates[0]?.eligible).toBe(true);
+  });
+});
+
 describe('select: rankingInputs', () => {
   it('populates cost, latency, and preferenceMatch for every eligible candidate', () => {
     const plan = select(baseRequest(), baseOptions(catalogOf([anthropic, openai, gemini])));
@@ -252,6 +261,34 @@ describe('select: rankingInputs', () => {
     );
     expect(cheapCandidate?.rankingInputs?.['cost']).toBe(1);
     expect(expensiveCandidate?.rankingInputs?.['cost']).toBe(0);
+  });
+
+  it('ranks a tiered model by its long-context rates, since a request carries no prompt size', () => {
+    const flat: BackendDescriptor = {
+      ...anthropic,
+      model: 'flat-model',
+      pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 1, currency: 'USD' },
+    };
+    const tiered: BackendDescriptor = {
+      ...anthropic,
+      model: 'tiered-model',
+      pricing: {
+        inputPerMillionTokens: 0.1,
+        outputPerMillionTokens: 0.1,
+        currency: 'USD',
+        longContext: {
+          inputTokensAbove: 100_000,
+          inputPerMillionTokens: 5,
+          outputPerMillionTokens: 5,
+        },
+      },
+    };
+    const plan = select(baseRequest(), baseOptions(catalogOf([flat, tiered])));
+    const costOf = (model: string) =>
+      plan.candidates.find((candidate) => candidate.model === model)?.rankingInputs?.['cost'];
+    // By the base rate the tiered model would be the cheaper one (0.1 < 1); its long tier says otherwise.
+    expect(costOf('flat-model')).toBe(1);
+    expect(costOf('tiered-model')).toBe(0);
   });
 
   it('reports 0.5 preferenceMatch for one matching preference field and 1 for both', () => {

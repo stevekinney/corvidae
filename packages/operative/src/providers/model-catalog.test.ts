@@ -261,6 +261,31 @@ describe('createModelCatalog: Anthropic sampling parameters follow the documente
   });
 });
 
+describe('createModelCatalog: Haiku 5.5 carries its long-context tier', () => {
+  it('exposes the tier on the descriptor and no tier on a flat-priced model', () => {
+    const rows = createModelCatalog({ now: fixedNow }).descriptors;
+    expect(rows.find((row) => row.model === 'claude-haiku-5-5')?.pricing?.longContext).toEqual({
+      inputTokensAbove: 100_000,
+      inputPerMillionTokens: 0.5,
+      outputPerMillionTokens: 2.5,
+    });
+    expect(
+      rows.find((row) => row.model === 'claude-haiku-4-5')?.pricing?.longContext,
+    ).toBeUndefined();
+  });
+});
+
+describe('createModelCatalog: access-restricted Anthropic models', () => {
+  it('reports Mythos availability as unknown and every other Anthropic row as available', () => {
+    for (const row of descriptorsFor('anthropic')) {
+      expect([row.model, row.availability]).toEqual([
+        row.model,
+        row.model.startsWith('claude-mythos') ? 'unknown' : 'available',
+      ]);
+    }
+  });
+});
+
 describe('createModelCatalog: pricing is derived from defaultPricingTable, never fabricated', () => {
   it('matches promptCostPerMillionTokens/completionCostPerMillionTokens exactly, in USD, for every priced model', () => {
     const catalog = createModelCatalog({ now: fixedNow });
@@ -271,6 +296,15 @@ describe('createModelCatalog: pricing is derived from defaultPricingTable, never
         inputPerMillionTokens: priced.promptCostPerMillionTokens,
         outputPerMillionTokens: priced.completionCostPerMillionTokens,
         currency: 'USD',
+        ...(priced.longContext
+          ? {
+              longContext: {
+                inputTokensAbove: priced.longContext.inputTokensAbove,
+                inputPerMillionTokens: priced.longContext.promptCostPerMillionTokens,
+                outputPerMillionTokens: priced.longContext.completionCostPerMillionTokens,
+              },
+            }
+          : {}),
       });
     }
   });

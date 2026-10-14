@@ -151,8 +151,32 @@ export function pricingFor(model: string): BackendDescriptor['pricing'] {
     inputPerMillionTokens: pricing.promptCostPerMillionTokens,
     outputPerMillionTokens: pricing.completionCostPerMillionTokens,
     currency: 'USD',
+    ...(pricing.longContext
+      ? {
+          longContext: {
+            inputTokensAbove: pricing.longContext.inputTokensAbove,
+            inputPerMillionTokens: pricing.longContext.promptCostPerMillionTokens,
+            outputPerMillionTokens: pricing.longContext.completionCostPerMillionTokens,
+          },
+        }
+      : {}),
   };
 }
+
+/**
+ * Anthropic models offered only to organizations accepted into Anthropic's
+ * verification programs, per https://platform.claude.com/docs/en/models/mythos-5-1/overview
+ * ("available only to organizations verified through Anthropic's verification
+ * programs, such as the Cyber Verification Program"; the Mythos 5 page says the
+ * same, status "Active (verification required)"). Whether a given caller is
+ * verified is invisible to a static seed, so these rows report `'unknown'`
+ * rather than `'available'`; `'unavailable'` would exclude the model for
+ * verified organizations too.
+ */
+const ACCESS_RESTRICTED_ANTHROPIC_MODELS: ReadonlySet<string> = new Set([
+  'claude-mythos-5',
+  'claude-mythos-5-1',
+]);
 
 export function buildAnthropicRow(model: string, freshness: string): BackendDescriptor {
   const limits = requireLimits('anthropic', model);
@@ -180,7 +204,7 @@ export function buildAnthropicRow(model: string, freshness: string): BackendDesc
     serverSideTokenCounting: true,
     effort: anthropicEffort(model),
     ...(pricingRow !== undefined ? { pricing: pricingRow } : {}),
-    availability: 'available',
+    availability: ACCESS_RESTRICTED_ANTHROPIC_MODELS.has(model) ? 'unknown' : 'available',
     health: 'unknown',
     source: 'static',
     freshness,
