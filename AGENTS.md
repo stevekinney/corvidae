@@ -25,7 +25,7 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 
 - Release intent for a package the mirrors publish belongs in corvidae, next to the change it describes. Write it as a standard changeset Markdown file under the root `.changeset/` directory. The next sync carries each new file to its mirror once, and that mirror's own Changesets flow versions and publishes it.
 - One changeset names packages of exactly one mirror target, by the published npm names of `publish-as` workspaces. `scripts/mirror/changesets.test.ts` enforces this.
-- After a changeset has synced, fix any mistake in the target's `.changeset/` directory, not in corvidae; a corvidae edit made after the sync is never re-sent.
+- A changeset merged to `main` is immutable until it is deleted, and the sync refuses any edit, rename or reused name. To change one before it syncs, delete it and add a new file under a new name. After it has synced, fix it in the target's `.changeset/` directory. Do not move a package between mirrors while one of its changesets is unsynced.
 - Publishing stays in the mirrors, and corvidae never publishes. A `.changeset/*.md` file is content, not tooling, so it does not widen the `scripts/mirror/` exception above.
 
 ## Turborepo
