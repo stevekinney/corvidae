@@ -1,5 +1,4 @@
 import type { SentFrame } from '../protocol/endpoint-support.ts';
-import type { FailureCode } from '../protocol/failure-codes.ts';
 import { describeFailure } from '../protocol/failure-table.ts';
 import { HostEndpoint, type HostEndpointOptions } from '../protocol/host-endpoint.ts';
 import type { ClientMessage, HelloMessage } from '../protocol/messages.ts';
@@ -33,7 +32,7 @@ export type SessionConnectionOptions = {
 const TRANSPORT_FAILURE_CLOSE_CODE = describeFailure('transport-failed').closeCode;
 
 /** The wire code an operation refused before queueing is reported under. */
-function failureCodeFor(reason: InputFailureReason): FailureCode {
+function failureCodeFor(reason: InputFailureReason): 'fifo-full' | 'read-only' {
   return reason === 'fifo-full' || reason === 'input-overflow' ? 'fifo-full' : 'read-only';
 }
 
