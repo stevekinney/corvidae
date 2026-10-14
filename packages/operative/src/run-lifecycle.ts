@@ -38,7 +38,7 @@ import type { FinishReason, RunOptions, RunResult, TokenUsage } from './types';
 export function computeCostEstimate(
   usage: TokenUsage,
   costEstimation: RunOptions['costEstimation'],
-  accumulatedCost?: AccumulatedCost | undefined,
+  accumulatedCost?: AccumulatedCost,
 ): RunResult['costEstimate'] {
   if (!costEstimation) return undefined;
   if (!getModelPricing(costEstimation.model, costEstimation.pricing)) return undefined;
