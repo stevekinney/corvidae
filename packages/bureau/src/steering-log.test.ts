@@ -10,6 +10,7 @@ import {
   readSteeringLogHead,
   SteeringLogCorruptError,
   type SteeringLogEvent,
+  steeringSessionRunTag,
 } from './steering-log';
 
 function command(overrides: Partial<ImplementedSteeringCommand> = {}): ImplementedSteeringCommand {
@@ -212,6 +213,44 @@ describe('steering log', () => {
     }
     await kv.set(bindingKey, 'not json');
     await expect(readSteeringKeyBinding(kv, 'alice', 'cmd-1')).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
+  });
+
+  it('tags each session incarnation distinctly, whatever its parts contain', () => {
+    expect(steeringSessionRunTag('a', 'b\nc')).not.toBe(steeringSessionRunTag('a\nb', 'c'));
+    expect(steeringSessionRunTag('session', 'incarnation')).toBe(
+      steeringSessionRunTag('session', 'incarnation'),
+    );
+  });
+
+  it('reads a refusal back with the selector it was resolved from', async () => {
+    const kv = textValueStore(new MemoryStorage());
+    const refused: SteeringLogEvent = {
+      type: 'refused',
+      command: command(),
+      outcome: {
+        outcome: 'rejected',
+        failure: { failedAt: '2026-09-02T00:00:01.000Z', reason: 'policy-denied' },
+      },
+      now: '2026-09-02T00:00:01.000Z',
+      submittedValue: { target: 'model', policyRef: 'fast-tier' },
+    };
+    const head = await readSteeringLogHead(kv, 'session-1', 'inc-1');
+    await appendSteeringLogEvent(kv, 'session-1', 'inc-1', head, refused);
+    expect(await readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).toEqual([refused]);
+
+    // A selector for another target is not this refusal's.
+    const entryKey = (await kv.list('steering-log:v1:')).find((key) => key.includes(':entry:'));
+    if (entryKey === undefined) throw new Error('expected an entry');
+    await kv.set(
+      entryKey,
+      JSON.stringify({
+        ...refused,
+        submittedValue: { target: 'provider', policyRef: 'fast-tier' },
+      }),
+    );
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
     );
   });

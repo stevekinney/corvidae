@@ -1851,10 +1851,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           outcome: structuredClone(event.outcome),
           refusedAt: event.now,
         });
-        // A refused command was logged exactly as submitted; a `policyRef`
-        // in it is what an exact retry must match, even in a process that
-        // could now resolve that selector.
-        if (
+        // A refusal decided after Bureau resolved the caller's selector keeps
+        // that selector; one decided before resolution was logged exactly as
+        // submitted, so a `policyRef` in it is what an exact retry must match,
+        // even in a process that could now resolve that selector.
+        if (submitted !== undefined && event.submittedValue !== undefined) {
+          nestedSet(submitted, principal, id, structuredClone(event.submittedValue));
+        } else if (
           submitted !== undefined &&
           'policyRef' in requestedValue &&
           requestedValue.policyRef !== undefined
@@ -8068,15 +8071,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const engine = runtime.durable?.engine;
     if (engine === undefined) return [...live].toSorted((left, right) => left.localeCompare(right));
     const tag = steeringSessionRunTag(sessionId, incarnation);
+    const isLiveSessionWorkflow = (workflow: { status: string; tags?: readonly string[] }) =>
+      ['pending', 'running', 'suspended'].includes(workflow.status) &&
+      workflow.tags?.includes(tag) === true;
     if (namedRunId !== undefined && !live.has(namedRunId)) {
       const named = await engine.get(namedRunId);
-      if (
-        named !== null &&
-        ['pending', 'running', 'suspended'].includes(named.status) &&
-        named.tags?.includes(tag) === true
-      ) {
-        live.add(namedRunId);
-      }
+      if (named !== null && isLiveSessionWorkflow(named)) live.add(namedRunId);
     }
     const others = await engine.list({
       type: 'agentRun',
@@ -8094,8 +8094,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     //
     // Admission needs only the named run's membership and whether any run is
     // live, or, unscoped, whether zero, one, or several are; the reads stop
-    // as soon as that is known. A marker whose workflow exists is dropped,
-    // so each one costs at most one read that does not add a run.
+    // as soon as that is known. A read either adds a run — a workflow not
+    // yet created, or one that became queryable after the list above and is
+    // still this incarnation's and live — or drops a marker whose workflow
+    // ended, so each marker costs at most one read that adds nothing.
     const cursor = steeringCursors.get(sessionId);
     if (cursor?.incarnation === incarnation) {
       for (const [runId, promotedAt] of cursor.starting) {
@@ -8116,7 +8118,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       for (const runId of markers) {
         if (known()) break;
         if (live.has(runId)) continue;
-        if ((await engine.get(runId)) === null) live.add(runId);
+        const workflow = await engine.get(runId);
+        if (workflow === null || isLiveSessionWorkflow(workflow)) live.add(runId);
         else cursor.starting.delete(runId);
         if (runId === namedRunId) namedChecked = true;
       }
@@ -8294,7 +8297,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               now,
               ...(submittedValue !== undefined ? { submittedValue } : {}),
             }
-          : { type: 'refused', command, outcome: decidedRefusal, now };
+          : {
+              type: 'refused',
+              command,
+              outcome: decidedRefusal,
+              now,
+              // A selector resolved before this refusal was decided is kept,
+              // exactly as for an admission, so its exact retry still matches.
+              ...(submittedValue !== undefined ? { submittedValue } : {}),
+            };
       const appended = await appendSteeringLogEvent(
         kv,
         sessionId,

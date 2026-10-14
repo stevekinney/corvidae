@@ -56,6 +56,8 @@ export type SteeringLogEvent =
         { outcome: 'rejected' | 'unsupported-capability' }
       >;
       readonly now: string;
+      /** As on `admit`: the caller's value, when Bureau had already resolved it. */
+      readonly submittedValue?: SteeringRequestedValue;
     }
   | {
       /** `gate.recordApplied(runId, configVersion, now)`: a run observed a version at its boundary. */
@@ -233,6 +235,21 @@ function isRefusalOutcome(value: unknown): boolean {
  * command names another session is corrupt: folding it would decide a
  * command against a session it was never submitted to.
  */
+/**
+ * A `submittedValue`, when present, must be a valid requested value for the
+ * command with the same target as the command's own.
+ */
+function hasValidSubmittedValue(parsed: Record<string, unknown>): boolean {
+  const submitted = parsed['submittedValue'];
+  if (submitted === undefined) return true;
+  return (
+    isSteeringCommand({ ...(parsed['command'] as object), requestedValue: submitted }) &&
+    isRecord(submitted) &&
+    submitted['target'] ===
+      (parsed['command'] as { requestedValue: { target: string } }).requestedValue.target
+  );
+}
+
 function parseEvent(raw: string, sequence: number, sessionId: string): SteeringLogEvent {
   const what = `Steering log entry ${String(sequence)}`;
   const parsed = parseJson(raw, what);
@@ -240,16 +257,10 @@ function parseEvent(raw: string, sequence: number, sessionId: string): SteeringL
     switch (parsed['type']) {
       case 'admit': {
         const liveRunIds = parsed['liveRunIds'];
-        const submitted = parsed['submittedValue'];
         if (
           isSteeringCommand(parsed['command']) &&
           parsed['command'].sessionId === sessionId &&
-          (submitted === undefined ||
-            (isSteeringCommand({ ...(parsed['command'] as object), requestedValue: submitted }) &&
-              isRecord(submitted) &&
-              submitted['target'] ===
-                (parsed['command'] as { requestedValue: { target: string } }).requestedValue
-                  .target)) &&
+          hasValidSubmittedValue(parsed) &&
           Array.isArray(liveRunIds) &&
           liveRunIds.every((runId) => typeof runId === 'string')
         ) {
@@ -261,6 +272,7 @@ function parseEvent(raw: string, sequence: number, sessionId: string): SteeringL
         if (
           isSteeringCommand(parsed['command']) &&
           parsed['command'].sessionId === sessionId &&
+          hasValidSubmittedValue(parsed) &&
           isRefusalOutcome(parsed['outcome'])
         ) {
           return parsed as SteeringLogEvent;
@@ -464,7 +476,9 @@ export async function listSteeringLogIncarnations(
  * session recreated under the same id.
  */
 export function steeringSessionRunTag(sessionId: string, incarnation: string): string {
-  return `bureau-steering-run:${sha256HexSync(`${sessionId}\n${incarnation}`).slice(0, 40)}`;
+  // A JSON array, not a joined string: both parts are arbitrary strings, so
+  // any separator could be forged by one of them.
+  return `bureau-steering-run:${sha256HexSync(JSON.stringify([sessionId, incarnation])).slice(0, 40)}`;
 }
 
 /**

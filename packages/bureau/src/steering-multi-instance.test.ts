@@ -25,7 +25,7 @@ import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
-import { appendSteeringLogEvent, readSteeringLogHead } from './steering-log';
+import { appendSteeringLogEvent, readSteeringLogHead, steeringSessionRunTag } from './steering-log';
 
 async function openBureau(path: string) {
   return createBureau({
@@ -407,6 +407,19 @@ describe('durable steering across two Bureau processes', () => {
       const refusedHere = await withoutPolicy.submitSteeringCommand(sessionId, unresolvable);
       expect(refusedHere.outcome).toBe('rejected');
       expect(await withPolicy.submitSteeringCommand(sessionId, unresolvable)).toEqual(refusedHere);
+
+      // Refused after the selector was resolved (an unrepresentable revision):
+      // the selector is kept, so an exact retry replays where the profile
+      // changed or is gone, instead of mismatching the resolved value.
+      const badRevision = { ...viaPolicy, id: 'p4', expectedRevision: Number.NaN } as const;
+      const refusedResolved = await withPolicy.submitSteeringCommand(sessionId, badRevision);
+      expect(refusedResolved.outcome).toBe('rejected');
+      expect(await withChangedPolicy.submitSteeringCommand(sessionId, badRevision)).toEqual(
+        refusedResolved,
+      );
+      expect(await withoutPolicy.submitSteeringCommand(sessionId, badRevision)).toEqual(
+        refusedResolved,
+      );
     } finally {
       await withPolicy.dispose();
       await withoutPolicy.dispose();
@@ -638,6 +651,38 @@ describe('durable steering across two Bureau processes', () => {
           requestedValue: { target: 'pause' },
         }),
       ).rejects.toThrow('backend unavailable');
+
+      // A run whose workflow became queryable after the tag listing is
+      // counted from the marker's own read, not dropped with its marker.
+      const appearingSession = 'session-appearing';
+      await store.save(
+        createAgentSession({
+          id: appearingSession,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: appearingSession }),
+          metadata: { lastRunId: 'older', lastRunStatus: 'completed' },
+        }),
+      );
+      const appearing = await store.load(appearingSession);
+      if (appearing === undefined) throw new Error('expected the session');
+      await appendSteeringLogEvent(
+        kv,
+        appearingSession,
+        appearing.incarnation,
+        await readSteeringLogHead(kv, appearingSession, appearing.incarnation),
+        { type: 'promoted', runId: 'appearing', now: new Date().toISOString() },
+      );
+      const appearingTag = steeringSessionRunTag(appearingSession, appearing.incarnation);
+      engineGet.mockImplementation((id: string) =>
+        Promise.resolve(id === 'appearing' ? { status: 'running', tags: [appearingTag] } : null),
+      );
+      const bound = await reader.submitSteeringCommand(appearingSession, {
+        principal: 'alice',
+        requestedValue: { target: 'pause' },
+      });
+      expect(bound.outcome).toBe('accepted');
+      if (bound.outcome !== 'accepted') throw new Error('expected accepted');
+      expect(bound.command.runId).toBe('appearing');
     } finally {
       engineGet.mockRestore();
       await writer.dispose();
