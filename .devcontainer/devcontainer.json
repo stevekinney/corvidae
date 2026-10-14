@@ -4,6 +4,7 @@
     "dockerfile": "Dockerfile",
     "context": "."
   },
+  "init": true,
   "containerUser": "bun",
   "remoteUser": "bun",
   "initializeCommand": "ln -sfn \"$(git rev-parse --path-format=absolute --git-common-dir)\" .devcontainer/.git-common-dir",

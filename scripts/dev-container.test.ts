@@ -14,6 +14,7 @@ const configuration = (await Bun.file(join(root, '.devcontainer/devcontainer.jso
   workspaceMount: string;
   workspaceFolder: string;
   mounts: string[];
+  init: boolean;
 };
 const manifest = (await Bun.file(join(root, 'package.json')).json()) as { packageManager: string };
 
@@ -53,6 +54,12 @@ describe('the Dev Container', () => {
     // COR-1379: at Turborepo's default of ten, and again at two, parallel type-checks were
     // killed for memory.
     expect(dockerfile).toMatch(/^ENV TURBO_CONCURRENCY=1$/mu);
+  });
+
+  test('runs an init process, so killed process groups are reaped', () => {
+    // COR-1379: with the entrypoint as PID 1, nothing reaped the children
+    // `scripts/run-exclusively.test.ts` kills, and their zombies kept each group alive.
+    expect(configuration.init).toBe(true);
   });
 
   test('works as a non-root user, because initdb refuses to run as root', () => {
