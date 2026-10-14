@@ -446,9 +446,9 @@ describe('task delivery REST bindings', () => {
       '/v1/tasks/detail/:operationId/deliveries',
     );
     expect(
-      await getTaskResultDeliveriesRestBinding.extractInput(request, { operationId: 'op-1' }),
+      await getTaskResultDeliveriesRestBinding.extractInput(request, { operationId: 'op-1' }, {}),
     ).toEqual({ operationId: 'op-1' });
-    expect(await getTaskResultDeliveriesRestBinding.extractInput(request, {})).toEqual({
+    expect(await getTaskResultDeliveriesRestBinding.extractInput(request, {}, {})).toEqual({
       operationId: '',
     });
   });
@@ -456,13 +456,13 @@ describe('task delivery REST bindings', () => {
   it('read maxBytes from the query string, leaving it to the default when absent', async () => {
     const withLimit = new Request('http://localhost/v1/tasks/detail/op-1/dead-letter?maxBytes=10');
     expect(
-      await getTaskDeadLetterRestBinding.extractInput(withLimit, { operationId: 'op-1' }),
+      await getTaskDeadLetterRestBinding.extractInput(withLimit, { operationId: 'op-1' }, {}),
     ).toEqual({ operationId: 'op-1', maxBytes: 10 });
     for (const url of [
       'http://localhost/v1/tasks/detail/op-1/dead-letter',
       'http://localhost/v1/tasks/detail/op-1/dead-letter?maxBytes=',
     ]) {
-      expect(await getTaskDeadLetterRestBinding.extractInput(new Request(url), {})).toEqual({
+      expect(await getTaskDeadLetterRestBinding.extractInput(new Request(url), {}, {})).toEqual({
         operationId: '',
         maxBytes: undefined,
       });
