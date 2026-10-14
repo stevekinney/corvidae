@@ -190,13 +190,13 @@ describe('input, resize and acknowledgement', () => {
     const { harness, transport } = await wire();
     harness.session.reportProcessExit(0, null);
     transport.pump();
-    transport.send(transport.client.input(utf8('late')));
-    const [failure] = transport.pump();
-    expect(failure).toMatchObject({
-      kind: 'operation-failure',
-      code: 'read-only',
-      message: 'input-disabled',
+    // Process exit revokes the generation, so the client refuses the input before any frame exists.
+    const late = transport.client.input(utf8('late'));
+    expect(late).toMatchObject({
+      ok: false,
+      failure: { code: 'read-only', reason: 'authority-revoked' },
     });
+    expect(transport.pump()).toEqual([]);
     expect(harness.backend?.calls.filter((call) => call.call === 'write')).toEqual([]);
     harness.stream.end();
     await flush();
