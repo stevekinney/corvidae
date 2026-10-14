@@ -691,14 +691,35 @@ describe('frames the client sends', () => {
     );
     expectOk(client.hello());
     expectOk(client.receive(capabilitiesFrame()));
+    expect(client.authorityRevoked).toBe(false);
     expect(failureOf(client.input('x'))).toEqual({
       code: 'transport-failed',
       reason: 'sequence-overflow',
     });
+    expect(client.authorityRevoked).toBe(true);
+    expect(client.phase).toBe('closed');
     expect(failureOf(client.terminate())).toEqual({
+      code: 'stale-generation',
+      reason: 'attachment-revoked',
+    });
+  });
+
+  test.each([
+    ['resize', (client: ClientEndpoint) => client.resize(80, 24)],
+    ['terminate', (client: ClientEndpoint) => client.terminate()],
+  ])('%s at the largest sequence revokes authority and closes', (_name, send) => {
+    const client = newClient(
+      {},
+      { inbound: new SequenceCursor(), outbound: new SequenceCursor(MAXIMUM_SEQUENCE) },
+    );
+    expectOk(client.hello());
+    expectOk(client.receive(capabilitiesFrame()));
+    expect(failureOf(send(client))).toEqual({
       code: 'transport-failed',
       reason: 'sequence-overflow',
     });
+    expect(client.authorityRevoked).toBe(true);
+    expect(client.phase).toBe('closed');
   });
 
   test('never repeats the token in a failure', () => {

@@ -219,7 +219,9 @@ export class ClientEndpoint {
       return reject('stale-generation', 'attachment-revoked');
     }
     const next = this.#outbound.peekNext();
-    if (!next.ok) return next;
+    // An outbound sequence that cannot advance leaves delivery unknown: `transport-failed` revokes
+    // the generation, as it does on the host.
+    if (!next.ok) return this.#close(next);
     const encoded = encodeFrame(build(terms, next.value), { maxFrameBytes: terms.maxFrameBytes });
     if (!encoded.ok) return encoded;
     this.#outbound.commit(next.value);
