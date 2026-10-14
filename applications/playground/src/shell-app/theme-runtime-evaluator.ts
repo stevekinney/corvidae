@@ -22,18 +22,9 @@ import type {
   ThemeEvaluator,
   ThemeProperty,
 } from './theme-draft-evaluation.ts';
-import type { ThemeContextId, ThemeEnvelope } from './theme-draft-types.ts';
+import { OVERRIDE_DOCUMENTS, type ThemeContextId, type ThemeEnvelope } from './theme-draft-types.ts';
 import { themePreviewValueProblem } from './theme-preview-message.ts';
 import { trustedDocuments } from './theme-recipe-trust.ts';
-
-/** Where each override scope's document lives in the resolver, and which source list it joins. */
-export const OVERRIDE_DOCUMENTS = {
-  shared: 'overrides/shared.tokens.json',
-  light: 'overrides/light.tokens.json',
-  dark: 'overrides/dark.tokens.json',
-  reduced: 'overrides/reduced.tokens.json',
-  forcedReduced: 'overrides/forced-reduced-motion.tokens.json',
-} as const;
 
 type SourceList = Array<{ $ref: string }>;
 type ResolverShape = {

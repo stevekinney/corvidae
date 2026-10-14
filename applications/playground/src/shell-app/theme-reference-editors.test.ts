@@ -1,6 +1,15 @@
 /// <reference lib="dom" />
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { flushSync, mount, tick, unmount } from 'svelte';
 
+import { setupHappyDom } from '@lostgradient/testing';
+
+import { cinderThemeBase } from './theme-builder-base.ts';
+import { createEnvelope } from './theme-envelope.ts';
+import { isTrustedRecipe, untrustedRecipes } from './theme-recipe-trust.ts';
+import ThemeReferencePanel from './theme-reference-panel.svelte';
+import ThemeSourceDisclosure from './theme-source-disclosure.svelte';
+import ThemeWorkbenchEditor from './theme-workbench-editor.svelte';
 import { catalogueRowByPath } from './theme-builder-catalogue.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import { jsonEquals } from './theme-override-tree.ts';
@@ -19,6 +28,8 @@ import { sourceTokenRow } from './theme-source-token-row.ts';
 import { inspectToken } from './theme-source-inspection.ts';
 import { evaluatedThemeOf } from './theme-token-dependents.ts';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
+
+setupHappyDom();
 
 const light = { colorMode: 'light', motion: 'default' } as const;
 const rowOf = (path: string) => sourceTokenRow(path, 'dimension');
@@ -366,5 +377,360 @@ describe('the Source and dependencies model', () => {
     const result = inspectToken(broken.envelope, rowOf('fx.a'));
     expect(result.ok).toBe(false);
     expect(result.ok ? [] : result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+// --- the mounted panels ---------------------------------------------------------------------
+
+const evaluator = createRuntimeEvaluator();
+let mounted: ReturnType<typeof mount> | null = null;
+let target: HTMLElement;
+
+beforeEach(() => {
+  target = document.createElement('div');
+  document.body.append(target);
+});
+
+afterEach(() => {
+  if (mounted !== null) void unmount(mounted);
+  mounted = null;
+  target.remove();
+});
+
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  flushSync();
+  await tick();
+}
+
+async function start(
+  source: JsonObject = overlayTokens({ probe: { $type: 'dimension', $value: '{fx.c}' } }),
+) {
+  const workbench = new ThemeWorkbenchState();
+  const controller = new ThemeBuilderController({ workbench, evaluator, persistence: null });
+  await controller.start();
+  const seeded = await controller.commit({
+    kind: 'edit',
+    label: 'Seed',
+    state: editableState(fixtureDraft(source, 'mounted').envelope),
+  });
+  expect(seeded.ok).toBe(true);
+  return { controller, workbench };
+}
+
+const byLabel = (label: string) =>
+  [...target.querySelectorAll('button')].find(
+    (candidate) =>
+      candidate.textContent?.trim() === label || candidate.getAttribute('aria-label') === label,
+  );
+
+async function click(label: string): Promise<void> {
+  const element = byLabel(label);
+  if (element === undefined) throw new Error(`No button “${label}”.`);
+  element.click();
+  await settle();
+}
+
+async function typeInto(id: string, text: string): Promise<void> {
+  const element = target.querySelector<HTMLInputElement>(`input[id$="${id}"]`)!;
+  element.value = text;
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+  await settle();
+}
+
+const aliasRow = () => ({ ...rowOf('fx.b'), aliases: ['fx.a'], themeAware: true });
+const lightFx = (controller: ThemeBuilderController) =>
+  (controller.draft!.envelope.overrides.light as JsonObject)['fx'] as JsonObject | undefined;
+
+async function mountPanel(row: ReturnType<typeof aliasRow> | ReturnType<typeof catalogueRowByPath>) {
+  const { controller, workbench } = await start();
+  mounted = mount(ThemeReferencePanel, { target, props: { controller, workbench, row: row! } });
+  await settle();
+  return { controller, workbench };
+}
+
+describe('rebinding an alias', () => {
+  test('the picker lists compatible tokens, and choosing one previews before anything changes', async () => {
+    const { controller } = await mountPanel(aliasRow());
+    expect(target.querySelector('[data-testid="reference-alias"]')).not.toBeNull();
+    await click('Rebind alias');
+    await typeInto('-search', 'fx.oth');
+    expect(target.querySelectorAll('[data-testid="alias-candidates"] li')).toHaveLength(1);
+    const revision = controller.draft!.revision;
+    await click('Alias fx.b to fx.other');
+    expect(target.querySelector('[data-testid="impact-list"]')).not.toBeNull();
+    expect(target.querySelector('[data-testid="impact-summary"]')!.textContent).toContain(
+      'tokens change',
+    );
+    expect(controller.draft!.revision).toBe(revision);
+    expect(lightFx(controller)).toBeUndefined();
+  });
+
+  test('Apply is one transaction and one Undo restores the draft exactly', async () => {
+    const { controller } = await mountPanel(aliasRow());
+    const before = controller.draft!.envelope.overrides;
+    const entries = controller.history!.entries.length;
+    await click('Rebind alias');
+    await typeInto('-search', 'fx.oth');
+    await click('Alias fx.b to fx.other');
+    await click('Apply');
+    expect(controller.history!.entries.length).toBe(entries + 1);
+    expect((lightFx(controller)!['b'] as JsonObject)['$value']).toBe('{fx.other}');
+    expect(controller.announcement).toContain('Rebind fx.b to fx.other');
+    expect(target.querySelector('[data-testid="impact-list"]')).toBeNull();
+    await controller.undo();
+    expect(jsonEquals(controller.draft!.envelope.overrides, before)).toBe(true);
+  });
+
+  test('a proposal left open goes stale when the draft moves on, and cannot be applied', async () => {
+    const { controller } = await mountPanel(aliasRow());
+    await click('Rebind alias');
+    await typeInto('-search', 'fx.oth');
+    await click('Alias fx.b to fx.other');
+    await controller.commit({
+      kind: 'edit',
+      label: 'Elsewhere',
+      edit: {
+        kind: 'set-override',
+        scope: 'shared',
+        path: 'fx.other',
+        node: { $type: 'dimension', $value: { value: 9, unit: 'px' } },
+      },
+    });
+    await settle();
+    expect(target.querySelector('[data-testid="impact-stale"]')).not.toBeNull();
+    expect(byLabel('Apply')!.hasAttribute('disabled')).toBe(true);
+    const revision = controller.draft!.revision;
+    await click('Cancel');
+    expect(controller.draft!.revision).toBe(revision);
+    expect(target.querySelector('[data-testid="impact-list"]')).toBeNull();
+  });
+
+  test('Replace with literal previews first, then writes the literal and keeps dependents', async () => {
+    const { controller } = await mountPanel(aliasRow());
+    await click('Preview replacing with literal');
+    expect(lightFx(controller)).toBeUndefined();
+    expect(target.querySelector('[data-testid="impact-unchanged"]')).not.toBeNull();
+    await click('Apply');
+    expect((lightFx(controller)!['b'] as JsonObject)['$value']).toEqual({ value: 4, unit: 'px' });
+  });
+});
+
+describe('recipes', () => {
+  const recipeRow = () => catalogueRowByPath('surface.hover')!;
+
+  test('lists the declared inputs and follows one, remembering where it started', async () => {
+    const { workbench } = await mountPanel(recipeRow());
+    const inputs = [...target.querySelectorAll('ul[aria-label="Recipe inputs"] code')].map(
+      (element) => element.textContent,
+    );
+    expect(inputs).toEqual(recipeRow().recipeInputs.slice());
+    await click('Edit recipe input surface.base');
+    expect(workbench.selectedTokenPath).toBe('surface.base');
+    expect(workbench.originTokenPath).toBe('surface.hover');
+  });
+
+  test('a complete CSS value is validated, previewed with its dependents, and applied once', async () => {
+    const { controller } = await mountPanel(recipeRow());
+    await typeInto('-override', 'oklch(55% 0.2 270)');
+    await click('Preview CSS override');
+    const paths = [...target.querySelectorAll('[data-testid="impact-list"] tbody th code')].map(
+      (element) => element.textContent,
+    );
+    expect(paths).toContain('surface.hover');
+    expect(controller.draft!.envelope.cssOverrides).toEqual({});
+    const entries = controller.history!.entries.length;
+    await click('Apply');
+    expect(controller.history!.entries.length).toBe(entries + 1);
+    expect(controller.draft!.envelope.cssOverrides['surface.hover']).toEqual({
+      'light/default': 'oklch(55% 0.2 270)',
+    });
+    expect(controller.draftValues.get(recipeRow().cssProperty)).toBe('oklch(55% 0.2 270)');
+    await controller.undo();
+    expect(controller.draft!.envelope.cssOverrides).toEqual({});
+  });
+
+  test('all six contexts take the same override in one transaction', async () => {
+    const { controller } = await mountPanel(recipeRow());
+    const select = target.querySelector<HTMLSelectElement>('select[id$="-override-scope"]')!;
+    select.value = 'all';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    await typeInto('-override', 'oklch(55% 0.2 270)');
+    await click('Preview CSS override');
+    await click('Apply');
+    expect(Object.keys(controller.draft!.envelope.cssOverrides['surface.hover']!)).toHaveLength(6);
+  });
+
+  test.each([
+    'url(https://example.com/x.png)',
+    'red; background: blue',
+    '}',
+    '@import "x"',
+    'oklch(55% 0.2 270) !important',
+    'expression(alert(1))',
+    '',
+  ])('rejects %j with a path-addressed message and changes nothing', async (value) => {
+    const { controller } = await mountPanel(recipeRow());
+    const revision = controller.draft!.revision;
+    const values = controller.draftValues;
+    await typeInto('-override', value);
+    await click('Preview CSS override');
+    expect(target.querySelector('[data-testid="impact-list"]')).toBeNull();
+    expect(target.textContent).toContain('surface.hover:');
+    expect(controller.draft!.revision).toBe(revision);
+    expect(controller.draftValues).toBe(values);
+    expect(controller.draft!.envelope.cssOverrides).toEqual({});
+  });
+
+  test('replacing the recipe with a literal previews it and Undo restores the trusted recipe', async () => {
+    const { controller } = await mountPanel(recipeRow());
+    const before = controller.draftValues.get(recipeRow().cssProperty);
+    await click('Preview replacing recipe with literal');
+    expect(target.querySelector('[data-testid="impact-list"]')).not.toBeNull();
+    await click('Apply');
+    await controller.undo();
+    expect(controller.draftValues.get(recipeRow().cssProperty)).toBe(before);
+    expect(jsonEquals(controller.draft!.envelope.overrides.light, {})).toBe(true);
+  });
+});
+
+describe('recipe trust', () => {
+  test('the shipped base trusts every recipe it declares', () => {
+    const envelope = createEnvelope('shipped', 'Shipped', cinderThemeBase());
+    expect(untrustedRecipes(envelope)).toEqual([]);
+  });
+
+  test('an imported recipe is inert: it is kept, flagged, and never reaches the projection', () => {
+    const imported = {
+      border: {
+        ink: {
+          $type: 'color',
+          $value: { colorSpace: 'srgb', components: [1, 0, 0] },
+          $extensions: {
+            'com.lostgradient.cinder': { cssRecipe: 'red; background: url(x)', trusted: true },
+          },
+        },
+      },
+    };
+    const blank = createEnvelope('imported', 'Imported', cinderThemeBase());
+    const envelope = { ...blank, overrides: { ...blank.overrides, light: imported } };
+    expect(untrustedRecipes(envelope)).toEqual([
+      { document: 'overrides/light.tokens.json', path: 'border.ink', recipe: 'red; background: url(x)' },
+    ]);
+    // The envelope still carries the recipe, unchanged.
+    expect(JSON.stringify(envelope.overrides.light)).toContain('url(x)');
+    const evaluated = evaluatedThemeOf(envelope);
+    expect(evaluated.ok).toBe(true);
+    if (!evaluated.ok) return;
+    expect(Object.values(evaluated.properties['light/default']!).join(' ')).not.toContain('url(');
+  });
+
+  test('a different digest, or a different recipe under the right digest, earns no trust', () => {
+    const base = cinderThemeBase();
+    const forged = { ...base, sourceDigest: 'sha256:forged' };
+    const [first] = untrustedRecipes(createEnvelope('f', 'f', forged));
+    expect(first).toBeDefined();
+    expect(isTrustedRecipe(base, first!.path, first!.recipe)).toBe(true);
+    expect(isTrustedRecipe(forged, first!.path, first!.recipe)).toBe(false);
+    expect(isTrustedRecipe(base, first!.path, `${first!.recipe} `)).toBe(false);
+  });
+});
+
+describe('the Source and dependencies disclosure', () => {
+  async function mountDisclosure(row: ReturnType<typeof rowOf>, open = true) {
+    const { controller, workbench } = await start();
+    workbench.sourceDisclosureOpen = open;
+    mounted = mount(ThemeSourceDisclosure, { target, props: { controller, workbench, row } });
+    await settle();
+    await settle();
+    return { controller, workbench };
+  }
+
+  test('nothing is computed until it opens, and it describes the token', async () => {
+    const { workbench } = await mountDisclosure(catalogueRowByPath('radius.large')!, false);
+    expect(target.querySelector('[data-testid="source-revision"]')).toBeNull();
+    workbench.sourceDisclosureOpen = true;
+    await settle();
+    await settle();
+    expect(target.querySelector('[data-testid="source-revision"]')).not.toBeNull();
+    expect(target.querySelectorAll('[data-context]')).toHaveLength(6);
+    expect(target.querySelector('[data-testid="source-disposition"]')!.textContent).toContain(
+      'Portable export: complete',
+    );
+    expect(target.textContent).toContain('border-radius');
+  });
+
+  test('a Source-only token says so and invents no property', async () => {
+    await mountDisclosure(rowOf('fx.c'));
+    expect(target.querySelector('[data-testid="source-only"]')!.textContent).toContain(
+      'Source only',
+    );
+    expect(target.textContent).not.toContain('--cinder-fx');
+    expect(target.textContent).toContain('fx.probe');
+    expect(target.querySelector('[data-testid="source-disposition"]')!.textContent).toContain(
+      'CSS export: none',
+    );
+  });
+
+  test('a token with no dependents says so in every context', async () => {
+    await mountDisclosure(rowOf('fx.probe'));
+    expect(target.querySelectorAll('[data-testid="no-dependents"]')).toHaveLength(6);
+  });
+
+  test('a result from an older revision names that revision instead of passing as current', async () => {
+    const { controller } = await mountDisclosure(rowOf('fx.c'));
+    const shown = controller.draft!.revision;
+    await controller.commit({
+      kind: 'edit',
+      label: 'Move on',
+      edit: {
+        kind: 'set-override',
+        scope: 'shared',
+        path: 'fx.other',
+        node: { $type: 'dimension', $value: { value: 10, unit: 'px' } },
+      },
+    });
+    flushSync();
+    expect(target.querySelector('[data-testid="source-stale"]')!.textContent).toContain(
+      `revision ${shown}`,
+    );
+  });
+});
+
+describe('following a dependent and returning', () => {
+  test('Follow selects the dependent through the workbench; Back returns and refocuses the trigger', async () => {
+    const { controller, workbench } = await start();
+    workbench.selectToken('radius.large');
+    workbench.sourceDisclosureOpen = true;
+    mounted = mount(ThemeWorkbenchEditor, { target, props: { workbench, controller } });
+    await settle();
+    await settle();
+    expect(target.querySelector('[data-testid="selected-token-path"]')!.textContent).toBe(
+      'radius.large',
+    );
+    expect(byLabel('Back to originating token radius.large')).toBeUndefined();
+    await click('Follow dependent overlay.radius');
+    expect(workbench.selectedTokenPath).toBe('overlay.radius');
+    expect(workbench.originTokenPath).toBe('radius.large');
+    expect(target.querySelector('[data-testid="selected-token-path"]')!.textContent).toBe(
+      'overlay.radius',
+    );
+    // The originating context is kept.
+    expect(workbench.context).toEqual({ colorMode: 'light', motion: 'default' });
+    await click('Back to originating token radius.large');
+    await settle();
+    expect(workbench.selectedTokenPath).toBe('radius.large');
+    expect(workbench.originTokenPath).toBeNull();
+    expect(document.activeElement?.id).toBe('theme-source-radius-large-header');
+    expect(byLabel('Back to originating token radius.large')).toBeUndefined();
+  });
+
+  test('picking another token in the catalogue forgets the trail', () => {
+    const workbench = new ThemeWorkbenchState();
+    workbench.followToken('overlay.radius', 'radius.large');
+    expect(workbench.originTokenPath).toBe('radius.large');
+    workbench.selectToken('radius.small');
+    expect(workbench.originTokenPath).toBeNull();
   });
 });

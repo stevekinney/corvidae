@@ -14,7 +14,13 @@
 
 import { CINDER_BASE } from '@lostgradient/cinder/tokens/runtime';
 
-import type { JsonObject, JsonValue, ThemeBase, ThemeEnvelope } from './theme-draft-types.ts';
+import {
+  OVERRIDE_DOCUMENTS,
+  type JsonObject,
+  type JsonValue,
+  type ThemeBase,
+  type ThemeEnvelope,
+} from './theme-draft-types.ts';
 
 const NAMESPACE = 'com.lostgradient.cinder';
 
@@ -107,7 +113,10 @@ const cache = new WeakMap<JsonObject, Map<string, Cleaned>>();
 
 /** One document with untrusted recipes removed; the same object back when none were. */
 export function cleanedDocument(name: string, document: JsonObject, base: ThemeBase): Cleaned {
-  if (document === (CINDER_BASE.documents as Record<string, JsonObject>)[name]) {
+  if (
+    base.sourceDigest === CINDER_BASE.sourceDigest &&
+    document === (CINDER_BASE.documents as Record<string, JsonObject>)[name]
+  ) {
     return { document, untrusted: [] };
   }
   const trusted = base.sourceDigest === CINDER_BASE.sourceDigest ? 'shipped' : 'foreign';
@@ -149,7 +158,10 @@ export function untrustedRecipes(envelope: ThemeEnvelope): readonly RecipeSite[]
   const documents: Record<string, JsonValue> = {
     ...envelope.base.documents,
     ...Object.fromEntries(
-      Object.entries(envelope.overrides).map(([scope, tree]) => [`overrides/${scope}`, tree]),
+      (Object.keys(OVERRIDE_DOCUMENTS) as Array<keyof typeof OVERRIDE_DOCUMENTS>).map((scope) => [
+        OVERRIDE_DOCUMENTS[scope],
+        envelope.overrides[scope],
+      ]),
     ),
   };
   const found = Object.entries(documents).flatMap(([name, document]) =>
