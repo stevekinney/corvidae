@@ -509,7 +509,7 @@ describe('changeset emission', () => {
       }
     });
 
-    test('a changeset added and deleted inside the range still counts for a moved package', async () => {
+    test('a changeset added and deleted inside the range around a move passes', async () => {
       const { root, base } = await mapped({ cinder: [weft], weft: [] });
       await write(root, '.changeset/z.md', weftChangeset);
       await commit(root, 'Add Z');
@@ -519,9 +519,44 @@ describe('changeset emission', () => {
       await commit(root, 'Consume Z');
       await write(root, definitionsPath, definitions({ cinder: [weft], weft: [] }));
       await commit(root, 'Move back');
-      expect(await rejectionOf(emit(root, await target(base), base, 'cinder'))).toBeInstanceOf(
-        ChangesetEmissionError,
-      );
+      expect(await emit(root, await target(base), base, 'cinder')).toEqual({});
+    });
+
+    test('deleting the changesets and then moving the package, in later commits, passes', async () => {
+      const { root, base } = await mapped({ cinder: [weft], weft: [] });
+      await write(root, '.changeset/z.md', weftChangeset);
+      await commit(root, 'Add Z');
+      await git(root, 'rm', '--quiet', '.changeset/z.md');
+      await commit(root, 'Delete the changesets');
+      await write(root, definitionsPath, definitions({ cinder: [], weft: [weft] }));
+      await commit(root, 'Move the package');
+      for (const mirror of ['cinder', 'weft'] as const) {
+        expect(await emit(root, await target(base), base, mirror)).toEqual({});
+      }
+    });
+
+    test('removing a package from one mirror and adding it to another, in two commits, throws', async () => {
+      const { root, base } = await mapped({ cinder: [weft], weft: [] });
+      await write(root, definitionsPath, definitions({ cinder: [], weft: [] }));
+      await commit(root, 'Remove it from cinder');
+      await write(root, definitionsPath, definitions({ cinder: [], weft: [weft] }));
+      await commit(root, 'Add it to weft');
+      await write(root, '.changeset/z.md', weftChangeset);
+      await commit(root, 'Add Z');
+      const error = await rejectionOf(emit(root, await target(base), base));
+      expect(error).toBeInstanceOf(ChangesetEmissionError);
+      expect((error as Error).message).toContain('unowned');
+    });
+
+    test('an ambiguous owner with a changeset naming the package throws', async () => {
+      const { root, base } = await mapped({ cinder: [weft], weft: [] });
+      await write(root, definitionsPath, definitions({ cinder: [weft], weft: [weft] }));
+      await commit(root, 'List it in two mirrors');
+      await write(root, '.changeset/z.md', weftChangeset);
+      await commit(root, 'Add Z');
+      const error = await rejectionOf(emit(root, await target(base), base));
+      expect(error).toBeInstanceOf(ChangesetEmissionError);
+      expect((error as Error).message).toContain('ambiguous');
     });
 
     test('a round trip of a package no changeset names passes', async () => {

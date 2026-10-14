@@ -209,6 +209,9 @@ async function textAt(
   return result.exitCode === 0 ? result.stdout : undefined;
 }
 
+/** A package's mirror, or why it has none: nobody lists it, or several mirrors do. */
+type PackageOwner = MirrorTarget | 'unowned' | 'ambiguous';
+
 /**
  * Each `publish-as` package's npm name mapped to its mirror, under the mapping as it stood at a
  * revision. `target-definitions.ts` has no imports, so the historical file is loaded as a module
@@ -218,7 +221,7 @@ async function textAt(
 async function packageTargetsAt(
   corvidaeRoot: string,
   revision: string,
-): Promise<Map<string, MirrorTarget>> {
+): Promise<Map<string, PackageOwner>> {
   const [definitionsText, mapText] = await Promise.all(
     mappingFiles.map((path) => textAt(corvidaeRoot, revision, path)),
   );
@@ -239,13 +242,20 @@ async function packageTargetsAt(
       workspaces?: Record<string, { disposition?: string; name?: string }>;
     };
     if (definitions === undefined || map.workspaces === undefined) throw new Error('wrong shape');
-    const packages = new Map<string, MirrorTarget>();
+    const packages = new Map<string, PackageOwner>();
     for (const [workspace, entry] of Object.entries(map.workspaces)) {
       if (entry.disposition !== 'publish-as' || entry.name === undefined) continue;
       const owners = Object.entries(definitions).filter(([, definition]) =>
         definition.members?.includes(workspace),
       );
-      if (owners.length === 1) packages.set(entry.name, owners[0]![0] as MirrorTarget);
+      packages.set(
+        entry.name,
+        owners.length === 1
+          ? (owners[0]![0] as MirrorTarget)
+          : owners.length === 0
+            ? 'unowned'
+            : 'ambiguous',
+      );
     }
     return packages;
   } catch (error) {
@@ -269,57 +279,22 @@ function packagesNamedBy(bytes: Uint8Array): string[] | undefined {
 }
 
 /**
- * Every changeset path touched in `(trailer, HEAD]`, with the revision that holds its content:
- * the adding or editing commit, or the parent of a deleting commit.
- */
-async function changesetsTouchedInRange(
-  corvidaeRoot: string,
-  trailerSha: string,
-): Promise<{ revision: string; path: string }[]> {
-  const output = await requireGit(corvidaeRoot, [
-    'log',
-    '--no-renames',
-    '--name-status',
-    '-z',
-    '--format=%x01%H',
-    `${trailerSha}..HEAD`,
-    '--',
-    `${changesetDirectory}/`,
-  ]);
-  const touched: { revision: string; path: string }[] = [];
-  for (const record of output.split('\u0001')) {
-    const tokens = record
-      .split('\0')
-      .map((token) => token.replace(/^\n+/, ''))
-      .filter((token) => token.length > 0);
-    const [hash, ...rest] = tokens;
-    if (hash === undefined) continue;
-    for (let index = 0; index + 1 < rest.length; index += 2) {
-      const [status, path] = [rest[index]!, rest[index + 1]!];
-      if (!/^\.changeset\/[^/]+\.md$/.test(path) || path === '.changeset/README.md') continue;
-      touched.push({ revision: status === 'D' ? `${hash}^` : hash, path });
-    }
-  }
-  return touched;
-}
-
-/**
- * Check 2, global: no changeset may name a package that moved between mirrors.
+ * Check 2, global: no changeset that still exists may name a package that moved between mirrors.
  *
  * Each target has its own trailer, so a changeset delivered to one mirror can later be pending
- * for another once its package moves; the same release would ship twice. Comparing the trailer's
- * mapping with HEAD's is not enough: a package that moves A to B and back to A looks unmoved at
- * both ends while B received its changeset. So every commit in `(trailer, HEAD]` that changes a
- * mapping file is compared with its parent, and every package whose mirror differs across any of
- * them is moved. Adding or removing a workspace, or recording a publication snapshot, is not a
- * move. A changeset that existed at the trailer, exists at HEAD, or was added or deleted in the
- * range, and names a moved package or cannot be read, throws for every target. A mapping that
- * cannot be resolved at any step fails closed.
+ * for another once its package moves; the same release would ship twice. Only a changeset at
+ * HEAD can be emitted, so only those are considered: deleting the affected changesets and then
+ * moving the package is the sanctioned sequence. Comparing the trailer's mapping with HEAD's is
+ * not enough (a package that moves A to B and back looks unmoved at both ends), so every commit
+ * in `(trailer, HEAD]` that changes a mapping file is compared with its parent. A package's
+ * mirror is the owning mirror, `unowned` or `ambiguous`, and any difference between consecutive
+ * states is a move, so remove-from-A then add-to-B registers. A package absent from
+ * `package-map.json` at one end was added or removed as a workspace, and a publication snapshot
+ * changes no mirror; neither is a move. A mapping that cannot be resolved fails closed.
  */
 async function assertNoMovedPackages(
   corvidaeRoot: string,
   trailerSha: string,
-  syncedFiles: readonly string[],
   headFiles: readonly string[],
 ): Promise<void> {
   const log = await requireGit(corvidaeRoot, [
@@ -333,7 +308,7 @@ async function assertNoMovedPackages(
   const mappingCommits = log.split('\n').filter((line) => line.length > 0);
   if (mappingCommits.length === 0) return;
 
-  const moved = new Map<string, MirrorTarget[]>();
+  const moved = new Map<string, PackageOwner[]>();
   for (const commit of mappingCommits) {
     const [before, after] = await Promise.all([
       packageTargetsAt(corvidaeRoot, `${commit}^`),
@@ -348,22 +323,17 @@ async function assertNoMovedPackages(
   if (moved.size === 0) return;
 
   const offenders = new Map<string, Set<string>>();
-  const note = (name: string, path: string): void => {
-    offenders.set(name, (offenders.get(name) ?? new Set()).add(path));
-  };
-  const considered = [
-    ...syncedFiles.map((path) => ({ revision: trailerSha, path })),
-    ...headFiles.map((path) => ({ revision: 'HEAD', path })),
-    ...(await changesetsTouchedInRange(corvidaeRoot, trailerSha)),
-  ];
-  for (const { revision, path } of considered) {
-    const names = packagesNamedBy(await blobBytes(corvidaeRoot, revision, path));
-    for (const name of names ?? [...moved.keys()]) if (moved.has(name)) note(name, path);
+  for (const path of headFiles) {
+    const names = packagesNamedBy(await blobBytes(corvidaeRoot, 'HEAD', path));
+    for (const name of names ?? [...moved.keys()]) {
+      if (moved.has(name)) offenders.set(name, (offenders.get(name) ?? new Set()).add(path));
+    }
   }
   if (offenders.size === 0) return;
-  const lines = [...offenders].map(([name, paths]) => {
-    return `${name} moved ${moved.get(name)!.join(' to ')}, and ${[...paths].toSorted().join(', ')} names it`;
-  });
+  const lines = [...offenders].map(
+    ([name, paths]) =>
+      `${name} moved ${moved.get(name)!.join(' to ')}, and ${[...paths].toSorted().join(', ')} names it`,
+  );
   throw new ChangesetEmissionError(
     `${lines.join('; ')}: delete changesets that name a package before moving it between mirrors, and add new ones after the move.`,
   );
@@ -392,19 +362,9 @@ export async function planChangesetEmission({
 }: ChangesetEmissionOptions): Promise<Record<string, Uint8Array>> {
   if (targetDirectory === undefined || trailerSha === null || trailerSha === undefined) return {};
   // A checkout with no changeset file has no release intent to place, so it needs neither the
-  // history nor a trailer that resolves in it. One thing still matters when the trailer does
-  // resolve: a changeset added and deleted inside the range may name a package that has since
-  // moved between mirrors, and the target that received it must not see it delivered again.
+  // history nor a trailer that resolves in it.
   const present = await listChangesetFiles(corvidaeRoot);
-  if (present.length === 0) {
-    const known = await readGit(corvidaeRoot, ['cat-file', '-e', `${trailerSha}^{commit}`]);
-    const ancestry =
-      known.exitCode === 0
-        ? await readGit(corvidaeRoot, ['merge-base', '--is-ancestor', trailerSha, 'HEAD'])
-        : known;
-    if (ancestry.exitCode === 0) await assertNoMovedPackages(corvidaeRoot, trailerSha, [], []);
-    return {};
-  }
+  if (present.length === 0) return {};
 
   await assertPlaceable(corvidaeRoot, trailerSha);
   const [headFiles, syncedFiles] = await Promise.all([
@@ -412,7 +372,7 @@ export async function planChangesetEmission({
     changesetsAt(corvidaeRoot, trailerSha),
   ]);
   await assertImmutable(corvidaeRoot, headFiles);
-  await assertNoMovedPackages(corvidaeRoot, trailerSha, syncedFiles, headFiles);
+  await assertNoMovedPackages(corvidaeRoot, trailerSha, headFiles);
   const synced = new Set(syncedFiles);
   const pending = headFiles.filter((path) => !synced.has(path));
 
