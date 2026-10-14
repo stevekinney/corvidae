@@ -33,13 +33,19 @@ import {
 import { executeChildWorkflow } from './child-workflow.ts';
 import {
   abandonedExecutionAttemptCount,
+  abandonExecutionAttempt,
   beginExecutionAttempt,
+  currentExecutionAttempt,
   isGenerationAbandoned,
 } from './execution-attempts.ts';
 import { getGeneratorOwnedWorkflowResultPromise } from './generator-owned-result.ts';
 import { createWorkflowResultWaiter } from './handle-result.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
+import {
+  parentEligibleForChildConflictAbandonment,
+  type ParentAbandonmentEligibilityInput,
+} from './parent-abandonment-eligibility.ts';
 import { encodeEpoch, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 
 interceptConflictWarnings();
@@ -400,5 +406,157 @@ describe('which parents a lost descendant reaches', () => {
     expect(reason.workflowId).toBe(grandparent.id);
     expect(reason.lostChildWorkflowId).toBe('chain-c-id');
     expect((reason.cause as WorkflowCheckpointConflictError).workflowId).toBe('chain-c-id');
+  });
+});
+
+describe('parentEligibleForChildConflictAbandonment', () => {
+  async function eligibleParent() {
+    const engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const handle = await startParked(engine, 'eligible-parent', 'eligible-parent-id');
+    const input: ParentAbandonmentEligibilityInput = {
+      parentWorkflowId: handle.id,
+      parkedAttempt: currentExecutionAttempt(internals, handle.id),
+      signal: undefined,
+      stillAwaiting: true,
+      ownershipConfirmed: true,
+    };
+    return { engine, internals, handle, input };
+  }
+
+  it('holds for a parked, owned, awaiting parent', async () => {
+    const { engine, internals, input } = await eligibleParent();
+    try {
+      expect(parentEligibleForChildConflictAbandonment(internals, input)).toBe(true);
+    } finally {
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it.each([
+    ['the parent held no attempt when it began awaiting', 'no-attempt'],
+    ['the engine relaunched the parent since', 'relaunched'],
+    ['the parent is already abandoned', 'abandoned'],
+    ['the parent is suspended and holds no checkpoint', 'suspended'],
+    ['the parent is terminalizing', 'terminalizing'],
+    ['the awaiting race branch was aborted', 'aborted'],
+    ['the parent no longer awaits this child', 'settled'],
+  ])('is false when %s', async (_label, state) => {
+    const { engine, internals, handle, input } = await eligibleParent();
+    try {
+      let probe = input;
+      if (state === 'no-attempt') probe = { ...input, parkedAttempt: undefined };
+      if (state === 'relaunched') {
+        beginExecutionAttempt(internals, handle.id, tokenOf(internals, handle.id));
+      }
+      if (state === 'abandoned') {
+        abandonExecutionAttempt(internals, handle.id, tokenOf(internals, handle.id));
+      }
+      if (state === 'suspended') await engine.suspend(handle.id);
+      if (state === 'terminalizing') internals.terminalizingWorkflows.add(handle.id);
+      if (state === 'aborted') probe = { ...input, signal: AbortSignal.abort() };
+      if (state === 'settled') probe = { ...input, stillAwaiting: false };
+      expect(parentEligibleForChildConflictAbandonment(internals, probe)).toBe(false);
+    } finally {
+      internals.terminalizingWorkflows.delete(handle.id);
+      await engine[Symbol.asyncDispose]();
+    }
+  });
+
+  it('is false once the engine is disposed', async () => {
+    const { engine, internals, input } = await eligibleParent();
+    await engine[Symbol.asyncDispose]();
+    expect(parentEligibleForChildConflictAbandonment(internals, input)).toBe(false);
+  });
+
+  it('requires confirmed ownership only where a claim registry exists', async () => {
+    const none = await eligibleParent();
+    try {
+      expect(
+        parentEligibleForChildConflictAbandonment(none.internals, {
+          ...none.input,
+          ownershipConfirmed: false,
+        }),
+      ).toBe(true);
+    } finally {
+      await none.engine[Symbol.asyncDispose]();
+    }
+    await using leased = await Engine.create({
+      storage: new MemoryStorage(),
+      ownership: 'workflow-lease',
+      workflowClaimTtl: 200,
+      workflowClaimRenewInterval: 20,
+      recover: false,
+    });
+    const internals = getInternals(leased);
+    const handle = await startParked(leased, 'leased-eligible', 'leased-eligible-id');
+    const input: ParentAbandonmentEligibilityInput = {
+      parentWorkflowId: handle.id,
+      parkedAttempt: currentExecutionAttempt(internals, handle.id),
+      signal: undefined,
+      stillAwaiting: true,
+      ownershipConfirmed: true,
+    };
+    expect(parentEligibleForChildConflictAbandonment(internals, input)).toBe(true);
+    expect(
+      parentEligibleForChildConflictAbandonment(internals, { ...input, ownershipConfirmed: false }),
+    ).toBe(false);
+  });
+});
+
+describe('a lost child while the parent is in a state abandonment must not touch', () => {
+  it('leaves a parent alone while its ownership read fails', async () => {
+    const storage = new MemoryStorage();
+    let failing = false;
+    const flaky = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return async (key: string) => {
+            if (failing && key === KEYS.workflowOwnerHolder('flaky-parent-id')) {
+              throw new Error('storage read unavailable');
+            }
+            return (original as (k: string) => Promise<unknown>).call(target, key);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+    await using engine = await Engine.create({
+      storage: flaky,
+      ownership: 'workflow-lease',
+      workflowClaimTtl: 200,
+      workflowClaimRenewInterval: 20,
+      recover: false,
+    });
+    const internals = getInternals(engine);
+    const parentHandle = await startParked(engine, 'flaky-parent', 'flaky-parent-id');
+    const waiter = createWorkflowResultWaiter(internals, 'flaky-child');
+    const view = getGeneratorOwnedWorkflowResultPromise(internals, 'flaky-child', parentHandle.id);
+    failing = true;
+
+    waiter.reject(new WorkflowCheckpointConflictError('flaky-child'));
+    await yieldToEventLoop();
+    failing = false;
+
+    await expectPromisePending(view);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
+  });
+
+  it('leaves a parent alone while a terminal outcome is in progress', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const parentHandle = await startParked(engine, 'ending-parent', 'ending-parent-id');
+    const waiter = createWorkflowResultWaiter(internals, 'ending-child');
+    const view = getGeneratorOwnedWorkflowResultPromise(internals, 'ending-child', parentHandle.id);
+    internals.terminalizingWorkflows.add(parentHandle.id);
+
+    waiter.reject(new WorkflowCheckpointConflictError('ending-child'));
+    await yieldToEventLoop();
+    internals.terminalizingWorkflows.delete(parentHandle.id);
+
+    await expectPromisePending(view);
+    expect(abandonedExecutionAttemptCount(internals)).toBe(0);
   });
 });

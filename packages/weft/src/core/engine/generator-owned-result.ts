@@ -3,6 +3,10 @@ import { isCheckpointConflictFor } from './checkpoint-conflict-error.ts';
 import { currentExecutionAttempt, type ExecutionAttempt } from './execution-attempts.ts';
 import { getWorkflowResultPromise } from './handle-result.ts';
 import type { EngineInternals } from './internals.ts';
+import {
+  confirmParentOwnership,
+  parentEligibleForChildConflictAbandonment,
+} from './parent-abandonment-eligibility.ts';
 import { confirmWakeOwnership } from './wake-ownership-guard.ts';
 
 /**
@@ -77,26 +81,34 @@ function fenceResultOnParentGeneration(
   signal: AbortSignal | undefined,
 ): Promise<unknown> {
   const gate = Promise.withResolvers<unknown>();
+  let stillAwaiting = true;
+  const settleView = (settle: () => void): void => {
+    stillAwaiting = false;
+    settle();
+  };
   void promise.then(
     async (value) => {
-      if (await parentStillOwnsGeneration(internals, parentWorkflowId)) gate.resolve(value);
+      if (await parentStillOwnsGeneration(internals, parentWorkflowId)) {
+        settleView(() => gate.resolve(value));
+      }
       return undefined;
     },
     async (error: unknown) => {
       // A child abandoned after a lost checkpoint race is healthy under its winner, so this must
       // not become a failure of the child. Nothing on this engine can settle the parent's view of
       // it either, and the winner may have resumed only the child, so the parent gives up the
-      // same way the child did (see `abandonParentAfterChildCheckpointConflict`).
+      // same way the child did, but only when the whole eligibility predicate holds, judged
+      // after the last await and in the same synchronous stretch as the abandonment.
       if (isCheckpointConflictFor(error, childWorkflowId)) {
-        // A losing `ctx.race` branch aborted this await: the parent moved on, so a late conflict
-        // of that child concerns nobody. Otherwise abandon only a parent this engine still owns
-        // (the claim-generation check the other branches make), judged again, synchronously, by
-        // the attempt comparison inside the abandonment.
-        // The signal is read again after the ownership await: a branch can lose during it.
-        const branchLost = (): boolean => signal?.aborted === true;
-        const ownsParent =
-          !branchLost() && (await parentStillOwnsGeneration(internals, parentWorkflowId));
-        if (ownsParent && !branchLost()) {
+        const ownershipConfirmed = await confirmParentOwnership(internals, parentWorkflowId);
+        const input = {
+          parentWorkflowId,
+          parkedAttempt: parentAttempt,
+          signal,
+          stillAwaiting,
+          ownershipConfirmed,
+        };
+        if (parentEligibleForChildConflictAbandonment(internals, input)) {
           abandonParentAfterChildCheckpointConflict(
             internals,
             parentWorkflowId,
@@ -106,7 +118,9 @@ function fenceResultOnParentGeneration(
         }
         return undefined;
       }
-      if (await parentStillOwnsGeneration(internals, parentWorkflowId)) gate.reject(error);
+      if (await parentStillOwnsGeneration(internals, parentWorkflowId)) {
+        settleView(() => gate.reject(error));
+      }
       return undefined;
     },
   );

@@ -104,11 +104,9 @@ export function abandonParentAfterChildCheckpointConflict(
   parkedAttempt: ExecutionAttempt | undefined,
   childConflict: WorkflowCheckpointConflictError,
 ): void {
+  // Eligibility is the caller's to establish, immediately before this call
+  // (`parentEligibleForChildConflictAbandonment`): this only performs the abandonment.
   if (parkedAttempt === undefined) return;
-  if (currentExecutionAttempt(internals, parentWorkflowId) !== parkedAttempt) return;
-  // A suspended parent is not awaiting anything: a suspension keeps its attempt but releases its
-  // checkpoint, and resuming it begins a new attempt that replays its own awaits.
-  if (!internals.checkpoints.has(parentWorkflowId)) return;
   // Through A -> B -> C, A names C, the workflow that actually lost, not B, which only inherited it.
   const inherited = childConflict.lostChildWorkflowId !== undefined;
   abandonWorkflowAfterCheckpointConflict(
