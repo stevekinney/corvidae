@@ -5,7 +5,11 @@ import {
   restoreRealTimers,
   useFakeTimers,
 } from '../../testing/fake-timers.test-support.ts';
-import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../../testing/module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { ChildProcessRealm } from './child-process-realm.ts';
 import type { RevisionRealmActivation } from './revision-realm.ts';
@@ -35,6 +39,14 @@ function tracked(realm: ChildProcessRealm): ChildProcessRealm {
 afterAll(() => {
   for (const realm of createdRealms) realm.crash();
 });
+
+/** `outcomeOf` that crashes the realms a hung scenario created as soon as its guard fires. */
+async function realmScenario(scenario: () => Promise<void>): Promise<unknown> {
+  const firstRealm = createdRealms.length;
+  return outcomeOf(scenario, SCENARIO_HANG_GUARD_MILLISECONDS, () => {
+    for (const realm of createdRealms.slice(firstRealm)) realm.crash();
+  });
+}
 
 function makeRealm(
   overrides: Partial<{
@@ -83,7 +95,7 @@ async function readyAndActive(realm: ChildProcessRealm): Promise<RevisionRealmAc
 // it runs here at module scope, off Bun's five-second per-test clock, and restores real timers
 // when it ends; its test rethrows the outcome.
 
-const scenario1 = await outcomeOf(async () => {
+const scenario1 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     await readyAndActive(realm);
@@ -95,7 +107,7 @@ const scenario1 = await outcomeOf(async () => {
   }
 });
 
-const scenario2 = await outcomeOf(async () => {
+const scenario2 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a', expectedArtifactDigest: 'digest-b' });
     const outcome = await realm.waitUntilReady();
@@ -108,7 +120,7 @@ const scenario2 = await outcomeOf(async () => {
   }
 });
 
-const scenario3 = await outcomeOf(async () => {
+const scenario3 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     const activation = await readyAndActive(realm);
@@ -127,7 +139,7 @@ const scenario3 = await outcomeOf(async () => {
   }
 });
 
-const scenario4 = await outcomeOf(async () => {
+const scenario4 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     const activation = await readyAndActive(realm);
@@ -145,7 +157,7 @@ const scenario4 = await outcomeOf(async () => {
   }
 });
 
-const scenario5 = await outcomeOf(async () => {
+const scenario5 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     const activation = await readyAndActive(realm);
@@ -161,7 +173,7 @@ const scenario5 = await outcomeOf(async () => {
   }
 });
 
-const scenario6 = await outcomeOf(async () => {
+const scenario6 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     const activation = await readyAndActive(realm);
@@ -188,7 +200,7 @@ const scenario6 = await outcomeOf(async () => {
   }
 });
 
-const scenario7 = await outcomeOf(async () => {
+const scenario7 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     const activation = await readyAndActive(realm);
@@ -205,7 +217,7 @@ const scenario7 = await outcomeOf(async () => {
   }
 });
 
-const scenario8 = await outcomeOf(async () => {
+const scenario8 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     await realm.waitUntilReady();
@@ -219,7 +231,7 @@ const scenario8 = await outcomeOf(async () => {
   }
 });
 
-const scenario9 = await outcomeOf(async () => {
+const scenario9 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     await readyAndActive(realm);
@@ -240,7 +252,7 @@ const scenario9 = await outcomeOf(async () => {
   }
 });
 
-const scenario10 = await outcomeOf(async () => {
+const scenario10 = await realmScenario(async () => {
   try {
     useFakeTimers();
     const realm = tracked(
@@ -268,7 +280,7 @@ const scenario10 = await outcomeOf(async () => {
   }
 });
 
-const scenario11 = await outcomeOf(async () => {
+const scenario11 = await realmScenario(async () => {
   try {
     const realm = tracked(
       new ChildProcessRealm({
@@ -291,7 +303,7 @@ const scenario11 = await outcomeOf(async () => {
   }
 });
 
-const scenario12 = await outcomeOf(async () => {
+const scenario12 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     const activation = await readyAndActive(realm);
@@ -311,7 +323,7 @@ const scenario12 = await outcomeOf(async () => {
   }
 });
 
-const scenario13 = await outcomeOf(async () => {
+const scenario13 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     const activation = await readyAndActive(realm);
@@ -330,7 +342,7 @@ const scenario13 = await outcomeOf(async () => {
   }
 });
 
-const scenario14 = await outcomeOf(async () => {
+const scenario14 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     await realm.waitUntilReady();
@@ -345,7 +357,7 @@ const scenario14 = await outcomeOf(async () => {
   }
 });
 
-const scenario15 = await outcomeOf(async () => {
+const scenario15 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     await readyAndActive(realm);
@@ -360,7 +372,7 @@ const scenario15 = await outcomeOf(async () => {
   }
 });
 
-const scenario16 = await outcomeOf(async () => {
+const scenario16 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     await readyAndActive(realm);
@@ -377,7 +389,7 @@ const scenario16 = await outcomeOf(async () => {
   }
 });
 
-const scenario17 = await outcomeOf(async () => {
+const scenario17 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     await readyAndActive(realm);
@@ -392,7 +404,7 @@ const scenario17 = await outcomeOf(async () => {
   }
 });
 
-const scenario18 = await outcomeOf(async () => {
+const scenario18 = await realmScenario(async () => {
   try {
     const realm = makeRealm({ workerName: 'digest-a' });
     await readyAndActive(realm);

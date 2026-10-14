@@ -6,7 +6,11 @@ import { dirname, join } from 'node:path';
 import { HttpClient } from '../client/http-client.ts';
 import type { WorkflowState } from '../core/types.ts';
 import { sleepForTesting } from './fake-timers.test-support.ts';
-import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from './module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from './promise-outcome.test-support.ts';
 import {
   killAndReboot,
@@ -33,6 +37,11 @@ async function stopHandlesAndRemoveFixtures(): Promise<void> {
 }
 
 afterEach(stopHandlesAndRemoveFixtures);
+
+/** `outcomeOf` that stops a hung scenario's servers and removes its fixtures when its guard fires. */
+function serverScenario(scenario: () => Promise<void>): Promise<unknown> {
+  return outcomeOf(scenario, SCENARIO_HANG_GUARD_MILLISECONDS, stopHandlesAndRemoveFixtures);
+}
 
 function createFixturePath(name: string): string {
   const directory = join(tmpdir(), `weft-subprocess-${name}-${crypto.randomUUID()}`);
@@ -197,7 +206,7 @@ async function startDurableServer(
 // runs here at module scope, off Bun's five-second per-test clock, and stops its servers and
 // removes its fixtures when it ends; its test rethrows the outcome.
 
-const scenario1 = await outcomeOf(async () => {
+const scenario1 = await serverScenario(async () => {
   try {
     const entrypoint = await writeEntrypoint(
       'startup-crash',
@@ -217,7 +226,7 @@ const scenario1 = await outcomeOf(async () => {
   }
 });
 
-const scenario2 = await outcomeOf(async () => {
+const scenario2 = await serverScenario(async () => {
   try {
     const entrypoint = await writeEntrypoint(
       'early-exit',
@@ -243,7 +252,7 @@ const scenario2 = await outcomeOf(async () => {
   }
 });
 
-const scenario3 = await outcomeOf(async () => {
+const scenario3 = await serverScenario(async () => {
   try {
     const entrypoint = await writeEntrypoint(
       'ready-then-exit',
@@ -267,7 +276,7 @@ const scenario3 = await outcomeOf(async () => {
   }
 });
 
-const scenario4 = await outcomeOf(async () => {
+const scenario4 = await serverScenario(async () => {
   try {
     const entrypoint = await writeEntrypoint(
       'ready-without-port',
@@ -290,7 +299,7 @@ const scenario4 = await outcomeOf(async () => {
   }
 });
 
-const scenario5 = await outcomeOf(async () => {
+const scenario5 = await serverScenario(async () => {
   try {
     const entrypoint = await writeEntrypoint('bind-failure', durableEntrypointSource());
     const databasePath = join(createFixturePath('bind-failure-db'), 'weft.db');
@@ -324,7 +333,7 @@ const scenario5 = await outcomeOf(async () => {
   }
 });
 
-const scenario6 = await outcomeOf(async () => {
+const scenario6 = await serverScenario(async () => {
   try {
     const entrypoint = await writeEntrypoint(
       'environment-allowlist',
@@ -359,7 +368,7 @@ const scenario6 = await outcomeOf(async () => {
   }
 });
 
-const scenario7 = await outcomeOf(async () => {
+const scenario7 = await serverScenario(async () => {
   try {
     const entrypoint = await writeEntrypoint(
       'sigterm-clean-exit',
@@ -384,7 +393,7 @@ const scenario7 = await outcomeOf(async () => {
   }
 });
 
-const scenario8 = await outcomeOf(async () => {
+const scenario8 = await serverScenario(async () => {
   try {
     const directory = createFixturePath('parked');
     const databasePath = join(directory, 'weft.db');
@@ -418,7 +427,7 @@ const scenario8 = await outcomeOf(async () => {
   }
 });
 
-const scenario9 = await outcomeOf(async () => {
+const scenario9 = await serverScenario(async () => {
   try {
     const directory = createFixturePath('in-flight');
     const databasePath = join(directory, 'weft.db');
@@ -440,7 +449,7 @@ const scenario9 = await outcomeOf(async () => {
   }
 });
 
-const scenario10 = await outcomeOf(async () => {
+const scenario10 = await serverScenario(async () => {
   try {
     const directory = createFixturePath('queued-signal');
     const databasePath = join(directory, 'weft.db');

@@ -37,4 +37,31 @@ describe('outcomeOf', () => {
     expect(jest.isFakeTimers()).toBe(false);
     expect(await outcomeOf(() => new Promise<void>(() => {}), 5)).toBeInstanceOf(ScenarioHangError);
   });
+
+  it('runs onHang as soon as the guard fires, and only for a hang', async () => {
+    const released: string[] = [];
+    const hung = await outcomeOf(
+      () => new Promise<void>(() => {}),
+      5,
+      () => void released.push('hung'),
+    );
+    expect(hung).toBeInstanceOf(ScenarioHangError);
+    await outcomeOf(
+      async () => undefined,
+      5,
+      () => void released.push('finished'),
+    );
+    expect(released).toEqual(['hung']);
+  });
+
+  it('still reports the hang when onHang itself throws', async () => {
+    const outcome = await outcomeOf(
+      () => new Promise<void>(() => {}),
+      5,
+      () => {
+        throw new Error('cleanup failed');
+      },
+    );
+    expect(outcome).toBeInstanceOf(ScenarioHangError);
+  });
 });

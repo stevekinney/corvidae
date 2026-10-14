@@ -34,9 +34,16 @@ export class ScenarioHangError extends Error {
   }
 }
 
+/**
+ * Runs `scenario` and returns what it threw, a {@link ScenarioHangError} if it did not settle
+ * within `hangGuardMilliseconds`, or `undefined` when it finished. A hung scenario never reaches
+ * its own `finally`, so `onHang` runs as soon as the guard fires to release what the scenario
+ * holds (crash its realms, stop its servers) before the next scenario starts.
+ */
 export async function outcomeOf(
   scenario: () => Promise<void>,
   hangGuardMilliseconds = SCENARIO_HANG_GUARD_MILLISECONDS,
+  onHang?: () => void | Promise<void>,
 ): Promise<unknown> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const hang = new Promise<Error>((resolve) => {
@@ -49,13 +56,20 @@ export async function outcomeOf(
     }, hangGuardMilliseconds);
   });
   try {
-    return await Promise.race([
+    const outcome = await Promise.race([
       scenario().then(
         () => undefined,
         (error: unknown) => error ?? new Error('scenario failed'),
       ),
       hang,
     ]);
+    if (outcome instanceof ScenarioHangError && onHang !== undefined) {
+      // Cleanup is best effort: a failure here must not hide the hang it is cleaning up after.
+      await Promise.resolve()
+        .then(onHang)
+        .catch(() => {});
+    }
+    return outcome;
   } finally {
     clearTimeout(timer);
   }
