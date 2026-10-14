@@ -8,7 +8,7 @@ This document defines how an authenticated outside process discovers, addresses,
 
 | Question | Ruling |
 | --- | --- |
-| External contract | A2A-native. The agent-facing surface is [A2A 1.0.1](https://a2a-protocol.org/latest/specification/) plus optional, versioned Bureau extensions. A native management plane, served as Weft catalog operations, covers operator work A2A cannot express. |
+| External contract | A2A-native. The agent-facing surface is [A2A 1.0.1](https://a2a-protocol.org/v1.0.1/specification/) plus optional, versioned Bureau extensions. A native management plane, served as Weft catalog operations, covers operator work A2A cannot express. |
 | First consumer | A new Interborough application. Its live chat surface speaks AG-UI; discovery, task lifecycle, and peer agents use A2A; operator screens use the management plane. It reuses the shared layers `@lostgradient/weft/ui` exports and is tracked in its own Linear project. |
 | Agent coordination | Parent-owned work keeps the typed in-process child API. Peer agents communicate over A2A, addressing each other by Agent Card whether the peer is in this Bureau or another. |
 | Tenancy | Tenant is the deployment. One Bureau instance serves one tenant; isolation comes from separate stores and feed registries. |
@@ -195,7 +195,7 @@ Every command carries the same fields. On the A2A surface they map onto the mess
 
 | Field | A2A carrier | Management carrier | Required |
 | --- | --- | --- | --- |
-| Command identifier | `message.messageId` (on `SendMessage`, the only A2A command this envelope covers; `CancelTask` and the push-configuration methods keep their fixed shapes) | `commandId` | Yes |
+| Command identifier | `message.messageId` (on `SendMessage` and `SendStreamingMessage`, the two A2A commands this envelope covers; `CancelTask` and the push-configuration methods keep their fixed shapes) | `commandId` | Yes |
 | Typed intent | The operation name | The operation name | Yes |
 | Authenticated sender | The authenticated principal, never a payload field | Same | Yes |
 | Recipient | The published agent addressed by the interface URL and `tenant` | The operation's target | Yes |
@@ -260,8 +260,8 @@ Which states each operation can produce:
 
 | Operation | States |
 | --- | --- |
-| `SendMessage` creating a task | `accepted`, `rejected`, `pending`, `applied`, `observed`, `expired` |
-| `SendMessage` continuing a task | `accepted`, `rejected`, `applied`, `superseded`, `expired` |
+| `SendMessage` or `SendStreamingMessage` creating a task | `accepted`, `rejected`, `pending`, `applied`, `observed`, `expired` |
+| `SendMessage` or `SendStreamingMessage` continuing a task | `accepted`, `rejected`, `applied`, `superseded`, `expired` |
 | `bureau.tasks.cancel` (A2A `CancelTask` returns the task itself, which carries no receipt) | `cancel-requested`, `canceled`, `cleanup-pending`, `cleaned-up`, `unknown-outcome`, `rejected` |
 | `bureau.reviews.resolve` | `applied`, `rejected`, `superseded` |
 | Management delivery commands (`bureau.deliveries.retry`, `bureau.deliveries.cancel`; A2A push-configuration methods return their fixed objects and carry no receipt) | `accepted`, `pending`, `applied`, `failed`, `canceled`, `unknown-outcome` |
@@ -394,7 +394,7 @@ The Conversationalist-to-A2A part mapping (COR-1303) stays in Conversationalist 
 
 ## Interborough
 
-The first consumer is Interborough, Corvidae's main application. It is served from the same origin as the Bureau host it runs, so its calls need no CORS, and it does not share an origin with the Weft dashboard, which owns the root page routes and does not support base-path mounting. A deployment that serves a UI from any other origin opts in through `createBureauHandler`'s CORS option, which must allow that origin, `GET`, `POST`, and `OPTIONS`, the request headers `Authorization`, `Content-Type`, `A2A-Version`, `A2A-Extensions`, `Last-Event-ID`, and `traceparent`, and expose `A2A-Extensions`. The Interborough uses AG-UI for its live chat surface, the A2A surface for agent discovery and task lifecycle, and the management plane for operator screens. It reuses the Cinder components and the client provider, query helpers, router, and live-source plumbing that `@lostgradient/weft/ui` exports, and it supplies its own code highlighter. It is scoped in its own Linear project; External Control Plane's Definition of Done names it as the consumer that completes discover, command, reconnect, result, abort, and cleanup without private APIs.
+The first consumer is Interborough, Corvidae's main application. It is served from the same origin as the Bureau host it runs, so its calls need no CORS, and it does not share an origin with the Weft dashboard, which owns the root page routes and does not support base-path mounting. A deployment that serves a UI from any other origin opts in through `createBureauHandler`'s CORS option, which must allow that origin, `GET`, `POST`, and `OPTIONS`, the request headers `Authorization`, `X-API-Key` (when the API-key scheme is configured), `Content-Type`, `A2A-Version`, `A2A-Extensions`, `Last-Event-ID`, and `traceparent`, and expose `A2A-Extensions`. The Interborough uses AG-UI for its live chat surface, the A2A surface for agent discovery and task lifecycle, and the management plane for operator screens. It reuses the Cinder components and the client provider, query helpers, router, and live-source plumbing that `@lostgradient/weft/ui` exports, and it supplies its own code highlighter. It is scoped in its own Linear project; External Control Plane's Definition of Done names it as the consumer that completes discover, command, reconnect, result, abort, and cleanup without private APIs.
 
 ## Scenarios
 
@@ -418,13 +418,13 @@ Every current `Bureau` member (`packages/bureau/src/types.ts:1102-1836`) maps to
 
 | Bureau member | External mapping |
 | --- | --- |
-| `run` | `SendMessage` creating a task |
+| `run` | `SendMessage` or `SendStreamingMessage` creating a task |
 | `createRun` | Internal (deprecated; accepts per-request overrides AB-15 removes) |
 | `getRun`, `getRunReport`, `getDurableRun`, `listRuns`, `listDurableRuns` | `GetTask`, `ListTasks`; `bureau.tasks.get`, `bureau.tasks.list` |
 | `abortRun`, `cancelDurableRun` | `CancelTask`; `bureau.tasks.cancel` |
 | `deleteRun`, `listAbortingRuns`, `subscribeRunSnapshot` | Internal; cleanup status reaches clients through the cleanup extension |
 | `listSessions`, `getSession`, `deleteSession` | `contextId`; `bureau.contexts.delete` |
-| `signalSession`, `submitSessionInput`, `submitSteeringCommand` | `SendMessage` continuing a task |
+| `signalSession`, `submitSessionInput`, `submitSteeringCommand` | `SendMessage` or `SendStreamingMessage` continuing a task |
 | `updateSession`, `querySession` | Absent (always `UNSUPPORTED_CAPABILITY`) |
 | `children.*` | Internal; parent task status detail |
 | `goals.*` | `bureau.goals.*` |
