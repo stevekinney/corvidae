@@ -8421,6 +8421,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const tag = steeringSessionRunTag(sessionId, incarnation);
     // The same filter the tag listing applies: a live `agentRun` of this
     // incarnation. Another workflow type carrying the tag is not a run.
+    // A saved start counts while its workflow is absent, or present and
+    // live: it may have become visible after the listing above.
+    const savedWorkflowHasEnded = async (runId: string) => {
+      const workflow = await engine.get(runId);
+      return workflow !== null && !isLiveSessionWorkflow(workflow);
+    };
     const isLiveSessionWorkflow = (workflow: {
       type: string;
       status: string;
@@ -8499,7 +8505,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           !cursor.history.runs.has(savedRunId) &&
           runtimeServices.clock.now() - Date.parse(savedStartedAt) <=
             STEERING_RUN_START_WINDOW_MS &&
-          (await engine.get(savedRunId)) === null
+          !(await savedWorkflowHasEnded(savedRunId))
         ) {
           live.add(savedRunId);
         }
@@ -8667,17 +8673,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ) {
               return { outcome: 'not-found' };
             }
-            // It also tells the caller this session exists, so the caller
-            // must still be authorized here, against the run this request
-            // targets, on this session as it stands now.
-            const targetLiveRunIds = command.runId === undefined ? await liveRunIdsNow() : [];
-            const targetNow = await runtime.sessionStore?.load(sessionId);
-            if (targetNow?.incarnation !== incarnation) return { outcome: 'not-found' };
-            const targetRun =
-              command.runId ?? (targetLiveRunIds.length === 1 ? targetLiveRunIds[0] : undefined);
-            return isSessionAuthorityAuthorized(targetNow.metadata, principal, targetRun)
-              ? elsewhere
-              : { outcome: 'not-found' };
+            // It also tells the caller this session exists, so this session
+            // gets the same checks as any request to it, as it stands now:
+            // authority against the run the request targets, then whether
+            // the session has ended.
+            return answerCrossSessionInTarget(
+              elsewhere,
+              sessionId,
+              incarnation,
+              command,
+              liveRunIdsNow,
+            );
           }
           // The binding names a live session whose log does not account for
           // it — unless that session was deleted mid-fold, which is a race,
@@ -8763,6 +8769,45 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * state it reached, so the retry gets the same `conflict` it would have
    * got in-process.
    */
+  /**
+   * Returns `answer`, decided in another session, only if this target
+   * session still admits the caller: its live runs read now (a failed read
+   * is masked unless the caller is authorized against the run it would
+   * target), the caller authorized against the targeted run, and the
+   * session not ended. Otherwise `not-found` or `session-terminal`.
+   */
+  async function answerCrossSessionInTarget(
+    answer: SteeringCommandAdmissionOutcome,
+    sessionId: string,
+    incarnation: string,
+    command: ImplementedSteeringCommand,
+    liveRunIdsNow: () => Promise<string[]>,
+  ): Promise<SteeringCommandAdmissionOutcome> {
+    let liveRunIds: string[];
+    try {
+      liveRunIds = await liveRunIdsNow();
+    } catch (error) {
+      const afterFailure = await runtime.sessionStore?.load(sessionId);
+      if (afterFailure?.incarnation !== incarnation) return { outcome: 'not-found' };
+      const localTarget = liveSessionRunIdsOfIncarnation(sessionId, incarnation);
+      const target = command.runId ?? (localTarget.length === 1 ? localTarget[0] : undefined);
+      if (!isSessionAuthorityAuthorized(afterFailure.metadata, command.principal, target)) {
+        return { outcome: 'not-found' };
+      }
+      throw error;
+    }
+    const targetNow = await runtime.sessionStore?.load(sessionId);
+    if (targetNow?.incarnation !== incarnation) return { outcome: 'not-found' };
+    const target = command.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
+    if (!isSessionAuthorityAuthorized(targetNow.metadata, command.principal, target)) {
+      return { outcome: 'not-found' };
+    }
+    if (isSessionRunTerminal(targetNow.metadata) && liveRunIds.length === 0) {
+      return { outcome: 'session-terminal', sessionId };
+    }
+    return answer;
+  }
+
   /**
    * The run an idempotency answer was decided for: the original command's
    * bound run for a replay or conflict, else the request's own.

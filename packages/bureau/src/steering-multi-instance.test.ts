@@ -1508,6 +1508,41 @@ describe('durable steering across two Bureau processes', () => {
         requestedValue: { target: 'pause' },
       });
       expect(named.outcome).toBe('accepted');
+
+      // Its workflow may already be visible to a direct read while the log
+      // still has no promotion: live and tagged, it still counts.
+      const visibleSession = 'session-saved-and-visible';
+      await store.save(
+        createAgentSession({
+          id: visibleSession,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: visibleSession }),
+          metadata: {
+            lastRunId: 'visible-run',
+            lastRunStatus: 'running',
+            lastRunStartedAt: new Date().toISOString(),
+          },
+        }),
+      );
+      const visible = await store.load(visibleSession);
+      if (visible === undefined) throw new Error('expected the session');
+      const visibleTag = steeringSessionRunTag(visibleSession, visible.incarnation);
+      const engineGet = spyOn(await durableEnginePrototype(), 'get').mockImplementation((id) =>
+        Promise.resolve(
+          id === 'visible-run' ? { type: 'agentRun', status: 'running', tags: [visibleTag] } : null,
+        ),
+      );
+      try {
+        const unscoped = await gapReader.submitSteeringCommand(visibleSession, {
+          principal: 'alice',
+          requestedValue: { target: 'pause' },
+        });
+        expect(unscoped.outcome).toBe('accepted');
+        if (unscoped.outcome !== 'accepted') throw new Error('expected accepted');
+        expect(unscoped.command.runId).toBe('visible-run');
+      } finally {
+        engineGet.mockRestore();
+      }
     } finally {
       await writer.dispose();
       for (const reader of readers) await reader.dispose();
