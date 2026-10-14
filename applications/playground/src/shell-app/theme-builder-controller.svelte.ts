@@ -52,6 +52,8 @@ const MESSAGES: Record<LibraryProblem, string> = {
 export const DEFAULT_THEME_NAME = 'Cinder default';
 
 export class ThemeBuilderController extends ThemeBuilderCore {
+  /** Unreadable stored records this tab has downloaded, which unlocks their permanent delete. */
+  downloadedProblemIds = $state.raw<readonly string[]>([]);
   #stopListening: (() => void) | null = null;
   readonly #newId: () => string;
   readonly #now: () => string;
@@ -205,6 +207,27 @@ export class ThemeBuilderController extends ThemeBuilderCore {
 
   downloadProblem(problem: StorageProblem): void {
     downloadText(problem.download);
+    if (!this.downloadedProblemIds.includes(problem.id)) {
+      this.downloadedProblemIds = [...this.downloadedProblemIds, problem.id];
+    }
+  }
+
+  /** A newer-version record can be deleted for good only after this tab downloaded it. */
+  canDeleteProblem(problem: StorageProblem): boolean {
+    return problem.kind === 'future-version' && this.downloadedProblemIds.includes(problem.id);
+  }
+
+  async deleteFutureVersionProblem(problem: StorageProblem): Promise<OperationResult> {
+    if (!this.canDeleteProblem(problem)) {
+      return { ok: false, message: 'Download the stored theme before deleting it permanently.' };
+    }
+    const result = await this.persistence?.removeFutureVersionRecord(problem);
+    if (result === null || result === undefined) {
+      return { ok: false, message: 'Theme storage is unavailable, so nothing was deleted.' };
+    }
+    if (!result.ok) return { ok: false, message: result.failure.message };
+    this.downloadedProblemIds = this.downloadedProblemIds.filter((id) => id !== problem.id);
+    return { ok: true, id: problem.id };
   }
 
   // --- other tabs ---------------------------------------------------------------------

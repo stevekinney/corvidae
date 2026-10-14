@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { bus, tab } from './theme-builder-test-support.ts';
+import { THEME_RECORD_VERSION } from './theme-draft-record.ts';
 import { domError, memoryThemeStore } from './theme-draft-test-support.ts';
 
 const px = (value: number) => ({ $type: 'dimension', $value: { value, unit: 'px' } });
@@ -43,6 +44,37 @@ describe('starting', () => {
     });
     expect(workbench.saveStatus).toBe('unsaved');
     expect(workbench.storageNotice?.actions).toContain('download');
+  });
+});
+
+describe('a record from a newer version', () => {
+  const futureRecord = {
+    recordVersion: THEME_RECORD_VERSION + 1,
+    id: 'future',
+    name: 'From the future',
+    payload: { unknown: true },
+  };
+
+  test('can be deleted permanently only after this tab downloaded it', async () => {
+    const store = memoryThemeStore();
+    store.seed('themes', 'future', futureRecord);
+    const { controller } = tab(store);
+    await controller.start();
+    const problem = controller.problems.find((candidate) => candidate.id === 'future');
+    if (problem === undefined) throw new Error('the future-version record was not reported');
+    expect(problem.kind).toBe('future-version');
+    expect(controller.canDeleteProblem(problem)).toBe(false);
+
+    const early = await controller.deleteFutureVersionProblem(problem);
+    expect(early.ok).toBe(false);
+    expect(store.data.themes.get('future')).toEqual(futureRecord);
+
+    controller.downloadProblem(problem);
+    expect(controller.canDeleteProblem(problem)).toBe(true);
+    const removal = await controller.deleteFutureVersionProblem(problem);
+    expect(removal.ok).toBe(true);
+    expect(store.data.themes.has('future')).toBe(false);
+    expect(controller.problems.some((candidate) => candidate.id === 'future')).toBe(false);
   });
 });
 

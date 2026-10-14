@@ -60,7 +60,7 @@ const MESSAGES: Record<StorageFailureKind, string> = {
   'corrupt-record':
     'The stored copy of this theme is unreadable and was left untouched. Your in-memory draft is unsaved locally; download it or save it as a copy.',
   'future-version':
-    'This theme was saved by a newer version of the theme builder. It is left untouched and cannot be edited here; download it to keep it.',
+    'This theme was saved by a newer version of the theme builder. It is left untouched and cannot be edited here; download it to keep it. Once downloaded, you can delete it permanently to free its slot.',
   conflict:
     'Another tab changed this theme. Reload the stored version, or save your draft as a copy. Nothing was overwritten.',
   'theme-limit': `The library holds ${THEME_DATA_LIMITS.themes} themes including Trash. Download or permanently delete a theme to make room.`,
@@ -214,6 +214,36 @@ export class ThemeDraftStorage {
         }
         await tx.delete('themes', id);
         return { ok: true as const, revision: expectedRevision };
+      });
+    } catch (error) {
+      return { ok: false, failure: failure(classifyStorageError(error)) };
+    }
+  }
+
+  /**
+   * Permanently remove a record written by a newer version of the theme builder. This version
+   * never rewrites such a record, so this is the only way to free its slot, and it requires
+   * proof that the user kept a copy: `downloadedText` must equal the stored record's download,
+   * byte for byte. That comparison is also the compare-and-set — a record another tab changed
+   * after the download no longer matches and is left untouched. Corrupt records are not covered.
+   */
+  async removeFutureVersionRecord(id: string, downloadedText: string): Promise<SaveResult> {
+    try {
+      return await this.#store.transact('readwrite', async (tx) => {
+        const existing = await tx.get('themes', id);
+        if (existing === undefined) return { ok: true as const, revision: 0 };
+        const classified = classifyRecord(existing);
+        if (classified.kind === 'corrupt') {
+          return { ok: false as const, failure: failure('corrupt-record') };
+        }
+        if (classified.kind !== 'future-version') {
+          return { ok: false as const, failure: failure('conflict', { storedRevision: null }) };
+        }
+        if (rawDownload(id, existing).text !== downloadedText) {
+          return { ok: false as const, failure: failure('conflict', { storedRevision: null }) };
+        }
+        await tx.delete('themes', id);
+        return { ok: true as const, revision: 0 };
       });
     } catch (error) {
       return { ok: false, failure: failure(classifyStorageError(error)) };

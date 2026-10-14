@@ -10,6 +10,7 @@
 
   import { catalogueRowByPath } from './theme-builder-catalogue.ts';
   import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
+  import type { StorageProblem } from './theme-draft-storage.ts';
   import { shouldDeferUndoToNative } from './theme-history.ts';
   import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
@@ -17,6 +18,14 @@
   let { controller, workbench }: Props = $props();
 
   let confirmReload = $state(false);
+  let problemToDelete = $state<StorageProblem | null>(null);
+  let problemError = $state<string | null>(null);
+
+  async function deleteProblem(problem: StorageProblem): Promise<void> {
+    problemToDelete = null;
+    const result = await controller.deleteFutureVersionProblem(problem);
+    problemError = result.ok ? null : result.message;
+  }
 
   const selected = $derived(catalogueRowByPath(workbench.selectedTokenPath));
   const categoryPrefix = $derived(selected?.path.split('.')[0] ?? null);
@@ -151,10 +160,39 @@
           size="sm"
           onclick={() => controller.downloadProblem(problem)}
         />
+        {#if problem.kind === 'future-version'}
+          <Button
+            label="Delete permanently"
+            variant="danger"
+            size="sm"
+            disabled={!controller.canDeleteProblem(problem)}
+            onclick={() => (problemToDelete = problem)}
+          />
+          {#if !controller.canDeleteProblem(problem)}
+            <p>
+              Download the stored theme first; deleting it is only possible once you have a copy.
+            </p>
+          {/if}
+        {/if}
+        {#if problemError !== null}
+          <p role="alert">{problemError}</p>
+        {/if}
       </Callout>
     </div>
   {/each}
 </div>
+
+<ConfirmDialog
+  open={problemToDelete !== null}
+  title="Delete this stored theme permanently?"
+  description="This theme was saved by a newer version of the theme builder. Deleting it removes it from this browser for good, including its embedded Cinder base, its draft and its undo history. Only the copy you downloaded will remain."
+  confirmLabel="Delete permanently"
+  destructive
+  onConfirm={() => {
+    if (problemToDelete !== null) void deleteProblem(problemToDelete);
+  }}
+  onCancel={() => (problemToDelete = null)}
+/>
 
 <ConfirmDialog
   open={confirmReload}

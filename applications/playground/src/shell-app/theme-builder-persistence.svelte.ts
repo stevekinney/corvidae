@@ -116,6 +116,21 @@ export class ThemeBuilderPersistence {
     });
   }
 
+  /** Permanently delete a newer-version record the user downloaded; see the storage method. */
+  removeFutureVersionRecord(problem: StorageProblem): Promise<SaveResult | null> {
+    return this.#serial(async () => {
+      if (this.#storage === null) return null;
+      const result = await this.#storage.removeFutureVersionRecord(
+        problem.id,
+        problem.download.text,
+      );
+      if (result.ok) {
+        this.problems = this.problems.filter((candidate) => candidate.id !== problem.id);
+      } else this.failure = result.failure;
+      return result;
+    });
+  }
+
   setActive(id: string | null): Promise<void> {
     return this.#serial(async () => {
       await this.#storage?.setActive(id);

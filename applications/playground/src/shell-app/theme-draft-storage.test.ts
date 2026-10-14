@@ -288,6 +288,48 @@ describe('corrupt and future-version records', () => {
     expect(store.data.themes.get('f')).toEqual(futureRecord);
   });
 
+  it('permanently deletes a future-version draft only with its exact downloaded copy', async () => {
+    const { storage, store } = setup();
+    store.seed('themes', 'f', futureRecord);
+    const loaded = await storage.load();
+    if (!loaded.ok) throw new Error('load failed');
+    const downloaded = loaded.problems[0]!.download.text;
+
+    const unproven = await storage.removeFutureVersionRecord('f', '{}');
+    expect(!unproven.ok && unproven.failure.kind).toBe('conflict');
+    expect(store.data.themes.get('f')).toEqual(futureRecord);
+
+    const removal = await storage.removeFutureVersionRecord('f', downloaded);
+    expect(removal.ok).toBe(true);
+    expect(store.data.themes.has('f')).toBe(false);
+  });
+
+  it('leaves a future-version draft that changed after it was downloaded', async () => {
+    const { storage, store } = setup();
+    store.seed('themes', 'f', futureRecord);
+    const loaded = await storage.load();
+    if (!loaded.ok) throw new Error('load failed');
+    const downloaded = loaded.problems[0]!.download.text;
+    const changed = { ...futureRecord, revision: 99 };
+    store.seed('themes', 'f', changed);
+
+    const removal = await storage.removeFutureVersionRecord('f', downloaded);
+    expect(!removal.ok && removal.failure.kind).toBe('conflict');
+    expect(store.data.themes.get('f')).toEqual(changed);
+  });
+
+  it('never removes a corrupt or readable record through the future-version path', async () => {
+    const { storage, store } = setup();
+    await storage.save(testEntry('a'));
+    store.seed('themes', 'junk', 42);
+    const readable = await storage.removeFutureVersionRecord('a', 'anything');
+    expect(readable.ok).toBe(false);
+    expect(store.data.themes.has('a')).toBe(true);
+    const corrupt = await storage.removeFutureVersionRecord('junk', '42\n');
+    expect(!corrupt.ok && corrupt.failure.kind).toBe('corrupt-record');
+    expect(store.data.themes.get('junk')).toBe(42);
+  });
+
   it('still loads the readable themes next to a bad record', async () => {
     const { storage, store } = setup();
     await storage.save(testEntry('a'));
