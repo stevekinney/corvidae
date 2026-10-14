@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
 import {
   descendantProcesses,
+  interruptRunner,
   isZombie,
   type ProcessRow,
   readProcessTable,
@@ -53,21 +54,22 @@ async function main(): Promise<void> {
       process.stdout.write(text);
     }
   })();
+  let runDirectory: string | undefined;
   try {
-    let runDirectory: string | undefined;
     while (runDirectory === undefined || !existsSync(join(runDirectory, 'browser-active'))) {
       if (driver.exitCode !== null)
         fail(`the runner exited ${driver.exitCode} before Chromium was active`);
       runDirectory ??= /run directory (\S+)/.exec(stdout)?.[1];
       await Bun.sleep(50);
     }
+    const activeRunDirectory = runDirectory;
     const origin = /at (http:\/\/127\.0\.0\.1:\d+)/.exec(stdout)?.[1] ?? fail('no server origin');
 
     const table = readProcessTable();
     const ownGroup = table.find((row) => row.pid === process.pid)?.pgid;
     const captured = [
       ...descendantProcesses(driver.pid, table),
-      ...table.filter((row) => row.args.includes(runDirectory)),
+      ...table.filter((row) => row.args.includes(activeRunDirectory)),
     ].filter((row) => row.pgid !== ownGroup);
     const browsers = captured.filter((row) => /chrom/i.test(row.args));
     if (browsers.length === 0) fail('no Chromium process was captured before signaling');
@@ -91,7 +93,7 @@ async function main(): Promise<void> {
       fail(`owned processes survived: ${living.map((row) => `${row.pid} ${row.args}`).join('; ')}`);
     }
     if (isGone(after.find((row) => row.pid === sentinel.pid))) fail('the sentinel did not survive');
-    if (existsSync(runDirectory)) fail(`the run directory ${runDirectory} survived`);
+    if (existsSync(activeRunDirectory)) fail(`the run directory ${activeRunDirectory} survived`);
     const port = await fetch(origin).then(
       () => 'listening',
       () => 'closed',
@@ -101,9 +103,17 @@ async function main(): Promise<void> {
       `[browser-lifecycle] passed: exit 130, ${pids.size} captured processes and ${groups.size} groups gone${requireReaped ? ' and reaped' : ''}\n`,
     );
   } finally {
-    if (driver.exitCode === null) driver.kill('SIGKILL');
+    // An early failure must not orphan the runner's detached server, Playwright, and browser
+    // groups: interrupt the runner so its own cleanup runs, then kill anything still attributable.
+    const survivors = await interruptRunner(driver, runDirectory);
+    if (survivors.length > 0) {
+      process.stderr.write(
+        `[browser-lifecycle] processes survived the runner stop: ${survivors.map((row) => `${row.pid} ${row.args}`).join('; ')}\n`,
+      );
+      process.exitCode = 1;
+    }
     sentinel.kill('SIGKILL');
-    await Promise.all([driver.exited, sentinel.exited]);
+    await sentinel.exited;
     await rm(output, { recursive: true, force: true });
   }
 }

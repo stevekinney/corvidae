@@ -236,3 +236,49 @@ export class ProcessOwner {
     );
   }
 }
+
+/**
+ * Stop a gate runner that a check or test started, leaving nothing behind: interrupt it the way a
+ * reader's Ctrl-C would and give its own cleanup the termination grace, then SIGKILL whatever is
+ * still attributable to it. Attribution uses the process groups of everything below the runner,
+ * captured BEFORE the interrupt (its children lead their own groups and outlive a killed parent),
+ * plus any process naming the run-owned `marker` directory, such as a browser profile.
+ *
+ * @returns the processes still alive afterwards; empty when the stop succeeded.
+ */
+export async function interruptRunner(
+  runner: Bun.Subprocess,
+  marker: string | undefined,
+  readTable: () => ProcessRow[] = readProcessTable,
+): Promise<ProcessRow[]> {
+  const ownGroup = readTable().find((row) => row.pid === process.pid)?.pgid;
+  const groups = new Set(
+    descendantProcesses(runner.pid, readTable())
+      .map((row) => row.pgid)
+      .filter((group) => group !== ownGroup),
+  );
+  if (runner.exitCode === null && runner.signalCode === null) {
+    runner.kill('SIGINT');
+    await Promise.race([runner.exited, Bun.sleep(TERMINATION_GRACE_MILLISECONDS)]);
+  }
+  const attributable = (): ProcessRow[] =>
+    readTable().filter(
+      (row) =>
+        !isZombie(row) &&
+        row.pid !== process.pid &&
+        row.pgid !== ownGroup &&
+        (groups.has(row.pgid) || (marker !== undefined && row.args.includes(marker))),
+    );
+  const survivors = attributable();
+  for (const group of new Set([...groups, ...survivors.map((row) => row.pgid)])) {
+    signalTarget(-group, 'SIGKILL');
+  }
+  for (const row of survivors) signalTarget(row.pid, 'SIGKILL');
+  if (runner.exitCode === null && runner.signalCode === null) runner.kill('SIGKILL');
+  await runner.exited;
+  const deadline = performance.now() + TERMINATION_GRACE_MILLISECONDS;
+  while (attributable().length > 0 && performance.now() < deadline) {
+    await Bun.sleep(SWEEP_INTERVAL_MILLISECONDS);
+  }
+  return attributable();
+}

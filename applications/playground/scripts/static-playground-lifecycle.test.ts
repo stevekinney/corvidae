@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
 import {
   descendantProcesses,
+  interruptRunner,
   isZombie,
   ownedProcesses,
   parseProcessTable,
@@ -199,6 +200,18 @@ describe('static gate runner lifecycle with stand-in children', () => {
     process.kill(stubborn, 'SIGKILL');
 
     expect(await running.driver.exited).toBe(130);
+    await expectEverythingGone(running, capture);
+  });
+
+  it('stops a runner from outside without orphaning its detached groups', async () => {
+    // What the real-Chromium check does when it fails early: interrupt the runner, let its cleanup
+    // run, and kill anything still attributable. SIGKILL of the runner alone would leave the
+    // server's and the test runner's own process groups running.
+    const running = await startCase('hang');
+    const capture = await captureAndSpawnLate(running);
+
+    expect(await interruptRunner(running.driver, capture.runDirectory)).toEqual([]);
+    expect(running.driver.exitCode).toBe(130);
     await expectEverythingGone(running, capture);
   });
 
