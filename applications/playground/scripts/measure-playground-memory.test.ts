@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+  captureFootprint,
   captureMemoryPressure,
   footprintCategorySeries,
   parseFootprint,
@@ -133,5 +134,32 @@ describe('captureMemoryPressure (4273630258)', () => {
       },
     });
     expect(pressure).toEqual({ availablePercentage: null, vmStat: null });
+  });
+});
+
+describe('captureFootprint (4274040400)', () => {
+  it('returns null without spawning off macOS', () => {
+    let spawned = 0;
+    expect(
+      captureFootprint(1, {
+        platform: 'linux',
+        run: () => {
+          spawned += 1;
+          return { exitCode: 0, stdout: '' };
+        },
+      }),
+    ).toBeNull();
+    expect(spawned).toBe(0);
+  });
+
+  it('returns null when footprint cannot be spawned', () => {
+    expect(
+      captureFootprint(1, {
+        platform: 'darwin',
+        run: () => {
+          throw Object.assign(new Error('spawn footprint ENOENT'), { code: 'ENOENT' });
+        },
+      }),
+    ).toBeNull();
   });
 });

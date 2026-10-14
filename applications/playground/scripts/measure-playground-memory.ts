@@ -46,10 +46,18 @@ export function parseFootprint(output: string): Footprint {
 }
 
 /** Read `footprint <pid>`; null when the tool is unavailable or the process is gone. */
-export function captureFootprint(pid: number): Footprint | null {
-  const result = Bun.spawnSync(['footprint', String(pid)], { stdout: 'pipe', stderr: 'pipe' });
-  if (result.exitCode !== 0) return null;
-  return parseFootprint(result.stdout.toString());
+/**
+ * Read `footprint <pid>`. The tool exists only on macOS, so any other platform, a tool that cannot
+ * be spawned, or a process that is gone yields null rather than an exception.
+ */
+export function captureFootprint(
+  pid: number,
+  options: MemoryPressureOptions = {},
+): Footprint | null {
+  const platform = options.platform ?? process.platform;
+  if (platform !== 'darwin') return null;
+  const result = tryRun(options.run ?? runCommand, ['footprint', String(pid)]);
+  return result === null ? null : parseFootprint(result.stdout);
 }
 
 /** Dirty bytes per footprint category across checkpoints, for categories every checkpoint reports. */
