@@ -33,6 +33,12 @@ ENV PATH=/usr/lib/postgresql/17/bin:$PATH
 # Keep Turborepo's local cache out of the bind-mounted checkout, so a host run never
 # replays a task result this Linux container produced, or the reverse.
 ENV TURBO_CACHE_DIR=/home/bun/.cache/turbo
+# Turborepo runs ten tasks at once by default, and Docker Desktop's default virtual machine has
+# 8 GB. Measured in this image, Weft's `tsc --noEmit` peaks near 3.5 GB and its type-contract
+# check near 4.4 GB, so even two tasks side by side can be killed for memory (exit 137). One
+# at a time fits; an explicit `--concurrency` flag, such as the root `test` script's, still
+# wins over this.
+ENV TURBO_CONCURRENCY=1
 
 # `initdb` refuses to run as root, so the container works as the image's `bun` user.
 # A bind-mounted checkout is owned by the host's uid, which Git would otherwise reject

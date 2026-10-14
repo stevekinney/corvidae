@@ -42,6 +42,12 @@ describe('the Dev Container', () => {
     expect(dockerfile).toContain('COPY --from=node /usr/local/bin/node /usr/local/bin/node');
   });
 
+  test("runs few enough Turborepo tasks at once to fit Docker Desktop's default memory", () => {
+    // COR-1379: at Turborepo's default of ten, and again at two, parallel type-checks were
+    // killed for memory.
+    expect(dockerfile).toMatch(/^ENV TURBO_CONCURRENCY=1$/mu);
+  });
+
   test('works as a non-root user, because initdb refuses to run as root', () => {
     expect(dockerfile).toMatch(/^USER bun$/mu);
     expect(configuration.remoteUser).toBe('bun');
