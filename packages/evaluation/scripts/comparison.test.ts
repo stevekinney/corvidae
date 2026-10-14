@@ -84,6 +84,10 @@ const FIXTURE_SUITES = [
   ['fixture-ungoverned-scratchpad', 1, 'reject'],
 ] as const;
 
+// The real process is the behavior under test (script wiring, stdout, stderr and exit code), so it
+// runs once here at module scope to stay off the per-test clock.
+const spawnedVaultCode = await spawnComparison('--suite', 'fixture-vault-code');
+
 /**
  * The one test that boots a real `bun` process: it proves the `comparison`
  * script is wired to the entry point and that stdout, stderr and the process
@@ -93,7 +97,7 @@ const FIXTURE_SUITES = [
  */
 describe('comparison (spawned bun process, --cwd form)', () => {
   test('fixture-vault-code exits 0: admit', async () => {
-    const result = await spawnComparison('--suite', 'fixture-vault-code');
+    const result = await spawnedVaultCode;
     expect(result.exitCode).toBe(0);
     const evidence = await verifyComparisonEvidence(JSON.parse(result.stdout));
     expect(evidence.admission.decision).toBe('admit');

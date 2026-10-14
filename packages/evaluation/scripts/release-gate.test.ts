@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -230,6 +230,25 @@ describe('runReleaseGateCommand (in process)', () => {
   });
 });
 
+// The real process is the behavior under test (the documented invocation, its stdout, stderr and
+// exit code), so it runs once here at module scope to stay off the per-test clock.
+const spawnedFilteredGate = await (async () => {
+  const spawnDirectory = await mkdtemp(join(tmpdir(), 'release-gate-command-spawn-'));
+  try {
+    const gates = await writeGates(join(spawnDirectory, 'gates'), {
+      [FIXTURE_GATE_ID]: fixtureGateFile('passing'),
+    });
+    return await spawnFilteredGate(
+      '--gates-dir',
+      gates,
+      '--store',
+      join(spawnDirectory, 'history.sqlite'),
+    );
+  } finally {
+    await rm(spawnDirectory, { recursive: true, force: true });
+  }
+})();
+
 /**
  * The one test that boots a real `bun` process: the documented
  * `bun run --filter=@lostgradient/evaluation release-gate` invocation, from the
@@ -238,10 +257,8 @@ describe('runReleaseGateCommand (in process)', () => {
  * nothing else in this package pays for a spawn inside the per-test budget.
  */
 describe('release-gate (spawned bun process, --filter form)', () => {
-  test('exits 0 for a passing gate set through the documented --filter invocation', async () => {
-    const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile('passing') });
-
-    const result = await spawnFilteredGate('--gates-dir', gates, '--store', storePath);
+  test('exits 0 for a passing gate set through the documented --filter invocation', () => {
+    const result = spawnedFilteredGate;
 
     // The filter form prefixes every line with the workspace and script names and
     // does not keep the two streams apart, so the report and the verdict line are
@@ -500,9 +517,7 @@ describe('runReleaseGateCommand', () => {
   });
 
   test('records the repository revision it ran at, unless told another', async () => {
-    const head = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: PACKAGE_DIRECTORY })
-      .stdout.toString()
-      .trim();
+    const head = checkedOutHead;
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
     await runInProcess(['--gates-dir', gates, '--store', storePath]);
     await runInProcess(['--gates-dir', gates, '--store', storePath], {
@@ -559,60 +574,88 @@ describe('runReleaseGateCommand', () => {
   });
 });
 
-describe('gitRevisionDistance', () => {
-  test('counts the commits between two revisions, and is undefined for one git does not know', async () => {
-    const repository = join(directory, 'repository');
-    await mkdir(repository);
-    const git = (...args: string[]) =>
-      Bun.spawnSync(['git', ...args], {
-        cwd: repository,
-        env: {
-          ...process.env,
-          GIT_AUTHOR_NAME: 'Fixture',
-          GIT_AUTHOR_EMAIL: 'fixture@example.test',
-          GIT_COMMITTER_NAME: 'Fixture',
-          GIT_COMMITTER_EMAIL: 'fixture@example.test',
-        },
-      })
-        .stdout.toString()
-        .trim();
-    git('init', '--quiet');
-    const revisions: string[] = [];
-    for (const message of ['first', 'second', 'third']) {
-      git('commit', '--quiet', '--allow-empty', '--no-gpg-sign', '-m', message);
-      revisions.push(git('rev-parse', 'HEAD'));
-    }
+// These tests drive `git` itself (the functions under test spawn it), so the repository, its
+// commits and every lookup run once here at module scope to stay off the per-test clock.
+function repositoryGit(repository: string, ...args: string[]): string {
+  return Bun.spawnSync(['git', ...args], {
+    cwd: repository,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'Fixture',
+      GIT_AUTHOR_EMAIL: 'fixture@example.test',
+      GIT_COMMITTER_NAME: 'Fixture',
+      GIT_COMMITTER_EMAIL: 'fixture@example.test',
+    },
+  })
+    .stdout.toString()
+    .trim();
+}
 
-    expect(gitRevisionDistance(revisions[0]!, revisions[2]!, repository)).toBe(2);
-    expect(gitRevisionDistance(revisions[2]!, revisions[2]!, repository)).toBe(0);
-    expect(gitRevisionDistance('0'.repeat(40), revisions[2]!, repository)).toBeUndefined();
-    expect(gitRevisionDistance(revisions[0]!, revisions[1]!)).toBeUndefined();
+const checkedOutHead = repositoryGit(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD');
+const gitScenarioDirectory = await mkdtemp(join(tmpdir(), 'release-gate-git-'));
+const gitScenario = await (async () => {
+  const distanceRepository = join(gitScenarioDirectory, 'distance');
+  await mkdir(distanceRepository);
+  repositoryGit(distanceRepository, 'init', '--quiet');
+  const revisions: string[] = [];
+  for (const message of ['first', 'second', 'third']) {
+    repositoryGit(
+      distanceRepository,
+      'commit',
+      '--quiet',
+      '--allow-empty',
+      '--no-gpg-sign',
+      '-m',
+      message,
+    );
+    revisions.push(repositoryGit(distanceRepository, 'rev-parse', 'HEAD'));
+  }
+
+  const headRepository = join(gitScenarioDirectory, 'head');
+  await mkdir(headRepository);
+  repositoryGit(headRepository, 'init', '--quiet');
+  const headBeforeCommit = gitHeadRevision(headRepository);
+  repositoryGit(
+    headRepository,
+    'commit',
+    '--quiet',
+    '--allow-empty',
+    '--no-gpg-sign',
+    '-m',
+    'first',
+  );
+
+  return {
+    distanceFirstToThird: gitRevisionDistance(revisions[0]!, revisions[2]!, distanceRepository),
+    distanceToSelf: gitRevisionDistance(revisions[2]!, revisions[2]!, distanceRepository),
+    distanceFromUnknown: gitRevisionDistance('0'.repeat(40), revisions[2]!, distanceRepository),
+    distanceOutsideRepository: gitRevisionDistance(revisions[0]!, revisions[1]!),
+    headBeforeCommit,
+    headAfterCommit: gitHeadRevision(headRepository),
+    expectedHead: repositoryGit(headRepository, 'rev-parse', 'HEAD'),
+    headOutsideRepository: gitHeadRevision(gitScenarioDirectory),
+    headOfCheckout: gitHeadRevision(),
+  };
+})();
+
+afterAll(async () => {
+  await rm(gitScenarioDirectory, { recursive: true, force: true });
+});
+
+describe('gitRevisionDistance', () => {
+  test('counts the commits between two revisions, and is undefined for one git does not know', () => {
+    expect(gitScenario.distanceFirstToThird).toBe(2);
+    expect(gitScenario.distanceToSelf).toBe(0);
+    expect(gitScenario.distanceFromUnknown).toBeUndefined();
+    expect(gitScenario.distanceOutsideRepository).toBeUndefined();
   });
 });
 
 describe('gitHeadRevision', () => {
-  test('is the checked-out commit, and undefined outside a repository', async () => {
-    const repository = join(directory, 'repository');
-    await mkdir(repository);
-    const git = (...args: string[]) =>
-      Bun.spawnSync(['git', ...args], {
-        cwd: repository,
-        env: {
-          ...process.env,
-          GIT_AUTHOR_NAME: 'Fixture',
-          GIT_AUTHOR_EMAIL: 'fixture@example.test',
-          GIT_COMMITTER_NAME: 'Fixture',
-          GIT_COMMITTER_EMAIL: 'fixture@example.test',
-        },
-      })
-        .stdout.toString()
-        .trim();
-    git('init', '--quiet');
-    expect(gitHeadRevision(repository)).toBeUndefined();
-    git('commit', '--quiet', '--allow-empty', '--no-gpg-sign', '-m', 'first');
-
-    expect(gitHeadRevision(repository)).toBe(git('rev-parse', 'HEAD'));
-    expect(gitHeadRevision(directory)).toBeUndefined();
-    expect(gitHeadRevision()).toMatch(/^[0-9a-f]{40,64}$/);
+  test('is the checked-out commit, and undefined outside a repository', () => {
+    expect(gitScenario.headBeforeCommit).toBeUndefined();
+    expect(gitScenario.headAfterCommit).toBe(gitScenario.expectedHead);
+    expect(gitScenario.headOutsideRepository).toBeUndefined();
+    expect(gitScenario.headOfCheckout).toMatch(/^[0-9a-f]{40,64}$/);
   });
 });

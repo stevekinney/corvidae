@@ -106,6 +106,27 @@ async function runInProcess(
   return { exitCode, stdout, stderr };
 }
 
+// The real process is the behavior under test (script wiring, stdout, stderr and exit code), so it
+// runs once here at module scope to stay off the per-test clock. The gate run it replays is set up
+// in process, in a directory the hooks below replace for each test.
+const spawnedReplay = await (async () => {
+  directory = await mkdtemp(join(tmpdir(), 'replay-command-spawn-'));
+  storePath = join(directory, 'history.sqlite');
+  try {
+    const recordId = await gateRun();
+    const result = await spawnScript('replay', [
+      '--gate',
+      FIXTURE_GATE_ID,
+      '--latest',
+      '--store',
+      storePath,
+    ]);
+    return { recordId, result };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
 /**
  * The one test that boots a real `bun` process: it proves the `replay` script
  * is wired to the entry point and that stdout, stderr and the process exit code
@@ -114,15 +135,7 @@ async function runInProcess(
  */
 describe('replay (spawned bun process)', () => {
   test('replay --gate fixture-regression --latest exits 0 after a gate run', async () => {
-    const recordId = await gateRun();
-
-    const result = await spawnScript('replay', [
-      '--gate',
-      FIXTURE_GATE_ID,
-      '--latest',
-      '--store',
-      storePath,
-    ]);
+    const { recordId, result } = spawnedReplay;
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({

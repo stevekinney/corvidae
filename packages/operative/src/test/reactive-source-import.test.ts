@@ -1,16 +1,19 @@
 import { expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 
-test('the public operative entry imports in a plain Bun process without the test runner', async () => {
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      '--eval',
-      "const api = await import('@lostgradient/operative'); if (typeof api.runReactiveSourceConformanceSuite !== 'function') throw new Error('Missing conformance API');",
-    ],
-    { cwd: resolve(import.meta.dir, '../..'), stdout: 'pipe', stderr: 'pipe' },
-  );
-  const [status, errors] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+// A plain Bun process without the test runner is the behavior under test, so it runs once here at
+// module scope to stay off the per-test clock.
+const child = Bun.spawn(
+  [
+    process.execPath,
+    '--eval',
+    "const api = await import('@lostgradient/operative'); if (typeof api.runReactiveSourceConformanceSuite !== 'function') throw new Error('Missing conformance API');",
+  ],
+  { cwd: resolve(import.meta.dir, '../..'), stdout: 'pipe', stderr: 'pipe' },
+);
+const [status, errors] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+
+test('the public operative entry imports in a plain Bun process without the test runner', () => {
   expect(status, errors).toBe(0);
   expect(errors).toBe('');
 });

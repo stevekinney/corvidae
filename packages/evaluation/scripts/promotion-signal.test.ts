@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
@@ -60,7 +60,9 @@ function gitIn(cwd: string, ...args: string[]): string {
     .trim();
 }
 
+// Every `git` process this file needs runs at module scope, so none boots inside a test's budget.
 const HEAD = gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD');
+const HEAD_PACKAGE_TREE = gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation');
 
 let directory: string;
 let storePath: string;
@@ -251,7 +253,7 @@ function expectIssuedSignal(report: Report, gateDecisionRecordId: string): void 
   expect(report.signal).toMatchObject({
     package: {
       name: '@lostgradient/evaluation',
-      sourceRevision: gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation'),
+      sourceRevision: HEAD_PACKAGE_TREE,
     },
     model: { provider: 'anthropic', model: 'claude-sonnet-4-6', effort: 'medium' },
     promptVersion: 'fixture-judge-prompt-1',
@@ -263,6 +265,29 @@ function expectIssuedSignal(report: Report, gateDecisionRecordId: string): void 
   });
 }
 
+// The real process is the behavior under test (script wiring, stdout, stderr and exit code), so it
+// runs once here at module scope to stay off the per-test clock. The gate run and the verification
+// are in process, in a directory the hooks above replace for each test.
+const spawnedIssue = await (async () => {
+  directory = await mkdtemp(join(tmpdir(), 'promotion-signal-command-spawn-'));
+  storePath = join(directory, 'history.sqlite');
+  try {
+    const gateDecisionRecordId = await committedGateRun();
+    const issued = await spawnScript('promotion-signal', [
+      'issue',
+      '--gate',
+      FIXTURE_GATE_ID,
+      '--store',
+      storePath,
+    ]);
+    const signalId = (JSON.parse(issued.stdout) as Report).signal?.signalId;
+    const verified = await runInProcess(['verify', signalId ?? '', '--store', storePath], {});
+    return { gateDecisionRecordId, issued, verified };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
 /**
  * The one test that boots a real `bun` process: it proves the
  * `promotion-signal` script is wired to the entry point and that stdout,
@@ -272,25 +297,13 @@ function expectIssuedSignal(report: Report, gateDecisionRecordId: string): void 
  * the per-test budget.
  */
 describe('promotion-signal (spawned bun process)', () => {
-  test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', async () => {
-    const gateDecisionRecordId = await committedGateRun();
-
-    const issued = await spawnScript('promotion-signal', [
-      'issue',
-      '--gate',
-      FIXTURE_GATE_ID,
-      '--store',
-      storePath,
-    ]);
+  test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', () => {
+    const { gateDecisionRecordId, issued, verified } = spawnedIssue;
 
     const report = expectReport(issued, 0, 'issued');
     expectIssuedSignal(report, gateDecisionRecordId);
     expect(issued.stderr).toContain(`Issued promotion signal "${report.signal!.signalId}"`);
 
-    const verified = await runInProcess(
-      ['verify', report.signal!.signalId, '--store', storePath],
-      {},
-    );
     expect(expectReport(verified, 0, 'valid').signal).toEqual(report.signal);
   });
 });
@@ -342,7 +355,7 @@ describe('runPromotionSignalCommand', () => {
 
     expect(expectReport(result, 0, 'issued').signal).toMatchObject({
       package: {
-        sourceRevision: gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation'),
+        sourceRevision: HEAD_PACKAGE_TREE,
       },
       sourceRevision: HEAD,
     });
@@ -600,41 +613,63 @@ describe('runPromotionSignalCommand', () => {
   });
 });
 
+// These tests drive `git` itself (the function under test spawns it), so the repository, its two
+// commits and every revision lookup run once here at module scope to stay off the per-test clock.
+const gitScenarioDirectory = await mkdtemp(join(tmpdir(), 'promotion-signal-git-'));
+const gitScenarioRepository = join(gitScenarioDirectory, 'repository');
+const gitScenarioNotARepository = join(gitScenarioDirectory, 'not-a-repository');
+const checkedOutPackageTree = await gitPackageSourceRevision('@lostgradient/evaluation', HEAD);
+const gitScenario = await (async () => {
+  const repository = gitScenarioRepository;
+  await mkdir(join(repository, 'packages', 'alpha'), { recursive: true });
+  await mkdir(join(repository, 'packages', 'broken'), { recursive: true });
+  await mkdir(gitScenarioNotARepository, { recursive: true });
+  await writeFile(
+    join(repository, 'package.json'),
+    JSON.stringify({ name: 'root', workspaces: [7, 'packages/*'] }),
+  );
+  await writeFile(join(repository, 'packages', 'alpha', 'package.json'), '{"name":"alpha"}');
+  await writeFile(join(repository, 'packages', 'broken', 'package.json'), '{ not json');
+  gitIn(repository, 'init', '--quiet');
+  const beforeFirstCommit = await gitPackageSourceRevision('alpha', 'HEAD', repository);
+  gitIn(repository, 'add', '.');
+  gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'first');
+  const first = gitIn(repository, 'rev-parse', 'HEAD');
+  await writeFile(join(repository, 'packages', 'alpha', 'index.ts'), 'export {};\n');
+  gitIn(repository, 'add', '.');
+  gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'second');
+
+  return {
+    beforeFirstCommit,
+    tree: await gitPackageSourceRevision('alpha', first, repository),
+    expectedTree: gitIn(repository, 'rev-parse', `${first}:packages/alpha`),
+    atHead: await gitPackageSourceRevision('alpha', 'HEAD', repository),
+    missingWorkspace: await gitPackageSourceRevision('missing', 'HEAD', repository),
+    unknownRevision: await gitPackageSourceRevision('alpha', OTHER_REVISION, repository),
+    notARepository: await gitPackageSourceRevision('alpha', 'HEAD', gitScenarioNotARepository),
+  };
+})();
+
+afterAll(async () => {
+  await rm(gitScenarioDirectory, { recursive: true, force: true });
+});
+
 describe('gitPackageSourceRevision', () => {
   test('is the git tree of the named workspace at a revision of the checked-out repository', async () => {
-    expect(await gitPackageSourceRevision('@lostgradient/evaluation', HEAD)).toBe(
-      gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation'),
-    );
+    expect(checkedOutPackageTree).toBe(HEAD_PACKAGE_TREE);
     expect(
       await workspaceDirectory('@lostgradient/evaluation', resolve(PACKAGE_DIRECTORY, '..', '..')),
     ).toBe('packages/evaluation');
   });
 
   test('finds workspaces by name, and is undefined for anything it cannot resolve', async () => {
-    const repository = join(directory, 'repository');
-    await mkdir(join(repository, 'packages', 'alpha'), { recursive: true });
-    await mkdir(join(repository, 'packages', 'broken'), { recursive: true });
-    await writeFile(
-      join(repository, 'package.json'),
-      JSON.stringify({ name: 'root', workspaces: [7, 'packages/*'] }),
-    );
-    await writeFile(join(repository, 'packages', 'alpha', 'package.json'), '{"name":"alpha"}');
-    await writeFile(join(repository, 'packages', 'broken', 'package.json'), '{ not json');
-    gitIn(repository, 'init', '--quiet');
-    expect(await gitPackageSourceRevision('alpha', 'HEAD', repository)).toBeUndefined();
-    gitIn(repository, 'add', '.');
-    gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'first');
-    const first = gitIn(repository, 'rev-parse', 'HEAD');
-    await writeFile(join(repository, 'packages', 'alpha', 'index.ts'), 'export {};\n');
-    gitIn(repository, 'add', '.');
-    gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'second');
-
-    const tree = await gitPackageSourceRevision('alpha', first, repository);
-    expect(tree).toBe(gitIn(repository, 'rev-parse', `${first}:packages/alpha`));
-    expect(await gitPackageSourceRevision('alpha', 'HEAD', repository)).not.toBe(tree);
-    expect(await gitPackageSourceRevision('missing', 'HEAD', repository)).toBeUndefined();
-    expect(await gitPackageSourceRevision('alpha', OTHER_REVISION, repository)).toBeUndefined();
-    expect(await gitPackageSourceRevision('alpha', 'HEAD', directory)).toBeUndefined();
+    const repository = gitScenarioRepository;
+    expect(gitScenario.beforeFirstCommit).toBeUndefined();
+    expect(gitScenario.tree).toBe(gitScenario.expectedTree);
+    expect(gitScenario.atHead).not.toBe(gitScenario.tree);
+    expect(gitScenario.missingWorkspace).toBeUndefined();
+    expect(gitScenario.unknownRevision).toBeUndefined();
+    expect(gitScenario.notARepository).toBeUndefined();
 
     await rm(join(repository, 'package.json'));
     expect(await workspaceDirectory('alpha', repository)).toBeUndefined();

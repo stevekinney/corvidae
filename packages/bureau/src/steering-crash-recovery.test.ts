@@ -21,53 +21,57 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { resolveStorage } from '@lostgradient/weft';
-import { describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 
 import type { PersistedSteeringCommand } from './steering-durability';
 import { createSteeringMailbox, recoverSteeringCommands } from './steering-durability';
 
 const CHILD = join(import.meta.dir, 'test', 'steering-crash-child.ts');
 
+// The real process is the behavior under test (a genuine kill, not an orderly shutdown), so the
+// child runs once here at module scope to stay off the per-test clock.
+const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-crash-'));
+const storagePath = join(directory, 'bureau.sqlite');
+const markerPath = join(directory, 'admitted.json');
+const signalOrStderr = await (async () => {
+  const child = Bun.spawn(['bun', CHILD, storagePath, markerPath], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  await child.exited;
+  const stderr = await new Response(child.stderr).text();
+  return child.signalCode ?? stderr;
+})();
+
+afterAll(() => {
+  rmSync(directory, { recursive: true, force: true });
+});
+
 describe('durable steering survives SIGKILL', () => {
   it('recovers a command admitted by a process that was killed without disposing', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-crash-'));
-    const storagePath = join(directory, 'bureau.sqlite');
-    const markerPath = join(directory, 'admitted.json');
+    // The child kills itself, so a clean exit code 0 would mean it
+    // returned normally instead — which would invalidate the whole
+    // premise of the test rather than merely fail an assertion.
+    expect(signalOrStderr).toBe('SIGKILL');
+    expect(existsSync(markerPath)).toBe(true);
 
-    try {
-      const child = Bun.spawn(['bun', CHILD, storagePath, markerPath], {
-        stdout: 'pipe',
-        stderr: 'pipe',
-      });
-      await child.exited;
+    const { sessionId } = JSON.parse(readFileSync(markerPath, 'utf8')) as {
+      sessionId: string;
+    };
 
-      const stderr = await new Response(child.stderr).text();
-      // The child kills itself, so a clean exit code 0 would mean it
-      // returned normally instead — which would invalidate the whole
-      // premise of the test rather than merely fail an assertion.
-      expect(child.signalCode ?? stderr).toBe('SIGKILL');
-      expect(existsSync(markerPath)).toBe(true);
+    // Fresh handle on the same backend, in this process. Nothing is
+    // shared with the dead one but the bytes it left on disk.
+    const storage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const mailbox = createSteeringMailbox(storage, sessionId);
+    const recovered: PersistedSteeringCommand[] = [];
+    await recoverSteeringCommands(mailbox, (command) => recovered.push(command));
 
-      const { sessionId } = JSON.parse(readFileSync(markerPath, 'utf8')) as {
-        sessionId: string;
-      };
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]?.id).toBe('crash-cmd-1');
+    expect(recovered[0]?.principal).toBe('alice');
+    expect(recovered[0]?.requestedValue).toEqual({ target: 'pause' });
 
-      // Fresh handle on the same backend, in this process. Nothing is
-      // shared with the dead one but the bytes it left on disk.
-      const storage = await resolveStorage({ type: 'sqlite', path: storagePath });
-      const mailbox = createSteeringMailbox(storage, sessionId);
-      const recovered: PersistedSteeringCommand[] = [];
-      await recoverSteeringCommands(mailbox, (command) => recovered.push(command));
-
-      expect(recovered).toHaveLength(1);
-      expect(recovered[0]?.id).toBe('crash-cmd-1');
-      expect(recovered[0]?.principal).toBe('alice');
-      expect(recovered[0]?.requestedValue).toEqual({ target: 'pause' });
-
-      mailbox.dispose();
-      storage[Symbol.dispose]();
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  }, 60_000);
+    mailbox.dispose();
+    storage[Symbol.dispose]();
+  });
 });
