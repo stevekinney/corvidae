@@ -105,14 +105,9 @@ async function humanWaitScenario(backend: Backend): Promise<void> {
     expect(generateCalls).toBe(1);
     expect(reviewsFor()).toHaveLength(0);
     expect(bureau.getRun(runId)?.liveness.declaredWait).toBeUndefined();
-    await waitForBureauState(
-      [bureau],
-      async () => {
-        const durableRun = await bureau.getDurableRun(runId);
-        return durableRun?.status === 'completed';
-      },
-      { runIds: [runId] },
-    );
+    // Weft's own result waiter: it settles after the durable commit.
+    const durableState = await bureau.waitForDurableRun(runId);
+    expect(durableState?.status).toBe('completed');
   } finally {
     // allSettled never rejects, so the directory is always removed after shutdown.
     const reports = await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);

@@ -95,6 +95,7 @@ import {
 } from '@lostgradient/skills';
 import {
   decode,
+  EngineDisposedError,
   KEYS,
   type ListFilter,
   type ListOptions,
@@ -5093,6 +5094,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * Resolve once a run's durable workflow is terminal in the durable store — see the
+   * {@link Bureau.waitForDurableRun} doc comment. Built on Weft's result waiter
+   * (`engine.getHandle(runId).result()`), which settles from the store for a run another engine
+   * finishes; its rejection carries a failed run's error, which this wrapper turns back into the
+   * run's state.
+   */
+  async function waitForDurableRun(runId: string) {
+    if (!runtime.durable) return undefined;
+    const engine = runtime.durable.engine;
+    const current = await engine.get(runId);
+    if (current === null || current === undefined) return null;
+    if (!DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(current.status)) return current;
+    try {
+      await engine.getHandle(runId).result();
+    } catch (error) {
+      // A failed, cancelled or timed-out run rejects its result; the state read below carries it.
+      if (error instanceof EngineDisposedError) throw error;
+    }
+    return engine.get(runId);
+  }
+
+  /**
    * Cancel a durable run with no live `ActiveRun` (AB-37, AB-205) — see the
    * {@link Bureau.cancelDurableRun} doc comment. Delegates the resolution
    * algorithm to {@link resolveCancelDurableRun}; this wrapper supplies the
@@ -9510,6 +9533,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     listAbortingRuns,
     deleteRun,
     getDurableRun,
+    waitForDurableRun,
     cancelDurableRun,
     listDurableRuns,
     runDurableMaintenance,
