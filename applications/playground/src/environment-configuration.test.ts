@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { readEnvironmentConfiguration } from './environment-configuration.ts';
+import {
+  readEnvironmentConfiguration,
+  scrubbedEnvironmentOf,
+  secretEntriesOf,
+  urlPassword,
+} from './environment-configuration.ts';
 
 const VARIABLES = [
   'CINDER_TEST_COMPONENTS',
@@ -81,5 +86,41 @@ describe('readEnvironmentConfiguration', () => {
     expect(readEnvironmentConfiguration().port).toBe('1111');
     process.env['PORT'] = '2222';
     expect(readEnvironmentConfiguration().port).toBe('2222');
+  });
+});
+
+describe('credential-bearing connection strings', () => {
+  const environment = {
+    DATABASE_URL: 'postgres://playground:database-password@db.example/app',
+    NEON_DATABASE_URL: 'postgres://neon:neon-password@neon.example/app',
+    ANALYTICS_DSN: 'https://public@sentry.example/1',
+    SERVICE_CONNECTION_URL: 'https://service.example',
+    PLAYGROUND_BASE_URL: 'https://cinder.website',
+    UNNAMED_URL: 'https://user:unnamed-password@host.example/',
+    HOME: '/Users/example',
+  };
+
+  it('scrubs connection-string names and any URL carrying a password from child environments', () => {
+    expect(scrubbedEnvironmentOf(environment)).toEqual({
+      PLAYGROUND_BASE_URL: 'https://cinder.website',
+      HOME: '/Users/example',
+    });
+  });
+
+  it('scans the password of every URL that carries one, and never a public origin', () => {
+    expect(secretEntriesOf(environment)).toEqual([
+      ['DATABASE_URL', 'database-password'],
+      ['NEON_DATABASE_URL', 'neon-password'],
+      ['UNNAMED_URL', 'unnamed-password'],
+    ]);
+  });
+
+  it.each([
+    ['https://cinder.website', undefined],
+    ['https://user@host.example', undefined],
+    ['postgres://user:p%40ss@host/db', 'p@ss'],
+    ['not a url: really', undefined],
+  ])('reads the password of %s as %s', (value, password) => {
+    expect(urlPassword(value)).toBe(password);
   });
 });

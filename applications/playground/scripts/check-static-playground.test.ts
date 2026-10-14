@@ -182,6 +182,24 @@ describe('static production gate over fixtures', () => {
     expect(SECRET_ENVIRONMENT_NAME.test(name)).toBe(true);
   });
 
+  it('fails when the password of a connection string appears in a served file', async () => {
+    // The good fixture's component page says "prerendered component page".
+    const leaking = await runFixture('good', {
+      ...readScrubbedEnvironment(),
+      DATABASE_URL: 'postgres://playground:prerendered%20component%20page@db.example/app',
+    });
+    const notLeaking = await runFixture('good', {
+      ...readScrubbedEnvironment(),
+      DATABASE_URL: 'postgres://playground:never-served-password@db.example/app',
+    });
+
+    expect(leaking.exitCode).toBe(1);
+    expect(leaking.report.preflightFailures).toEqual([
+      'served file page/button/index.html contains the value of DATABASE_URL',
+    ]);
+    expect(notLeaking.exitCode).toBe(0);
+  });
+
   it('refuses an output directory inside the served directory', async () => {
     const served = await mkdtemp(join(tmpdir(), 'static-gate-served-'));
     try {

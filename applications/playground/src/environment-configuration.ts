@@ -70,14 +70,18 @@ export function readEnvironmentConfiguration() {
  */
 const SECRET_NAME_CLASSES = 'TOKEN|SECRET|PASSWORD|PASSPHRASE|API_KEY|PRIVATE_KEY|CREDENTIAL';
 
+/** Names of connection strings, which can embed a password (`DATABASE_URL`, `NEON_DATABASE_URL`). */
+const CONNECTION_NAME_PATTERN = '.*DATABASE_URL|.*_DSN|.*CONNECTION_STRING|.*_CONNECTION_URL';
+
 /**
  * Names that can carry a credential. The static production gate scrubs every matching variable
  * from the environment it gives its child processes (the static server, and Playwright with its
- * browsers). Its served-byte leak check scans only the narrower {@link SECRET_VALUE_NAME} set. Case-sensitive on purpose: Bun's lowercase `npm_*` script variables, `HOME`, and
- * `PATH` stay.
+ * browsers), and also any variable whose value is a URL carrying a password. Its served-byte leak
+ * check scans the narrower {@link SECRET_VALUE_NAME} set plus the password of any such URL.
+ * Case-sensitive on purpose: Bun's lowercase `npm_*` script variables, `HOME`, and `PATH` stay.
  */
 export const SECRET_ENVIRONMENT_NAME = new RegExp(
-  `^(VERCEL_.*|ANTHROPIC_.*|LINEAR_.*|.*(${SECRET_NAME_CLASSES}).*)$`,
+  `^(VERCEL_.*|ANTHROPIC_.*|LINEAR_.*|${CONNECTION_NAME_PATTERN}|.*(${SECRET_NAME_CLASSES}).*)$`,
 );
 
 /**
@@ -87,25 +91,59 @@ export const SECRET_ENVIRONMENT_NAME = new RegExp(
  */
 export const SECRET_VALUE_NAME = new RegExp(`(${SECRET_NAME_CLASSES})`);
 
-/** Every set variable whose name marks a secret value, for the served-byte leak check. */
-export function readSecretEnvironmentEntries(): [name: string, value: string][] {
-  return Object.entries(process.env).flatMap(([name, value]) =>
-    value !== undefined && SECRET_VALUE_NAME.test(name) ? [[name, value]] : [],
+type EnvironmentRecord = Readonly<Record<string, string | undefined>>;
+
+/**
+ * The password a `scheme://user:password@host` value carries, or `undefined`. Only the password
+ * is a secret: scanning the whole URL would flag a public origin such as `PLAYGROUND_BASE_URL`.
+ */
+export function urlPassword(value: string): string | undefined {
+  if (!value.includes('://')) return undefined;
+  try {
+    const password = new URL(value).password;
+    return password === '' ? undefined : decodeURIComponent(password);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The secret values in `environment` the served-byte leak check scans for. */
+export function secretEntriesOf(environment: EnvironmentRecord): [name: string, value: string][] {
+  return Object.entries(environment).flatMap(([name, value]): [string, string][] => {
+    if (value === undefined) return [];
+    if (SECRET_VALUE_NAME.test(name)) return [[name, value]];
+    const password = urlPassword(value);
+    return password === undefined ? [] : [[name, password]];
+  });
+}
+
+/** Whether a variable is withheld from the gate's child processes. */
+export function isCredentialShaped(name: string, value: string): boolean {
+  return SECRET_ENVIRONMENT_NAME.test(name) || urlPassword(value) !== undefined;
+}
+
+/** `environment` with every credential-shaped variable removed. */
+export function scrubbedEnvironmentOf(environment: EnvironmentRecord): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(environment).flatMap(([name, value]) =>
+      value !== undefined && !isCredentialShaped(name, value) ? [[name, value]] : [],
+    ),
   );
 }
 
-/** The names of every set variable matching {@link SECRET_ENVIRONMENT_NAME}. */
+/** Every secret value in this process's environment, for the served-byte leak check. */
+export function readSecretEnvironmentEntries(): [name: string, value: string][] {
+  return secretEntriesOf(process.env);
+}
+
+/** The names of every credential-shaped variable in this process's environment. */
 export function readCredentialShapedNames(): string[] {
-  return Object.keys(process.env).filter(
-    (name) => process.env[name] !== undefined && SECRET_ENVIRONMENT_NAME.test(name),
+  return Object.entries(process.env).flatMap(([name, value]) =>
+    value !== undefined && isCredentialShaped(name, value) ? [name] : [],
   );
 }
 
 /** The current environment with every credential-shaped variable removed. */
 export function readScrubbedEnvironment(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).flatMap(([name, value]) =>
-      value !== undefined && !SECRET_ENVIRONMENT_NAME.test(name) ? [[name, value]] : [],
-    ),
-  );
+  return scrubbedEnvironmentOf(process.env);
 }
