@@ -54,8 +54,7 @@ export function buildComponentHref(componentName: string): string {
 }
 
 /**
- * Theme and background value unions are defined here (and re-exported by
- * `preview-store.svelte.ts`) so this pure-helper module has no import from
+ * Theme and background value unions are defined here so this pure-helper module has no import from
  * any Svelte file. That keeps it cleanly unit-testable from `bun:test`
  * without paying the `.svelte.ts` compilation cost in test boot.
  */

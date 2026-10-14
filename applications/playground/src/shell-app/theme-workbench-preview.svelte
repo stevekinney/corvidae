@@ -95,6 +95,16 @@
       onchange={(event) => workbench.selectScene(event.currentTarget.value)}
     />
   </div>
+  {#if workbench.proposalPreview}
+    <Callout
+      variant="info"
+      title="Previewing a palette proposal"
+      data-testid="proposal-preview-note"
+    >
+      This preview shows the proposal in the {workbench.context.colorMode} color mode. Nothing is applied
+      until you choose Apply.
+    </Callout>
+  {/if}
   {#if workbench.preview.error !== null}
     <Callout variant="danger" title="Preview kept at the last valid revision">
       {workbench.preview.error.code}: {workbench.preview.error.message}

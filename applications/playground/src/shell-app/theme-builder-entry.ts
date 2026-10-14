@@ -6,6 +6,7 @@
 
 import { mount } from 'svelte';
 
+import { filtersFromSearch } from './theme-builder-catalogue.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import { ThemeBuilderPersistence } from './theme-builder-persistence.svelte.ts';
 import { openIndexedDbThemeStore } from './theme-draft-store.ts';
@@ -18,6 +19,7 @@ const target = document.getElementById('theme-builder-root');
 if (target === null) throw new Error('[theme builder] #theme-builder-root target not found');
 
 const workbench = new ThemeWorkbenchState();
+workbench.setFilters(filtersFromSearch(window.location.search));
 const persistence = new ThemeBuilderPersistence({
   openStore: () => openIndexedDbThemeStore(globalThis.indexedDB),
   channel: typeof BroadcastChannel === 'function' ? new BroadcastChannel(THEME_CHANNEL_NAME) : null,

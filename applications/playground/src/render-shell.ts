@@ -67,7 +67,7 @@ export function jsonForScriptTag(value: unknown): string {
  * before any stylesheet or bundle runs. Same source of truth for both the shell
  * scaffold and the iframe page (`renderComponentPage`) so the localStorage key,
  * the try/catch policy, and the validation rules stay in sync. If you change the
- * theme storage key, change `THEME_STORAGE_KEY` in `preview-store.svelte.ts`
+ * theme storage key, change `THEME_STORAGE_KEY` in `shell-app/theme-storage.ts`
  * to match.
  *
  * The only persisted/shareable values are explicit overrides — `light` or
@@ -432,8 +432,8 @@ export function renderShell(
 
       /* Single source of truth for the fixed top bar's height. Declared on
          :root (rather than scoped to the top bar's own element) so any
-         sibling that needs it — e.g. color-token-panel.svelte's fixed
-         positioning — can read it directly, with a 0px fallback for
+         sibling that needs it — e.g. a fixed-position panel — can read it
+         directly, with a 0px fallback for
          contexts (like the canonical documentation page) that render no
          shell top bar at all. */
       :root {

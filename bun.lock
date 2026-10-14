@@ -75,6 +75,7 @@
         "@lostgradient/markdown": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@shikijs/themes": "catalog:",
+        "culori": "catalog:",
         "lucide-svelte": "catalog:",
         "postcss": "catalog:",
         "shiki": "catalog:",
@@ -88,6 +89,7 @@
         "@playwright/test": "catalog:",
         "@testing-library/svelte": "catalog:",
         "@types/bun": "catalog:",
+        "@types/culori": "catalog:",
         "@types/estree": "catalog:",
         "happy-dom": "catalog:",
         "oxlint": "catalog:",
@@ -125,6 +127,7 @@
     },
     "components/cinder": {
       "name": "@lostgradient/cinder",
+      "version": "0.0.0",
       "dependencies": {
         "@floating-ui/dom": "catalog:",
         "@lostgradient/markdown": "workspace:*",

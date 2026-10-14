@@ -6,7 +6,7 @@
  * happy-dom is installed globally by `scripts/preload.ts`, so `document`,
  * `window`, `localStorage`, and `sessionStorage` all exist by default here —
  * the SSR/no-storage cases delete the relevant global for the duration of one
- * test, mirroring `preview-store.test.ts`'s stubbing pattern.
+ * test, using the same per-test stubbing pattern as `sidebar-scroll.test.ts`.
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';

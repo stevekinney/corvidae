@@ -70,7 +70,8 @@ export const NO_PALETTE = { family: UNKNOWN, role: UNKNOWN, anchor: UNKNOWN } as
  * each concrete context.
  */
 export function validatePalettes(records: readonly AuthoringRecord[]): void {
-  const families = new Map<PaletteFamily, PaletteMembership & { path: string }[]>();
+  type Member = PaletteMembership & { path: string };
+  const families = new Map<PaletteFamily, Member[]>();
   for (const record of records) {
     const palette = record.palette;
     if (palette === undefined || palette.family === UNKNOWN) continue;

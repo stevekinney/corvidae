@@ -4,10 +4,12 @@
    * issue supplies through `editor` (COR-489 foundation editors, COR-263 palettes, COR-488
    * composites). Until then it states what is selected and that editing arrives later.
    */
+  import { Button } from '@lostgradient/cinder';
   import type { Snippet } from 'svelte';
 
   import { catalogueRowByPath } from './theme-builder-catalogue.ts';
   import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
+  import ThemePalettePanel from './theme-palette-panel.svelte';
   import { editorForToken } from './theme-token-editors.ts';
   import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
@@ -19,10 +21,24 @@
   let { workbench, editor, controller }: Props = $props();
 
   const row = $derived(catalogueRowByPath(workbench.selectedTokenPath));
+  let paletteOpen = $state(false);
 </script>
 
 <section class="editor" aria-labelledby="editor-heading" data-testid="editor-slot">
   <h2 id="editor-heading">Selected token</h2>
+  {#if controller !== undefined}
+    <div class="palette-entry">
+      <Button
+        label={paletteOpen ? 'Close Create palette' : 'Create palette'}
+        variant="secondary"
+        aria-expanded={paletteOpen}
+        onclick={() => (paletteOpen = !paletteOpen)}
+      />
+    </div>
+    {#if paletteOpen}
+      <ThemePalettePanel {controller} {workbench} onClose={() => (paletteOpen = false)} />
+    {/if}
+  {/if}
   {#if row === undefined}
     <p class="muted">Select a token in the catalogue to edit it.</p>
   {:else}

@@ -4,7 +4,12 @@
  * download it exactly as stored, and clearing is an explicit action of its own.
  */
 
-import { COLOR_TOKEN_SESSION_KEY } from './color-token-overrides.ts';
+/**
+ * The `sessionStorage` key the removed color panel wrote its overrides under. Nothing writes it
+ * any more; it is kept only so the one-time notice can find, download, and clear what an older
+ * session left behind.
+ */
+export const COLOR_TOKEN_SESSION_KEY = 'cinder-playground-color-token-overrides';
 
 /** The slice of `Storage` the notice uses. */
 export type SessionStorageLike = Pick<Storage, 'getItem' | 'removeItem'>;

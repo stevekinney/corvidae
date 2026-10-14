@@ -14,7 +14,7 @@
   import {
     filterRows,
     filterRowsBy,
-    rowsInGroup,
+    rowsForView,
     type CatalogueRow,
   } from './theme-builder-catalogue.ts';
   import type { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
@@ -31,7 +31,7 @@
   const changed = $derived(controller?.changedPaths ?? new Set<string>());
   const rows = $derived(
     filterRowsBy(
-      filterRows(rowsInGroup(workbench.groupId), workbench.filter),
+      filterRows(rowsForView(workbench.groupId, workbench.filters), workbench.filter),
       workbench.filters,
       changed,
     ),
@@ -40,6 +40,7 @@
     { id: 'changed', label: 'Changed' },
     { id: 'alias', label: 'Aliases' },
     { id: 'recipe', label: 'Recipes' },
+    { id: 'color', label: 'Colors' },
   ] as const;
 
   function draftOf(row: CatalogueRow): string {
@@ -55,7 +56,9 @@
       : (rows[0]?.path ?? null),
   );
   const countText = $derived(
-    `${rows.length} ${rows.length === 1 ? 'token' : 'tokens'} in ${workbench.groupId}`,
+    workbench.filters.color
+      ? `${rows.length} color ${rows.length === 1 ? 'token' : 'tokens'}`
+      : `${rows.length} ${rows.length === 1 ? 'token' : 'tokens'} in ${workbench.groupId}`,
   );
 
   /*

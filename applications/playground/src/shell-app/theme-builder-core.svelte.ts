@@ -196,6 +196,7 @@ export class ThemeBuilderCore {
     this.evaluationError = null;
     this.draftValues = values.map;
     this.workbench.setProperties(values.list);
+    this.workbench.proposalPreview = false;
     this.syncStatus();
     void this.#renderShipped(envelope);
   }
@@ -223,9 +224,35 @@ export class ThemeBuilderCore {
     const values = await this.#valuesFor(entry.draft.envelope, entry.draft.revision, context);
     if (!values.ok) return;
     this.draftValues = values.map;
+    this.workbench.proposalPreview = false;
     this.workbench.applyContext(context, values.list);
     this.announcement = `${context.colorMode} color mode, ${context.motion} motion`;
     void this.#renderShipped(entry.draft.envelope);
+  }
+
+  /**
+   * Show an uncommitted editable state in the active context without committing it (a palette
+   * proposal). `null` returns the preview to the committed revision. It never changes the
+   * draft, history or storage; a real commit or a context switch ends it.
+   */
+  async previewState(state: EditableState | null): Promise<boolean> {
+    const entry = this.active;
+    if (entry === null) return false;
+    if (state === null) {
+      await this.render(entry);
+      return true;
+    }
+    const { draft } = entry;
+    const envelope = {
+      ...draft.envelope,
+      overrides: state.overrides,
+      cssOverrides: state.cssOverrides,
+    };
+    const values = await this.#valuesFor(envelope, draft.revision, this.workbench.context);
+    if (!values.ok) return false;
+    this.workbench.setProperties(values.list);
+    this.workbench.proposalPreview = true;
+    return true;
   }
 
   // --- commits ------------------------------------------------------------------------
@@ -296,6 +323,7 @@ export class ThemeBuilderCore {
     this.setEntry({ ...entry, draft, history });
     this.draftValues = values.map;
     this.workbench.setProperties(values.list);
+    this.workbench.proposalPreview = false;
     this.announcement = label;
     this.syncStatus();
     this.persistSoon(0);

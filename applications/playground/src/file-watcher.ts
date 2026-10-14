@@ -187,8 +187,7 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   }
 
   // `shell`-scope and `components`-scope changes share the same clearing
-  // footprint because `shell-app/color-token-panel.svelte` (rendered by
-  // `shell.svelte`) imports Button, ColorPicker, Input, and Popover from the
+  // footprint because `shell-app/shell.svelte` imports Button from the
   // `@lostgradient/cinder` package root. A components-package change can still
   // affect the shell's compiled output.
   // The only difference between the two scopes is
@@ -196,7 +195,7 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   // canonical shell now owns README and prop metadata as well as the preview,
   // so reloading only the iframe would leave that outer documentation stale.
   // Session-only shell state is persisted before navigation, so the document
-  // refresh does not discard filters or color-token overrides.
+  // refresh does not discard filters.
   pageEntryByName.clear();
   clearPageArtifacts();
   pageBuildPromiseByKey.clear();

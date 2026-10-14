@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { COLOR_TOKEN_SESSION_KEY } from './color-token-overrides.ts';
 import {
+  COLOR_TOKEN_SESSION_KEY,
   clearLegacyColorOverrides,
   detectLegacyColorOverrides,
 } from './legacy-color-override-notice.ts';

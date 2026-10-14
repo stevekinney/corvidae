@@ -51,6 +51,8 @@ export class ThemeWorkbenchState {
   filters = $state.raw<CatalogueFilters>(NO_FILTERS);
   /** True while the invalid-input buffer diverges from the last-valid revision (COR-490). */
   previewIsLastValid = $state(false);
+  /** True while the preview shows an uncommitted palette proposal (COR-263). */
+  proposalPreview = $state(false);
   /**
    * Set by the draft controller: a context change is evaluated against the draft there and
    * lands through `applyContext`, so the preview never shows one context's map under another.

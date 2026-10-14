@@ -76,7 +76,7 @@ Validation is not optional and cannot be split. Every document is checked agains
 
 These fail before any CSS is projected, each with a path-addressed diagnostic: a value the schema rejects (an invalid `strokeStyle` such as `none` or `hidden`, a malformed composite), a type change that does not hold, a reference to a missing token, an alias or `$extends` cycle, a resolver that orders `motion` before `theme`, and a document the resolver never references.
 
-A value the CSS projection cannot express is a diagnostic as well. For example, a `strokeStyle`, `border`, `transition`, `gradient`, or `typography` token with no `cssRecipe` reports `No direct CSS serialization implemented for token type ...`. Nothing is skipped and nothing falls back to a default.
+A color is projected in the space it is authored in: `oklch` and `srgb` as before, and `display-p3`, the other predefined RGB and XYZ spaces (`color(<space> …)`), `lab`, `lch`, `oklab`, `hsl`, and `hwb` as their CSS Color 4 forms. Nothing is converted or clamped on the way to CSS. A value the CSS projection cannot express is a diagnostic as well. For example, a `strokeStyle`, `border`, `transition`, `gradient`, or `typography` token with no `cssRecipe` reports `No direct CSS serialization implemented for token type ...`. Nothing is skipped and nothing falls back to a default.
 
 ### Evaluated provenance
 
