@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { environmentConfiguration } from './scripts/environment-configuration.ts';
+
 // Playwright forces color in its workers and web servers. Remove the conflicting inherited
 // opt-out in this test process before those children are created.
 delete process.env['NO_COLOR'];
@@ -14,11 +16,12 @@ delete process.env['NO_COLOR'];
  * server that is already running on the port. `PLAYGROUND_BROWSER_STATIC=1` adds a second
  * project that exports the site and serves the exported files.
  */
-const devPort = Number(process.env['PLAYGROUND_BROWSER_PORT'] ?? 54231);
-const staticPort = Number(process.env['PLAYGROUND_BROWSER_STATIC_PORT'] ?? 54232);
+const environment = environmentConfiguration();
+const devPort = Number(environment.browserPort ?? 54231);
+const staticPort = Number(environment.browserStaticPort ?? 54232);
 const devOrigin = `http://127.0.0.1:${devPort}`;
 const staticOrigin = `http://127.0.0.1:${staticPort}`;
-const includeStatic = process.env['PLAYGROUND_BROWSER_STATIC'] === '1';
+const includeStatic = environment.browserStatic;
 
 export default defineConfig({
   testDir: './tests',
@@ -34,7 +37,7 @@ export default defineConfig({
       cwd: import.meta.dirname,
       env: { PORT: String(devPort) },
       url: `${devOrigin}/ready`,
-      reuseExistingServer: process.env['PLAYGROUND_BROWSER_REUSE'] === '1',
+      reuseExistingServer: environment.browserReuse,
       timeout: 360_000,
     },
     ...(includeStatic
@@ -43,7 +46,7 @@ export default defineConfig({
             command: `PLAYGROUND_BASE_URL=https://playground.test bun scripts/static-export.ts && bun scripts/serve-static-export.ts --port ${staticPort}`,
             cwd: import.meta.dirname,
             url: `${staticOrigin}/ping`,
-            reuseExistingServer: process.env['PLAYGROUND_BROWSER_REUSE'] === '1',
+            reuseExistingServer: environment.browserReuse,
             timeout: 900_000,
           },
         ]
