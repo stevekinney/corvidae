@@ -262,6 +262,63 @@ describe('how a parent view ends', () => {
     }
   });
 
+  it('keeps waiting through an unreadable child and settles once it can be read', async () => {
+    const storage = new MemoryStorage();
+    let failures = 0;
+    const flaky = new Proxy(storage, {
+      get(target, property) {
+        const original: unknown = Reflect.get(target, property, target);
+        if (typeof original !== 'function') return original;
+        if (property === 'get') {
+          return async (key: string) => {
+            if (failures > 0 && key === KEYS.workflow('flaky-read-child-id')) {
+              failures -= 1;
+              throw new Error('storage read unavailable');
+            }
+            return (original as (k: string) => Promise<unknown>).call(target, key);
+          };
+        }
+        return original.bind(target);
+      },
+    });
+    const loser = await Engine.create({
+      storage: flaky,
+      recover: false,
+      backgroundTasks: 'manual',
+      startScheduler: false,
+    });
+    loser.register(
+      workflow({ name: 'flaky-read-child' }).execute(async function* () {
+        return 'read later';
+      }),
+    );
+    try {
+      const internals = getInternals(loser);
+      const child = await loser.start('flaky-read-child', null, { id: 'flaky-read-child-id' });
+      await child.result();
+      const parent = await startParked(loser, 'flaky-read-parent', 'flaky-read-parent-id');
+      const waiter = createWorkflowResultWaiter(internals, 'flaky-read-child-id');
+      const view = getGeneratorOwnedWorkflowResultPromise(
+        internals,
+        'flaky-read-child-id',
+        parent.id,
+      );
+      failures = 1;
+      waiter.reject(new WorkflowCheckpointConflictError('flaky-read-child-id'));
+      await yieldToEventLoop();
+
+      // The first read failed: not a verdict on the child, so the view is still waiting.
+      expect(await Promise.race([view, Promise.resolve('pending')])).toBe('pending');
+      expect(pendingChildOutcomePollCount(internals)).toBe(1);
+
+      await pollChildOutcomes(internals);
+
+      expect(await view).toBe('read later');
+    } finally {
+      await loser[Symbol.asyncDispose]();
+    }
+  });
+
   it('retires the poll when the parent attempt was itself abandoned', async () => {
     const scenario = await lostChildScenario({ manual: true });
     try {
