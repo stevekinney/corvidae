@@ -180,6 +180,25 @@
         "typescript": "catalog:",
       },
     },
+    "components/terminal": {
+      "name": "@lostgradient/terminal",
+      "dependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/ventriloquist": "workspace:*",
+        "@xterm/xterm": "catalog:",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@testing-library/svelte": "catalog:",
+        "@types/bun": "catalog:",
+        "happy-dom": "catalog:",
+        "oxlint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/weft-ui": {
       "name": "@lostgradient/weft-ui",
       "dependencies": {
@@ -456,6 +475,16 @@
         "typescript": "catalog:",
       },
     },
+    "packages/ventriloquist": {
+      "name": "@lostgradient/ventriloquist",
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/weft": {
       "name": "@lostgradient/weft",
       "bin": {
@@ -547,6 +576,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/unist": "^3.0.0",
     "@valibot/to-json-schema": "^1.7.0",
+    "@xterm/xterm": "6.0.0",
     "ajv": "^8",
     "ajv-formats": "^3.0.1",
     "better-sqlite3": "^12.8.0",
@@ -777,11 +807,15 @@
 
     "@lostgradient/skills": ["@lostgradient/skills@workspace:packages/skills"],
 
+    "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
+
     "@lostgradient/testing": ["@lostgradient/testing@workspace:packages/testing"],
 
     "@lostgradient/tool-protocol": ["@lostgradient/tool-protocol@workspace:packages/tool-protocol"],
 
     "@lostgradient/typescript": ["@lostgradient/typescript@workspace:internal/typescript"],
+
+    "@lostgradient/ventriloquist": ["@lostgradient/ventriloquist@workspace:packages/ventriloquist"],
 
     "@lostgradient/weft": ["@lostgradient/weft@workspace:packages/weft"],
 
@@ -1072,6 +1106,8 @@
     "@vue/server-renderer": ["@vue/server-renderer@3.5.42", "", { "dependencies": { "@vue/compiler-ssr": "3.5.42", "@vue/runtime-dom": "3.5.42", "@vue/shared": "3.5.42" } }, "sha512-2++5dUyYS4gvo7xQXSECUDhB7TS0aOl5SeVfC5qSq1Jgfhjvegw1zqhwTIR3imZ+QYPJQw9gfcFvXGAjGZ7ajQ=="],
 
     "@vue/shared": ["@vue/shared@3.5.42", "", {}, "sha512-2rPxex1jQf4jvl9MOHl6YaXCPcrNqz/FstMOEh3QWY+/OME9nQTvl9WYeCwhW7AFjaR0SnngZGlp/wkR6rkI6g=="],
+
+    "@xterm/xterm": ["@xterm/xterm@6.0.0", "", {}, "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg=="],
 
     "acorn": ["acorn@8.18.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ=="],
 

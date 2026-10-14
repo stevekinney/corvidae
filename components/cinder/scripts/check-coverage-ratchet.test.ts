@@ -9,16 +9,31 @@ import {
   formatCoverageSummary,
   formatLineRanges,
   parseCoverageThresholds,
-  parseLcovRecords,
-  parseSvelteLcovRecords,
+  parseLcovRecords as parseLcovRecordsIn,
+  parseSvelteLcovRecords as parseSvelteLcovRecordsIn,
   parseSvelteMeasurementPlatform,
   runtimeImportsOfTestSupport,
   svelteCoveragePlatformNotice,
-  uncoveredLineReport,
+  uncoveredLineReport as uncoveredLineReportIn,
   UNREACHABLE_LINE_MARKER,
-} from './check-coverage-ratchet.ts';
+  type CoverageScope,
+} from '@lostgradient/testing/coverage-ratchet';
 
 const packageRoot = join(import.meta.dir, '..');
+
+// The shared ratchet takes the package root explicitly. These fixtures all describe this package,
+// so the calls below that omit a root measure against it, as they did before the logic moved.
+function parseLcovRecords(source: string, scope: CoverageScope = 'runtime', root = packageRoot) {
+  return parseLcovRecordsIn(source, scope, root);
+}
+
+function parseSvelteLcovRecords(source: string) {
+  return parseSvelteLcovRecordsIn(source, packageRoot);
+}
+
+function uncoveredLineReport(source: string, scope: CoverageScope, root = packageRoot) {
+  return uncoveredLineReportIn(source, scope, root);
+}
 
 const lcovFixture = `TN:
 SF:covered.ts
@@ -39,6 +54,116 @@ LF:2
 LH:1
 end_of_record
 `;
+
+type RatchetRun = { exitCode: number; stdout: string; stderr: string };
+
+// The real CLI process is the behavior under test (entry point, argument handling, and exit
+// status), so both runs happen once at module scope, off bun's per-test clock; the tests in
+// 'main() end to end' only assert on the settled results.
+async function runPlatformNoticeRatchet(): Promise<RatchetRun> {
+  const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-platform-notice-'));
+  writeFileSync(
+    join(scratchDirectory, 'coverage-ratchet.json'),
+    JSON.stringify({
+      lines: 1,
+      functions: 1,
+      svelte: { lines: 0.5, functions: 0.5 },
+      // Deliberately not a real platform/architecture pair, so the
+      // notice fires regardless of whatever machine runs this test.
+      svelteMeasuredOn: { platform: 'not-a-real-platform', architecture: 'not-a-real-arch' },
+    }),
+  );
+  mkdirSync(join(scratchDirectory, 'src'), { recursive: true });
+  writeFileSync(join(scratchDirectory, 'src', 'index.ts'), 'export {};\n');
+  mkdirSync(join(scratchDirectory, 'coverage'), { recursive: true });
+  writeFileSync(
+    join(scratchDirectory, 'coverage', 'lcov.info'),
+    [
+      'TN:',
+      'SF:src/index.ts',
+      'FNF:1',
+      'FNH:1',
+      'DA:1,1',
+      'LF:1',
+      'LH:1',
+      'end_of_record',
+      'TN:',
+      'SF:src/components/thing/thing.svelte',
+      'FNF:2',
+      'FNH:1',
+      'DA:1,1',
+      'DA:2,0',
+      'LF:2',
+      'LH:1',
+      'end_of_record',
+      '',
+    ].join('\n'),
+  );
+
+  const child = Bun.spawn(
+    ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
+    {
+      cwd: import.meta.dir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
+async function runSupportImportRatchet(): Promise<RatchetRun> {
+  const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-support-import-'));
+  writeFileSync(
+    join(scratchDirectory, 'coverage-ratchet.json'),
+    JSON.stringify({ lines: 1, functions: 1 }),
+  );
+  mkdirSync(join(scratchDirectory, 'src'), { recursive: true });
+  writeFileSync(
+    join(scratchDirectory, 'src', 'index.ts'),
+    "export { open } from './index-test-helpers.js';\n",
+  );
+  writeFileSync(join(scratchDirectory, 'src', 'index-test-helpers.ts'), 'export const open = 1;\n');
+  mkdirSync(join(scratchDirectory, 'coverage'), { recursive: true });
+  writeFileSync(
+    join(scratchDirectory, 'coverage', 'lcov.info'),
+    [
+      'TN:',
+      'SF:src/index.ts',
+      'FNF:1',
+      'FNH:1',
+      'DA:1,1',
+      'LF:1',
+      'LH:1',
+      'end_of_record',
+      '',
+    ].join('\n'),
+  );
+
+  const child = Bun.spawn(
+    ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
+    {
+      cwd: import.meta.dir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
+const [platformNoticeRun, supportImportRun] = await Promise.all([
+  runPlatformNoticeRatchet(),
+  runSupportImportRatchet(),
+]);
 
 describe('coverage ratchet check', () => {
   test('parses thresholds from coverage-ratchet.json', () => {
@@ -944,97 +1069,18 @@ end_of_record
 
   describe('main() end to end', () => {
     test('prints the platform notice on a passing run, without failing it, when the local platform differs from the recorded one', () => {
-      const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-platform-notice-'));
-      writeFileSync(
-        join(scratchDirectory, 'coverage-ratchet.json'),
-        JSON.stringify({
-          lines: 1,
-          functions: 1,
-          svelte: { lines: 0.5, functions: 0.5 },
-          // Deliberately not a real platform/architecture pair, so the
-          // notice fires regardless of whatever machine runs this test.
-          svelteMeasuredOn: { platform: 'not-a-real-platform', architecture: 'not-a-real-arch' },
-        }),
-      );
-      mkdirSync(join(scratchDirectory, 'src'), { recursive: true });
-      writeFileSync(join(scratchDirectory, 'src', 'index.ts'), 'export {};\n');
-      mkdirSync(join(scratchDirectory, 'coverage'), { recursive: true });
-      writeFileSync(
-        join(scratchDirectory, 'coverage', 'lcov.info'),
-        [
-          'TN:',
-          'SF:src/index.ts',
-          'FNF:1',
-          'FNH:1',
-          'DA:1,1',
-          'LF:1',
-          'LH:1',
-          'end_of_record',
-          'TN:',
-          'SF:src/components/thing/thing.svelte',
-          'FNF:2',
-          'FNH:1',
-          'DA:1,1',
-          'DA:2,0',
-          'LF:2',
-          'LH:1',
-          'end_of_record',
-          '',
-        ].join('\n'),
-      );
-
-      const result = Bun.spawnSync(
-        ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
-        { cwd: import.meta.dir },
-      );
-
+      const result = platformNoticeRun;
       expect(result.exitCode).toBe(0);
-      const stderr = result.stderr.toString();
-      expect(stderr).toContain('NOTE: the Svelte coverage floor');
-      expect(stderr).toContain('not-a-real-platform/not-a-real-arch');
-      expect(result.stdout.toString()).toContain('Svelte coverage ratchet');
+      expect(result.stderr).toContain('NOTE: the Svelte coverage floor');
+      expect(result.stderr).toContain('not-a-real-platform/not-a-real-arch');
+      expect(result.stdout).toContain('Svelte coverage ratchet');
     });
 
     test('fails a fully covered run when runtime source imports an excluded test support module', () => {
-      const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-support-import-'));
-      writeFileSync(
-        join(scratchDirectory, 'coverage-ratchet.json'),
-        JSON.stringify({ lines: 1, functions: 1 }),
-      );
-      mkdirSync(join(scratchDirectory, 'src'), { recursive: true });
-      writeFileSync(
-        join(scratchDirectory, 'src', 'index.ts'),
-        "export { open } from './index-test-helpers.js';\n",
-      );
-      writeFileSync(
-        join(scratchDirectory, 'src', 'index-test-helpers.ts'),
-        'export const open = 1;\n',
-      );
-      mkdirSync(join(scratchDirectory, 'coverage'), { recursive: true });
-      writeFileSync(
-        join(scratchDirectory, 'coverage', 'lcov.info'),
-        [
-          'TN:',
-          'SF:src/index.ts',
-          'FNF:1',
-          'FNH:1',
-          'DA:1,1',
-          'LF:1',
-          'LH:1',
-          'end_of_record',
-          '',
-        ].join('\n'),
-      );
-
-      const result = Bun.spawnSync(
-        ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
-        { cwd: import.meta.dir },
-      );
-
+      const result = supportImportRun;
       expect(result.exitCode).toBe(1);
-      const stderr = result.stderr.toString();
-      expect(stderr).toContain('src/index.ts imports ./index-test-helpers.js');
-      expect(stderr).toContain('1 runtime import(s) of test support modules');
+      expect(result.stderr).toContain('src/index.ts imports ./index-test-helpers.js');
+      expect(result.stderr).toContain('1 runtime import(s) of test support modules');
     });
   });
 });

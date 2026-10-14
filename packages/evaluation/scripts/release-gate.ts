@@ -223,7 +223,7 @@ export async function runReleaseGateCommand(
     await mkdir(dirname(invocation.store), { recursive: true });
     store = textValueStore(new BunSQLiteStorage(invocation.store));
     const history = createEvaluationHistory(store);
-    const sourceRevision = gitHeadRevision();
+    const sourceRevision = gateOptions.sourceRevision ?? gitHeadRevision();
     for (const gateId of ids) {
       results.push(
         await runReleaseGate({

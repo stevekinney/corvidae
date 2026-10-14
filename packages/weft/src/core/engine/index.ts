@@ -640,6 +640,7 @@ export class Engine<
   static async create(options: EngineCreateRuntimeOptions): Promise<unknown> {
     validateEngineCreateBackgroundTaskOptions(options);
     const engine = new Engine<object, object>(options);
+    getInternals(engine).onRecoveredWorkflowHook = options.onRecoveredWorkflow;
 
     try {
       await assertCompatiblePersistedDataVersion(getInternals(engine).storage);
@@ -2684,8 +2685,16 @@ export class Engine<
     // reuse — see `onRecoveredWorkflowHook`'s doc on `EngineInternals` for why
     // a reclaim-driven resume must not silently skip this hook just because it
     // was installed here rather than passed to that reclaim's own call.
-    getInternals(this).onRecoveredWorkflowHook = options?.onRecoveredWorkflow;
-    return recoverAllFromLifecycle(getInternals(this), this.#createLifecycleCallbacks(), options);
+    getInternals(this).onRecoveredWorkflowHook =
+      options?.onRecoveredWorkflow ?? getInternals(this).onRecoveredWorkflowHook;
+    const recoveredWorkflowHook = getInternals(this).onRecoveredWorkflowHook;
+    return recoverAllFromLifecycle(
+      getInternals(this),
+      this.#createLifecycleCallbacks(),
+      recoveredWorkflowHook === undefined
+        ? options
+        : { ...options, onRecoveredWorkflow: recoveredWorkflowHook },
+    );
   }
 
   /**

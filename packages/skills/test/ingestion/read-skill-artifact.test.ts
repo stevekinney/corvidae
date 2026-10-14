@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -35,6 +35,18 @@ async function completeSkill(): Promise<{ root: string; skill: string }> {
   await write(skill, 'SKILL.md', MANIFEST);
   return { root, skill };
 }
+
+// There is no filesystem API for a FIFO, so `mkfifo` is the real process this test needs; it runs
+// once here at module scope to stay off the per-test clock.
+const fifoRoot = await mkdtemp(join(tmpdir(), 'corvidae-skill-artifact-fifo-'));
+const fifoSkill = join(fifoRoot, 'pdf-processing');
+await write(fifoSkill, 'SKILL.md', MANIFEST);
+await mkdir(join(fifoSkill, 'assets'), { recursive: true });
+const fifoMade = Bun.spawnSync(['mkfifo', join(fifoSkill, 'assets/pipe')], { timeout: 120_000 });
+
+afterAll(async () => {
+  await rm(fifoRoot, { recursive: true, force: true });
+});
 
 describe('readSkillArtifact', () => {
   it('carries nested directories with their relative paths intact', async () => {
@@ -132,14 +144,9 @@ describe('readSkillArtifact', () => {
   });
 
   it('refuses a FIFO rather than blocking on it', async () => {
-    const { skill } = await completeSkill();
-    const fifo = join(skill, 'assets/pipe');
-    await mkdir(dirname(fifo), { recursive: true });
+    if (fifoMade.exitCode !== 0) throw new Error('mkfifo is required for this test');
 
-    const made = Bun.spawnSync(['mkfifo', fifo]);
-    if (made.exitCode !== 0) throw new Error('mkfifo is required for this test');
-
-    const result = await readSkillArtifact(skill);
+    const result = await readSkillArtifact(fifoSkill);
 
     expect(result.admitted).toBe(false);
     if (result.admitted) return;
