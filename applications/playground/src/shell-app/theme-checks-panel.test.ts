@@ -22,7 +22,7 @@ import {
   oklchColor,
   openController,
   withOverride,
-} from './theme-remediation-support.ts';
+} from './theme-remediation-test-support.ts';
 
 setupHappyDom();
 

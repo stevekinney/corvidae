@@ -17,7 +17,7 @@ import {
   findFinding,
   memoEvaluator,
   textOnCanvas,
-} from './theme-remediation-support.ts';
+} from './theme-remediation-test-support.ts';
 import {
   REMEDIATION_ALGORITHM_VERSION,
   candidateCss,

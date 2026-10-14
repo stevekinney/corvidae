@@ -90,7 +90,12 @@ export async function applyProposal(
   // The commit queue is serial, but a newer commit may have landed while recomputing.
   const again = staleReason(proposal, controller.draft);
   if (again !== null) return { ok: false, stale: true, message: `${again} ${STALE_HELP}` };
-  if (fresh === null || JSON.stringify(fresh.state) !== JSON.stringify(proposal.state)) {
+  if (
+    fresh === null ||
+    fresh.gamut !== proposal.gamut ||
+    fresh.algorithmVersion !== proposal.algorithmVersion ||
+    JSON.stringify(fresh.state) !== JSON.stringify(proposal.state)
+  ) {
     return {
       ok: false,
       stale: true,

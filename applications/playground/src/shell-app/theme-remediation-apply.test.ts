@@ -30,7 +30,7 @@ import {
   shippedEnvelope,
   textOnCanvas,
   withOverride,
-} from './theme-remediation-support.ts';
+} from './theme-remediation-test-support.ts';
 
 // Runtime work happens once, at module scope; the evaluator remembers it by content.
 const grayCanvas = withOverride('light', 'surface.canvas', oklchColor(0.5, 0, 0));
@@ -168,6 +168,21 @@ describe('apply and undo', () => {
     expect(
       staleReason({ ...proposal, binding: { ...proposal.binding, revision: 1 } }, sameRevision),
     ).toContain('locked tokens changed');
+  });
+
+  test('a proposal computed for another gamut target is rejected even when the state matches', async () => {
+    const { controller } = await openController(dimmedText);
+    const proposal = await proposalFor(controller, dimmedRecord);
+    const before = snapshot(controller);
+    // The same source and locks, but the target changed to Display P3 since it was computed.
+    const rejected = await applyProposal(controller, proposal, () =>
+      recomputeProposal(
+        { ...requestFor(controller, dimmedRecord), gamut: 'display-p3' },
+        proposal.action,
+      ),
+    );
+    expect(rejected).toMatchObject({ ok: false, stale: true });
+    expect(snapshot(controller)).toBe(before);
   });
 
   test('a proposal that no longer recomputes to the same state is rejected', async () => {
