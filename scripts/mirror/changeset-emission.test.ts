@@ -488,6 +488,45 @@ describe('changeset emission', () => {
     expect(Object.keys(files)).toContain(emittedPath(second, 'two'));
   });
 
+  test('a merge commit that itself edits an existing changeset throws', async () => {
+    const { root } = await corvidae();
+    await write(root, '.changeset/fix-a.md', weftChangeset);
+    const synced = await commit(root, 'Add a changeset');
+    await git(root, 'checkout', '--quiet', '-b', 'side');
+    await write(root, 'side.txt', 'side work\n');
+    await commit(root, 'Side: unrelated');
+    await git(root, 'checkout', '--quiet', 'main');
+    await write(root, 'unrelated.txt', 'main moved\n');
+    await commit(root, 'Main moves');
+    // The edit exists only in the merge commit, as a conflict resolution would leave it.
+    await git(root, 'merge', '--quiet', '--no-ff', '--no-commit', 'side');
+    await write(
+      root,
+      '.changeset/fix-a.md',
+      changeset('@lostgradient/weft', 'Edited in the merge.'),
+    );
+    await git(root, 'add', '--all');
+    await git(root, 'commit', '--quiet', '--message', 'Merge side with an edit');
+    const error = await rejectionOf(emit(root, await target(synced), synced));
+    expect(error).toBeInstanceOf(ChangesetEmissionError);
+    expect((error as Error).message).toContain('.changeset/fix-a.md');
+  });
+
+  test('a side branch that adds a changeset and is merged counts once and passes', async () => {
+    const { root, start } = await corvidae();
+    await git(root, 'checkout', '--quiet', '-b', 'side');
+    await write(root, '.changeset/fix-a.md', weftChangeset);
+    const sideAdd = await commit(root, 'Side: add');
+    await write(root, 'side.txt', 'more side work\n');
+    await commit(root, 'Side: other work');
+    await git(root, 'checkout', '--quiet', 'main');
+    await write(root, 'unrelated.txt', 'main moved\n');
+    await commit(root, 'Main moves');
+    await git(root, 'merge', '--quiet', '--no-ff', '--message', 'Merge side', 'side');
+    const files = await emit(root, await target(start), start);
+    expect(Object.keys(files)).toEqual([emittedPath(sideAdd, 'fix-a')]);
+  });
+
   test('changeset paths are literal: names that only collide as patterns do not cross-match', async () => {
     const { root } = await corvidae();
     // Written directly: the validator would refuse the bracketed name.

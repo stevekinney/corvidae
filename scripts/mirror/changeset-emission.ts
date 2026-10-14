@@ -186,6 +186,7 @@ export async function assertImmutable(
 ): Promise<void> {
   const replacements = await requireGit(corvidaeRoot, [
     'log',
+    '--first-parent',
     '--no-renames',
     '--name-status',
     '--diff-merges=first-parent',
@@ -220,6 +221,7 @@ export async function assertImmutable(
   // one, which would make two similar changesets from different pull requests block every sync.
   const renames = await requireGit(corvidaeRoot, [
     'log',
+    '--first-parent',
     '--find-renames',
     '--diff-filter=R',
     '--name-status',
@@ -247,8 +249,9 @@ export async function assertImmutable(
     }
     const output = await requireGit(corvidaeRoot, [
       'log',
-      '--no-merges',
-      '--full-history',
+      '--first-parent',
+      '--diff-merges=first-parent',
+      '--no-patch',
       '--format=%H',
       '--',
       path,
