@@ -2,7 +2,7 @@ import type { HumanReviewOptions, HumanReviewResult } from '../review/index.ts';
 import { parseDuration } from '../scheduler.ts';
 import type { Duration } from '../types.ts';
 import type { Context } from './index.ts';
-import type { ContextInternals } from './internals.ts';
+import { getInternals, type ContextInternals } from './internals.ts';
 import type { ContextOperationRequest } from './operation-request.ts';
 import type { OffloadReference, StreamReference, StreamSink } from './types.ts';
 import { captureCallerStack } from './validation.ts';
@@ -102,6 +102,12 @@ export function* completePreparedSleepOperation(
 ): Generator<ContextOperationRequest, void, unknown> {
   yield prepared.request;
   context.accumulatedResults.set(prepared.step, undefined);
+  // The step's cached result now answers every replay, so the deadline anchor is
+  // dead weight; drop it so a recurring sleep does not grow every checkpoint.
+  const internals = getInternals(context);
+  const { [`${SLEEP_DEADLINE_LOCAL_PREFIX}${prepared.step}`]: _completed, ...remainingLocals } =
+    internals.checkpointLocals;
+  internals.checkpointLocals = remainingLocals;
 }
 
 export function* sleep(

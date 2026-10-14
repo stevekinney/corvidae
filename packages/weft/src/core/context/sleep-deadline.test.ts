@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { Context } from '../context.ts';
-import { prepareSleepOperation } from './durable-operations.ts';
+import { completePreparedSleepOperation, prepareSleepOperation } from './durable-operations.ts';
 import { getInternals } from './internals.ts';
 
 const SLEEP_DEADLINE_LOCAL_PREFIX = '__weftSleepDeadline:';
@@ -61,5 +61,18 @@ describe('prepareSleepOperation deadline anchor', () => {
     expect(() => prepareSleepOperation(internals, '1m')).toThrow(
       'Invalid checkpointed sleep deadline "not-a-number" for step 0',
     );
+  });
+
+  it('drops the anchor once the sleep completes, so recurring sleeps do not grow the checkpoint', () => {
+    const context = createContext({ getNow: () => 5_000 });
+    const internals = getInternals(context);
+    const prepared = prepareSleepOperation(internals, '1m');
+    if (prepared.cached) throw new Error('Expected an uncached sleep request.');
+    expect(internals.checkpointLocals).toHaveProperty(`${SLEEP_DEADLINE_LOCAL_PREFIX}0`, 65_000);
+
+    const execution = completePreparedSleepOperation(context, prepared);
+    execution.next();
+    expect(execution.next().done).toBe(true);
+    expect(internals.checkpointLocals).not.toHaveProperty(`${SLEEP_DEADLINE_LOCAL_PREFIX}0`);
   });
 });
