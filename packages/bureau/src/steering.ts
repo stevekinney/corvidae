@@ -234,6 +234,11 @@ export interface BureauSteeringGate extends SteeringGate {
    *  addition and has no cross-run memory of its own). */
   getAppliedFloor(): number;
   /**
+   * The highest `configVersion` this gate has issued. No run can observe a
+   * version beyond it, so a logged `applied` claiming one is corrupt.
+   */
+  getRawConfigVersion(): number;
+  /**
    * A per-run VIEW of this session's gate, scoped to `runId`: its
    * `getDesiredState().paused` and `awaitResume()` reflect only a pause
    * bound to THIS run, never a pause a concurrent run on the same session
@@ -517,7 +522,9 @@ export function answerSteeringRetry(
       sessionId: original.sessionId,
       principal: original.principal,
       requestedValue: original.requestedValue,
-      runId: undefined,
+      // The run the refused request named: not bound, but it is the run a
+      // conflict against this refusal discloses, and is authorized against.
+      runId: original.runId,
       requestedRunId: original.runId,
       requestedAt: original.requestedAt,
       deadline: original.deadline,
@@ -1041,6 +1048,10 @@ export function createSteeringGate(
 
     getAppliedFloor(): number {
       return appliedFloor;
+    },
+
+    getRawConfigVersion(): number {
+      return rawConfigVersion;
     },
 
     forRun(runId: string): SteeringGate {

@@ -1874,6 +1874,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         return structuredClone(event.outcome);
       }
       case 'applied':
+        // A run observes only versions the gate already issued, so a logged
+        // version beyond the fold so far is corruption, never a floor.
+        if (event.configVersion > gate.getRawConfigVersion()) {
+          throw new SteeringLogCorruptError(
+            `Steering log for session "${gate.sessionId}" records run "${event.runId}" applying version ${String(event.configVersion)}, which no admission before it issued.`,
+          );
+        }
         gate.recordApplied(event.runId, event.configVersion, event.now);
         return undefined;
       case 'promoted':
@@ -2028,6 +2035,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<void> {
     for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
       const cursor = await catchUpSteering(kv, sessionId, incarnation);
+      // Refused before it is written, never after: a version this gate never
+      // issued would leave the log unfoldable everywhere.
+      if (event.type === 'applied' && event.configVersion > cursor.gate.getRawConfigVersion()) {
+        throw new BureauError(
+          `Run "${event.runId}" cannot have applied steering version ${String(event.configVersion)}: session "${sessionId}" has issued only ${String(cursor.gate.getRawConfigVersion())}.`,
+          'CONFLICT',
+        );
+      }
       const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, cursor.head, event);
       if (appended.status === 'appended') {
         applyToCursor(cursor, event);
@@ -5136,8 +5151,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // still reattach terminal visibility here. Real Weft recovery has
           // already taken the hook path above, including live event forwarding.
           let recoveredServices: DurableRunDeps | undefined;
+          let recoveredSession: AgentSession | undefined;
           if (sessionStore && ownedSessionId) {
             const fullSession = await sessionStore.load(ownedSessionId);
+            recoveredSession = fullSession;
             if (fullSession) {
               const recoveredAgentName = isAgentRunWorkflowInput(metadata?.input)
                 ? metadata.input.agentName
@@ -5192,6 +5209,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               ownedSessionId!,
             );
           }
+          // Steered and fenced like the primary path: its log folded into the
+          // session's gate, so its end is logged, and its terminal save bound
+          // to the incarnation it was recovered against. The engine has
+          // already resumed it, so a log that cannot be folded is reported
+          // (by `recoverRunSteering`) rather than failing the run.
+          let fallbackSteeringGate: BureauSteeringGate | undefined;
+          if (recoveredServices !== undefined && recoveredSession !== undefined) {
+            try {
+              fallbackSteeringGate = await recoverRunSteering(
+                ownedSessionId!,
+                recoveredSession,
+                handle.id,
+                recoveredServices,
+              );
+            } catch {
+              fallbackSteeringGate = undefined;
+            }
+          }
           reattachRecoveredRun(
             handle.id,
             ownedSessionId!,
@@ -5199,6 +5234,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             undefined,
             recoveredServices,
             sessionLoad.ok ? sessionLoad.session : null,
+            fallbackSteeringGate,
+            durableSteeringStore() === undefined ? undefined : recoveredSession?.incarnation,
           );
           // AB-336 — same reconstruction as the primary reattach path above
           // (`onRecoveredWorkflow`); this post-recovery classification pass
@@ -7778,7 +7815,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // An unscoped request's authority depends on which run is live, so a
       // failed query is masked until this caller is shown to be authorized
       // against the run this process can see.
-      const localTarget = liveSessionRunIds(sessionId);
+      const localTarget = liveSessionRunIdsOfIncarnation(sessionId, session.incarnation);
       if (
         !isSessionAuthorityAuthorized(
           afterFailure.metadata,
@@ -8044,6 +8081,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return outcome;
   }
 
+  /**
+   * This process's running runs of one session incarnation: a run of a
+   * deleted incarnation still settling here is not the recreated session's.
+   */
+  function liveSessionRunIdsOfIncarnation(sessionId: string, incarnation: string): string[] {
+    return liveSessionRunIds(sessionId).filter(
+      (runId) => (steeringRunIncarnations.get(runId) ?? incarnation) === incarnation,
+    );
+  }
+
   /** The ids of this process's runs on `sessionId` that are still running. */
   function liveSessionRunIds(sessionId: string): string[] {
     const liveRunIds: string[] = [];
@@ -8082,11 +8129,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     incarnation: string,
     namedRunId?: string,
   ): Promise<string[]> {
-    const live = new Set(
-      liveSessionRunIds(sessionId).filter(
-        (runId) => (steeringRunIncarnations.get(runId) ?? incarnation) === incarnation,
-      ),
-    );
+    const live = new Set(liveSessionRunIdsOfIncarnation(sessionId, incarnation));
     const engine = runtime.durable?.engine;
     if (engine === undefined) return [...live].toSorted((left, right) => left.localeCompare(right));
     const tag = steeringSessionRunTag(sessionId, incarnation);

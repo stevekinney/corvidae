@@ -39,6 +39,23 @@ async function openBureau(path: string) {
 
 type TestBureau = Awaited<ReturnType<typeof openBureau>>;
 
+/** The prototype every Bureau's durable engine shares, for spying on its reads. */
+async function durableEnginePrototype() {
+  const probe = await createRuntimeComposition({
+    generate: () => new Promise<never>(() => {}),
+    toolbox: createToolbox([]),
+    storage: { type: 'memory' },
+    durableExecution: true,
+  });
+  const prototype = Object.getPrototypeOf(probe.durable!.engine) as {
+    get: (id: string) => Promise<unknown>;
+    list: (query: unknown) => Promise<unknown>;
+  };
+  probe.durable!.engine[Symbol.dispose]?.();
+  probe.disposeStorage?.();
+  return prototype;
+}
+
 async function startRunningSession(bureau: TestBureau, sessionId?: string): Promise<string> {
   const run = await bureau.createRun({
     message: 'Wait forever',
@@ -569,18 +586,7 @@ describe('durable steering across two Bureau processes', () => {
 
   it("folds starting runs before the terminal check, reads markers only as far as admission needs, and surfaces a named run's liveness failure", async () => {
     // The engine every Bureau composes: its reads are counted, then failed.
-    const probe = await createRuntimeComposition({
-      generate: () => new Promise<never>(() => {}),
-      toolbox: createToolbox([]),
-      storage: { type: 'memory' },
-      durableExecution: true,
-    });
-    const engineType = Object.getPrototypeOf(probe.durable!.engine) as {
-      get: (id: string) => Promise<unknown>;
-      list: (query: unknown) => Promise<unknown>;
-    };
-    probe.durable!.engine[Symbol.dispose]?.();
-    probe.disposeStorage?.();
+    const engineType = await durableEnginePrototype();
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-starting-terminal-'));
     const path = join(directory, 'bureau.sqlite');
     const writer = await openBureau(path);
@@ -797,6 +803,23 @@ describe('durable steering across two Bureau processes', () => {
       if (pauseFromA.outcome !== 'accepted') throw new Error('expected accepted');
       expect(pauseFromA.command.runId).toBe(recreatedRunId);
 
+      // When A's backend query fails, the failure is masked against A's runs
+      // of the recreated session, which A has none of, not against the old
+      // run it still holds: alice, authorized for the new run, sees the error.
+      const engineList = spyOn(await durableEnginePrototype(), 'list').mockImplementation(() =>
+        Promise.reject(new Error('backend unavailable')),
+      );
+      try {
+        await expect(
+          bureauA.submitSteeringCommand(sessionId, {
+            principal: 'alice',
+            requestedValue: { target: 'pause' },
+          }),
+        ).rejects.toThrow('backend unavailable');
+      } finally {
+        engineList.mockRestore();
+      }
+
       // A session id far beyond Weft's per-tag size still starts and steers.
       const longId = `session-${'x'.repeat(300)}`;
       await startRunningSession(bureauA, longId);
@@ -907,6 +930,26 @@ describe('durable steering across two Bureau processes', () => {
 
       // Alice loses the first run. Reusing the key through the second, which
       // she still holds, must not disclose the first run's command.
+      // A refusal keeps the run its request named, and a conflict against it
+      // discloses, and is authorized against, that run.
+      const refused = await bureau.submitSteeringCommand(sessionId, {
+        id: 'k-refused',
+        principal: 'alice',
+        runId: second,
+        expectedRevision: 999,
+        requestedValue: { target: 'pause' },
+      });
+      expect(refused.outcome).toBe('rejected');
+      const againstRefusal = await bureau.submitSteeringCommand(sessionId, {
+        id: 'k-refused',
+        principal: 'alice',
+        runId: second,
+        requestedValue: { target: 'resume' },
+      });
+      expect(againstRefusal.outcome).toBe('conflict');
+      if (againstRefusal.outcome !== 'conflict') throw new Error('expected conflict');
+      expect(againstRefusal.conflict.original.runId).toBe(second);
+
       await handAuthorityToBob(sessionId, first);
       expect(
         await bureau.submitSteeringCommand(sessionId, {
@@ -938,6 +981,37 @@ describe('durable steering across two Bureau processes', () => {
       ).toEqual({ outcome: 'not-found' });
     } finally {
       await bureau.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('fails closed on an applied version no admission before it issued', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-applied-beyond-'));
+    const path = join(directory, 'bureau.sqlite');
+    const writer = await openBureau(path);
+    let reader: TestBureau | undefined;
+    try {
+      const sessionId = await startRunningSession(writer);
+      const session = await writer.getSession(sessionId);
+      const kv = writer.kv;
+      if (session === undefined || kv === undefined) throw new Error('expected a durable session');
+      await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        session.incarnation,
+        await readSteeringLogHead(kv, sessionId, session.incarnation),
+        { type: 'applied', runId: 'some-run', configVersion: 99, now: new Date().toISOString() },
+      );
+      reader = await openBureau(path);
+      await expect(
+        reader.submitSteeringCommand(sessionId, {
+          principal: 'alice',
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        }),
+      ).rejects.toThrow(/no admission before it issued/);
+    } finally {
+      await writer.dispose();
+      await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);
