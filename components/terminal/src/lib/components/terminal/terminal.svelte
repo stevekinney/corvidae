@@ -82,6 +82,10 @@
     class: className,
     title,
     status: TERMINAL_FRAME_STATUS[effectiveState],
+    // The coarse chip cannot tell writable from read-only from backpressured, so the detailed
+    // message below is the one live status (experience.md: backpressured is announced once per
+    // transition into the state) and the chip stays visible but quiet.
+    announceStatus: false,
     ...(error === undefined ? {} : { error }),
     ...(onRecoveryRequest === undefined ? {} : { onReloadRequest: onRecoveryRequest }),
   });
@@ -117,18 +121,6 @@
     if (!ready) return;
     if (effectiveState === 'exited' || effectiveState === 'disconnected') live?.finishOutput();
   });
-
-  // `TerminalFrame` renders its coarse status chip as a polite live region and offers no way to
-  // turn that off. The chip cannot tell writable from read-only from backpressured, so a change
-  // among them would announce nothing. The detailed message below is the one live status instead
-  // (experience.md: backpressured is announced once per transition into the state), and this
-  // removes the chip's role so the frame never holds a second one. Its text stays visible.
-  function quietFrameStatus(node: HTMLElement): void {
-    node
-      .closest('.cinder-terminal-frame')
-      ?.querySelector('.cinder-terminal-frame__status')
-      ?.removeAttribute('role');
-  }
 
   /**
    * Mounts the engine into `host` on the client and releases everything on destroy and when the
@@ -173,7 +165,7 @@
 </script>
 
 <TerminalFrame {...frameProps}>
-  <div class="cinder-terminal__body" data-state={effectiveState} {@attach quietFrameStatus}>
+  <div class="cinder-terminal__body" data-state={effectiveState}>
     <p class="cinder-terminal__message" role="status" aria-atomic="true">{message}</p>
     {#if showEngine}
       <div
