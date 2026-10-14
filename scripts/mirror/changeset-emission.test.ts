@@ -67,7 +67,7 @@ async function emit(
   root: string,
   clone: string,
   trailerSha: string | null,
-  mirror: 'weft' | 'cinder' | 'agent-bureau' = 'weft',
+  mirror: 'weft' | 'cinder' = 'weft',
   log: (line: string) => void = () => {},
 ) {
   return planChangesetEmission({
@@ -97,7 +97,6 @@ describe('changeset emission', () => {
     expect(Object.keys(files)).toEqual([emittedPath(adding, 'fix-a')]);
     expect(text(files[emittedPath(adding, 'fix-a')])).toBe(weftChangeset);
     expect(await emit(root, clone, start, 'cinder')).toEqual({});
-    expect(await emit(root, clone, start, 'agent-bureau')).toEqual({});
   });
 
   test('(a) writes the bytes of the corvidae file, including CRLF line endings', async () => {
@@ -303,7 +302,7 @@ describe('changeset emission', () => {
     const { root, start } = await corvidae();
     await write(root, 'README.md', 'unrelated\n');
     await commit(root, 'Unrelated change');
-    for (const mirror of ['weft', 'cinder', 'agent-bureau'] as const) {
+    for (const mirror of ['weft', 'cinder'] as const) {
       expect(await emit(root, await target(start), start, mirror)).toEqual({});
     }
   });
@@ -322,7 +321,7 @@ describe('changeset emission', () => {
     const synced = await commit(root, 'Add a changeset');
     await write(root, '.changeset/fix-a.md', changeset('@lostgradient/weft', 'A better sentence.'));
     await commit(root, 'Edit the changeset');
-    for (const mirror of ['weft', 'cinder', 'agent-bureau'] as const) {
+    for (const mirror of ['weft', 'cinder'] as const) {
       const error = await rejectionOf(emit(root, await target(synced), synced, mirror));
       expect(error).toBeInstanceOf(ChangesetEmissionError);
       expect((error as Error).message).toContain('.changeset/fix-a.md');
@@ -584,10 +583,7 @@ describe('changeset emission', () => {
     const definitions = (members: Record<string, string[]>): string =>
       `export const targetDefinitions = ${JSON.stringify(
         Object.fromEntries(
-          ['weft', 'cinder', 'agent-bureau'].map((name) => [
-            name,
-            { members: members[name] ?? [] },
-          ]),
+          ['weft', 'cinder'].map((name) => [name, { members: members[name] ?? [] }]),
         ),
       )};\n`;
 
@@ -607,9 +603,9 @@ describe('changeset emission', () => {
       })}\n`;
 
     const weft = '@lostgradient/weft';
-    const chat = '@lostgradient/chat';
+    const editor = '@lostgradient/editor';
 
-    async function mapped(members: Record<string, string[]>, workspaces = [weft, chat]) {
+    async function mapped(members: Record<string, string[]>, workspaces = [weft, editor]) {
       const { root } = await corvidae();
       await write(root, definitionsPath, definitions(members));
       await write(root, packageMapPath, map(workspaces));
@@ -711,36 +707,36 @@ describe('changeset emission', () => {
     });
 
     test('a round trip of a package no changeset names passes', async () => {
-      const { root } = await mapped({ weft: [weft], cinder: [chat] });
+      const { root } = await mapped({ weft: [weft], cinder: [editor] });
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
-      await write(root, definitionsPath, definitions({ weft: [weft, chat], cinder: [] }));
-      await commit(root, 'Move chat to weft');
-      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [chat] }));
-      await commit(root, 'Move chat back');
+      await write(root, definitionsPath, definitions({ weft: [weft, editor], cinder: [] }));
+      await commit(root, 'Move editor to weft');
+      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [editor] }));
+      await commit(root, 'Move editor back');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
 
     test("a move discarded by a merge on a side branch is not a move in main's first-parent history", async () => {
-      const { root } = await mapped({ weft: [weft], cinder: [chat] });
+      const { root } = await mapped({ weft: [weft], cinder: [editor] });
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
       await git(root, 'checkout', '--quiet', '-b', 'side');
-      await write(root, definitionsPath, definitions({ weft: [], cinder: [chat, weft] }));
+      await write(root, definitionsPath, definitions({ weft: [], cinder: [editor, weft] }));
       await commit(root, 'Move weft to cinder on a topic branch');
       await git(root, 'checkout', '--quiet', 'main');
       await git(root, 'merge', '--quiet', '--no-commit', '-s', 'ours', 'side');
-      // Conflict resolution keeps weft in its own mirror and changes another entry.
-      await write(root, definitionsPath, definitions({ weft: [weft], 'agent-bureau': [chat] }));
+      // Conflict resolution keeps weft in its own mirror and moves another package instead.
+      await write(root, definitionsPath, definitions({ weft: [weft, editor], cinder: [] }));
       await git(root, 'add', '--all');
       await git(root, 'commit', '--quiet', '--message', 'Merge side, keeping weft where it was');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
 
     test('a package that starts publication cannot carry a changeset until a sync has passed it', async () => {
-      const { root, base } = await mapped({ cinder: [chat], weft: [] }, [chat]);
-      await write(root, definitionsPath, definitions({ cinder: [chat], weft: [weft] }));
-      await write(root, packageMapPath, map([chat, weft]));
+      const { root, base } = await mapped({ cinder: [editor], weft: [] }, [editor]);
+      await write(root, definitionsPath, definitions({ cinder: [editor], weft: [weft] }));
+      await write(root, packageMapPath, map([editor, weft]));
       await commit(root, 'Start publishing weft');
       await write(root, '.changeset/z.md', weftChangeset);
       await commit(root, 'Add Z');
@@ -765,10 +761,10 @@ describe('changeset emission', () => {
 
     test('after one sync has passed a new package, a changeset naming it is accepted', async () => {
       const { root } = await mapped({ weft: [weft] }, [weft]);
-      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [chat] }));
-      await write(root, packageMapPath, map([weft, chat]));
-      const trailer = await commit(root, 'Start publishing chat');
-      await write(root, '.changeset/z.md', changeset('@lostgradient/chat'));
+      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [editor] }));
+      await write(root, packageMapPath, map([weft, editor]));
+      const trailer = await commit(root, 'Start publishing editor');
+      await write(root, '.changeset/z.md', changeset('@lostgradient/editor'));
       const adding = await commit(root, 'Add Z');
       const files = await emit(root, await target(trailer), trailer, 'cinder');
       expect(Object.keys(files)).toEqual([emittedPath(adding, 'z')]);
@@ -778,14 +774,14 @@ describe('changeset emission', () => {
       const { root } = await mapped({ weft: [weft] }, [weft]);
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
-      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [chat] }));
-      await write(root, packageMapPath, map([weft, chat]));
+      await write(root, definitionsPath, definitions({ weft: [weft], cinder: [editor] }));
+      await write(root, packageMapPath, map([weft, editor]));
       await commit(root, 'Add a workspace');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
 
     test('removing a workspace and recording a snapshot are not moves', async () => {
-      const { root } = await mapped({ weft: [weft], cinder: [chat] });
+      const { root } = await mapped({ weft: [weft], cinder: [editor] });
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
       await write(root, definitionsPath, definitions({ weft: [weft] }));
@@ -795,11 +791,11 @@ describe('changeset emission', () => {
     });
 
     test('a move of a package that no changeset names passes', async () => {
-      const { root } = await mapped({ weft: [weft], cinder: [chat] });
+      const { root } = await mapped({ weft: [weft], cinder: [editor] });
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
-      await write(root, definitionsPath, definitions({ weft: [weft, chat], cinder: [] }));
-      await commit(root, 'Move chat');
+      await write(root, definitionsPath, definitions({ weft: [weft, editor], cinder: [] }));
+      await commit(root, 'Move editor');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
 

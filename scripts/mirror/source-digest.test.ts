@@ -420,7 +420,7 @@ const outcome = (plan: Promise<unknown>): Promise<string> =>
 /**
  * COR-1316: each target planned twice over the real workspaces, once with no override and once
  * with the committed map, at module scope for the reason `committed-plans.ts` gives. A full weft
- * or agent-bureau plan is one to two seconds on a loaded machine, so doing both inside a test
+ * or cinder plan is one to two seconds on a loaded machine, so doing both inside a test
  * body left little of bun's five-second per-test budget. The tests below compare the outcomes.
  */
 const committedPackageMap = await loadPackageMap();
@@ -481,10 +481,9 @@ describe('the guard against the real workspaces', () => {
     return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
   };
 
-  test.each([
-    ['agent-bureau', '@lostgradient/weft'],
-    ['cinder', 'conversationalist'],
-  ] as const)(
+  // The one cross-target edge left since the agent-bureau target was retired: cinder's
+  // `@lostgradient/weft-ui` depends on `@lostgradient/weft`.
+  test.each([['cinder', '@lostgradient/weft']] as const)(
     '%s plans when %s is current and refuses when it is not',
     async (target, dependency) => {
       // `committed-plans.ts` planned this target from the current-digest map at import, and a

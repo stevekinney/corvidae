@@ -72,9 +72,6 @@ function planText(plan: SurfacePlan, path: string): string {
  */
 const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
   weft: [],
-  // COR-1287: the agent-bureau target's ten packages each resolve every subpath their emitted
-  // manifest names, so it joins weft with nothing accepted.
-  'agent-bureau': [],
   // COR-1196: the two promoted components' deprecated shims were once accepted here as
   // unresolved, which left the cinder plan unpublishable: stageSurface's assertPublishable refused
   // it outright. Published cinder 0.26.2 exports both `./experimental/*` subpaths, so dropping them
@@ -156,8 +153,6 @@ describe('surface parity', () => {
   });
 
   /**
-   * COR-1287 split the `runtime-closure-forced` packages that had never published across two
-   * targets, all four landing in agent-bureau with the rest of that repository's source.
    * `@lostgradient/weft-ui` used to be cinder's one first-publish member; COR-1196 moved it to
    * `private-workspace`, which never reaches `plan.parity` at all (only a `publish-as` workspace
    * does), so cinder now has none. Asserted per target rather than merged back into one list,
@@ -165,9 +160,7 @@ describe('surface parity', () => {
    * member map exists to prevent, and a merged list would hide it.
    *
    * The expected set is derived from the committed `package-map.json` rather than written as a
-   * literal: COR-1198 published all four of agent-bureau's `runtime-closure-forced` packages
-   * (`@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`,
-   * `@lostgradient/tool-protocol`), so a literal list turned every one of those publishes into a
+   * literal: a literal list turned every first publish (COR-1198 published four at once) into a
    * test edit here — the same trap `weftRecordedVersion` in manifests.test.ts avoids for the same
    * reason. `targetFor` is the hand-authored routing table (`membersOf`), independent of
    * `isFirstPublish`/parity, so comparing its per-target grouping against what `committedPlans`
@@ -276,7 +269,6 @@ const declarationSubpathsByTarget: Readonly<Record<MirrorTarget, readonly string
     '@lostgradient/cinder ./styles/tokens',
     '@lostgradient/cinder ./styles/utilities',
   ],
-  'agent-bureau': [],
 };
 
 describe('declaration agreement', () => {

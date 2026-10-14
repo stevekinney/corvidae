@@ -20,6 +20,7 @@ import {
   targetRemoteUrl,
   targetRepositoryFullName,
 } from './mirror-sync-action.ts';
+import { singleEntryPolicyDocuments } from './policy-documents.test-support.ts';
 import { git, runSync } from './sync.ts';
 
 // The end-to-end scenarios clone, install, build, pack and import a package, some twice. They
@@ -30,7 +31,6 @@ describe('targetRepositoryFullName and targetRemoteUrl', () => {
   test('every mirror target resolves under the account every mirror lives on', () => {
     expect(targetRepositoryFullName('weft')).toBe('stevekinney/weft');
     expect(targetRepositoryFullName('cinder')).toBe('stevekinney/cinder');
-    expect(targetRepositoryFullName('agent-bureau')).toBe('stevekinney/agent-bureau');
     expect(targetRemoteUrl('weft')).toBe('https://github.com/stevekinney/weft.git');
   });
 });
@@ -99,37 +99,25 @@ describe('snapshotDispatchFor', () => {
       }).workflowFile,
     ).toBe('release.yaml');
     expect(
-      snapshotDispatchFor(
-        'agent-bureau',
-        'release.yml',
-        'stevekinney/agent-bureau',
-        'mirror-sync-deadbeef',
-        {
-          decision: 'pushed',
-          commit: 'deadbeef',
-          baseBranch: 'main',
-          baseCommit: 'base-sha',
-          pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
-        },
-      ).workflowFile,
+      snapshotDispatchFor('cinder', 'release.yml', 'stevekinney/cinder', 'mirror-sync-deadbeef', {
+        decision: 'pushed',
+        commit: 'deadbeef',
+        baseBranch: 'main',
+        baseCommit: 'base-sha',
+        pullRequest: { number: 1, htmlUrl: 'https://example.test/pr/1' },
+      }).workflowFile,
     ).toBe('release.yml');
   });
 
   test('uses the actual default branch and commit when sync skips', () => {
     expect(
-      snapshotDispatchFor(
-        'agent-bureau',
-        'release.yml',
-        'stevekinney/agent-bureau',
-        'mirror-sync-deadbeef',
-        {
-          decision: 'skip',
-          baseBranch: 'trunk',
-          baseCommit: 'verified-target-sha',
-        },
-      ),
+      snapshotDispatchFor('cinder', 'release.yml', 'stevekinney/cinder', 'mirror-sync-deadbeef', {
+        decision: 'skip',
+        baseBranch: 'trunk',
+        baseCommit: 'verified-target-sha',
+      }),
     ).toEqual({
-      fullName: 'stevekinney/agent-bureau',
+      fullName: 'stevekinney/cinder',
       workflowFile: 'release.yml',
       ref: 'trunk',
       inputs: { snapshot: 'true', expected_sha: 'verified-target-sha' },
@@ -272,10 +260,14 @@ describe('runMirrorSyncActionCommand argument handling', async () => {
  * A minimal real-workspace fixture for `reportDrift`, trimmed from `sync.test.ts`'s harness to
  * what `stageSurface` actually needs: it never builds, packs or verifies, so the fixture carries
  * no `tsdown.config.ts` content that has to run and no release workflow to read a Bun version
- * out of — only the one real published workspace (`@lostgradient/cryptography`, routed to the
- * agent-bureau target by `manifests.ts`) and the build input `package-surface.json` declares for
- * it, whose mere presence `assertBuildInputsPresent` checks.
+ * out of — only the one real published workspace (`@lostgradient/markdown`, routed to the cinder
+ * target by `target-definitions.ts`) and the build input its surface declares, whose mere presence
+ * `assertBuildInputsPresent` checks. The surface is `singleEntryPolicyDocuments`' one-entry tsdown
+ * surface rather than markdown's committed one, which no fixture can build; `sync.test.ts`'s
+ * header says why.
  */
+const policyDocuments = await singleEntryPolicyDocuments(['@lostgradient/markdown']);
+
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
 const source = 'export const digest = (value: string): string => `sha256:${value}`;\n';
 const staleSource = 'export const digest = (value: string): string => `stale:${value}`;\n';
@@ -343,8 +335,8 @@ function corvidaeFixture(): Record<string, unknown> {
       compilerOptions: { types: ['bun'] },
     },
     'internal/typescript/browser.json': { extends: './base.json' },
-    'packages/cryptography/package.json': {
-      name: '@lostgradient/cryptography',
+    'packages/markdown/package.json': {
+      name: '@lostgradient/markdown',
       private: true,
       type: 'module',
       exports: { '.': './src/index.ts' },
@@ -355,11 +347,11 @@ function corvidaeFixture(): Record<string, unknown> {
         typescript: 'catalog:',
       },
     },
-    'packages/cryptography/tsconfig.json': {
+    'packages/markdown/tsconfig.json': {
       extends: '@lostgradient/typescript/library.json',
       include: ['src'],
     },
-    'packages/cryptography/src/index.ts': source,
+    'packages/markdown/src/index.ts': source,
   };
 }
 
@@ -386,13 +378,13 @@ export default defineConfig({
 
 function targetFixture(): Record<string, unknown> {
   return {
-    'README.md': '# agent-bureau\n',
+    'README.md': '# cinder\n',
     LICENSE: licence,
     '.gitignore': 'node_modules\n',
     '.github/workflows/release.yaml': fixtureReleaseWorkflow,
-    'packages/cryptography/tsdown.config.ts': tsdownConfiguration,
-    'packages/cryptography/README.md': '# @lostgradient/cryptography\n',
-    'packages/cryptography/src/index.ts': staleSource,
+    'packages/markdown/tsdown.config.ts': tsdownConfiguration,
+    'packages/markdown/README.md': '# @lostgradient/markdown\n',
+    'packages/markdown/src/index.ts': staleSource,
   };
 }
 
@@ -443,12 +435,13 @@ describe('reportDrift', async () => {
     await withHarness(async (harness) => {
       const report = await reportDrift({
         corvidaeRoot: harness.corvidae,
-        target: 'agent-bureau',
+        target: 'cinder',
+        policyDocuments,
         remote: harness.remote,
         directory: join(harness.workRoot, 'behind'),
       });
       expect(report.behind).toBe(true);
-      expect(report.changed.join('\n')).toContain('packages/cryptography/src/index.ts');
+      expect(report.changed.join('\n')).toContain('packages/markdown/src/index.ts');
 
       // Nothing was pushed: the remote's `main` still holds only the seed commit.
       const commitCount = await git(harness.remote, 'rev-list', '--count', 'main');
@@ -462,7 +455,8 @@ describe('reportDrift', async () => {
     await withHarness(async (harness) => {
       await runSync({
         corvidaeRoot: harness.corvidae,
-        target: 'agent-bureau',
+        target: 'cinder',
+        policyDocuments,
         remote: harness.remote,
         directory: join(harness.workRoot, 'sync'),
         scratchDirectory: join(harness.workRoot, 'scratch'),
@@ -471,7 +465,8 @@ describe('reportDrift', async () => {
 
       const report = await reportDrift({
         corvidaeRoot: harness.corvidae,
-        target: 'agent-bureau',
+        target: 'cinder',
+        policyDocuments,
         remote: harness.remote,
         directory: join(harness.workRoot, 'after'),
       });

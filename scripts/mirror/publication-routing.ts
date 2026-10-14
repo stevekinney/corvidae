@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { loadLayoutMap } from './layout-map.ts';
-import type { MirrorTarget } from './target-definitions.ts';
+import { type MirrorTarget, mirrorTargets as currentMirrorTargets } from './target-definitions.ts';
 import { configurationWorkspace } from './typescript-configuration.ts';
 
 export interface HistoricalPublicationRouting {
@@ -13,7 +13,11 @@ export interface HistoricalPublicationRouting {
   configurationDirectory: string;
 }
 
-const mirrorTargets = new Set<MirrorTarget>(['weft', 'cinder', 'agent-bureau']);
+/**
+ * The targets a historical routing may name. A commit from before the agent-bureau target was
+ * retired can still route a workspace there; that is refused, because nothing publishes from it.
+ */
+const mirrorTargets = new Set<MirrorTarget>(currentMirrorTargets);
 
 export async function loadHistoricalPublicationRouting(
   corvidaeRoot: string,

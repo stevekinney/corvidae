@@ -6,7 +6,11 @@ import { createGitHubApi, userTokenFromEnvironmentOrCli } from './github-api.ts'
 import { assertInstallParity, readWorkflowInstalls, type InstallParity } from './install-parity.ts';
 import { layoutFor } from './layout-map.ts';
 import { assertNothingDeferred, runInstall } from './manifests.ts';
-import { loadPackageSurface, missingBuildInputs } from './package-surface.ts';
+import {
+  loadPackageSurface,
+  missingBuildInputs,
+  type PackageSurfaceDocument,
+} from './package-surface.ts';
 import {
   assertSucceeded,
   assertTarballsPublishable,
@@ -22,6 +26,7 @@ import { collectPrunablePaths, versionConstants } from './source.ts';
 import {
   assertPublishable,
   planSurface,
+  type PolicyDocumentOverrides,
   type PrivateWorkspace,
   type PublishedPackage,
 } from './surface.ts';
@@ -739,8 +744,11 @@ function matchesEmission(entry: string, emitted: EmittedFile): boolean {
  * Every declared build input of the workspaces this target receives, as target-relative paths:
  * the files a hand commit may touch that no `target-owned.json` glob names.
  */
-export async function declaredBuildInputs(target: string): Promise<Set<string>> {
-  const surface = await loadPackageSurface();
+export async function declaredBuildInputs(
+  target: string,
+  packageSurface?: PackageSurfaceDocument,
+): Promise<Set<string>> {
+  const surface = packageSurface ?? (await loadPackageSurface());
   const files = new Set<string>();
   for (const [workspace, entry] of Object.entries(surface.packages)) {
     if (targetFor(workspace) !== target) continue;
@@ -763,6 +771,8 @@ export async function foreignCommitOwnership(options: {
   clone: string;
   /** Resolved by the caller to share one read across the run; resolved here when omitted. */
   provenance?: MirrorProvenance | null | undefined;
+  /** Fixture policy documents; see `PolicyDocumentOverrides`. */
+  policyDocuments?: PolicyDocumentOverrides | undefined;
 }): Promise<ForeignCommitOwnership> {
   const policy = await loadTargetOwnedPolicy();
   // `null` means the caller resolved "no provenance", so only `undefined` asks for a read.
@@ -776,12 +786,16 @@ export async function foreignCommitOwnership(options: {
     targetDirectory: options.clone,
     policy,
     trailerSha: provenance?.trailerSha ?? null,
+    policyDocuments: options.policyDocuments,
   });
   return {
     policy,
     target: options.target,
     provenance,
-    targetOwnedFiles: await declaredBuildInputs(options.target),
+    targetOwnedFiles: await declaredBuildInputs(
+      options.target,
+      options.policyDocuments?.packageSurface,
+    ),
     generatedManifestKeys: new Map(
       Object.entries(plan.files)
         .filter(
@@ -880,6 +894,8 @@ export interface StageOptions {
   installArguments?: readonly string[] | undefined;
   /** The clone's newest mirror provenance, resolved once by the caller; resolved here when omitted. */
   provenance?: MirrorProvenance | null | undefined;
+  /** Fixture policy documents; see `PolicyDocumentOverrides`. */
+  policyDocuments?: PolicyDocumentOverrides | undefined;
 }
 
 export interface StageOutcome {
@@ -917,6 +933,7 @@ export async function stageSurface({
   directory,
   installArguments,
   provenance,
+  policyDocuments,
 }: StageOptions): Promise<StageOutcome> {
   const policy = await loadTargetOwnedPolicy();
   const resolved =
@@ -929,8 +946,9 @@ export async function stageSurface({
     targetDirectory: directory,
     policy,
     trailerSha: resolved?.trailerSha ?? null,
+    policyDocuments,
   });
-  const surface = await loadPackageSurface();
+  const surface = policyDocuments?.packageSurface ?? (await loadPackageSurface());
   assertNothingDeferred(plan);
   assertPublishable(plan, surface.packages);
   assertNoEmissionsIntoRetired(policy, target, Object.keys(plan.files));
@@ -1231,6 +1249,8 @@ export interface SyncOptions {
   pullRequest?: PullRequestOptions | undefined;
   /** Verify and commit locally for publication on a separate, credentialed runner. */
   prepareBranch?: string | undefined;
+  /** Fixture policy documents; see `PolicyDocumentOverrides`. */
+  policyDocuments?: PolicyDocumentOverrides | undefined;
 }
 
 export interface PullRequestOptions {
@@ -1334,6 +1354,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
       target: options.target,
       clone,
       provenance,
+      policyDocuments: options.policyDocuments,
     }),
   );
 
@@ -1357,6 +1378,7 @@ export async function runSync(options: SyncOptions): Promise<SyncResult> {
     directory: clone,
     installArguments: options.installArguments,
     provenance,
+    policyDocuments: options.policyDocuments,
   });
 
   const porcelain = await git(clone, 'status', '--porcelain');

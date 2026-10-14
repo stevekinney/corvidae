@@ -99,7 +99,7 @@ async function withFixtureTarget(
 describe('mirror target-owned enumeration', () => {
   test('the committed enumeration parses, names every target and carries no expired exception', async () => {
     const policy = await loadTargetOwnedPolicy();
-    expect(policy.targets).toEqual(['weft', 'cinder', 'agent-bureau']);
+    expect(policy.targets).toEqual(['weft', 'cinder']);
     // The enumeration's own `targets` list and the transform's are the same set or the guard is
     // scoped to a repository the transform never plans, which no entry's `targets` would reveal.
     expect(policy.targets.toSorted()).toEqual([...mirrorTargets].toSorted());
@@ -762,8 +762,8 @@ describe('retiring a directory the target still carries', async () => {
     ).not.toThrow();
   });
 
-  // The runtime refusal above stops a sync; this stops the edit. A retirement added for
-  // agent-bureau's stale `packages/*/test` trees once collided with a helper corvidae still emitted
+  // The runtime refusal above stops a sync; this stops the edit. A retirement added for the
+  // since-retired agent-bureau target's stale `packages/*/test` trees once collided with a helper corvidae still emitted
   // there (`packages/armorer/test/helpers/async-assertions.ts`, imported by five colocated `src`
   // tests), and nothing in test:self noticed until a staging proof refused the whole plan.
   test.each([...mirrorTargets])(
@@ -819,37 +819,8 @@ describe('retiring a directory the target still carries', async () => {
     ]);
     expect(retired.slice(6).every((path) => path.startsWith('packages/weft/scripts/'))).toBe(true);
     expect(retired.length).toBe(37);
-    // COR-1287. The two CI workflows and the hook configuration are COR-1286's demotion ruling
-    // carried to a third target; the five packages are D1's — corvidae never carried them, and a
-    // mirror carries only what its source of truth carries.
-    expect(retiredDirectoriesFor(policy, 'agent-bureau')).toEqual([
-      '.github/workflows/ci.yml',
-      '.github/workflows/nightly.yml',
-      'lefthook.yml',
-      'packages/cloudflare',
-      'packages/evaluation',
-      'packages/gateway',
-      'packages/integration',
-      'packages/interoperability',
-      // The target's own test trees and the configurations that type-check them: stale forks of
-      // corvidae's tests, which run in corvidae alone (COR-1286's ruling). Found by the agent-bureau
-      // staging proof of 2026-09-23, where they were every typecheck failure outside `src`.
-      'packages/armorer/test',
-      'packages/conversationalist/test',
-      'packages/lifecycle/test',
-      'packages/memory/test',
-      'packages/operative/test',
-      'packages/skills/test',
-      'packages/armorer/tsconfig.test.json',
-      'packages/bureau/tsconfig.test.json',
-      'packages/conversationalist/tsconfig.test.json',
-      'packages/lifecycle/tsconfig.test.json',
-      'packages/memory/tsconfig.test.json',
-      'packages/operative/tsconfig.test.json',
-      'packages/skills/tsconfig.test.json',
-    ]);
-    // COR-1196: retain the target-owned example generator because Chat and Editor's
-    // artifact generators import its types. Its exclusion policy belongs in the target's
+    // COR-1196: retain the target-owned example generator because Editor's artifact generator
+    // imports its types. Its exclusion policy belongs in the target's
     // scripts/example-exclusion-reasons.ts, so replacing mirrored manifest.meta.ts does
     // not remove a build-time dependency.
     //
@@ -861,16 +832,19 @@ describe('retiring a directory the target still carries', async () => {
     // corvidae genuinely has no replacement for at all.
     // COR-1201: the playground copy and its deployment workflow, which cinder#1602 deleted once
     // cinder.website built from corvidae; retired so a restored copy cannot survive a sync.
+    // `packages/chat`: the owner stopped publishing @lostgradient/chat on 2026-10-14, and the
+    // mirror's copy would otherwise keep releasing from frozen source.
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([
       'packages/components/scripts/tokens/generate-artifacts.test.ts',
       'packages/components/scripts/tokens/generate.test.ts',
+      'packages/chat',
       'packages/playground',
       '.github/workflows/deploy-playground.yaml',
     ]);
     for (const entry of policy.retired.entries) {
-      expect(['weft', 'agent-bureau', 'cinder']).toContain(entry.target);
+      expect(['weft', 'cinder']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1286', 'COR-1287', 'COR-1196', 'COR-1201']).toContain(entry.issue);
+      expect(['COR-1192', 'COR-1286', 'COR-1196', 'COR-1201', 'COR-1432']).toContain(entry.issue);
     }
     // A retirement names exactly one repository, so no target's list may reach another's paths.
     for (const target of mirrorTargets) {

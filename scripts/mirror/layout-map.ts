@@ -5,16 +5,16 @@ import { z } from 'zod';
 /**
  * Where a corvidae workspace lands inside the target that receives it.
  *
- * Corvidae's directory layout is not the targets'. `components/chat` is cinder's `packages/chat`
- * and `components/cinder` is cinder's `packages/components`, so a transform that reused corvidae's
+ * Corvidae's directory layout is not the targets'. `components/cinder` is cinder's
+ * `packages/components` and `components/editor` is cinder's `packages/editor`, so a transform that reused corvidae's
  * own directory would write a second tree beside the target's real one. Under COR-1221's deletion
  * rule that duplicate is permanent: the transform prunes only paths it owns, and `packages/**` is
  * not one of them once `components/**` is what it emits.
  *
  * The table is explicit rather than derived. `package-surface.json` carries a `provenance.path`
  * that looks like it would answer this and does not: it records where a published surface was
- * vendored from, it points `@lostgradient/operative` at the retired agent-bureau repository, and it is
- * `null` for the four packages that have never been published.
+ * vendored from, which is the upstream repository's directory at the commit it was copied from
+ * rather than where the mirror writes the package today.
  */
 
 const layoutFile = new URL('./layout-map.json', import.meta.url);

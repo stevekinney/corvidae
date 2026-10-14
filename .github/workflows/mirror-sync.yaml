@@ -31,7 +31,6 @@ on:
         options:
           - weft
           - cinder
-          - agent-bureau
       snapshot:
         description: Dispatch the target release workflow with snapshot=true after syncing
         type: boolean
@@ -62,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [weft, cinder, agent-bureau]
+        target: [weft, cinder]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
