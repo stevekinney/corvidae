@@ -1753,10 +1753,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /**
    * Folds every entry this process has not yet applied into the session's
    * gate. The fold starts over — a fresh gate and ledger, from entry one —
-   * when the session's incarnation changed (deleted and recreated) or the
-   * gate this cursor folded into is no longer the session's gate (dropped
-   * by a deletion). The cursor advances per entry, so a failure partway
-   * through never re-applies what was already applied.
+   * only when the session's incarnation changed (deleted and recreated).
+   * The cursor advances per entry, so a failure partway through never
+   * re-applies what was already applied.
    */
   async function catchUpSteering(
     kv: ConditionalTextValueStore,
@@ -1764,12 +1763,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     incarnation: string,
   ): Promise<SteeringCursor> {
     let cursor = steeringCursors.get(sessionId);
-    if (
-      cursor !== undefined &&
-      (cursor.incarnation !== incarnation || steeringGates.get(sessionId) !== cursor.gate)
-    ) {
+    if (cursor !== undefined && cursor.incarnation !== incarnation) {
       forgetSessionSteering(sessionId);
       cursor = undefined;
+    }
+    // Live runs hold this cursor's gate, so it is never replaced while its
+    // incarnation lives — only re-registered if something unmapped it.
+    if (cursor !== undefined && steeringGates.get(sessionId) !== cursor.gate) {
+      steeringGates.set(sessionId, cursor.gate);
     }
     if (cursor === undefined) {
       const ledger = createSteeringCommandLedger();
@@ -1842,8 +1843,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * applies it once logged, in the session's queue. The run's own step does
    * not wait on it: per-run applied tracking lives in the run's state, so a
    * boundary event reaching the gate a moment later changes nothing the
-   * run itself reads. A failure is a `steering` diagnostic, and the gate is
-   * left as the log has it.
+   * run itself reads. If logging fails for good, the event is still applied
+   * to this process's gate (a run that ended must release its pause here)
+   * and a `steering` diagnostic reports that the log missed it.
    */
   function logRunBoundarySteering(
     sessionId: string,
@@ -1862,6 +1864,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     void enqueueSteering(sessionId, () =>
       appendThenApplySteering(kv, sessionId, incarnation, event),
     ).catch((error: unknown) => {
+      // Still applied here, so a run that ended releases its pause and
+      // waiters in this process; only the log (and so other processes and
+      // a restart) misses it, which the diagnostic reports.
+      applySteeringEvent(gate, new Map(), event);
       diagnose({
         level: 'error',
         scope: 'steering',
@@ -3303,6 +3309,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const steeringKv = durableSteeringStore();
       const steeringSession =
         steeringKv === undefined ? undefined : await runtime.sessionStore?.load(sessionId);
+      if (steeringKv !== undefined && steeringSession === undefined) {
+        // Saved just above; gone now only if deleted concurrently. A durable
+        // run must not start on a gate the steering log does not feed.
+        throw new BureauError(
+          `Session "${sessionId}" was deleted while run "${runId}" was starting.`,
+          'CONFLICT',
+        );
+      }
       if (steeringKv !== undefined && steeringSession !== undefined) {
         await enqueueSteering(sessionId, () =>
           appendThenApplySteering(steeringKv, sessionId, steeringSession.incarnation, {
@@ -7018,7 +7032,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // must be awaited AFTER this call, not before it.
       steeringGateForAbort?.settleForDeletion(runtimeServices.clock.nowISO());
       steeringGateForAbort?.purgeFromLedger();
-      steeringGates.delete(id);
+      // Only the gate settled above: if the id was recreated during the
+      // awaits since, the new incarnation's gate (and the runs holding it)
+      // must survive this deletion's cleanup.
+      if (steeringGates.get(id) === steeringGateForAbort) steeringGates.delete(id);
       // The durable side gets the same treatment, for the same reason — a
       // reused session id must not inherit a deleted session's command
       // history — but scoped to the DELETED body's incarnation, captured

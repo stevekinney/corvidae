@@ -58,6 +58,12 @@ Recovery is a fold from the first entry. It happens on first use in a process, a
 - **Deletion is incarnation-scoped:** it removes `steering-log:v1:<session>:<incarnation>:*` and each binding that still points at that incarnation. A recreated session has a new incarnation and never sees the old log.
 - **Cross-process reach:** a run reads its own process's gate, which folds new entries before each admission and run start in that process. Steering does not push updates across processes.
 
+## Known limits
+
+- **A run that dies with its process logs no `run-ended`.** A `pause` bound to it stays `accepted` in the log, so an exact retry of that pause replays `accepted` after a restart. No live run reads it, so nothing stays paused. The log cannot tell a dead process's run from a live run in another process, so this design does not synthesize the event.
+- **A boundary event that cannot be logged is still applied locally.** If logging `applied` or `run-ended` fails after its retries, this process applies it anyway, so a finished run releases its pause and waiters. Other processes and a restart miss it, and a `steering` diagnostic says so.
+- **A corrupt key binding is left in place.** Session deletion skips a binding it cannot parse rather than aborting its cleanup. Every later admission of that `(principal, id)` then fails closed on it until an operator removes it.
+
 ## Run-scoped commands
 
 `pause` and `resume` enter the log like every other target (decided 2026-10-14), each with its recorded `boundRunId`. All seven targets therefore share one admission path, and pause idempotency survives restarts and processes. A logged pause takes effect only where its bound run is live: the fold records the binding, and a process that does not hold that run never pauses anything for it. This replaces the earlier documented rule that run-scoped steering state is not carried across a restart.
