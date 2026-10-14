@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   BUILD_PIPELINE_MODULE_NAMES,
+  PROCESS_OWNING_MODULE_NAMES,
   createTestProcessPlan,
   discoverTestFiles,
   requiresFreshProcess,
@@ -29,6 +30,16 @@ describe('playground test process isolation', () => {
       "import { buildDocumentationStylesheet } from './documentation-styles.ts';",
     ],
     ['src/direct-build.test.ts', 'await Bun.build(options);'],
+    ['scripts/spawns.test.ts', "const child = Bun.spawn(['true']);"],
+    ['scripts/spawns-sync.test.ts', "Bun.spawnSync(['git', 'status']);"],
+    [
+      'scripts/gate-lifecycle.test.ts',
+      "import { ProcessOwner } from './static-playground-processes.ts';",
+    ],
+    [
+      'scripts/gate.test.ts',
+      "import { runStaticPlaygroundGate } from './check-static-playground.ts';",
+    ],
     ['src/dynamic-server.test.ts', "const server = await import('./playground-server.ts');"],
     ['src/side-effect-server.test.ts', "import './playground-server.ts';"],
   ])('isolates %s in a fresh process', (path, source) => {
@@ -106,5 +117,24 @@ describe('playground test process isolation', () => {
     ).toBe(true);
     expect(paths.filter((path) => !path.endsWith('.test.ts'))).toEqual([]);
     expect(paths.filter((path) => path.includes('browser-lifecycle'))).toEqual([]);
+  });
+
+  it('isolates every test that spawns processes or imports a process-owning module', async () => {
+    const testFiles = await discoverTestFiles();
+    // This file names those calls and modules only inside string fixtures, which the AST
+    // classifier correctly ignores; the text match here would not.
+    const spawning = testFiles.filter(
+      (testFile) =>
+        testFile.path !== 'scripts/run-tests.test.ts' &&
+        (/\bBun\.spawn(?:Sync)?\(/.test(testFile.source) ||
+          PROCESS_OWNING_MODULE_NAMES.some((moduleName) => testFile.source.includes(moduleName))),
+    );
+
+    expect(spawning.map((testFile) => testFile.path)).toContain(
+      'scripts/static-playground-lifecycle.test.ts',
+    );
+    expect(
+      spawning.filter((testFile) => !requiresFreshProcess(testFile)).map((t) => t.path),
+    ).toEqual([]);
   });
 });
