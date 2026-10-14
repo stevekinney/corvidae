@@ -17,6 +17,8 @@ import {
   applyColorTokenOverridesToDocument,
   readSessionColorTokenOverrides,
 } from './color-token-overrides.ts';
+import { COMPONENT_SEARCH_LABEL, isComponentSearchShortcut } from './component-search.ts';
+import { attachDeferredShortcut } from './deferred-shortcut.ts';
 import { attachDeferredToggle } from './deferred-toggle.ts';
 import { attachLandingLiveReload } from './landing-live-reload.ts';
 import { memoizeUntilRejected } from './retryable-promise.ts';
@@ -122,16 +124,21 @@ if (themeToggle !== null && readInitialTheme() === 'dark') {
  * control happens to hydrate the shell first, which is a genuinely confusing
  * failure to debug.
  */
+function findButtonByName(accessibleName: string): HTMLButtonElement | null {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('button')) {
+    const name = button.getAttribute('aria-label') ?? button.textContent?.trim();
+    if (name === accessibleName) return button;
+  }
+  return null;
+}
+
 function bootstrapDeferredToggle(accessibleName: string): void {
-  attachDeferredToggle(
-    document.querySelector<HTMLButtonElement>(`button[aria-label="${accessibleName}"]`),
-    {
-      hydrate: hydrateShell,
-      isHydrated: () => shellHydrated,
-      onError: (error) =>
-        console.error('[cinder playground] failed to hydrate landing shell:', error),
-    },
-  );
+  attachDeferredToggle(findButtonByName(accessibleName), {
+    hydrate: hydrateShell,
+    isHydrated: () => shellHydrated,
+    onError: (error) =>
+      console.error('[cinder playground] failed to hydrate landing shell:', error),
+  });
 }
 
 /*
@@ -143,6 +150,20 @@ function bootstrapDeferredToggle(accessibleName: string): void {
  */
 bootstrapDeferredToggle('Color token panel');
 bootstrapDeferredToggle('Token inspector');
+bootstrapDeferredToggle(COMPONENT_SEARCH_LABEL);
+
+// The hydrated sidebar owns Cmd/Ctrl+K; until then a press hydrates the shell and
+// opens the palette through its trigger, exactly once.
+if (findButtonByName(COMPONENT_SEARCH_LABEL) !== null) {
+  attachDeferredShortcut(window, {
+    matches: (event) => isComponentSearchShortcut(event, document),
+    hydrate: hydrateShell,
+    isHydrated: () => shellHydrated,
+    activate: () => findButtonByName(COMPONENT_SEARCH_LABEL)?.click(),
+    onError: (error) =>
+      console.error('[cinder playground] failed to hydrate landing shell:', error),
+  });
+}
 
 const sidebarNavigation = document.querySelector<HTMLElement>('nav.dx-nav');
 if (sidebarNavigation !== null) persistScrollPosition(sidebarNavigation);
