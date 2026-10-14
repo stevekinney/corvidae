@@ -3,7 +3,6 @@
 import { Database } from 'bun:sqlite';
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
-import { exit } from 'node:process';
 import { parseArgs } from 'node:util';
 
 import { BunSQLiteStorage } from '../src/storage/bun-sql.ts';
@@ -37,8 +36,9 @@ function printUsage(): void {
   );
 }
 
-function parseCliArgs(): CliArgs {
+function parseCliArgs(argv: readonly string[]): CliArgs | number {
   const { values } = parseArgs({
+    args: [...argv],
     options: {
       source: { type: 'string' },
       target: { type: 'string' },
@@ -51,12 +51,12 @@ function parseCliArgs(): CliArgs {
 
   if (values.help) {
     printUsage();
-    exit(0);
+    return 0;
   }
 
   if (!values.source || !values.target || !values['target-prefix']) {
     printUsage();
-    exit(1);
+    return 1;
   }
 
   return {
@@ -156,8 +156,7 @@ function readSourceRows(database: Database, tableName: string): TextKeyValueRow[
   });
 }
 
-async function main(): Promise<void> {
-  const args = parseCliArgs();
+async function importRows(args: CliArgs): Promise<void> {
   assertSourceTableName(args.sourceTable);
   assertDifferentPaths(args.sourcePath, args.targetPath);
   assertTargetPrefix(args.targetPrefix);
@@ -182,7 +181,21 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  exit(1);
-});
+/**
+ * The command behind `bun scripts/import-string-kv-sqlite-to-weft.ts`, returning its exit code:
+ * 0 after a copy or `--help`, 1 for missing options or any refused import. Exported so tests run
+ * it in process rather than spawning Bun inside each test's budget.
+ */
+export async function runImportStringKeyValueCommand(argv: readonly string[]): Promise<number> {
+  try {
+    const args = parseCliArgs(argv);
+    if (typeof args === 'number') return args;
+    await importRows(args);
+    return 0;
+  } catch (error: unknown) {
+    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
+    return 1;
+  }
+}
+
+if (import.meta.main) process.exitCode = await runImportStringKeyValueCommand(Bun.argv.slice(2));

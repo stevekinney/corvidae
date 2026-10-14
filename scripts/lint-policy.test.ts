@@ -3,6 +3,12 @@ import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from './module-scope-scenario.test-support.ts';
+
 const root = join(import.meta.dir, '..');
 
 /**
@@ -107,7 +113,7 @@ async function lintImport(
         ...(typeAware ? ['--type-aware', '--tsconfig', configurationPath] : []),
         directory,
       ],
-      { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+      { timeout: SCENARIO_HANG_GUARD_MILLISECONDS, cwd: root, stdout: 'pipe', stderr: 'pipe' },
     );
     const [exitCode, stdout, stderr] = await Promise.all([
       process.exited,
@@ -120,6 +126,8 @@ async function lintImport(
   }
 }
 
+// These scenarios run the real `oxlint` and `tsc` binaries against synthetic files, which takes
+// seconds on a loaded host, so each runs at module scope off the per-test clock.
 for (const [path, maximum] of [
   ['packages/example/src/consumer.ts', 100],
   ['components/example/src/consumer.svelte', 100],
@@ -130,7 +138,7 @@ for (const [path, maximum] of [
   ['packages/example/scripts/nested/consumer.ts', 300],
   ['applications/example/scripts/consumer.ts', 300],
 ] as const) {
-  test(`${path} accepts complexity ${maximum} and rejects ${maximum + 1}`, async () => {
+  const outcome = await outcomeOf(async () => {
     function source(complexity: number): string {
       const branches = Array.from(
         { length: complexity - 1 },
@@ -148,9 +156,10 @@ for (const [path, maximum] of [
     expect(rejected.output).toContain('complexity');
     expect(rejected.output).toContain(`complexity of ${maximum + 1}`);
   });
+  test(`${path} accepts complexity ${maximum} and rejects ${maximum + 1}`, () => rethrow(outcome));
 }
 
-test('weft-pathed files answer to the nested weft configuration, not the root policy', async () => {
+const scenario1 = await outcomeOf(async () => {
   expect(nestedConfigurations).toContain('packages/weft/.oxlintrc.json');
   // Weft caps complexity at 10 where the root allows 100, so the same function is accepted
   // under a root-governed path and rejected under a weft one only if discovery reached the
@@ -166,20 +175,25 @@ test('weft-pathed files answer to the nested weft configuration, not the root po
   expect(weftGoverned.exitCode, weftGoverned.output).toBe(1);
   expect(weftGoverned.output).toContain('complexity of 11');
 });
+test('weft-pathed files answer to the nested weft configuration, not the root policy', () =>
+  rethrow(scenario1));
 
-test('the root import rule accepts stylesheet side effects', async () => {
+const scenario2 = await outcomeOf(async () => {
   const result = await lintImport("import './component.css';\n");
   expect(result.output).not.toContain('no-unassigned-import');
   expect(result.exitCode).toBe(0);
 });
+test('the root import rule accepts stylesheet side effects', () => rethrow(scenario2));
 
-test('the root import rule still rejects unassigned JavaScript module imports', async () => {
+const scenario3 = await outcomeOf(async () => {
   const result = await lintImport("import './component.ts';\n");
   expect(result.output).toContain('no-unassigned-import');
   expect(result.exitCode).toBe(1);
 });
+test('the root import rule still rejects unassigned JavaScript module imports', () =>
+  rethrow(scenario3));
 
-test('Chat can load its stylesheet-owning Cinder dependency from the public root', async () => {
+const scenario4 = await outcomeOf(async () => {
   const result = await lintImport(
     "import '@lostgradient/cinder';\n",
     'components/chat/src/index.ts',
@@ -187,8 +201,10 @@ test('Chat can load its stylesheet-owning Cinder dependency from the public root
   expect(result.output).not.toContain('no-unassigned-import');
   expect(result.exitCode).toBe(0);
 });
+test('Chat can load its stylesheet-owning Cinder dependency from the public root', () =>
+  rethrow(scenario4));
 
-test('the Chat stylesheet exception does not allow other modules or consumers', async () => {
+const scenario5 = await outcomeOf(async () => {
   const otherProvider = await lintImport(
     "import '@lostgradient/lifecycle';\n",
     'components/chat/src/index.ts',
@@ -199,8 +215,10 @@ test('the Chat stylesheet exception does not allow other modules or consumers', 
   expect(otherConsumer.output).toContain('no-unassigned-import');
   expect(otherConsumer.exitCode).toBe(1);
 });
+test('the Chat stylesheet exception does not allow other modules or consumers', () =>
+  rethrow(scenario5));
 
-test('application output is excluded at every workspace depth', async () => {
+const scenario6 = await outcomeOf(async () => {
   for (const output of ['build', '.svelte-kit', '.playwright', 'coverage', '.turbo']) {
     const result = await lintImport(
       "import './generated-module.ts';\n",
@@ -210,8 +228,9 @@ test('application output is excluded at every workspace depth', async () => {
     expect(result.exitCode, output).toBe(0);
   }
 });
+test('application output is excluded at every workspace depth', () => rethrow(scenario6));
 
-test('generated declaration contracts are separate from authored declaration lint', async () => {
+const scenario7 = await outcomeOf(async () => {
   const generated = await lintImport('export {};\n', 'workflows.generated.d.ts');
   expect(generated.exitCode).toBe(0);
   expect(generated.output).not.toContain('require-module-specifiers');
@@ -220,8 +239,10 @@ test('generated declaration contracts are separate from authored declaration lin
   expect(authored.exitCode).toBe(1);
   expect(authored.output).toContain('require-module-specifiers');
 });
+test('generated declaration contracts are separate from authored declaration lint', () =>
+  rethrow(scenario7));
 
-test('UI production retains strict assertion checks while test fixtures keep their source contract', async () => {
+const scenario8 = await outcomeOf(async () => {
   const source = 'export function read(value: unknown) { return value as { name: string }; }\n';
   const production = await lintImport(source, 'components/cinder/src/consumer.ts', true);
   expect(production.exitCode).toBe(1);
@@ -231,8 +252,10 @@ test('UI production retains strict assertion checks while test fixtures keep the
   expect(fixture.output).not.toContain('no-unsafe-type-assertion');
   expect(fixture.exitCode).toBe(0);
 });
+test('UI production retains strict assertion checks while test fixtures keep their source contract', () =>
+  rethrow(scenario8));
 
-test('zero-yield workflow fixtures do not disable generator checks for production', async () => {
+const scenario9 = await outcomeOf(async () => {
   const source = 'export function* workflow() { return 42; }\n';
   const fixture = await lintImport(source, 'packages/weft/src/consumer.test-support.ts');
   expect(fixture.exitCode).toBe(0);
@@ -242,8 +265,10 @@ test('zero-yield workflow fixtures do not disable generator checks for productio
   expect(production.exitCode).toBe(1);
   expect(production.output).toContain('require-yield');
 });
+test('zero-yield workflow fixtures do not disable generator checks for production', () =>
+  rethrow(scenario9));
 
-test('worker messaging preserves its API while window messaging requires an origin', async () => {
+const scenario10 = await outcomeOf(async () => {
   const worker = await lintImport(
     "const worker = new Worker('./worker.ts'); worker.postMessage('start');\n",
     'packages/weft/src/workers/consumer.ts',
@@ -257,8 +282,10 @@ test('worker messaging preserves its API while window messaging requires an orig
   expect(window.exitCode).toBe(1);
   expect(window.output).toContain('require-post-message-target-origin');
 });
+test('worker messaging preserves its API while window messaging requires an origin', () =>
+  rethrow(scenario10));
 
-test('diagnostic output is retained without permitting stray UI debug logging', async () => {
+const scenario11 = await outcomeOf(async () => {
   const diagnostic = await lintImport(
     "console.warn('Invalid component usage');\n",
     'components/cinder/src/consumer.ts',
@@ -269,8 +296,10 @@ test('diagnostic output is retained without permitting stray UI debug logging', 
   expect(debug.exitCode).toBe(1);
   expect(debug.output).toContain('no-console');
 });
+test('diagnostic output is retained without permitting stray UI debug logging', () =>
+  rethrow(scenario11));
 
-test('explicit document-debug utilities can print while ordinary UI source cannot', async () => {
+const scenario12 = await outcomeOf(async () => {
   const diagnostic = await lintImport(
     "export function printDocument() { console.log('Document structure:'); }\n",
     'components/editor/src/editor/test-utilities.ts',
@@ -283,8 +312,10 @@ test('explicit document-debug utilities can print while ordinary UI source canno
   expect(application.exitCode).toBe(1);
   expect(application.output).toContain('no-console');
 });
+test('explicit document-debug utilities can print while ordinary UI source cannot', () =>
+  rethrow(scenario12));
 
-test('IndexedDB test setup remains a side effect confined to test code', async () => {
+const scenario13 = await outcomeOf(async () => {
   const source = "import 'fake-indexeddb/auto';\n";
   const fixture = await lintImport(source, 'packages/weft/tests/test-preload.ts');
   expect(fixture.exitCode).toBe(0);
@@ -293,16 +324,19 @@ test('IndexedDB test setup remains a side effect confined to test code', async (
   expect(production.exitCode).toBe(1);
   expect(production.output).toContain('no-unassigned-import');
 });
+test('IndexedDB test setup remains a side effect confined to test code', () => rethrow(scenario13));
 
-test('caller-selected generic contracts remain valid in source and type assertions', async () => {
+const scenario14 = await outcomeOf(async () => {
   const source = 'export function assertType<T>(value: T): void { void value; }\n';
   for (const path of ['packages/weft/src/consumer.test-d.ts', 'packages/armorer/src/consumer.ts']) {
     const contract = await lintImport(source, path, true);
     expect(contract.exitCode).toBe(0);
   }
 });
+test('caller-selected generic contracts remain valid in source and type assertions', () =>
+  rethrow(scenario14));
 
-test('deliberate thenables and asynchronously changed loop signals are allowed only in tests', async () => {
+const scenario15 = await outcomeOf(async () => {
   for (const source of [
     'export const value = { then() { return 42; } };\n',
     'export async function wait(done: boolean) { while (!done) await Promise.resolve(); }\n',
@@ -313,8 +347,10 @@ test('deliberate thenables and asynchronously changed loop signals are allowed o
     expect(production.exitCode).toBe(1);
   }
 });
+test('deliberate thenables and asynchronously changed loop signals are allowed only in tests', () =>
+  rethrow(scenario15));
 
-test('external protocol and framework names do not permit arbitrary underscored properties', async () => {
+const scenario16 = await outcomeOf(async () => {
   const accepted = await lintImport(
     'export function read(value) { return value._meta ?? value._didMount ?? value._willUpdate; }\n',
   );
@@ -323,8 +359,10 @@ test('external protocol and framework names do not permit arbitrary underscored 
   expect(rejected.exitCode).toBe(1);
   expect(rejected.output).toContain('no-underscore-dangle');
 });
+test('external protocol and framework names do not permit arbitrary underscored properties', () =>
+  rethrow(scenario16));
 
-test('two-handler promise observation preserves rejection timing without an empty catch', async () => {
+const scenario17 = await outcomeOf(async () => {
   const handled = await lintImport("fetch('/resource').then(() => undefined, () => undefined);\n");
   expect(handled.exitCode).toBe(0);
 
@@ -332,8 +370,10 @@ test('two-handler promise observation preserves rejection timing without an empt
   expect(unhandled.exitCode).toBe(1);
   expect(unhandled.output).toContain('catch-or-return');
 });
+test('two-handler promise observation preserves rejection timing without an empty catch', () =>
+  rethrow(scenario17));
 
-test('recursive Svelte components retain self imports without allowing arbitrary module cycles', async () => {
+const scenario18 = await outcomeOf(async () => {
   const source =
     '<script>import Recursive from "./_json-viewer-node.svelte";</script><Recursive />\n';
   const recursive = await lintImport(
@@ -349,6 +389,8 @@ test('recursive Svelte components retain self imports without allowing arbitrary
   expect(accidental.exitCode).toBe(1);
   expect(accidental.output).toContain('no-self-import');
 });
+test('recursive Svelte components retain self imports without allowing arbitrary module cycles', () =>
+  rethrow(scenario18));
 
 async function compileContract(
   source: string,
@@ -374,6 +416,7 @@ async function compileContract(
       }),
     );
     const process = Bun.spawn([join(root, 'node_modules/.bin/tsc'), '--project', configuration], {
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -389,7 +432,7 @@ async function compileContract(
   }
 }
 
-test('component source accepts browser APIs and rejects server globals in TypeScript and Svelte', async () => {
+const scenario19 = await outcomeOf(async () => {
   for (const extension of ['ts', 'svelte']) {
     const wrap = (source: string) =>
       extension === 'svelte' ? `<script lang="ts">${source}</script>` : source;
@@ -412,8 +455,10 @@ test('component source accepts browser APIs and rejects server globals in TypeSc
     }
   }
 });
+test('component source accepts browser APIs and rejects server globals in TypeScript and Svelte', () =>
+  rethrow(scenario19));
 
-test('component imports reject Node and Bun modules including bare names and dynamic imports', async () => {
+const scenario20 = await outcomeOf(async () => {
   for (const source of [
     "export { readFile } from 'node:fs/promises';",
     "export { readFile } from 'fs/promises';",
@@ -427,8 +472,10 @@ test('component imports reject Node and Bun modules including bare names and dyn
     expect(result.output).toContain('no-restricted-imports');
   }
 });
+test('component imports reject Node and Bun modules including bare names and dynamic imports', () =>
+  rethrow(scenario20));
 
-test('component tests and scripts retain Bun APIs without exempting adjacent production files', async () => {
+const scenario21 = await outcomeOf(async () => {
   for (const path of [
     'src/consumer.test.ts',
     'src/consumer-test-helpers.ts',
@@ -441,8 +488,10 @@ test('component tests and scripts retain Bun APIs without exempting adjacent pro
     expect(result.exitCode, result.output).toBe(0);
   }
 });
+test('component tests and scripts retain Bun APIs without exempting adjacent production files', () =>
+  rethrow(scenario21));
 
-test('browser compiler policy provides DOM types without ambient Bun or Node globals', async () => {
+const scenario22 = await outcomeOf(async () => {
   const browser = await compileContract(
     'export const element: HTMLElement = document.body; export const timer: number = setTimeout(() => {}, 0);',
     'browser.json',
@@ -456,16 +505,20 @@ test('browser compiler policy provides DOM types without ambient Bun or Node glo
   for (const name of ['Bun', 'process', 'Buffer'])
     expect(server.output).toContain(`Cannot find name '${name}'`);
 });
+test('browser compiler policy provides DOM types without ambient Bun or Node globals', () =>
+  rethrow(scenario22));
 
-test('portable hashing compiles for browser consumers without ambient Bun types', async () => {
+const scenario23 = await outcomeOf(async () => {
   const result = await compileContract(
     "import { sha256Hex } from '../packages/cryptography/src/hash.ts'; export const hash = sha256Hex('browser');",
     'browser.json',
   );
   expect(result.exitCode, result.output).toBe(0);
 });
+test('portable hashing compiles for browser consumers without ambient Bun types', () =>
+  rethrow(scenario23));
 
-test('TypeScript enforces return completeness while accepting exhaustive unions', async () => {
+const scenario24 = await outcomeOf(async () => {
   const complete = await compileContract(
     "export function select(value: 'a' | 'b'): number { switch(value) { case 'a': return 1; case 'b': return 2; } }",
   );
@@ -476,8 +529,10 @@ test('TypeScript enforces return completeness while accepting exhaustive unions'
   expect(incomplete.exitCode).toBe(2);
   expect(incomplete.output).toContain('lacks ending return statement');
 });
+test('TypeScript enforces return completeness while accepting exhaustive unions', () =>
+  rethrow(scenario24));
 
-test('an explicit default generic can intentionally prevent narrower argument inference', async () => {
+const scenario25 = await outcomeOf(async () => {
   const source = `import { expect } from 'bun:test';
     const actual: { name: string } = { name: 'value' };
     const expected: unknown = actual;
@@ -487,3 +542,5 @@ test('an explicit default generic can intentionally prevent narrower argument in
   const lint = await lintImport(source, 'packages/armorer/test/fixture.test.ts', true);
   expect(lint.exitCode, lint.output).toBe(0);
 });
+test('an explicit default generic can intentionally prevent narrower argument inference', () =>
+  rethrow(scenario25));

@@ -3,6 +3,7 @@ import { chmod, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans, corvidaeRoot } from './committed-plans.ts';
 import {
@@ -51,13 +52,7 @@ test('published component examples use their component subpaths under browser co
     const internalManifest = await Bun.file(
       join(corvidaeRoot, 'components', workspace, 'package.json'),
     ).json();
-    // Chat additionally declares `./stream-events` (COR-1397), a browser-free codec entry for the
-    // desktop main process. It is internal: the published map is generated, never copied.
-    expect(internalManifest.exports).toEqual(
-      workspace === 'chat'
-        ? { '.': './src/index.ts', './stream-events': './src/lib/session/stream-event-codec.ts' }
-        : { '.': './src/index.ts' },
-    );
+    expect(internalManifest.exports).toEqual({ '.': './src/index.ts' });
     const manifestContents = plan.files[`packages/${workspace}/package.json`];
     expect(manifestContents).toBeDefined();
     const emittedManifest = JSON.parse(
@@ -65,7 +60,6 @@ test('published component examples use their component subpaths under browser co
         ? manifestContents
         : new TextDecoder().decode(manifestContents),
     );
-    expect(emittedManifest.exports['./stream-events']).toBeUndefined();
     for (const component of components) {
       const subpath = workspace === 'chat' ? component.replace(/^chat-/, '') : component;
       const specifier = `@lostgradient/${workspace}/${subpath}`;
@@ -865,7 +859,7 @@ describe('a remapped workspace on disk', () => {
   });
 });
 
-describe('the committed workspaces', () => {
+describe('the committed workspaces', async () => {
   /**
    * COR-1284 renamed every corvidae workspace to the name it already publishes under, which made
    * the source-side rewrite layer COR-1285 deletes a no-op by construction. Most source remains
@@ -878,61 +872,75 @@ describe('the committed workspaces', () => {
    * rewritten by the other two producers — never has to be filtered out by path; `SourcePlan`
    * already excludes them by construction.
    */
-  test.each<MirrorTarget>(['cinder', 'weft'])(
+  const byteTargets: MirrorTarget[] = ['cinder', 'weft'];
+  const byteOutcomes = new Map<MirrorTarget, unknown>();
+  // Compares thousands of emitted files against their sources on disk (no process, but enough I/O to miss five seconds on a loaded host); it runs at module scope, off the per-test clock.
+  for (const target of byteTargets) {
+    byteOutcomes.set(
+      target,
+      await outcomeOf(async () => {
+        const { plan } = committedPlans[target];
+        // A declared version constant is the one sanctioned difference: the transform rewrites its
+        // literal to the composed manifest's version (COR-1192), which differs from corvidae's own
+        // literal whenever the target's release is newer. It must still match byte-for-byte
+        // everywhere else.
+        const versionFiles = new Map(
+          plan.published.flatMap((entry) => {
+            const declared = versionConstants[entry.workspace];
+            return declared === undefined
+              ? []
+              : [[`${entry.directory}/${declared}`, entry.version]];
+          }),
+        );
+        const mismatches: string[] = [];
+        for (const [path, contents] of Object.entries(plan.source.files)) {
+          if (
+            /^packages\/(chat|editor)\/src\/lib\/components\/([^/]+)\/\2\.examples\.json$/.test(
+              path,
+            ) &&
+            path !== 'packages/chat/src/lib/components/chat/chat.examples.json'
+          )
+            continue;
+          // COR-1446: fenced imports in these are routed to their public subpaths; the test above
+          // asserts what they become.
+          if (/^packages\/(?:chat|editor)\/src\/lib\/components\/[^/]+\/README\.md$/.test(path))
+            continue;
+          const workspace = plan.emitted
+            .filter((candidate) => path.startsWith(`${candidate.targetDirectory}/`))
+            .toSorted(
+              (left, right) => right.targetDirectory.length - left.targetDirectory.length,
+            )[0];
+          if (workspace === undefined) {
+            mismatches.push(`${path}: no emitted workspace claims this path`);
+            continue;
+          }
+          const corvidaePath = `${workspace.corvidaeDirectory}${path.slice(workspace.targetDirectory.length)}`;
+          const onDisk = await Bun.file(join(corvidaeRoot, corvidaePath)).bytes();
+          const composedVersion = versionFiles.get(path);
+          const expected =
+            composedVersion === undefined
+              ? Buffer.from(onDisk)
+              : Buffer.from(
+                  new TextDecoder()
+                    .decode(onDisk)
+                    .replace(
+                      /export const VERSION = '[^']*';\n$/,
+                      `export const VERSION = '${composedVersion}';\n`,
+                    ),
+                );
+          const emitted = Buffer.from(contents);
+          if (Buffer.compare(expected, emitted) !== 0) {
+            mismatches.push(`${path}: differs from corvidae’s ${corvidaePath}`);
+          }
+        }
+        expect(mismatches).toEqual([]);
+      }),
+    );
+  }
+
+  test.each(byteTargets)(
     'the %s plan preserves source bytes except published component examples and READMEs',
-    async (target) => {
-      const { plan } = committedPlans[target];
-      // A declared version constant is the one sanctioned difference: the transform rewrites its
-      // literal to the composed manifest's version (COR-1192), which differs from corvidae's own
-      // literal whenever the target's release is newer. It must still match byte-for-byte
-      // everywhere else.
-      const versionFiles = new Map(
-        plan.published.flatMap((entry) => {
-          const declared = versionConstants[entry.workspace];
-          return declared === undefined ? [] : [[`${entry.directory}/${declared}`, entry.version]];
-        }),
-      );
-      const mismatches: string[] = [];
-      for (const [path, contents] of Object.entries(plan.source.files)) {
-        if (
-          /^packages\/(chat|editor)\/src\/lib\/components\/([^/]+)\/\2\.examples\.json$/.test(
-            path,
-          ) &&
-          path !== 'packages/chat/src/lib/components/chat/chat.examples.json'
-        )
-          continue;
-        // COR-1446: fenced imports in these are routed to their public subpaths; the test above
-        // asserts what they become.
-        if (/^packages\/(?:chat|editor)\/src\/lib\/components\/[^/]+\/README\.md$/.test(path))
-          continue;
-        const workspace = plan.emitted
-          .filter((candidate) => path.startsWith(`${candidate.targetDirectory}/`))
-          .toSorted((left, right) => right.targetDirectory.length - left.targetDirectory.length)[0];
-        if (workspace === undefined) {
-          mismatches.push(`${path}: no emitted workspace claims this path`);
-          continue;
-        }
-        const corvidaePath = `${workspace.corvidaeDirectory}${path.slice(workspace.targetDirectory.length)}`;
-        const onDisk = await Bun.file(join(corvidaeRoot, corvidaePath)).bytes();
-        const composedVersion = versionFiles.get(path);
-        const expected =
-          composedVersion === undefined
-            ? Buffer.from(onDisk)
-            : Buffer.from(
-                new TextDecoder()
-                  .decode(onDisk)
-                  .replace(
-                    /export const VERSION = '[^']*';\n$/,
-                    `export const VERSION = '${composedVersion}';\n`,
-                  ),
-              );
-        const emitted = Buffer.from(contents);
-        if (Buffer.compare(expected, emitted) !== 0) {
-          mismatches.push(`${path}: differs from corvidae’s ${corvidaePath}`);
-        }
-      }
-      expect(mismatches).toEqual([]);
-    },
+    (target) => rethrow(byteOutcomes.get(target)),
   );
 });
 

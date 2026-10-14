@@ -30,6 +30,7 @@ import type {
   ResolvedOptions,
 } from './engine-internal-types.ts';
 import { copyFinalizerMetadata } from './finalizer-metadata.ts';
+import type { RecoverAllOptions } from './lifecycle.ts';
 import { resolveBackgroundTaskMode, resolveOwnershipFields } from './ownership-options.ts';
 import { EngineOwnedRemoteActivityBroker } from './remote-activity-broker.ts';
 import {
@@ -58,6 +59,7 @@ export type EngineCreateRuntimeOptions = EngineConstructorOptions & {
   recover?: boolean | undefined;
   acknowledgeUnknownWorkflowTypes?: boolean | undefined;
   startScheduler?: boolean | undefined;
+  onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'] | undefined;
 };
 
 export type NormalizedWorkerExecutionConfiguration =
@@ -218,10 +220,11 @@ function defaultTo<T>(value: T | null | undefined, fallback: T): T {
 
 function resolveBooleanDefaults(
   options: EngineConstructorOptions | undefined,
-): Pick<ResolvedOptions, 'development' | 'broadcastEvents'> {
+): Pick<ResolvedOptions, 'development' | 'broadcastEvents' | 'maintainWorkflowVisibilityIndexes'> {
   return {
     development: defaultTo(options?.development, false),
     broadcastEvents: defaultTo(options?.broadcastEvents, false),
+    maintainWorkflowVisibilityIndexes: defaultTo(options?.maintainWorkflowVisibilityIndexes, false),
   };
 }
 

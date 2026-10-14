@@ -17,8 +17,8 @@
  *
  * This suite exercises the shared Chat harness fixture (`private-harness`,
  * the same fixture `chat-harness.playwright.ts` uses) rather than a
- * dedicated exercise route: corvidae's `applications/desktop` has no
- * `exercises/` routes, and the harness already ships a `#t-virtualized`
+ * dedicated exercise route: corvidae has no `exercises/` routes, and the
+ * harness already ships a `#t-virtualized`
  * toggle plus a long, variable-height seeded transcript (`seed-long`) built
  * for exactly this kind of virtualization coverage.
  *

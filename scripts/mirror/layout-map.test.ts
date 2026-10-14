@@ -53,22 +53,6 @@ describe('the layout table against the committed tree', () => {
   });
 });
 
-describe('the deferred workspace', () => {
-  test('refuses to give a directory and names the issue that must rule on it', async () => {
-    const layout = await layoutFor('@lostgradient/desktop');
-    expect(layout.disposition).toBe('deferred');
-    expect(await throwingRejectionOf(targetDirectoryFor('@lostgradient/desktop'))).toThrow(
-      DeferredWorkspaceError,
-    );
-    try {
-      await targetDirectoryFor('@lostgradient/desktop');
-    } catch (error) {
-      expect((error as Error).message).toContain('@lostgradient/desktop');
-      expect((error as Error).message).toContain('COR-1221');
-    }
-  });
-});
-
 describe('the deferred playground application', () => {
   test('stays deferred to COR-1201 so lifting its exclusion forces a ruling on placement', async () => {
     const layout = await layoutFor('@lostgradient/playground');
@@ -80,6 +64,12 @@ describe('the deferred playground application', () => {
     expect(await throwingRejectionOf(targetDirectoryFor('@lostgradient/playground'))).toThrow(
       DeferredWorkspaceError,
     );
+    try {
+      await targetDirectoryFor('@lostgradient/playground');
+    } catch (error) {
+      expect((error as Error).message).toContain('@lostgradient/playground');
+      expect((error as Error).message).toContain('COR-1201');
+    }
   });
 });
 

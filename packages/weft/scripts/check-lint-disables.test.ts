@@ -5,9 +5,8 @@ import { join } from 'node:path';
 import { write } from 'bun';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { MAX_DISABLES, MIN_RATIONALE_LENGTH } from './check-lint-disables.ts';
-
-const scriptPath = join(import.meta.dir, 'check-lint-disables.ts');
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
+import { MAX_DISABLES, MIN_RATIONALE_LENGTH, runCli } from './check-lint-disables.ts';
 
 const RATIONALE_PASS = 'rationale that comfortably exceeds the forty character floor for clarity';
 // 73 chars — well above MIN_RATIONALE_LENGTH (40).
@@ -16,13 +15,29 @@ const RATIONALE_SHORT = 'too short';
 
 type RunResult = { exitCode: number; stdout: string; stderr: string };
 
-function run(args: readonly string[]): RunResult {
-  const result = Bun.spawnSync(['bun', 'run', scriptPath, ...args]);
-  return {
-    exitCode: result.exitCode,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
+/**
+ * Runs the checker's CLI in process with `console` captured, as `bun scripts/check-lint-disables.ts`
+ * would print it. Spawning the script would put a Bun boot inside every test's 5 s budget,
+ * which times out under host load; the package's `lint` script still runs the real entry point.
+ */
+async function run(args: readonly string[]): Promise<RunResult> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (...values: unknown[]): void => {
+    stdout.push(values.map(String).join(' '));
   };
+  console.error = (...values: unknown[]): void => {
+    stderr.push(values.map(String).join(' '));
+  };
+  try {
+    const exitCode = await runCli(args);
+    return { exitCode, stdout: stdout.join('\n'), stderr: stderr.join('\n') };
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
 }
 
 async function writeFixtureFile(root: string, relativePath: string, body: string): Promise<void> {
@@ -51,7 +66,7 @@ describe('check-lint-disables ceiling mode', () => {
   });
 
   it('passes on an empty fixture with --max 5', async () => {
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: 0/5');
     expect(result.stdout).toContain('effective max = 5 from --max');
@@ -61,7 +76,7 @@ describe('check-lint-disables ceiling mode', () => {
     for (let i = 0; i < 5; i += 1) {
       await makeDirective(root, `src/file-${i}.ts`, RATIONALE_PASS);
     }
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: 5/5');
   });
@@ -70,7 +85,7 @@ describe('check-lint-disables ceiling mode', () => {
     for (let i = 0; i < 6; i += 1) {
       await makeDirective(root, `src/file-${i}.ts`, RATIONALE_PASS);
     }
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Found 6 oxlint-disable directive(s)');
     expect(result.stderr).toContain('ceiling is 5');
@@ -78,7 +93,7 @@ describe('check-lint-disables ceiling mode', () => {
 
   it('fails when a directive has a rationale shorter than the floor', async () => {
     await makeDirective(root, 'src/short.ts', RATIONALE_SHORT);
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('without a rationale of at least');
     expect(result.stderr).toContain('src/short.ts:1');
@@ -90,7 +105,7 @@ describe('check-lint-disables ceiling mode', () => {
       'src/no-rationale.ts',
       '// oxlint-disable-next-line complexity\nexport function noop(): void {}\n',
     );
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('without a rationale of at least');
     expect(result.stderr).toContain('src/no-rationale.ts:1');
@@ -102,7 +117,7 @@ describe('check-lint-disables ceiling mode', () => {
       'src/block.ts',
       `/* oxlint-disable max-lines -- ${RATIONALE_PASS} */\nexport const value = 1;\n`,
     );
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: 1/5');
   });
@@ -113,7 +128,7 @@ describe('check-lint-disables ceiling mode', () => {
       'src/inline.ts',
       `export const value = 1; // oxlint-disable-line complexity -- ${RATIONALE_PASS}\n`,
     );
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: 1/5');
   });
@@ -124,7 +139,7 @@ describe('check-lint-disables ceiling mode', () => {
       'src/inline-short.ts',
       `export const value = 1; // oxlint-disable-line complexity -- ${RATIONALE_SHORT}\n`,
     );
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('src/inline-short.ts:1');
   });
@@ -135,7 +150,7 @@ describe('check-lint-disables ceiling mode', () => {
       'src/block.ts',
       `/* oxlint-disable max-lines -- ${RATIONALE_SHORT} */\nexport const value = 1;\n`,
     );
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('src/block.ts:1');
   });
@@ -146,7 +161,7 @@ describe('check-lint-disables ceiling mode', () => {
       'src/id-token-short.ts',
       `// oxlint-disable-next-line complexity -- ID:a-very-long-identifier-token short\nexport function noop(): void {}\n`,
     );
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('src/id-token-short.ts:1');
   });
@@ -157,7 +172,7 @@ describe('check-lint-disables ceiling mode', () => {
       'src/id-token-ok.ts',
       `// oxlint-disable-next-line complexity -- ID:token ${RATIONALE_PASS}\nexport function noop(): void {}\n`,
     );
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(0);
   });
 
@@ -169,7 +184,7 @@ describe('check-lint-disables ceiling mode', () => {
         `// oxlint-disable-next-line complexity -- ${RATIONALE_SHORT}\nexport const value = 1;\n`,
       );
     }
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: 0/5');
   });
@@ -182,7 +197,7 @@ describe('check-lint-disables ceiling mode', () => {
         `// oxlint-disable-next-line complexity -- ${RATIONALE_SHORT}\nexport const value = 1;\n`,
       );
     }
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(0);
   });
 
@@ -197,12 +212,12 @@ describe('check-lint-disables ceiling mode', () => {
       'src/__tests__/inside.ts',
       `// oxlint-disable-next-line complexity -- ${RATIONALE_SHORT}\nexport const value = 1;\n`,
     );
-    const result = run(['--root', root, '--max', '5']);
+    const result = await run(['--root', root, '--max', '5']);
     expect(result.exitCode).toBe(0);
   });
 
   it('passes with --max 0 on an empty fixture', async () => {
-    const result = run(['--root', root, '--max', '0']);
+    const result = await run(['--root', root, '--max', '0']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: 0/0');
     expect(result.stdout).toContain('effective max = 0 from --max');
@@ -210,7 +225,7 @@ describe('check-lint-disables ceiling mode', () => {
 
   it('fails with --max 0 when even one directive exists', async () => {
     await makeDirective(root, 'src/one.ts', RATIONALE_PASS);
-    const result = run(['--root', root, '--max', '0']);
+    const result = await run(['--root', root, '--max', '0']);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('Found 1 oxlint-disable directive(s)');
     expect(result.stderr).toContain('ceiling is 0');
@@ -220,13 +235,13 @@ describe('check-lint-disables ceiling mode', () => {
     for (let i = 0; i < MAX_DISABLES; i += 1) {
       await makeDirective(root, `src/file-${i}.ts`, RATIONALE_PASS);
     }
-    const okResult = run(['--root', root]);
+    const okResult = await run(['--root', root]);
     expect(okResult.exitCode).toBe(0);
     expect(okResult.stdout).toContain(`OK: ${MAX_DISABLES}/${MAX_DISABLES}`);
     expect(okResult.stdout).toContain('effective max = 5 from default');
 
     await makeDirective(root, `src/file-${MAX_DISABLES}.ts`, RATIONALE_PASS);
-    const failResult = run(['--root', root]);
+    const failResult = await run(['--root', root]);
     expect(failResult.exitCode).toBe(1);
     expect(failResult.stderr).toContain(`Found ${MAX_DISABLES + 1} oxlint-disable directive(s)`);
     expect(failResult.stderr).toContain(`ceiling is ${MAX_DISABLES}`);
@@ -250,7 +265,7 @@ describe('check-lint-disables --emit-snapshot', () => {
     for (let i = 0; i < 7; i += 1) {
       await makeDirective(root, `src/file-${i}.ts`, RATIONALE_PASS);
     }
-    const result = run(['--root', root, '--emit-snapshot', snapshotPath]);
+    const result = await run(['--root', root, '--emit-snapshot', snapshotPath]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Wrote snapshot of 7 directive(s)');
     const contents = await Bun.file(snapshotPath).text();
@@ -259,7 +274,7 @@ describe('check-lint-disables --emit-snapshot', () => {
 
   it('does not enforce rationale length', async () => {
     await makeDirective(root, 'src/short.ts', RATIONALE_SHORT);
-    const result = run(['--root', root, '--emit-snapshot', snapshotPath]);
+    const result = await run(['--root', root, '--emit-snapshot', snapshotPath]);
     expect(result.exitCode).toBe(0);
   });
 
@@ -274,7 +289,7 @@ describe('check-lint-disables --emit-snapshot', () => {
       'src/no-id.ts',
       `// oxlint-disable-next-line complexity -- ${RATIONALE_PASS}\nexport const b = 1;\n`,
     );
-    const result = run(['--root', root, '--emit-snapshot', snapshotPath]);
+    const result = await run(['--root', root, '--emit-snapshot', snapshotPath]);
     expect(result.exitCode).toBe(0);
     const contents = await Bun.file(snapshotPath).text();
     expect(contents).toContain('sample-token-name\tsrc/with-id.ts\t1');
@@ -286,5 +301,26 @@ describe('check-lint-disables constants', () => {
   it('exposes the documented defaults', () => {
     expect(MAX_DISABLES).toBe(5);
     expect(MIN_RATIONALE_LENGTH).toBe(40);
+  });
+});
+
+describe('check-lint-disables arguments', () => {
+  it('prints usage and exits 0 for --help without scanning', async () => {
+    const result = await run(['--help', '--root', '/nonexistent-root']);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Usage: bun scripts/check-lint-disables.ts');
+  });
+
+  it('rejects a --max that is not a non-negative integer', async () => {
+    expect(await throwingRejectionOf(runCli(['--max', '-1']))).toThrow(
+      '--max expects a non-negative integer, got: -1',
+    );
+    expect(await throwingRejectionOf(runCli(['--max']))).toThrow(
+      '--max expects a non-negative integer, got: <missing>',
+    );
+  });
+
+  it('rejects an unknown argument', async () => {
+    expect(await throwingRejectionOf(runCli(['--unknown']))).toThrow('Unknown argument: --unknown');
   });
 });

@@ -5,12 +5,16 @@ import {
 } from '../../src/core/runtime-workflow-engine.ts';
 import { workflow, type WorkflowContext } from '../../src/core/types.ts';
 import { BunSQLiteStorage } from '../../src/storage/bun-sql.ts';
+import { startMainThreadCpuClock } from './main-thread-cpu.ts';
 
 export type WorkflowStartAdmissionMeasurement = {
   batchSize: number;
   warmupStarts: number;
   measuredStarts: number;
+  /** Admissions per second of main-thread CPU time; see `main-thread-cpu.ts`. The gated figure. */
   admissionsPerSecond: number;
+  /** Admissions per wall-clock second, which host load moves; logged, never asserted. */
+  wallClockAdmissionsPerSecond: number;
 };
 
 const DEFAULT_WARMUP_STARTS = 50;
@@ -52,6 +56,7 @@ async function measureWorkflowStartAdmissions(
 
     const handles: Array<{ result: () => Promise<unknown> }> = [];
     const start = performance.now();
+    const readCpuMilliseconds = startMainThreadCpuClock();
 
     for (let index = 0; index < totalStarts; index += batchSize) {
       const starters: Array<Promise<{ result: () => Promise<unknown> }>> = [];
@@ -64,13 +69,15 @@ async function measureWorkflowStartAdmissions(
     }
 
     const elapsed = performance.now() - start;
+    const cpuMilliseconds = readCpuMilliseconds();
     await Promise.all(handles.map((handle) => handle.result()));
 
     return {
       batchSize,
       warmupStarts,
       measuredStarts: totalStarts,
-      admissionsPerSecond: Math.round((totalStarts / elapsed) * 1000),
+      admissionsPerSecond: Math.round((totalStarts / cpuMilliseconds) * 1000),
+      wallClockAdmissionsPerSecond: Math.round((totalStarts / elapsed) * 1000),
     };
   } finally {
     engine[Symbol.dispose]();
