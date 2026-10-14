@@ -1599,6 +1599,91 @@ describe('durable steering across two Bureau processes', () => {
       } finally {
         engineGet.mockRestore();
       }
+
+      // A run named while it is still only saved is checked as such even
+      // when an older run is already live: that run says nothing about it.
+      const concurrentSession = 'session-saved-beside-older';
+      await store.save(
+        createAgentSession({
+          id: concurrentSession,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: concurrentSession }),
+          metadata: {
+            lastRunId: 'saved-named',
+            lastRunStatus: 'running',
+            lastRunStartedAt: new Date().toISOString(),
+          },
+        }),
+      );
+      const concurrent = await store.load(concurrentSession);
+      if (concurrent === undefined) throw new Error('expected the session');
+      await appendSteeringLogEvent(
+        kv,
+        concurrentSession,
+        concurrent.incarnation,
+        await readSteeringLogHead(kv, concurrentSession, concurrent.incarnation),
+        { type: 'promoted', runId: 'older-run', now: new Date().toISOString() },
+      );
+      const namedSaved = await gapReader.submitSteeringCommand(concurrentSession, {
+        principal: 'alice',
+        runId: 'saved-named',
+        requestedValue: { target: 'pause' },
+      });
+      expect(namedSaved.outcome).toBe('accepted');
+
+      // The sole live run can change while liveness is read, with a new
+      // run saved under its own authority: the caller is checked against
+      // the session as it stands after the read, not before it.
+      const changingSession = 'session-sole-run-changes';
+      await store.save(
+        createAgentSession({
+          id: changingSession,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: changingSession }),
+          metadata: {
+            lastRunId: 'run-b',
+            lastRunStatus: 'running',
+            lastRequestAuthorities: { 'run-b': { principalId: 'bob' } },
+          },
+        }),
+      );
+      const changing = await store.load(changingSession);
+      if (changing === undefined) throw new Error('expected the session');
+      const changingTag = steeringSessionRunTag(changingSession, changing.incarnation);
+      const prototype = await durableEnginePrototype();
+      const changingGet = spyOn(prototype, 'get').mockImplementation(() => Promise.resolve(null));
+      const changingList = spyOn(prototype, 'list').mockImplementation(async () => {
+        await store.update(changingSession, (current) =>
+          current === undefined
+            ? undefined
+            : {
+                ...current,
+                metadata: {
+                  ...current.metadata,
+                  lastRunId: 'run-a',
+                  lastRequestAuthorities: {
+                    'run-b': { principalId: 'bob' },
+                    'run-a': { principalId: 'alice' },
+                  },
+                },
+              },
+        );
+        return {
+          items: [{ id: 'run-a', type: 'agentRun', status: 'running', tags: [changingTag] }],
+        };
+      });
+      try {
+        const sole = await gapReader.submitSteeringCommand(changingSession, {
+          principal: 'alice',
+          requestedValue: { target: 'pause' },
+        });
+        expect(sole.outcome).toBe('accepted');
+        if (sole.outcome !== 'accepted') throw new Error('expected accepted');
+        expect(sole.command.runId).toBe('run-a');
+      } finally {
+        changingGet.mockRestore();
+        changingList.mockRestore();
+      }
     } finally {
       await writer.dispose();
       for (const reader of readers) await reader.dispose();
@@ -1638,6 +1723,56 @@ describe('durable steering across two Bureau processes', () => {
       ).toBe(true);
     } finally {
       await bureau.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('answers a failed log read only to a caller still authorized for the session', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-fold-failure-authority-'));
+    const path = join(directory, 'bureau.sqlite');
+    const writer = await openBureau(path);
+    let reader: TestBureau | undefined;
+    try {
+      const sessionId = await startRunningSession(writer);
+      const model = {
+        id: 'k-bound',
+        principal: 'alice',
+        requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+      } as const;
+      const decided = await writer.submitSteeringCommand(sessionId, model);
+      expect(decided.outcome).toBe('accepted');
+      const session = await writer.getSession(sessionId);
+      const kv = writer.kv;
+      if (session === undefined || kv === undefined) throw new Error('expected a session');
+      // The log can no longer be folded, and alice no longer holds the run.
+      await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        session.incarnation,
+        await readSteeringLogHead(kv, sessionId, session.incarnation),
+        { type: 'run-ended', runId: 'never-promoted', now: new Date().toISOString() },
+      );
+      const runId = session.metadata['lastRunId'] as string;
+      await createSessionStore(kv).update(sessionId, (current) =>
+        current === undefined
+          ? undefined
+          : {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                lastRequestAuthorities: { [runId]: { principalId: 'bob' } },
+              },
+            },
+      );
+      // Her retry of a key bound here skips the up-front checks, so the
+      // failed fold is where she must be turned away.
+      reader = await openBureau(path);
+      expect(await reader.submitSteeringCommand(sessionId, model)).toEqual({
+        outcome: 'not-found',
+      });
+    } finally {
+      await writer.dispose();
+      await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);

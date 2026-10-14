@@ -8102,11 +8102,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
         throw error;
       }
+      // The live runs were read across awaits that the session itself may
+      // have changed under (a new sole run saved with its own authority), so
+      // the caller is checked against the session as it stands after them.
+      const afterLiveness =
+        durableSteeringStore() === undefined
+          ? session
+          : await runtime.sessionStore?.load(sessionId);
+      if (afterLiveness?.incarnation !== session.incarnation) return { outcome: 'not-found' };
       const targetRunId = request.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
-      if (!isSessionAuthorityAuthorized(session.metadata, request.principal, targetRunId)) {
+      if (!isSessionAuthorityAuthorized(afterLiveness.metadata, request.principal, targetRunId)) {
         return { outcome: 'not-found' };
       }
-      if (isSessionRunTerminal(session.metadata) && liveRunIds.length === 0) {
+      if (isSessionRunTerminal(afterLiveness.metadata) && liveRunIds.length === 0) {
         return { outcome: 'session-terminal', sessionId };
       }
     }
@@ -8495,7 +8503,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cursor.starting.delete(runId);
         }
       }
+      // The session is saved as running a run a moment before that run's
+      // `promoted` entry is appended. In that gap the session's latest run
+      // is starting too, bounded by its own start time like any marker.
+      const countSavedStart = async () => {
+        const saved = await runtime.sessionStore?.load(sessionId);
+        const savedRunId = saved?.metadata['lastRunId'];
+        const savedStartedAt = saved?.metadata['lastRunStartedAt'];
+        if (
+          saved?.incarnation === incarnation &&
+          saved.metadata['lastRunStatus'] === 'running' &&
+          typeof savedRunId === 'string' &&
+          typeof savedStartedAt === 'string' &&
+          !live.has(savedRunId) &&
+          !cursor.history.runs.has(savedRunId) &&
+          runtimeServices.clock.now() - Date.parse(savedStartedAt) <=
+            STEERING_RUN_START_WINDOW_MS &&
+          !(await savedWorkflowHasEnded(savedRunId))
+        ) {
+          live.add(savedRunId);
+        }
+      };
+      // A named run not yet live can still be the saved start or one of
+      // the markers; another run being live says nothing about it, so the
+      // saved start is read first, then the named run's own marker.
       let namedChecked = namedRunId === undefined || !cursor.starting.has(namedRunId);
+      if (namedRunId !== undefined && !live.has(namedRunId)) await countSavedStart();
       const known = () =>
         namedRunId === undefined
           ? live.size >= 2
@@ -8513,27 +8546,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         else cursor.starting.delete(runId);
         if (runId === namedRunId) namedChecked = true;
       }
-      // The session is saved as running a run a moment before that run's
-      // `promoted` entry is appended. In that gap the session's latest run
-      // is starting too, bounded by its own start time like any marker.
-      if (!known()) {
-        const saved = await runtime.sessionStore?.load(sessionId);
-        const savedRunId = saved?.metadata['lastRunId'];
-        const savedStartedAt = saved?.metadata['lastRunStartedAt'];
-        if (
-          saved?.incarnation === incarnation &&
-          saved.metadata['lastRunStatus'] === 'running' &&
-          typeof savedRunId === 'string' &&
-          typeof savedStartedAt === 'string' &&
-          !live.has(savedRunId) &&
-          !cursor.history.runs.has(savedRunId) &&
-          runtimeServices.clock.now() - Date.parse(savedStartedAt) <=
-            STEERING_RUN_START_WINDOW_MS &&
-          !(await savedWorkflowHasEnded(savedRunId))
-        ) {
-          live.add(savedRunId);
-        }
-      }
+      if (namedRunId === undefined && !known()) await countSavedStart();
     }
     return [...live].toSorted((left, right) => left.localeCompare(right));
   }
@@ -8606,6 +8619,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // entry or a shrunken head is that deletion, not corruption.
         const afterFailure = await runtime.sessionStore?.load(sessionId);
         if (afterFailure?.incarnation !== incarnation) return { outcome: 'not-found' };
+        // The failure is the caller's to see only while the caller is still
+        // authorized here, on the session as it stands now: the request may
+        // have waited in the queue, or skipped the up-front checks entirely
+        // as an already-bound key.
+        const localTarget = liveSessionRunIdsOfIncarnation(sessionId, incarnation);
+        const target = command.runId ?? (localTarget.length === 1 ? localTarget[0] : undefined);
+        if (!isSessionAuthorityAuthorized(afterFailure.metadata, principal, target)) {
+          return { outcome: 'not-found' };
+        }
         throw error;
       }
       const answered = answerSteeringRetry(
