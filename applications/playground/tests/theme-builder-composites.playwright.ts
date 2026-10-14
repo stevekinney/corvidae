@@ -58,7 +58,9 @@ test.describe('shadow composite', () => {
     const down = editor.getByRole('button', { name: 'Move Shadow layer 1 down' });
     await down.focus();
     await page.keyboard.press('Enter');
-    await expect(page.locator('[aria-live]').filter({ hasText: 'Moved Shadow layer 1' }).first()).toBeAttached();
+    await expect(
+      page.locator('[aria-live]').filter({ hasText: 'Moved Shadow layer 1' }).first(),
+    ).toBeAttached();
     await expect(editor.getByRole('button', { name: 'Move Shadow layer 2 up' })).toBeFocused();
     await apply(page).click();
     await expect(page.getByTestId('draft-value')).toContainText('9px');
@@ -142,7 +144,9 @@ test.describe('recipe override', () => {
     await page.getByTestId('impact-list').getByRole('button', { name: 'Apply' }).click();
     await expect.poll(() => frameVar(page, '--cinder-surface-hover')).toBe('oklch(55% 0.2 270)');
     await undo(page).click();
-    await expect.poll(() => frameVar(page, '--cinder-surface-hover')).not.toBe('oklch(55% 0.2 270)');
+    await expect
+      .poll(() => frameVar(page, '--cinder-surface-hover'))
+      .not.toBe('oklch(55% 0.2 270)');
   });
 });
 
