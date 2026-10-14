@@ -254,6 +254,73 @@ describe('resolveListCandidateIds', () => {
     }
   });
 
+  it('falls back to the scan path when a drop sweeps the index while a query reads it', async () => {
+    class SweepDuringIndexScanStorage extends MemoryStorage {
+      sweepOnNextIndexScan = false;
+      override async *scan(
+        prefix: string,
+        options?: ScanOptions,
+      ): AsyncIterable<[string, Uint8Array]> {
+        if (this.sweepOnNextIndexScan && prefix.startsWith('wf-idx-status:')) {
+          this.sweepOnNextIndexScan = false;
+          // The query already trusted the watermark; the index disappears under it.
+          await runWorkflowVisibilityDrop(this, { settleMilliseconds: 0 });
+        }
+        yield* super.scan(prefix, options);
+      }
+    }
+    const storage = new SweepDuringIndexScanStorage();
+    const engine = new Engine({ storage });
+    engine.register(visibilityCacheWorkflow);
+    try {
+      for (const id of ['fence-a', 'fence-b', 'fence-c']) {
+        const handle = await engine.start('visibility-cache', id, { id });
+        await handle.result();
+      }
+      await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+      getInternals(engine).workflowVisibilityWatermarkExpiresAt =
+        Date.now() - WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS;
+
+      storage.sweepOnNextIndexScan = true;
+      const result = await engine.list({ status: 'completed' });
+
+      expect(storage.sweepOnNextIndexScan).toBe(false);
+      expect(result.items.map((item) => item.id).toSorted()).toEqual([
+        'fence-a',
+        'fence-b',
+        'fence-c',
+      ]);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('falls back to the scan path when a drop ran inside the watermark cache window', async () => {
+    const storage = new MemoryStorage();
+    const engine = new Engine({ storage });
+    engine.register(visibilityCacheWorkflow);
+    try {
+      for (const id of ['window-a', 'window-b']) {
+        const handle = await engine.start('visibility-cache', id, { id });
+        await handle.result();
+      }
+      await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+      getInternals(engine).workflowVisibilityWatermarkExpiresAt =
+        Date.now() - WORKFLOW_VISIBILITY_WATERMARK_CACHE_TTL_MS;
+      await engine.list({ status: 'completed' });
+      expect(getInternals(engine).workflowVisibilityWatermark).toBe('current');
+
+      // The drop skips its settle wait, so the engine still holds a fresh 'current' watermark.
+      await runWorkflowVisibilityDrop(storage, { settleMilliseconds: 0 });
+      const result = await engine.list({ status: 'completed' });
+
+      expect(getInternals(engine).workflowVisibilityWatermark).toBe('current');
+      expect(result.items.map((item) => item.id).toSorted()).toEqual(['window-a', 'window-b']);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
   it('reuses a current visibility watermark after the first indexed query', async () => {
     const storage = new ScanCountingStorage();
     const engine = new Engine({ storage });
@@ -263,10 +330,12 @@ describe('resolveListCandidateIds', () => {
         id: 'visibility-cache-current',
       });
       await handle.result();
+      // A published index carries its build stamp with the watermark; queries pin that stamp.
       await storage.put(
         KEYS.workflowVisibilityMetaVersion(),
         encode(WORKFLOW_VISIBILITY_INDEX_VERSION),
       );
+      await storage.put(KEYS.workflowVisibilityMetaBuiltAt(), encode(Date.now()));
 
       storage.resetObservations();
 

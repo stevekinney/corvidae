@@ -268,8 +268,24 @@ async function indexWorkflow(
   const state = decodeWorkflowState(value);
   const manifestBytes = await storage.get(KEYS.workflowVisibilityManifest(workflowId));
   const currentManifest = decodeWorkflowVisibilityManifest(manifestBytes);
-  const { batchOps } = buildWorkflowVisibilityIndexOperations(workflowId, currentManifest, state);
-  const operations: BatchOperation[] = [...batchOps];
+  const { batchOps, nextManifestKeys } = buildWorkflowVisibilityIndexOperations(
+    workflowId,
+    currentManifest,
+    state,
+  );
+  // The manifest says which rows to delete, but not that the rows it lists exist: a sweep can
+  // remove them, and a runtime write between that sweep and this scan diffs against the previous
+  // state, so it writes a full manifest while putting only the keys that changed. Put every key
+  // the state derives, so the rebuild comes from the state rather than from the manifest's claims.
+  const putKeys = new Set(
+    batchOps.flatMap((operation) => (operation.type === 'put' ? [operation.key] : [])),
+  );
+  const operations: BatchOperation[] = [
+    ...batchOps,
+    ...(nextManifestKeys ?? [])
+      .filter((indexKey) => !putKeys.has(indexKey))
+      .map((indexKey) => ({ type: 'put' as const, key: indexKey, value: new Uint8Array(0) })),
+  ];
   if (advanceCursor) {
     operations.push({
       type: 'put',
@@ -282,7 +298,7 @@ async function indexWorkflow(
 
 /**
  * Delete every visibility-index row (not the meta keys) and return how many
- * were removed. Each batch of deletes commits only while `lockToken` still
+ * were removed, reading and deleting one page of `batchSize` keys at a time. Each batch of deletes commits only while `lockToken` still
  * holds the lock, so a run that was taken over stops deleting; a single
  * `deletePrefix` cannot be fenced that way, so it is used only on a backend
  * without `conditionalBatch`, where nothing can be fenced.
@@ -301,16 +317,24 @@ async function sweepVisibilityIndexRows(
       logger(`Dropped prefix ${prefix} (${removed} rows)`);
       continue;
     }
-    const keys: string[] = [];
-    for await (const [key] of storage.scan(prefix)) keys.push(key);
-    for (let offset = 0; offset < keys.length; offset += batchSize) {
-      const batch = keys.slice(offset, offset + batchSize);
+    // One page at a time, so memory stays bounded by the batch size however large the index is.
+    let after: string | undefined;
+    for (;;) {
+      const page: string[] = [];
+      for await (const [key] of storage.scan(prefix, {
+        limit: batchSize,
+        ...(after === undefined ? {} : { gt: after }),
+      })) {
+        page.push(key);
+      }
+      if (page.length === 0) break;
       await commitUnderLock(
         storage,
         lockToken,
-        batch.map((key) => ({ type: 'delete' as const, key })),
+        page.map((key) => ({ type: 'delete' as const, key })),
       );
-      rowsDeleted += batch.length;
+      rowsDeleted += page.length;
+      after = page.at(-1);
     }
   }
   return rowsDeleted;

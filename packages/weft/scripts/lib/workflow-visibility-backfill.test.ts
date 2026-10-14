@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
 import { decode, encode } from '../../src/core/codec.ts';
+import { decodeWorkflowState } from '../../src/core/engine/validation.ts';
 import {
   WORKFLOW_VISIBILITY_INDEX_VERSION,
   decodeWorkflowVisibilityManifest,
+  deriveWorkflowVisibilityIndexKeys,
   getWorkflowVisibilityWatermark,
 } from '../../src/core/engine/workflow-indexes.ts';
 import { KEYS, type ScanOptions } from '../../src/storage/interface.ts';
@@ -267,6 +269,39 @@ describe('runWorkflowVisibilityBackfill', () => {
     ]);
   });
 
+  it('restores rows a manifest lists but a sweep removed before a runtime write rewrote it', async () => {
+    const state = makeWorkflowState({ id: 'wf-a' });
+    // Derived the way the backfill derives them: from the record as it is stored.
+    const derivedKeys = deriveWorkflowVisibilityIndexKeys(decodeWorkflowState(encode(state)));
+    expect(derivedKeys.length).toBeGreaterThan(1);
+    class WriteAfterSweepStorage extends MemoryStorage {
+      wroteAfterSweep = false;
+      override async *scan(
+        prefix: string,
+        options?: ScanOptions,
+      ): AsyncIterable<[string, Uint8Array]> {
+        if (prefix === 'wf:' && !this.wroteAfterSweep) {
+          this.wroteAfterSweep = true;
+          // A runtime transition between the sweep and the scan: a full manifest, but only the
+          // changed row put back.
+          const manifest = { version: WORKFLOW_VISIBILITY_INDEX_VERSION, keys: derivedKeys };
+          await this.put(KEYS.workflowVisibilityManifest('wf-a'), encode(manifest));
+          await this.put(derivedKeys[0]!, new Uint8Array(0));
+        }
+        yield* super.scan(prefix, options);
+      }
+    }
+    using storage = new WriteAfterSweepStorage();
+    await seedWorkflow(storage, state);
+
+    const report = await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+
+    expect(report.watermarkWritten).toBe(true);
+    for (const key of derivedKeys) {
+      expect(await storage.has(key)).toBe(true);
+    }
+  });
+
   it('refuses to start while another run holds the lock, touching nothing', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
@@ -448,6 +483,35 @@ describe('runWorkflowVisibilityDrop', () => {
     expect(rowsBefore).toHaveLength(25);
     expect(report.rowsDeleted).toBe(rowsBefore.length);
     expect(rowsAfter).toEqual([]);
+  });
+
+  it('reads the index one page at a time while it sweeps', async () => {
+    class PageRecordingStorage extends MemoryStorage {
+      readonly limits: (number | undefined)[] = [];
+      override async *scan(
+        prefix: string,
+        options?: ScanOptions,
+      ): AsyncIterable<[string, Uint8Array]> {
+        if (prefix.startsWith('wf-idx-status:')) this.limits.push(options?.limit);
+        yield* super.scan(prefix, options);
+      }
+    }
+    using storage = new PageRecordingStorage();
+    for (let index = 0; index < 5; index += 1) {
+      await seedWorkflow(storage, makeWorkflowState({ id: `wf-page-${index}` }));
+    }
+    await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+    storage.limits.length = 0;
+
+    const report = await runWorkflowVisibilityDrop(storage, {
+      fallbackBatchSize: 2,
+      settleMilliseconds: 0,
+    });
+
+    // Five status rows in pages of two: 2, 2, 1, then an empty page that ends the sweep.
+    expect(storage.limits).toEqual([2, 2, 2, 2]);
+    expect(report.rowsDeleted).toBeGreaterThanOrEqual(5);
+    expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([]);
   });
 
   it('leaves workflow state untouched', async () => {

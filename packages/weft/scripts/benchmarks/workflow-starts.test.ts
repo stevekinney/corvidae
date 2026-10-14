@@ -14,6 +14,10 @@ import {
  * Measures aggregate durable-admission throughput for trivial workflows
  * against the real architecture target using a fresh Bun subprocess.
  *
+ * Admissions are counted per second of the child's main-thread CPU time rather than per
+ * wall-clock second (`main-thread-cpu.ts`), so other work on the host does not stretch the
+ * denominator; the wall-clock rate is still reported, but not asserted.
+ *
  * The timer stops after `engine.start()` admissions resolve, before awaiting
  * workflow completion, because this gate is intentionally about the start hot
  * path rather than end-to-end workflow runtime. Coverage instrumentation from
@@ -75,7 +79,8 @@ function isWorkflowStartAdmissionMeasurement(
     hasPositiveInteger(candidate['batchSize']) &&
     hasNonNegativeInteger(candidate['warmupStarts']) &&
     hasPositiveInteger(candidate['measuredStarts']) &&
-    hasPositiveFiniteNumber(candidate['admissionsPerSecond'])
+    hasPositiveFiniteNumber(candidate['admissionsPerSecond']) &&
+    hasPositiveFiniteNumber(candidate['wallClockAdmissionsPerSecond'])
   );
 }
 
@@ -187,7 +192,8 @@ describe('Workflow start admission throughput', () => {
         `    Total starts:    ${measurement.measuredStarts.toLocaleString()}`,
         `    Start batch size:${measurement.batchSize.toLocaleString()}`,
         `    Warmup starts:   ${measurement.warmupStarts.toLocaleString()}`,
-        `    Admissions:      ${measurement.admissionsPerSecond.toLocaleString()}/sec`,
+        `    Admissions:      ${measurement.admissionsPerSecond.toLocaleString()}/sec of main-thread CPU`,
+        `    Wall clock:      ${measurement.wallClockAdmissionsPerSecond.toLocaleString()}/sec (not asserted)`,
         `    Spec target:     ${ARCHITECTURE_TARGET_ADMISSIONS_PER_SECOND.toLocaleString()}`,
         `    Child coverage:  no (Bun does not cover \`bun run\` subprocesses)\n`,
       ].join('\n'),
@@ -213,7 +219,10 @@ describe('Workflow start admission throughput', () => {
           `    Total starts:    ${measurement.measuredStarts.toLocaleString()}`,
           `    Start batch size:${measurement.batchSize.toLocaleString()}`,
           `    Warmup starts:   ${measurement.warmupStarts.toLocaleString()}`,
-          `    Median:          ${measurement.admissionsPerSecond.toLocaleString()}/sec`,
+          `    Median:          ${measurement.admissionsPerSecond.toLocaleString()}/sec of main-thread CPU`,
+          `    Wall clock:      ${measurements
+            .map((sample) => sample.wallClockAdmissionsPerSecond.toLocaleString())
+            .join(', ')} (not asserted)`,
           `    Spec target:     ${ARCHITECTURE_TARGET_ADMISSIONS_PER_SECOND.toLocaleString()}`,
           `    Child coverage:  no (Bun does not cover \`bun run\` subprocesses)\n`,
         ].join('\n'),
