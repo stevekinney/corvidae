@@ -66,7 +66,12 @@ test('keeps an inherited port selected while another process holds it', () => {
   }
 });
 
-test('allocates usable ports from concurrent processes', async () => {
+/**
+ * Starts four processes that each allocate a port and hold it, then releases them. The
+ * concurrency across real processes is the behavior under test, so the children run here at
+ * module scope, off Bun's five-second per-test clock; the test below asserts on the results.
+ */
+async function allocateFromConcurrentProcesses() {
   const helperPath = `${import.meta.dir}/browser-ports.ts`;
   const childSource = `
     const { browserPorts } = await import(${JSON.stringify(helperPath)});
@@ -104,9 +109,13 @@ test('allocates usable ports from concurrent processes', async () => {
         return Number(output.slice(0, output.indexOf('\n')).trim());
       }),
     );
-    expect(new Set(ports).size).toBe(ports.length);
-    for (const port of ports) expect(port).toBeInteger();
-  } finally {
+    return { ports, results: await stopChildren() };
+  } catch (error) {
+    await stopChildren();
+    throw error;
+  }
+
+  async function stopChildren() {
     for (const child of children) child.stdin?.end();
     const results = await Promise.all(
       children.map(async (child) => {
@@ -119,8 +128,16 @@ test('allocates usable ports from concurrent processes', async () => {
         return { stderr, exitCode };
       }),
     );
-    for (const result of results) {
-      expect(result.exitCode, result.stderr).toBe(0);
-    }
+    return results;
+  }
+}
+const concurrentAllocation = await allocateFromConcurrentProcesses();
+
+test('allocates usable ports from concurrent processes', () => {
+  const { ports, results } = concurrentAllocation;
+  expect(new Set(ports).size).toBe(ports.length);
+  for (const port of ports) expect(port).toBeInteger();
+  for (const result of results) {
+    expect(result.exitCode, result.stderr).toBe(0);
   }
 });
