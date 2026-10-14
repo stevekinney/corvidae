@@ -35,7 +35,9 @@ async function linkDependencies(source: string, target: string): Promise<void> {
     if (entry.isDirectory() && entry.name.startsWith('@')) {
       await linkDependencies(from, join(target, entry.name));
     } else {
-      await symlink(await realpath(from), join(target, entry.name));
+      // A dangling link left by an earlier install resolves to nothing a fixture could import.
+      const resolved = await realpath(from).catch(() => undefined);
+      if (resolved !== undefined) await symlink(resolved, join(target, entry.name));
     }
   }
 }
