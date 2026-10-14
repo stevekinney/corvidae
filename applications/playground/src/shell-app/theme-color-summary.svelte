@@ -239,13 +239,19 @@
     cursor: pointer;
   }
   .link:focus-visible {
-    outline: 2px solid var(--cinder-accent-solid);
-    outline-offset: 2px;
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
   @media (max-width: 479.98px) {
     .facts > div {
       grid-template-columns: minmax(0, 1fr);
       gap: 0;
+    }
+  }
+  @media (forced-colors: active) {
+    .link:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
     }
   }
 </style>

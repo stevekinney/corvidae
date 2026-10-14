@@ -258,8 +258,8 @@
     border-radius: var(--cinder-radius-md);
   }
   .scroll:focus-visible {
-    outline: 2px solid var(--cinder-accent-solid);
-    outline-offset: 2px;
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
   table {
     width: 100%;
@@ -349,8 +349,8 @@
     font-weight: var(--cinder-font-bold);
   }
   .row-button:focus-visible {
-    outline: 2px solid var(--cinder-accent-solid);
-    outline-offset: 2px;
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
   .sr-only {
     position: absolute;
@@ -366,6 +366,16 @@
     dl > div {
       grid-template-columns: minmax(0, 1fr);
       gap: 0;
+    }
+  }
+  @media (forced-colors: active) {
+    .scroll:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
+    }
+    .row-button:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
     }
   }
 </style>

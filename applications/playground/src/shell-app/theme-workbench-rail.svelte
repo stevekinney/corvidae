@@ -56,12 +56,14 @@
     text-align: start;
     cursor: pointer;
   }
-  .rail__item:hover {
-    background: var(--cinder-surface-hover);
+  @media (hover: hover) {
+    .rail__item:hover {
+      background: var(--cinder-surface-hover);
+    }
   }
   .rail__item:focus-visible {
-    outline: 2px solid var(--cinder-accent-solid);
-    outline-offset: 2px;
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
   /* Selection is shown by a border and weight, not by color alone. */
   .rail__item[aria-current='true'] {
@@ -81,6 +83,12 @@
     .rail__item {
       width: auto;
       flex: 1 1 auto;
+    }
+  }
+  @media (forced-colors: active) {
+    .rail__item:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 3px;
     }
   }
 </style>

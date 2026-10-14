@@ -2293,8 +2293,8 @@
     text-decoration: none;
   }
   .dx-nav__action:focus-visible {
-    outline: 2px solid var(--cinder-accent-solid);
-    outline-offset: -2px;
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
   }
   @media (hover: hover) {
     .dx-nav__action:hover {
@@ -3916,6 +3916,12 @@
     .props-table-scroll:focus-visible {
       outline: var(--cinder-ring-width) solid ButtonText;
       outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+  @media (forced-colors: active) {
+    .dx-nav__action:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(-1 * var(--cinder-ring-width));
     }
   }
 </style>
