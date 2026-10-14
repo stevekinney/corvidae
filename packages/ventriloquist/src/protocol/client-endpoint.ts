@@ -45,6 +45,8 @@ export class ClientEndpoint {
   #authorityRevoked = false;
   #processExitReceived = false;
   #attachmentErrorReceived = false;
+  /** The host reported a `backend-failed` or `transport-failed` for a submitted operation. */
+  #submittedFailureReceived = false;
   /** The host ended the attachment's authority (exit, error or a failed submitted operation). */
   #hostRevoked = false;
   readonly #inbound: SequenceCursor;
@@ -207,6 +209,7 @@ export class ClientEndpoint {
         if (submitted) {
           this.#authorityRevoked = true;
           this.#hostRevoked = true;
+          this.#submittedFailureReceived = true;
           this.#operations.retire(message.operationSequence);
         } else this.#operations.refuse();
         return undefined;
@@ -218,6 +221,8 @@ export class ClientEndpoint {
         if (this.#processExitReceived) return reject('malformed-frame', 'already-reported');
         // A failed connection is not a successful process exit.
         if (this.#attachmentErrorReceived) return reject('malformed-frame', 'unexpected-message');
+        // A submitted-operation failure already gave the terminal status and revoked the generation.
+        if (this.#submittedFailureReceived) return reject('malformed-frame', 'unexpected-message');
         this.#processExitReceived = true;
         this.#hostRevoked = true;
         // The process is gone, so there is nothing left to receive input or a resize.
@@ -231,6 +236,7 @@ export class ClientEndpoint {
         if (this.#attachmentErrorReceived || this.#processExitReceived) {
           return reject('malformed-frame', 'unexpected-message');
         }
+        if (this.#submittedFailureReceived) return reject('malformed-frame', 'unexpected-message');
         this.#attachmentErrorReceived = true;
         this.#hostRevoked = true;
         this.#authorityRevoked = true;

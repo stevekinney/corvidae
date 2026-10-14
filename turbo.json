@@ -48,7 +48,6 @@
     "@lostgradient/playground#build": {
       "dependsOn": ["transit"],
       "outputs": ["build/**"],
-      "env": ["NODE_ENV"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/mirror/package-map.json"]
     },
     "//#test:self": {
@@ -132,9 +131,47 @@
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"]
     },
+    "@lostgradient/ventriloquist#lint": {
+      "outputs": [],
+      "dependsOn": ["transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
+        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+      ]
+    },
+    "@lostgradient/ventriloquist#typecheck": {
+      "outputs": [],
+      "dependsOn": ["transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/typecheck-contracts.ts",
+        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
+        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+      ]
+    },
+    "@lostgradient/ventriloquist#test": {
+      "outputs": ["test-results/**"],
+      "dependsOn": ["transit"],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
+        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+      ]
+    },
     "@lostgradient/ventriloquist#test:coverage": {
       "dependsOn": ["transit"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**", "test-results/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
+        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+      ]
     },
     "@lostgradient/cinder#test:coverage": {
       "dependsOn": ["transit"],

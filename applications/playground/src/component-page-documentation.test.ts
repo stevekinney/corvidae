@@ -530,6 +530,21 @@ describe('component-page single-scroll layout', () => {
     await tick();
   });
 
+  test('marks the page root hydrated once its client effects have run', async () => {
+    const { unmount } = render(ComponentPage);
+    await findHeroHeading('Button');
+    await tick();
+
+    // The static production gate waits on this before it clicks a view tab, since a click on the
+    // server-rendered tab before hydration does nothing.
+    expect(
+      document.querySelector('[data-component-page]')?.hasAttribute('data-page-hydrated'),
+    ).toBe(true);
+
+    unmount();
+    await tick();
+  });
+
   test('defaults to the documentation view and switches to the playground on demand', async () => {
     const { unmount } = render(ComponentPage);
     await findHeroHeading('Button');
