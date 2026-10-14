@@ -32,7 +32,7 @@
       size="sm"
       iconOnly
       href={COLOR_TOKEN_ENTRY_HREF}
-      aria-label="Edit color tokens in the theme builder"
+      aria-label="Edit color tokens"
       data-testid="color-token-panel-link"
     >
       <Palette size={17} strokeWidth={1.5} aria-hidden="true" />

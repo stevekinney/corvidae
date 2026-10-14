@@ -75,7 +75,7 @@ export function validatePalettes(records: readonly AuthoringRecord[]): void {
   for (const record of records) {
     const palette = record.palette;
     if (palette === undefined || palette.family === UNKNOWN) continue;
-    const membership = palette as PaletteMembership;
+    const membership = palette;
     const members = families.get(membership.family) ?? [];
     members.push({ ...membership, path: record.path });
     families.set(membership.family, members);

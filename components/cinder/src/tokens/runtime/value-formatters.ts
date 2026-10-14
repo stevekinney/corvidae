@@ -205,7 +205,7 @@ function formatOtherColorSpace(value: ColorValue): string | undefined {
     );
   }
   const alpha = value.alpha === undefined ? '' : ` / ${formatComponent(value.alpha)}`;
-  const [a, b, c] = [first, second, third].map(formatComponent) as [string, string, string];
+  const [a, b, c] = [formatComponent(first), formatComponent(second), formatComponent(third)];
   const percent = (component: number | 'none'): string =>
     component === 'none' ? 'none' : `${formatNumber(component)}%`;
   if (PREDEFINED_COLOR_SPACES.has(value.colorSpace)) {

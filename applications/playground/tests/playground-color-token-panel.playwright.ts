@@ -18,8 +18,7 @@ test.afterEach(() => {
   expect(problems, 'console errors and warnings are defects').toEqual([]);
 });
 
-const entry = (page: Page) =>
-  page.getByRole('link', { name: 'Edit color tokens in the theme builder' });
+const entry = (page: Page) => page.getByRole('link', { name: 'Edit color tokens', exact: true });
 
 test('the documentation shell links its color entry point to the filtered builder editor', async ({
   page,
