@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+
 import {
   checkBoundaries,
   findImportViolations,
@@ -649,53 +651,52 @@ describe('README contract', () => {
   );
 });
 
+// Each scenario starts a real Bun process (the import probe or the command line), so it runs once
+// at module scope, off Bun's five-second per-test clock; its test rethrows whatever it threw.
+const boundariesHoldForThisPackage = await outcomeOf(() => {
+  expect(formatViolations(checkBoundaries(realPackageRoot))).toBe('');
+});
+
+const forbiddenBunEntryFailsCommandLine = await outcomeOf(() => {
+  const { packageRoot } = workspaceFixture({
+    'src/lib/forbidden.ts':
+      "import { spawn } from '@lostgradient/ventriloquist/bun';\nexport { spawn };\n",
+  });
+  const result = Bun.spawnSync(
+    [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root', packageRoot],
+    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+  );
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr.toString()).toContain('src/lib/forbidden.ts:1');
+  expect(result.stderr.toString()).toContain('@lostgradient/ventriloquist/bun is a Bun host entry');
+});
+
+const cleanPackagePassesCommandLine = await outcomeOf(() => {
+  const { packageRoot } = workspaceFixture();
+  const result = Bun.spawnSync(
+    [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root', packageRoot],
+    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+  );
+  expect(result.stderr.toString()).toBe('');
+  expect(result.exitCode).toBe(0);
+});
+
+const packageRootRequiresPath = await outcomeOf(() => {
+  const result = Bun.spawnSync(
+    [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root'],
+    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+  );
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain('--package-root requires a path argument');
+});
+
 describe('checkBoundaries', () => {
-  test('holds for this package', () => {
-    expect(formatViolations(checkBoundaries(realPackageRoot))).toBe('');
-  });
+  test('holds for this package', () => rethrow(boundariesHoldForThisPackage));
 
-  test('fails the command line, naming the file and line, when browser source imports a Bun entry', () => {
-    const { packageRoot } = workspaceFixture({
-      'src/lib/forbidden.ts':
-        "import { spawn } from '@lostgradient/ventriloquist/bun';\nexport { spawn };\n",
-    });
-    const result = Bun.spawnSync(
-      [
-        process.execPath,
-        join(import.meta.dir, 'check-boundaries.ts'),
-        '--package-root',
-        packageRoot,
-      ],
-      { cwd: realPackageRoot },
-    );
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain('src/lib/forbidden.ts:1');
-    expect(result.stderr.toString()).toContain(
-      '@lostgradient/ventriloquist/bun is a Bun host entry',
-    );
-  });
+  test('fails the command line, naming the file and line, when browser source imports a Bun entry', () =>
+    rethrow(forbiddenBunEntryFailsCommandLine));
 
-  test('passes the command line for a clean package', () => {
-    const { packageRoot } = workspaceFixture();
-    const result = Bun.spawnSync(
-      [
-        process.execPath,
-        join(import.meta.dir, 'check-boundaries.ts'),
-        '--package-root',
-        packageRoot,
-      ],
-      { cwd: realPackageRoot },
-    );
-    expect(result.stderr.toString()).toBe('');
-    expect(result.exitCode).toBe(0);
-  });
+  test('passes the command line for a clean package', () => rethrow(cleanPackagePassesCommandLine));
 
-  test('requires a path after --package-root', () => {
-    const result = Bun.spawnSync(
-      [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root'],
-      { cwd: realPackageRoot },
-    );
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.toString()).toContain('--package-root requires a path argument');
-  });
+  test('requires a path after --package-root', () => rethrow(packageRootRequiresPath));
 });
