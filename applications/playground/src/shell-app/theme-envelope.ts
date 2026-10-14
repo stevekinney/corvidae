@@ -48,7 +48,7 @@ export type ParsedEnvelope =
 /** Structural validation of an unknown value; it does not judge the base's compatibility. */
 export function envelopeFromValue(value: unknown): ThemeEnvelope | null {
   if (!isObject(value)) return null;
-  const { format, version, id, name, base, overrides, cssOverrides } = value;
+  const { format, version, id, name, base, overrides, cssOverrides, locked } = value;
   if (format !== THEME_FORMAT || version !== THEME_VERSION) return null;
   if (typeof id !== 'string' || id === '' || typeof name !== 'string') return null;
   if (!isObject(base) || !isObject(overrides) || !isObject(cssOverrides)) return null;
@@ -65,6 +65,12 @@ export function envelopeFromValue(value: unknown): ThemeEnvelope | null {
     if (!isObject(byContext)) return null;
     if (Object.values(byContext).some((css) => typeof css !== 'string')) return null;
   }
+  if (
+    locked !== undefined &&
+    !(Array.isArray(locked) && locked.every((p) => typeof p === 'string'))
+  ) {
+    return null;
+  }
   return {
     format,
     version,
@@ -73,6 +79,7 @@ export function envelopeFromValue(value: unknown): ThemeEnvelope | null {
     base: { packageVersion, sourceDigest, resolver, documents },
     overrides: scopes,
     cssOverrides: cssOverrides as ThemeEnvelope['cssOverrides'],
+    ...(locked === undefined || locked.length === 0 ? {} : { locked: locked as string[] }),
   };
 }
 

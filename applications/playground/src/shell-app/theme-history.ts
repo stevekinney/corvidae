@@ -35,7 +35,9 @@ export function currentState(history: ThemeHistory): EditableState {
 }
 
 const same = (left: EditableState, right: EditableState): boolean =>
-  jsonEquals(left.overrides, right.overrides) && jsonEquals(left.cssOverrides, right.cssOverrides);
+  jsonEquals(left.overrides, right.overrides) &&
+  jsonEquals(left.cssOverrides, right.cssOverrides) &&
+  jsonEquals([...(left.locked ?? [])], [...(right.locked ?? [])]);
 
 function capped(history: ThemeHistory): ThemeHistory {
   const excess = history.entries.length - THEME_DATA_LIMITS.historyTransactions;

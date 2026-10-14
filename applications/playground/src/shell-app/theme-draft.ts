@@ -47,6 +47,7 @@ export type DraftEdit =
   | { kind: 'remove-override'; scope: OverrideScope; path: string }
   | { kind: 'set-css-override'; path: string; context: ThemeContextId; value: string }
   | { kind: 'remove-css-override'; path: string; context: ThemeContextId }
+  | { kind: 'set-locked'; path: string; locked: boolean }
   /** Import and remediation replace the editable state in one transaction. */
   | { kind: 'replace'; state: EditableState };
 
@@ -57,6 +58,12 @@ function nextState(state: EditableState, edit: DraftEdit): EditableState {
   switch (edit.kind) {
     case 'replace':
       return edit.state;
+    case 'set-locked': {
+      const rest = (state.locked ?? []).filter((path) => path !== edit.path);
+      const locked = (edit.locked ? [...rest, edit.path] : rest).toSorted();
+      const { locked: _previous, ...others } = state;
+      return locked.length === 0 ? others : { ...others, locked };
+    }
     case 'set-override':
       return {
         ...state,
@@ -103,7 +110,9 @@ function withoutCss(
 
 function statesEqual(left: EditableState, right: EditableState): boolean {
   return (
-    jsonEquals(left.overrides, right.overrides) && jsonEquals(left.cssOverrides, right.cssOverrides)
+    jsonEquals(left.overrides, right.overrides) &&
+    jsonEquals(left.cssOverrides, right.cssOverrides) &&
+    jsonEquals([...(left.locked ?? [])], [...(right.locked ?? [])])
   );
 }
 
@@ -116,12 +125,19 @@ export function commitState(draft: ThemeDraft, state: EditableState): EditResult
     ...checkCssOverrideLimits(state.cssOverrides),
   ];
   if (violations.length > 0) return { ok: false, violations };
+  const { locked: _previous, ...envelope } = draft.envelope;
+  const locked = state.locked ?? [];
   return {
     ok: true,
     changed: true,
     draft: {
       ...draft,
-      envelope: { ...draft.envelope, overrides: state.overrides, cssOverrides: state.cssOverrides },
+      envelope: {
+        ...envelope,
+        overrides: state.overrides,
+        cssOverrides: state.cssOverrides,
+        ...(locked.length === 0 ? {} : { locked }),
+      },
       revision: draft.revision + 1,
     },
   };
@@ -150,7 +166,7 @@ const inCategory = (path: string, prefix: string): boolean =>
 export function resetState(state: EditableState, scope: ResetScope): EditableState {
   switch (scope.kind) {
     case 'theme':
-      return { overrides: emptyScopes(), cssOverrides: {} };
+      return { ...state, overrides: emptyScopes(), cssOverrides: {} };
     case 'color-mode': {
       const overrides: ThemeOverrides = { ...state.overrides };
       for (const name of MODE_SCOPES[scope.colorMode]) overrides[name] = {};
@@ -163,14 +179,18 @@ export function resetState(state: EditableState, scope: ResetScope): EditableSta
         );
         if (Object.keys(kept).length > 0) cssOverrides[path] = kept;
       }
-      return { overrides, cssOverrides };
+      return { ...state, overrides, cssOverrides };
     }
     case 'field': {
       let overrides = state.overrides;
       for (const name of OVERRIDE_SCOPES) {
         overrides = { ...overrides, [name]: removeNode(overrides[name], scope.path) };
       }
-      return { overrides, cssOverrides: withoutCss(state.cssOverrides, scope.path, ALL_CONTEXTS) };
+      return {
+        ...state,
+        overrides,
+        cssOverrides: withoutCss(state.cssOverrides, scope.path, ALL_CONTEXTS),
+      };
     }
     case 'category': {
       let overrides = state.overrides;
@@ -182,7 +202,7 @@ export function resetState(state: EditableState, scope: ResetScope): EditableSta
         if (inCategory(path, scope.prefix))
           cssOverrides = withoutCss(cssOverrides, path, ALL_CONTEXTS);
       }
-      return { overrides, cssOverrides };
+      return { ...state, overrides, cssOverrides };
     }
   }
 }
