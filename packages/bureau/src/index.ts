@@ -89,6 +89,7 @@ export {
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
+  RunAbortSettledEvent,
   RunRegisteredEvent,
   RunRemovedEvent,
 } from './events';

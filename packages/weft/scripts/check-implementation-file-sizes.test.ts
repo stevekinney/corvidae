@@ -14,7 +14,6 @@ import {
   type OversizedImplementationFileClassification,
 } from './check-implementation-file-sizes.ts';
 
-const scriptPath = join(import.meta.dir, 'check-implementation-file-sizes.ts');
 const repositoryRoot = join(import.meta.dir, '..');
 const classificationDocumentationPath = join(
   repositoryRoot,
@@ -23,15 +22,6 @@ const classificationDocumentationPath = join(
 
 type RunResult = { exitCode: number; stdout: string; stderr: string };
 type DocumentationRow = { path: string; classification: string; rationale: string };
-
-function run(root: string): RunResult {
-  const result = Bun.spawnSync(['bun', 'run', scriptPath, '--root', root]);
-  return {
-    exitCode: result.exitCode,
-    stdout: result.stdout.toString(),
-    stderr: result.stderr.toString(),
-  };
-}
 
 async function runDirect(argv: readonly string[]): Promise<RunResult> {
   const stdout: string[] = [];
@@ -112,7 +102,7 @@ describe('check-implementation-file-sizes', () => {
   it('passes when no implementation files exceed the line threshold', async () => {
     await writeFixtureFile(root, 'src/small.ts', IMPLEMENTATION_FILE_SIZE_LIMIT);
 
-    const result = run(root);
+    const result = await runDirect(['--root', root]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: 0 implementation file(s)');
@@ -135,16 +125,6 @@ describe('check-implementation-file-sizes', () => {
   it('fails when an oversized implementation file is not classified', async () => {
     await writeFixtureFile(root, 'src/oversized.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
 
-    const result = run(root);
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('without a classification');
-    expect(result.stderr).toContain('src/oversized.ts');
-  });
-
-  it('fails direct execution when an oversized implementation file is not classified', async () => {
-    await writeFixtureFile(root, 'src/oversized.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
-
     const result = await runDirect(['--root', root]);
 
     expect(result.exitCode).toBe(1);
@@ -164,24 +144,6 @@ describe('check-implementation-file-sizes', () => {
     await writeFixtureFile(root, 'scripts/large.spec.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
     await writeFixtureFile(root, 'tests/large.spec.svelte', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
 
-    const result = run(root);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('OK: 0 implementation file(s)');
-  });
-
-  it('excludes generated, test, and spec files during direct execution', async () => {
-    await writeFixtureFile(
-      root,
-      'src/generated/operation-client.ts',
-      IMPLEMENTATION_FILE_SIZE_LIMIT + 1,
-    );
-    await writeFixtureFile(root, 'src/large.test.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
-    await writeFixtureFile(root, 'src/large.test-d.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
-    await writeFixtureFile(root, 'src/large.test.svelte', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
-    await writeFixtureFile(root, 'scripts/large.spec.ts', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
-    await writeFixtureFile(root, 'tests/large.spec.svelte', IMPLEMENTATION_FILE_SIZE_LIMIT + 1);
-
     const result = await runDirect(['--root', root]);
 
     expect(result.exitCode).toBe(0);
@@ -189,7 +151,7 @@ describe('check-implementation-file-sizes', () => {
   });
 
   it('does not fail just because classified files are absent from a fixture root', async () => {
-    const result = run(root);
+    const result = await runDirect(['--root', root]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('OK: 0 implementation file(s)');
