@@ -374,7 +374,15 @@ export function createDeferredAgentRun<O, H extends boolean>(
   // `AbortSignal` has no clone operation and identity is the point: this
   // wrapper's own listener and the one the underlying agent attaches must
   // observe the same signal).
-  const context: AgentRunContext | undefined = rawContext ? { ...rawContext } : undefined;
+  //
+  // COR-1302: the run's id is fixed here, before anything resolves, so the
+  // handle returned synchronously already carries it. A caller-supplied
+  // `context.runId` wins; otherwise one is minted through this run's own
+  // runtime. The underlying agent receives it as `context.runId`, which a
+  // `createAgent` run adopts as its own id — so `id` and `snapshot().id` agree
+  // before and after the underlying run exists.
+  const runId = rawContext?.runId ?? runtime.identifiers.next('run');
+  const context: AgentRunContext = { ...rawContext, runId };
 
   type PerRunState = 'waiting' | 'started' | 'terminal';
   let state: PerRunState = 'waiting';
@@ -420,7 +428,7 @@ export function createDeferredAgentRun<O, H extends boolean>(
   function syntheticSnapshot(): AgentRunLivenessSnapshot {
     const now = runtime.clock.nowISO();
     return {
-      id: label,
+      id: runId,
       kind: 'agent-run',
       startedAt: now,
       revision: syntheticTerminal ? 1 : 0,
@@ -432,7 +440,7 @@ export function createDeferredAgentRun<O, H extends boolean>(
       // through unchanged), so a caller's immediate `snapshot()` or first
       // `subscribeSnapshot()` delivery — before `underlying` resolves —
       // reports the same owner the eventually-settled run will.
-      ...(context?.principal !== undefined ? { owner: context.principal } : {}),
+      ...(context.principal !== undefined ? { owner: context.principal } : {}),
       projection: 'redacted',
       ownership: 'independent',
       detached: false,
@@ -540,7 +548,7 @@ export function createDeferredAgentRun<O, H extends boolean>(
   }
 
   let detachSignalListener: (() => void) | undefined;
-  const signal = context?.signal;
+  const signal = context.signal;
   if (signal) {
     if (signal.aborted) {
       requestAbort(typeof signal.reason === 'string' ? signal.reason : undefined);
@@ -776,6 +784,8 @@ export function createDeferredAgentRun<O, H extends boolean>(
   })();
 
   const publicHandle = {
+    id: runId,
+
     result(): Promise<RunResult<O, H>> {
       return resultPromise;
     },

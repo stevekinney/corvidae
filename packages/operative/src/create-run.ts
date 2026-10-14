@@ -51,6 +51,15 @@ import {
  * `ActiveRun` because they need the full event surface.
  */
 export interface ActiveRun {
+  /**
+   * COR-1302 — this run's stable identifier: the same id every producer
+   * hands to `createActiveRunLiveness`, so it always equals
+   * `snapshot().id`. A Bureau- or caller-supplied `RunOptions.runId` (or the
+   * durable routing's `runId`) is used as-is; otherwise it is minted once,
+   * at construction, through the run's identifier seam. A reattached durable
+   * run carries the id of the run it recovered.
+   */
+  readonly runId: string;
   result: Promise<RunResult>;
   abort: (reason?: string) => void;
   /**
@@ -720,6 +729,7 @@ export function createActiveRun(
   });
 
   return {
+    runId,
     result,
     abort,
     describeHookPlan: () => options.hooks?.describePlan(),

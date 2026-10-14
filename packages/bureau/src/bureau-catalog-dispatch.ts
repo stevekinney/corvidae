@@ -281,6 +281,11 @@ export function createCatalogDispatcher({
       throw createBureauError('Durable runtime unavailable', 'CONFLICT');
     }
     const runId = runIdOverride ?? runtimeServices.identifiers.next('agent-run');
+    // COR-1302 — the handle returned below exists before the durable run does,
+    // so it takes this id now: `createDeferredAgentRun` reports it as the
+    // handle's `id` and liveness `snapshot().id`, and the resolved run adopts
+    // it, so the handle, the workflow, and its event history share one id.
+    context.runId = runId;
     if (runIdOverride !== undefined) {
       const held = runAttribution.get(runId);
       // An attribution already under this id is another run's, unless it is this
@@ -463,11 +468,12 @@ export function createCatalogDispatcher({
               `Agent "${name}" cannot resolve its run options durably, so it cannot run a goal attempt: ${error.message}`,
             );
           }
-          // AB-241: this fallback abandons `runId` entirely — the agent's
-          // own `run()` mints (or is given) a DIFFERENT run identity, so
-          // an attribution entry recorded above under `runId` would
-          // otherwise be a permanent phantom, keyed to a run that never
-          // existed.
+          // AB-241: this fallback abandons the durable run behind `runId` —
+          // the agent's own `run()` drives an in-memory run instead (under
+          // the same id, through `context.runId`, COR-1302), which nothing
+          // durable records, so an attribution entry recorded above under
+          // `runId` would otherwise be a permanent phantom, keyed to a
+          // durable run that never existed.
           releaseAttribution();
           return agent;
         }
@@ -779,6 +785,10 @@ export function createCatalogDispatcher({
     if (runtime.durable && hasResolver) {
       return runDurableCatalogAgent(name, input, runOptions, context, principal, agent);
     }
+    // COR-1302 — the direct branch's handle is returned before the agent's
+    // own run exists too, so it takes its id from this bureau's runtime now,
+    // as the durable branch does.
+    context.runId = runtimeServices.identifiers.next('agent-run');
 
     // Review round 2 (Codex): a hand-written catalog RunnableAgent is a
     // valid entry, and one whose run() throws synchronously during per-run
@@ -851,6 +861,8 @@ export function createCatalogDispatcher({
         start.childRunId,
       );
     }
+    // COR-1302 — as in `runAgent`'s direct branch.
+    context.runId = runtimeServices.identifiers.next('agent-run');
     return trackCatalogRun(
       createDeferredAgentRun(
         () =>

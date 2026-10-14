@@ -52,6 +52,7 @@ export function makeAgent(
         if (typeof rawInput !== 'string') throw new Error('Fixture expects a string input');
         receivedInputs.push(rawInput);
         return {
+          id: `supervisor-fixture-run-${receivedInputs.length}`,
           result: () => respond(rawInput),
           unwrap: () => Promise.reject(new Error('not used by these tests')),
           abort: () => {},

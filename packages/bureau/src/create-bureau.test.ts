@@ -8393,6 +8393,7 @@ function createParkedActiveRun(): {
   // methods cannot structurally satisfy — the same cast operative's own
   // production adapters use for this exact assignment.
   const activeRun: ActiveRun = {
+    runId: 'stub-run',
     result: new Promise<never>(() => {}),
     abort: () => {},
     // COR-1270: this stub run was never dispatched with a hook plan, so it

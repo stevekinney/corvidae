@@ -58,6 +58,7 @@ export function stubActiveRunWithSnapshot(
   snapshot: ReturnType<ActiveRun['snapshot']> = buildStubLivenessSnapshot(),
 ): ActiveRun {
   return {
+    runId: snapshot.id,
     result: new Promise<never>(() => {}),
     abort: unexpectedRunCapability,
     // COR-1270: a stub with no plan, rather than `unexpectedRunCapability` —
