@@ -47,6 +47,30 @@ function runFixture(fixture: string, environment = readScrubbedEnvironment()): P
   return runGate([process.execPath, DRIVER, '--fixture', fixture], environment);
 }
 
+describe('credential-shaped environment names', () => {
+  it('scrubs every secret-value name from child environments, not only the narrower leak-scan set', () => {
+    // Each of these names is a secret that the served-byte leak scan already recognizes;
+    // a child process must never inherit one.
+    for (const name of [
+      'MIRROR_APP_PRIVATE_KEY',
+      'GPG_PASSPHRASE',
+      'GOOGLE_APPLICATION_CREDENTIALS',
+      'GITHUB_TOKEN',
+      'DATABASE_PASSWORD',
+      'STRIPE_API_KEY',
+      'SESSION_SECRET',
+    ]) {
+      expect(SECRET_VALUE_NAME.test(name)).toBe(true);
+      expect(SECRET_ENVIRONMENT_NAME.test(name)).toBe(true);
+    }
+  });
+
+  it('keeps public deployment metadata out of the leak scan while still scrubbing it from children', () => {
+    expect(SECRET_ENVIRONMENT_NAME.test('VERCEL_ENV')).toBe(true);
+    expect(SECRET_VALUE_NAME.test('VERCEL_ENV')).toBe(false);
+  });
+});
+
 describe('static production gate over fixtures', () => {
   it('passes the good fixture with every credential-shaped variable removed', async () => {
     const scrubbedEnvironment = readScrubbedEnvironment();

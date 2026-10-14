@@ -65,21 +65,27 @@ export function readEnvironmentConfiguration() {
 }
 
 /**
+ * Name fragments that mark a secret value. Both predicates below are built from this one list,
+ * so the child-environment scrub can never fall behind the served-byte leak scan.
+ */
+const SECRET_NAME_CLASSES = 'TOKEN|SECRET|PASSWORD|PASSPHRASE|API_KEY|PRIVATE_KEY|CREDENTIAL';
+
+/**
  * Names that can carry a credential. The static production gate scrubs every matching variable
  * from the environment it gives its child processes (the static server, and Playwright with its
  * browsers). Its served-byte leak check scans only the narrower {@link SECRET_VALUE_NAME} set. Case-sensitive on purpose: Bun's lowercase `npm_*` script variables, `HOME`, and
  * `PATH` stay.
  */
-export const SECRET_ENVIRONMENT_NAME =
-  /^(VERCEL_.*|.*TOKEN.*|.*SECRET.*|.*PASSWORD.*|.*API_KEY.*|ANTHROPIC_.*|LINEAR_.*)$/;
+export const SECRET_ENVIRONMENT_NAME = new RegExp(
+  `^(VERCEL_.*|ANTHROPIC_.*|LINEAR_.*|.*(${SECRET_NAME_CLASSES}).*)$`,
+);
 
 /**
  * Names that hold a secret value, as opposed to public deployment metadata. Narrower than
  * {@link SECRET_ENVIRONMENT_NAME}: `VERCEL_ENV=production` is stripped from child environments
  * but is not a secret, and scanning served bytes for `production` would fail on authored prose.
  */
-export const SECRET_VALUE_NAME =
-  /(TOKEN|SECRET|PASSWORD|PASSPHRASE|API_KEY|PRIVATE_KEY|CREDENTIAL)/;
+export const SECRET_VALUE_NAME = new RegExp(`(${SECRET_NAME_CLASSES})`);
 
 /** Every set variable whose name marks a secret value, for the served-byte leak check. */
 export function readSecretEnvironmentEntries(): [name: string, value: string][] {
