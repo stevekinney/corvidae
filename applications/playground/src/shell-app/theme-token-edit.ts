@@ -6,9 +6,15 @@
  * these rules.
  */
 
-import { buildThemeSources, profileRangeViolation } from '@lostgradient/cinder/tokens/runtime';
+import { AUTHORING_CATALOGUE, profileRangeViolation } from '@lostgradient/cinder/tokens/runtime';
 
 import type { CatalogueRow } from './theme-builder-catalogue.ts';
+import {
+  contractFor,
+  validateCssUserValue,
+  type CssValueResult,
+  type SupportsFunction,
+} from './theme-css-value-grammar.ts';
 import {
   contextId,
   type JsonObject,
@@ -19,7 +25,7 @@ import {
 import type { DraftEdit } from './theme-draft.ts';
 import { getNode } from './theme-override-tree.ts';
 import type { ThemePreviewContext } from './theme-preview-message.ts';
-import { themePreviewValueProblem } from './theme-preview-message.ts';
+import { trustedThemeSources } from './theme-recipe-trust.ts';
 
 export type EditScope = 'shared' | 'color-mode' | 'motion-mode';
 
@@ -149,7 +155,7 @@ function collectLayerDocuments(
   envelope: ThemeEnvelope,
   context: ThemePreviewContext,
 ): JsonObject[] {
-  const sources = buildThemeSources(envelope, 0);
+  const sources = trustedThemeSources(envelope, 0);
   const resolver = sources.resolver as ResolverShape;
   const values: Record<string, string> = { theme: context.colorMode, motion: context.motion };
   const documents = sources.documents as Record<string, JsonObject>;
@@ -164,6 +170,23 @@ function collectLayerDocuments(
     for (const source of list ?? []) refs.push(source.$ref);
   }
   return refs.flatMap((ref) => (documents[ref] === undefined ? [] : [documents[ref]]));
+}
+
+/** The `$value` a token's winning layer declares in a context, without following aliases. */
+export function authoredValueOf(
+  envelope: ThemeEnvelope,
+  context: ThemePreviewContext,
+  path: string,
+): JsonValue | undefined {
+  const sourcePath = sourcePathOf(envelope, path);
+  let value: JsonValue | undefined;
+  for (const document of layerDocuments(envelope, context)) {
+    const node = getNode(document, sourcePath);
+    if (typeof node === 'object' && node !== null && !Array.isArray(node) && '$value' in node) {
+      value = node['$value'];
+    }
+  }
+  return value;
 }
 
 /**
@@ -190,6 +213,44 @@ export function literalValueOf(
     current = value.slice(1, -1);
   }
   return undefined;
+}
+
+/**
+ * A token's value with every nested `{reference}` replaced by what it resolves to, so a
+ * composite that reads other tokens through its members compares by effect, not by text.
+ */
+export function resolvedValueOf(
+  envelope: ThemeEnvelope,
+  context: ThemePreviewContext,
+  path: string,
+  depth = 0,
+): JsonValue | undefined {
+  const literal = literalValueOf(envelope, context, path);
+  return literal === undefined ? undefined : resolveNested(envelope, context, literal, depth);
+}
+
+function resolveNested(
+  envelope: ThemeEnvelope,
+  context: ThemePreviewContext,
+  value: JsonValue,
+  depth: number,
+): JsonValue {
+  if (depth > 12) return value;
+  if (isAliasValue(value)) {
+    return resolvedValueOf(envelope, context, value.slice(1, -1), depth + 1) ?? value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => resolveNested(envelope, context, entry, depth + 1));
+  }
+  if (typeof value === 'object' && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        resolveNested(envelope, context, entry, depth + 1),
+      ]),
+    );
+  }
+  return value;
 }
 
 /** The `$value` text the field starts with for one scope of one token. */
@@ -251,6 +312,26 @@ export function usageViolation(row: CatalogueRow, value: JsonValue): string | un
   return problem === undefined ? undefined : `${row.path} ${problem}.`;
 }
 
+const profileByProperty = new Map(
+  AUTHORING_CATALOGUE.records.map((record) => [record.cssProperty, record.profile] as const),
+);
+
+/**
+ * Validate a CSS-only value for a token against its usage contract (COR-488). Every
+ * `cssOverrides` write goes through here: a CSS-only token and a recipe's complete override.
+ * `supports` stands in for `CSS.supports`; it defaults to the platform's.
+ */
+export function validateCssForRow(
+  row: Pick<CatalogueRow, 'type' | 'profile'>,
+  text: string,
+  supports?: SupportsFunction | null,
+): CssValueResult {
+  return validateCssUserValue(text, contractFor(row.type, row.profile), {
+    ...(supports === undefined ? {} : { supports }),
+    profileOfProperty: (property) => profileByProperty.get(property),
+  });
+}
+
 export type BuiltEdit = { ok: true; edit: DraftEdit } | { ok: false; message: string };
 
 /**
@@ -266,15 +347,15 @@ export function buildEdit(
   text: string,
 ): BuiltEdit {
   if (row.edit === 'css-only') {
-    const problem = themePreviewValueProblem(text.trim());
-    if (problem !== null) return { ok: false, message: `Not a plain CSS value: ${problem}.` };
+    const checked = validateCssForRow(row, text);
+    if (!checked.ok) return { ok: false, message: checked.message };
     return {
       ok: true,
       edit: {
         kind: 'set-css-override',
         path: row.path,
         context: contextId(context),
-        value: text.trim(),
+        value: checked.value,
       },
     };
   }

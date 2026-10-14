@@ -5,11 +5,12 @@
  * source and emits no CSS. Applying never edits the Cinder base.
  */
 
-import { buildThemeSources, validateThemeSources } from '@lostgradient/cinder/tokens/runtime';
+import { validateThemeSources } from '@lostgradient/cinder/tokens/runtime';
 
 import type { EditableState, JsonObject, ThemeEnvelope } from './theme-draft-types.ts';
 import { forEachToken, isRegistryPath } from './theme-import-safety.ts';
 import type { ImportFinding, PreflightFact } from './theme-import-types.ts';
+import { trustedThemeSources } from './theme-recipe-trust.ts';
 
 const isObject = (value: unknown): value is JsonObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -88,7 +89,7 @@ export function overlayDocument(current: ThemeEnvelope, document: JsonObject): O
 
 /** The runtime's diagnostics for a candidate, as path-addressed findings. */
 export function runtimeFindings(envelope: ThemeEnvelope): ImportFinding[] {
-  const { diagnostics } = validateThemeSources(buildThemeSources(envelope, 0));
+  const { diagnostics } = validateThemeSources(trustedThemeSources(envelope, 0));
   return diagnostics.map((diagnostic) => ({
     code: /reference|not found|unresolved|cycle/i.test(diagnostic.reason)
       ? ('unresolved-reference' as const)

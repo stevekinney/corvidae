@@ -13,17 +13,18 @@
   import { Button, Input, Select } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
+  import ThemeDetachControl from './theme-detach-control.svelte';
   import { contextId, inputKey as bufferKey } from './theme-draft-types.ts';
+  import ThemeProposalFlow from './theme-proposal-flow.svelte';
+  import { proposeCssOverride, type Proposal } from './theme-reference-edits.ts';
   import {
     buildEdit,
     defaultScope,
     editorMode,
     initialValueText,
-    literalValueOf,
     overrideScopeFor,
     scopeOptions,
     sourcePathOf,
-    valueToText,
     type EditScope,
   } from './theme-token-edit.ts';
   import type { TokenEditorProps } from './theme-token-editors.ts';
@@ -31,7 +32,7 @@
   let { controller, workbench, row }: TokenEditorProps = $props();
 
   let scopeChoice = $state<EditScope>(untrack(() => defaultScope(row)));
-  let replacing = $state(false);
+  let cssProposal = $state.raw<Proposal | null>(null);
   let text = $state('');
   let localError = $state<string | null>(null);
 
@@ -43,7 +44,7 @@
     bufferKey(row.path, scopeChoice === 'shared' ? 'source' : contextId(workbench.context)),
   );
   const fieldId = $derived(`theme-builder-value-${row.path.replaceAll('.', '-')}`);
-  const editable = $derived(mode === 'literal' || mode === 'css-only' || replacing);
+  const editable = $derived(mode === 'literal' || mode === 'css-only');
   const buffered = $derived(draft?.inputBuffer[key]);
   const error = $derived(buffered?.error ?? localError ?? undefined);
   const committedText = $derived(
@@ -75,13 +76,24 @@
 
   function edited(next: string): void {
     text = next;
+    cssProposal = null;
     localError = null;
     if (next === committedText) controller.clearInputBuffer(key);
     else controller.setInputBuffer(key, { text: next, error: null });
   }
 
   async function apply(): Promise<void> {
-    if (envelope === null || !editable) return;
+    if (envelope === null || !editable || draft === null) return;
+    if (mode === 'css-only') {
+      // A CSS-only value shows its consequences first, like every other reference change.
+      const proposed = proposeCssOverride(draft, row, [contextId(workbench.context)], text);
+      cssProposal = proposed;
+      if (!proposed.ok) {
+        controller.setInputBuffer(key, { text, error: proposed.message });
+        controller.announcement = proposed.message;
+      }
+      return;
+    }
     const built = buildEdit(row, envelope, workbench.context, scope, text);
     if (!built.ok) {
       controller.setInputBuffer(key, { text, error: `${row.path}: ${built.message}` });
@@ -95,7 +107,6 @@
       inputKey: key,
     });
     if (outcome.ok) {
-      replacing = false;
       localError = null;
     } else {
       const message = `${outcome.path ?? row.path}: ${outcome.message}`;
@@ -104,19 +115,11 @@
     }
   }
 
-  function replaceWithLiteral(): void {
-    if (envelope === null) return;
-    const literal = literalValueOf(envelope, workbench.context, row.path);
-    replacing = true;
-    text = literal === undefined ? '' : valueToText(literal);
-    controller.setInputBuffer(key, { text, error: null });
-  }
-
   async function resetField(): Promise<void> {
     const path = envelope === null ? row.path : sourcePathOf(envelope, row.path);
     await controller.reset({ kind: 'field', path }, `Reset ${row.path}`);
     controller.clearInputBuffer(key);
-    replacing = false;
+    cssProposal = null;
   }
 
   function keydown(event: KeyboardEvent): void {
@@ -154,19 +157,19 @@
     />
   {/if}
 
-  {#if mode === 'alias' && !replacing}
+  {#if mode === 'alias'}
     <p class="note" data-testid="alias-note">
-      This token is an alias{row.aliases.length > 0 ? ` of ${row.aliases.join(', ')}` : ''}. Editing
-      the literal replaces the alias; it is never severed silently.
+      This token is an alias{row.aliases.length > 0 ? ` of ${row.aliases.join(', ')}` : ''}.
+      Replacing it with a literal shows every change first; it is never severed silently.
     </p>
-    <Button label="Replace with literal" variant="secondary" onclick={replaceWithLiteral} />
-  {:else if mode === 'recipe' && !replacing}
+    <ThemeDetachControl {controller} {workbench} {row} {scope} />
+  {:else if mode === 'recipe'}
     <p class="note" data-testid="recipe-note">
       This token's CSS comes from a trusted recipe{row.recipeInputs.length > 0
         ? ` that reads ${row.recipeInputs.join(', ')}`
-        : ''}. Replacing it with a literal drops the recipe for this theme.
+        : ''}. Replacing it with a literal shows every change first and can be undone.
     </p>
-    <Button label="Replace with literal" variant="secondary" onclick={replaceWithLiteral} />
+    <ThemeDetachControl {controller} {workbench} {row} {scope} />
   {:else}
     <div class="field" onkeydown={keydown} role="presentation">
       <Input
@@ -180,6 +183,21 @@
         onValueChange={edited}
       />
     </div>
+  {/if}
+
+  {#if mode === 'css-only'}
+    <ThemeProposalFlow
+      {controller}
+      proposal={cssProposal}
+      title={`Override the CSS value of ${row.path}`}
+      idBase={`${fieldId}-css`}
+      showError={false}
+      onapplied={() => {
+        cssProposal = null;
+        controller.clearInputBuffer(key);
+      }}
+      oncancel={() => (cssProposal = null)}
+    />
   {/if}
 
   <div class="actions">

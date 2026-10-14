@@ -129,6 +129,17 @@ async function type(id: string, value: string): Promise<void> {
   await settle();
 }
 
+/** The Apply inside the revision-bound impact list, not the editor's own Apply. */
+const impactApply = () =>
+  [...target.querySelectorAll('[data-testid="impact-list"] button')].find(
+    (candidate) => candidate.textContent?.trim() === 'Apply',
+  ) as HTMLButtonElement | undefined;
+
+async function applyImpact(): Promise<void> {
+  impactApply()!.click();
+  await settle();
+}
+
 async function press(label: string): Promise<void> {
   const node = button(label);
   if (node === undefined) throw new Error(`no ${label} button`);
@@ -260,14 +271,34 @@ describe('the color editor', () => {
     expect(text('alias-note')).toContain('text.default');
     expect(byId('theme-builder-color-status-neutral-text-text')).toBeNull();
     await press('Detach alias');
-    expect(text('color-editor-notice')).toContain('Detached from');
-    expect(byId('theme-builder-color-status-neutral-text-text')).not.toBeNull();
+    // Detaching proposes first: the impact list is shown and nothing has changed.
+    expect(target.querySelector('[data-testid="impact-list"]')).not.toBeNull();
     expect(controller.history!.entries).toHaveLength(0);
-    await press('Apply');
+    await applyImpact();
     expect(controller.history!.entries).toHaveLength(1);
+    expect(byId('theme-builder-color-status-neutral-text-text')).not.toBeNull();
     expect(readDtcgColor(lightOverride(controller, 'status.neutral.text'))).not.toBeNull();
     await controller.undo();
     expect(lightOverride(controller, 'status.neutral.text')).toBeUndefined();
+  });
+
+  test('a stale detach proposal cannot be applied', async () => {
+    const { controller } = await open('status.neutral.text');
+    await press('Detach alias');
+    expect(impactApply()!.disabled).toBe(false);
+    await controller.commit({
+      kind: 'edit',
+      label: 'Elsewhere',
+      edit: {
+        kind: 'set-override',
+        scope: 'light',
+        path: 'accent.solid',
+        node: { $type: 'color', $value: { colorSpace: 'srgb', components: [1, 0, 0] } },
+      },
+    });
+    await settle();
+    expect(target.querySelector('[data-testid="impact-stale"]')).not.toBeNull();
+    expect(impactApply()!.disabled).toBe(true);
   });
 
   test('a recipe color is replaced by a literal only on request', async () => {

@@ -142,12 +142,13 @@ test('an alias stays linked until it is detached, and undo restores the link', a
   await expect(page.locator('[id="theme-builder-color-status-neutral-text-text"]')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Detach alias' }).click();
-  await expect(page.getByTestId('color-editor-notice')).toContainText('Detached from');
-  await expect(page.locator('[id="theme-builder-color-status-neutral-text-text"]')).toBeVisible();
-  // Nothing is committed until Apply.
+  // Detaching proposes first: every change is listed, and nothing is committed until Apply.
+  const impact = page.getByTestId('impact-list');
+  await expect(impact).toBeVisible();
   await expect(undo(page)).toBeDisabled();
-  await apply(page).click();
+  await impact.getByRole('button', { name: 'Apply' }).click();
   await expect(page.getByTestId('alias-note')).toHaveCount(0);
+  await expect(page.locator('[id="theme-builder-color-status-neutral-text-text"]')).toBeVisible();
   await expect(undo(page)).toBeEnabled();
 
   await undo(page).click();

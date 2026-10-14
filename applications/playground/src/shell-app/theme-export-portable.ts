@@ -9,15 +9,12 @@
  * portable DTCG, so it is stripped and counted in the portability report, not silently lost.
  */
 
-import {
-  AUTHORING_CATALOGUE,
-  buildThemeSources,
-  mergedContextDocument,
-} from '@lostgradient/cinder/tokens/runtime';
+import { AUTHORING_CATALOGUE, mergedContextDocument } from '@lostgradient/cinder/tokens/runtime';
 
 import { THEME_CONTEXT_IDS, type JsonObject, type ThemeContextId } from './theme-draft-types.ts';
 import { themeFileSlug } from './theme-envelope.ts';
 import type { ExportSnapshot } from './theme-export-snapshot.ts';
+import { trustedThemeSources } from './theme-recipe-trust.ts';
 
 const CINDER_EXTENSION = 'com.lostgradient.cinder';
 const dispositionByPath = new Map(
@@ -125,7 +122,7 @@ const pad = (text: string): string => `${text}\n`;
 
 /** The six portable documents for a snapshot, plus what was omitted and what was dropped. */
 export function planPortable(snapshot: ExportSnapshot): PortablePlan {
-  const sources = buildThemeSources(snapshot.envelope, snapshot.revision);
+  const sources = trustedThemeSources(snapshot.envelope, snapshot.revision);
   const walk: Walk = {
     omitted: new Map(),
     recipes: new Map(),

@@ -12,7 +12,6 @@
 
 import {
   applyCssOnlyOverrides,
-  buildThemeSources,
   evaluateThemeProperties,
 } from '@lostgradient/cinder/tokens/runtime';
 
@@ -22,8 +21,9 @@ import type {
   ThemeEvaluator,
   ThemeProperty,
 } from './theme-draft-evaluation.ts';
-import type { ThemeContextId, ThemeEnvelope } from './theme-draft-types.ts';
+import { type ThemeContextId, type ThemeEnvelope } from './theme-draft-types.ts';
 import { themePreviewValueProblem } from './theme-preview-message.ts';
+import { trustedThemeSources } from './theme-recipe-trust.ts';
 
 /**
  * Lay CSS-only overrides over a projected context. They win over everything, and only a value
@@ -57,7 +57,7 @@ export function createRuntimeEvaluator(): ThemeEvaluator {
       const key = `${revision}:${context}`;
       const remembered = results.get(source)?.get(key);
       if (remembered !== undefined) return remembered;
-      const outcome = evaluateThemeProperties(buildThemeSources(source, revision), {
+      const outcome = evaluateThemeProperties(trustedThemeSources(source, revision), {
         contexts: [context],
       });
       let evaluation: ThemeEvaluation;

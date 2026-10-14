@@ -67,6 +67,23 @@ async function type(text: string): Promise<void> {
   await tick();
 }
 
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  flushSync();
+  await tick();
+}
+
+/** The Apply inside the revision-bound impact list, not the editor's own Apply. */
+const impactApply = () =>
+  [...target.querySelectorAll('[data-testid="impact-list"] button')].find(
+    (candidate) => candidate.textContent?.trim() === 'Apply',
+  ) as HTMLButtonElement | undefined;
+
+async function applyImpact(): Promise<void> {
+  impactApply()!.click();
+  await settle();
+}
+
 async function click(label: string): Promise<void> {
   const target = button(label);
   if (target === undefined) throw new Error(`no ${label} button`);
@@ -151,24 +168,66 @@ describe('the generic value editor', () => {
     expect(target.querySelector('[data-testid="alias-note"]')).not.toBeNull();
     expect(target.querySelector('input')).toBeNull();
     await click('Replace with literal');
+    // Pressing it only proposes: the impact is listed and nothing has changed yet.
     expect(controller.history!.entries).toHaveLength(0);
-    expect(field().value).not.toBe('');
-    await click('Apply');
+    expect(target.querySelector('[data-testid="impact-list"]')).not.toBeNull();
+    await applyImpact();
     expect(controller.history!.entries).toHaveLength(1);
+    expect(target.querySelector('[data-testid="alias-note"]')).toBeNull();
+  });
+
+  test('a detach proposal goes stale when the draft moves on, and Apply is disabled', async () => {
+    const alias = catalogueRows.find(
+      (row) => row.aliases.length > 0 && row.edit === 'supported' && row.type === 'dimension',
+    )!;
+    const { controller } = await open(alias.path);
+    await click('Replace with literal');
+    expect(impactApply()!.disabled).toBe(false);
+    await controller.commit({
+      kind: 'edit',
+      label: 'Elsewhere',
+      edit: {
+        kind: 'set-override',
+        scope: 'shared',
+        path: 'space.1-5',
+        node: { $type: 'dimension', $value: { value: 7, unit: 'px' } },
+      },
+    });
+    await settle();
+    expect(target.querySelector('[data-testid="impact-stale"]')).not.toBeNull();
+    expect(impactApply()!.disabled).toBe(true);
   });
 
   test('a CSS-only token edits cssOverrides and never a fake $value', async () => {
     const cssOnly = catalogueRows.find((row) => row.edit === 'css-only');
     if (cssOnly === undefined) throw new Error('no CSS-only token in the catalogue');
     const { controller } = await open(cssOnly.path);
-    await type('4px solid red');
+    await type('url(https://example.com/a.png)');
     await click('Apply');
+    expect(controller.draft!.envelope.cssOverrides[cssOnly.path]).toBeUndefined();
+    expect(target.textContent).toContain('Resource functions');
+    expect(target.querySelector('[data-testid="impact-list"]')).toBeNull();
+    await type(validCssOnly(cssOnly));
+    await click('Apply');
+    // The property's before and after are shown, with its dependents, before anything changes.
+    expect(controller.draft!.envelope.cssOverrides[cssOnly.path]).toBeUndefined();
+    expect(target.querySelector('[data-testid="impact-list"] tbody th code')!.textContent).toBe(
+      cssOnly.path,
+    );
+    await applyImpact();
     expect(controller.draft!.envelope.cssOverrides[cssOnly.path]).toEqual({
-      'light/default': '4px solid red',
+      'light/default': validCssOnly(cssOnly),
     });
     expect(controller.draft!.envelope.overrides.shared).toEqual({});
   });
 });
+
+/** A value the CSS-only grammar accepts for each of the four CSS-only tokens. */
+function validCssOnly(row: { type: string; profile?: { id: string } | undefined }): string {
+  if (row.profile?.id === 'aspect-ratio') return '4 / 3';
+  if (row.type === 'color') return 'currentColor';
+  return row.profile?.id === 'height' ? '12rem' : '80%';
+}
 
 describe('the editing rules', () => {
   const envelope = createEnvelope('t', 'T', cinderThemeBase());

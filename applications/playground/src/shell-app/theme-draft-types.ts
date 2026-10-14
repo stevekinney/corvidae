@@ -16,6 +16,15 @@ export const THEME_VERSION = 1;
 export const OVERRIDE_SCOPES = ['shared', 'light', 'dark', 'reduced', 'forcedReduced'] as const;
 export type OverrideScope = (typeof OVERRIDE_SCOPES)[number];
 
+/** Where each override scope's document lives in the resolver, and which source list it joins. */
+export const OVERRIDE_DOCUMENTS = {
+  shared: 'overrides/shared.tokens.json',
+  light: 'overrides/light.tokens.json',
+  dark: 'overrides/dark.tokens.json',
+  reduced: 'overrides/reduced.tokens.json',
+  forcedReduced: 'overrides/forced-reduced-motion.tokens.json',
+} as const;
+
 /** A concrete context id, as used by the authoring catalogue (for example `dark/reduced`). */
 export type ThemeContextId =
   | 'light/default'
