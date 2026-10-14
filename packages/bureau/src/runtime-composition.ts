@@ -1976,7 +1976,7 @@ export async function createRuntimeComposition(
   // composition finishes. `resolveRunServices` therefore waits on this gate rather than answering
   // "not ready": a run that reaches the resolver early must be held, not durably failed.
   const readiness = Promise.withResolvers<void>();
-  // A failed composition rejects the gate; the resolver handles that, and nothing else need.
+  // A failed composition rejects the gate; the resolver handles that, and nothing else needs to.
   readiness.promise.catch(() => {});
   try {
     return await buildRuntimeComposition(options, suppliedDependencies, readiness);

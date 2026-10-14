@@ -130,6 +130,12 @@ describe('a run reclaimed while the bureau is still being composed (COR-1509)', 
     const auditTrail = bureau.auditTrail;
     if (auditTrail === undefined) throw new Error('the bureau has no audit trail');
     const steps = await auditTrail.query({ runId: run.id, type: 'step.completed' });
+    // The reclaimed run was reattached, so its session reached a terminal status rather than being
+    // left `running`, and its terminal event was delivered and recorded.
+    const session = await bureau.getSession(run.sessionId);
+    expect(session?.metadata['lastRunStatus']).toBe('completed');
+    const terminal = await auditTrail.query({ runId: run.id, type: 'run.completed' });
+    expect(terminal).toHaveLength(1);
     // Step 0 was recorded by the owner; the successor's step 1 must be recorded too, which needs
     // the bureau to have been watching the run before that step ran.
     expect(steps).toHaveLength(2);
