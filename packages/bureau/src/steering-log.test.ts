@@ -171,6 +171,10 @@ describe('steering log', () => {
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
     );
+    await kv.set(entryKey, JSON.stringify({ ...admit(), liveRunIds: ['run-1', 'run-1'] }));
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
     await kv.set(entryKey, JSON.stringify(admit({ requestedAt: 'not a timestamp' })));
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,

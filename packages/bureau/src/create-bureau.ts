@@ -7745,6 +7745,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     ) {
       return { outcome: 'not-found' };
     }
+    // A durable admission reads the engine, which shutdown disposes once
+    // the admissions already queued have drained.
+    if (durableSteeringStore() !== undefined && runAdmissionClosed) {
+      throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
+    }
     let liveRunIds: string[];
     try {
       const steeringKv = durableSteeringStore();
@@ -7776,7 +7781,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const localTarget = liveSessionRunIds(sessionId);
       if (
         !isSessionAuthorityAuthorized(
-          session.metadata,
+          afterFailure.metadata,
           request.principal,
           localTarget.length === 1 ? localTarget[0] : undefined,
         )
@@ -8249,9 +8254,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         const afterRead = await runtime.sessionStore?.load(sessionId);
         if (afterRead?.incarnation !== incarnation) return { outcome: 'not-found' };
         if (bindingHolds) {
-          const decidedFor =
-            answered.outcome === 'replayed' ? answered.command.runId : command.runId;
-          return isSessionAuthorityAuthorized(afterRead.metadata, principal, decidedFor)
+          return isSessionAuthorityAuthorized(
+            afterRead.metadata,
+            principal,
+            steeringAnswerRunId(answered, command),
+          )
             ? answered
             : { outcome: 'not-found' };
         }
@@ -8290,7 +8297,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           } catch (error) {
             if (!(error instanceof SteeringLogCorruptError)) throw error;
           }
-          if (elsewhere !== undefined) return elsewhere;
+          if (elsewhere !== undefined) {
+            // The answer discloses the other session's command, so the caller
+            // must still be authorized there, against that command's run, on
+            // the session as it stands now.
+            const boundNow = await runtime.sessionStore?.load(binding.sessionId);
+            if (boundNow?.incarnation !== binding.incarnation) continue;
+            return isSessionAuthorityAuthorized(
+              boundNow.metadata,
+              principal,
+              steeringAnswerRunId(elsewhere, command),
+            )
+              ? elsewhere
+              : { outcome: 'not-found' };
+          }
           // The binding names a live session whose log does not account for
           // it — unless that session was deleted mid-fold, which is a race,
           // not corruption: decide again once the deletion is visible.
@@ -8375,6 +8395,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * state it reached, so the retry gets the same `conflict` it would have
    * got in-process.
    */
+  /**
+   * The run an idempotency answer was decided for: the original command's
+   * bound run for a replay or conflict, else the request's own.
+   */
+  function steeringAnswerRunId(
+    answer: SteeringCommandAdmissionOutcome,
+    request: ImplementedSteeringCommand,
+  ): string | undefined {
+    if (answer.outcome === 'replayed') return answer.command.runId;
+    if (answer.outcome === 'conflict') return answer.conflict.original.runId;
+    return request.runId;
+  }
+
   /**
    * Whether `(principal, id)`'s stored binding names this session
    * incarnation and, at its sequence, an `admit` or `refused` entry for that
@@ -9848,6 +9881,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // implements both `Disposable` and `AsyncDisposable`, so this
           // await genuinely observes the engine's own drain rather than
           // firing a sync teardown and moving on.
+          // Steering admissions already queued read the engine's run
+          // liveness, so they finish before it is disposed; admission closed
+          // with `runAdmissionClosed`. Run-boundary appends queued while the
+          // engine drains are awaited again below, before the backend closes.
+          await Promise.allSettled(steeringQueues.values());
           if (runtime.durable) {
             const engine = runtime.durable.engine;
             await settleOwner('durable-engine', () => engine[Symbol.asyncDispose]());

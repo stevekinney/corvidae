@@ -577,6 +577,7 @@ describe('durable steering across two Bureau processes', () => {
     });
     const engineType = Object.getPrototypeOf(probe.durable!.engine) as {
       get: (id: string) => Promise<unknown>;
+      list: (query: unknown) => Promise<unknown>;
     };
     probe.durable!.engine[Symbol.dispose]?.();
     probe.disposeStorage?.();
@@ -585,6 +586,7 @@ describe('durable steering across two Bureau processes', () => {
     const writer = await openBureau(path);
     let reader: TestBureau | undefined;
     const engineGet = spyOn(engineType, 'get');
+    const engineList = spyOn(engineType, 'list');
     try {
       // An older run's terminal save made the session terminal, while five
       // newer runs were promoted elsewhere and have no workflow yet. Bob owns
@@ -717,8 +719,47 @@ describe('durable steering across two Bureau processes', () => {
         requestedValue: { target: 'pause' },
       });
       expect(notARun.outcome).toBe('session-terminal');
+
+      // An unscoped request whose liveness query fails is masked against the
+      // session as it stands after the failure: here another process handed
+      // the default run to bob while the query was failing.
+      const revokedSession = 'session-revoked';
+      await store.save(
+        createAgentSession({
+          id: revokedSession,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: revokedSession }),
+          metadata: {
+            lastRunId: 'older',
+            lastRunStatus: 'running',
+            lastRequestAuthorities: { older: { principalId: 'alice' } },
+          },
+        }),
+      );
+      engineGet.mockImplementation(() => Promise.resolve(null));
+      engineList.mockImplementation(async () => {
+        await store.update(revokedSession, (current) =>
+          current === undefined
+            ? undefined
+            : {
+                ...current,
+                metadata: {
+                  ...current.metadata,
+                  lastRequestAuthorities: { older: { principalId: 'bob' } },
+                },
+              },
+        );
+        throw new Error('backend unavailable');
+      });
+      expect(
+        await reader.submitSteeringCommand(revokedSession, {
+          principal: 'alice',
+          requestedValue: { target: 'pause' },
+        }),
+      ).toEqual({ outcome: 'not-found' });
     } finally {
       engineGet.mockRestore();
+      engineList.mockRestore();
       await writer.dispose();
       await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
@@ -818,6 +859,85 @@ describe('durable steering across two Bureau processes', () => {
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('answers a reused key only to a caller still authorized for the command it discloses', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-reauthorize-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureau = await openBureau(path);
+    try {
+      const kv = bureau.kv;
+      if (kv === undefined) throw new Error('expected a durable store');
+      const store = createSessionStore(kv);
+      const handAuthorityToBob = (sessionId: string, runId: string) =>
+        store.update(sessionId, (current) => {
+          if (current === undefined) return undefined;
+          const authorities = current.metadata['lastRequestAuthorities'] as Record<
+            string,
+            JSONValue
+          >;
+          return {
+            ...current,
+            metadata: {
+              ...current.metadata,
+              lastRequestAuthorities: { ...authorities, [runId]: { principalId: 'bob' } },
+            },
+          };
+        });
+
+      // Two live runs of alice's on one session; a pause bound to the first.
+      const sessionId = await startRunningSession(bureau);
+      const lastRunIdOf = async (id: string) => {
+        const session = await bureau.getSession(id);
+        return session?.metadata['lastRunId'];
+      };
+      const first = await lastRunIdOf(sessionId);
+      await startRunningSession(bureau, sessionId);
+      const second = await lastRunIdOf(sessionId);
+      if (typeof first !== 'string' || typeof second !== 'string') throw new Error('expected runs');
+      const paused = await bureau.submitSteeringCommand(sessionId, {
+        id: 'k-pause',
+        principal: 'alice',
+        runId: first,
+        requestedValue: { target: 'pause' },
+      });
+      expect(paused.outcome).toBe('accepted');
+
+      // Alice loses the first run. Reusing the key through the second, which
+      // she still holds, must not disclose the first run's command.
+      await handAuthorityToBob(sessionId, first);
+      expect(
+        await bureau.submitSteeringCommand(sessionId, {
+          id: 'k-pause',
+          principal: 'alice',
+          runId: second,
+          requestedValue: { target: 'resume' },
+        }),
+      ).toEqual({ outcome: 'not-found' });
+
+      // Nor through another session she holds, once she lost the original.
+      const other = await startRunningSession(bureau);
+      const otherRun = await lastRunIdOf(other);
+      if (typeof otherRun !== 'string') throw new Error('expected a run');
+      const modelInOther = await bureau.submitSteeringCommand(other, {
+        id: 'k-model',
+        principal: 'alice',
+        requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+      });
+      expect(modelInOther.outcome).toBe('accepted');
+      await handAuthorityToBob(other, otherRun);
+      expect(
+        await bureau.submitSteeringCommand(sessionId, {
+          id: 'k-model',
+          principal: 'alice',
+          runId: second,
+          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+        }),
+      ).toEqual({ outcome: 'not-found' });
+    } finally {
+      await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);

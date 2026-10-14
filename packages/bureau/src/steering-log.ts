@@ -262,7 +262,9 @@ function parseEvent(raw: string, sequence: number, sessionId: string): SteeringL
           parsed['command'].sessionId === sessionId &&
           hasValidSubmittedValue(parsed) &&
           Array.isArray(liveRunIds) &&
-          liveRunIds.every((runId) => typeof runId === 'string')
+          liveRunIds.every((runId) => typeof runId === 'string') &&
+          // A set of runs: a repeated id would change its cardinality.
+          new Set(liveRunIds).size === liveRunIds.length
         ) {
           return parsed as SteeringLogEvent;
         }
