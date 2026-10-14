@@ -52,3 +52,14 @@ test('the landing README fits a phone and its tables scroll in a focusable regio
   expect(layout.unwrappedTables).toBe(0);
   expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth);
 });
+
+test('inline code in README prose wraps instead of widening the page', async ({ page }) => {
+  // Review Editor's README lists API names such as `exportAggregateReviewJson()`, which made the
+  // documentation 523px wide at 390px before inline code could wrap.
+  await page.goto('/page/review-editor');
+  await page.locator('.readme-content code').first().waitFor();
+
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  );
+});

@@ -3085,6 +3085,11 @@
     border-radius: 0;
     background: transparent;
   }
+  /* Inline code in prose wraps rather than widening the page: an API name such as
+   * `exportAggregateReviewJson()` in a README list item is wider than a phone column. */
+  .readme-content :global(:not(pre) > code) {
+    overflow-wrap: anywhere;
+  }
   .readme-content :global(pre code) {
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
