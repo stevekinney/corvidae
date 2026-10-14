@@ -1403,15 +1403,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       },
     ],
     [
-      'src/server/authentication/index.ts',
-      {
-        reason:
-          'The residual authentication line guards an authentication provider result outside the declared provider contract.',
-        lines: new Set([158]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/server/authentication/rotating-api-key-store.ts',
       {
         reason:
