@@ -9,7 +9,7 @@ import { DEV_API_KEY } from './dev-credentials.ts';
 const directory = dirname(fileURLToPath(import.meta.url));
 const defaultOutputDirectory = join(directory, 'build');
 const configuration = environmentConfiguration();
-const defaultPort = configuration.weftUiPort ?? 5173;
+const defaultPort = configuration.browserHostPort ?? 5173;
 const defaultUpstream = configuration.weftApiBaseUrl ?? 'http://localhost:7233';
 const proxyPathPrefixes = [
   '/api',
