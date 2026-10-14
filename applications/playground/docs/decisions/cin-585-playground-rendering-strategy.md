@@ -155,7 +155,7 @@ That probe took its only browser checkpoint on home, after a full document navig
 - **Observers and timers**: not observable at any owner boundary without patching, so not counted.
 - **JS heap**: `Runtime.getHeapUsage` after `HeapProfiler.collectGarbage`; never added to RSS.
 
-The gated five-cycle rerun with these counters (`diagnostic-navigation-2.json`) is pending: it runs only when the 1-minute load is at most 30, and the 30 s Playwright navigation default stays unchanged.
+The gated five-cycle rerun with these counters (`diagnostic-navigation-2.json`) is pending, and no result from it exists. Reason: host load from other sessions stayed between about 93 and 270, and the gate (1-minute load at most 30) never opened between 07:26 and its 10:17 deadline on 2026-10-14. The 30 s Playwright navigation default stays unchanged. Until it runs, the navigation evidence is the original five-cycle run above, read with the limits this section states.
 
 ### Edit/rebuild cycles
 
