@@ -170,11 +170,61 @@ function formatColor(value: ColorValue): string {
   if (value.colorSpace === 'oklch') return formatOklch(value);
   if (value.colorSpace === 'srgb') return formatSrgb(value);
 
+  const other = formatOtherColorSpace(value);
+  if (other !== undefined) return other;
+
   throw new Error(
     `No direct CSS serialization implemented for color colorSpace "${value.colorSpace}". ` +
-      'Every color in the corpus today is oklch (optionally with hex metadata) or fully ' +
-      'transparent; extend formatColor before adding a new color space.',
+      'Add it to formatOtherColorSpace before authoring a color in that space.',
   );
+}
+
+/** DTCG color spaces CSS Color 4 writes as `color(<space> a b c)`. */
+const PREDEFINED_COLOR_SPACES = new Set([
+  'srgb-linear',
+  'display-p3',
+  'a98-rgb',
+  'prophoto-rgb',
+  'rec2020',
+  'xyz-d50',
+  'xyz-d65',
+]);
+
+/**
+ * The colors authored in a space other than oklch or srgb, written in the space they are
+ * authored in: a source in Display P3 stays `color(display-p3 …)` and is never converted or
+ * clamped on its way to CSS. Percent-based channels follow the DTCG ranges (hsl and hwb
+ * saturation, lightness, whiteness and blackness are 0–100; lab and lch lightness are 0–100;
+ * oklab lightness is 0–1).
+ */
+function formatOtherColorSpace(value: ColorValue): string | undefined {
+  const [first, second, third] = value.components;
+  if (first === undefined || second === undefined || third === undefined) {
+    throw new Error(
+      `${value.colorSpace} color value is missing a component: ${JSON.stringify(value)}`,
+    );
+  }
+  const alpha = value.alpha === undefined ? '' : ` / ${formatComponent(value.alpha)}`;
+  const [a, b, c] = [formatComponent(first), formatComponent(second), formatComponent(third)];
+  const percent = (component: number | 'none'): string =>
+    component === 'none' ? 'none' : `${formatNumber(component)}%`;
+  if (PREDEFINED_COLOR_SPACES.has(value.colorSpace)) {
+    return `color(${value.colorSpace} ${a} ${b} ${c}${alpha})`;
+  }
+  switch (value.colorSpace) {
+    case 'lab':
+      return `lab(${percent(first)} ${b} ${c}${alpha})`;
+    case 'lch':
+      return `lch(${percent(first)} ${b} ${c}${alpha})`;
+    case 'oklab':
+      return `oklab(${formatOklchLightness(first)} ${b} ${c}${alpha})`;
+    case 'hsl':
+      return `hsl(${a} ${percent(second)} ${percent(third)}${alpha})`;
+    case 'hwb':
+      return `hwb(${a} ${percent(second)} ${percent(third)}${alpha})`;
+    default:
+      return undefined;
+  }
 }
 
 function formatOklch(value: ColorValue): string {

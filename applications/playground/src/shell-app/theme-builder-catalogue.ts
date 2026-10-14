@@ -97,8 +97,36 @@ export function filterRows(rows: readonly CatalogueRow[], query: string): readon
   );
 }
 
-export type CatalogueFilters = { changed: boolean; alias: boolean; recipe: boolean };
-export const NO_FILTERS: CatalogueFilters = { changed: false, alias: false, recipe: false };
+export type CatalogueFilters = {
+  changed: boolean;
+  alias: boolean;
+  recipe: boolean;
+  /** Colors only, across every group (COR-263). */
+  color: boolean;
+};
+export const NO_FILTERS: CatalogueFilters = {
+  changed: false,
+  alias: false,
+  recipe: false,
+  color: false,
+};
+
+/**
+ * The filters a `/theme-builder?filter=color` deep link asks for. Only known values count; the
+ * documentation shell's color-panel entry point opens the catalogue this way.
+ */
+export function filtersFromSearch(search: string): CatalogueFilters {
+  const requested = new URLSearchParams(search).getAll('filter');
+  return { ...NO_FILTERS, color: requested.includes('color') };
+}
+
+/** The rows the catalogue lists: one group, or every color token when the color filter is on. */
+export function rowsForView(
+  group: CatalogueGroupId,
+  filters: CatalogueFilters,
+): readonly CatalogueRow[] {
+  return filters.color ? catalogueRows.filter((row) => row.type === 'color') : rowsInGroup(group);
+}
 
 /** Narrow rows by the toggled filters; each active filter must hold. */
 export function filterRowsBy(

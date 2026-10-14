@@ -140,6 +140,26 @@ export type ProfileDefinition = {
   keywords?: string[];
 };
 
+/** The palette families a color token may belong to. */
+export const PALETTE_FAMILIES = [
+  'accent',
+  'neutral',
+  'success',
+  'warning',
+  'danger',
+  'info',
+] as const;
+export type PaletteFamily = (typeof PALETTE_FAMILIES)[number];
+
+/** A color token's declared membership of one palette family. */
+export type PaletteMembership = {
+  family: PaletteFamily;
+  /** The role the token plays inside the family, unique within the family. */
+  role: string;
+  /** True for the single token that holds the family's seed-matching color. */
+  anchor: boolean;
+};
+
 /** One generated record per public registry entry. */
 export type AuthoringRecord = {
   path: string;
@@ -155,8 +175,11 @@ export type AuthoringRecord = {
   profile: string;
   /** The scale this token is a member of, when the corpus marks one. */
   scale?: string;
-  /** Palette family and anchor are not declared anywhere in source today. */
-  palette?: { family: Unknown; anchor: Unknown };
+  /**
+   * Palette membership of a color token, from the explicit `palette` extension in source (never
+   * inferred from the token name). A color token that declares none reports `unknown`.
+   */
+  palette?: PaletteMembership | { family: Unknown; role: Unknown; anchor: Unknown };
   disposition: TokenDisposition;
   variants: ProvenanceVariant[];
 };

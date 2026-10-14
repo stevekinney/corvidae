@@ -516,8 +516,14 @@ async function renderComponentPage(
         line-height: var(--cinder-leading-normal);
         /* Scale the preview gutter with the viewport: a comfortable space-6
            (24px) on wide screens collapses to a thin space-1 (4px) on phones so
-           example components get almost the full width and look realistic. */
-        padding: clamp(var(--cinder-space-1), 2.5vw, var(--cinder-space-6));
+           example components get almost the full width and look realistic.
+           The documentation page has no preview gutter: its \`.dx\` canvas owns
+           the page gutter, exactly as the landing page does. */
+        padding: ${
+          snapshotMode || previewOnly
+            ? 'clamp(var(--cinder-space-1), 2.5vw, var(--cinder-space-6))'
+            : '0'
+        };
       }
       /* Guard the background/color crossfade behind a reduced-motion opt-out so
          users who prefer no motion get an instant theme swap, not a transition. */

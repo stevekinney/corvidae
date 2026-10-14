@@ -76,7 +76,7 @@ Validation is not optional and cannot be split. Every document is checked agains
 
 These fail before any CSS is projected, each with a path-addressed diagnostic: a value the schema rejects (an invalid `strokeStyle` such as `none` or `hidden`, a malformed composite), a type change that does not hold, a reference to a missing token, an alias or `$extends` cycle, a resolver that orders `motion` before `theme`, and a document the resolver never references.
 
-A value the CSS projection cannot express is a diagnostic as well. For example, a `strokeStyle`, `border`, `transition`, `gradient`, or `typography` token with no `cssRecipe` reports `No direct CSS serialization implemented for token type ...`. Nothing is skipped and nothing falls back to a default.
+A color is projected in the space it is authored in: `oklch` and `srgb` as before, and `display-p3`, the other predefined RGB and XYZ spaces (`color(<space> …)`), `lab`, `lch`, `oklab`, `hsl`, and `hwb` as their CSS Color 4 forms. Nothing is converted or clamped on the way to CSS. A value the CSS projection cannot express is a diagnostic as well. For example, a `strokeStyle`, `border`, `transition`, `gradient`, or `typography` token with no `cssRecipe` reports `No direct CSS serialization implemented for token type ...`. Nothing is skipped and nothing falls back to a default.
 
 ### Evaluated provenance
 
@@ -102,6 +102,8 @@ type TokenEvaluation = {
 - `AUTHORING_CATALOGUE`: the generated authoring catalogue, one record per public token with its per-context provenance, usage profile, and edit, CSS-export, and DTCG-portability disposition. `buildAuthoringCatalogue(resolver, documentsByPath)` builds the same catalogue over any in-memory corpus that already passed `validateThemeSources`; it throws on a token no usage profile covers, as the generator does.
 - `PROFILES`, `selectProfile`, `profileRangeViolation`: the CSS usage profiles and their numeric ranges.
 - `traceProvenance(layers)`, `authoringContexts`, `authoringLayerStack`, `evaluateContextProvenance`: the building blocks `evaluateTheme` uses. They expect sources that already passed `validateThemeSources` and throw raw errors on anything else; `evaluateTheme` is the entry point that turns failures into diagnostics.
+
+Each color record carries `palette: { family, role, anchor }`. It comes from the explicit `palette` key in the token's `com.lostgradient.cinder` extension (value-neutral, never inferred from a token name), or is `unknown` when the token declares none. The generator rejects an unknown family, a family without exactly one anchor, a repeated role, a palette on a non-color, and a token that declares different memberships in different contexts.
 
 Presentation grouping and friendly labels are not part of the runtime.
 

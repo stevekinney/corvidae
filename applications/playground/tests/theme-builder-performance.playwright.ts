@@ -155,8 +155,8 @@ test.describe('input to render', () => {
     await selectToken(page, 'Semantic', 'accent.solid');
     const samples = await collect((index) =>
       commitEdit(page, {
-        field: '#theme-builder-value-accent-solid',
-        text: `{"colorSpace": "srgb", "components": [${(0.1 + (index % 8) * 0.1).toFixed(1)}, 0.4, 0.8]}`,
+        field: '#theme-builder-color-accent-solid-text',
+        text: `oklch(${(0.4 + (index % 8) * 0.05).toFixed(2)} 0.1 250)`,
         property: '--cinder-accent-solid',
         expected: null,
       }),
@@ -172,7 +172,7 @@ async function selectToken(page: Page, group: string, path: string): Promise<voi
 }
 
 /**
- * Type a value into the generic editor, press Apply, and time the click until the preview
+ * Type a value into the token's value field (the generic editor or the color editor), press Apply, and time the click until the preview
  * frame has the new property and has painted twice. With `expected: null` the value must
  * merely differ from the one before the click.
  */

@@ -1245,7 +1245,8 @@
         "cssProperty": "--cinder-surface",
         "public": true,
         "category": "color",
-        "contrastPairs": ["text.default"]
+        "contrastPairs": ["text.default"],
+        "palette": { "family": "neutral", "role": "surface-base" }
       }
     },
     "$type": "color"
@@ -1258,7 +1259,8 @@
         "cssProperty": "--cinder-surface-raised",
         "public": true,
         "category": "color",
-        "contrastPairs": ["text.default"]
+        "contrastPairs": ["text.default"],
+        "palette": { "family": "neutral", "role": "surface-raised" }
       }
     },
     "$type": "color"
@@ -1296,7 +1298,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-surface-inset",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "surface-inset" }
       }
     },
     "$type": "color"
@@ -1359,7 +1362,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-surface-canvas",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "surface-canvas" }
       }
     }
   },
@@ -1382,7 +1386,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-border-ink",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "border-ink" }
       }
     },
     "$type": "color"
@@ -1408,7 +1413,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-border-faint",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "border-faint" }
       }
     },
     "$type": "color"
@@ -1458,7 +1464,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-text-muted",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "text-muted" }
       }
     },
     "$type": "color"
@@ -1470,7 +1477,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-text-subtle",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "text-subtle" }
       }
     },
     "$type": "color"
@@ -1482,7 +1490,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-text-disabled",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "text-disabled" }
       }
     },
     "$type": "color"
@@ -1507,7 +1516,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-text-default",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "text-default", "anchor": true }
       }
     }
   },
@@ -1518,7 +1528,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-fill-disabled",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "fill-disabled" }
       }
     },
     "$type": "color"
@@ -1542,7 +1553,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-accent-text",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "accent", "role": "text" }
       }
     },
     "$type": "color"
@@ -1567,7 +1579,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-accent-solid",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "accent", "role": "solid", "anchor": true }
       }
     },
     "$type": "color"
@@ -1970,7 +1983,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-success-solid",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "success", "role": "solid", "anchor": true }
       }
     },
     "$type": "color"
@@ -1983,7 +1997,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-success-solid-active",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "success", "role": "solid-active" }
       }
     }
   },
@@ -1995,7 +2010,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-success-solid-hover",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "success", "role": "solid-hover" }
       }
     }
   },
@@ -2007,7 +2023,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-success-background",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "success", "role": "background" }
       }
     }
   },
@@ -2019,7 +2036,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-success-text",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "success", "role": "text" }
       }
     }
   },
@@ -2031,7 +2049,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-success-border",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "success", "role": "border" }
       }
     }
   },
@@ -2080,7 +2099,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-warning-solid",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "warning", "role": "solid", "anchor": true }
       }
     },
     "$type": "color"
@@ -2093,7 +2113,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-warning-solid-active",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "warning", "role": "solid-active" }
       }
     }
   },
@@ -2105,7 +2126,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-warning-solid-hover",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "warning", "role": "solid-hover" }
       }
     }
   },
@@ -2117,7 +2139,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-warning-background",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "warning", "role": "background" }
       }
     }
   },
@@ -2129,7 +2152,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-warning-text",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "warning", "role": "text" }
       }
     }
   },
@@ -2141,7 +2165,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-warning-border",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "warning", "role": "border" }
       }
     }
   },
@@ -2190,7 +2215,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-danger-solid",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "danger", "role": "solid", "anchor": true }
       }
     },
     "$type": "color"
@@ -2203,7 +2229,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-danger-solid-active",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "danger", "role": "solid-active" }
       }
     }
   },
@@ -2215,7 +2242,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-danger-solid-hover",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "danger", "role": "solid-hover" }
       }
     }
   },
@@ -2227,7 +2255,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-danger-background",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "danger", "role": "background" }
       }
     }
   },
@@ -2239,7 +2268,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-danger-text",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "danger", "role": "text" }
       }
     }
   },
@@ -2251,7 +2281,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-danger-border",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "danger", "role": "border" }
       }
     }
   },
@@ -2300,7 +2331,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-info-solid",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "info", "role": "solid", "anchor": true }
       }
     },
     "$type": "color"
@@ -2313,7 +2345,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-info-solid-active",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "info", "role": "solid-active" }
       }
     }
   },
@@ -2325,7 +2358,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-info-solid-hover",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "info", "role": "solid-hover" }
       }
     }
   },
@@ -2337,7 +2371,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-info-background",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "info", "role": "background" }
       }
     }
   },
@@ -2349,7 +2384,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-info-text",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "info", "role": "text" }
       }
     }
   },
@@ -2361,7 +2397,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-info-border",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "info", "role": "border" }
       }
     }
   },
@@ -2399,7 +2436,8 @@
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-neutral-background",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "palette": { "family": "neutral", "role": "status-neutral-background" }
       }
     }
   },

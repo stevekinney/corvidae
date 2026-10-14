@@ -5052,7 +5052,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'surface-base', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -5129,7 +5129,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'surface-raised', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -5207,7 +5207,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -5297,7 +5297,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -5386,7 +5386,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'surface-inset', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -5464,7 +5464,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -5554,7 +5554,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -5644,7 +5644,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -5722,7 +5722,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -5800,7 +5800,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'surface-canvas', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -5878,7 +5878,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -5956,7 +5956,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'border-ink', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6034,7 +6034,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -6121,7 +6121,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'border-faint', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6199,7 +6199,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -6286,7 +6286,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -6373,7 +6373,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6450,7 +6450,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'text-muted', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6527,7 +6527,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'text-subtle', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6605,7 +6605,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'text-disabled', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6682,7 +6682,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6759,7 +6759,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'text-default', anchor: true },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6837,7 +6837,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'fill-disabled', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6915,7 +6915,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -6993,7 +6993,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'accent', role: 'text', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -7071,7 +7071,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -7157,7 +7157,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'accent', role: 'solid', anchor: true },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -7235,7 +7235,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -7322,7 +7322,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -7415,7 +7415,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -7501,7 +7501,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -7593,7 +7593,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -7773,7 +7773,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -7849,7 +7849,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -7936,7 +7936,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -8059,7 +8059,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -8145,7 +8145,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -8231,7 +8231,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -8317,7 +8317,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -8532,7 +8532,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -8609,7 +8609,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -8686,7 +8686,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -8763,7 +8763,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -8840,7 +8840,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -8917,7 +8917,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -8994,7 +8994,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9071,7 +9071,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9332,7 +9332,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9409,7 +9409,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'success', role: 'solid', anchor: true },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9486,7 +9486,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'success', role: 'solid-active', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9569,7 +9569,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'success', role: 'solid-hover', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9652,7 +9652,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'success', role: 'background', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9735,7 +9735,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'success', role: 'text', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9812,7 +9812,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'success', role: 'border', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -9890,7 +9890,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -9983,7 +9983,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -10075,7 +10075,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10152,7 +10152,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'warning', role: 'solid', anchor: true },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10229,7 +10229,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'warning', role: 'solid-active', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10312,7 +10312,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'warning', role: 'solid-hover', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10395,7 +10395,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'warning', role: 'background', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10478,7 +10478,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'warning', role: 'text', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10555,7 +10555,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'warning', role: 'border', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10633,7 +10633,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -10726,7 +10726,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -10819,7 +10819,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10896,7 +10896,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'danger', role: 'solid', anchor: true },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -10974,7 +10974,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'danger', role: 'solid-active', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11058,7 +11058,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'danger', role: 'solid-hover', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11141,7 +11141,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'danger', role: 'background', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11221,7 +11221,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'danger', role: 'text', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11298,7 +11298,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'danger', role: 'border', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11376,7 +11376,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -11469,7 +11469,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -11561,7 +11561,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11638,7 +11638,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'info', role: 'solid', anchor: true },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11715,7 +11715,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'info', role: 'solid-active', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11795,7 +11795,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'info', role: 'solid-hover', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11872,7 +11872,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'info', role: 'background', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -11949,7 +11949,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'info', role: 'text', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12026,7 +12026,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'info', role: 'border', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12104,7 +12104,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -12197,7 +12197,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'recipe',
         cssExport: 'supported',
@@ -12290,7 +12290,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'neutral', role: 'status-neutral-background', anchor: false },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12373,7 +12373,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12448,7 +12448,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12523,7 +12523,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12593,7 +12593,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12666,7 +12666,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12736,7 +12736,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12806,7 +12806,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12876,7 +12876,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -12946,7 +12946,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13016,7 +13016,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13086,7 +13086,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13156,7 +13156,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13226,7 +13226,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13299,7 +13299,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13369,7 +13369,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13442,7 +13442,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13515,7 +13515,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13588,7 +13588,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13661,7 +13661,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13734,7 +13734,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13808,7 +13808,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13885,7 +13885,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -13962,7 +13962,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -14037,7 +14037,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -14112,7 +14112,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -15386,7 +15386,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -15464,7 +15464,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -16506,7 +16506,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -16872,7 +16872,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -17236,7 +17236,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -17286,7 +17286,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -17336,7 +17336,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -17389,7 +17389,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -17537,7 +17537,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -17590,7 +17590,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -17644,7 +17644,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: true,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -17821,7 +17821,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -18221,7 +18221,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'css-only',
         cssExport: 'supported',
@@ -18856,7 +18856,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -18949,7 +18949,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -19002,7 +19002,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
@@ -19107,7 +19107,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       themeAware: false,
       deprecated: false,
       profile: 'color',
-      palette: { family: 'unknown', anchor: 'unknown' },
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
         edit: 'supported',
         cssExport: 'supported',

@@ -9,6 +9,7 @@
  * provenance tracer instead of re-deriving evaluation.
  */
 
+import { NO_PALETTE, paletteOf, validatePalettes } from './authoring-palette.ts';
 import { PROFILES, selectProfile } from './authoring-profiles.ts';
 import { collectCinderExtensions, traceProvenance } from './authoring-provenance.ts';
 import {
@@ -208,6 +209,13 @@ export function buildAuthoringCatalogue(
       }
     }
     const scale = scaleOf.get(entry.path);
+    const palette = paletteOf(
+      entry.path,
+      contexts.map((c) => extensions.get(c.id)!.get(entry.path) ?? {}),
+    );
+    if (palette !== undefined && base.type !== 'color') {
+      throw new Error(`Token "${entry.path}" declares a palette but is not a color.`);
+    }
     records.push({
       path: entry.path,
       cssProperty: entry.cssProperty,
@@ -218,7 +226,7 @@ export function buildAuthoringCatalogue(
       deprecated: entry.deprecated,
       profile: profile.id,
       ...(scale ? { scale } : {}),
-      ...(base.type === 'color' ? { palette: { family: UNKNOWN, anchor: UNKNOWN } } : {}),
+      ...(base.type === 'color' ? { palette: palette ?? NO_PALETTE } : {}),
       disposition: dispositionOf(
         entry.path,
         base,
@@ -227,6 +235,8 @@ export function buildAuthoringCatalogue(
       variants,
     });
   }
+
+  validatePalettes(records);
 
   const layerStacks: Record<string, AuthoringLayer[]> = {};
   for (const [id, stack] of stacks)

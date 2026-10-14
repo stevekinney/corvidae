@@ -129,8 +129,27 @@ type ResolverShape = {
   resolutionOrder: Array<{ $ref: string }>;
 };
 
-/** The documents of one context, lowest precedence first. */
+const layerCache = new WeakMap<ThemeEnvelope, Map<string, JsonObject[]>>();
+
+/**
+ * The documents of one context, lowest precedence first. An envelope is immutable (every
+ * commit makes a new one), so the layers are remembered per envelope and context.
+ */
 function layerDocuments(envelope: ThemeEnvelope, context: ThemePreviewContext): JsonObject[] {
+  const key = contextId(context);
+  const byContext = layerCache.get(envelope) ?? new Map<string, JsonObject[]>();
+  layerCache.set(envelope, byContext);
+  const remembered = byContext.get(key);
+  if (remembered !== undefined) return remembered;
+  const layers = collectLayerDocuments(envelope, context);
+  byContext.set(key, layers);
+  return layers;
+}
+
+function collectLayerDocuments(
+  envelope: ThemeEnvelope,
+  context: ThemePreviewContext,
+): JsonObject[] {
   const sources = buildThemeSources(envelope, 0);
   const resolver = sources.resolver as ResolverShape;
   const values: Record<string, string> = { theme: context.colorMode, motion: context.motion };
