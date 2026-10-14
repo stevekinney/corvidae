@@ -44,6 +44,13 @@ import {
 } from './process-crash-work-integrity-fixtures';
 
 const POLL_ATTEMPTS = 2000;
+/** Durable statuses a run never leaves. */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'timed-out',
+]);
 const POLL_DELAY_MS = 5;
 const runtime = createDefaultRuntimeServices();
 
@@ -350,10 +357,12 @@ async function relaunchRecover(): Promise<void> {
   });
   const report = await bureau.waitForRecovery?.();
   await pollUntil(
-    'the relaunched run to complete',
+    'the relaunched run to reach a terminal status',
     async () => {
       const durable = await bureau.getDurableRun(runId);
-      if (durable?.status === 'completed') return true;
+      if (durable !== null && durable !== undefined && TERMINAL_STATUSES.has(durable.status)) {
+        return true;
+      }
       await bureau.runDurableMaintenance();
       return false;
     },
@@ -361,6 +370,14 @@ async function relaunchRecover(): Promise<void> {
     Number.POSITIVE_INFINITY,
   );
   const durable = await bureau.getDurableRun(runId);
+  if (durable?.status !== 'completed') {
+    // A run that ended any other way will never complete, so say how it ended
+    // now rather than leaving the parent to wait out its deadline.
+    process.stderr.write(
+      `child: the relaunched run ended ${durable?.status}: ${durable?.error ?? 'no error'}\n`,
+    );
+    process.exit(5);
+  }
   writeFileSync(
     join(dirname(markerPath as string), 'relaunched.json'),
     JSON.stringify({

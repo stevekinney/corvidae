@@ -41,7 +41,11 @@ const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const CLAIM_TTL_MS = 200;
 const CLAIM_RENEW_MS = 50;
 const runtime = createDefaultRuntimeServices();
-/** A relaunched child still running this long after it started is killed and reported as stuck. */
+/**
+ * A relaunched child still running this long after it started is killed and
+ * reported as stuck. The relaunch case's own timeout is twice this, so the
+ * crash phase before it never lets the runner's timeout fire first.
+ */
 const RELAUNCH_DEADLINE_MS = 90_000;
 
 interface CrashMarker {
@@ -343,5 +347,5 @@ describe.each(['sqlite', 'lmdb'] as const)('process crash relaunch over %s', (ba
       }
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 120_000);
+  }, 180_000);
 });
