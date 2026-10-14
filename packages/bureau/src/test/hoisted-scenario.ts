@@ -68,11 +68,16 @@ export async function settleScenario(
   try {
     const outcome = await Promise.race([finished, hang]);
     if (hung) {
+      // Start every release, last registered first, without waiting for any to finish: a release
+      // can itself be stuck (a shutdown awaiting the very thing that hung), and waiting on it would
+      // block module initialization again. Each starts synchronously, so a child is killed at
+      // once; a failing release is swallowed so it cannot hide the hang it cleans up after.
       for (const release of releases.toReversed()) {
-        // Best effort: a failing release must not hide the hang it is cleaning up after.
-        await Promise.resolve()
-          .then(release)
-          .catch(() => {});
+        try {
+          void Promise.resolve(release()).catch(() => {});
+        } catch {
+          // A release that throws synchronously is as best effort as one that rejects.
+        }
       }
     }
     return outcome;

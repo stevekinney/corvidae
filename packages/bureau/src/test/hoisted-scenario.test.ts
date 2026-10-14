@@ -31,3 +31,18 @@ it('does not run the releases of a scenario that finishes', async () => {
   expect(outcome.failed).toBe(false);
   expect(released).toBe(false);
 });
+
+it('returns after a hang even when a release never settles', async () => {
+  let otherReleaseStarted = false;
+
+  const outcome = await settleScenario(async (scope) => {
+    scope.onHang(() => {
+      otherReleaseStarted = true;
+    });
+    scope.onHang(() => new Promise<never>(() => {}));
+    await new Promise<never>(() => {});
+  }, 10);
+
+  expect(outcome.failed).toBe(true);
+  expect(otherReleaseStarted).toBe(true);
+});
