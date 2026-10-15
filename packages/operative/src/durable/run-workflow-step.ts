@@ -12,6 +12,11 @@ import {
   serializeError,
   tripwireDetailFrom,
 } from './run-workflow-result';
+import {
+  applyConversationSnapshotDelta,
+  type ConversationSnapshotDelta,
+  diffConversationSnapshot,
+} from './snapshot-delta';
 import type {
   DurableRunDeps,
   PendingHumanWait,
@@ -70,7 +75,14 @@ export interface DurableStepMemoResult {
   schemaValidation?: { success: boolean; error?: string } | undefined;
   output?: unknown;
   record: StepRecord | null;
-  conversationSnapshot: ReturnType<Conversation['snapshot']>;
+  /**
+   * The conversation after the step, whole. Exactly one of this and
+   * {@link DurableStepMemoResult.conversationDelta} is set; read either through
+   * {@link conversationAfterStep}.
+   */
+  conversationSnapshot?: ConversationSnapshot | undefined;
+  /** COR-1376 — the conversation after the step, as a delta from the step's input snapshot. */
+  conversationDelta?: ConversationSnapshotDelta | undefined;
   nextAccumulators: Pick<
     RunCursor,
     'totalUsage' | 'cost' | 'lastContent' | 'schemaAttempts' | 'lastAppliedConfigVersion'
@@ -79,12 +91,40 @@ export interface DurableStepMemoResult {
   pendingHumanWait?: PendingHumanWait | undefined;
 }
 
+/** Options for {@link runStepMemo}. */
+export interface RunStepMemoOptions {
+  /**
+   * COR-1376 — record the conversation as a delta from `snapshot` rather than
+   * whole. Only pass `true` when `snapshot` is itself rebuilt from recorded
+   * results on every replay (the previous step's output), never for a snapshot
+   * the workflow body built outside a memo, such as the seeded conversation or
+   * a continuation message, whose ids and timestamps change on replay.
+   */
+  readonly delta?: boolean;
+}
+
+/**
+ * The conversation a step memo result leaves behind, given the snapshot the
+ * step started from.
+ */
+export function conversationAfterStep(
+  snapshot: ConversationSnapshot,
+  result: Pick<DurableStepMemoResult, 'conversationSnapshot' | 'conversationDelta'>,
+): ConversationSnapshot {
+  if (result.conversationSnapshot !== undefined) return result.conversationSnapshot;
+  if (result.conversationDelta !== undefined) {
+    return applyConversationSnapshotDelta(snapshot, result.conversationDelta);
+  }
+  throw new Error('Durable step result carries no conversation.');
+}
+
 export function runStepMemo(
   ctx: Pick<WorkflowContext, 'services' | 'memo'>,
   snapshot: ConversationSnapshot,
   stepIndex: number,
   carriedAccumulators: DurableStepMemoResult['nextAccumulators'],
   runId: string,
+  options: RunStepMemoOptions = {},
 ): WorkflowOperation<DurableStepMemoResult> {
   return ctx.memo(`step-${stepIndex}`, async () => {
     const deps = runDepsFrom(ctx.services);
@@ -121,6 +161,7 @@ export function runStepMemo(
           final: pushed.final,
         }
       : null;
+    const nextSnapshot = snapshotAfterStep(deps, conversation);
     const normalizedError =
       outcome.kind === 'error'
         ? toAgentRunError(outcome.error, { kind: outcome.errorKind })
@@ -146,7 +187,9 @@ export function runStepMemo(
           : undefined,
       output: outcome.kind === 'stop' ? outcome.output : undefined,
       record,
-      conversationSnapshot: snapshotAfterStep(deps, conversation),
+      ...(options.delta === true
+        ? { conversationDelta: diffConversationSnapshot(snapshot, nextSnapshot) }
+        : { conversationSnapshot: nextSnapshot }),
       nextAccumulators: {
         totalUsage: runState.totalUsage,
         cost: runState.cost,

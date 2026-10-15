@@ -9,6 +9,8 @@ export type {
   CreateAgentCatalogOptions,
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
+export type { AgentSkillsOptions } from './agent-skills';
+export { createAgentSkills } from './agent-skills';
 export type { AssetServiceOptions, BureauAssetOptions } from './assets/asset-service';
 export { createAssetService, managedAssetSource } from './assets/asset-service';
 export {

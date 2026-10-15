@@ -48,6 +48,7 @@ import {
   type RecoveredRunHandle,
   type RequestHumanInputResult,
   reservedIdentifierReason,
+  resolvesOwnGuardrails,
   RunRegisteredEvent as StoreRunRegisteredEvent,
   RunRemovedEvent as StoreRunRemovedEvent,
   type RunReport,
@@ -124,7 +125,7 @@ import {
   computeInitialAuditSequence,
   createAuditTrail,
 } from './audit-trail';
-import { createCatalogDispatcher } from './bureau-catalog-dispatch';
+import { catalogRunGuardrailsContext, createCatalogDispatcher } from './bureau-catalog-dispatch';
 import { createBureauEventFeed } from './bureau-event-feed.ts';
 import { createSessionPersistence } from './bureau-session-persistence';
 import {
@@ -1614,14 +1615,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // workflow resumes. Anything else resolves exactly as before.
       const childContext = childTopology.recoveredRunContext(runId);
       // Invoke through the agent so a method-shaped resolver retains its receiver.
-      const resolvedOptions = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](
-        input,
-        childContext === undefined ? context : { ...context, ...childContext },
-      );
+      // COR-1367 — the same guardrail inheritance the run's fresh dispatch
+      // used, so a recovered run resumes under the policy it started with.
+      const resolvedOptions = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](input, {
+        ...(childContext === undefined ? context : { ...context, ...childContext }),
+        ...catalogRunGuardrailsContext(agent, options.guardrails),
+      });
       const resolution: CatalogAgentRunOptionsResolution = {
         status: 'resolved',
         options: resolvedOptions,
         definitionRevision: readGenerationProfile(agent).revision,
+        agentResolvesGuardrails: resolvesOwnGuardrails(agent),
       };
       return resolution;
     } catch (error) {
@@ -9700,6 +9704,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     createBureauError: (message, code) => new BureauError(message, code),
     validateAgentRunInput,
     validateBureauRunOptions,
+    // COR-1367 — handed down to each catalog agent as its inherited policy.
+    guardrails: options.guardrails,
     // COR-772 — a durable `bureau.run` parent aborted through its own handle
     // is a cancelled parent like any other. Once shutdown has begun, dispose
     // — not the policy — ends every live run, and boot recovery applies the
