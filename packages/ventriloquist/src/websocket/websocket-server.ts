@@ -161,7 +161,7 @@ export function createTerminalWebSocketServer(
 
   async function authenticate(request: Request): Promise<Authentication> {
     const unavailable: Authentication = { ok: false, denial: 'unavailable' };
-    let cancelDeadline = (): void => undefined;
+    let cancelDeadline: (() => void) | undefined;
     // A host that never answers must not hold the upgrade, or its slot in the connection cap, forever.
     const deadline = new Promise<Authentication>((resolve) => {
       cancelDeadline = clock.schedule(
@@ -179,7 +179,7 @@ export function createTerminalWebSocketServer(
     } catch {
       return unavailable;
     } finally {
-      cancelDeadline();
+      cancelDeadline?.();
     }
   }
 
