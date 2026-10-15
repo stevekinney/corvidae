@@ -2611,6 +2611,99 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     expect(settled).toBe('rejected');
   });
 
+  /** A holds an old run with a result waiter; A's cancel of it parks just before its commit. */
+  async function holdCancelOfOldRun(id: string) {
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    let armed = false;
+    const engineA = await createEngine(
+      gateFirstWrite(
+        storage,
+        gate,
+        (operations) =>
+          armed &&
+          operations.some(
+            (operation) =>
+              operation.type === 'put' &&
+              operation.key === KEYS.workflow(id) &&
+              (decode(operation.value) as { status?: string }).status === 'cancelled',
+          ),
+      ),
+    );
+    const engineB = await createEngine(storage);
+    const old = await engineA.start(TYPE, 'P1:OLD', { id });
+    const oldOutcome = old.result().then(
+      (value) => `resolved:${value}`,
+      (error: unknown) => `rejected:${error instanceof Error ? error.message : String(error)}`,
+    );
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    armed = true;
+    const cancelOld = engineA.cancel(id);
+    await gate.reached.promise;
+    return { storage, gate, engineA, engineB, oldOutcome, cancelOld };
+  }
+
+  it('a cancel refused because a completed replacement took the id rejects the old waiter and never settles it with the replacement outcome', async () => {
+    const id = `teardown-durable-refused-replaced-${nextInvocation()}`;
+    const { gate, engineA, engineB, oldOutcome, cancelOld } = await holdCancelOfOldRun(id);
+    try {
+      // Another engine ends the old run, starts a replacement under the same id and finishes it.
+      await engineB.cancel(id);
+      const replacement = await engineB.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+      });
+      await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      await engineB.signal(id, 'go');
+      expect(await replacement.result()).toBe('P1:NEW');
+
+      gate.release.resolve();
+      await cancelOld;
+
+      const settled = await Promise.race([oldOutcome, Bun.sleep(3_000).then(() => 'hung')]);
+      expect(settled).toContain('rejected:');
+      expect(settled).not.toContain('P1:NEW');
+      // The replacement's durable outcome is untouched.
+      const state = await engineB.get(id);
+      expect(state?.status).toBe('completed');
+    } finally {
+      gate.release.resolve();
+      await engineB[Symbol.asyncDispose]();
+      await engineA[Symbol.asyncDispose]();
+    }
+  });
+
+  it('a cancel refused because a running replacement took the id leaves the replacement checkpoint, state and waiter alone', async () => {
+    const id = `teardown-durable-refused-running-${nextInvocation()}`;
+    const { gate, engineA, engineB, oldOutcome, cancelOld } = await holdCancelOfOldRun(id);
+    try {
+      await engineB.cancel(id);
+      // The replacement starts on the same engine whose cancel is parked.
+      const replacement = await engineA.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+      });
+      const replacementResult = replacement.result();
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+      gate.release.resolve();
+      await cancelOld;
+
+      // The old waiter settled as the old run's, not the replacement's, and the replacement lives on.
+      expect(await oldOutcome).toContain('rejected:');
+      expect(getInternals(engineA).parkedInlineWorkflows.has(id)).toBe(true);
+      expect(getInternals(engineA).checkpoints.has(id)).toBe(true);
+      const state = await engineA.get(id);
+      expect(state?.status === 'pending' || state?.status === 'running').toBe(true);
+      await engineA.signal(id, 'go');
+      expect(await replacementResult).toBe('P1:NEW');
+    } finally {
+      gate.release.resolve();
+      await engineB[Symbol.asyncDispose]();
+      await engineA[Symbol.asyncDispose]();
+    }
+  });
+
   it('a completion racing a remote cancel of the same run both settle and release the slot once', async () => {
     const id = `teardown-durable-racing-${nextInvocation()}`;
     const storage = new MemoryStorage();

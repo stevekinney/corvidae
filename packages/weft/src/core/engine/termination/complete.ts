@@ -56,7 +56,10 @@ import {
   buildCompletedWorkflowState,
   terminalCommitterStamp,
 } from './completion-operations.ts';
-import { settleLocalWaiterFromTerminalRecord } from './settle-refused-terminal.ts';
+import {
+  captureTerminatedRun,
+  settleTerminatedRunAfterRefusal,
+} from './settle-refused-terminal.ts';
 import {
   captureCurrentClaimEpoch,
   releaseWorkflowClaimAfterTerminalSettlement,
@@ -116,6 +119,7 @@ export async function terminateWorkflow(
   callbacks: TerminationCallbacks,
   reason?: TerminationReason,
 ): Promise<void> {
+  const terminatedRun = captureTerminatedRun(internals, workflowId);
   internals.terminalizingWorkflows.add(workflowId);
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.strategy.cancelWorkflow(workflowId);
@@ -205,7 +209,7 @@ export async function terminateWorkflow(
       },
     );
     if (!terminationResult) {
-      await settleLocalWaiterFromTerminalRecord(internals, workflowId, callbacks);
+      await settleTerminatedRunAfterRefusal(internals, workflowId, callbacks, terminatedRun);
       return;
     }
     // Captured synchronously after the commit — see `releaseWorkflowClaimAfterTerminalSettlement`.
