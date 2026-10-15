@@ -33,6 +33,7 @@ export const environmentBoundaries = [
       'scripts/browser-fixtures/environment-configuration.ts',
       'scripts/environment-configuration.ts',
       'scripts/mirror/environment-configuration.ts',
+      'packages/bureau/src/test/signal-shutdown/environment-configuration.ts',
       'packages/weft/examples/environment-configuration.ts',
       'packages/weft/src/cli/__fixtures__/environment-configuration.ts',
       'packages/weft/scripts/benchmarks/environment-configuration.ts',
