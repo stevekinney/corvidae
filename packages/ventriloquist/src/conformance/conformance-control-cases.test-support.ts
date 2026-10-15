@@ -196,7 +196,12 @@ const lateCallback: CaseDefinition = {
 const revokedDuringPaste: CaseDefinition = {
   id: 'control-revoked-input-during-paste',
   modes: ['pty'],
-  launch: () => ({ profile: shellProfile('true'), scripted: scriptedProcess() }),
+  launch: () => ({
+    profile: shellProfile('true'),
+    scripted: scriptedProcess(),
+    // Shorter than the liveness deadline, so the lifetime ending is what revokes on a socket too.
+    rig: { lifetimeMilliseconds: 20_000 },
+  }),
   async run({ rig, scripted }) {
     const process = scripted!;
     await rig.client.handshake();
@@ -210,11 +215,16 @@ const revokedDuringPaste: CaseDefinition = {
     await process.writes(1);
     await rig.expireAuthority();
     const { cleanup } = await conclude(rig);
+    const summary = await rig.session().closed;
     const writesAtRevocation = process.written.length;
     process.releaseWrites();
     await Bun.sleep(0);
     const failed = rig.client.messages.filter((message) => message.kind === 'operation-failure');
     return [
+      check(
+        'the withdrawn authority, not a missed heartbeat, ended it',
+        summary.cause === 'authorization-revoked',
+      ),
       check(
         'only the part already mid-write reached the backend',
         writesAtRevocation === 1 && decode(process.written[0] as Uint8Array)[0] === 'a',
