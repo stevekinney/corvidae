@@ -297,10 +297,9 @@ export async function startDelayedWorkflow(
     return;
   }
 
-  // A delayed-start workflow that crashed `pending` before its timer fired loses
-  // its in-memory services on recovery (fires in a fresh process). Re-provide
-  // them before execution, as resume does — fail rather than run with
-  // `ctx.services === undefined`.
+  // A delayed-start workflow that crashed `pending` before its timer fired loses its in-memory
+  // services on recovery (fires in a fresh process). Re-provide them before execution, as resume
+  // does — fail rather than run with `ctx.services === undefined`.
   const servicesUnavailable = await reprovideRecoveredServices(
     internals,
     runningState,
@@ -345,9 +344,6 @@ export async function startDelayedWorkflow(
     runningState.executionStateOwnerId ?? entry.workflowId,
     registration,
   );
-  // The run is launched: this is the point of no return for the delayed start, so its
-  // handle (created before any claim existed) now follows the claim the fire acquired.
-  // Every earlier exit, the failure paths included, leaves the handle untouched.
   rebindHandleClaimEpoch(internals, entry.workflowId);
 }
 
