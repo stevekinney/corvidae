@@ -159,6 +159,10 @@ export async function runCell(
       check('no timer is left running', leaks.timers === 0),
       check('no connection remains', leaks.connections === 0),
       check('no socket remains open', leaks.openSockets === 0),
+      check(
+        'the host sent no frame after it closed the transport',
+        (rig.framesAfterClose() ?? 0) === 0,
+      ),
       check('no real timer is left running', timers.outstanding() === 0),
       check('no listener was left on the process', processListenerCount() === listenersBefore),
     ],

@@ -1,3 +1,4 @@
+import type { EventEmitter } from 'node:events';
 import { closeSync, openSync } from 'node:fs';
 
 import { isAlive, waitUntilGone } from '../bun/bun-process.test-support.ts';
@@ -325,24 +326,32 @@ const leakDetectors: CaseDefinition = {
     // The real-timer and listener detectors every cell is held to, shown to count and to release.
     const tracker = trackRealTimers();
     const timerFired = createDeferred<void>();
-    const cleared = setTimeout(() => undefined, 60_000);
-    const due = setTimeout(() => timerFired.resolve(), 1);
+    const notify = (): void => timerFired.resolve();
+    const cleared = setTimeout(notify, 60_000);
+    const due = setTimeout(notify, 1);
     const timersHeld = tracker.outstanding();
     clearTimeout(cleared);
     await timerFired.promise;
     const timersLeft = tracker.outstanding();
     tracker.stop();
     const listenersBefore = processListenerCount();
-    const listener = (): void => undefined;
-    process.on('warning', listener);
+    let heard = 0;
+    const listener = (): void => {
+      heard += 1;
+    };
+    process.on('ventriloquist-conformance', listener);
     const listenersHeld = processListenerCount();
-    process.off('warning', listener);
+    (process as unknown as EventEmitter).emit('ventriloquist-conformance');
+    process.off('ventriloquist-conformance', listener);
     rig.client.sendResult(rig.client.endpoint.terminate());
     await conclude(rig);
     return [
       check('real timers are counted while pending', timersHeld === 2 && due !== undefined),
       check('a cleared timer and a fired timer are no longer counted', timersLeft === 0),
-      check('a listener added to the process is counted', listenersHeld === listenersBefore + 1),
+      check(
+        'a listener added to the process is counted, and it hears events',
+        listenersHeld === listenersBefore + 1 && heard === 1,
+      ),
       check('and is no longer counted once removed', processListenerCount() === listenersBefore),
       check('a frame sent after the close is counted', probe.sentAfterClose.length === 1),
       check(

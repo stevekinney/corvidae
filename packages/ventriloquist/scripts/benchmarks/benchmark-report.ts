@@ -106,7 +106,7 @@ function toCell(cell: BenchmarkCell): EvidenceCell {
       `${cell.target.metric} ${observation?.value ?? 'missing'} ${cell.target.unit}, target ${cell.target.comparator} ${cell.target.value}`,
       ...(cell.observed.raw['outcome'] === undefined
         ? []
-        : [`cleanup outcome ${String(cell.observed.raw['outcome'])}, required complete`]),
+        : [`cleanup outcome ${JSON.stringify(cell.observed.raw['outcome'])}, required complete`]),
     ],
     versions: { bun: Bun.version, platform: `${platform()}/${arch()}`, kernel: release() },
     metrics: cell.observed.metrics,

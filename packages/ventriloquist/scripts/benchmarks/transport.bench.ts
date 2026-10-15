@@ -225,9 +225,9 @@ describe('a cell that does not hold', () => {
     expect(cellPasses(withOutcome('complete'))).toBe(true);
     expect(cellPasses(withOutcome('incomplete'))).toBe(false);
     expect(cellPasses(withOutcome('unknown'))).toBe(false);
-    const report = buildBenchmarkReport([withOutcome('unknown')], 'a'.repeat(40));
-    expect(report.passed).toBe(false);
-    expect(report.cells[0]?.observations.join(' ')).toContain('cleanup outcome unknown');
+    const unknown = buildBenchmarkReport([withOutcome('unknown')], 'a'.repeat(40));
+    expect(unknown.passed).toBe(false);
+    expect(unknown.cells[0]?.observations.join(' ')).toContain('cleanup outcome unknown');
   });
 
   test('a measurement that throws is a failed cell on record, and the other cells keep their numbers', async () => {
@@ -241,8 +241,8 @@ describe('a cell that does not hold', () => {
     expect(thrown.observed.raw['error']).toBe('the host went away');
     expect(thrown.observed.metrics['measurementFailed']?.value).toBe(1);
     expect(failedObservation('text', 1, 0).raw['error']).toBe('text');
-    const report = buildBenchmarkReport([thrown, cleanup], 'a'.repeat(40));
-    expect(report.cells.map((cell) => cell.passed)).toEqual([false, cellPasses(cleanup)]);
+    const mixed = buildBenchmarkReport([thrown, cleanup], 'a'.repeat(40));
+    expect(mixed.cells.map((cell) => cell.passed)).toEqual([false, cellPasses(cleanup)]);
   });
 });
 
