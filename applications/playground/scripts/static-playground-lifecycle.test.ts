@@ -315,6 +315,93 @@ const cleanupRunsOnce = await lifecycleOutcome(async () => {
   await rm(marker, { recursive: true, force: true });
 });
 
+/** The good fixture's cases, in the order the gate hands them to the test runner. */
+const FIXTURE_CASES = createCaseList(['/', '/page/button']);
+
+async function gateReport(running: RunningCase): Promise<GateReport> {
+  return (await Bun.file(join(running.output, 'report.json')).json()) as GateReport;
+}
+
+const startupDeathIsNamed = await lifecycleOutcome(async () => {
+  const running = await startCase('hang', ['--hold-port']);
+  process.kill(await readPid(running.record, 'server'), 'SIGKILL');
+
+  expect(await driverExit(running)).toBe(1);
+  expect(await running.stderr).toContain(
+    '[static-playground] static server exited before it was ready with signal SIGKILL (phase: startup)',
+  );
+  const report = await gateReport(running);
+  expect(report.failurePhase).toBe('startup');
+  expect(report.inFlightCases).toEqual([]);
+});
+
+const firstRequestDeathIsNamedAndAborted = await lifecycleOutcome(async () => {
+  // A responder this test owns accepts the preflight's first request and never answers, so the
+  // check is still outstanding when the server dies. Unaborted, it would hold the runner open
+  // for the preflight's 30 s fetch bound after the report was written.
+  let received = false;
+  let aborted = false;
+  const stalled = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    idleTimeout: 0,
+    fetch(request) {
+      received = true;
+      request.signal.addEventListener('abort', () => {
+        aborted = true;
+      });
+      return new Promise<Response>(() => undefined);
+    },
+  });
+  cleanups.push(async () => {
+    await stalled.stop(true);
+  });
+  const running = await startCase('hang', ['--advertise-port', String(stalled.port)]);
+  await waitFor(() => received, 'the first preflight request');
+  process.kill(await readPid(running.record, 'server'), 'SIGKILL');
+
+  expect(await driverExit(running)).toBe(1);
+  await waitFor(() => aborted, 'the preflight request to be aborted');
+  expect(await running.stderr).toContain(
+    '[static-playground] static server exited unexpectedly with signal SIGKILL (phase: first-request)',
+  );
+  const report = await gateReport(running);
+  expect(report.failurePhase).toBe('first-request');
+  expect(report.caseCount).toBeNull();
+});
+
+const browserPhaseOutcomes = new Map<string, unknown>();
+for (const [phase, completed] of [
+  ['hydration', 0],
+  ['mid-run', 2],
+] as const) {
+  browserPhaseOutcomes.set(
+    phase,
+    await lifecycleOutcome(async () => {
+      const running = await startCase('progress', ['--completed', String(completed)]);
+      const capture = await captureAndSpawnLate(running);
+      await waitFor(() => existsSync(join(running.record, 'progressed')));
+      process.kill(await readPid(running.record, 'server'), 'SIGKILL');
+
+      expect(await driverExit(running)).toBe(1);
+      const inFlight = FIXTURE_CASES[completed]!.id;
+      expect(await running.stderr).toContain(
+        `[static-playground] static server exited unexpectedly with signal SIGKILL (phase: ${phase}; in flight: ${inFlight})`,
+      );
+      expect(running.stdout()).toContain(
+        `exit 1: ${completed}/${FIXTURE_CASES.length} cases passed`,
+      );
+      const report = await gateReport(running);
+      expect(report.failurePhase).toBe(phase);
+      expect(report.passedCount).toBe(completed);
+      expect(report.failedCases).toEqual([]);
+      expect(report.inFlightCases).toEqual([inFlight]);
+      expect(report.missingCases).toEqual(FIXTURE_CASES.slice(completed).map((c) => c.id));
+      await expectEverythingGone(running, capture);
+    }),
+  );
+}
+
 describe('static gate runner lifecycle with stand-in children', () => {
   it('cleans up after a normal exit and returns the test runner status', () =>
     rethrow(normalExitCleansUp));
@@ -385,83 +472,17 @@ describe('process ownership', () => {
     rethrow(cleanupRunsOnce));
 });
 
-/** The good fixture's cases, in the order the gate hands them to the test runner. */
-const FIXTURE_CASES = createCaseList(['/', '/page/button']);
-
-async function gateReport(running: RunningCase): Promise<GateReport> {
-  return (await Bun.file(join(running.output, 'report.json')).json()) as GateReport;
-}
-
 describe('the phase of a static-server death', () => {
-  it('names startup when the server dies before reporting its port', async () => {
-    const running = await startCase('hang', ['--hold-port']);
-    process.kill(await readPid(running.record, 'server'), 'SIGKILL');
+  it('names startup when the server dies before reporting its port', () =>
+    rethrow(startupDeathIsNamed));
 
-    expect(await driverExit(running)).toBe(1);
-    expect(await running.stderr).toContain(
-      '[static-playground] static server exited before it was ready with signal SIGKILL (phase: startup)',
-    );
-    const report = await gateReport(running);
-    expect(report.failurePhase).toBe('startup');
-    expect(report.inFlightCases).toEqual([]);
-  });
-
-  it('names first-request and aborts the outstanding preflight check', async () => {
-    // A responder this test owns accepts the preflight's first request and never answers, so the
-    // check is still outstanding when the server dies. Unaborted, it would hold the runner open
-    // for the preflight's 30 s fetch bound after the report was written.
-    let received = false;
-    let aborted = false;
-    const stalled = Bun.serve({
-      hostname: '127.0.0.1',
-      port: 0,
-      idleTimeout: 0,
-      fetch(request) {
-        received = true;
-        request.signal.addEventListener('abort', () => {
-          aborted = true;
-        });
-        return new Promise<Response>(() => undefined);
-      },
-    });
-    cleanups.push(async () => {
-      await stalled.stop(true);
-    });
-    const running = await startCase('hang', ['--advertise-port', String(stalled.port)]);
-    await waitFor(() => received, 'the first preflight request');
-    process.kill(await readPid(running.record, 'server'), 'SIGKILL');
-
-    expect(await driverExit(running)).toBe(1);
-    await waitFor(() => aborted, 'the preflight request to be aborted');
-    expect(await running.stderr).toContain(
-      '[static-playground] static server exited unexpectedly with signal SIGKILL (phase: first-request)',
-    );
-    const report = await gateReport(running);
-    expect(report.failurePhase).toBe('first-request');
-    expect(report.caseCount).toBeNull();
-  });
+  it('names first-request and aborts the outstanding preflight check', () =>
+    rethrow(firstRequestDeathIsNamedAndAborted));
 
   it.each([
     ['hydration', 0],
     ['mid-run', 2],
-  ] as const)('names %s and keeps the %i completed cases', async (phase, completed) => {
-    const running = await startCase('progress', ['--completed', String(completed)]);
-    const capture = await captureAndSpawnLate(running);
-    await waitFor(() => existsSync(join(running.record, 'progressed')));
-    process.kill(await readPid(running.record, 'server'), 'SIGKILL');
-
-    expect(await driverExit(running)).toBe(1);
-    const inFlight = FIXTURE_CASES[completed]!.id;
-    expect(await running.stderr).toContain(
-      `[static-playground] static server exited unexpectedly with signal SIGKILL (phase: ${phase}; in flight: ${inFlight})`,
-    );
-    expect(running.stdout()).toContain(`exit 1: ${completed}/${FIXTURE_CASES.length} cases passed`);
-    const report = await gateReport(running);
-    expect(report.failurePhase).toBe(phase);
-    expect(report.passedCount).toBe(completed);
-    expect(report.failedCases).toEqual([]);
-    expect(report.inFlightCases).toEqual([inFlight]);
-    expect(report.missingCases).toEqual(FIXTURE_CASES.slice(completed).map((c) => c.id));
-    await expectEverythingGone(running, capture);
-  });
+  ] as const)('names %s and keeps the %i completed cases', (phase) =>
+    rethrow(browserPhaseOutcomes.get(phase)),
+  );
 });
