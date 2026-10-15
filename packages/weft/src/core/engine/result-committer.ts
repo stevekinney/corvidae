@@ -18,12 +18,14 @@ import { HANDLE_RESULT_SETTLEMENT, type WorkflowClaimHandle } from './handles.ts
 
 const committerByResultPromise = new WeakMap<Promise<unknown>, string>();
 
-/** Record `committedBy` for `waiter`'s result, unless it already has one. A no-op for `undefined`. */
-export function recordResultCommitter(
-  waiter: WorkflowResultWaiter,
-  committedBy: string | undefined,
-): void {
-  if (committedBy === undefined || committerByResultPromise.has(waiter.promise)) return;
+/**
+ * Record `committedBy` for `waiter`'s result, unless it already has one. A no-op for anything but
+ * a non-empty string: the value can come from a decoded terminal record, and a malformed stamp
+ * would otherwise read as another engine's commit and suppress the only publication.
+ */
+export function recordResultCommitter(waiter: WorkflowResultWaiter, committedBy: unknown): void {
+  if (typeof committedBy !== 'string' || committedBy.length === 0) return;
+  if (committerByResultPromise.has(waiter.promise)) return;
   committerByResultPromise.set(waiter.promise, committedBy);
 }
 
