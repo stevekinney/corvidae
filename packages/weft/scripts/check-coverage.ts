@@ -435,7 +435,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'Bun leaves the generator loop closing line cold after the final retry and catch paths settle, despite direct retry-state coverage.',
-        lines: new Set([451]),
+        lines: new Set([459]),
         requireUncoveredLines: true,
       },
     ],
