@@ -9,6 +9,7 @@
  */
 
 import { humanizeComponentName } from './humanize.ts';
+import { readInstalledNavigation, type ProgressiveNavigation } from './progressive-navigation.ts';
 import { buildComponentHref } from './routing.ts';
 
 /** Text the palette shows when no component matches the query. */
@@ -64,10 +65,20 @@ export function rankComponents(
 }
 
 /**
- * The single navigation seam for a selected result. A real document navigation
- * to the canonical URL — no client-side routing — so a later progressive
- * enhancement has exactly one place to change.
+ * The single navigation seam for a selected result. It goes through the page's progressive
+ * navigation, which swaps the prerendered document in place and falls back to a native
+ * navigation itself on any failure. Where no progressive navigation is installed (a page whose
+ * script has not run, or a frame that opts out) it is a real document navigation to the
+ * canonical URL.
  */
-export function navigateToComponent(href: string, location: Location = window.location): void {
-  location.assign(href);
+export function navigateToComponent(
+  href: string,
+  location: Location = window.location,
+  navigation: ProgressiveNavigation | null = readInstalledNavigation(),
+): void {
+  if (navigation === null) {
+    location.assign(href);
+    return;
+  }
+  void navigation.navigate(href);
 }
