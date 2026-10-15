@@ -368,6 +368,9 @@ export async function exportedText(page: Page): Promise<string> {
   const text = await snapshot.inputValue();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(snapshot).toBeHidden();
+  // Closing hands focus back to Export after the exit finishes; a caller that moves focus sooner
+  // would be overridden by that late restore.
+  await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
   return text;
 }
 
