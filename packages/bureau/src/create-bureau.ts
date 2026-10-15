@@ -2039,6 +2039,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<SteeringCursor> {
     let cursor = steeringCursors.get(sessionId);
     if (cursor !== undefined && cursor.incarnation !== incarnation) {
+      // The cursor is replaced only for the session's current incarnation.
+      // A request for one since deleted (a boundary or poll queued before a
+      // recreation) must not discard the cursor and gate the new
+      // incarnation's runs read.
+      const current = await runtime.sessionStore?.load(sessionId);
+      if (current?.incarnation !== incarnation) {
+        throw new BureauError(
+          `Session "${sessionId}" no longer has incarnation "${incarnation}".`,
+          'CONFLICT',
+        );
+      }
       forgetSessionSteering(sessionId);
       cursor = undefined;
     }
@@ -2131,10 +2142,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     if (existing !== undefined) {
       stopSessionSteeringPoll(sessionId);
-      // A new incarnation replaced the one it polled: that one was deleted,
-      // so nothing can resume its paused runs any more. Release them, as
-      // its own deletion poll would have.
+      // A new incarnation replaced the one it polled: that one was deleted.
+      // Its runs here settle as its own deletion poll would have settled
+      // them: one not paused is aborted, and the paused ones are released.
       if (existing.incarnation !== incarnation) {
+        for (const displacedRunId of existing.runIds) {
+          if (!existing.gate.forRun(displacedRunId).getDesiredState().paused) {
+            abortRun(displacedRunId);
+          }
+        }
         existing.gate.settleForDeletion(runtimeServices.clock.nowISO());
       }
     }
@@ -8479,10 +8495,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * deleted incarnation still settling here is not the recreated session's.
    */
   function liveSessionRunIdsOfIncarnation(sessionId: string, incarnation: string): string[] {
+    // Only runs steered from this incarnation's log: one started elsewhere
+    // (catalog dispatch, a schedule, or recovered without a tag) never reads
+    // the gate or logs its end, so a command bound to it could never apply.
     return liveSessionRunIds(sessionId).filter(
       (runId) =>
-        !settledLocalRunIds.has(runId) &&
-        (steeringRunIncarnations.get(runId) ?? incarnation) === incarnation,
+        !settledLocalRunIds.has(runId) && steeringRunIncarnations.get(runId) === incarnation,
     );
   }
 
