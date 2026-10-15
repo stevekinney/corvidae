@@ -61,7 +61,20 @@ export type AttachmentOptions = {
   /** The renderer failed closed. Called at most once, after the engine was disposed. */
   onFailure: (failure: TerminalRendererFailure) => void;
   onTitle: (title: string) => void;
+  /**
+   * Bind the session's input path to the mounted engine. Called once, right after the engine is
+   * mounted and before its output is subscribed. The binding is refreshed with every settings
+   * refresh and disposed first on release, while the engine is still alive, so nothing it listens
+   * to outlives the engine or the session it was made for.
+   */
+  bindEngine?: (engine: RendererEngine) => EngineBinding;
   scheduleFit?: FitScheduler;
+};
+
+/** What binding input to the engine hands back. */
+export type EngineBinding = {
+  refresh(): void;
+  dispose(): void;
 };
 
 export type TerminalAttachment = {
@@ -108,6 +121,7 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
   let failed = false;
   let ready = false;
   let engine: RendererEngine | undefined;
+  let binding: EngineBinding | undefined;
   let fit: FitCoordinator | undefined;
   let unsubscribe: (() => void) | undefined;
   let unwatchers: Unwatch[] = [];
@@ -128,6 +142,8 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
         errors.push(cause);
       }
     }
+    const bound = binding;
+    binding = undefined;
     const handle = unsubscribe;
     unsubscribe = undefined;
     const pending = unwatchers;
@@ -141,6 +157,7 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
     const released = engine;
     engine = undefined;
     ready = false;
+    step(() => bound?.dispose());
     step(() => handle?.());
     for (const unwatch of pending) step(unwatch);
     step(() => media?.dispose());
@@ -229,6 +246,7 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
       appliedFont = font;
       if (fontChanged) engine.remeasure();
       engine.setLinkActivation(guardedLinkActivation(options.readSettings().activateLink));
+      binding?.refresh();
       requestFit();
     });
   }
@@ -271,6 +289,7 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
     engine = created;
     created.mount(options.host);
     created.setLinkActivation(guardedLinkActivation(settings.activateLink));
+    binding = options.bindEngine?.(created);
     fit = createFitCoordinator({
       ...(options.scheduleFit === undefined ? {} : { schedule: options.scheduleFit }),
       measure: () => {

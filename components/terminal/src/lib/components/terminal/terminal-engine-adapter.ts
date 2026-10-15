@@ -68,6 +68,8 @@ export function buildEngineOptions(
     allowProposedApi: false,
     convertEol: false,
     disableStdin: options.readOnly,
+    // Option-click selects on a Mac even while the program tracks the mouse, as Shift does elsewhere.
+    macOptionClickForcesSelection: true,
     cursorBlink: !options.reducedMotion && !options.readOnly,
     screenReaderMode: options.announceOutput,
     linkHandler: INERT_LINK_HANDLER,
@@ -76,6 +78,25 @@ export function buildEngineOptions(
     ...(options.fontSize === undefined ? {} : { fontSize: options.fontSize }),
   };
 }
+
+/**
+ * One report of input the engine produced. Its two shapes convert to bytes differently, so they
+ * stay distinct: `text` is characters and goes out as UTF-8, `binary` is one byte per character.
+ * Automatic replies to terminal queries arrive here too, as `text`; a read-only engine produces
+ * neither (it sets `disableStdin`, which the engine checks before any report is made).
+ */
+export type EngineInputReport = { kind: 'text' | 'binary'; data: string };
+
+/**
+ * The engine's key hook. xterm.js 6.0.0 calls it for every keydown, keypress and keyup on its
+ * input element, before it does anything else with the event, and skips the event only when the
+ * hook returns exactly `false` (`CoreBrowserTerminal._keyDown`, `_keyPress` and `_keyUp` all test
+ * `=== false`). Any other value, including `undefined`, lets the engine process it. The engine
+ * never prevents the event's default or stops its propagation on a skipped event, so the browser
+ * acts on it unless the hook prevents it. Input events, IME composition and paste never ask the
+ * hook.
+ */
+export type EngineKeyHook = (event: KeyboardEvent) => boolean;
 
 /**
  * The private face of the selected engine. Nothing outside the renderer receives the engine
@@ -113,6 +134,33 @@ export type RendererEngine = {
   readProjection(maximumBytes?: number): TerminalProjection;
   /** Whether the viewport shows the live bottom, where new output scrolls into view. */
   readonly following: boolean;
+  /**
+   * Subscribe to the input the engine produces, as the reports it makes. The returned function
+   * unsubscribes. Both shapes arrive through the one listener, in the order the engine made them.
+   */
+  onInput(listener: (report: EngineInputReport) => void): () => void;
+  /** Replace the engine's key hook, or remove it with `undefined`. */
+  setKeyHook(hook: EngineKeyHook | undefined): void;
+  /** Whether the engine holds a non-empty selection. */
+  hasSelection(): boolean;
+  /**
+   * Paste `text` as the engine does: line breaks become carriage returns and the text is wrapped in
+   * the bracketed-paste markers when the program asked for them. It is reported through
+   * {@link RendererEngine.onInput} as one text report, and nothing is reported when the engine takes
+   * no input.
+   */
+  paste(text: string): void;
+  /** Whether the program asked for pastes to be bracketed, so the engine wraps them in markers. */
+  readonly bracketedPaste: boolean;
+  /** Whether the program asked for mouse reports, so the engine turns pointer events into input. */
+  readonly mouseTracking: boolean;
+  /**
+   * Subscribe to changes of the mouse mode the program set, seen once the output that changed it
+   * is parsed. The returned function unsubscribes.
+   */
+  onModeChange(listener: () => void): () => void;
+  /** Move focus to the engine's input element. */
+  focus(): void;
   /** Release the engine and its DOM. Safe to call twice. */
   dispose(): void;
 };
@@ -133,9 +181,17 @@ export function createRendererEngine(
   // Acknowledgements for chunks whose last bytes are still held in `carry`, in arrival order.
   let heldAcknowledgements: Array<() => void> = [];
 
+  const modeListeners = new Set<() => void>();
+  let tracking = false;
+
   function writeBytes(bytes: Uint8Array, acknowledgements: Array<() => void>): void {
     terminal.write(bytes, () => {
       if (disposed) return;
+      const now = terminal.modes.mouseTrackingMode !== 'none';
+      if (now !== tracking) {
+        tracking = now;
+        for (const listener of modeListeners) listener();
+      }
       for (const acknowledge of acknowledgements) acknowledge();
     });
   }
@@ -247,6 +303,37 @@ export function createRendererEngine(
     get following() {
       const buffer = terminal.buffer.active;
       return buffer.viewportY >= buffer.baseY;
+    },
+    onInput(listener) {
+      const text = terminal.onData((data) => listener({ kind: 'text', data }));
+      const binary = terminal.onBinary((data) => listener({ kind: 'binary', data }));
+      return () => {
+        text.dispose();
+        binary.dispose();
+      };
+    },
+    setKeyHook(hook) {
+      // The engine cannot detach a hook; one that always says "process" is the same as none.
+      terminal.attachCustomKeyEventHandler(hook ?? (() => true));
+    },
+    hasSelection() {
+      return terminal.hasSelection();
+    },
+    onModeChange(listener) {
+      modeListeners.add(listener);
+      return () => modeListeners.delete(listener);
+    },
+    get mouseTracking() {
+      return !disposed && terminal.modes.mouseTrackingMode !== 'none';
+    },
+    get bracketedPaste() {
+      return !disposed && terminal.modes.bracketedPasteMode;
+    },
+    paste(text) {
+      if (!disposed) terminal.paste(text);
+    },
+    focus() {
+      if (!disposed) terminal.focus();
     },
     dispose() {
       if (disposed) return;
