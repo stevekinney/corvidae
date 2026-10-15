@@ -51,3 +51,6 @@ tmp/
 .DS_Store
 .idea/
 /.claude/worktrees
+
+# The Dev Container links the host Git common directory here on every open.
+.devcontainer/.git-common-dir

@@ -5243,6 +5243,58 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     }
   });
 
+  // COR-1367 — a recovered catalog run resumes under the same guardrail
+  // composition its fresh dispatch used: an agent that resolves its own
+  // guardrails gets no Bureau guardrail invariant on top, and any other agent
+  // still gets Bureau's.
+  it.each([
+    [true, []],
+    [false, ['bureau:guardrails-prepare-step', 'bureau:guardrails-validate-response']],
+    [undefined, ['bureau:guardrails-prepare-step', 'bureau:guardrails-validate-response']],
+  ] as const)(
+    'registers Bureau guardrails on a recovered catalog run only when the agent does not resolve its own (agentResolvesGuardrails: %p)',
+    async (agentResolvesGuardrails, expected) => {
+      const runtime = await createRuntimeComposition({
+        storage: { type: 'memory' },
+        durableExecution: true,
+      });
+
+      try {
+        runtime.setCatalogAgentRunOptionsResolver(async () => ({
+          status: 'resolved',
+          options: fakeRunOptions(),
+          definitionRevision: 1,
+          ...(agentResolvesGuardrails === undefined ? {} : { agentResolvesGuardrails }),
+        }));
+        await runtime.persistCatalogRunRecoveryRecord('catalog-run-guardrails', {
+          agentName: 'echo',
+          definitionRevision: 1,
+          input: 'hello',
+        });
+
+        const result = await runtime.resolveRunServices({
+          workflowId: 'catalog-run-guardrails',
+          workflowType: 'agentRun',
+          input: {
+            runId: 'catalog-run-guardrails',
+            sessionId: 'catalog-run-guardrails',
+            agentName: 'echo',
+          },
+        });
+
+        if (result.status !== 'available') throw new Error(`unexpected ${result.status}`);
+        const ids = (
+          (result.services as DurableRunDeps).options.hooks?.describePlan().entries ?? []
+        )
+          .map((entry) => entry.id)
+          .filter((id) => id.includes('guardrails'));
+        expect(ids).toEqual([...expected]);
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    },
+  );
+
   describe('classifyCatalogRecoveredRun (AB-241 review finding)', () => {
     it('consumes the cache resolveRunServices already populated, without a second storage read', async () => {
       const runtime = await createRuntimeComposition({

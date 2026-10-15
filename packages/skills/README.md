@@ -258,6 +258,10 @@ A skill-enabled run follows this sequence:
 
 `@lostgradient/bureau` composes exactly this, and adds what the client cannot see: run and session correlation on every lifecycle event, the deployment's admission policy, the guardrail pipeline skill content is scanned through, and a durable snapshot of the activation records so a recovered run can re-validate what it had rather than losing it.
 
+### Per-agent skills on `createAgent` (COR-1367)
+
+`createAgent`'s `skills` option runs the sequence above for every run that agent starts, with a fresh client per run. Build its value with `createAgentSkills({ catalog })` from `@lostgradient/bureau`. That adapter lives in Bureau, not here, because this package sits below operative in the package graph and does not import it (`test/package-graph.test.ts`).
+
 ## Lifecycle events
 
 Pass an `events` target and a `correlation` to `createSkillClient` and it dispatches events describing what happened to each skill. Bureau wires both automatically for a skill-enabled run, stamping the owning `runId` and `sessionId` — the client has no view of either, so the correlation is supplied where both are in scope.

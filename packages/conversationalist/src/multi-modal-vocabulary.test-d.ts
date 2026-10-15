@@ -78,6 +78,7 @@ const mcpResourceSource: ContentSource = {
 const a2aReferenceSource: ContentSource = {
   kind: 'a2a-reference',
   agentCardUrl: 'https://example.com/agent-card',
+  taskId: 'task-1',
   artifactId: 'artifact-1',
 };
 const managedAssetSource: ContentSource = { kind: 'managed-asset', assetId: 'asset-1' };
