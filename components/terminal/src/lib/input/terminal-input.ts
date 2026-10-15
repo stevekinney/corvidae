@@ -26,11 +26,11 @@ export type TerminalInputOptions = {
   controller: TerminalInputController | undefined;
   readSettings: () => InputSettings;
   /**
-   * Whether `node` is the control that toggles capture. It sits outside `host`, and focus moving to
-   * it as it is pressed must not release capture, or the press would find capture already off and
-   * turn it back on.
+   * Whether `node` is one of the terminal's own controls (capture, interrupt). They sit outside
+   * `host`, and focus moving to one as it is pressed must not release capture, or a press on the
+   * capture button would find capture already off and turn it back on.
    */
-  isCaptureControl?: (node: Node) => boolean;
+  isTerminalControl?: (node: Node) => boolean;
   onCaptureChange: (captured: boolean) => void;
   /** A paste review opened (a review) or ended (`undefined`). The caller shows it. */
   onReview: (review: PasteReview | undefined) => void;
@@ -52,7 +52,7 @@ export type TerminalInput = {
   resumeCapture(): void;
   /** Focus left the terminal or its capture control for `next`: capture ends unless it stayed. */
   focusLeft(next: EventTarget | null): void;
-  /** Send the interrupt byte. */
+  /** Send the interrupt byte, then return focus to the engine so the reader stays in the terminal. */
   interrupt(): void;
   /** Send the reviewed paste. */
   acceptPaste(): void;
@@ -108,6 +108,8 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
   /** While saturated, the view has been seen out of the writable state since the refusal. */
   let leftWritable = false;
   let captured = false;
+  /** The engine is converting a paste, so what it reports is the paste and not typing. */
+  let pasting = false;
   /** Capture was on when a review opened, and has not been given back yet. */
   let resumeAfterReview = false;
   let review: PasteReview | undefined;
@@ -195,6 +197,12 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     }
   }
 
+  /** A latched key's keyup can land outside the terminal, on a dialog still fading out. */
+  function releaseLatch(event: KeyboardEvent): void {
+    latchedKeys.delete(event.code || event.key);
+  }
+  document.addEventListener('keyup', releaseLatch);
+
   const stopInput = engine.onInput((report) => {
     if (disposed) return;
     const bytes =
@@ -203,7 +211,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
       refuse({ reason: 'malformed' });
       return;
     }
-    send(bytes, report.kind);
+    send(bytes, report.kind, pasting ? 'paste' : undefined);
   });
 
   function trackReviewKey(event: KeyboardEvent): void {
@@ -265,6 +273,15 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     }
   });
 
+  function pasteThroughEngine(text: string): void {
+    pasting = true;
+    try {
+      engine.paste(text);
+    } finally {
+      pasting = false;
+    }
+  }
+
   function handlePaste(event: ClipboardEvent): void {
     // The engine would convert and send the paste at once. It is handled here, or not at all.
     event.preventDefault();
@@ -279,13 +296,13 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     if (text === '') return;
     const limit = options.readSettings().maximumPasteBytes;
     const analysis = analyzePaste(text, limit);
-    if (!analysis.tooLarge && !analysis.needsReview) engine.paste(text);
-    else openReview(reviewPaste(text, limit));
+    if (!analysis.tooLarge && !analysis.needsReview) pasteThroughEngine(text);
+    else openReview(reviewPaste(text, limit, engine.bracketedPaste));
   }
 
   function focusLeft(next: EventTarget | null): void {
     const stayed =
-      next instanceof Node && (host.contains(next) || options.isCaptureControl?.(next) === true);
+      next instanceof Node && (host.contains(next) || options.isTerminalControl?.(next) === true);
     if (!stayed) setCaptured(false);
   }
 
@@ -325,6 +342,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     focusLeft,
     interrupt() {
       send(Uint8Array.of(INTERRUPT_BYTE), 'text', 'interrupt');
+      if (!disposed) engine.focus();
     },
     acceptPaste() {
       const accepted = review;
@@ -341,7 +359,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
         return;
       }
       // The review warned about any marker in the text; the bracket the engine adds must be the only one.
-      engine.paste(engine.bracketedPaste ? stripPasteBrackets(accepted.text) : accepted.text);
+      pasteThroughEngine(engine.bracketedPaste ? stripPasteBrackets(accepted.text) : accepted.text);
     },
     cancelPaste: closeReview,
     refresh() {
@@ -362,6 +380,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
       engine.setKeyHook(undefined);
       host.removeEventListener('paste', handlePaste, true);
       host.removeEventListener('focusout', handleFocusOut);
+      document.removeEventListener('keyup', releaseLatch);
     },
   };
 }

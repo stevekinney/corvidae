@@ -80,7 +80,7 @@
       {
         "name": "onInputRefused",
         "reason": "function-or-snippet",
-        "description": "Called when input, or part of it, did not reach the wire. Input is never queued, retried, or replayed, so this is the only record of what was dropped and why."
+        "description": "Called when input, or part of it, did not reach the wire. Input is never queued, retried, or replayed, so this is the machine-readable record of what was dropped and why; the reader is also told through the status region, except for typing into a read-only view. `source` is set when a paste or the Interrupt control asked for the input."
       },
       {
         "name": "onLinkActivate",

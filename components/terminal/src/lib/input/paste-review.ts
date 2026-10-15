@@ -33,7 +33,10 @@ export function stripPasteBrackets(text: string): string {
 export type PasteReview =
   | {
       kind: 'confirm';
-      /** The clipboard text, exactly as read. Accepting sends this and nothing else. */
+      /**
+       * The clipboard text, exactly as read. Accepting sends this and nothing else, except that
+       * when the engine brackets the paste any bracketed-paste marker in it is removed first.
+       */
       text: string;
       /** The same text with newlines and controls made visible, for display only. */
       visibleText: string;
@@ -47,6 +50,8 @@ export type PasteReview =
       controlCount: number;
       /** The text contains the bracketed-paste terminator. */
       containsPasteTerminator: boolean;
+      /** The engine was bracketing pastes when the review opened, so markers will be removed. */
+      bracketedPaste: boolean;
       maximumBytes: number;
     }
   | {
@@ -137,7 +142,11 @@ export function renderVisibleControls(text: string): string {
  * The review for `text`: a rejection when it is over the limit, which keeps none of the text, and
  * otherwise everything the reader needs to decide.
  */
-export function reviewPaste(text: string, maximumBytes: number): PasteReview {
+export function reviewPaste(
+  text: string,
+  maximumBytes: number,
+  bracketedPaste: boolean,
+): PasteReview {
   const analysis = analyzePaste(text, maximumBytes);
   if (analysis.tooLarge) return { kind: 'rejected', bytes: analysis.bytes, maximumBytes };
   return {
@@ -149,6 +158,7 @@ export function reviewPaste(text: string, maximumBytes: number): PasteReview {
     endsWithNewline: analysis.endsWithNewline,
     controlCount: analysis.controlCount,
     containsPasteTerminator: analysis.containsPasteTerminator,
+    bracketedPaste,
     maximumBytes,
   };
 }

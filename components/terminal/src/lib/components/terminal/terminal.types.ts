@@ -143,7 +143,8 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
   maximumPasteBytes?: number;
   /**
    * Called when input, or part of it, did not reach the wire. Input is never queued, retried, or
-   * replayed, so this is the only record of what was dropped and why.
+   * replayed, so this is the machine-readable record of what was dropped and why; the reader is
+   * also told through the status region, except for typing into a read-only view.
    */
   onInputRefused?: (refusal: InputRefusal) => void;
   /** Additional class merged with the component's root class. */

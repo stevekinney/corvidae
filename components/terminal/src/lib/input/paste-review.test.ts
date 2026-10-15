@@ -78,8 +78,9 @@ describe('renderVisibleControls', () => {
 
 describe('reviewPaste', () => {
   test('keeps the exact text and describes it', () => {
-    const review = reviewPaste('one\ntwo\n', 100);
+    const review = reviewPaste('one\ntwo\n', 100, true);
     expect(review).toMatchObject({
+      bracketedPaste: true,
       kind: 'confirm',
       text: 'one\ntwo\n',
       visibleText: 'one␊\ntwo␊\n',
@@ -93,13 +94,13 @@ describe('reviewPaste', () => {
   });
 
   test('rejects a paste over the limit and keeps none of its text', () => {
-    const review = reviewPaste('x'.repeat(11), 10);
+    const review = reviewPaste('x'.repeat(11), 10, false);
     expect(review).toEqual({ kind: 'rejected', bytes: 11, maximumBytes: 10 });
     expect('text' in review).toBe(false);
   });
 
   test('accepts a paste exactly at the limit', () => {
-    expect(reviewPaste('x'.repeat(10), 10).kind).toBe('confirm');
+    expect(reviewPaste('x'.repeat(10), 10, false).kind).toBe('confirm');
   });
 });
 

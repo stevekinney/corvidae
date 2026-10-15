@@ -65,9 +65,25 @@ describe('repeats', () => {
     expect(messages).toHaveLength(3);
   });
 
-  test('refusals of one reason from different sources share one announcement text per source', () => {
+  test.each(['paste', 'interrupt'] as const)(
+    'a deliberate %s refused twice in a row is announced both times',
+    (source) => {
+      const { messages, refused } = announcer();
+      refused({ reason: 'oversized', source });
+      refused({ reason: 'oversized', source });
+      expect(messages).toHaveLength(2);
+    },
+  );
+
+  test('a read-only interrupt refused twice is announced both times', () => {
     const { messages, refused } = announcer();
-    refused({ reason: 'paused' });
+    refused({ reason: 'read-only', source: 'interrupt' });
+    refused({ reason: 'read-only', source: 'interrupt' });
+    expect(messages).toHaveLength(2);
+  });
+
+  test('a keystroke repeating what a deliberate action just announced is not announced again', () => {
+    const { messages, refused } = announcer();
     refused({ reason: 'paused', source: 'paste' });
     refused({ reason: 'paused', acceptedOperations: 0, totalOperations: 1 });
     expect(messages).toHaveLength(1);

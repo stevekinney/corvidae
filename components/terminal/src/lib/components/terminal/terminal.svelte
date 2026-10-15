@@ -76,6 +76,7 @@
   const refusalAnnouncer = createRefusalAnnouncer(announcer.announce);
   const reviewId = $props.id();
   const captureControlId = `${reviewId}-capture`;
+  const interruptControlId = `${reviewId}-interrupt`;
 
   // A failure the renderer found itself. It outranks the state the host passed in: the engine is
   // gone, so no other state can be shown truthfully, and nothing is silently reset or replaced.
@@ -218,7 +219,8 @@
       host,
       controller: borrowed?.input,
       readSettings: readInputSettings,
-      isCaptureControl: (node) => node instanceof Element && node.id === captureControlId,
+      isTerminalControl: (node) =>
+        node instanceof Element && (node.id === captureControlId || node.id === interruptControlId),
       onCaptureChange: (next) => {
         captured = next;
         announcer.announce(next ? 'Terminal key capture on' : 'Terminal key capture off');
@@ -285,7 +287,13 @@
           onclick={toggleCapture}
           onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
         />
-        <Button label="Interrupt" size="sm" onclick={() => input?.interrupt()} />
+        <Button
+          id={interruptControlId}
+          label="Interrupt"
+          size="sm"
+          onclick={() => input?.interrupt()}
+          onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
+        />
       </div>
     {/if}
     <VisuallyHidden as="div" aria-live="polite" aria-atomic="true">
@@ -318,7 +326,11 @@
       </p>
     {/if}
     {#if displayedReview.containsPasteTerminator}
-      <p>Contains the bracketed paste terminator, which ends a protected paste early.</p>
+      <p>
+        {displayedReview.bracketedPaste
+          ? 'Contains the bracketed paste terminator, which will be removed so it cannot end the paste early.'
+          : 'Contains the bracketed paste terminator. Bracketed paste is off, so it is sent as typed.'}
+      </p>
     {/if}
     <Textarea
       id={`${reviewId}-preview`}

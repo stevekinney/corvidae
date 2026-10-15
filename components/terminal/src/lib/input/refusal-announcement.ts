@@ -25,7 +25,7 @@ function messageFor(refusal: InputRefusal): string | undefined {
 }
 
 export type RefusalAnnouncer = {
-  /** Announce `refusal` unless it is a read-only keystroke or repeats the last announcement. */
+  /** Announce `refusal` unless it is a read-only keystroke or a keystroke repeating the last announcement. */
   refused(refusal: InputRefusal): void;
   /** Forget the last announcement, so the next refusal is announced even if it repeats it. */
   reset(): void;
@@ -41,7 +41,9 @@ export function createRefusalAnnouncer(announce: (message: string) => void): Ref
   return {
     refused(refusal) {
       const message = messageFor(refusal);
-      if (message === undefined || message === last) return;
+      // Typing repeats the same refusal for every key; a paste or an interrupt was asked for once and
+      // is answered every time.
+      if (message === undefined || (refusal.source === undefined && message === last)) return;
       last = message;
       announce(message);
     },

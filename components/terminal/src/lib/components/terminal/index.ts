@@ -13,6 +13,7 @@ export default Terminal;
 export type {
   InputRefusal,
   InputRefusalReason,
+  InputRefusalSource,
   TerminalInputController,
 } from '../../input/input-types.ts';
 export type {

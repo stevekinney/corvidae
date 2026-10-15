@@ -724,6 +724,19 @@ describe('paste', () => {
     expect(press(context, 'keydown', { key: 'Enter', code: 'Enter' }).process).toBe(true);
   });
 
+  test('a latched key whose keyup lands outside the terminal is forgotten', () => {
+    const context = fixture();
+    paste(context, 'a\nb\n');
+    document.dispatchEvent(keyEvent('keydown', { key: 'Enter', code: 'Enter' }));
+    context.input.acceptPaste();
+    // The dialog is still fading out and holds focus when the key comes up.
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.dispatchEvent(keyEvent('keyup', { key: 'Enter', code: 'Enter' }));
+    outside.remove();
+    expect(press(context, 'keydown', { key: 'Enter', code: 'Enter' }).process).toBe(true);
+  });
+
   test('a key released before the review closed leaves no latch', () => {
     const context = fixture();
     paste(context, 'a\nb\n');
