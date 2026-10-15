@@ -73,14 +73,6 @@ export class ClientEndpoint {
     return this.#operations.trackedCount;
   }
 
-  /**
-   * Operations sent and not yet acknowledged or refused. The operation window is full when this
-   * reaches the host's `maxQueuedOperations`, and an acknowledgement is what lowers it again.
-   */
-  get unresolvedOperations(): number {
-    return this.#operations.unresolvedCount;
-  }
-
   /** The terms of the attachment, once the host's capabilities have been accepted. */
   get terms(): AttachmentTerms | undefined {
     return this.#terms;

@@ -6,6 +6,7 @@ import type { ServerMessage } from '../protocol/messages.ts';
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { SessionSlot } from '../session/session-slot.ts';
 import {
+  MAXIMUM_TIMER_MILLISECONDS,
   TerminalConnection,
   closeCodeForDenial,
   type ConnectionSettings,
@@ -134,6 +135,72 @@ async function attach(subject: Rig): Promise<void> {
   if (!hello.ok) throw new Error('no hello');
   await subject.connection.receive(hello.value);
 }
+
+describe('the principal lifetime', () => {
+  /** A clock that only records what is asked of it, so a delay no real timer could hold can be inspected. */
+  function recordingClock() {
+    const scheduled: { callback: () => void; delay: number }[] = [];
+    return {
+      scheduled,
+      clock: {
+        schedule(callback: () => void, delay: number) {
+          scheduled.push({ callback, delay });
+          return () => undefined;
+        },
+      },
+    };
+  }
+
+  function build(lifetime: number) {
+    const socket = new FakeSocket();
+    (socket.data as { expiresInMilliseconds: number }).expiresInMilliseconds = lifetime;
+    const { scheduled, clock } = recordingClock();
+    const process = scriptedProcess();
+    const connection = new TerminalConnection(
+      socket,
+      {
+        host: {
+          authenticate: () => ({ ok: false, denial: 'unauthenticated' }),
+          authorize: () => ({ allowed: true, grant: 'interactive', launch: LAUNCH }),
+        },
+        createProcess: () => process.hosted,
+        clock,
+        limits: resolveWebSocketLimits(),
+        slotFor: () => new SessionSlot(),
+      },
+      () => undefined,
+    );
+    connection.open();
+    // The first timer is the handshake deadline; the principal's lifetime follows it.
+    return { socket, scheduled: () => scheduled.slice(1) };
+  }
+
+  test('a lifetime a timer can hold is one step', () => {
+    const { socket, scheduled } = build(MAXIMUM_TIMER_MILLISECONDS);
+    expect(scheduled().map((entry) => entry.delay)).toEqual([MAXIMUM_TIMER_MILLISECONDS]);
+    scheduled()[0]?.callback();
+    expect(socket.closes).toEqual([1008]);
+  });
+
+  test('a longer lifetime is waited out in steps that never exceed what a timer can hold', () => {
+    // setTimeout treats a delay above the 32-bit maximum as 1 ms, which would revoke at once.
+    const lifetime = 2 * MAXIMUM_TIMER_MILLISECONDS + 1_000;
+    const { socket, scheduled } = build(lifetime);
+    expect(scheduled().map((entry) => entry.delay)).toEqual([MAXIMUM_TIMER_MILLISECONDS]);
+    scheduled()[0]?.callback();
+    expect(socket.closes).toEqual([]);
+    scheduled()[1]?.callback();
+    expect(socket.closes).toEqual([]);
+    expect(scheduled().map((entry) => entry.delay)).toEqual([
+      MAXIMUM_TIMER_MILLISECONDS,
+      MAXIMUM_TIMER_MILLISECONDS,
+      1_000,
+    ]);
+    expect(scheduled().reduce((total, entry) => total + entry.delay, 0)).toBe(lifetime);
+    scheduled()[2]?.callback();
+    expect(socket.closes).toEqual([1008]);
+  });
+});
 
 describe('closeCodeForDenial', () => {
   test('a refusal is a policy violation and an undecided host is a retry', () => {

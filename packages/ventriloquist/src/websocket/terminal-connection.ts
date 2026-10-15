@@ -41,6 +41,12 @@ export type ConnectionSettings = {
 };
 
 const OPEN = 1;
+/**
+ * The longest delay a single timer is asked for. `setTimeout` keeps its delay in a signed 32-bit
+ * integer and treats anything above this (about 24.8 days) as 1 millisecond, which would revoke an
+ * attachment the moment it opened. A longer lifetime is waited out in steps of at most this much.
+ */
+export const MAXIMUM_TIMER_MILLISECONDS = 2_147_483_647;
 const POLICY_VIOLATION = 1008;
 const INTERNAL_ERROR = 1011;
 const TRY_AGAIN_LATER = 1013;
@@ -128,9 +134,16 @@ export class TerminalConnection {
     this.#cancelHandshake = clock.schedule(() => {
       if (this.#phase === 'awaiting-hello') this.#terminate(POLICY_VIOLATION);
     }, limits.handshakeDeadlineMilliseconds);
-    this.#cancelExpiry = clock.schedule(() => {
-      void this.revoke();
-    }, this.#socket.data.expiresInMilliseconds);
+    this.#armExpiry(this.#socket.data.expiresInMilliseconds);
+  }
+
+  /** Wait out the principal's lifetime, in steps no timer can mis-handle, then revoke. */
+  #armExpiry(remainingMilliseconds: number): void {
+    const step = Math.min(remainingMilliseconds, MAXIMUM_TIMER_MILLISECONDS);
+    this.#cancelExpiry = this.#settings.clock.schedule(() => {
+      if (remainingMilliseconds > step) this.#armExpiry(remainingMilliseconds - step);
+      else void this.revoke();
+    }, step);
   }
 
   /** Handle one frame from the client, after every earlier one has been handled. */
