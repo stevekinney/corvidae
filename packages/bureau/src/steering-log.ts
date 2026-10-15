@@ -280,6 +280,10 @@ function parseEvent(raw: string, sequence: number, sessionId: string): SteeringL
         if (
           isSteeringCommand(parsed['command']) &&
           parsed['command'].sessionId === sessionId &&
+          // Admitted commands carry concrete values: Bureau resolves every
+          // configuration selector first and refuses an identity selector
+          // before the gate, logging that as `refused`.
+          (parsed['command'].requestedValue as { policyRef?: unknown }).policyRef === undefined &&
           hasValidSubmittedValue(parsed) &&
           Array.isArray(liveRunIds) &&
           liveRunIds.every((runId) => typeof runId === 'string') &&

@@ -1941,6 +1941,39 @@ describe('durable steering across two Bureau processes', () => {
     }
   }, 60_000);
 
+  it('keeps failing on a live session whose log lost entries, rather than refolding it', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-shortened-log-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureau = await openBureau(path);
+    try {
+      const sessionId = await startRunningSession(bureau);
+      const model = (id: string, override: string) =>
+        ({ id, principal: 'alice', requestedValue: { target: 'model', override } }) as const;
+      expect(
+        versionOf(await bureau.submitSteeringCommand(sessionId, model('s1', 'claude-sonnet-5'))),
+      ).toBe(1);
+      expect(
+        versionOf(await bureau.submitSteeringCommand(sessionId, model('s2', 'claude-opus-4-8'))),
+      ).toBe(2);
+      const session = await bureau.getSession(sessionId);
+      const kv = bureau.kv;
+      if (session === undefined || kv === undefined) throw new Error('expected a session');
+      // The head now claims fewer entries than this process already folded.
+      const logKeys = await kv.list('steering-log:v1:');
+      const headKey = logKeys.find((key) => key.endsWith(':head'));
+      if (headKey === undefined) throw new Error('expected a head');
+      await kv.set(headKey, JSON.stringify({ sequence: 1 }));
+      for (const id of ['s3', 's4']) {
+        await expect(
+          bureau.submitSteeringCommand(sessionId, model(id, 'claude-sonnet-5')),
+        ).rejects.toThrow(/shorter than the 3 entries already folded/);
+      }
+    } finally {
+      await bureau.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('fails closed on a key binding that does not name its own admission', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-bad-binding-'));
     const path = join(directory, 'bureau.sqlite');

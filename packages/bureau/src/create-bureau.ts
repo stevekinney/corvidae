@@ -2067,11 +2067,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const head = await readSteeringLogHead(kv, sessionId, incarnation);
     if (head.sequence < cursor.applied) {
       // Shorter than what this process already folded: the log was deleted
-      // with its session, by another process. Nothing may be appended to it.
-      forgetSessionSteering(sessionId);
-      throw new BureauError(
-        `Session "${sessionId}" was deleted while its steering was in use.`,
-        'CONFLICT',
+      // with its session by another process, or lost entries. Nothing may be
+      // appended to it, and the cursor is kept, so every later read of this
+      // incarnation fails the same way rather than refolding a shortened log
+      // from zero as if it were whole. A deletion is told apart by the
+      // caller, which finds the incarnation gone; a recreated session has a
+      // new incarnation, which resets the cursor above.
+      throw new SteeringLogCorruptError(
+        `Steering log for session "${sessionId}" is shorter than the ${String(cursor.applied)} entries already folded from it.`,
       );
     }
     const events = await readSteeringLogEntries(

@@ -191,6 +191,15 @@ describe('steering log', () => {
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
     );
+    // An admitted command is always concrete: a selector is resolved before
+    // admission, or refused before the gate.
+    await kv.set(
+      entryKey,
+      JSON.stringify(admit({ requestedValue: { target: 'model', policyRef: 'fast-tier' } })),
+    );
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
     await kv.set(entryKey, JSON.stringify(admit({ requestedAt: 'not a timestamp' })));
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
