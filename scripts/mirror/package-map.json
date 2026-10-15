@@ -9253,7 +9253,8 @@
     "@lostgradient/chat": {
       "disposition": "exclude",
       "basis": "retired-from-publication",
-      "reason": "Published from the cinder mirror until the repository owner ruled on 2026-10-14 to stop publishing it. Its runtime closure (conversationalist, @lostgradient/lifecycle, @lostgradient/tool-protocol) shipped from the agent-bureau target retired the same day, so it could not keep publishing on its own. The registry keeps @lostgradient/chat@0.16.0, the last release. `target-owned.json` retires the cinder mirror's `packages/chat` copy so that the mirror stops releasing it."
+      "reason": "Published from the cinder mirror until the repository owner ruled on 2026-10-14 to stop publishing it. Its runtime closure (conversationalist, @lostgradient/lifecycle, @lostgradient/tool-protocol) shipped from the agent-bureau target retired the same day, so it could not keep publishing on its own. The registry keeps @lostgradient/chat@0.16.0, the last release. `target-owned.json` retires the cinder mirror's `packages/chat` copy so that the mirror stops releasing it.",
+      "lastPublishedVersion": "0.16.0"
     },
     "armorer": {
       "disposition": "exclude",
