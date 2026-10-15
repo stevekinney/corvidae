@@ -1917,9 +1917,30 @@
     const element = scrollElement;
     if (!element) return;
     const startedAt = readScrollOffset(element);
+    const animated = isKeyboardScrollAnimated(element);
     pendingKeyboardIndex = index;
     const token = (pendingKeyboardIndexToken += 1);
     for (let attempt = 0; ; attempt += 1) {
+      // Through the normal path, which applies the header inset and keeps the
+      // settle loop. An earlier version wrote the offset directly to apply that
+      // inset, and in doing so skipped the loop — so under `dynamicSize` an End or
+      // Page jump into rows whose estimates changed as they mounted stopped
+      // wherever the first write happened to land.
+      scrollToIndex(index, { align: 'start' });
+      // An instant write has already arrived by the time it returns, so the live
+      // position IS the destination and there is nothing left to track: the next
+      // press resolves from it like any other. Nor can anything roll it back,
+      // since there is no animation to finish late. Waiting out the settle window
+      // anyway left the destination alive past a write this list did not issue — a
+      // consumer setting `scrollTop`, a fragment link — so a press right after one
+      // stepped from the stale row, and a position that settled back where this
+      // press began was taken for a lost write and overwritten.
+      //
+      // Decided by whether the write animates, not by whether the position has
+      // moved yet: in real Chromium a retargeted smooth scroll can move part of the
+      // way before `scrollTo` returns, and retiring its destination there dropped
+      // rows from a held key.
+      if (!animated) break;
       await waitForScrollSettled(element, KEYBOARD_DESTINATION_STABLE_INTERVALS);
       // Superseded by a newer press or an explicit retirement while this was
       // waiting — either already holds whatever destination is now correct,
@@ -1934,9 +1955,24 @@
       // issue) is not a lost write, and expires the destination below.
       if (attempt >= KEYBOARD_DESTINATION_LOST_WRITE_RETRIES) break;
       if (readScrollOffset(element) !== startedAt) break;
-      scrollToIndex(index, { align: 'start' });
     }
     pendingKeyboardIndex = null;
+  }
+
+  /**
+   * Whether a keyboard write animates rather than landing at once: the
+   * `smoothScroll` prop for a reader who has not asked for less motion, or a
+   * `scroll-behavior: smooth` on the scrolling box, which the browser applies to
+   * a plain `scrollTop` assignment too. Under `windowScroll` that box is the
+   * document's scrolling element, not this list's container.
+   */
+  function isKeyboardScrollAnimated(element: HTMLElement): boolean {
+    if (smoothScroll && !reducedMotion.current) return true;
+    const scrollingBox = windowScroll
+      ? (element.ownerDocument.scrollingElement ?? element.ownerDocument.documentElement)
+      : element;
+    const view = scrollingBox.ownerDocument.defaultView;
+    return view?.getComputedStyle(scrollingBox).scrollBehavior === 'smooth';
   }
 
   function handleWheel(event: WheelEvent & { currentTarget: EventTarget & HTMLDivElement }): void {
@@ -2111,18 +2147,12 @@
     }
     event.preventDefault();
 
-    // Tracked BEFORE issuing the scroll, so a second press landing in the same
-    // synchronous turn (impossible from real input, but not from a test or a
-    // scripted key-repeat) already sees the new destination rather than a
-    // one-tick-stale `null`.
+    // Issues the scroll as well as tracking it, because whether the write landed is
+    // read back the moment it returns. The destination is still tracked BEFORE the
+    // write, so a second press landing in the same synchronous turn (impossible from
+    // real input, but not from a test or a scripted key-repeat) already sees the new
+    // destination rather than a one-tick-stale `null`.
     void watchPendingKeyboardIndex(target);
-
-    // Through the normal path, which applies the header inset and keeps the settle
-    // loop. An earlier version wrote the offset directly here to apply that inset, and
-    // in doing so skipped the loop — so under `dynamicSize` an End or Page jump into
-    // rows whose estimates changed as they mounted stopped wherever the first write
-    // happened to land.
-    scrollToIndex(target, { align: 'start' });
   }
 
   function maxScrollOffset(totalSize: number, axisHeight: number): number {

@@ -354,4 +354,78 @@ describe('VirtualList — coalescing a held ArrowDown under smoothScroll (COR-37
     arrowDown(list);
     expect(calls.slice(before)).toEqual([2 * 20 - 20]);
   });
+
+  test('case 7: an instant write is not re-issued when something else scrolls back to where the press began', async () => {
+    // Revert to prove this fails: in `watchPendingKeyboardIndex`, delete the
+    // `if (!animated) break;` that follows the `scrollToIndex` call. The watch then
+    // reads the consumer's write below as a lost one and re-issues the press, so
+    // `scrollTop` is dragged back to 20.
+    //
+    // Measured in real Chromium (the browser-fixtures sticky-header spec): an
+    // instant arrow write moved the list one row, the page scrolled it straight
+    // back, and three frames later the list wrote the stale destination over it.
+    //
+    // Without `smoothScroll` the list writes `scrollTop` directly, which happy-dom
+    // applies at once, exactly as a browser does for an instant scroll.
+    const container = renderStickySmoothList({ smoothScroll: false });
+    await waitFor(() => expect(renderedRows(container).length).toBeGreaterThan(0));
+    const list = requiredInstance(container.querySelector('.cinder-virtual-list'), HTMLElement);
+
+    arrowDown(list);
+    expect(list.scrollTop).toBe(2 * 20 - 20);
+
+    // Back to exactly where the press began, by something this list does not own.
+    list.scrollTop = 0;
+    await fireEvent.scroll(list);
+
+    // Enough real frames for every bounded settle pass to run out.
+    for (let frame = 0; frame < 40; frame += 1) await nextAnimationFrame();
+
+    expect(list.scrollTop).toBe(0);
+  });
+
+  test('case 8: a press right after something else moves an instant write steps from the live position', async () => {
+    // Revert to prove this fails: the same `break` as case 7. Without it the
+    // first press's destination (row 2) stays pending through the settle window,
+    // so the second press below resolves from it and lands on row 3 (`scrollTop`
+    // 40) instead of stepping from the row the consumer's write left uncovered,
+    // row 1, to row 2 (20).
+    const container = renderStickySmoothList({ smoothScroll: false });
+    await waitFor(() => expect(renderedRows(container).length).toBeGreaterThan(0));
+    const list = requiredInstance(container.querySelector('.cinder-virtual-list'), HTMLElement);
+
+    arrowDown(list);
+    list.scrollTop = 0;
+    await fireEvent.scroll(list);
+
+    // No frames in between: the press lands inside the first one's settle window.
+    arrowDown(list);
+    expect(list.scrollTop).toBe(2 * 20 - 20);
+  });
+
+  test('case 9: a CSS smooth scroll-behavior keeps the lost-write retry without the smoothScroll prop', async () => {
+    // A plain `scrollTop` assignment animates under `scroll-behavior: smooth`, so
+    // it can be rolled back exactly like a `smoothScroll` write (case 6). Revert to
+    // prove this fails: make `isKeyboardScrollAnimated` return `false` after its
+    // prop check, and the write below is made once and never retried.
+    const container = renderStickySmoothList({ smoothScroll: false, style: 'scroll-behavior: smooth' });
+    await waitFor(() => expect(renderedRows(container).length).toBeGreaterThan(0));
+    const list = requiredInstance(container.querySelector('.cinder-virtual-list'), HTMLElement);
+    const writes: number[] = [];
+    Object.defineProperty(list, 'scrollTop', {
+      configurable: true,
+      get: () => 0,
+      set: (value: number) => {
+        writes.push(value);
+      },
+    });
+
+    arrowDown(list);
+    expect(writes).toEqual([2 * 20 - 20]);
+
+    for (let frame = 0; frame < 40; frame += 1) await nextAnimationFrame();
+
+    expect(writes.length).toBeGreaterThan(1);
+    expect(writes.length).toBeLessThanOrEqual(3);
+  });
 });
