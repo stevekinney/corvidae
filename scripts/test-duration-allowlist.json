@@ -1,0 +1,30 @@
+{
+  "description": "Fast-lane tests allowed to exceed the per-test budget in scripts/check-test-durations.ts. The list can only shrink: --shrink drops stale entries, --seed refuses to run once this file has entries.",
+  "budgetMilliseconds": 2000,
+  "entries": [
+    ". :: scripts/environment-configuration-policy.test.ts ::  :: the executable repository has no unregistered environment reads",
+    ". :: scripts/mirror/publication-history.test.ts ::  :: accepts a squash merge whose parent and tree match the App sync commit",
+    ". :: scripts/mirror/publication-history.test.ts ::  :: accepts an intervening commit that adds, edits or deletes a pending changeset",
+    ". :: scripts/mirror/publication-history.test.ts ::  :: accepts only the declared version constant matching a release manifest bump",
+    ". :: scripts/mirror/sync.test.ts :: the foreign-commit guard net-effect rule :: accepts a transform-owned manifest key change that a later commit reverts",
+    "applications/playground :: scripts/static-export.test.ts :: static export :: materializes extracted Chat routes, bundles, documentation, and styles",
+    "applications/playground :: scripts/static-export.test.ts :: static export :: writes the root landing shell instead of a redirect",
+    "applications/playground :: src/analyze.test.ts :: analyzeAll :: returns at least 21 entries",
+    "applications/playground :: src/discover.test.ts :: discoverComponentFilePaths :: matches the component set the analyzer resolves across packages",
+    "applications/playground :: src/manifest-reference.test.ts :: isComponentManifest \u2014 every real manifest survives the round trip :: accepts every analyzed component after JSON serialization",
+    "applications/playground :: src/playground-server.test.ts :: chunks under /page-bundle/<filename>.js :: serves markdown-backed editor page bundles and their chunks",
+    "components/cinder :: scripts/check-platform-features.test.ts :: scan \u2014 live inventory against the real source tree :: reports usage for every classified probe and only real viewport flags",
+    "components/cinder :: scripts/stylelint/z-index-scale.test.ts :: cinder/z-index-scale :: reduces wide min, max, and hypot fallbacks without argument-limit bypasses",
+    "components/weft-ui :: src/routes/schedules/schedule-detail.test.ts :: ScheduleDetail :: queued runs (weft 0.13+ ScheduleQueuedRun[]) render as links with a queued-at timestamp",
+    "components/weft-ui :: src/routes/system/dynamic-source-panel.additional.test.ts :: additional coverage :: never renders a preload outcome under a different key\u2019s identity badges",
+    "packages/bureau :: src/create-bureau.test.ts :: createBureau :: evicts the oldest boot frames at overflow so the newest history survives (COR-1421)",
+    "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a recurring schedule into a fixed session and accumulates conversation across fires",
+    "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a stateless interval schedule and runs the agent with a fresh session per fire",
+    "packages/evaluation :: scripts/memory-lifecycle.test.ts :: memory-lifecycle run :: runs the stochastic lane with a fixed, recorded seed",
+    "packages/operative :: src/durable/run-workflow-checkpoint-depth.test.ts :: durable agentRun checkpoint nesting :: keeps persisted run state at constant depth across more than 100 steps",
+    "packages/weft :: src/server/index.test.ts :: concurrent scanner deduplication :: does not double-process an orphaned operationId visible only to reconcileOrphanedRecords",
+    "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownAllWorkers shuts down all connected workers",
+    "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownWorker sends shutdown message and waits for disconnect",
+    "packages/weft :: src/server/remote-activity-integration.test.ts :: remote activity end-to-end integration (COR-152) :: preserves and completes a remote task across a server restart and engine recovery"
+  ]
+}

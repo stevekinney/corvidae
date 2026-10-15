@@ -40,7 +40,7 @@ import {
   type Footprint,
 } from './measure-playground-memory.ts';
 import { createNetworkLedger, type NetworkLedger } from './measure-playground-network-ledger.ts';
-import { growthReport } from './measure-playground-statistics.ts';
+import { growthReport, retainedArtifactProblems } from './measure-playground-statistics.ts';
 
 export const NAVIGATION_ROUTES = [
   '/',
@@ -386,6 +386,12 @@ async function runRebuildProbe(cycles: number, port: number): Promise<unknown> {
         footprint: serverFootprint(),
         hostLoad: captureHostLoad(),
       });
+    }
+    // Bounded retention (CIN-588): every edit after the first settles to exactly the first edit's
+    // retained artifacts. A superseded generation left resident fails the probe.
+    const retentionProblems = retainedArtifactProblems(recorded.map((item) => item.server));
+    if (retentionProblems.length > 0) {
+      throw new Error(`Retained artifacts grew across edits:\n${retentionProblems.join('\n')}`);
     }
     await rm(fixturePath, { force: true });
     await waitForGenerationAfter(generation);

@@ -190,12 +190,23 @@ export function summarizeCaseResults(
   for (const result of results)
     byId.set(result.caseId, [...(byId.get(result.caseId) ?? []), result]);
   const missing = cases.filter((testCase) => byId.get(testCase.id)?.length !== 1).map((c) => c.id);
+  const expected = new Set(cases.map((testCase) => testCase.id));
+  // A result for a test the case list does not name means the list and the spec have drifted
+  // apart; it is a failure, and it never counts toward the passed total.
+  const unexpected = results
+    .filter((result) => !expected.has(result.caseId))
+    .map((result) => ({
+      ...result,
+      status: 'unexpected',
+      errors: ['the case list does not name this test'],
+    }));
   // A browser diagnostic that arrives after a case's last assertion (before its fixtures tear
   // down) never fails the case in Playwright, so a passed result that carries one is a failure.
-  const failed = results.filter(
+  const listed = results.filter((result) => expected.has(result.caseId));
+  const failed = listed.filter(
     (result) => result.status !== 'passed' || result.diagnostics.length > 0,
   );
-  return { passed: results.length - failed.length, failed, missing };
+  return { passed: listed.length - failed.length, failed: [...failed, ...unexpected], missing };
 }
 
 async function readExportReport(path: string): Promise<ExportReport> {
