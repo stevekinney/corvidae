@@ -60,6 +60,12 @@ bun run test
 
 From the Corvidae root, use `bunx turbo run lint typecheck test --filter=@lostgradient/testing` or `bun run validate` for the full repository. The package has no build or publishing step.
 
+## Coverage ratchet and test isolation
+
+The `test:coverage` script of `@lostgradient/terminal` passes `--parallel=1 --no-isolate`, and its `test` script stays isolated. Under isolation Bun gives each test file its own module instance and reports coverage for only one of them instead of merging, so a Svelte component loaded by several test files could lose lines that another file executes, and adding a test file could lower the measured ratio. Without isolation the counts merge. `@lostgradient/chat` already runs without isolation, and `@lostgradient/cinder` cannot adopt the flag yet because about 50 tests in about 30 files fail when files share a module registry (Carousel, VirtualList, `shikiHighlighter`, JsonSchemaEditor, Dropdown and others), so its Svelte ratio can still under-report. `scripts/bun-isolated-coverage-reproduction.ts` reproduces the defect, which is reported upstream as [oven-sh/bun#45301](https://github.com/oven-sh/bun/issues/45301).
+
+Bun also ignores source maps from plugin output, so LCOV lines for `.svelte` files are compiled-output lines. The ratchet reads the `LF` and `LH` totals, so its percentages are unaffected.
+
 ## Browser fixtures
 
 `scripts/browser-fixtures` owns the Cinder, Chat, and Editor interaction fixtures. From the repository root, install Chromium and run the development and production-preview suites:
@@ -81,6 +87,6 @@ The host generates its fixture manifest and lazy-import catalog before starting.
 
 ## Preserved visual evidence
 
-The browser suite owns baselines at `scripts/browser-fixtures/snapshots/{projectName}/{platform}/`. Playwright resolves both blocking comparisons and review reports through that configured path. The original Linux Chromium baselines are preserved under `snapshots/chromium/linux`; ordinary review screenshots are disposable output under `packages/testing/screenshots/`.
+The browser suite owns baselines at `scripts/browser-fixtures/snapshots/{projectName}/{platform}/`. Playwright resolves both blocking comparisons and review reports through that configured path. The committed Linux Chromium baselines live under `snapshots/chromium/linux`, with their `provenance.json`; ordinary review screenshots are disposable output under `packages/testing/screenshots/`.
 
-From the repository root, `bun run test:browser:visual` requires matching baselines. `bun run test:browser:update` explicitly authorizes creating or updating the current project and platform baselines. Ordinary test runs never create missing baselines. A passing interaction test does not establish pixel parity with preserved images. Compare images only with matching browser, operating system, fonts, viewport, and theme; do not overwrite baselines merely because a new host renders different pixels.
+The Linux baselines have one authoritative renderer: native `linux/arm64` inside the pinned Playwright jammy image. `bun run test:browser:visual:docker` checks a commit against them and `bun run test:browser:update:docker` regenerates them, each from an exact `git archive` of the commit. `bun run test:browser:update` refuses to run outside that image. [`scripts/browser-fixtures/visual-baselines.md`](../../scripts/browser-fixtures/visual-baselines.md) documents the workflow, the host load record, the review report, and how changed images are classified. `bun run test:browser:visual` on a development host still requires matching baselines, so a different operating system or architecture fails it by design; ordinary test runs never create missing baselines.

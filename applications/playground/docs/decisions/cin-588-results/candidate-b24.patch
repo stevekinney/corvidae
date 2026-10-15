@@ -1,0 +1,250 @@
+diff --git a/applications/playground/scripts/static-export.ts b/applications/playground/scripts/static-export.ts
+index 72b6265f..15811fa4 100644
+--- a/applications/playground/scripts/static-export.ts
++++ b/applications/playground/scripts/static-export.ts
+@@ -48,6 +48,7 @@ import {
+   discoverSidebarComponents,
+ } from '../src/discover.ts';
+ import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
++import { prebuildPageBundlesInBatches } from '../src/page-bundle.ts';
+ import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
+ import { handleRequest } from '../src/playground-server.ts';
+ import { COMPOUND_COMPONENT_FAMILIES } from '../src/shell-app/compound-families.ts';
+@@ -443,6 +444,9 @@ export async function runStaticExport(
+ 
+   // Per-component: documentation page, page-bundle graph, manifest, sources.
+   const documentationPages: { name: string; html: string }[] = [];
++  // Build every page bundle as shared graphs before the crawl, so each page's
++  // `/page-bundle/<name>.js` request is served from the cache (CIN-588).
++  await prebuildPageBundlesInBatches(documentationRoutes);
+   for (const name of documentationRoutes) {
+     const pageHtml = await render(`/page/${name}`, context);
+     if (pageHtml !== null) {
+diff --git a/applications/playground/src/page-bundle.ts b/applications/playground/src/page-bundle.ts
+index f6b21c6b..af1397e1 100644
+--- a/applications/playground/src/page-bundle.ts
++++ b/applications/playground/src/page-bundle.ts
+@@ -5,7 +5,9 @@ import { join } from 'node:path';
+ import {
+   PUBLIC_PATH_BY_FAMILY,
+   SHARED_BUILD_OPTIONS,
++  artifactRelativePath,
+   collectBuildArtifacts,
++  collectCoordinatedGarbage,
+   coordinatedBuild,
+   pageArtifactByPath,
+   pageBuildPromiseByKey,
+@@ -50,10 +52,11 @@ export function bareComponentShimSource(importPath: string, exportName: string):
+  * `component-page.svelte` loads each example only when its preview is attached
+  * and the bare component only after the reader opens Playground.
+  */
+-export async function compilePageBundleArtifacts(
++async function writePageEntry(
+   componentName: string,
+-  knownComponents?: ReadonlySet<string>,
+-): Promise<{ entryPath: string; entryCode: string; artifacts: Map<string, string> } | null> {
++  knownComponents: ReadonlySet<string> | undefined,
++  entryTempDir: string,
++): Promise<string | null> {
+   // Validate that this is an actual component before building. A bundle for a
+   // bogus name still compiles (empty scenario list + the no-examples fallback)
+   // and would 200, hiding typos behind a "No examples found" UI.
+@@ -76,7 +79,6 @@ export async function compilePageBundleArtifacts(
+   // which renders a "No examples found" fallback.
+ 
+   const entryBasename = `page-${componentName}`;
+-  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
+   const entryTempPath = join(entryTempDir, `${entryBasename}.ts`);
+   const bareComponentShimBasename = `${entryBasename}-bare-component.ts`;
+   const bareComponentShimPath = join(entryTempDir, bareComponentShimBasename);
+@@ -377,15 +379,31 @@ void hydratePage().catch((error) =>
+ );
+ `;
+ 
++  await Bun.write(
++    bareComponentShimPath,
++    bareComponentShimSource(
++      componentDefinition.importPath,
++      componentExportNameFor(componentDefinition.source, componentName),
++    ),
++  );
++  await Bun.write(entryTempPath, entrySource);
++  return entryTempPath;
++}
++
++type CompiledPageBundle = { entryPath: string; entryCode: string; artifacts: Map<string, string> };
++
++/**
++ * Compile one page's bundle on its own: the lazy-build path for a page the eager prebuild did not
++ * cover, or one an invalidation evicted. Pure with respect to the module-level caches.
++ */
++export async function compilePageBundleArtifacts(
++  componentName: string,
++  knownComponents?: ReadonlySet<string>,
++): Promise<CompiledPageBundle | null> {
++  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
+   try {
+-    await Bun.write(
+-      bareComponentShimPath,
+-      bareComponentShimSource(
+-        componentDefinition.importPath,
+-        componentExportNameFor(componentDefinition.source, componentName),
+-      ),
+-    );
+-    await Bun.write(entryTempPath, entrySource);
++    const entryTempPath = await writePageEntry(componentName, knownComponents, entryTempDir);
++    if (entryTempPath === null) return null;
+ 
+     const result = await coordinatedBuild(() =>
+       Bun.build({
+@@ -412,6 +430,110 @@ void hydratePage().catch((error) =>
+   }
+ }
+ 
++/** Page entries per shared `Bun.build` in the eager prebuild and the static export. */
++export const PAGE_BUNDLE_BATCH_SIZE = 24;
++
++/** The component an emitted page entry belongs to, or undefined when it is not one of `names`. */
++export function pageEntryComponent(
++  artifactPath: string,
++  names: ReadonlySet<string>,
++): string | undefined {
++  const match = /^page-(.+)-[A-Za-z0-9]+\.js$/u.exec(artifactPath);
++  return match !== null && names.has(match[1]!) ? match[1] : undefined;
++}
++
++/**
++ * Compile several pages' bundles in one multi-entry `Bun.build`, so modules the pages share are
++ * parsed and emitted once. Each page keeps its own hashed entry; every shared chunk the build
++ * emitted is published with each page, under the existing per-page owners.
++ */
++export async function compilePageBundleBatch(
++  componentNames: readonly string[],
++  knownComponents?: ReadonlySet<string>,
++): Promise<Map<string, CompiledPageBundle>> {
++  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
++  const compiled = new Map<string, CompiledPageBundle>();
++  try {
++    const entrypoints: string[] = [];
++    for (const name of componentNames) {
++      const entryTempPath = await writePageEntry(name, knownComponents, entryTempDir);
++      if (entryTempPath !== null) entrypoints.push(entryTempPath);
++    }
++    if (entrypoints.length === 0) return compiled;
++    const result = await coordinatedBuild(() =>
++      Bun.build({ entrypoints, publicPath: PUBLIC_PATH_BY_FAMILY.page, ...SHARED_BUILD_OPTIONS }),
++    );
++    if (!result.success) {
++      console.error('[playground] shared page bundle build failed:', result.logs);
++      return compiled;
++    }
++    const names = new Set(componentNames);
++    const shared = new Map<string, string>();
++    const entries: { name: string; path: string; code: string }[] = [];
++    for (const output of result.outputs) {
++      const path = artifactRelativePath(output.path);
++      const code = await output.text();
++      const name = output.kind === 'entry-point' ? pageEntryComponent(path, names) : undefined;
++      if (name === undefined) shared.set(path, code);
++      else entries.push({ name, path, code });
++    }
++    for (const entry of entries) {
++      compiled.set(entry.name, {
++        entryPath: entry.path,
++        entryCode: entry.code,
++        artifacts: new Map([[entry.path, entry.code], ...shared]),
++      });
++    }
++    return compiled;
++  } finally {
++    rmSync(entryTempDir, { recursive: true, force: true });
++  }
++}
++
++/**
++ * Prebuild many pages as shared graphs of `batchSize` entries each, collecting garbage between
++ * batches so one batch's compiler graph is released before the next starts. Publishes each page
++ * under the same generation check as the lazy path, and returns one result per name, in order.
++ */
++export async function prebuildPageBundlesInBatches(
++  componentNames: readonly string[],
++  knownComponents?: ReadonlySet<string>,
++  batchSize: number = PAGE_BUNDLE_BATCH_SIZE,
++  collectGarbage: (force: boolean) => void = collectCoordinatedGarbage,
++): Promise<PromiseSettledResult<string | null>[]> {
++  if (!Number.isInteger(batchSize) || batchSize < 1) {
++    throw new RangeError(`batchSize must be a positive integer; received ${batchSize}`);
++  }
++  const results: PromiseSettledResult<string | null>[] = [];
++  for (let offset = 0; offset < componentNames.length; offset += batchSize) {
++    if (offset > 0) collectGarbage(true);
++    const batch = componentNames.slice(offset, offset + batchSize);
++    const generationAtStart = getRebuildGeneration();
++    try {
++      const compiled = await compilePageBundleBatch(batch, knownComponents);
++      for (const name of batch) {
++        const entry = compiled.get(name);
++        if (entry === undefined) {
++          results.push({ status: 'fulfilled', value: null });
++          continue;
++        }
++        publishPageArtifacts(name, entry.artifacts);
++        if (generationAtStart === getRebuildGeneration())
++          pageEntryByName.set(name, entry.entryPath);
++        results.push({ status: 'fulfilled', value: stableEntryModule('page', entry.entryPath) });
++      }
++    } catch (error) {
++      results.push(
++        ...batch.map((): PromiseSettledResult<string | null> => ({
++          status: 'rejected',
++          reason: error,
++        })),
++      );
++    }
++  }
++  return results;
++}
++
+ /**
+  * Lazy-build wrapper: compile a page bundle and publish into shared caches.
+  * Used by the `/page-bundle/:filename.js` route as a fallback when an
+diff --git a/applications/playground/src/playground-server.ts b/applications/playground/src/playground-server.ts
+index 698d3e1e..2d9ddc82 100644
+--- a/applications/playground/src/playground-server.ts
++++ b/applications/playground/src/playground-server.ts
+@@ -85,7 +85,7 @@ import {
+   setManifestCache,
+   setManifestPromise,
+ } from './manifest-cache.ts';
+-import { buildPageBundle } from './page-bundle.ts';
++import { buildPageBundle, prebuildPageBundlesInBatches } from './page-bundle.ts';
+ import { PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
+ import { createHttpServerOnAvailablePort, resolvePreferredPort } from './port-scanner.ts';
+ import { wrapReadmeTables } from './readme-tables.ts';
+@@ -1134,7 +1134,6 @@ export type PlaygroundServer = {
+  * happen, without slowing down the common case (a save that only needs a
+  * cheap cache invalidation, handled entirely by `invalidateCachesForChange`).
+  */
+-const EAGER_PREBUILD_CONCURRENCY = 6;
+ const EAGER_PREBUILD_GARBAGE_COLLECTION_INTERVAL = 24;
+ 
+ /** Reclaim completed compiler graphs before they accumulate into a long-tail stall. */
+@@ -1261,15 +1260,9 @@ async function eagerPrebuildAll(): Promise<{
+   // bundle target. Passing the set avoids N redundant glob scans during the
+   // eager pre-build.
+   const knownComponents = new Set(components);
+-  const pagePromise = mapWithConcurrencyLimitInBatches(
+-    components,
+-    EAGER_PREBUILD_CONCURRENCY,
+-    EAGER_PREBUILD_GARBAGE_COLLECTION_INTERVAL,
+-    async (name) => {
+-      return buildPageBundle(name, knownComponents);
+-    },
+-    releaseIncrementalPrebuildMemory,
+-  );
++  // Shared multi-entry graphs of PAGE_BUNDLE_BATCH_SIZE pages, with a forced collection
++  // between batches, replace one build per page (CIN-588).
++  const pagePromise = prebuildPageBundlesInBatches(components, knownComponents);
+   const [shellCode, pageResults] = await Promise.all([shellPromise, pagePromise]);
+ 
+   let succeeded = 0;

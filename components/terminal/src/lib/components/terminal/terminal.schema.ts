@@ -1,0 +1,107 @@
+/** JSON Schema (draft 2020-12) for the props of the public Terminal component. */
+export type TerminalSchema = {
+  readonly $schema: 'https://json-schema.org/draft/2020-12/schema';
+  readonly type: 'object';
+  readonly properties: Readonly<Record<string, unknown>>;
+  readonly required: readonly string[];
+  readonly metadata: {
+    readonly unsupportedProps: ReadonlyArray<{
+      readonly name: string;
+      readonly reason: 'function-or-snippet' | 'unknown-shape';
+      readonly required?: boolean;
+      readonly description: string;
+    }>;
+  };
+};
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      description: 'Title shown in the frame chrome.',
+    },
+    state: {
+      enum: [
+        'empty',
+        'loading',
+        'connecting',
+        'writable',
+        'read-only',
+        'backpressured',
+        'exited',
+        'disconnected',
+        'denied',
+        'failed',
+        'cleanup-incomplete',
+        'engine-load-failed',
+      ],
+      description:
+        "The state to render. The session controller decides which state applies; the renderer shows an engine failure of its own as 'engine-load-failed'. Default `'empty'`.",
+    },
+    error: {
+      type: 'string',
+      description: "Recovery message shown with the frame's reload control while it is non-empty.",
+    },
+    ownerGeometry: {
+      type: 'object',
+      properties: {
+        columns: { type: 'integer', minimum: 1, maximum: 65535 },
+        rows: { type: 'integer', minimum: 1, maximum: 65535 },
+      },
+      required: ['columns', 'rows'],
+      additionalProperties: false,
+      description:
+        "The grid the session's owner dictates. A `'read-only'` terminal adopts it, scrolling locally when it is larger than the viewport, instead of fitting itself to the viewport.",
+    },
+    ariaLabel: {
+      type: 'string',
+      description: 'Accessible name of the terminal input surface. Default `Terminal`.',
+    },
+    announceOutput: {
+      type: 'boolean',
+      description:
+        'Mirror engine output into a bounded screen-reader live region. Default `false`.',
+    },
+    class: {
+      type: 'string',
+      description: "Additional class merged with the component's root class.",
+    },
+  },
+  required: ['title'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'controller',
+        reason: 'unknown-shape',
+        description:
+          'The session controller whose output the terminal renders. It is borrowed: the terminal unsubscribes when the controller is replaced or the component unmounts and never disposes it.',
+      },
+      {
+        name: 'onGeometryChange',
+        reason: 'function-or-snippet',
+        description:
+          "Called with the engine's measured geometry, once per accepted change. The engine's cell measurement is the sole resize authority; the frame's own estimate is never forwarded. A terminal that does not own the grid never calls it.",
+      },
+      {
+        name: 'onLinkActivate',
+        reason: 'function-or-snippet',
+        description:
+          'Called with a visible HTTPS address the reader deliberately activated. Links are disabled unless this is set; hidden OSC 8 destinations, paths, and other schemes are never offered.',
+      },
+      {
+        name: 'onRecoveryRequest',
+        reason: 'function-or-snippet',
+        description: "Called when the reader activates the frame's recovery control.",
+      },
+      {
+        name: 'onTitleChange',
+        reason: 'function-or-snippet',
+        description: 'Called with the terminal title the program set, as bounded plain text.',
+      },
+    ],
+  },
+} satisfies TerminalSchema;
+
+export default schema as TerminalSchema;

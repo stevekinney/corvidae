@@ -102,17 +102,34 @@
   let definitionsChoice = $state('schema');
   const definitions = $derived(definitionSources[definitionsChoice]);
   const placeholderValues = $derived(valueSources[valuesChoice]);
+
+  // Publishes the template editor's ProseMirror selection as data attributes
+  // on its mount so browser specs can wait for the editor to have read a
+  // click. A `null` selection clears both values, which Svelte renders as
+  // absent attributes: the same "unknown" state as before the first callback.
+  let selectionFrom = $state<number | null>(null);
+  let selectionTo = $state<number | null>(null);
+
+  function publishSelection(selection: { from: number; to: number } | null): void {
+    selectionFrom = selection?.from ?? null;
+    selectionTo = selection?.to ?? null;
+  }
 </script>
 
 <div class="template-placeholders-fixture">
   <div class="editors">
-    <div id="template-editor-mount">
+    <div
+      id="template-editor-mount"
+      data-selection-from={selectionFrom}
+      data-selection-to={selectionTo}
+    >
       <MarkdownEditor
         id="template-editor"
         class="template-editor-frame"
         label="Template"
         bind:value
         bind:mode
+        onSelectionChange={publishSelection}
         {readonly}
         modeToggleVisible
         placeholderDefinitions={definitions}
@@ -164,7 +181,8 @@
       <p>Value changes: <output data-testid="value-change-count">{valueChangeCount}</output></p>
       <p>Mode: <output data-testid="editor-mode">{mode}</output></p>
     </div>
-    <pre data-testid="bound-value">{value}</pre>
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -- keyboard scrolling is intentional for overflow content. -->
+    <pre data-testid="bound-value" role="region" aria-label="Bound value" tabindex="0">{value}</pre>
   </div>
 </div>
 

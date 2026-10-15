@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { readEnvironmentConfiguration } from './environment-configuration.ts';
+import {
+  readEnvironmentConfiguration,
+  scrubbedEnvironmentOf,
+  secretEntriesOf,
+  urlPasswords,
+} from './environment-configuration.ts';
 
 const VARIABLES = [
   'CINDER_TEST_COMPONENTS',
@@ -81,5 +86,88 @@ describe('readEnvironmentConfiguration', () => {
     expect(readEnvironmentConfiguration().port).toBe('1111');
     process.env['PORT'] = '2222';
     expect(readEnvironmentConfiguration().port).toBe('2222');
+  });
+});
+
+describe('package-manager credentials', () => {
+  const environment = {
+    npm_config__authToken: 'npm-registry-token',
+    'npm_config_//registry.example/:_authToken': 'scoped-registry-token',
+    NPM_CONFIG__AUTH: 'basic-auth-credential',
+    npm_config_password: 'registry-password',
+    NODE_AUTH_TOKEN: 'node-auth-token',
+    npm_config_cache: '/Users/example/.npm',
+    npm_package_name: '@lostgradient/playground',
+    npm_lifecycle_event: 'test',
+  };
+
+  it('scrubs registry credentials from child environments, case-insensitively', () => {
+    expect(scrubbedEnvironmentOf(environment)).toEqual({
+      npm_config_cache: '/Users/example/.npm',
+      npm_package_name: '@lostgradient/playground',
+      npm_lifecycle_event: 'test',
+    });
+  });
+
+  it('scans their values, and never Bun and npm script metadata', () => {
+    expect(secretEntriesOf(environment).map(([name]) => name)).toEqual([
+      'npm_config__authToken',
+      'npm_config_//registry.example/:_authToken',
+      'NPM_CONFIG__AUTH',
+      'npm_config_password',
+      'NODE_AUTH_TOKEN',
+    ]);
+  });
+});
+
+describe('credential-bearing connection strings', () => {
+  const environment = {
+    DATABASE_URL: 'postgres://playground:database-password@db.example/app',
+    NEON_DATABASE_URL: 'postgres://neon:neon-password@neon.example/app',
+    ANALYTICS_DSN: 'https://public@sentry.example/1',
+    SERVICE_CONNECTION_URL: 'https://service.example',
+    PLAYGROUND_BASE_URL: 'https://cinder.website',
+    UNNAMED_URL: 'https://user:unnamed-password@host.example/',
+    HOME: '/Users/example',
+  };
+
+  it('scrubs connection-string names and any URL carrying a password from child environments', () => {
+    expect(scrubbedEnvironmentOf(environment)).toEqual({
+      PLAYGROUND_BASE_URL: 'https://cinder.website',
+      HOME: '/Users/example',
+    });
+  });
+
+  it('scans the password of every URL that carries one, and never a public origin', () => {
+    expect(secretEntriesOf(environment)).toEqual([
+      ['DATABASE_URL', 'database-password'],
+      ['NEON_DATABASE_URL', 'neon-password'],
+      ['UNNAMED_URL', 'unnamed-password'],
+    ]);
+  });
+
+  it.each([
+    ['https://cinder.website', []],
+    ['https://user@host.example', []],
+    ['postgres://user:plain@host/db', ['plain']],
+    ['postgres://user:p%40ss@host/db', ['p%40ss', 'p@ss']],
+    ['postgres://user:p%zz@host/db', ['p%zz']],
+    ['not a url: really', []],
+  ])('reads the passwords of %s as %p', (value, passwords) => {
+    expect(urlPasswords(value)).toEqual(passwords);
+  });
+
+  it('scans both the percent-encoded and the decoded form of a password', () => {
+    expect(secretEntriesOf({ ENCODED_URL: 'postgres://user:p%40ss@host/db' })).toEqual([
+      ['ENCODED_URL', 'p%40ss'],
+      ['ENCODED_URL', 'p@ss'],
+    ]);
+  });
+
+  it('treats a password with a malformed percent escape as a credential instead of throwing', () => {
+    const environment = { MALFORMED_URL: 'postgres://user:p%zz@host/db', HOME: '/Users/example' };
+
+    expect(scrubbedEnvironmentOf(environment)).toEqual({ HOME: '/Users/example' });
+    expect(secretEntriesOf(environment)).toEqual([['MALFORMED_URL', 'p%zz']]);
   });
 });
