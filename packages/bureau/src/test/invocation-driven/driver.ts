@@ -19,6 +19,13 @@ import { INVOCATION_LINE_PREFIX } from './protocol';
 /** How long an invocation may keep running after its `finished` line before it is killed as leaked. */
 export const LEAK_DEADLINE_MS = 30_000;
 
+/**
+ * The runtime kills an invocation that is still running this long after it
+ * started, whether or not it reported `finished`: the hang guard every test
+ * spawn carries, so a child stuck before its work finishes cannot hold the run.
+ */
+const HANG_GUARD_MILLISECONDS = 120_000;
+
 const runtime = createDefaultRuntimeServices();
 
 export interface InvocationEvent {
@@ -70,6 +77,7 @@ export class InvocationDriver {
     environment: Record<string, string> = {},
   ): RunningInvocation {
     const child = Bun.spawn([process.execPath, entry, this.#directory, command, label], {
+      timeout: HANG_GUARD_MILLISECONDS,
       stdout: 'pipe',
       stderr: 'pipe',
       env: { ...process.env, ...environment },
