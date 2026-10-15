@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { readdirSync } from 'node:fs';
 
 import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
@@ -493,6 +494,76 @@ describe('cleanup that cannot finish every step', () => {
   );
 });
 
+describe('a PTY whose reader thread does not confirm it stopped', () => {
+  scenarioTest(
+    'leaves the master open for process teardown and reports cleanup incomplete',
+    async () => {
+      const real = recordingDevice();
+      const hosted = trackHostedProcess(
+        createPtyProcess({
+          ...PTY_OPTIONS,
+          profile: shellProfile('sleep 7919'),
+          terminationGraceMilliseconds: 100,
+          masterStopTimeoutMilliseconds: 30,
+          loadDevice: real.loadDevice,
+          createMasterWorker: () => fakeWorker(),
+        }),
+      );
+      await hosted.backend.start();
+      const master = real.opened[0]?.masterFd as number;
+      expect(await hosted.backend.cleanup()).toBe('incomplete');
+      // A thread that may still be reading it must never have the descriptor closed under it.
+      expect(real.closed).not.toContain(master);
+      real.device.close(master);
+    },
+  );
+
+  scenarioTest('a start that fails leaves it open in the same way', async () => {
+    const real = recordingDevice();
+    const hosted = trackHostedProcess(
+      createPtyProcess({
+        ...PTY_OPTIONS,
+        profile: { ...shellProfile('sleep 7919'), executable: '/nonexistent/definitely-not-here' },
+        terminationGraceMilliseconds: 100,
+        masterStopTimeoutMilliseconds: 30,
+        loadDevice: real.loadDevice,
+        createMasterWorker: () => fakeWorker(),
+      }),
+    );
+    const failure = await rejectionOf(hosted.backend.start());
+    expect((failure as ProcessStartFailure).code).toBe('spawn-failed');
+    const master = real.opened[0]?.masterFd as number;
+    expect(real.closed).not.toContain(master);
+    real.device.close(master);
+  });
+});
+
+describe('a start that fails after the release channel was opened', () => {
+  scenarioTest('leaves no descriptor behind', async () => {
+    const descriptors = (): number =>
+      readdirSync(process.platform === 'linux' ? '/proc/self/fd' : '/dev/fd').length;
+    // Warm up once so lazy one-time descriptors are not counted.
+    const attempt = async () => {
+      const hosted = trackHostedProcess(
+        createPtyProcess({
+          ...PTY_OPTIONS,
+          profile: shellProfile('sleep 7919'),
+          terminationGraceMilliseconds: 100,
+          createMasterWorker: () => {
+            throw new Error('no worker');
+          },
+        }),
+      );
+      await rejectionOf(hosted.backend.start());
+      await hosted.backend.cleanup();
+    };
+    await attempt();
+    const before = descriptors();
+    for (let round = 0; round < 3; round += 1) await attempt();
+    expect(descriptors()).toBe(before);
+  });
+});
+
 describe('a pipe that fails while it is read', () => {
   scenarioTest(
     'fails that output source with the error, leaving the other channel and the process alone',
@@ -532,14 +603,15 @@ const LINUX = { platform: 'linux', architecture: 'arm64' };
 
 /** A reader thread the test drives: it never reads the terminal, and says whatever the test makes it say. */
 function fakeWorker() {
-  let listener: ((event: MessageEvent<MasterMessage>) => void) | undefined;
-  const worker: MasterWorker & { say(message: MasterMessage): void } = {
-    addEventListener: (_type, handler) => {
-      listener = handler;
+  const listeners = new Map<string, (event: MessageEvent<MasterMessage>) => void>();
+  const worker: MasterWorker & { say(message: MasterMessage): void; die(): void } = {
+    addEventListener: (type, handler) => {
+      listeners.set(type, handler);
     },
     postMessage: () => undefined,
     terminate: () => undefined,
-    say: (message) => listener?.({ data: message } as MessageEvent<MasterMessage>),
+    say: (message) => listeners.get('message')?.({ data: message } as MessageEvent<MasterMessage>),
+    die: () => listeners.get('error')?.({} as MessageEvent<MasterMessage>),
   };
   return worker;
 }
@@ -603,6 +675,28 @@ describe('the end of the terminal stream', () => {
       expect(awaited3.cause).toBe('source-failed');
     }
   });
+
+  scenarioTest(
+    'a reader thread that dies fails the output source and cleanup still completes',
+    async () => {
+      const worker = fakeWorker();
+      const run = runHosted(
+        trackHostedProcess(
+          createPtyProcess({
+            ...PTY_OPTIONS,
+            profile: shellProfile('sleep 7919'),
+            terminationGraceMilliseconds: 100,
+            createMasterWorker: () => worker,
+          }),
+        ),
+      );
+      await run.started;
+      worker.die();
+      const summary = await run.session.closed;
+      expect(summary.cause).toBe('source-failed');
+      expect(summary.cleanup).toBe('complete');
+    },
+  );
 
   scenarioTest('a reader stopped by cleanup ends the output without failing it', async () => {
     const run = await endTerminalWith(LINUX, { type: 'end', how: 'stopped' });

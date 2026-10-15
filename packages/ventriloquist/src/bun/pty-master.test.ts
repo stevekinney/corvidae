@@ -10,10 +10,10 @@ function fakeWorker() {
   const posted: unknown[] = [];
   let terminated = 0;
   let flags: Int32Array | undefined;
-  let listener: ((event: MessageEvent<MasterMessage>) => void) | undefined;
+  const listeners = new Map<string, (event: MessageEvent<MasterMessage>) => void>();
   const worker: MasterWorker & { say(message: MasterMessage): void } = {
-    addEventListener: (_type, handler) => {
-      listener = handler;
+    addEventListener: (type, handler) => {
+      listeners.set(type, handler);
     },
     postMessage: (message) => {
       posted.push(message);
@@ -26,10 +26,12 @@ function fakeWorker() {
     terminate: () => {
       terminated += 1;
     },
-    say: (message) => listener?.({ data: message } as MessageEvent<MasterMessage>),
+    say: (message) => listeners.get('message')?.({ data: message } as MessageEvent<MasterMessage>),
   };
   return {
     worker,
+    fail: (type: 'error' | 'messageerror') =>
+      listeners.get(type)?.({} as MessageEvent<MasterMessage>),
     say: (message: MasterMessage) => worker.say(message),
     posted,
     get terminated() {
@@ -184,6 +186,51 @@ describe('reading a master', () => {
     await reader.cancel?.();
     const awaited12 = await waiting;
     expect(awaited12.done).toBe(true);
+  });
+});
+
+describe('a reader thread that dies', () => {
+  test.each(['error', 'messageerror'] as const)(
+    'a %s event ends the output as a failure a waiting read can see',
+    async (type) => {
+      const { created, thread } = master();
+      const waiting = created.stream.getReader().read();
+      thread.fail(type);
+      expect(((await rejectionOf(waiting)) as Error).message).toContain('WORKER');
+    },
+  );
+
+  test('later reads fail the same way, and what was already queued is still delivered first', async () => {
+    const { created, thread } = master();
+    thread.say({ type: 'data', chunk: new TextEncoder().encode('kept').buffer });
+    thread.fail('error');
+    const reader = created.stream.getReader();
+    expect(textOf(await reader.read())).toBe('kept');
+    expect(((await rejectionOf(reader.read())) as Error).message).toContain('WORKER');
+  });
+
+  test('stop does not wait for a thread that is already gone', async () => {
+    const { created, thread } = master({ stopTimeoutMilliseconds: 5_000 });
+    thread.fail('error');
+    const started = performance.now();
+    expect(await created.stop()).toBe(true);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
+  test('a thread whose module cannot be loaded ends the output instead of leaving it waiting', async () => {
+    const { device } = fakeDevice();
+    const created = createPtyMaster({
+      descriptor: 2_000_000,
+      device,
+      endsWithIo: true,
+      createWorker: () => new Worker(new URL('./no-such-worker-module.ts', import.meta.url).href),
+    });
+    const outcome = await Promise.race([
+      rejectionOf(created.stream.getReader().read()).then(() => 'failed'),
+      Bun.sleep(3_000).then(() => 'still waiting'),
+    ]);
+    expect(outcome).toBe('failed');
+    expect(typeof (await created.stop())).toBe('boolean');
   });
 });
 

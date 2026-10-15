@@ -155,6 +155,9 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
       owned.adopt(child);
       const abort = async (): Promise<void> => {
         child.kill('SIGKILL');
+        // The release channel is the host's end of a pipe the child never got a byte on; closing it
+        // is what keeps a failed start from leaking it (a no-op when it was already released).
+        abandonGate(child);
         master?.discard();
         await child.exited;
         await owned.terminate();
@@ -163,8 +166,9 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
         if (master === undefined) {
           opened.close(opening.terminal.masterFd);
         } else {
-          await master.stop();
-          master.close();
+          // Closed only once the thread reading it has confirmed it stopped; otherwise the descriptor
+          // stays for process teardown, since closing it under a reader invites a reused number.
+          if (await master.stop()) master.close();
         }
         master = undefined;
       };
@@ -177,6 +181,9 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
             ? {}
             : { createWorker: options.createMasterWorker }),
           ...(options.writeMaster === undefined ? {} : { write: options.writeMaster }),
+          ...(options.masterStopTimeoutMilliseconds === undefined
+            ? {}
+            : { stopTimeoutMilliseconds: options.masterStopTimeoutMilliseconds }),
         });
       } catch (cause) {
         return failStart(
@@ -229,7 +236,8 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
       // Never wait for the end of the output: a descendant that escaped the group can hold the
       // terminal open indefinitely, so the reader is stopped here instead.
       const stopped = active === undefined ? true : await active.stop();
-      const closed = await attempt(() => active?.close());
+      // An unconfirmed reader still has the descriptor: leave it open and say cleanup did not finish.
+      const closed = stopped && (await attempt(() => active?.close()));
       master = undefined;
       pair = undefined;
       await attempt(() => output.cancel());

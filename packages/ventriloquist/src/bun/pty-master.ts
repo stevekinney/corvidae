@@ -11,7 +11,10 @@ import {
 
 /** The slice of a `Worker` the master uses. */
 export type MasterWorker = {
-  addEventListener(type: 'message', listener: (event: MessageEvent<MasterMessage>) => void): void;
+  addEventListener(
+    type: 'message' | 'error' | 'messageerror',
+    listener: (event: MessageEvent<MasterMessage>) => void,
+  ): void;
   postMessage(message: unknown, transfer: Transferable[]): void;
   terminate(): void;
 };
@@ -97,6 +100,21 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
     return new Error(`the terminal could not be read (${ending.code ?? ending.how})`);
   };
 
+  /** Record how the thread ended, wake whoever waits for that, and answer a waiting read. */
+  const end = (how: Ending): void => {
+    if (workerGone) return;
+    ending = how;
+    workerGone = true;
+    onWorkerEnd?.();
+    if (waiter !== undefined && queue.length === 0) {
+      const waiting = waiter;
+      waiter = undefined;
+      const result = endResult();
+      if (result instanceof Error) waiting.reject(result);
+      else waiting.resolve(result);
+    }
+  };
+
   worker.addEventListener('message', (event) => {
     const message = event.data;
     if (message.type === 'data') {
@@ -116,18 +134,14 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
       }
       return;
     }
-    ending =
-      message.code === undefined ? { how: message.how } : { how: message.how, code: message.code };
-    workerGone = true;
-    onWorkerEnd?.();
-    if (waiter !== undefined && queue.length === 0) {
-      const waiting = waiter;
-      waiter = undefined;
-      const result = endResult();
-      if (result instanceof Error) waiting.reject(result);
-      else waiting.resolve(result);
-    }
+    end(
+      message.code === undefined ? { how: message.how } : { how: message.how, code: message.code },
+    );
   });
+  // A thread that dies, or whose module cannot be loaded, says nothing more: the output ends as a failure.
+  for (const type of ['error', 'messageerror'] as const) {
+    worker.addEventListener(type, () => end({ how: 'error', code: 'WORKER' }));
+  }
   worker.postMessage({ fd: descriptor, shared }, []);
 
   const take = (): ByteReadResult | Error | undefined => {

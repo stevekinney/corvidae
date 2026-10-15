@@ -90,6 +90,8 @@ export type PtyProcessOptions = ProcessHostOptions & {
   createMasterWorker?: () => MasterWorker;
   /** Writes input to the master without blocking. Defaults to `fs.writeSync`. */
   writeMaster?: MasterWrite;
+  /** How long cleanup waits for the reader thread to confirm it stopped. Defaults to two seconds. */
+  masterStopTimeoutMilliseconds?: number;
 };
 
 /**
