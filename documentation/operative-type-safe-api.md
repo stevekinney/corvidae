@@ -57,7 +57,7 @@ const text = await run.unwrap();
 
 An `AgentRun` is an async iterable of `RunEvent` values and provides:
 
-- `id`, the run's identifier, which `snapshot().id` always equals and a durable run keeps across recovery. A handle returned before its run exists, such as a lazy agent's or `bureau.run`'s, already carries it; pass `AgentRunContext.runId` to choose it. A session run's `id` is final only once the session has reserved the run;
+- `id`, the run's identifier, which `snapshot().id` equals and a durable run keeps across recovery. A handle returned before its run exists, such as a lazy agent's or `bureau.run`'s, already carries it; pass `AgentRunContext.runId` to choose it. A session run's `id` is final only once the session has reserved the run, and a hand-written `RunnableAgent` that ignores `AgentRunContext.runId` runs under its own id, which the wrapping handle's `snapshot().id` then reports instead;
 - `result()`, which resolves to the terminal `RunResult`;
 - `unwrap()`, which resolves to plain text for a schema-less run or the validated output for a run with a schema, and rejects unsuccessful runs;
 - `output()`, only on the `H = true` type, for the typed validated value;

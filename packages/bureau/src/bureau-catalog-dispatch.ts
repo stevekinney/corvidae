@@ -195,6 +195,12 @@ export class GoalAttemptTombstonedError extends Error {
   }
 }
 
+/** COR-1302 — an unsettled `bureau.run()` handle; see `findCatalogRun`. */
+export interface DispatchedCatalogRun {
+  readonly handle: AgentRun<unknown, boolean>;
+  readonly agentName: string;
+}
+
 export interface GoalAttemptRun {
   readonly run: AgentRun<unknown, boolean>;
   readonly durablyStarted: Promise<void>;
@@ -225,7 +231,32 @@ export function createCatalogDispatcher({
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   startChildRun: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
   startGoalAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
+  findCatalogRun: (id: string) => DispatchedCatalogRun | undefined;
 } {
+  /**
+   * COR-1302 — every unsettled `bureau.run()` handle, by its `id`, from the
+   * moment `runAgent` returns it until its `result()` settles. Bureau reads it
+   * through `findCatalogRun` while a run is not on its run store, so `getRun`
+   * and `abortRun` accept the id before the dispatch has built the run (and
+   * for a catalog run that never builds one). Only `runAgent` adds to it:
+   * child runs and goal attempts stay reachable only through their own
+   * surfaces.
+   */
+  const dispatchedCatalogRuns = new Map<string, DispatchedCatalogRun>();
+
+  function indexCatalogRun(
+    handle: AgentRun<unknown, boolean>,
+    agentName: string,
+  ): AgentRun<unknown, boolean> {
+    dispatchedCatalogRuns.set(handle.id, { handle, agentName });
+    detachBestEffortPromise(
+      handle.result().finally(() => {
+        dispatchedCatalogRuns.delete(handle.id);
+      }),
+    );
+    return handle;
+  }
+
   /**
    * The goal attempt each attribution entry this dispatcher made for one stands
    * for. Keyed by the entry itself, so it lives and dies with it and an entry
@@ -799,7 +830,10 @@ export function createCatalogDispatcher({
 
     const hasResolver = hasDefinitionResolver(agent);
     if (runtime.durable && hasResolver) {
-      return runDurableCatalogAgent(name, input, runOptions, context, principal, agent);
+      return indexCatalogRun(
+        runDurableCatalogAgent(name, input, runOptions, context, principal, agent),
+        name,
+      );
     }
     // COR-1302 — the direct branch's handle is returned before the agent's
     // own run exists too, so it takes its id from this bureau's runtime now,
@@ -819,22 +853,25 @@ export function createCatalogDispatcher({
     // microtask later than before — compatible with the contract, which
     // promises a synchronous RETURN of the handle, not synchronous START of
     // the agent's own work.
-    return trackCatalogRun(
-      createDeferredAgentRun(
-        () =>
-          resolveInvariantComposedAgent(
-            name,
-            input,
-            context,
-            principal,
-            agent,
-            hasResolver,
-            registerCatalogRun,
-          ),
-        input,
-        context,
-        name,
+    return indexCatalogRun(
+      trackCatalogRun(
+        createDeferredAgentRun(
+          () =>
+            resolveInvariantComposedAgent(
+              name,
+              input,
+              context,
+              principal,
+              agent,
+              hasResolver,
+              registerCatalogRun,
+            ),
+          input,
+          context,
+          name,
+        ),
       ),
+      name,
     );
   }
 
@@ -886,8 +923,10 @@ export function createCatalogDispatcher({
         start.childRunId,
       );
     }
-    // COR-1302 — as in `runAgent`'s direct branch.
-    context.runId = runtimeServices.identifiers.next('agent-run');
+    // COR-1302 — the handle takes the id Bureau's topology recorded for this
+    // child, which the durable branch above passes as its workflow id, so a
+    // process-local child's handle carries the same id `children` reports.
+    context.runId = start.childRunId;
     return trackCatalogRun(
       createDeferredAgentRun(
         () =>
@@ -1079,5 +1118,9 @@ export function createCatalogDispatcher({
     };
   }
 
-  return { runAgent, planChildRun, startChildRun, startGoalAttemptRun };
+  function findCatalogRun(id: string): DispatchedCatalogRun | undefined {
+    return dispatchedCatalogRuns.get(id);
+  }
+
+  return { runAgent, planChildRun, startChildRun, startGoalAttemptRun, findCatalogRun };
 }

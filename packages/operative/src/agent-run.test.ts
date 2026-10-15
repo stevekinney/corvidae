@@ -17,6 +17,7 @@ import { stopWhen } from './conditions/index';
 import { createAgent } from './create-agent';
 import { createLazyAgent } from './create-lazy-agent';
 import { createActiveRun } from './create-run';
+import type { RunnableAgent } from './runnable-agent';
 import type { RunOptions } from './types';
 
 function textGenerate(content = 'done'): RunOptions['generate'] {
@@ -141,6 +142,28 @@ describe('AgentRun.id (COR-1302)', () => {
     expect(run.snapshot().id).toBe('lazy-context-run-id');
     await run.result();
     expect(run.snapshot().id).toBe('lazy-context-run-id');
+  });
+
+  it('a lazy agent’s handle keeps its id when a hand-written loaded agent ignores AgentRunContext.runId', async () => {
+    // The documented exception to `id === snapshot().id`: a hand-written
+    // `RunnableAgent` that drops the context's `runId` runs under its own id,
+    // and the wrapping handle cannot rename that run. Its `id` stays the one
+    // it handed out; only `snapshot()`, which reads the run itself once it
+    // exists, reports the agent's own id.
+    const inner = createAgent({ name: 'inner', generate: textGenerate() });
+    const ignoresRunId: RunnableAgent = {
+      name: 'ignores-run-id',
+      hasOutput: false,
+      run: (input) => inner.run(input, { runId: 'agent-chosen-run-id' }),
+    };
+    const agent = createLazyAgent(async () => ({ default: ignoresRunId }), { label: 'lazy' });
+
+    const run = agent.run('hi', { runId: 'handed-out-run-id' });
+    expect(run.id).toBe('handed-out-run-id');
+    expect(run.snapshot().id).toBe('handed-out-run-id');
+    await run.result();
+    expect(run.id).toBe('handed-out-run-id');
+    expect(run.snapshot().id).toBe('agent-chosen-run-id');
   });
 
   it('gives two concurrent runs of one agent distinct ids, and the same two ids on a replay with the same identifier seed', async () => {

@@ -75,9 +75,15 @@ export type UnwrappedValue<O, H extends boolean> = [H] extends [true] ? O : stri
 export type AgentRun<O = never, H extends boolean = false> = AsyncIterable<RunEvent> &
   OutputMethod<O, H> & {
     /**
-     * COR-1302 — this run's stable identifier, fixed for the handle's whole
-     * life and equal to `snapshot().id`. It is the id a durable run's
-     * workflow is stored under, so it survives recovery unchanged.
+     * COR-1302 — this run's identifier, equal to `snapshot().id`. It is the
+     * id a durable run's workflow is stored under, so it survives recovery
+     * unchanged. It is fixed for the handle's whole life, with two
+     * exceptions. A `SessionHandle.run()` handle reads a provisional id until
+     * its session's sequence reservation commits. A handle that wraps a
+     * hand-written `RunnableAgent` (a lazy agent's, or Bureau's catalog
+     * dispatch) keeps the id it passed as `AgentRunContext.runId`; if that
+     * agent ignores the id, the handle's `snapshot().id` reports the agent's
+     * own id once the agent's run starts, and the two differ.
      */
     readonly id: string;
 

@@ -1313,13 +1313,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   listRuns(status?: string): RunSummary[];
   /**
    * A run this process holds, by id: a `createRun` run's `RunSummary.id`, or
-   * the `id` on a `bureau.run()` handle (COR-1302). A `bureau.run()` run is
-   * held once its agent's run is built, which needs a catalog agent whose run
-   * options Bureau resolves: every `createAgent` result, and a
-   * `createLazyAgent` result whose loaded agent supports it. A hand-written
-   * agent that builds its run inside its own `run()` is never held. A run is
-   * held after it settles, until `deleteRun`.
-   * `undefined` for any other id.
+   * the `id` on a `bureau.run()` handle (COR-1302). A `createRun` run is held
+   * after it settles, until `deleteRun`. A `bureau.run()` run is held from the
+   * moment `bureau.run()` returns until it settles, and then released on its
+   * own, as it was before it could be read by id. Until its agent's run is
+   * built — and for its whole life when Bureau cannot build it (a
+   * hand-written agent, or the durable branch's in-memory fallback) — it
+   * reads as `running` with no steps, actions, or usage, and the handle's own
+   * liveness snapshot. A durable `bureau.run()` run recovered after a restart
+   * is not held; `getDurableRun` reads it. `undefined` for any other id.
    */
   getRun(id: string): RunDetail | undefined;
 
@@ -1357,6 +1359,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * fully settle. Returns `undefined` when `id` is unknown.
    */
   getRunReport(id: string): RunReport | undefined;
+  /**
+   * Requests cancellation of a running run and returns its summary with
+   * `status: 'aborting'`. Accepts the ids {@link Bureau.getRun} accepts. For a
+   * `bureau.run()` run (COR-1302) this works from the moment `bureau.run()`
+   * returns: a run aborted before its agent's run is built is cancelled
+   * through its handle. Once a `bureau.run()` run has settled it is released,
+   * so a later call throws `NOT_FOUND`, where a settled `createRun` run
+   * returns its terminal summary.
+   */
   abortRun(id: string): RunSummary;
   deleteRun(id: string): Promise<void>;
 

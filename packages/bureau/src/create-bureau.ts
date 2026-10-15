@@ -205,6 +205,8 @@ import {
   serializeActionDetail,
   serializeRunDetail,
   serializeRunState,
+  serializeUndispatchedCatalogRun,
+  serializeUndispatchedCatalogRunDetail,
   serializeUnknownError,
 } from './serialization';
 import {
@@ -1660,8 +1662,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // COR-1302: the ids of `bureau.run()` runs registered on `store` (see
   // `registerCatalogRun`), so the reads that enumerate `createRun`'s
   // session-owned runs — `listRuns`, `listPendingReviews`,
-  // `sweepExpiredReviews` — keep enumerating only those. Released with the
-  // rest of a run's per-run state when `deleteRun` removes it from `store`.
+  // `sweepExpiredReviews` — keep enumerating only those, and the store
+  // subscription keeps their actions, registration, and release off this
+  // bureau's event streams. Released with the rest of a run's per-run state
+  // when the run leaves `store` as it settles.
   const catalogRunIds = new Set<string>();
   const runToolboxes = new Set<BureauToolbox>();
   const runToolboxesByRunId = new Map<string, BureauToolbox>();
@@ -1750,11 +1754,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // heuristic for `agentName`; `principal` has no such fallback since it is
   // never persisted durably. Entries for a `createRun`-dispatched run are
   // removed on `deleteRun` so this map does not outlive the run it
-  // describes. A live `bureau.run()` durable catalog dispatch's entry
-  // (AB-241) is removed the same way, since its run is registered on `store`
-  // (COR-1302); a recovered catalog run's reseeded entry has no `deleteRun`
-  // to reach it and is never removed, exactly like `createRun`'s own entry
-  // for a run nobody ever calls `deleteRun` on.
+  // describes. A `bureau.run()` durable catalog dispatch's entry (AB-241)
+  // has no `deleteRun` equivalent and is never removed, exactly like
+  // `createRun`'s own entry for a run nobody ever calls `deleteRun` on: the
+  // run leaves `store` on its own as it settles (COR-1302), and its
+  // attribution deliberately outlives that release, since `eventHistory`'s
+  // principal gate reads it.
   const runAttribution = new Map<string, RunAttribution>();
   // COR-424 — the run-creation command ledger, in the same store as this
   // bureau's sessions. Receipts promise that a retry after a restart finds
@@ -2164,6 +2169,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     switch (event.type) {
       case 'action': {
         const storeActionEvent = event as StoreActionEvent;
+        // COR-1302: a `bureau.run()` run is on `store` only so `getRun` and
+        // `abortRun` resolve its id. Its actions stay off this bureau's
+        // `'action'` stream and live frames, as they were before it was
+        // registered, so every consumer of that stream (online evals, the
+        // webhook notifier, the audit trail, durable event history) sees
+        // exactly the runs it saw before.
+        if (catalogRunIds.has(storeActionEvent.action.runId)) break;
         emitter.dispatch(new ActionEvent(storeActionEvent.action));
         emitLiveFrame({
           type: 'event',
@@ -2179,11 +2191,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
         break;
       }
-      case 'run.registered':
-        emitter.dispatch(new RunRegisteredEvent((event as StoreRunRegisteredEvent).runId));
+      case 'run.registered': {
+        const registeredRunId = (event as StoreRunRegisteredEvent).runId;
+        // COR-1302: see the `'action'` case above.
+        if (catalogRunIds.has(registeredRunId)) break;
+        emitter.dispatch(new RunRegisteredEvent(registeredRunId));
         break;
+      }
       case 'run.removed': {
         const removedRunId = (event as StoreRunRemovedEvent).runId;
+        // COR-1302: a `bureau.run()` run's release is not a deletion, so it
+        // is not announced as one. Durable event history records
+        // `run.removed` as the evidence that a run's record was deleted,
+        // which would otherwise hide the history of a catalog run that only
+        // settled.
+        const removedCatalogRun = catalogRunIds.has(removedRunId);
         const removedRun = store.getRun(removedRunId);
         const removedSessionId = removedRun ? getRunSessionIdentifier(removedRun) : '';
         runSequenceCounters.delete(removedRunId);
@@ -2218,7 +2240,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             prunePersistedResolvedReviewIds(removedSessionId, `human-wait:${removedRunId}:`),
           );
         }
-        emitter.dispatch(new RunRemovedEvent(removedRunId));
+        if (!removedCatalogRun) emitter.dispatch(new RunRemovedEvent(removedRunId));
         // Prune this run's entries from `resolvedReviewIds` — the review ids
         // it tracks (`approval:${runId}:...`, `human-wait:${runId}:...`) can
         // never be produced by `listPendingReviews()` again once the run
@@ -3112,8 +3134,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * flight the same way it already aborts bureau-owned `ActiveRun`s.
    * Untracked on terminal settlement so a long-lived bureau does not retain
    * one entry per historical run forever. The `store` entry such a run now
-   * also has (COR-1302, `registerCatalogRun`) is deliberately retained the
-   * way a `createRun` run's is, until `deleteRun`.
+   * also has (COR-1302, `registerCatalogRun`) is released the same way, when
+   * the run settles.
    *
    * This does NOT also untrack `runAttribution` (review finding
    * PRRT_kwDORvupsc6gUhzr): a settled catalog run's attribution must
@@ -3125,10 +3147,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * only ever runs for a run that never actually dispatched (the
    * `AgentContractError` fallback and non-`AgentContractError` resolver
    * failure paths below), never for one that reached the durable engine and
-   * settled. COR-1302 registers a live catalog run on `store`, so
-   * `deleteRun(run.id)` now bounds its attribution exactly as it bounds a
-   * `createRun` run's. A catalog run recovered after a restart is not
-   * registered, so its reseeded attribution still has no deletion surface.
+   * settled. Catalog runs have no `deleteRun` equivalent to bound this the
+   * way a bureau session's attribution is bounded: COR-1302 puts a live
+   * catalog run on `store`, but releases it there as it settles without
+   * touching its attribution, so `eventHistory` still resolves the settled
+   * run for its owner. Giving catalog runs their own deletion surface remains
+   * its own design problem, outside COR-1302 as it was outside AB-241.
    */
   async function createRunFromRequest(request: CreateRunRequest): Promise<CreatedRunSummary> {
     validateCreateRunRequest(request);
@@ -5189,7 +5213,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   function getRun(id: string) {
     const runState = store.getRun(id);
     if (!runState) {
-      return undefined;
+      // COR-1302: a `bureau.run()` handle whose run is not on `store` (not
+      // built yet, or never built) still resolves while it is unsettled.
+      const dispatched = findCatalogRun(id);
+      if (!dispatched) return undefined;
+      return serializeUndispatchedCatalogRunDetail(
+        id,
+        dispatched.handle.snapshot(),
+        undispatchedCatalogRunAttribution(id, dispatched.agentName),
+      );
     }
 
     return serializeRunDetail(runState, getRunSessionIdentifier(runState), runAttribution.get(id));
@@ -5206,6 +5238,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     return runState.activeRun.subscribeSnapshot(observer, requestOptions);
+  }
+
+  /**
+   * COR-1302: the attribution an unsettled `bureau.run()` run reports before
+   * it is on `store`. The durable branch's recorded attribution wins, so the
+   * summary does not change once the run is registered; otherwise the catalog
+   * name the run was dispatched under.
+   */
+  function undispatchedCatalogRunAttribution(id: string, agentName: string): RunAttribution {
+    const recorded = runAttribution.get(id);
+    return {
+      agentName: recorded?.agentName ?? agentName,
+      ...(recorded?.principal === undefined ? {} : { principal: recorded.principal }),
+    };
   }
 
   function getRunReport(id: string): RunReport | undefined {
@@ -5244,7 +5290,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   function abortRun(id: string): RunSummary {
     const runState = store.getRun(id);
     if (!runState) {
-      throw new BureauError('Run not found', 'NOT_FOUND');
+      // COR-1302: a `bureau.run()` run aborted before its dispatch has built
+      // it is cancelled through its handle, which forwards the cancellation
+      // to the run once it exists (or settles the run `'aborted'` without
+      // ever starting it). Its parent-cancellation policy is applied by the
+      // handle's own settlement (`onDurableRunAborted`), as for any handle
+      // abort.
+      const dispatched = findCatalogRun(id);
+      if (!dispatched) throw new BureauError('Run not found', 'NOT_FOUND');
+      dispatched.handle.abort('Aborted via API');
+      return {
+        ...serializeUndispatchedCatalogRun(
+          id,
+          undispatchedCatalogRunAttribution(id, dispatched.agentName),
+        ),
+        status: 'aborting',
+      };
     }
 
     if (runState.status !== 'running') {
@@ -9714,19 +9775,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * COR-1302: registers the `ActiveRun` behind a `bureau.run()` dispatch on
-   * `store`, so `getRun(run.id)`, `abortRun(run.id)`, and
+   * `store` while it runs, so `getRun(run.id)`, `abortRun(run.id)`, and
    * `subscribeRunSnapshot` resolve the handle's id on both the direct and the
    * durable branch. (`getRunReport` resolves it too, but only as a partial
-   * report: the terminal report cache is filled by `createRunFromRequest`.) The run keeps everything else a catalog run had: no
-   * bureau session (its session id reads `''`), no `activeRuns` entry
-   * (`catalogRuns` still drives its shutdown), and no listing (see
-   * `catalogRunIds`). Like a `createRun` run it stays on `store` once it
-   * settles, until `deleteRun` releases it together with its attribution.
+   * report: the terminal report cache is filled by `createRunFromRequest`.)
+   * Before this runs, and for a catalog run that never builds an `ActiveRun`,
+   * `getRun`/`abortRun` fall back to the unsettled handle (`findCatalogRun`).
+   *
+   * The run keeps everything else a catalog run had: no bureau session (its
+   * session id reads `''`), no `activeRuns` entry (`catalogRuns` still drives
+   * its shutdown), no listing, and no fan-out: its actions and its
+   * registration and release stay off this bureau's event streams (see
+   * `catalogRunIds` and the store subscription), so online evals, webhooks,
+   * the audit trail, and durable event history see the runs they saw before.
+   * Unlike a `createRun` run, it leaves `store` on its own once it settles;
+   * see the release below.
    *
    * Its run event feed is attached before `store.register`, as
-   * `createRunFromRequest` attaches one, because `store.register` is what
-   * puts `run.registered` on this bureau's feed and a watcher reacting to it
-   * expects the run's own feed to exist already.
+   * `createRunFromRequest` attaches one, and is disposed with the rest of the
+   * run's per-run state when the run is released.
    *
    * A run recovered after a restart is not registered here: AB-240's recovery
    * path still hands it to the headless monitor in `onRecoveredWorkflow`.
@@ -9746,34 +9813,49 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
       },
     });
-    detachBestEffortPromise(activeRun.result.finally(detachRunEventFeed));
     store.register(activeRun, runId);
+    // Released once the run settles, as AB-22 releases its `catalogRuns`
+    // entry, so a long-lived bureau does not keep one store entry per
+    // historical `bureau.run()`. `removeRun`, not `deleteRun`: the run's
+    // attribution stays, so `eventHistory`'s principal gate still resolves the
+    // settled run for its owner (AB-241). Keyed to `result`, not `closed()`:
+    // asking for `closed()` before the run settles would cost the handle's own
+    // `closed()` its `not-required` fast path (AB-204). Registered here, ahead
+    // of anything the returned handle chains onto `result`, so a caller that
+    // has awaited `run.result()` already finds the run released.
+    detachBestEffortPromise(
+      activeRun.result.finally(() => {
+        detachRunEventFeed();
+        if (store.getRun(runId)?.activeRun === activeRun) store.removeRun(runId);
+      }),
+    );
   }
 
-  const { runAgent, planChildRun, startChildRun, startGoalAttemptRun } = createCatalogDispatcher({
-    agentCatalog,
-    runtime,
-    runtimeServices,
-    getShutdownPromise: () => shutdownPromise,
-    catalogRuns,
-    runAttribution,
-    detachBestEffortPromise,
-    createBureauError: (message, code) => new BureauError(message, code),
-    validateAgentRunInput,
-    validateBureauRunOptions,
-    // COR-1367 — handed down to each catalog agent as its inherited policy.
-    guardrails: options.guardrails,
-    registerCatalogRun,
-    // COR-772 — a durable `bureau.run` parent aborted through its own handle
-    // is a cancelled parent like any other. Once shutdown has begun, dispose
-    // — not the policy — ends every live run, and boot recovery applies the
-    // policy to whatever it left running from the cancelled parent's
-    // durable state.
-    onDurableRunAborted: (runId, reason) => {
-      if (shutdownPromise) return;
-      void childTopology.parentCancelled(runId, reason);
-    },
-  });
+  const { runAgent, planChildRun, startChildRun, startGoalAttemptRun, findCatalogRun } =
+    createCatalogDispatcher({
+      agentCatalog,
+      runtime,
+      runtimeServices,
+      getShutdownPromise: () => shutdownPromise,
+      catalogRuns,
+      runAttribution,
+      detachBestEffortPromise,
+      createBureauError: (message, code) => new BureauError(message, code),
+      validateAgentRunInput,
+      validateBureauRunOptions,
+      // COR-1367 — handed down to each catalog agent as its inherited policy.
+      guardrails: options.guardrails,
+      registerCatalogRun,
+      // COR-772 — a durable `bureau.run` parent aborted through its own handle
+      // is a cancelled parent like any other. Once shutdown has begun, dispose
+      // — not the policy — ends every live run, and boot recovery applies the
+      // policy to whatever it left running from the cancelled parent's
+      // durable state.
+      onDurableRunAborted: (runId, reason) => {
+        if (shutdownPromise) return;
+        void childTopology.parentCancelled(runId, reason);
+      },
+    });
 
   // COR-772 — the durable parent-child topology, persisted in the same KV
   // store as the audit trail (or in memory for an ephemeral bureau, where

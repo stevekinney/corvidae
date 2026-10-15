@@ -12,7 +12,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent } from '@lostgradient/operative';
+import { createAgent, type RunnableAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -99,14 +99,16 @@ describe('bureau.run() run identity (COR-1302)', () => {
       expect(durableRuns?.items.map((item) => item.id)).toContain(id);
       expect(await bureau.getDurableRun(id)).toMatchObject({ id });
 
-      const history = await bureau.eventHistory({ kind: 'run', id }, { principal: 'alice' });
-      if ('outcome' in history) throw new Error(`expected a page, got ${history.outcome}`);
-      // The run is registered on the run store, so its own actions are
-      // recorded under the id its handle carries.
-      expect(history.events.map((event) => event.kind)).toContain('run.completed');
-      for (const event of history.events) {
-        expect(event.owner).toEqual({ kind: 'run', id });
-      }
+      // The run has settled and Bureau has released it from its run store,
+      // without `deleteRun`: its attribution stays, so alice's read still
+      // resolves the id to her run. The page is empty because a catalog run's
+      // actions stay off the bureau's `'action'` stream, which is what durable
+      // event history records; the release is not recorded as a deletion.
+      expect(bureau.getRun(id)).toBeUndefined();
+      expect(await bureau.eventHistory({ kind: 'run', id }, { principal: 'alice' })).toEqual({
+        events: [],
+        hasMore: false,
+      });
       // A principal-gated read answers `not-found` for an id no run is
       // attributed under, so alice's page above is the id resolving to her
       // run, and another principal is refused that same id.
@@ -175,11 +177,49 @@ describe('bureau.run() run identity (COR-1302)', () => {
           const result = await run.result();
           expect(result.finishReason).toBe('aborted');
 
-          // The run stays readable after it settles, until `deleteRun`
-          // releases it, exactly as a `createRun` run does.
-          expect(bureau.getRun(run.id)?.status).toBe('aborted');
-          expect(bureau.abortRun(run.id)).toMatchObject({ id: run.id, status: 'aborted' });
-          await bureau.deleteRun(run.id);
+          // A settled `bureau.run()` run is released on its own, as it was
+          // before it could be read by id, so a long-lived bureau does not
+          // keep one entry per historical run (AB-22).
+          expect(bureau.getRun(run.id)).toBeUndefined();
+          expect(() => bureau.abortRun(run.id)).toThrow('Run not found');
+        } finally {
+          gated.release();
+          await bureau.dispose();
+        }
+      });
+    }
+
+    for (const branch of branches) {
+      it(`aborts a ${branch.name} catalog run by run.id in the tick bureau.run() returns it`, async () => {
+        const gated = gatedAgent();
+        const bureau = await createBureau({
+          agents: { echo: gated.agent },
+          ...(branch.durable
+            ? {
+                storage: { type: 'sqlite', path: nextDatabasePath() } as const,
+                durableExecution: true,
+              }
+            : {}),
+        });
+        try {
+          const run = bureau.run('echo', 'hi', { principal: 'alice' });
+
+          // Nothing has been built for the run yet: Bureau resolves it from
+          // its handle, which reports the same id and owner.
+          const pending = bureau.getRun(run.id);
+          expect(pending).toMatchObject({
+            id: run.id,
+            status: 'running',
+            agentName: 'echo',
+            steps: 0,
+            actionCount: 0,
+          });
+          expect(pending?.liveness.id).toBe(run.id);
+          expect(pending?.liveness.owner).toBe('alice');
+
+          expect(bureau.abortRun(run.id)).toMatchObject({ id: run.id, status: 'aborting' });
+          const result = await run.result();
+          expect(result.finishReason).toBe('aborted');
           expect(bureau.getRun(run.id)).toBeUndefined();
         } finally {
           gated.release();
@@ -187,6 +227,30 @@ describe('bureau.run() run identity (COR-1302)', () => {
         }
       });
     }
+
+    it('resolves and aborts a hand-written catalog agent, which Bureau never builds a run for', async () => {
+      const gated = gatedAgent();
+      const handWritten: RunnableAgent<unknown, boolean> = {
+        name: 'hand',
+        hasOutput: false,
+        run: (input, context) => gated.agent.run(input, context),
+      };
+      const bureau = await createBureau({ agents: { hand: handWritten } });
+      try {
+        const run = bureau.run('hand', 'hi');
+        await gated.entered;
+
+        expect(bureau.getRun(run.id)).toMatchObject({ id: run.id, status: 'running' });
+        expect(bureau.abortRun(run.id)).toMatchObject({ id: run.id, status: 'aborting' });
+        gated.release();
+        const result = await run.result();
+        expect(result.finishReason).toBe('aborted');
+        expect(bureau.getRun(run.id)).toBeUndefined();
+      } finally {
+        gated.release();
+        await bureau.dispose();
+      }
+    });
 
     it('leaves an unknown id not found', async () => {
       const bureau = await createBureau({ agents: { echo: echoAgent() } });
@@ -199,5 +263,54 @@ describe('bureau.run() run identity (COR-1302)', () => {
         await bureau.dispose();
       }
     });
+  });
+
+  it('keeps catalog runs off the bureau event streams its consumers read', async () => {
+    let judged = 0;
+    const bureau = await createBureau({
+      agents: { echo: echoAgent() },
+      storage: { type: 'sqlite', path: nextDatabasePath() },
+      durableExecution: true,
+      onlineEvals: {
+        judges: [
+          {
+            name: 'counts',
+            async evaluate() {
+              judged += 1;
+              return { pass: true, score: 1, message: 'counted' };
+            },
+          },
+        ],
+        sampleRate: 1,
+        rng: () => 0,
+      },
+    });
+    const observedRunIds = new Set<string>();
+    const recordAction = (event: Event): void => {
+      observedRunIds.add((event as Event & { action: { runId: string } }).action.runId);
+    };
+    const recordLifecycle = (event: Event): void => {
+      observedRunIds.add((event as Event & { runId: string }).runId);
+    };
+    bureau.addEventListener('action', recordAction);
+    bureau.addEventListener('run.registered', recordLifecycle);
+    bureau.addEventListener('run.removed', recordLifecycle);
+    try {
+      const run = bureau.run('echo', 'hi', { principal: 'alice' });
+      await run.result();
+      await bureau.onlineEvalSampler?.flush();
+
+      // The run was on the run store while it ran, but none of its actions,
+      // nor its registration or release, reached a bureau listener, so the
+      // online-eval judge (a model call in production) never ran for it.
+      expect(observedRunIds.has(run.id)).toBe(false);
+      expect(bureau.onlineEvalSampler?.observedCount()).toBe(0);
+      expect(judged).toBe(0);
+    } finally {
+      bureau.removeEventListener('action', recordAction);
+      bureau.removeEventListener('run.registered', recordLifecycle);
+      bureau.removeEventListener('run.removed', recordLifecycle);
+      await bureau.dispose();
+    }
   });
 });

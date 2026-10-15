@@ -3,14 +3,15 @@
  *
  * Process A starts a durable run and parks it; A's engine is disposed (the
  * simulated crash); process B builds a fresh engine over the same storage,
- * which recovers the parked workflow on boot, and re-attaches to it the way
- * `session.recover()` does (`engine.resume` → `reattachDurableActiveRun` →
- * `createAgentRun`). The recovered handle must carry the id the original one
- * did, and both durable `ActiveRun` producers must report that id as both
+ * which recovers the parked workflow on boot and hands it to the host's
+ * recovery hook; B re-attaches to it from what that hook received
+ * (`reattachDurableActiveRun` → `createAgentRun`). The recovered handle must
+ * carry the id the original one did, and both durable `ActiveRun` producers must report that id as both
  * `runId` and `snapshot().id`.
  */
 import {
   MemoryStorage,
+  type RecoverAllOptions,
   textValueStore,
   workflow,
   yieldToPortableEventLoop,
@@ -29,6 +30,8 @@ import { createRunEngine } from './create-run-engine';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from './run-workflow-result';
 
 const RUN_ID = 'cor-1302-recovered-run';
+
+type RecoveredWorkflowInfo = Parameters<NonNullable<RecoverAllOptions['onRecoveredWorkflow']>>[0];
 
 // Bounded, event-loop-turn poll — never a real timer delay.
 const EVENT_LOOP_POLL_MAX_ATTEMPTS = 500;
@@ -107,18 +110,29 @@ describe('AgentRun.id across durable recovery (COR-1302)', () => {
     const secondCheckpointStore = createCheckpointStore(
       textValueStore(storage, { disposeUnderlyingStorage: false }),
     );
+    // B learns the run only from what its engine recovered: the workflow id
+    // and handle Weft hands the host's recovery hook, as Bureau's own
+    // `onRecoveredWorkflow` receives them. Nothing below reads `RUN_ID`
+    // except the final comparisons.
+    const recoveredWorkflows: RecoveredWorkflowInfo[] = [];
     const { engine: secondEngine } = await createRunEngine({
       storage,
       runWorkflow: makeParkingRunWorkflow(),
       startScheduler: false,
       resolveWorkflowServices: () => ({ status: 'available', services: {} }),
+      onRecoveredWorkflow: (info) => {
+        recoveredWorkflows.push(info);
+      },
     });
 
     try {
-      const recoveredHandle = await secondEngine.resume(RUN_ID);
+      await waitForEventLoop(() => recoveredWorkflows.length > 0);
+      expect(recoveredWorkflows).toHaveLength(1);
+      const [recoveredWorkflow] = recoveredWorkflows;
+      if (!recoveredWorkflow) throw new Error('engine B recovered no workflow');
       const recoveredActiveRun = reattachDurableActiveRun(
         { engine: secondEngine, checkpointStore: secondCheckpointStore },
-        { runId: RUN_ID, handle: recoveredHandle },
+        { runId: recoveredWorkflow.workflowId, handle: recoveredWorkflow.handle },
       );
       const recovered = createAgentRun(recoveredActiveRun);
 
@@ -126,7 +140,7 @@ describe('AgentRun.id across durable recovery (COR-1302)', () => {
       expect(recoveredActiveRun.runId).toBe(originalId);
       expect(recovered.snapshot().id).toBe(originalId);
 
-      await secondEngine.signal(RUN_ID, 'proceed');
+      await secondEngine.signal(recovered.id, 'proceed');
       const result = await recovered.result();
       expect(result.finishReason).toBe('stop-condition');
       expect(recovered.id).toBe(originalId);
