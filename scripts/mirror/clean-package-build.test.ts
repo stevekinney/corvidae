@@ -20,8 +20,9 @@ async function fixture(packScript = false, devDependencyCycle = false, binary = 
   // Fixture names only. Both packages were retired from publication on 2026-10-14, so their
   // committed surfaces are gone; the single-entry tsdown surface they carried is lent back here.
   const names = ['@lostgradient/cryptography', '@lostgradient/embeddings'];
-  const entries = Object.fromEntries(names.map((name) => [name, singleEntrySurface(name)]));
-  entries[names[1]!].build.packedBy = packScript ? 'pack-script' : 'files';
+  const consumer = singleEntrySurface(names[1]!);
+  consumer.build.packedBy = packScript ? 'pack-script' : 'files';
+  const entries = { [names[0]!]: singleEntrySurface(names[0]!), [names[1]!]: consumer };
   await Bun.write(
     join(historical, 'scripts/mirror/package-surface.json'),
     JSON.stringify({ ...surface, packages: entries }),
