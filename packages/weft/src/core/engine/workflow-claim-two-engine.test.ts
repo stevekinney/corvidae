@@ -354,7 +354,8 @@ describe('Engine.lostWorkflowClaim', () => {
     const handle = await firstEngine.start('claim-race-recovery', null, { id: 'unsettled-run' });
     expect(firstEngine.lostWorkflowClaim(handle)).toBe(false);
 
-    void handle.result();
+    const outcome = handle.result();
+    void outcome.catch(() => {});
     expect(firstEngine.lostWorkflowClaim(handle)).toBe(false);
   });
 

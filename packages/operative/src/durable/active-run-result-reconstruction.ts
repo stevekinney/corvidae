@@ -241,15 +241,20 @@ export function emptyRunState(): RunState {
  * records are written once. The answer comes from the terminal commit itself,
  * so it is exact for a completed, failed, cancelled, or timed-out outcome alike.
  * It belongs to the run `handle` drives, so a later run reusing `runId` (a
- * scheduler `start-new` restart) cannot change it, and it reads no storage, so
- * there is no failed read to handle: an outcome with no recorded committer is
- * published as usual.
+ * scheduler `start-new` restart) cannot change it, and it reads no storage. An
+ * outcome with no recorded committer, or a check that throws, keeps the caller
+ * publishing: suppressing the only publisher would leave the run looking
+ * `running`.
  */
 export function lostRunToAnotherEngine(
   context: DurableActiveRunContext,
   handle: WorkflowClaimHandle,
 ): boolean {
-  return context.engine.lostWorkflowClaim(handle);
+  try {
+    return context.engine.lostWorkflowClaim(handle);
+  } catch {
+    return false;
+  }
 }
 
 /**

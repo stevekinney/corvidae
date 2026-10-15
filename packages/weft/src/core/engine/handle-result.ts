@@ -376,11 +376,11 @@ function linkToReplacementWaiter(
   void currentWaiter.promise.then(
     (value) => {
       copyResultCommitter(currentWaiter, waiter);
-      waiter.resolve(value);
+      return waiter.resolve(value);
     },
     (reason) => {
       copyResultCommitter(currentWaiter, waiter);
-      waiter.reject(reason);
+      return waiter.reject(reason);
     },
   );
   return true;
