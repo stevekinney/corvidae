@@ -1,5 +1,6 @@
 import type { AttachmentSettings } from './terminal-attachment.ts';
 import type {
+  ClearScope,
   EngineCreateOptions,
   EngineInputReport,
   EngineKeyHook,
@@ -42,6 +43,12 @@ export type FakeEngine = RendererEngine & {
   bracketedPaste: boolean;
   mouseTracking: boolean;
   focusCount: number;
+  clears: ClearScope[];
+  /** Applies the clears the attachment asked for, as the real engine does once writes parsed. */
+  pendingClears: Array<() => void>;
+  changeListeners: Array<() => void>;
+  /** Tell every change listener the content changed. */
+  changed(): void;
 };
 
 export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
@@ -64,6 +71,12 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     bracketedPaste: false,
     mouseTracking: false,
     focusCount: 0,
+    clears: [],
+    pendingClears: [],
+    changeListeners: [],
+    changed() {
+      for (const listener of engine.changeListeners.slice()) listener();
+    },
     mount() {
       engine.calls.push('mount');
       if (engine.throwOn.mount) throw engine.throwOn.mount;
@@ -108,6 +121,19 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     readProjection(maximumBytes) {
       engine.calls.push('readProjection');
       return { text: 'projection', truncated: false, bytes: maximumBytes ?? 10 };
+    },
+    clear(scope, done) {
+      engine.calls.push('clear');
+      engine.clears.push(scope);
+      engine.pendingClears.push(() => done?.());
+    },
+    onChange(listener) {
+      engine.calls.push('onChange');
+      engine.changeListeners.push(listener);
+      return () => {
+        const index = engine.changeListeners.indexOf(listener);
+        if (index >= 0) engine.changeListeners.splice(index, 1);
+      };
     },
     onInput(listener) {
       engine.calls.push('onInput');

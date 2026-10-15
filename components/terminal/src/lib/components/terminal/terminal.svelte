@@ -35,6 +35,9 @@
 
   import { detectInputPlatform } from '../../input/input-platform.ts';
   import type { InputSettings } from '../../input/input-types.ts';
+  import { createInspection } from '../../inspection/inspection-controller.ts';
+  import type { InspectionSource } from '../../inspection/inspection-types.ts';
+  import InspectionPanel from '../../inspection/inspection-panel.svelte';
   import { resolvePasteLimit, type PasteReview } from '../../input/paste-review.ts';
   import { createRefusalAnnouncer } from '../../input/refusal-announcement.ts';
   import { createTerminalInput, type TerminalInput } from '../../input/terminal-input.ts';
@@ -64,6 +67,7 @@
     maximumPasteBytes,
     mouseReporting = false,
     onInputRefused,
+    onInspectionEvent,
     class: customClassName,
     ...rest
   }: TerminalProps = $props();
@@ -149,6 +153,24 @@
     };
   }
 
+  // Inspection reads the retained output of the engine that is mounted now. Its generation names
+  // that attachment: a new controller or engine is a new generation, so nothing captured earlier is
+  // ever refreshed from, or activated against, a later session.
+  let inspectionSource = $state.raw<InspectionSource>();
+  let nextGeneration = 0;
+  let frameBody = $state.raw<HTMLElement>();
+  const inspection = createInspection({
+    readSource: () => inspectionSource,
+    readActivateLink: () => onLinkActivate,
+    readOnEvent: () => onInspectionEvent,
+    announce: (text) => announcer.announce(text),
+  });
+  $effect(() => {
+    void inspectionSource;
+    inspection.sourceChanged();
+  });
+  $effect(() => inspection.dispose);
+
   // The live attachment, for pushing settings that change without remounting the engine. A plain
   // variable: nothing renders from it.
   let live: ReturnType<typeof createTerminalAttachment> | undefined;
@@ -194,7 +216,13 @@
         readSettings,
         onReady: () => {
           ready = true;
+          inspectionSource = {
+            generation: (nextGeneration += 1),
+            readProjection: (maximumBytes) => attachment.readProjection(maximumBytes),
+            clear: (scope, done) => attachment.clear(scope, done),
+          };
         },
+        onContentChange: () => inspection.contentChanged(),
         onGeometry: (geometry) => onGeometryChange?.(geometry),
         onFailure: (next) => {
           failed = { failure: next, controller: borrowed };
@@ -208,6 +236,7 @@
       attachment.dispose();
       if (live === attachment) live = undefined;
       ready = false;
+      inspectionSource = undefined;
     };
   }
 
@@ -273,7 +302,12 @@
 </script>
 
 <TerminalFrame {...frameProps}>
-  <div class="cinder-terminal__body" data-state={effectiveState}>
+  <div
+    class="cinder-terminal__body"
+    data-state={effectiveState}
+    tabindex="-1"
+    bind:this={frameBody}
+  >
     <p class="cinder-terminal__message" role="status" aria-atomic="true">{message}</p>
     {#if showEngine}
       <div
@@ -312,6 +346,7 @@
         />
       </div>
     {/if}
+    <InspectionPanel {inspection} toolbarVisible={showEngine} restoreTarget={() => frameBody} />
     <VisuallyHidden as="div" aria-live="polite" aria-atomic="true">
       {announcer.message}
     </VisuallyHidden>

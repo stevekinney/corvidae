@@ -15,8 +15,23 @@ import type { TerminalGeometry } from './terminal.types.ts';
 /** The retained scrollback, from `documentation/terminal/security-and-budgets.md`. */
 export const SCROLLBACK_LINES = 10_000;
 
+/**
+ * What a local clear removes. None of them writes to the process: they act on the engine's own
+ * buffer, in order behind the output already received.
+ *
+ * - `visible`: erases the screen rows and keeps the scrollback.
+ * - `retained`: discards the scrollback and every screen row except the cursor's own, as the
+ *   engine's `clear()` does. Only the active buffer is cleared.
+ * - `reset`: the engine's full reset, which also returns modes, charsets and the active buffer to
+ *   their start state.
+ */
+export type ClearScope = 'visible' | 'retained' | 'reset';
+
 /** The grid the engine starts with, before the first fit or owner geometry arrives. */
 export const INITIAL_GEOMETRY: TerminalGeometry = { columns: 80, rows: 24 };
+
+/** Erase in display, all rows. It never moves the cursor and never reaches the process. */
+const ERASE_DISPLAY = '\u001b[2J';
 
 /** The engine classes, loaded together so one failure covers both. */
 export type EngineConstructors = {
@@ -132,6 +147,18 @@ export type RendererEngine = {
   setLinkActivation(activate: ((url: string) => void) | undefined): void;
   /** A bounded plain-text projection of the active retained buffer. */
   readProjection(maximumBytes?: number): TerminalProjection;
+  /**
+   * Clear the local buffer. The clear takes effect in order behind every chunk already given to
+   * {@link RendererEngine.write}; a unicode prefix still held from earlier output is completed
+   * first, so it cannot leak into whatever is written after the clear. Nothing is sent to the
+   * process. `done` runs once the clear has been applied, and never after dispose.
+   */
+  clear(scope: ClearScope, done?: () => void): void;
+  /**
+   * Subscribe to changes of the retained content: output parsed, a clear or reset applied, or a
+   * resize that reflows rows. The returned function unsubscribes.
+   */
+  onChange(listener: () => void): () => void;
   /** Whether the viewport shows the live bottom, where new output scrolls into view. */
   readonly following: boolean;
   /**
@@ -180,6 +207,21 @@ export function createRendererEngine(
   const carry = createUtf8Carry();
   // Acknowledgements for chunks whose last bytes are still held in `carry`, in arrival order.
   let heldAcknowledgements: Array<() => void> = [];
+  const changeListeners = new Set<() => void>();
+
+  function notifyChange(): void {
+    for (const listener of changeListeners) listener();
+  }
+  terminal.onWriteParsed(notifyChange);
+  terminal.onResize(notifyChange);
+
+  function finishHeldOutput(): void {
+    if (disposed) return;
+    const rest = carry.flush();
+    const released = heldAcknowledgements;
+    heldAcknowledgements = [];
+    if (rest.length > 0 || released.length > 0) writeBytes(rest, released);
+  }
 
   const modeListeners = new Set<() => void>();
   let tracking = false;
@@ -254,13 +296,7 @@ export function createRendererEngine(
         writeBytes(bytes, [...released, parsed]);
       }
     },
-    finishOutput() {
-      if (disposed) return;
-      const rest = carry.flush();
-      const released = heldAcknowledgements;
-      heldAcknowledgements = [];
-      if (rest.length > 0 || released.length > 0) writeBytes(rest, released);
-    },
+    finishOutput: finishHeldOutput,
     resize(geometry) {
       terminal.resize(geometry.columns, geometry.rows);
     },
@@ -300,6 +336,24 @@ export function createRendererEngine(
     readProjection(maximumBytes) {
       return projectBuffer(terminal.buffer.active, maximumBytes);
     },
+    clear(scope, done) {
+      if (disposed) return;
+      finishHeldOutput();
+      const applied = () => {
+        if (disposed) return;
+        if (scope === 'retained') terminal.clear();
+        else if (scope === 'reset') terminal.reset();
+        notifyChange();
+        done?.();
+      };
+      // The write queue is the only ordered channel into the parser, so the clear travels
+      // through it: erase-in-display for the screen, an empty write that runs the call otherwise.
+      terminal.write(scope === 'visible' ? ERASE_DISPLAY : '', applied);
+    },
+    onChange(listener) {
+      changeListeners.add(listener);
+      return () => changeListeners.delete(listener);
+    },
     get following() {
       const buffer = terminal.buffer.active;
       return buffer.viewportY >= buffer.baseY;
@@ -338,6 +392,7 @@ export function createRendererEngine(
     dispose() {
       if (disposed) return;
       disposed = true;
+      changeListeners.clear();
       terminal.dispose();
     },
   };

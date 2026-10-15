@@ -173,6 +173,8 @@ describe('measuring and re-measuring', () => {
         },
       };
       onTitleChange() {}
+      onWriteParsed() {}
+      onResize() {}
       registerLinkProvider() {}
       parser = { registerOscHandler: () => ({ dispose() {} }) };
       loadAddon() {

@@ -52,6 +52,7 @@ The engine is private. The component never exposes the engine instance, its opti
 | `mouseReporting` | Reports the mouse to a program that asks for it (tmux, vim), but only while key capture is on and the view is writable. Defaults to `false`: reports are dropped and the pointer selects text. |
 | `maximumPasteBytes` | The most paste text, in UTF-8 bytes, offered for review. Integer from 1 to 262144; anything else uses 65536. |
 | `onInputRefused` | Receives `{ reason, acceptedOperations?, totalOperations?, source? }` when input, or part of it, did not reach the wire. |
+| `onInspectionEvent` | Receives a typed metric (counts, booleans, fixed words) for search, clear, accessible output, export and link activation. Never output or a query. |
 
 ### The controller the renderer needs
 
@@ -73,6 +74,20 @@ Mouse reports are off by default. A program can turn on the engine's mouse track
 
 A multiline or control-bearing paste, and any paste while the program has bracketed paste on, opens a review that shows its line breaks and controls, how long it is, and whether it ends in a newline, with Cancel and Paste. A paste over `maximumPasteBytes` is refused whole. An accepted paste goes through the engine, which converts line breaks to carriage returns and brackets it when the program asked for it. The bytes are never rewritten: a pasted bracket terminator ends the protected paste early, and the review says so while bracketed paste is on (and that it is sent as typed while it is off). If the mode changes while the review is open, the review is shown again with the new warning before anything is sent. The keys that close the review do not reach the shell.
 
+## Inspection
+
+A toolbar of Cinder buttons appears while an engine is mounted, in every state that keeps one, including `read-only`, `exited` and `disconnected`. Nothing in it sends a byte to the process, restarts it, or reports to the controller: it reads the engine's retained output and, for clearing, acts on the engine's own buffer. `bun run test:inspection` proves zero input bytes with a focus-reporting program running.
+
+**Search** opens a labelled field (a Cinder `Textarea`, one row) over a snapshot of the active retained buffer, which is the same projection the accessible output uses but bounded at 1 MiB. Matching is case-sensitive and exact over Unicode code points, with no normalization and no regular expression: `é` and `e` followed by a combining acute are different, and half of a surrogate pair never matches. Soft wraps are joined, a hard line break is one LF, and a query may contain a line feed (Shift+Enter inserts one; Enter steps to the next match). A query is at most 256 code points and at most 10,000 matches are kept. `Next match` and `Previous match` wrap once at the ends and the status line reports the index and the count. New output re-searches at most once per frame; the active match survives only when the new text has a match at the same logical position with the same 32 code units before it, and otherwise nothing is active. Output that was evicted from the scrollback, cleared or reset is not found, and the alternate screen is searched on its own, because only the active buffer is retained. The match is shown with the text around it in the panel; the terminal's own selection and scroll position are not changed.
+
+**Clear screen**, **Clear history** and **Reset terminal** are distinct local operations, each applied in order behind output already received (so `done` means everything written before the call is gone and everything after it is kept). Clear screen erases the visible rows and keeps the scrollback. Clear history discards the scrollback and every row except the cursor's own, as the engine's `clear()` does; only the active buffer is affected. Reset is the engine's full reset, which also returns modes and the active buffer to their start state. A unicode prefix held from before the call is completed first, so it cannot leak into later output.
+
+**Accessible output** opens a Cinder `Modal` with a labelled read-only `Textarea` holding an immutable snapshot (at most 64 KiB, from the same projection) with its source generation. New output never changes it: it says `Snapshot stale` until `Refresh` recaptures, and `Refresh` only recaptures the same live generation. When the controller or engine is replaced the snapshot says so, `Refresh` and link activation are disabled, and the text stays as it was. A truncated snapshot says `Snapshot truncated` and states the byte and line bounds. Closing releases the text; focus returns to the control that opened the dialog while it is mounted, and otherwise to the frame. `Copy` uses Cinder's `CopyButton`. With `onLinkActivate` set, the dialog also lists up to 50 distinct visible HTTPS addresses found in the snapshot as buttons, under the terminal's one link policy; hidden OSC 8 destinations, paths, downloads and command links are not text the policy accepts, so they are never listed.
+
+**Export** is user-initiated plain text: UTF-8 without a byte order mark, LF line endings, soft wraps joined, no HTML and no escape codes. It is cut at the 10,000-line limit and then at the last whole code point within 1 MiB. The dialog states the result before anything is saved (`Export ready` or `Export truncated`, with the bytes), `Download` saves it as `terminal-output.txt`, and `Cancel` or Escape saves nothing. No marker is added to the content. The result has `text`, `truncated`, `exportedBytes` and `retainedBytes`; `retainedBytes` counts retained output read up to 16 MiB and is a lower bound beyond that. Nothing is recorded automatically.
+
+`onInspectionEvent` receives events built only from numbers, booleans and a few fixed words, so output, queries, keystrokes, arguments, environment and credentials cannot be in one. A handler that throws changes nothing. Nothing in this package logs.
+
 ## Geometry
 
 The engine's measured cell size is the only resize authority. The frame's own `onDimensionsChange` estimate is never connected. The first accepted geometry arrives before any process exists, so the host creates the process with it. After that, container size changes, font loading, zoom, and device-pixel-ratio changes collapse into at most one measurement per frame, and a measurement is reported only when it differs from the last accepted one. A hidden, detached, or zero-size container measures as nothing and reports nothing.
@@ -93,7 +108,7 @@ A load, initialization, parse, or render failure disposes the engine and shows `
 
 ## Retained content
 
-`projectBuffer` in `terminal-projection.ts` is a private, bounded plain-text projection of the active retained buffer: soft wraps are joined using the engine's own wrap metadata, hard line boundaries are LF, wide characters add no padding, and the result is capped at 64 KiB of UTF-8. It is private to the package for the accessible snapshot, search, and export that later issues add, and it is not part of the package entry.
+`projectBuffer` in `terminal-projection.ts` is a private, bounded plain-text projection of the active retained buffer: soft wraps are joined using the engine's own wrap metadata, hard line boundaries are LF, wide characters add no padding, and the result is capped at 64 KiB of UTF-8 unless a caller passes another limit. The accessible output, search and export read it, and it is not part of the package entry.
 
 ## Testing
 

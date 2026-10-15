@@ -1,0 +1,77 @@
+import { createManualScheduler } from '../components/terminal/terminal-attachment-test-support.ts';
+import type { ClearScope } from '../components/terminal/terminal-engine-adapter.ts';
+import type { TerminalProjection } from '../components/terminal/terminal-projection.ts';
+import { createInspection, type Inspection } from './inspection-controller.ts';
+import type { InspectionEvent, InspectionSource } from './inspection-types.ts';
+
+const encoder = new TextEncoder();
+
+/** A source whose text, truncation and generation the test sets, and whose clears it records. */
+export type FakeSource = InspectionSource & {
+  text: string;
+  truncated: boolean;
+  /** Return `undefined` from `readProjection`, as an engine that went away does. */
+  gone: boolean;
+  reads: number[];
+  clears: ClearScope[];
+  /** Hold `done` callbacks until the test releases them, as a busy write queue does. */
+  deferClears: boolean;
+  pendingDone: Array<() => void>;
+};
+
+export function createFakeSource(text = '', generation = 1): FakeSource {
+  const source: FakeSource = {
+    generation,
+    text,
+    truncated: false,
+    gone: false,
+    reads: [],
+    clears: [],
+    deferClears: false,
+    pendingDone: [],
+    readProjection(maximumBytes): TerminalProjection | undefined {
+      source.reads.push(maximumBytes);
+      if (source.gone) return undefined;
+      return {
+        text: source.text,
+        truncated: source.truncated,
+        bytes: encoder.encode(source.text).length,
+      };
+    },
+    clear(scope, done) {
+      source.clears.push(scope);
+      if (source.deferClears) source.pendingDone.push(done);
+      else done();
+      return true;
+    },
+  };
+  return source;
+}
+
+export type InspectionHarness = {
+  inspection: Inspection;
+  source: { current: InspectionSource | undefined };
+  events: InspectionEvent[];
+  announcements: string[];
+  scheduler: ReturnType<typeof createManualScheduler>;
+  link: { current: ((url: string) => void) | undefined };
+  hook: { current: ((event: InspectionEvent) => void) | undefined };
+};
+
+/** An inspection controller wired to a fake source, with every outward call recorded. */
+export function createHarness(initial?: InspectionSource): InspectionHarness {
+  const source = { current: initial };
+  const events: InspectionEvent[] = [];
+  const announcements: string[] = [];
+  const scheduler = createManualScheduler();
+  const link: InspectionHarness['link'] = { current: undefined };
+  const hook: InspectionHarness['hook'] = { current: (event) => events.push(event) };
+  const inspection = createInspection({
+    readSource: () => source.current,
+    readActivateLink: () => link.current,
+    readOnEvent: () => hook.current,
+    announce: (message) => announcements.push(message),
+    schedule: scheduler.schedule,
+  });
+  return { inspection, source, events, announcements, scheduler, link, hook };
+}

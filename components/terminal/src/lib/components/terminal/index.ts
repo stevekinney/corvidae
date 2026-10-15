@@ -16,6 +16,7 @@ export type {
   InputRefusalSource,
   TerminalInputController,
 } from '../../input/input-types.ts';
+export type { InspectionEvent } from '../../inspection/inspection-types.ts';
 export type {
   TerminalGeometry,
   TerminalOutputListener,

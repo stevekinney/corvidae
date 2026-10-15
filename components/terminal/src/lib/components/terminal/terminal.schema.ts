@@ -103,6 +103,12 @@ const schema = {
           'Called when input, or part of it, did not reach the wire. Input is never queued, retried, or replayed, so this is the machine-readable record of what was dropped and why; the reader is also told through the status region, except for typing into a read-only view. `source` is set when a paste or the Interrupt control asked for the input.',
       },
       {
+        name: 'onInspectionEvent',
+        reason: 'function-or-snippet',
+        description:
+          'Called with a typed metric when the reader searches, steps through matches, clears, opens or refreshes the accessible output, exports, or activates a listed link. An event holds counts, booleans and fixed words only: never output, a query, a keystroke, an argument, an environment value or a credential. A handler that throws changes nothing about the session.',
+      },
+      {
         name: 'onLinkActivate',
         reason: 'function-or-snippet',
         description:

@@ -1,5 +1,6 @@
 import {
   INITIAL_GEOMETRY,
+  type ClearScope,
   type EngineSettings,
   type RendererEngine,
   type RendererEngineFactory,
@@ -69,6 +70,12 @@ export type AttachmentOptions = {
    */
   bindEngine?: (engine: RendererEngine) => EngineBinding;
   scheduleFit?: FitScheduler;
+  /**
+   * The retained content changed: output was parsed, a clear or reset was applied, or a resize
+   * reflowed the rows. It carries nothing from the content, and it runs inside the same guard as
+   * the engine's other callbacks, so a throwing handler fails closed like any renderer failure.
+   */
+  onContentChange?: () => void;
 };
 
 /** What binding input to the engine hands back. */
@@ -88,6 +95,12 @@ export type TerminalAttachment = {
   readonly following: boolean;
   /** A bounded projection of the active retained buffer, or `undefined` with no live engine. */
   readProjection(maximumBytes?: number): TerminalProjection | undefined;
+  /**
+   * Clear the local buffer, in order behind the output already received. Sends nothing to the
+   * process and never restarts it. Returns `false`, doing nothing, with no live engine; `done`
+   * runs once the clear has been applied.
+   */
+  clear(scope: ClearScope, done?: () => void): boolean;
   /** Release the engine, listeners, observers, scheduled work, and the output subscription. */
   dispose(): void;
 };
@@ -290,6 +303,10 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
     created.mount(options.host);
     created.setLinkActivation(guardedLinkActivation(settings.activateLink));
     binding = options.bindEngine?.(created);
+    if (options.onContentChange !== undefined) {
+      const notify = options.onContentChange;
+      created.onChange(() => guarded('render', notify));
+    }
     fit = createFitCoordinator({
       ...(options.scheduleFit === undefined ? {} : { schedule: options.scheduleFit }),
       measure: () => {
@@ -354,6 +371,14 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
       return engine?.following ?? true;
     },
     readProjection: (maximumBytes) => engine?.readProjection(maximumBytes),
+    clear(scope, done) {
+      if (engine === undefined) return false;
+      const live = engine;
+      guarded('render', () =>
+        live.clear(scope, done === undefined ? undefined : () => guarded('render', done)),
+      );
+      return true;
+    },
     dispose() {
       disposed = true;
       release();
