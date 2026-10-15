@@ -1305,7 +1305,22 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * enabled.
    */
   awaitSchedulerTask(taskId: string): Promise<RunResult | null>;
+  /**
+   * The runs `createRun` started that this process still holds. A
+   * `bureau.run()` run is not listed, though `getRun` and `abortRun` accept
+   * its id.
+   */
   listRuns(status?: string): RunSummary[];
+  /**
+   * A run this process holds, by id: a `createRun` run's `RunSummary.id`, or
+   * the `id` on a `bureau.run()` handle (COR-1302). A `bureau.run()` run is
+   * held once its agent's run is built, which needs a catalog agent whose run
+   * options Bureau resolves: every `createAgent` result, and a
+   * `createLazyAgent` result whose loaded agent supports it. A hand-written
+   * agent that builds its run inside its own `run()` is never held. A run is
+   * held after it settles, until `deleteRun`.
+   * `undefined` for any other id.
+   */
   getRun(id: string): RunDetail | undefined;
 
   /**

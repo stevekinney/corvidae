@@ -55,6 +55,16 @@ export interface CatalogDispatcherDependencies {
    */
   readonly onDurableRunAborted: (runId: string, reason: string) => void;
   /**
+   * COR-1302 — called with the `ActiveRun` behind a `bureau.run()` dispatch
+   * the moment it exists, on both the durable and the direct branch, so
+   * Bureau can register it on its run store and `getRun`/`abortRun` accept
+   * the handle's `id`. Child runs and goal attempts are not passed: each is
+   * owned and controlled through its own surface (`children`, `goals`). A
+   * hand-written catalog agent with no definition resolver builds its run
+   * inside its own `run()`, so there is no `ActiveRun` to pass for it.
+   */
+  readonly registerCatalogRun?: ((activeRun: ActiveRun) => void) | undefined;
+  /**
    * COR-1367 — the deprecated `BureauOptions.guardrails`, handed down to each
    * catalog agent as its inherited policy. See {@link catalogRunGuardrailsContext}.
    */
@@ -203,6 +213,7 @@ export function createCatalogDispatcher({
   validateBureauRunOptions,
   onDurableRunAborted,
   guardrails,
+  registerCatalogRun,
 }: CatalogDispatcherDependencies): {
   runAgent: (
     name: string,
@@ -576,6 +587,11 @@ export function createCatalogDispatcher({
         principal !== undefined ? { owner: principal } : undefined,
       );
       dispatchedActiveRun = activeRun;
+      // COR-1302 — only `runAgent` dispatches without an id override, so this
+      // registers exactly the `bureau.run()` runs: a child or a goal attempt
+      // always arrives with the id its owner recorded. Registered before any
+      // cancellation is forwarded below, so the store observes that abort.
+      if (runIdOverride === undefined) registerCatalogRun?.(activeRun);
       if (cancellationRequested) {
         if (cancellationRequested.dispose) {
           activeRun[Symbol.dispose]();
@@ -805,7 +821,16 @@ export function createCatalogDispatcher({
     // the agent's own work.
     return trackCatalogRun(
       createDeferredAgentRun(
-        () => resolveInvariantComposedAgent(name, input, context, principal, agent, hasResolver),
+        () =>
+          resolveInvariantComposedAgent(
+            name,
+            input,
+            context,
+            principal,
+            agent,
+            hasResolver,
+            registerCatalogRun,
+          ),
         input,
         context,
         name,
@@ -959,6 +984,8 @@ export function createCatalogDispatcher({
     principal: string | undefined,
     agent: AnyRunnableAgent,
     hasResolver: boolean,
+    /** COR-1302 — receives the run this dispatch builds; see `registerCatalogRun`. */
+    onActiveRun?: (activeRun: ActiveRun) => void,
   ): Promise<RunnableAgent<unknown, boolean>> {
     // An agent exposing no `OPERATIVE_RESOLVE_RUN_OPTIONS` builds its
     // `RunOptions` entirely inside `run()`, so there is no bag to merge a tier
@@ -1036,19 +1063,19 @@ export function createCatalogDispatcher({
       // it the same way, so a hand-written agent whose runtime witness
       // disagrees with its own schema cannot mint a mismatched handle.
       hasOutput,
-      run: () =>
-        createAgentRun<unknown, boolean>(
-          createActiveRun(
-            merged,
-            undefined,
-            // `createActiveRun` derives `LivenessSnapshot.owner` from this
-            // argument alone, never from `RunOptions.principal`. `agent.run()`
-            // supplies it internally today, so omitting it here would silently
-            // report `owner: undefined` on every principal-carrying run.
-            principal !== undefined ? { owner: principal } : undefined,
-          ),
-          { hasOutput },
-        ),
+      run: () => {
+        const activeRun = createActiveRun(
+          merged,
+          undefined,
+          // `createActiveRun` derives `LivenessSnapshot.owner` from this
+          // argument alone, never from `RunOptions.principal`. `agent.run()`
+          // supplies it internally today, so omitting it here would silently
+          // report `owner: undefined` on every principal-carrying run.
+          principal !== undefined ? { owner: principal } : undefined,
+        );
+        onActiveRun?.(activeRun);
+        return createAgentRun<unknown, boolean>(activeRun, { hasOutput });
+      },
     };
   }
 

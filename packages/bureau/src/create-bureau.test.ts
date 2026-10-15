@@ -14399,16 +14399,21 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       // The attributed principal reads back successfully — never
       // 'not-found' — proving `runAttribution` (not merely
       // `LivenessSnapshot.owner`) carries this catalog run's principal the
-      // same way it would for a `Bureau.createRun`-dispatched run. Unlike
-      // `createRun`, a catalog run keeps no durable event of its own kind
-      // recorded against it here (no bureau session backs this dispatch),
-      // so an empty page is the expected shape — the AB-313 "never-recorded
-      // id reads as an ordinary empty page" convention, not a failure.
+      // same way it would for a `Bureau.createRun`-dispatched run. Since
+      // COR-1302 registers a live catalog run on the run store, its actions
+      // are recorded under its run owner exactly as a `createRun` run's are,
+      // so alice's page carries the run's own terminal event.
       const allowedOutcome = await bureau.eventHistory(
         { kind: 'run', id: runId },
         { principal: 'alice' },
       );
-      expect(allowedOutcome).toEqual({ events: [], hasMore: false });
+      if ('outcome' in allowedOutcome) {
+        throw new Error(`expected a page, got ${allowedOutcome.outcome}`);
+      }
+      expect(allowedOutcome.events.map((event) => event.kind)).toContain('run.completed');
+      for (const event of allowedOutcome.events) {
+        expect(event.owner).toEqual({ kind: 'run', id: runId });
+      }
 
       await bureau.shutdown();
     } finally {
