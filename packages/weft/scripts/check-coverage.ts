@@ -1024,8 +1024,8 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       'src/server/dashboard-assets.ts',
       {
         reason:
-          'Segment validation rejects empty, parent, and absolute paths before resolution, making the final asset-containment guard defensive. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): the guard now falls at line 191 instead of upstream’s coordinate.',
-        lines: new Set([191]),
+          'Segment validation rejects empty, parent, and absolute paths before resolution, making the final asset-containment guard defensive. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), and again when COR-1448 moved the reserved-route checks into serve(): the guard now falls at line 140.',
+        lines: new Set([140]),
         requireUncoveredLines: true,
       },
     ],
@@ -1061,7 +1061,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Exhaustive default for an unknown WebSocket connectionType is unreachable through the upgrade handshake, which only ever assigns one of the declared connection types.',
-        lines: new Set([149, 150, 151]),
+        lines: new Set([150, 151, 152]),
         requireUncoveredLines: true,
       },
     ],
