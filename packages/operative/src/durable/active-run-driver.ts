@@ -287,6 +287,13 @@ export async function driveDurableRun(
       reachability.unreachable = true;
       return makeInterruptedRunResult(conversation);
     }
+    // Another engine that took this run's claim committed the terminal outcome this
+    // rejection reports (a timeout, cancel, or failure), and its own driver publishes
+    // it: stay write-free here too, exactly as on the success path below.
+    if (lostRunToAnotherEngine(context, handle)) {
+      reachability.unreachable = true;
+      return makeInterruptedRunResult(conversation);
+    }
     // B6 (abort-into-generate): when abort() calls engine.cancel() in parallel
     // with abortController.abort(), engine.cancel() can win the race and set the
     // workflow's state to 'cancelled' before the in-flight generate() rejection
