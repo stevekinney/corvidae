@@ -523,6 +523,15 @@ describe('A2A messages', () => {
     expect(error.kind).toBe('message');
   });
 
+  it('rejects an inbound message with no parts', () => {
+    const error = captureMappingError(() =>
+      fromA2AMessage({ messageId: 'message-4', role: 'ROLE_USER', parts: [] }),
+    );
+
+    expect(error.code).toBe('error:validation');
+    expect(error.kind).toBe('message');
+  });
+
   it('rejects an inbound message with an unspecified role', () => {
     const error = captureMappingError(() =>
       fromA2AMessage({ messageId: 'message-3', role: 'ROLE_UNSPECIFIED', parts: [{ text: 'x' }] }),
@@ -555,6 +564,15 @@ describe('A2A artifacts', () => {
       toA2AArtifact({ artifactId: 'artifact-2', content: [] }),
     );
 
+    expect(error.kind).toBe('artifact');
+  });
+
+  it('rejects an inbound artifact with no parts', () => {
+    const error = captureMappingError(() =>
+      fromA2AArtifact({ artifactId: 'artifact-3', parts: [] }),
+    );
+
+    expect(error.code).toBe('error:validation');
     expect(error.kind).toBe('artifact');
   });
 });
