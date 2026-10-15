@@ -851,6 +851,38 @@ const updated = appendGeminiMessages(history, payload);
 
 **Key exports:** `toGeminiMessages`, `fromGeminiMessages`, `appendGeminiMessages`, `geminiConversationAdapter`. Type exports: `GeminiConversation`, `GeminiContent`, `GeminiPart`, `GeminiTextPart`, `GeminiInlineDataPart`, `GeminiFileDataPart`, `GeminiFunctionCallPart`, `GeminiFunctionResponsePart`.
 
+### A2A content mapping
+
+Pure content-shape mapping between Conversationalist messages and [A2A](https://a2a-protocol.org/) 1.0.1 `Message`, `Artifact`, and `Part` values. The A2A types are hand-written from `specification/a2a.proto` at tag `v1.0.1` and follow its proto3 JSON form. Transport and the A2A task lifecycle are not included.
+
+```typescript
+import {
+  appendMessages,
+  fromA2AMessage,
+  resolveA2AArtifactReference,
+  toA2AArtifact,
+  toA2AMessage,
+} from 'conversationalist';
+
+const a2aMessage = toA2AMessage(message); // user -> ROLE_USER, assistant -> ROLE_AGENT
+const { messageId, ...input } = fromA2AMessage(a2aMessage); // input: { role, content, metadata? }
+conversation = appendMessages(conversation, input); // plugins run; a local id is minted
+
+const artifact = toA2AArtifact({ artifactId: 'summary', content: 'Revenue grew.' });
+const resolved = resolveA2AArtifactReference(
+  { kind: 'a2a-reference', agentCardUrl, taskId, artifactId: 'summary' },
+  { agentCardUrl, taskId, artifacts: [artifact] },
+);
+```
+
+`text` content maps to a `text` part, and images and documents map to `raw` (inline) or `url` parts. An A2A `data` part comes back as a document holding `JSON.stringify(data)`, typed with the part's media type or `application/json`. On the way out, an inline document becomes a `data` part only when its bytes are exactly what `JSON.stringify` produces for the value they parse to, so no file is rewritten; pretty-printed JSON, or JSON with integers beyond double precision, stays a `raw` part byte for byte. Reasoning, provider server-tool, and container content, and roles other than `user` and `assistant`, throw an `A2AMappingError` whose `kind` names the part kind or role.
+
+`fromA2AMessage` returns the A2A `messageId` as `messageId`, never as `id`: `appendMessages` treats an input with an `id` as an already-built message and skips conversation plugins, and a remote agent should not choose local message ids. An `a2a-reference` source carries the peer's `taskId` as well as its `agentCardUrl` and `artifactId`, because the proto makes an `artifactId` unique only within a task. `resolveA2AArtifactReference` takes a catalog of one agent's artifacts for one task and resolves a reference only when both the agent and the task match, so artifacts with the same id in two tasks never resolve to each other; an id that appears twice in one catalog, or a reference the catalog does not hold, throws an `A2AMappingError`.
+
+Conversationalist content has fewer fields than an A2A part, so these mappings normalize instead of round-tripping exactly: a text part's media type, and part metadata other than text `citations` and image alternative `text`, are not carried; a data part declaring exactly `application/json` comes back without it; a file part without a media type comes back as an `application/octet-stream` document, so an image with no `mimeType` and a non-data URL returns as a document; an unnamed `image/*` document returns as image content; and a `raw` file whose bytes are already compact JSON returns as a `data` part carrying the same bytes. A file or data part without a filename becomes a document named `document`, because a document name must be non-empty, and that name maps back to no filename; a part whose filename is exactly `document` therefore returns unnamed.
+
+**Key exports:** `toA2AMessage`, `fromA2AMessage`, `toA2AArtifact`, `fromA2AArtifact`, `toA2APart`, `toA2AParts`, `fromA2APart`, `toA2AArtifactReference`, `fromA2AArtifactReference`, `referenceA2AArtifact`, `resolveA2AArtifactReference`, `A2AMappingError`. Type exports: `A2AMessage`, `A2AArtifact`, `A2APart`, `A2ATextPart`, `A2ARawPart`, `A2AUrlPart`, `A2ADataPart`, `A2ARole`, `A2AStruct`, `A2AArtifactReference`, `A2AArtifactCatalog`, `A2AReferenceSource`, `A2AInboundMessage`, `A2AArtifactContent`.
+
 ### Test utilities
 
 Deterministic test environments with fixed clocks and IDs, prebuilt test conversations, and event recorders.
