@@ -257,6 +257,22 @@ describe('typing a query', () => {
   });
 });
 
+describe('disposing', () => {
+  test('with only the typing pause pending, cancels it and runs nothing afterwards', () => {
+    const source = createFakeSource('find');
+    const harness = createHarness(source);
+    harness.inspection.openSearch();
+    harness.inspection.setQuery('find');
+    expect(harness.timer.pending).toBe(1);
+    harness.inspection.dispose();
+    expect(harness.timer.pending).toBe(0);
+    source.reads.length = 0;
+    harness.timer.flush();
+    expect(source.reads).toEqual([]);
+    expect(harness.events).toEqual([]);
+  });
+});
+
 describe('closing the search', () => {
   test('releases the searched text, the matches and the query, so a reopened search starts empty', () => {
     const source = createFakeSource('find find');
@@ -286,13 +302,20 @@ describe('closing the search', () => {
     typed(harness, 'find');
     harness.inspection.next();
     expect(harness.inspection.view.search.match).toBeDefined();
-    const second = createFakeSource('nothing like it', 2);
+    // The new session holds the same text, so the match is at the same offset with the same
+    // context. It is a different session's output, so it is not the same match.
+    const second = createFakeSource('find here', 2);
     harness.source.current = second;
     harness.inspection.sourceChanged();
-    expect(harness.inspection.view.search).toMatchObject({ count: 0, index: undefined });
+    expect(harness.inspection.view.search).toMatchObject({ count: 1, index: undefined });
     expect(harness.inspection.view.search.match).toBeUndefined();
     expect(harness.inspection.view.search.excerpt).toBeUndefined();
     expect(second.selectionClears).toBeGreaterThan(0);
+    expect(second.selections).toEqual([]);
+    // The same session reporting a change keeps its active match.
+    harness.inspection.next();
+    harness.inspection.sourceChanged();
+    expect(harness.inspection.view.search.index).toBe(0);
     harness.source.current = undefined;
     harness.inspection.sourceChanged();
     expect(harness.inspection.view.search.status).toBe('unavailable');

@@ -105,6 +105,8 @@ export function createInspection(options: InspectionOptions): Inspection {
   let cancelPending: (() => void) | undefined;
   let cancelTyping: (() => void) | undefined;
   let selectionFailed = false;
+  // The session the searched text was read from.
+  let searchedGeneration: number | undefined;
   let disposed = false;
   let view: InspectionView;
 
@@ -169,6 +171,7 @@ export function createInspection(options: InspectionOptions): Inspection {
     cancelPending?.();
     cancelPending = undefined;
     const source = currentSource();
+    searchedGeneration = source?.generation;
     // With no query there is nothing to look for, so the retained output is not read at all.
     const projection =
       query === ''
@@ -246,6 +249,9 @@ export function createInspection(options: InspectionOptions): Inspection {
     },
     sourceChanged() {
       if (searchOpen) {
+        // A match belongs to the session it was found in: another session's output at the same
+        // place is a different match, so the old one is forgotten before the new output is read.
+        if (currentSource()?.generation !== searchedGeneration) search.makeUnavailable();
         researchNow();
       }
       publish();

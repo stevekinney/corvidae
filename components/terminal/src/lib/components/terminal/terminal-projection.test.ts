@@ -328,7 +328,26 @@ describe('slices are bounded by bytes before they are materialized (COR-1516)', 
     } finally {
       TextEncoder.prototype.encode = original;
     }
-    expect(Math.max(...encoded)).toBeLessThanOrEqual(16);
+    expect(Math.max(...encoded)).toBeLessThanOrEqual(8);
+  });
+
+  test('a clip drops the astral cell it cut and reads nothing older past it', () => {
+    // One cell per entry, as the engine reports them: a wide emoji is one entry and its
+    // continuation cell is empty.
+    const cells = ['x', '\u{1f600}', '', 'a', 'b', 'c'];
+    const buffer: ProjectionBuffer = {
+      length: 1,
+      getLine: () => ({
+        isWrapped: false,
+        length: cells.length,
+        translateToString: (_trimRight, start = 0, end = cells.length) =>
+          cells.slice(start, end).join(''),
+      }),
+    };
+    const projection = projectBuffer(buffer, 4);
+    expect(projection.text).toBe('abc');
+    expect(projection.truncated).toBe(true);
+    expect(projection.bytes).toBe(3);
   });
 
   test('a clip never leaves half of a surrogate pair', () => {

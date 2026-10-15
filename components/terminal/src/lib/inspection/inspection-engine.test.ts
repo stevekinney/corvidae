@@ -462,6 +462,30 @@ describe('keeping the newest output within the bounds', () => {
   });
 });
 
+describe('the newest content of a line that holds an astral character', () => {
+  test('is never joined across the character a cut dropped', async () => {
+    const { captured, engine } = mounted();
+    await captured.deliver([bytes('x\u{1f600}abc')]);
+    expect(engine.readProjection(4).text).toBe('abc');
+    expect(engine.readProjection(7).text).toBe('\u{1f600}abc');
+  });
+});
+
+describe('a row wider than one slice', () => {
+  test('is read from its end past interior blanks and a wide character near the end', async () => {
+    const { captured, engine } = mounted({ geometry: { columns: 300, rows: 4 } });
+    await captured.deliver([bytes(`next\r\nab${ESC}[280G日x`)]);
+    const interior = ' '.repeat(277);
+    expect(engine.readProjection(SEARCH_TEXT_BYTE_LIMIT).text).toBe(`next\nab${interior}日x`);
+    // The wide row is the newest line and is larger than the bound: its end is kept, from a
+    // whole character, without scanning the blanks before it.
+    expect(engine.readProjection(12).text).toBe(`${' '.repeat(8)}日x`);
+    expect(engine.readProjection(12).truncated).toBe(true);
+    // A line that fits whole is kept whole, and the older line is left out when it does not.
+    expect(engine.readProjection(285).text).toBe(`ab${interior}日x`);
+  });
+});
+
 describe('a retained buffer that starts with a blank line', () => {
   test('exports it whole and not as a truncation', async () => {
     const { captured, engine } = mounted();

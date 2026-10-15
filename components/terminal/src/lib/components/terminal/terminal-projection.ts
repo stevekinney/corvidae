@@ -129,6 +129,9 @@ function readRowTail(
     slices.push(slice);
     bytes += byteLength(slice);
     column = start;
+    // The cells before a clipped slice are not adjacent to what is held: the clip dropped some of
+    // this slice's own text, and reading on would join an older slice across that gap.
+    if (clipped) break;
   }
   return { text: slices.reverse().join(''), bytes, complete: column === 0 && !clipped };
 }
