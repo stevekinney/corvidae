@@ -450,6 +450,10 @@ function createWebSocketRig(options: RigOptions, observed: ObservedProcess): Rig
     },
     stop: async () => {
       await harness.stop();
+      // The client's own socket has seen the close, and the runtime then releases the descriptor
+      // behind it on its next turn; counting descriptors before that would count one still closing.
+      await socketClient.closed;
+      await Bun.sleep(0);
       // The session already cleaned up; this is the safety net, and its failure changes nothing.
       await Promise.allSettled([observed.hosted.backend.cleanup()]);
       return {

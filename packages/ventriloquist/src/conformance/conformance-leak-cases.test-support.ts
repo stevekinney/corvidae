@@ -7,6 +7,28 @@ import {
 } from './conformance.test-support.ts';
 
 const SESSIONS_MEASURED = 6;
+/**
+ * The most event-loop turns the runtime gets to finish releasing descriptors. A socket's descriptor
+ * is closed by a native thread after the JavaScript close event, so the count can still be one
+ * high on the turn a session ends, and no event announces the release. A descriptor that is still
+ * held after this many turns is a leak.
+ */
+const MAXIMUM_RELEASE_TURNS = 1_000;
+
+/** Turns of the event loop until the descriptor count is back at `baseline`, or the bound is spent. */
+export async function settledDescriptorCount(
+  baseline: number,
+  maximumTurns = MAXIMUM_RELEASE_TURNS,
+): Promise<{ count: number; turns: number }> {
+  let turns = 0;
+  let count: number;
+  do {
+    await Bun.sleep(0);
+    count = openDescriptorCount();
+    turns += 1;
+  } while (count > baseline && turns < maximumTurns);
+  return { count, turns };
+}
 
 /**
  * Descriptors held by this process before and after a run of complete sessions. One session runs
@@ -28,12 +50,12 @@ export async function descriptorStability(
     const result = await runCell(stop, path, mode, scratch);
     failedChecks += result.checks.filter((entry) => !entry.ok).length;
   }
-  const after = openDescriptorCount();
+  const { count: after, turns } = await settledDescriptorCount(before);
   return {
     checks: [
       check(`${SESSIONS_MEASURED} sessions each ended with complete cleanup`, failedChecks === 0),
       check(
-        `descriptors returned to the starting count (${before} before, ${after} after)`,
+        `descriptors returned to the starting count (${before} before, ${after} after, settled in ${turns} turns)`,
         after <= before,
       ),
     ],

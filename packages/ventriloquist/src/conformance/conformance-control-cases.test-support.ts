@@ -13,6 +13,7 @@ import {
   textOn,
   type CaseDefinition,
 } from './conformance-cases.test-support.ts';
+import { settledDescriptorCount } from './conformance-leak-cases.test-support.ts';
 import { check, openDescriptorCount } from './conformance.test-support.ts';
 
 const CAT_WITH_PID = 'printf \'leader=%s \' "$$"; exec cat';
@@ -248,7 +249,10 @@ const leakDetectors: CaseDefinition = {
     const descriptorsBefore = openDescriptorCount();
     const descriptor = openSync('/dev/null', 'r');
     const descriptorsHeld = openDescriptorCount();
+    // Waiting for a release must not hide a descriptor that is never released.
+    const stillHeld = await settledDescriptorCount(descriptorsBefore, 3);
     closeSync(descriptor);
+    const released = await settledDescriptorCount(descriptorsBefore, 3);
     const descriptorsAfter = openDescriptorCount();
     rig.client.sendResult(rig.client.endpoint.terminate());
     await conclude(rig);
@@ -259,6 +263,14 @@ const leakDetectors: CaseDefinition = {
       ),
       check('a held descriptor is counted', descriptorsHeld === descriptorsBefore + 1),
       check('a closed descriptor is no longer counted', descriptorsAfter === descriptorsBefore),
+      check(
+        'the wait for a release gives up on a descriptor that stays held',
+        stillHeld.count === descriptorsHeld && stillHeld.turns === 3,
+      ),
+      check(
+        'and ends on the first turn once it is released',
+        released.count === descriptorsBefore && released.turns === 1,
+      ),
       check('a running process is seen as alive', isAlive(globalThis.process.pid)),
       check('a process that does not exist is seen as gone', !isAlive(0x7ffffffe)),
     ];
