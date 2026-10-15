@@ -212,3 +212,55 @@ It ran ungated, at 1-minute load 174 (start) and 180 to 196 (checkpoints), on th
 - **Reading of the gated run's rise**: the +31.4 MB resident rise in `diagnostic-rebuild.json` is smaller than the 300 MB swings the same allocator region shows from one edit to the next. That fits pages being reused and released lazily, not a retained owner.
 
 Every series is bounded or allocator behaviour, so there is no owner to file against. If edit sessions grow far beyond 20 saves, a longer `footprint` run is the next check, and the JIT region is the one to watch.
+
+## CIN-588: shared page graphs in garbage-collected batches
+
+Status: selected and implemented. CIN-585 named a memory-gated shared page graph as CIN-588's mechanism. CIN-588 measured it as candidate B24 against a fresh baseline, and the unchanged selection rule selected it on all eight observations. The raw results, both candidate files, and the measured patch are in `cin-588-results/`.
+
+### Candidate
+
+B24 replaces one `Bun.build` per documentation page with shared multi-entry graphs of 24 page entries each. A forced collection (`collectCoordinatedGarbage`) runs between batches, in both the server's eager prebuild and the static export. Each page keeps its own content-hashed entry and publishes with its batch's shared chunks under the existing per-page owners and generation check. The lazy single-page path is unchanged, and so are the 181 featured-example builds, which run in their own processes. The lost CIN-585 patch was not recovered; B24 was written from this document's description and differs from it in batching and in the collection between batches. The measured diff is `cin-588-results/candidate-b24.patch` (SHA-256 `6c608f9aeaf4e499959046725eff229d1d0caed94d76c3a62b1cf80efd8e02bd`). It was captured right after the run, without touching the index, applies with `git apply --check` to a clean worktree at H', and the applied tree's fingerprint equals the one recorded in `candidate-b24.json`.
+
+### Harness revisions
+
+- **H, `446fd706`**: CIN-588's five harness fixes, each test-first.
+  - Output exclusion: the run's `--output` directory and work directory are left out of the source fingerprint.
+  - A required normalized child environment under result schema `/2`. Every variable the Playground's configuration reader registers is removed from measured children, which then get only what each phase sets. A guard test fails if the reader registers a variable the list misses.
+  - `compare` refuses results whose primary samples left processes running.
+  - Installed versions are recorded after the `bun install` prerequisite.
+  - A record-only load gate. Nothing waits for host load. The process-tree observer reads `kern.memorystatus_vm_pressure_level` on every 100 ms tick. A primary memory observation above normal pressure, or with no reading at all, fails the run and is refused by `compare`; treating a missing reading as flagged was accepted by the coordinator.
+- **H', `6c179062`**: the server-readiness censor rose from 300 s to 900 s, owner-approved on 2026-10-15. On the contended host, baseline readiness ran past 300 s at a 1-minute load as low as 45.6 to 61, against 102 to 124 s on a quiet host in CIN-585. The cause is CPU contention, not a hang, and the cutoff is a measurement censor, not a test gate. It changed for baseline and candidate alike, the actual readiness time is recorded, and a sample still not ready after 900 s fails. The production gate and test timeouts are unchanged.
+
+Schema `/2` means `compare` now refuses CIN-585's `/1` results by design. CIN-585's decision stands on its own committed evidence.
+
+### Attempts
+
+| File | Revision | Kept because |
+| --- | --- | --- |
+| `baseline-h-attempt-1.json` | H | The session restart killed the run after six exports. Its one readiness sample missed the old 300 s cutoff at load 45.6. Discarded as incomplete. |
+| `baseline-h-attempt-2.json` | H | Stopped when the cutoff decision was made. Four readiness samples had missed 300 s at loads 58.6 to 141.3. Discarded because H' changed `sourceSha`. |
+| `baseline.json` | H' | First H' attempt. Valid: no failure, survivor, or pressure flag. |
+| `candidate-b24.json` | H' plus `candidate-b24.patch` | First attempt. Valid on the same checks. |
+
+No result was flagged for memory pressure: every sample in every attempt peaked at level 1. Because B24 was selected, the smaller-batch retry was not measured.
+
+### Results
+
+Both runs used three cold/warm pairs; the bands are the observed [min, max].
+
+| Observation | Baseline (H') | B24 |
+| --- | --- | --- |
+| Static export, cold | 874.7 to 2,083.7 s, median 1,633.3 | 347.9 to 359.7 s, median 349.5 |
+| Static export, warm | 646.9 to 1,757.0 s, median 1,485.9 | 329.8 to 353.5 s, median 334.6 |
+| Export tree peak, cold | 4.79 to 5.12 GB | 3.45 to 3.53 GB |
+| Export tree peak, warm | 4.85 to 5.81 GB | 3.47 to 3.52 GB |
+| Spawn to ready, cold | 213.6 to 268.2 s | 20.7 to 26.0 s |
+| Spawn to ready, warm | 215.4 to 285.6 s | 20.4 to 41.4 s |
+| Server tree until ready, cold | 3.69 to 4.08 GB | 3.15 to 3.28 GB |
+| Server tree until ready, warm | 3.81 to 4.00 GB | 3.10 to 3.14 GB |
+| Exporter CPU time | 1,215 to 1,312 s | 654 to 675 s |
+| Emitted output | 4,220 files, 292.9 MB | 3,091 files, 77.4 MB |
+
+`compare` printed `SELECT candidate`: every observation's candidate maximum is below its baseline minimum (`cin-588-results/comparison-b24.json`). Both memory observations that blocked CIN-585's single build now pass with room. The cold server tree peaks at 3.28 GB against a baseline minimum of 3.69 GB, and the warm export tree at 3.52 GB against 4.85 GB.
+
+Host load was recorded, not waited on. The baseline started at 1-minute loads of 13.2 to 208.3 and B24 at 17.3 to 82.2, so the baseline's wall times are inflated more than B24's. The decision does not rest on wall time. Exporter CPU time roughly halves (1,215 to 1,312 s against 654 to 675 s), and the memory observations track the work, not the load. Every sample of both runs was at memory-pressure level 1, with at least 75 percent of memory available.
