@@ -11,6 +11,7 @@ import {
   type EvidenceCell,
   type EvidenceReport,
 } from '../../../../scripts/terminal/evidence-schema.ts';
+import { REQUIRED_CELL_NAMES } from '../../scripts/check-conformance-hosts.ts';
 import { scenarioTest, settleScenarios } from '../bun/bun-process.test-support.ts';
 import {
   REQUIRED_CORPUS_FIXTURE_IDS,
@@ -111,6 +112,9 @@ const definitions = new Map(
 );
 
 const scratch = mkdtempSync(join(tmpdir(), 'ventriloquist-conformance-'));
+// A report left by an earlier run must never be mistaken for this one's, even if this run dies first.
+rmSync(reportPath, { force: true });
+
 const results = new Map<string, CellResult>();
 
 afterAll(() => {
@@ -241,29 +245,7 @@ describe('the conformance matrix', () => {
 
   test('covers every case the issue lists, on both paths and in both modes', () => {
     const covered = EXPECTED_CELL_IDS.join(' ');
-    for (const required of [
-      'spawn-failure',
-      'exit-before-attach',
-      'output-after-exit-before-eof',
-      'eof-without-exit',
-      'authority-expiry',
-      'lost-acknowledgement',
-      'server-shutdown',
-      'stubborn-descendants',
-      'stale-generation',
-      'output-overflow',
-      'owned-source-release',
-      'borrowed-source-unsubscribe',
-      'failing-cancellation',
-      'hanging-cancellation',
-      'control-corrupted-frame',
-      'control-over-budget-frame',
-      'control-unknown-cleanup',
-      'control-missing-parse-completion',
-      'control-late-callback-after-close',
-      'control-revoked-input-during-paste',
-      'descriptor-stability',
-    ]) {
+    for (const required of REQUIRED_CELL_NAMES) {
       expect(covered, required).toContain(required);
     }
     for (const path of TRANSPORT_PATHS) {

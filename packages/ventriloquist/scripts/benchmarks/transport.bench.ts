@@ -13,7 +13,7 @@ import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -72,6 +72,9 @@ const cleanupTarget: Target = {
   comparator: 'lte',
   value: TARGETS.cleanupMilliseconds,
 };
+
+// A report left by an earlier run must never be mistaken for this one's, even if this run dies first.
+rmSync(reportPath, { force: true });
 
 // Each measurement drives real sockets and processes, one after another, off Bun's per-test clock.
 const cells: BenchmarkCell[] = [
