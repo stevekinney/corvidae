@@ -1,6 +1,6 @@
 import type { ClearScope } from '../components/terminal/terminal-engine-adapter.ts';
 import { scheduleFitOnNextFrame, type FitScheduler } from '../components/terminal/terminal-fit.ts';
-import { buildTextExport, textSaver, type TextExport } from './export.ts';
+import { buildTextExport, textSaver } from './export.ts';
 import {
   RETAINED_READ_CEILING,
   SEARCH_TEXT_BYTE_LIMIT,
@@ -24,22 +24,16 @@ export type SnapshotView = {
   linksActive: boolean;
 };
 
-export type ExportView = {
-  result: TextExport;
-};
-
 export type InspectionView = {
   /** An engine is mounted and readable, so inspection can act. */
   available: boolean;
   searchOpen: boolean;
   query: string;
   search: SearchView;
-  /** The accessible output dialog is open. */
+  /** The export dialog (the snapshot, with Download) is open. */
   snapshotOpen: boolean;
   /** Held from capture until the dialog has fully closed, then released. */
   snapshot: SnapshotView | undefined;
-  exportOpen: boolean;
-  export: ExportView | undefined;
   /** The host enabled links, so the snapshot lists addresses. */
   linksEnabled: boolean;
 };
@@ -68,15 +62,14 @@ export type Inspection = {
   next(): void;
   previous(): void;
   openSnapshot(): void;
-  refreshSnapshot(): void;
+  /** Recapture the same live session. `false`, announcing it, when it cannot be recaptured. */
+  refreshSnapshot(): boolean;
   closeSnapshot(): void;
   /** The dialog finished closing: drop the captured text. */
   releaseSnapshot(): void;
   activateLink(url: string): void;
-  prepareExport(): void;
+  /** Save the plain-text file that was taken with the snapshot, exactly as it was described. */
   downloadExport(): void;
-  cancelExport(): void;
-  releaseExport(): void;
   clear(scope: ClearScope): void;
   dispose(): void;
 };
@@ -96,8 +89,6 @@ export function createInspection(options: InspectionOptions): Inspection {
   let snapshot: Snapshot | undefined;
   let snapshotOpen = false;
   let stale = false;
-  let exported: TextExport | undefined;
-  let exportOpen = false;
   let cancelPending: (() => void) | undefined;
   let disposed = false;
   let view: InspectionView;
@@ -136,8 +127,6 @@ export function createInspection(options: InspectionOptions): Inspection {
       search: search.view,
       snapshotOpen,
       snapshot: snapshotView(),
-      exportOpen,
-      export: exported === undefined ? undefined : { result: exported },
       linksEnabled: options.readActivateLink() !== undefined,
     };
   }
@@ -148,6 +137,18 @@ export function createInspection(options: InspectionOptions): Inspection {
   }
   view = compute();
 
+  /** Keep the terminal's selection on the active match, or drop it when there is none. */
+  function syncSelection(select: boolean): void {
+    const source = currentSource();
+    if (source === undefined) return;
+    const match = search.view.match;
+    if (searchOpen && match !== undefined) {
+      if (select) source.selectMatch(match, SEARCH_TEXT_BYTE_LIMIT);
+    } else {
+      source.clearMatchSelection();
+    }
+  }
+
   function researchNow(): void {
     cancelPending?.();
     cancelPending = undefined;
@@ -155,6 +156,7 @@ export function createInspection(options: InspectionOptions): Inspection {
     const projection = source?.readProjection(SEARCH_TEXT_BYTE_LIMIT);
     if (projection === undefined) search.makeUnavailable();
     else search.update(projection.text, projection.truncated);
+    syncSelection(false);
   }
 
   function scheduleResearch(): void {
@@ -188,6 +190,7 @@ export function createInspection(options: InspectionOptions): Inspection {
     if (cancelPending !== undefined) researchNow();
     if (direction === 'next') search.next();
     else search.previous();
+    syncSelection(true);
     const found = search.view;
     emit({ kind: 'navigate', direction, wrapped: found.wrapped, matches: found.count });
     publish();
@@ -195,8 +198,9 @@ export function createInspection(options: InspectionOptions): Inspection {
 
   function captureNow(source: InspectionSource): boolean {
     const projection = source.readProjection(SNAPSHOT_BYTE_LIMIT);
-    if (projection === undefined) return false;
-    snapshot = captureSnapshot(projection, source.generation);
+    const retained = source.readProjection(RETAINED_READ_CEILING);
+    if (projection === undefined || retained === undefined) return false;
+    snapshot = captureSnapshot(projection, source.generation, buildTextExport(retained));
     stale = false;
     return true;
   }
@@ -231,6 +235,7 @@ export function createInspection(options: InspectionOptions): Inspection {
     closeSearch() {
       searchOpen = false;
       cancelResearch();
+      syncSelection(false);
       publish();
     },
     setQuery(next) {
@@ -254,7 +259,12 @@ export function createInspection(options: InspectionOptions): Inspection {
         truncated: taken.truncated,
         stale: false,
       });
-      options.announce(taken.truncated ? 'Terminal snapshot truncated' : 'Terminal snapshot ready');
+      // The download is part of what opens, so its truncation is announced with the snapshot's.
+      options.announce(
+        taken.truncated || taken.export.truncated
+          ? 'Terminal snapshot truncated'
+          : 'Terminal snapshot ready',
+      );
       publish();
     },
     refreshSnapshot() {
@@ -265,7 +275,8 @@ export function createInspection(options: InspectionOptions): Inspection {
         source.generation !== snapshot.generation ||
         !captureNow(source)
       ) {
-        return;
+        options.announce('Terminal snapshot stale');
+        return false;
       }
       const taken = snapshot;
       emit({
@@ -277,6 +288,7 @@ export function createInspection(options: InspectionOptions): Inspection {
       });
       options.announce('Terminal snapshot refreshed');
       publish();
+      return true;
     },
     closeSnapshot() {
       if (!snapshotOpen) return;
@@ -315,27 +327,9 @@ export function createInspection(options: InspectionOptions): Inspection {
         // The host's handler failing is the host's; the session and the dialog are unaffected.
       }
     },
-    prepareExport() {
-      const projection = currentSource()?.readProjection(RETAINED_READ_CEILING);
-      if (projection === undefined) return;
-      exported = buildTextExport(projection);
-      exportOpen = true;
-      emit({
-        kind: 'export',
-        action: 'prepare',
-        exportedBytes: exported.exportedBytes,
-        retainedBytes: exported.retainedBytes,
-        truncated: exported.truncated,
-      });
-      options.announce(
-        exported.truncated ? 'Terminal snapshot truncated' : 'Terminal snapshot ready',
-      );
-      publish();
-    },
     downloadExport() {
-      const prepared = exported;
-      if (!exportOpen || prepared === undefined) return;
-      exportOpen = false;
+      const prepared = snapshot?.export;
+      if (!snapshotOpen || prepared === undefined) return;
       emit({
         kind: 'export',
         action: 'download',
@@ -343,26 +337,7 @@ export function createInspection(options: InspectionOptions): Inspection {
         retainedBytes: prepared.retainedBytes,
         truncated: prepared.truncated,
       });
-      publish();
       textSaver.save(prepared.text);
-    },
-    cancelExport() {
-      const prepared = exported;
-      if (!exportOpen || prepared === undefined) return;
-      exportOpen = false;
-      emit({
-        kind: 'export',
-        action: 'cancel',
-        exportedBytes: prepared.exportedBytes,
-        retainedBytes: prepared.retainedBytes,
-        truncated: prepared.truncated,
-      });
-      publish();
-    },
-    releaseExport() {
-      if (exportOpen) return;
-      exported = undefined;
-      publish();
     },
     clear(scope) {
       const source = currentSource();
@@ -379,7 +354,6 @@ export function createInspection(options: InspectionOptions): Inspection {
       disposed = true;
       cancelResearch();
       snapshot = undefined;
-      exported = undefined;
       listeners.clear();
     },
   };

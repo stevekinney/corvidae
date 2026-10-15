@@ -220,6 +220,8 @@
             generation: (nextGeneration += 1),
             readProjection: (maximumBytes) => attachment.readProjection(maximumBytes),
             clear: (scope, done) => attachment.clear(scope, done),
+            selectMatch: (match, maximumBytes) => attachment.selectMatch(match, maximumBytes),
+            clearMatchSelection: () => attachment.clearMatchSelection(),
           };
         },
         onContentChange: () => inspection.contentChanged(),

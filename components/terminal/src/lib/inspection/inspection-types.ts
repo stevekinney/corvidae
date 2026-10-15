@@ -41,6 +41,10 @@ export type InspectionSource = {
    */
   readonly generation: number;
   readProjection(maximumBytes: number): TerminalProjection | undefined;
+  /** Select a search match in the terminal without scrolling or moving focus. */
+  selectMatch(match: { start: number; end: number; text: string }, maximumBytes: number): boolean;
+  /** Drop the selection a search made. */
+  clearMatchSelection(): void;
   /** Clear the local buffer in order behind received output. `false` when there is no engine. */
   clear(scope: ClearScope, done: () => void): boolean;
 };
@@ -62,7 +66,7 @@ export type InspectionEvent =
     }
   | {
       kind: 'export';
-      action: 'prepare' | 'download' | 'cancel';
+      action: 'download';
       exportedBytes: number;
       retainedBytes: number;
       truncated: boolean;

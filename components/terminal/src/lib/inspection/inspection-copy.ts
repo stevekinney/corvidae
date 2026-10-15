@@ -43,17 +43,17 @@ export function describeSearch(view: SearchView): string {
       break;
   }
   return view.truncated
-    ? `${message} Only the first ${number(SEARCH_TEXT_BYTE_LIMIT)} bytes were searched.`
+    ? `${message} Only the most recent ${number(SEARCH_TEXT_BYTE_LIMIT)} bytes were searched.`
     : message;
 }
 
-/** The notices above a snapshot: empty, truncated, stale, replaced. */
+/** The notices above a snapshot: empty, truncated, stale, replaced, and what Download will save. */
 export function describeSnapshot(shown: SnapshotView): string[] {
   const notices: string[] = [];
   if (shown.snapshot.text === '') notices.push('No retained output.');
   if (shown.snapshot.truncated) {
     notices.push(
-      `Snapshot truncated: the first ${number(shown.snapshot.bytes)} bytes are shown. The terminal keeps at most ${number(SCROLLBACK_LINES)} lines.`,
+      `Snapshot truncated: earlier output was omitted. The most recent ${number(shown.snapshot.bytes)} bytes are shown. The terminal keeps at most ${number(SCROLLBACK_LINES)} lines.`,
     );
   }
   if (shown.replaced) {
@@ -61,13 +61,14 @@ export function describeSnapshot(shown: SnapshotView): string[] {
   } else if (shown.stale) {
     notices.push('Snapshot stale: the terminal has changed since it was taken.');
   }
+  notices.push(describeExport(shown.snapshot.export));
   return notices;
 }
 
-/** What the export dialog says before anything is saved. */
+/** What Download will save, stated before anything is saved. */
 export function describeExport(result: TextExport): string {
   if (!result.truncated) {
-    return `Export ready: ${number(result.exportedBytes)} bytes of plain text.`;
+    return `Download ready: ${number(result.exportedBytes)} bytes of plain text.`;
   }
-  return `Export truncated: ${number(result.exportedBytes)} of at least ${number(result.retainedBytes)} retained bytes. The file stops at the export limit of ${number(EXPORT_BYTE_LIMIT)} bytes or ${number(EXPORT_LINE_LIMIT)} lines, at a whole character, and nothing is added to mark the cut.`;
+  return `Download truncated: earlier output was omitted. The file holds the most recent ${number(result.exportedBytes)} of at least ${number(result.retainedBytes)} retained bytes, within the limit of ${number(EXPORT_BYTE_LIMIT)} bytes or ${number(EXPORT_LINE_LIMIT)} lines, cut at a whole line or character. Nothing is added to the file to mark the cut.`;
 }

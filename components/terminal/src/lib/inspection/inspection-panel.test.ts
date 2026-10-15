@@ -81,8 +81,8 @@ function click(target: HTMLElement, harness: MountedHarness): void {
 }
 
 async function openSnapshot(harness: MountedHarness): Promise<HTMLTextAreaElement> {
-  click(button('Accessible output', harness.target), harness);
-  await waitFor(() => dialog() !== null, 'the accessible output');
+  click(button('Export', harness.target), harness);
+  await waitFor(() => dialog() !== null, 'the export dialog');
   return required<HTMLTextAreaElement>(dialog()!, 'textarea');
 }
 
@@ -121,14 +121,7 @@ describe('the toolbar', () => {
     const labels = [
       ...required(harness.target, '.cinder-terminal__inspection').querySelectorAll('button'),
     ].map((candidate) => candidate.textContent?.trim());
-    expect(labels).toEqual([
-      'Search',
-      'Accessible output',
-      'Export',
-      'Clear screen',
-      'Clear history',
-      'Reset terminal',
-    ]);
+    expect(labels).toEqual(['Search', 'Export', 'Clear screen', 'Clear history', 'Reset terminal']);
     expect(button('Export', harness.target).className).toContain('cinder-button');
     expect(
       required(harness.target, '.cinder-terminal__inspection').getAttribute('aria-label'),
@@ -319,7 +312,7 @@ describe('accessible output', () => {
     await send(controller, 'first line\r\nsecond line');
     const field = await openSnapshot(harness);
     expect(dialog()!.getAttribute('role') ?? 'dialog').toBe('dialog');
-    expect(dialog()!.textContent).toContain('Terminal accessible output');
+    expect(dialog()!.textContent).toContain('Export terminal output');
     expect(field.readOnly).toBe(true);
     expect(field.value).toBe('first line\nsecond line');
     expect(dialog()!.querySelector(`label[for="${field.id}"]`)?.textContent).toContain(
@@ -361,8 +354,10 @@ describe('accessible output', () => {
     const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
     await send(controller, `${'x'.repeat(39)}\r\n`.repeat(2000));
     await openSnapshot(harness);
-    expect(dialog()!.textContent).toContain('Snapshot truncated');
-    expect(dialog()!.textContent).toContain('65,536 bytes');
+    expect(dialog()!.textContent).toContain('Snapshot truncated: earlier output was omitted');
+    expect(dialog()!.textContent).toContain('The most recent');
+    const kept = required<HTMLTextAreaElement>(dialog()!, 'textarea').value;
+    expect(new TextEncoder().encode(kept).length).toBeLessThanOrEqual(65_536);
     expect(dialog()!.textContent).toContain('10,000 lines');
   });
 
@@ -370,7 +365,7 @@ describe('accessible output', () => {
     const controller = wired();
     const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
     await send(controller, 'private text');
-    const trigger = button('Accessible output', harness.target);
+    const trigger = button('Export', harness.target);
     await openSnapshot(harness);
     await closeDialog(harness, 'Close');
     expect(document.activeElement).toBe(trigger);
@@ -541,62 +536,80 @@ describe('links', () => {
 });
 
 describe('export', () => {
-  test('shows what will be saved, then saves it as plain text on Download', async () => {
+  test('states what Download will save before it saves it, then saves exactly that as plain text', async () => {
     const controller = wired();
     const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
     await send(controller, 'build ok\r\ndone');
-    const trigger = button('Export', harness.target);
-    click(trigger, harness);
-    await waitFor(() => dialog() !== null, 'the export dialog');
-    expect(dialog()!.textContent).toContain('Export ready: 13 bytes of plain text.');
+    await openSnapshot(harness);
+    expect(dialog()!.textContent).toContain('Download ready: 13 bytes of plain text.');
     expect(saved).toEqual([]);
-    await closeDialog(harness, 'Download');
+    await send(controller, '\r\nlater');
+    button('Download', dialog()!).click();
     expect(saved).toEqual(['build ok\ndone']);
-    expect(document.activeElement).toBe(trigger);
+    // The dialog stays open: Download is one of its actions, next to Refresh, Copy and Close.
+    expect(dialog()).not.toBeNull();
   });
 
-  test('Cancel saves nothing and restores focus', async () => {
+  test('Close restores focus to Export and saves nothing', async () => {
     const controller = wired();
     const harness = await mountReady({ title: 'Shell', state: 'read-only', controller });
     await send(controller, 'text');
     const trigger = button('Export', harness.target);
-    click(trigger, harness);
-    await waitFor(() => dialog() !== null, 'the export dialog');
-    await closeDialog(harness, 'Cancel');
+    await openSnapshot(harness);
+    await closeDialog(harness, 'Close');
     expect(saved).toEqual([]);
     expect(document.activeElement).toBe(trigger);
   });
 
-  test('Escape cancels the export', async () => {
+  test('Escape closes it without saving', async () => {
     const harness = await mountReady({ title: 'Shell', state: 'read-only', controller: wired() });
-    click(button('Export', harness.target), harness);
-    await waitFor(() => dialog() !== null, 'the export dialog');
+    await openSnapshot(harness);
     dialog()!.dispatchEvent(new Event('cancel', { cancelable: true }));
     await waitFor(() => dialog() === null, 'the dialog to close');
     expect(saved).toEqual([]);
   });
 
-  test('announces truncation before anything is saved, and puts no marker in the content', async () => {
+  test('Refresh keeps focus on Refresh', async () => {
+    const controller = wired();
+    const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
+    await send(controller, 'one');
+    await openSnapshot(harness);
+    await send(controller, ' two');
+    const refresh = button('Refresh', dialog()!);
+    refresh.focus();
+    refresh.click();
+    harness.flush();
+    await waitFor(
+      () => required<HTMLTextAreaElement>(dialog()!, 'textarea').value === 'one two',
+      'the refreshed text',
+    );
+    expect(document.activeElement).toBe(refresh);
+    button('Download', dialog()!).click();
+    expect(saved).toEqual(['one two']);
+  });
+
+  test('states the truncation before download, keeps the newest lines, and puts no marker in the file', async () => {
     const controller = wired();
     const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
     const lines = Array.from({ length: 10_100 }, (_, index) => `n${index}`);
     await send(controller, lines.join('\r\n'));
-    click(button('Export', harness.target), harness);
-    await waitFor(() => dialog() !== null, 'the export dialog');
-    expect(dialog()!.textContent).toContain('Export truncated');
+    await openSnapshot(harness);
+    expect(dialog()!.textContent).toContain('Download truncated: earlier output was omitted.');
     expect(dialog()!.textContent).toContain('10,000 lines');
     expect(saved).toEqual([]);
     await waitFor(
       () => announcement(harness) === 'Terminal snapshot truncated',
       'the announcement',
     );
-    await closeDialog(harness, 'Download');
+    button('Download', dialog()!).click();
     expect(saved).toHaveLength(1);
     const text = saved[0]!;
-    expect(text.split('\n')).toHaveLength(10_000);
+    const kept = text.split('\n');
+    expect(kept).toHaveLength(10_000);
+    expect(kept[0]).toBe('n100');
+    expect(kept.at(-1)).toBe('n10099');
     expect(text).not.toContain('\r');
-    expect(text).not.toContain('truncated');
-    expect(text.startsWith('n')).toBe(true);
+    expect(text).not.toContain('omitted');
   });
 });
 
@@ -659,9 +672,9 @@ describe('what inspection never does', () => {
     await openSnapshot(harness);
     button('Refresh', dialog()!).click();
     await closeDialog(harness, 'Close');
-    click(button('Export', harness.target), harness);
-    await waitFor(() => dialog() !== null, 'export');
-    await closeDialog(harness, 'Download');
+    await openSnapshot(harness);
+    button('Download', dialog()!).click();
+    await closeDialog(harness, 'Close');
     button('Clear screen', harness.target).click();
     button('Clear history', harness.target).click();
     button('Reset terminal', harness.target).click();
@@ -711,10 +724,8 @@ describe('metrics', () => {
     await openSnapshot(harness);
     button('https://secret.example/token', dialog()!).click();
     throwing = true;
+    button('Download', dialog()!).click();
     await closeDialog(harness, 'Close');
-    click(button('Export', harness.target), harness);
-    await waitFor(() => dialog() !== null, 'export');
-    await closeDialog(harness, 'Download');
     expect(saved).toEqual(['password=hunter2 https://secret.example/token']);
     const recorded = JSON.stringify(events);
     expect(recorded).not.toContain('hunter2');
@@ -725,9 +736,8 @@ describe('metrics', () => {
       'navigate',
       'snapshot',
       'link',
+      'export',
       'snapshot',
-      'export',
-      'export',
     ]);
     // Output order is untouched by a failing observer.
     await send(controller, ' tail');

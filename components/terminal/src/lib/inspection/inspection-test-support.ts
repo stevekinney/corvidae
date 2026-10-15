@@ -14,6 +14,10 @@ export type FakeSource = InspectionSource & {
   gone: boolean;
   reads: number[];
   clears: ClearScope[];
+  selections: Array<{ start: number; end: number; text: string }>;
+  selectionClears: number;
+  /** What `selectMatch` answers. */
+  selectable: boolean;
   /** Hold `done` callbacks until the test releases them, as a busy write queue does. */
   deferClears: boolean;
   pendingDone: Array<() => void>;
@@ -27,6 +31,9 @@ export function createFakeSource(text = '', generation = 1): FakeSource {
     gone: false,
     reads: [],
     clears: [],
+    selections: [],
+    selectionClears: 0,
+    selectable: true,
     deferClears: false,
     pendingDone: [],
     readProjection(maximumBytes): TerminalProjection | undefined {
@@ -36,7 +43,15 @@ export function createFakeSource(text = '', generation = 1): FakeSource {
         text: source.text,
         truncated: source.truncated,
         bytes: encoder.encode(source.text).length,
+        lines: [],
       };
+    },
+    selectMatch(match) {
+      source.selections.push(match);
+      return source.selectable;
+    },
+    clearMatchSelection() {
+      source.selectionClears += 1;
     },
     clear(scope, done) {
       source.clears.push(scope);

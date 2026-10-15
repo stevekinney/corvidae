@@ -101,6 +101,13 @@ export type TerminalAttachment = {
    * runs once the clear has been applied.
    */
   clear(scope: ClearScope, done?: () => void): boolean;
+  /**
+   * Select a search match in the terminal, leaving the scroll position and focus alone. `false`
+   * when there is no live engine or the match cannot be placed exactly.
+   */
+  selectMatch(match: { start: number; end: number; text: string }, maximumBytes: number): boolean;
+  /** Drop the selection a search made. */
+  clearMatchSelection(): void;
   /** Release the engine, listeners, observers, scheduled work, and the output subscription. */
   dispose(): void;
 };
@@ -371,6 +378,16 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
       return engine?.following ?? true;
     },
     readProjection: (maximumBytes) => engine?.readProjection(maximumBytes),
+    selectMatch(match, maximumBytes) {
+      let selected = false;
+      guarded('render', () => {
+        selected = engine?.selectMatch(match, maximumBytes) ?? false;
+      });
+      return selected;
+    },
+    clearMatchSelection() {
+      guarded('render', () => engine?.clearMatchSelection());
+    },
     clear(scope, done) {
       if (engine === undefined) return false;
       const live = engine;

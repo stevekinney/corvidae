@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { textSaver } from './export.ts';
 import { createFakeSource, createHarness } from './inspection-test-support.ts';
-import { SEARCH_TEXT_BYTE_LIMIT, SNAPSHOT_BYTE_LIMIT } from './inspection-types.ts';
+import {
+  RETAINED_READ_CEILING,
+  SEARCH_TEXT_BYTE_LIMIT,
+  SNAPSHOT_BYTE_LIMIT,
+} from './inspection-types.ts';
 
 const originalSave = textSaver.save;
 const saved: string[] = [];
@@ -185,7 +189,7 @@ describe('the snapshot', () => {
     const source = createFakeSource('hello');
     const harness = createHarness(source);
     harness.inspection.openSnapshot();
-    expect(source.reads).toEqual([SNAPSHOT_BYTE_LIMIT]);
+    expect(source.reads).toEqual([SNAPSHOT_BYTE_LIMIT, RETAINED_READ_CEILING]);
     const shown = harness.inspection.view.snapshot!;
     expect(shown.snapshot.text).toBe('hello');
     expect(shown).toMatchObject({ stale: false, replaced: false, refreshable: true });
@@ -193,6 +197,21 @@ describe('the snapshot', () => {
     expect(harness.events).toEqual([
       { kind: 'snapshot', action: 'open', bytes: 5, truncated: false, stale: false },
     ]);
+  });
+
+  test('a truncated download is announced even when the snapshot itself fits', () => {
+    const source = createFakeSource('x');
+    const original = source.readProjection;
+    source.readProjection = (maximumBytes) => {
+      const projection = original(maximumBytes);
+      return projection === undefined || maximumBytes !== RETAINED_READ_CEILING
+        ? projection
+        : { ...projection, truncated: true };
+    };
+    const harness = createHarness(source);
+    harness.inspection.openSnapshot();
+    expect(harness.inspection.view.snapshot!.snapshot.truncated).toBe(false);
+    expect(harness.announcements).toEqual(['Terminal snapshot truncated']);
   });
 
   test('an empty terminal gives an empty snapshot', () => {
@@ -276,19 +295,21 @@ describe('the snapshot', () => {
     expect(harness.events.at(-1)).toEqual({ kind: 'link', action: 'refuse' });
   });
 
-  test('refresh does nothing when there is no snapshot, no source, or the engine vanished', () => {
+  test('a refresh that cannot recapture changes nothing, reports false, and says the snapshot is stale', () => {
     const source = createFakeSource('x');
     const harness = createHarness(source);
-    harness.inspection.refreshSnapshot();
-    expect(harness.events).toEqual([]);
+    expect(harness.inspection.refreshSnapshot()).toBe(false);
     harness.inspection.openSnapshot();
+    const first = harness.inspection.view.snapshot!.snapshot;
     source.gone = true;
     harness.events.length = 0;
-    harness.inspection.refreshSnapshot();
-    expect(harness.events).toEqual([]);
+    harness.announcements.length = 0;
+    expect(harness.inspection.refreshSnapshot()).toBe(false);
     harness.source.current = undefined;
-    harness.inspection.refreshSnapshot();
+    expect(harness.inspection.refreshSnapshot()).toBe(false);
     expect(harness.events).toEqual([]);
+    expect(harness.announcements).toEqual(['Terminal snapshot stale', 'Terminal snapshot stale']);
+    expect(harness.inspection.view.snapshot!.snapshot).toBe(first);
   });
 
   test('closing keeps the text until the dialog has gone, then releases it', () => {
@@ -384,35 +405,32 @@ describe('links', () => {
 });
 
 describe('export', () => {
-  test('prepares a result and announces truncation before anything is saved', () => {
+  test('is taken with the snapshot, so its size and truncation are known before anything is saved', () => {
     const source = createFakeSource('line one\nline two');
     source.truncated = true;
     const harness = createHarness(source);
-    harness.inspection.prepareExport();
+    harness.inspection.openSnapshot();
     expect(saved).toEqual([]);
-    expect(harness.announcements).toEqual(['Terminal snapshot truncated']);
-    expect(harness.inspection.view.exportOpen).toBe(true);
-    expect(harness.inspection.view.export!.result).toEqual({
+    expect(source.reads).toEqual([SNAPSHOT_BYTE_LIMIT, RETAINED_READ_CEILING]);
+    expect(harness.inspection.view.snapshot!.snapshot.export).toEqual({
       text: 'line one\nline two',
       truncated: true,
       exportedBytes: 17,
       retainedBytes: 17,
     });
-    expect(harness.events).toEqual([
-      { kind: 'export', action: 'prepare', exportedBytes: 17, retainedBytes: 17, truncated: true },
-    ]);
+    expect(harness.events.filter((event) => event.kind === 'export')).toEqual([]);
   });
 
-  test('downloads exactly what was prepared, once', () => {
+  test('downloads exactly what was described, however often it is asked and whatever changed since', () => {
     const source = createFakeSource('done');
     const harness = createHarness(source);
-    harness.inspection.prepareExport();
-    expect(harness.announcements).toEqual(['Terminal snapshot ready']);
+    harness.inspection.openSnapshot();
     source.text = 'changed after the message';
+    harness.inspection.contentChanged();
     harness.inspection.downloadExport();
     harness.inspection.downloadExport();
-    expect(saved).toEqual(['done']);
-    expect(harness.inspection.view.exportOpen).toBe(false);
+    expect(saved).toEqual(['done', 'done']);
+    expect(harness.inspection.view.snapshotOpen).toBe(true);
     expect(harness.events.at(-1)).toEqual({
       kind: 'export',
       action: 'download',
@@ -422,46 +440,103 @@ describe('export', () => {
     });
   });
 
-  test('cancelling never saves, and releases the text once the dialog is gone', () => {
-    const harness = createHarness(createFakeSource('keep'));
-    harness.inspection.prepareExport();
-    harness.inspection.cancelExport();
-    harness.inspection.cancelExport();
-    expect(saved).toEqual([]);
-    expect(
-      harness.events.map((event) => (event.kind === 'export' ? event.action : event.kind)),
-    ).toEqual(['prepare', 'cancel']);
-    expect(harness.inspection.view.export).toBeDefined();
-    harness.inspection.releaseExport();
-    expect(harness.inspection.view.export).toBeUndefined();
+  test('refresh takes a new export with the new snapshot', () => {
+    const source = createFakeSource('one');
+    const harness = createHarness(source);
+    harness.inspection.openSnapshot();
+    source.text = 'one two';
+    harness.inspection.refreshSnapshot();
+    harness.inspection.downloadExport();
+    expect(saved).toEqual(['one two']);
   });
 
-  test('downloading with nothing prepared, and releasing an open dialog, do nothing', () => {
+  test('does nothing without an open snapshot', () => {
     const harness = createHarness(createFakeSource('x'));
     harness.inspection.downloadExport();
-    harness.inspection.cancelExport();
+    harness.inspection.openSnapshot();
+    harness.inspection.closeSnapshot();
+    harness.inspection.downloadExport();
     expect(saved).toEqual([]);
-    harness.inspection.prepareExport();
-    harness.inspection.releaseExport();
-    expect(harness.inspection.view.export).toBeDefined();
-  });
-
-  test('cannot be prepared without an engine', () => {
-    const none = createHarness();
-    none.inspection.prepareExport();
-    expect(none.inspection.view.exportOpen).toBe(false);
-    const source = createFakeSource('x');
-    source.gone = true;
-    const gone = createHarness(source);
-    gone.inspection.prepareExport();
-    expect(gone.inspection.view.exportOpen).toBe(false);
   });
 
   test('is still available after the process exited, because it reads retained output', () => {
     const harness = createHarness(createFakeSource('finished output'));
-    harness.inspection.prepareExport();
+    harness.inspection.openSnapshot();
     harness.inspection.downloadExport();
     expect(saved).toEqual(['finished output']);
+  });
+
+  test('cannot be taken when the full read finds no engine', () => {
+    const source = createFakeSource('x');
+    let reads = 0;
+    const original = source.readProjection;
+    source.readProjection = (maximumBytes) => (++reads === 2 ? undefined : original(maximumBytes));
+    const harness = createHarness(source);
+    harness.inspection.openSnapshot();
+    expect(harness.inspection.view.snapshotOpen).toBe(false);
+  });
+});
+
+describe('selecting the match in the terminal', () => {
+  function searchingHarness(text: string) {
+    const source = createFakeSource(text);
+    const harness = createHarness(source);
+    harness.inspection.openSearch();
+    harness.inspection.setQuery('find');
+    return { source, harness };
+  }
+
+  test('selects the active match, bounded like the search, when the reader steps', () => {
+    const { source, harness } = searchingHarness('find a find');
+    expect(source.selections).toEqual([]);
+    harness.inspection.next();
+    harness.inspection.next();
+    expect(source.selections).toEqual([
+      { start: 0, end: 4, text: 'find' },
+      { start: 7, end: 11, text: 'find' },
+    ]);
+  });
+
+  test('has nothing selected until a match is active, and drops the selection when it goes', () => {
+    const { source, harness } = searchingHarness('find');
+    expect(source.selectionClears).toBeGreaterThan(0);
+    harness.inspection.next();
+    const before = source.selectionClears;
+    harness.inspection.setQuery('missing');
+    expect(source.selectionClears).toBeGreaterThan(before);
+  });
+
+  test('closing the search drops the selection', () => {
+    const { source, harness } = searchingHarness('find');
+    harness.inspection.next();
+    const before = source.selectionClears;
+    harness.inspection.closeSearch();
+    expect(source.selectionClears).toBe(before + 1);
+  });
+
+  test('new output keeps the selection while the match survives, and drops it when it does not', () => {
+    const { source, harness } = searchingHarness('find');
+    harness.inspection.next();
+    const selected = source.selections.length;
+    const cleared = source.selectionClears;
+    source.text = 'find more';
+    harness.inspection.contentChanged();
+    harness.scheduler.flush();
+    expect(source.selections).toHaveLength(selected);
+    expect(source.selectionClears).toBe(cleared);
+    source.text = 'gone';
+    harness.inspection.contentChanged();
+    harness.scheduler.flush();
+    expect(source.selectionClears).toBe(cleared + 1);
+  });
+
+  test('without a source there is nothing to select or clear', () => {
+    const { harness } = searchingHarness('find');
+    harness.inspection.next();
+    harness.source.current = undefined;
+    expect(() => {
+      harness.inspection.closeSearch();
+    }).not.toThrow();
   });
 });
 
@@ -552,7 +627,6 @@ describe('observers', () => {
     harness.inspection.contentChanged();
     harness.inspection.refreshSnapshot();
     harness.inspection.closeSnapshot();
-    harness.inspection.prepareExport();
     harness.inspection.downloadExport();
     harness.inspection.clear('retained');
     const recorded = JSON.stringify([harness.events, harness.announcements]);

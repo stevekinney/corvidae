@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { TextExport } from './export.ts';
 import type { SnapshotView } from './inspection-controller.ts';
 import { describeExport, describeSearch, describeSnapshot } from './inspection-copy.ts';
 import type { SearchView } from './search.ts';
@@ -13,6 +14,7 @@ const base: SearchView = {
   truncated: false,
   wrapped: false,
   excerpt: undefined,
+  match: undefined,
 };
 
 describe('describeSearch', () => {
@@ -40,10 +42,10 @@ describe('describeSearch', () => {
     );
     expect(describeSearch({ ...base, index: 0, capped: true })).toBe('Match 1 of 3 or more.');
     expect(describeSearch({ ...base, index: 0, truncated: true })).toBe(
-      'Match 1 of 3. Only the first 1,048,576 bytes were searched.',
+      'Match 1 of 3. Only the most recent 1,048,576 bytes were searched.',
     );
     expect(describeSearch({ ...base, status: 'no-matches', count: 0, truncated: true })).toContain(
-      'Only the first',
+      'Only the most recent',
     );
   });
 });
@@ -52,9 +54,15 @@ function viewOf(
   text: string,
   overrides: Partial<SnapshotView> = {},
   truncated = false,
+  exported: TextExport = {
+    text,
+    truncated: false,
+    exportedBytes: text.length,
+    retainedBytes: text.length,
+  },
 ): SnapshotView {
   return {
-    snapshot: captureSnapshot({ text, truncated, bytes: text.length }, 1),
+    snapshot: captureSnapshot({ text, truncated, bytes: text.length, lines: [] }, 1, exported),
     stale: false,
     replaced: false,
     refreshable: true,
@@ -63,22 +71,36 @@ function viewOf(
   };
 }
 
+const READY = 'Download ready: 4 bytes of plain text.';
+
 describe('describeSnapshot', () => {
-  test('has nothing to say about a fresh, complete snapshot', () => {
-    expect(describeSnapshot(viewOf('text'))).toEqual([]);
+  test('always ends with what Download will save', () => {
+    expect(describeSnapshot(viewOf('text'))).toEqual([READY]);
   });
 
   test('names empty, truncated with the bounds, stale, and replaced', () => {
-    expect(describeSnapshot(viewOf(''))).toEqual(['No retained output.']);
-    expect(describeSnapshot(viewOf('abc', {}, true))).toEqual([
-      'Snapshot truncated: the first 3 bytes are shown. The terminal keeps at most 10,000 lines.',
+    expect(describeSnapshot(viewOf(''))).toEqual([
+      'No retained output.',
+      'Download ready: 0 bytes of plain text.',
     ]);
-    expect(describeSnapshot(viewOf('a', { stale: true }))).toEqual([
+    expect(describeSnapshot(viewOf('abc', {}, true))[0]).toBe(
+      'Snapshot truncated: earlier output was omitted. The most recent 3 bytes are shown. The terminal keeps at most 10,000 lines.',
+    );
+    expect(describeSnapshot(viewOf('text', { stale: true }))).toEqual([
       'Snapshot stale: the terminal has changed since it was taken.',
+      READY,
     ]);
-    expect(describeSnapshot(viewOf('a', { stale: true, replaced: true }))).toEqual([
+    expect(describeSnapshot(viewOf('text', { stale: true, replaced: true }))).toEqual([
       'Snapshot stale: the session was replaced, so this snapshot cannot be refreshed.',
+      READY,
     ]);
+  });
+
+  test('states a truncated download before anything is saved', () => {
+    const notices = describeSnapshot(
+      viewOf('a', {}, false, { text: 'ab', truncated: true, exportedBytes: 2, retainedBytes: 99 }),
+    );
+    expect(notices.at(-1)).toContain('Download truncated: earlier output was omitted.');
   });
 });
 
@@ -86,15 +108,16 @@ describe('describeExport', () => {
   test('states the size, and the limits when it was cut', () => {
     expect(
       describeExport({ text: 'ab', truncated: false, exportedBytes: 2, retainedBytes: 2 }),
-    ).toBe('Export ready: 2 bytes of plain text.');
+    ).toBe('Download ready: 2 bytes of plain text.');
     const cut = describeExport({
       text: 'ab',
       truncated: true,
       exportedBytes: 2,
       retainedBytes: 99,
     });
-    expect(cut).toContain('2 of at least 99 retained bytes');
+    expect(cut).toContain('earlier output was omitted');
+    expect(cut).toContain('most recent 2 of at least 99 retained bytes');
     expect(cut).toContain('1,048,576 bytes or 10,000 lines');
-    expect(cut).toContain('nothing is added to mark the cut');
+    expect(cut).toContain('Nothing is added to the file to mark the cut');
   });
 });

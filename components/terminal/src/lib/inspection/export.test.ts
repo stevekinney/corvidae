@@ -7,7 +7,7 @@ import { EXPORT_BYTE_LIMIT, EXPORT_FILE_NAME, EXPORT_LINE_LIMIT } from './inspec
 const encoder = new TextEncoder();
 
 function projectionOf(text: string, truncated = false): TerminalProjection {
-  return { text, truncated, bytes: encoder.encode(text).length };
+  return { text, truncated, bytes: encoder.encode(text).length, lines: [] };
 }
 
 describe('buildTextExport', () => {
@@ -27,12 +27,13 @@ describe('buildTextExport', () => {
     expect(result.retainedBytes).toBe(6);
   });
 
-  test('cuts at the last whole code point within the byte limit, with no marker', () => {
+  test('keeps the newest output and starts at a whole code point when one line is over the limit', () => {
+    // "\u{1f600}" is four bytes: a limit landing inside it starts at the next whole character.
     const result = buildTextExport(projectionOf('ab\u{1f600}cd'), {
       maximumBytes: 5,
       maximumLines: 100,
     });
-    expect(result.text).toBe('ab');
+    expect(result.text).toBe('cd');
     expect(result.exportedBytes).toBe(2);
     expect(result.truncated).toBe(true);
     expect(result.retainedBytes).toBe(8);
@@ -40,11 +41,26 @@ describe('buildTextExport', () => {
       maximumBytes: 6,
       maximumLines: 100,
     });
-    expect(exact.text).toBe('ab\u{1f600}');
+    expect(exact.text).toBe('\u{1f600}cd');
     expect(exact.exportedBytes).toBe(6);
   });
 
-  test('cuts a long ASCII text at exactly the limit', () => {
+  test('starts at a whole line when the limit lands inside an earlier line', () => {
+    const result = buildTextExport(projectionOf('aaaa\nbbbb\ncccc'), {
+      maximumBytes: 8,
+      maximumLines: 100,
+    });
+    expect(result.text).toBe('cccc');
+    expect(result.truncated).toBe(true);
+    // A window that starts exactly on a line keeps it whole.
+    const aligned = buildTextExport(projectionOf('aaaa\nbbbb\ncccc'), {
+      maximumBytes: 9,
+      maximumLines: 100,
+    });
+    expect(aligned.text).toBe('bbbb\ncccc');
+  });
+
+  test('keeps the end of one line larger than the limit', () => {
     const result = buildTextExport(projectionOf('x'.repeat(50)), {
       maximumBytes: 10,
       maximumLines: 5,
@@ -53,12 +69,20 @@ describe('buildTextExport', () => {
     expect(result.truncated).toBe(true);
   });
 
-  test('cuts at the line limit, dropping the line feed that would start the next line', () => {
+  test('a final line break leaves the window whole rather than empty', () => {
+    const result = buildTextExport(projectionOf('abcdefgh\n'), {
+      maximumBytes: 4,
+      maximumLines: 100,
+    });
+    expect(result.text).toBe('fgh\n');
+  });
+
+  test('keeps the newest lines within the line limit, dropping the line feed that precedes them', () => {
     const result = buildTextExport(projectionOf('a\nb\nc\nd'), {
       maximumBytes: 100,
       maximumLines: 2,
     });
-    expect(result.text).toBe('a\nb');
+    expect(result.text).toBe('c\nd');
     expect(result.truncated).toBe(true);
     const whole = buildTextExport(projectionOf('a\nb'), { maximumBytes: 100, maximumLines: 2 });
     expect(whole.text).toBe('a\nb');
@@ -83,6 +107,10 @@ describe('buildTextExport', () => {
     const result = buildTextExport(projectionOf(lines));
     expect(result.text.split('\n')).toHaveLength(EXPORT_LINE_LIMIT);
     expect(result.truncated).toBe(true);
+    const numbered = Array.from({ length: EXPORT_LINE_LIMIT + 5 }, (_, index) => `n${index}`);
+    const newest = buildTextExport(projectionOf(numbered.join('\n')));
+    expect(newest.text.startsWith('n5\n')).toBe(true);
+    expect(newest.text.endsWith(`n${EXPORT_LINE_LIMIT + 4}`)).toBe(true);
   });
 
   test('the text has only line feeds', () => {

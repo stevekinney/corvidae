@@ -86,6 +86,9 @@ export type SearchStatus = 'idle' | 'too-long' | 'unavailable' | 'no-matches' | 
 /** The active match with the text around it, for display only. Never leaves the component. */
 export type Excerpt = { before: string; match: string; after: string };
 
+/** The active match: its UTF-16 offsets into the searched text, and the text itself. */
+export type ActiveMatch = { start: number; end: number; text: string };
+
 export type SearchView = {
   status: SearchStatus;
   /** The number of matches kept. */
@@ -98,6 +101,8 @@ export type SearchView = {
   /** The last step went around the end. */
   wrapped: boolean;
   excerpt: Excerpt | undefined;
+  /** What to select in the terminal. Never leaves the component and never reaches a metric. */
+  match: ActiveMatch | undefined;
 };
 
 export type Search = {
@@ -175,6 +180,10 @@ export function createSearch(): Search {
         truncated,
         wrapped,
         excerpt: match === undefined ? undefined : excerptOf(text, match),
+        match:
+          match === undefined
+            ? undefined
+            : { start: match.start, end: match.end, text: text.slice(match.start, match.end) },
       };
     },
     setQuery(next) {

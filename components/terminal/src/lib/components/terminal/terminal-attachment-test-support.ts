@@ -44,6 +44,10 @@ export type FakeEngine = RendererEngine & {
   mouseTracking: boolean;
   focusCount: number;
   clears: ClearScope[];
+  selections: Array<{ start: number; end: number; text: string }>;
+  selectionClears: number;
+  /** What `selectMatch` answers. */
+  selectable: boolean;
   /** Applies the clears the attachment asked for, as the real engine does once writes parsed. */
   pendingClears: Array<() => void>;
   changeListeners: Array<() => void>;
@@ -72,6 +76,9 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     mouseTracking: false,
     focusCount: 0,
     clears: [],
+    selections: [],
+    selectionClears: 0,
+    selectable: true,
     pendingClears: [],
     changeListeners: [],
     changed() {
@@ -120,7 +127,16 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     },
     readProjection(maximumBytes) {
       engine.calls.push('readProjection');
-      return { text: 'projection', truncated: false, bytes: maximumBytes ?? 10 };
+      return { text: 'projection', truncated: false, bytes: maximumBytes ?? 10, lines: [] };
+    },
+    selectMatch(match) {
+      engine.calls.push('selectMatch');
+      engine.selections.push(match);
+      return engine.selectable;
+    },
+    clearMatchSelection() {
+      engine.calls.push('clearMatchSelection');
+      engine.selectionClears += 1;
     },
     clear(scope, done) {
       engine.calls.push('clear');

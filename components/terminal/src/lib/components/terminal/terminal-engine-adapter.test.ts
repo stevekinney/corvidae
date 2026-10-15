@@ -635,6 +635,10 @@ describe('retained projection', () => {
       text: `${'1234567890'.repeat(5)}\nsecond line`,
       truncated: false,
       bytes: 50 + 1 + 11,
+      lines: [
+        { row: 0, start: 0 },
+        { row: 3, start: 51 },
+      ],
     });
   });
 

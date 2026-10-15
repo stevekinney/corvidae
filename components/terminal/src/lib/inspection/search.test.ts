@@ -93,6 +93,7 @@ describe('createSearch', () => {
       truncated: false,
       wrapped: false,
       excerpt: undefined,
+      match: undefined,
     });
   });
 
@@ -134,6 +135,14 @@ describe('createSearch', () => {
     search.next();
     search.previous();
     expect(search.view.index).toBeUndefined();
+  });
+
+  test('names the active match by its offsets and text, for the terminal to select', () => {
+    const search = searching('xx find yy find', 'find');
+    search.next();
+    expect(search.view.match).toEqual({ start: 3, end: 7, text: 'find' });
+    search.next();
+    expect(search.view.match).toEqual({ start: 11, end: 15, text: 'find' });
   });
 
   test('shows the active match with the text around it', () => {

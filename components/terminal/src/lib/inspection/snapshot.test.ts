@@ -34,9 +34,16 @@ describe('snapshotLinks', () => {
 
 describe('captureSnapshot', () => {
   test('is frozen all the way down, and keeps the generation it came from', () => {
+    const exported = {
+      text: 'x https://a.example',
+      truncated: true,
+      exportedBytes: 19,
+      retainedBytes: 40,
+    };
     const snapshot = captureSnapshot(
-      { text: 'x https://a.example', truncated: true, bytes: 19 },
+      { text: 'x https://a.example', truncated: true, bytes: 19, lines: [] },
       4,
+      exported,
     );
     expect(snapshot).toEqual({
       text: 'x https://a.example',
@@ -44,7 +51,9 @@ describe('captureSnapshot', () => {
       bytes: 19,
       generation: 4,
       links: ['https://a.example'],
+      export: exported,
     });
+    expect(Object.isFrozen(snapshot.export)).toBe(true);
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.links)).toBe(true);
   });

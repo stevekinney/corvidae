@@ -1,5 +1,6 @@
 import { findHttpsLinks } from '../components/terminal/terminal-links.ts';
 import type { TerminalProjection } from '../components/terminal/terminal-projection.ts';
+import type { TextExport } from './export.ts';
 import { SNAPSHOT_LINK_LIMIT } from './inspection-types.ts';
 
 /**
@@ -15,6 +16,11 @@ export type Snapshot = Readonly<{
   generation: number;
   /** Visible HTTPS addresses in `text`, in order and without repeats, bounded. */
   links: readonly string[];
+  /**
+   * The plain-text file the Download action saves, taken with the snapshot, so the message about
+   * it can be shown before anything is saved and the saved file is what that message described.
+   */
+  export: Readonly<TextExport>;
 }>;
 
 /**
@@ -32,12 +38,17 @@ export function snapshotLinks(text: string, limit: number = SNAPSHOT_LINK_LIMIT)
   return [...seen];
 }
 
-export function captureSnapshot(projection: TerminalProjection, generation: number): Snapshot {
+export function captureSnapshot(
+  projection: TerminalProjection,
+  generation: number,
+  exported: TextExport,
+): Snapshot {
   return Object.freeze({
     text: projection.text,
     truncated: projection.truncated,
     bytes: projection.bytes,
     generation,
     links: Object.freeze(snapshotLinks(projection.text)),
+    export: Object.freeze(exported),
   });
 }

@@ -40,9 +40,11 @@ Arriving output, a state change, and mounting never move focus. The engine's inp
 
 ## Output tools
 
-The toolbar is a labelled group of buttons. `Search` is a disclosure (`aria-expanded`); its field is a labelled `Textarea`, and its status line (`role="status"`) reports `Match 2 of 7`, `No matches`, a wrap, or that only a bounded part of the output was searched. Enter steps to the next match, Shift+Enter inserts a line break, and Escape closes the search and returns focus to `Search`. Searching never moves the terminal's focus, selection or scroll position.
+The toolbar is a labelled group of buttons. `Search` is a disclosure (`aria-expanded`); its field is a labelled `Textarea`, and its status line (`role="status"`) reports `Match 2 of 7`, `No matches`, a wrap, or that only the most recent part of the output was searched. Enter steps to the next match, Shift+Enter inserts a line break, and Escape closes the search and returns focus to `Search`.
 
-`Accessible output` opens a `Modal` whose body is a labelled read-only `Textarea` of an immutable snapshot, with a status region for `Snapshot stale`, `Snapshot truncated`, a replaced session and an empty terminal. Opening and refreshing are announced politely (`Terminal snapshot ready`, `Terminal snapshot truncated`, `Terminal snapshot refreshed`). Escape and `Close` dismiss it, and focus returns to the button that opened it, or to the frame when that button is gone. `Export` opens a `Modal` that states the size and any truncation before `Download`. Clearing is announced once (`Terminal screen cleared`, `Terminal history cleared`, `Terminal reset`).
+Each search step also selects the match in the terminal without scrolling or moving focus; closing the search drops that selection and returns focus to `Search`.
+
+`Export` opens a `Modal` whose body is a labelled read-only `Textarea` of an immutable snapshot, with a status region for `Snapshot stale`, `Snapshot truncated` (earlier output was omitted), a replaced session, an empty terminal, and what `Download` will save (`Download ready` or `Download truncated`), all before anything is saved. Opening and refreshing are announced politely (`Terminal snapshot ready`, `Terminal snapshot truncated`, `Terminal snapshot refreshed`, `Terminal snapshot stale`). The actions are `Refresh`, `Copy`, `Download` and `Close`. Escape and `Close` dismiss it, and focus returns to `Export`, or to the frame when that button is gone; `Refresh` keeps focus on itself. Clearing is announced once (`Terminal screen cleared`, `Terminal history cleared`, `Terminal reset`).
 
 ## Motion and color
 

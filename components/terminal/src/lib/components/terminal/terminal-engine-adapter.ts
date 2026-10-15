@@ -7,6 +7,7 @@ import type {
 } from '@xterm/xterm';
 
 import { boundTitle, linksForRow, parseVisibleHttpsUrl } from './terminal-links.ts';
+import { locateRange } from './terminal-locate.ts';
 import { projectBuffer, type TerminalProjection } from './terminal-projection.ts';
 import type { EngineTheme } from './terminal-theme.ts';
 import { createUtf8Carry } from './terminal-utf8-boundary.ts';
@@ -148,6 +149,15 @@ export type RendererEngine = {
   /** A bounded plain-text projection of the active retained buffer. */
   readProjection(maximumBytes?: number): TerminalProjection;
   /**
+   * Select the retained text a search found, without scrolling the viewport or moving focus. The
+   * match is `text.slice(start, end)` of the projection read within `maximumBytes` now; if the
+   * buffer no longer holds exactly `text` there, or the cells cannot be placed exactly, nothing is
+   * selected and this returns `false`.
+   */
+  selectMatch(match: { start: number; end: number; text: string }, maximumBytes: number): boolean;
+  /** Drop the selection {@link RendererEngine.selectMatch} made. A reader's own selection stays. */
+  clearMatchSelection(): void;
+  /**
    * Clear the local buffer. The clear takes effect in order behind every chunk already given to
    * {@link RendererEngine.write}. A unicode prefix still held from earlier output is dropped with
    * the rest of it, so a continuation byte written after the clear is an orphan and never completes
@@ -209,6 +219,8 @@ export function createRendererEngine(
   // Acknowledgements for chunks whose last bytes are still held in `carry`, in arrival order.
   let heldAcknowledgements: Array<() => void> = [];
   const changeListeners = new Set<() => void>();
+  // Whether the current selection is one `selectMatch` made, so clearing never takes a reader's.
+  let ownsSelection = false;
 
   function notifyChange(): void {
     for (const listener of changeListeners) listener();
@@ -349,6 +361,32 @@ export function createRendererEngine(
     },
     readProjection(maximumBytes) {
       return projectBuffer(terminal.buffer.active, maximumBytes);
+    },
+    selectMatch(match, maximumBytes) {
+      const buffer = terminal.buffer.active;
+      const projection = projectBuffer(buffer, maximumBytes);
+      const cells =
+        projection.text.slice(match.start, match.end) === match.text
+          ? locateRange(buffer, projection, terminal.cols, match)
+          : undefined;
+      if (cells !== undefined) {
+        terminal.select(cells.column, cells.row, cells.length);
+        if (terminal.getSelection() === match.text) {
+          ownsSelection = true;
+          return true;
+        }
+        // The cells did not hold exactly the match; the selection just made is wrong, so it goes.
+        terminal.clearSelection();
+      } else if (ownsSelection) {
+        terminal.clearSelection();
+      }
+      ownsSelection = false;
+      return false;
+    },
+    clearMatchSelection() {
+      if (!ownsSelection) return;
+      ownsSelection = false;
+      terminal.clearSelection();
     },
     clear(scope, done) {
       if (disposed) return;

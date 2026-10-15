@@ -3,7 +3,7 @@
   import { tick, untrack } from 'svelte';
 
   import type { Inspection } from './inspection-controller.ts';
-  import { describeExport, describeSearch, describeSnapshot } from './inspection-copy.ts';
+  import { describeSearch, describeSnapshot } from './inspection-copy.ts';
 
   let {
     inspection,
@@ -30,7 +30,6 @@
   const snapshotId = `${id}-snapshot`;
 
   let searchTrigger: HTMLElement | null = null;
-  let snapshotTrigger = $state.raw<HTMLElement | null>(null);
   let exportTrigger = $state.raw<HTMLElement | null>(null);
 
   const searchSummary = $derived(describeSearch(view.search));
@@ -69,22 +68,23 @@
     }
   }
 
-  function openSnapshot(event: MouseEvent): void {
-    snapshotTrigger = event.currentTarget as HTMLElement;
+  function openExport(event: MouseEvent): void {
+    exportTrigger = event.currentTarget as HTMLElement;
     inspection.openSnapshot();
   }
 
-  function prepareExport(event: MouseEvent): void {
-    exportTrigger = event.currentTarget as HTMLElement;
-    inspection.prepareExport();
+  /** Refresh keeps focus, whether it recaptured or could not. */
+  function refresh(event: MouseEvent): void {
+    const control = event.currentTarget as HTMLElement;
+    inspection.refreshSnapshot();
+    control.focus();
   }
 </script>
 
 {#if toolbarVisible && view.available}
   <div class="cinder-terminal__inspection" role="group" aria-label="Terminal output tools">
     <Button label="Search" size="sm" aria-expanded={view.searchOpen} onclick={toggleSearch} />
-    <Button label="Accessible output" size="sm" onclick={openSnapshot} />
-    <Button label="Export" size="sm" onclick={prepareExport} />
+    <Button label="Export" size="sm" onclick={openExport} />
     <Button label="Clear screen" size="sm" onclick={() => inspection.clear('visible')} />
     <Button label="Clear history" size="sm" onclick={() => inspection.clear('retained')} />
     <Button label="Reset terminal" size="sm" onclick={() => inspection.clear('reset')} />
@@ -129,12 +129,12 @@
 
 <Modal
   open={view.snapshotOpen}
-  title="Terminal accessible output"
-  triggerRef={snapshotTrigger}
+  title="Export terminal output"
+  triggerRef={exportTrigger}
   onDismiss={() => inspection.closeSnapshot()}
   onExitComplete={() => {
     inspection.releaseSnapshot();
-    restoreFocus(snapshotTrigger);
+    restoreFocus(exportTrigger);
   }}
 >
   {#if view.snapshot !== undefined}
@@ -173,28 +173,10 @@
     <Button
       variant="secondary"
       disabled={view.snapshot === undefined || !view.snapshot.refreshable}
-      onclick={() => inspection.refreshSnapshot()}>Refresh</Button
+      onclick={refresh}>Refresh</Button
     >
     <CopyButton value={view.snapshot?.snapshot.text ?? ''}>Copy</CopyButton>
+    <Button variant="secondary" onclick={() => inspection.downloadExport()}>Download</Button>
     <Button variant="primary" onclick={() => inspection.closeSnapshot()}>Close</Button>
-  {/snippet}
-</Modal>
-
-<Modal
-  open={view.exportOpen}
-  title="Export terminal text"
-  triggerRef={exportTrigger}
-  onDismiss={() => inspection.cancelExport()}
-  onExitComplete={() => {
-    inspection.releaseExport();
-    restoreFocus(exportTrigger);
-  }}
->
-  {#if view.export !== undefined}
-    <p role="status" aria-atomic="true">{describeExport(view.export.result)}</p>
-  {/if}
-  {#snippet footer()}
-    <Button variant="secondary" onclick={() => inspection.cancelExport()}>Cancel</Button>
-    <Button variant="primary" onclick={() => inspection.downloadExport()}>Download</Button>
   {/snippet}
 </Modal>
