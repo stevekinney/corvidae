@@ -215,7 +215,7 @@ Every series is bounded or allocator behaviour, so there is no owner to file aga
 
 ## CIN-588: shared page graphs in garbage-collected batches
 
-Status: selected and implemented. CIN-585 named a memory-gated shared page graph as CIN-588's mechanism. CIN-588 measured it as candidate B24 against a fresh baseline, and the unchanged selection rule selected it on all eight observations. The raw results, both candidate files, and the measured patch are in `cin-588-results/`.
+Status: selected and implemented. CIN-585 named a memory-gated shared page graph as CIN-588's mechanism. CIN-588 measured it as candidate B24 against a fresh baseline, and the unchanged selection rule selected it on all eight observations. The raw results, the candidate's result and comparison, and the measured patch are in `cin-588-results/`.
 
 ### Candidate
 
@@ -264,3 +264,39 @@ Both runs used three cold/warm pairs; the bands are the observed [min, max].
 `compare` printed `SELECT candidate`: every observation's candidate maximum is below its baseline minimum (`cin-588-results/comparison-b24.json`). Both memory observations that blocked CIN-585's single build now pass with room. The cold server tree peaks at 3.28 GB against a baseline minimum of 3.69 GB, and the warm export tree at 3.52 GB against 4.85 GB.
 
 Host load was recorded, not waited on. The baseline started at 1-minute loads of 13.2 to 208.3 and B24 at 17.3 to 82.2, so the baseline's wall times are inflated more than B24's. The decision does not rest on wall time. Exporter CPU time roughly halves (1,215 to 1,312 s against 654 to 675 s), and the memory observations track the work, not the load. Every sample of both runs was at memory-pressure level 1, with at least 75 percent of memory available.
+
+### Implementation
+
+The implementation commit applies B24 on top of `main` after #244 (CIN-589) changed the page-entry template in `src/page-bundle.ts` to the boot/unmount page registry. The measured patch no longer applied there, so B24 was ported by hand: the same changes around the entry template, whose text is byte-identical to `main`'s. The measured patch file stays as recorded.
+
+On the implementation commit:
+
+- a fresh `bun run --filter=@lostgradient/playground build` exited 0, rendering 3,091 files for 181 components in 327.1 s (digest `bbc44fdad2f5f2fffca985180efea69aaf162d282d57e31fadd458614eb9537e`);
+- the full strict `test:production` exited 0 with 847 passed, including the in-place component-to-component navigation case on the static export.
+
+The five-edit rebuild probe, which now fails unless every edit's retained artifacts match the first settled edit exactly, held the server's retained artifacts at 1,513 entries and 48,819,865 bytes after every edit. That confirms the hypothesis above: the per-page baseline retained 2,648 entries and about 370 MB.
+
+### Preservation
+
+| Behaviour | Pinned by |
+| --- | --- |
+| HTML, JS, and CSS payload budgets | The existing `INITIAL_ROUTE_PAYLOAD_BUDGETS` in `scripts/initial-route-payload.ts`, enforced by every export, including the implementation's |
+| Every canonical route's complete prerendered HTML and initial data | `test:production`'s preflight, passed on the implementation |
+| Snapshot and preview fixtures stay client-rendered | Existing `src/playground-server.test.ts` cases, for example "renders a substantially smaller document for the client-only surfaces" and "omits the sidebar from the snapshot and preview surfaces" |
+| Malformed or unknown dev routes keep their explicit 4xx | Existing `src/playground-server.test.ts` 404 cases for unknown components, unsafe segments, and unknown bundle filenames |
+| The export exits nonzero for an unresolved route or a missing asset | New `scripts/static-export.test.ts` case "rejects the export when a documentation route does not resolve" (it passes on the base too); a missing asset fails through the same non-2xx path, and the production gate's existing `missing-asset` fixture covers it in exported output |
+| A failed lazy preview shows the existing error state | Existing `src/example-error.test.ts` and `src/component-page-example-mounts.test.ts` ("reports an invalid lazy module as a settled mount failure") |
+| The shared shell ships neither the Cinder root barrel nor Shiki's full registry | New `src/shell-bundle.test.ts`, below |
+| Superseded builds never publish | New `src/page-bundle.test.ts` cases for a superseded batch and a superseded lazy build (the issue cited generation tests there that did not exist) |
+| Retained artifacts stay bounded | `retainedArtifactProblems` in the rebuild probe, with a stale-generation regression fixture that fails it |
+| No file is evicted under an active import | New `src/build-artifacts-shared.test.ts` case: a shared chunk survives evicting one of the pages that import it |
+
+The shell criterion was first written against parsed inputs, and the coordinator corrected it to shipped bytes. The shell imports components such as Button, ColorPicker, and CommandPalette from `@lostgradient/cinder`, whose root is its only export, so the root barrel is always parsed and then tree-shaken. The test therefore asserts on `bytesInOutput` instead:
+
+- the barrel contributes zero bytes;
+- every Cinder component script that contributes bytes is reachable from the shell's own imports, resolved through the barrel's named re-exports and `export *` targets and then the metafile's import graph, not a hand-kept list;
+- every Shiki grammar the shell reads is one the curated adapter itself allows (14 of 14).
+
+### Pre-existing finding: the shell ships every component stylesheet
+
+On `main` and independently of CIN-588, the shell's JavaScript entry is 837,209 bytes, and 823,012 of them come from 195 inlined CSS inputs, 180 of which are Cinder component stylesheets (745,218 bytes). They arrive through the barrel's side-effect `import './styles/index.css'`. The reachability check is therefore scoped to scripts. The CSS is left for its own issue, to be delivered after CIN-588 merges.
