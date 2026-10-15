@@ -180,12 +180,6 @@
    */
   const KEYBOARD_DESTINATION_STABLE_INTERVALS = 3;
   /**
-   * COR-1518: how many times the keyboard-destination watch re-issues a write
-   * that settled with no net movement before it lets the destination go. Bounded
-   * because a list already at its end legitimately never moves.
-   */
-  const KEYBOARD_DESTINATION_LOST_WRITE_RETRIES = 2;
-  /**
    * How long after the last scroll event adaptive overscan returns to its floor.
    * Comfortably past a fling's own event cadence, so it never fires mid-gesture.
    */
@@ -1902,10 +1896,12 @@
    * genuinely settled at that threshold. Requiring more consecutive stable
    * intervals is what tells the two apart.
    *
-   * Runs unconditionally, in fixed-height mode too. `runScrollToIndex` skips
-   * its own settle-and-retry pass there because fixed rows never need a
-   * second write, but this needs the same motion signal regardless of
-   * sizing mode to know when the destination has stopped being meaningful.
+   * Issues the press's write itself, and waits only when that write animates.
+   * An instant write needs no motion signal: it has arrived when it returns.
+   * An animated one waits in fixed-height mode too — `runScrollToIndex` skips
+   * its own settle-and-retry pass there because fixed rows never need a second
+   * write, but this needs the same motion signal regardless of sizing mode to
+   * know when the destination has stopped being meaningful.
    *
    * Correct under `windowScroll` with no special case: `waitForScrollSettled`
    * reads through `readScrollOffset`, which already resolves to
@@ -1916,45 +1912,26 @@
   async function watchPendingKeyboardIndex(index: number): Promise<void> {
     const element = scrollElement;
     if (!element) return;
-    const startedAt = readScrollOffset(element);
-    const animated = isKeyboardScrollAnimated(element);
     pendingKeyboardIndex = index;
     const token = (pendingKeyboardIndexToken += 1);
-    for (let attempt = 0; ; attempt += 1) {
-      // Through the normal path, which applies the header inset and keeps the
-      // settle loop. An earlier version wrote the offset directly to apply that
-      // inset, and in doing so skipped the loop — so under `dynamicSize` an End or
-      // Page jump into rows whose estimates changed as they mounted stopped
-      // wherever the first write happened to land.
-      scrollToIndex(index, { align: 'start' });
-      // An instant write has already arrived by the time it returns, so the live
-      // position IS the destination and there is nothing left to track: the next
-      // press resolves from it like any other. Nor can anything roll it back,
-      // since there is no animation to finish late. Waiting out the settle window
-      // anyway left the destination alive past a write this list did not issue — a
-      // consumer setting `scrollTop`, a fragment link — so a press right after one
-      // stepped from the stale row, and a position that settled back where this
-      // press began was taken for a lost write and overwritten.
-      //
-      // Decided by whether the write animates, not by whether the position has
-      // moved yet: in real Chromium a retargeted smooth scroll can move part of the
-      // way before `scrollTo` returns, and retiring its destination there dropped
-      // rows from a held key.
-      if (!animated) break;
+    // Through the normal path, which applies the header inset and keeps the settle
+    // loop. An earlier version wrote the offset directly to apply that inset, and in
+    // doing so skipped the loop — so under `dynamicSize` an End or Page jump into rows
+    // whose estimates changed as they mounted stopped wherever the first write
+    // happened to land.
+    scrollToIndex(index, { align: 'start' });
+    // An instant write has already arrived by the time it returns, so the live
+    // position IS the destination and there is nothing left to track: the next press
+    // resolves from it like any other. Waiting out the settle window anyway left the
+    // destination alive past a write this list did not issue — a consumer setting
+    // `scrollTop`, a fragment link — so a press right after one stepped from the
+    // stale row instead of the one the reader was looking at.
+    if (isKeyboardScrollAnimated(element)) {
       await waitForScrollSettled(element, KEYBOARD_DESTINATION_STABLE_INTERVALS);
       // Superseded by a newer press or an explicit retirement while this was
-      // waiting — either already holds whatever destination is now correct,
-      // so clearing it here would erase one this call does not own.
+      // waiting — either already holds whatever destination is now correct, so
+      // clearing it here would erase one this call does not own.
       if (isDestroyed || pendingKeyboardIndexToken !== token) return;
-      // The position settled exactly where this press began: the write made no
-      // net progress. Measured in real Chromium, a retargeted smooth scroll can
-      // reach the destination and then be rolled back to its start by the
-      // previous animation finishing late. Expiring here would leave the next
-      // press stepping from the lagging row and drop one. Any other settled
-      // position (arrived, or moved elsewhere by something this list did not
-      // issue) is not a lost write, and expires the destination below.
-      if (attempt >= KEYBOARD_DESTINATION_LOST_WRITE_RETRIES) break;
-      if (readScrollOffset(element) !== startedAt) break;
     }
     pendingKeyboardIndex = null;
   }

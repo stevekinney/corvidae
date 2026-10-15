@@ -100,6 +100,13 @@ test.describe('Sticky headers and keyboard navigation', () => {
     await expect.poll(async () => offsetWithinList(page, 50)).toBe(0);
     const headerBox = await header.boundingBox();
     expect(Math.round(headerBox?.height ?? 0)).toBe(rowHeight);
+
+    // A header leaves flow when it pins, and with native scroll anchoring on, the
+    // browser pulls the scroll offset back a row to hold its anchor still, undoing
+    // whatever keyboard step had just landed. Fixed-height rows need it off too.
+    expect(
+      await listLocator(page).evaluate((element) => getComputedStyle(element).overflowAnchor),
+    ).toBe('none');
   });
 
   test('lands an arrow destination below the header rather than under it', async ({
