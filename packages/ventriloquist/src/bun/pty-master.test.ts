@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
 import type { PtyDevice } from './pty-device.ts';
@@ -135,7 +136,7 @@ describe('reading a master', () => {
     if (outcome === 'done') {
       const ended = await waiting;
       expect(ended.done).toBe(true);
-    } else await expect(waiting).rejects.toThrow('could not be read');
+    } else expect(((await rejectionOf(waiting)) as Error).message).toContain('could not be read');
   });
 
   test('bytes read before the end are delivered before it, and the end is remembered', async () => {
@@ -153,7 +154,9 @@ describe('reading a master', () => {
   test('a failure after the last chunk is raised on the read that follows it', async () => {
     const { created, thread } = master();
     thread.say({ type: 'end', how: 'error', code: 'EBADF' });
-    await expect(created.stream.getReader().read()).rejects.toThrow('EBADF');
+    expect(((await rejectionOf(created.stream.getReader().read())) as Error).message).toContain(
+      'EBADF',
+    );
   });
 
   test('canceling drops what is held, ends reads, and switches the worker to discarding', async () => {
@@ -258,7 +261,7 @@ describe('writing a master', () => {
     const { created } = master({ write: run.write });
     const failed = created.write(new TextEncoder().encode('bad'));
     const next = created.write(new TextEncoder().encode('good!'));
-    await expect(failed).rejects.toThrow('EBADF');
+    expect(((await rejectionOf(failed)) as Error).message).toContain('EBADF');
     await next;
     expect(run.taken).toEqual(['good!']);
   });
