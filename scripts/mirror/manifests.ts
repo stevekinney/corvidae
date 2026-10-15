@@ -956,7 +956,21 @@ function assertMirrorTarget(value: string | undefined): MirrorTarget {
   );
 }
 
-export async function runManifestTransform(argv: readonly string[]): Promise<number> {
+/** Where the command line writes; tests pass collectors so the command runs in process. */
+export type CommandWriters = {
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+};
+
+const processWriters: CommandWriters = {
+  stdout: (text) => void process.stdout.write(text),
+  stderr: (text) => void process.stderr.write(text),
+};
+
+export async function runManifestTransform(
+  argv: readonly string[],
+  writers: CommandWriters = processWriters,
+): Promise<number> {
   try {
     const target = assertMirrorTarget(readOption(argv, 'target'));
     const directory = readOption(argv, 'directory');
@@ -968,20 +982,20 @@ export async function runManifestTransform(argv: readonly string[]): Promise<num
       targetDirectory: readOption(argv, 'target-clone'),
       directory,
     });
-    process.stdout.write(`Staged ${result.written.length} file(s) for ${target} in ${directory}\n`);
+    writers.stdout(`Staged ${result.written.length} file(s) for ${target} in ${directory}\n`);
     if (result.firstPublish.length > 0) {
-      process.stdout.write(`First publish, seeded at 0.0.0: ${result.firstPublish.join(', ')}\n`);
+      writers.stdout(`First publish, seeded at 0.0.0: ${result.firstPublish.join(', ')}\n`);
     }
     if (result.seededFromPackageMap.length > 0) {
-      process.stdout.write(
+      writers.stdout(
         `Seeded from package-map.json's lastPublishedVersion, target has no manifest yet: ${result.seededFromPackageMap.join(', ')}\n`,
       );
     }
     if (result.droppedEdges.length > 0) {
-      process.stdout.write(`Dropped cross-target edges: ${result.droppedEdges.join(', ')}\n`);
+      writers.stdout(`Dropped cross-target edges: ${result.droppedEdges.join(', ')}\n`);
     }
     if (result.addedDependencies.length > 0) {
-      process.stdout.write(
+      writers.stdout(
         `Dependencies the target did not declare, added from corvidae:\n${result.addedDependencies
           .map((entry) => `  ${entry}`)
           .join('\n')}\n`,
@@ -989,7 +1003,7 @@ export async function runManifestTransform(argv: readonly string[]): Promise<num
     }
     return 0;
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    writers.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
 }

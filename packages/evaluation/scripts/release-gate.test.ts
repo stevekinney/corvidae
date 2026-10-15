@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -56,7 +56,7 @@ interface CommandResult {
 async function spawnFilteredGate(...args: string[]): Promise<CommandResult> {
   const child = Bun.spawn(
     [process.execPath, 'run', '--filter=@lostgradient/evaluation', 'release-gate', '--', ...args],
-    { cwd: REPOSITORY_ROOT, stdout: 'pipe', stderr: 'pipe' },
+    { timeout: 120_000, cwd: REPOSITORY_ROOT, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -73,6 +73,10 @@ async function runInProcess(
   let stdout = '';
   let stderr = '';
   const exitCode = await runReleaseGateCommand(args, {
+    // The checked-out revision is incidental to these tests, so it is read once at module scope and
+    // injected; the test that proves the command reads git by default runs at module scope too.
+    sourceRevision: checkedOutHead,
+    revisionDistance: () => undefined,
     ...options,
     output: {
       stdout: { write: (text: string) => (stdout += text) },
@@ -115,6 +119,7 @@ function expectReport(
 }
 
 describe('runReleaseGateCommand (in process)', () => {
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each(['baseline', 'sampleSize'])(
     'exits 64 for a test gate file missing %s',
     async (field) => {
@@ -145,6 +150,7 @@ describe('runReleaseGateCommand (in process)', () => {
     },
   );
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each<[string, GateFile, number, GateDecisionRecord['decision']]>([
     ['the passing script', fixtureGateFile('passing'), 0, 'pass'],
     ['the regressing script', fixtureGateFile('regressing'), 1, 'regression'],
@@ -177,6 +183,7 @@ describe('runReleaseGateCommand (in process)', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('fixture-regression with an expired baseline exits 3', async () => {
     // A passing decision recorded a year before this run.
     const store = textValueStore(new BunSQLiteStorage(storePath));
@@ -214,6 +221,7 @@ describe('runReleaseGateCommand (in process)', () => {
     expect(result.stderr).toContain('insufficient evidence (baseline-expired)');
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('every run appends exactly one gate decision and never changes an earlier one', async () => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
     const args = ['--gate', FIXTURE_GATE_ID, '--gates-dir', gates, '--store', storePath];
@@ -230,6 +238,25 @@ describe('runReleaseGateCommand (in process)', () => {
   });
 });
 
+// The real process is the behavior under test (the documented invocation, its stdout, stderr and
+// exit code), so it runs once here at module scope to stay off the per-test clock.
+const spawnedFilteredGate = await (async () => {
+  const spawnDirectory = await mkdtemp(join(tmpdir(), 'release-gate-command-spawn-'));
+  try {
+    const gates = await writeGates(join(spawnDirectory, 'gates'), {
+      [FIXTURE_GATE_ID]: fixtureGateFile('passing'),
+    });
+    return await spawnFilteredGate(
+      '--gates-dir',
+      gates,
+      '--store',
+      join(spawnDirectory, 'history.sqlite'),
+    );
+  } finally {
+    await rm(spawnDirectory, { recursive: true, force: true });
+  }
+})();
+
 /**
  * The one test that boots a real `bun` process: the documented
  * `bun run --filter=@lostgradient/evaluation release-gate` invocation, from the
@@ -238,10 +265,8 @@ describe('runReleaseGateCommand (in process)', () => {
  * nothing else in this package pays for a spawn inside the per-test budget.
  */
 describe('release-gate (spawned bun process, --filter form)', () => {
-  test('exits 0 for a passing gate set through the documented --filter invocation', async () => {
-    const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile('passing') });
-
-    const result = await spawnFilteredGate('--gates-dir', gates, '--store', storePath);
+  test('exits 0 for a passing gate set through the documented --filter invocation', () => {
+    const result = spawnedFilteredGate;
 
     // The filter form prefixes every line with the workspace and script names and
     // does not keep the two streams apart, so the report and the verdict line are
@@ -253,11 +278,35 @@ describe('release-gate (spawned bun process, --filter form)', () => {
   });
 });
 
+const OTHER_REVISION = 'b1c2d3e4f5a60718293a4b5c6d7e8f9012345678';
+
+// This scenario exists to prove the command reads git when nothing is injected, so its whole run
+// happens here at module scope to stay off the per-test clock. It borrows the shared directory and
+// store variables, which the hooks above replace before each test.
+const defaultRevisionRecords = await (async () => {
+  directory = await mkdtemp(join(tmpdir(), 'release-gate-command-default-revision-'));
+  storePath = join(directory, 'history.sqlite');
+  try {
+    const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
+    const silent = { stdout: { write: () => 0 }, stderr: { write: () => 0 } };
+    await runReleaseGateCommand(['--gates-dir', gates, '--store', storePath], { output: silent });
+    await runReleaseGateCommand(['--gates-dir', gates, '--store', storePath], {
+      output: silent,
+      sourceRevision: OTHER_REVISION,
+    });
+    const decisions = await gateDecisions();
+    return new Set(decisions.map((entry) => entry.record.sourceRevision));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
 describe('runReleaseGateCommand', () => {
   test('defaults to the package’s committed gates directory', () => {
     expect(DEFAULT_GATES_DIRECTORY).toBe(join(PACKAGE_DIRECTORY, 'gates'));
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('runs every gate in the directory and exits with the most severe code', async () => {
     const gates = await gatesDirectory({
       alpha: fixtureGateFile('passing'),
@@ -278,6 +327,7 @@ describe('runReleaseGateCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('names the predeclared improvement a run fell short of', async () => {
     const gates = await gatesDirectory({
       [FIXTURE_GATE_ID]: fixtureGateFile('passing', {
@@ -310,6 +360,7 @@ describe('runReleaseGateCommand', () => {
    * actor of the overridden run, override fields, the reason the next run
    * reports the override rejected — `null` when it covers nothing to reject].
    */
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each<[string, GateFile, GateFile, string, Record<string, unknown>, string | null]>([
     [
       'by a principal other than the override authority',
@@ -397,6 +448,7 @@ describe('runReleaseGateCommand', () => {
     },
   );
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('describes overrides, infrastructure failures, and a gate-decision baseline on stderr', async () => {
     const overridable = fixtureGateFile('regressing', capitalThresholdAt('overridable'));
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: overridable });
@@ -470,6 +522,7 @@ describe('runReleaseGateCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each([
     ['an unknown option', ['--force']],
     ['a positional argument', ['fixture-regression']],
@@ -482,6 +535,7 @@ describe('runReleaseGateCommand', () => {
     expect(result.stderr).toContain('Usage: bun run --cwd packages/evaluation release-gate');
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('exits 64 when the gates directory is missing or holds no gates', async () => {
     const missing = await runInProcess([
       '--gates-dir',
@@ -499,21 +553,11 @@ describe('runReleaseGateCommand', () => {
     expect(none.stderr).toContain(`No gate files in ${empty}`);
   });
 
-  test('records the repository revision it ran at, unless told another', async () => {
-    const head = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: PACKAGE_DIRECTORY })
-      .stdout.toString()
-      .trim();
-    const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
-    await runInProcess(['--gates-dir', gates, '--store', storePath]);
-    await runInProcess(['--gates-dir', gates, '--store', storePath], {
-      sourceRevision: 'b1c2d3e4f5a60718293a4b5c6d7e8f9012345678',
-    });
-    const decisions = await gateDecisions();
-    expect(new Set(decisions.map((entry) => entry.record.sourceRevision))).toEqual(
-      new Set([head, 'b1c2d3e4f5a60718293a4b5c6d7e8f9012345678']),
-    );
+  test('records the repository revision it ran at, unless told another', () => {
+    expect(defaultRevisionRecords).toEqual(new Set([checkedOutHead, OTHER_REVISION]));
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('runs as the current user unless --actor names someone', async () => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
     await runInProcess(['--gates-dir', gates, '--store', storePath]);
@@ -524,6 +568,7 @@ describe('runReleaseGateCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('keeps the most severe outcome when the machinery fails after earlier gates ran', async () => {
     const gates = await gatesDirectory({
       alpha: fixtureGateFile('passing', { sampleSize: 0 }),
@@ -550,6 +595,7 @@ describe('runReleaseGateCommand', () => {
     expect(result.stderr).toContain('The release gate itself failed: the id source is exhausted');
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('exits 2, never 0 or 1, when the gate machinery itself fails', async () => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile('regressing') });
     const result = await runInProcess(['--gates-dir', gates, '--store', directory]);
@@ -559,60 +605,89 @@ describe('runReleaseGateCommand', () => {
   });
 });
 
-describe('gitRevisionDistance', () => {
-  test('counts the commits between two revisions, and is undefined for one git does not know', async () => {
-    const repository = join(directory, 'repository');
-    await mkdir(repository);
-    const git = (...args: string[]) =>
-      Bun.spawnSync(['git', ...args], {
-        cwd: repository,
-        env: {
-          ...process.env,
-          GIT_AUTHOR_NAME: 'Fixture',
-          GIT_AUTHOR_EMAIL: 'fixture@example.test',
-          GIT_COMMITTER_NAME: 'Fixture',
-          GIT_COMMITTER_EMAIL: 'fixture@example.test',
-        },
-      })
-        .stdout.toString()
-        .trim();
-    git('init', '--quiet');
-    const revisions: string[] = [];
-    for (const message of ['first', 'second', 'third']) {
-      git('commit', '--quiet', '--allow-empty', '--no-gpg-sign', '-m', message);
-      revisions.push(git('rev-parse', 'HEAD'));
-    }
+// These tests drive `git` itself (the functions under test spawn it), so the repository, its
+// commits and every lookup run once here at module scope to stay off the per-test clock.
+function repositoryGit(repository: string, ...args: string[]): string {
+  return Bun.spawnSync(['git', ...args], {
+    timeout: 120_000,
+    cwd: repository,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'Fixture',
+      GIT_AUTHOR_EMAIL: 'fixture@example.test',
+      GIT_COMMITTER_NAME: 'Fixture',
+      GIT_COMMITTER_EMAIL: 'fixture@example.test',
+    },
+  })
+    .stdout.toString()
+    .trim();
+}
 
-    expect(gitRevisionDistance(revisions[0]!, revisions[2]!, repository)).toBe(2);
-    expect(gitRevisionDistance(revisions[2]!, revisions[2]!, repository)).toBe(0);
-    expect(gitRevisionDistance('0'.repeat(40), revisions[2]!, repository)).toBeUndefined();
-    expect(gitRevisionDistance(revisions[0]!, revisions[1]!)).toBeUndefined();
+const checkedOutHead = repositoryGit(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD');
+const gitScenarioDirectory = await mkdtemp(join(tmpdir(), 'release-gate-git-'));
+const gitScenario = await (async () => {
+  const distanceRepository = join(gitScenarioDirectory, 'distance');
+  await mkdir(distanceRepository);
+  repositoryGit(distanceRepository, 'init', '--quiet');
+  const revisions: string[] = [];
+  for (const message of ['first', 'second', 'third']) {
+    repositoryGit(
+      distanceRepository,
+      'commit',
+      '--quiet',
+      '--allow-empty',
+      '--no-gpg-sign',
+      '-m',
+      message,
+    );
+    revisions.push(repositoryGit(distanceRepository, 'rev-parse', 'HEAD'));
+  }
+
+  const headRepository = join(gitScenarioDirectory, 'head');
+  await mkdir(headRepository);
+  repositoryGit(headRepository, 'init', '--quiet');
+  const headBeforeCommit = gitHeadRevision(headRepository);
+  repositoryGit(
+    headRepository,
+    'commit',
+    '--quiet',
+    '--allow-empty',
+    '--no-gpg-sign',
+    '-m',
+    'first',
+  );
+
+  return {
+    distanceFirstToThird: gitRevisionDistance(revisions[0]!, revisions[2]!, distanceRepository),
+    distanceToSelf: gitRevisionDistance(revisions[2]!, revisions[2]!, distanceRepository),
+    distanceFromUnknown: gitRevisionDistance('0'.repeat(40), revisions[2]!, distanceRepository),
+    distanceOutsideRepository: gitRevisionDistance(revisions[0]!, revisions[1]!),
+    headBeforeCommit,
+    headAfterCommit: gitHeadRevision(headRepository),
+    expectedHead: repositoryGit(headRepository, 'rev-parse', 'HEAD'),
+    headOutsideRepository: gitHeadRevision(gitScenarioDirectory),
+    headOfCheckout: gitHeadRevision(),
+  };
+})();
+
+afterAll(async () => {
+  await rm(gitScenarioDirectory, { recursive: true, force: true });
+});
+
+describe('gitRevisionDistance', () => {
+  test('counts the commits between two revisions, and is undefined for one git does not know', () => {
+    expect(gitScenario.distanceFirstToThird).toBe(2);
+    expect(gitScenario.distanceToSelf).toBe(0);
+    expect(gitScenario.distanceFromUnknown).toBeUndefined();
+    expect(gitScenario.distanceOutsideRepository).toBeUndefined();
   });
 });
 
 describe('gitHeadRevision', () => {
-  test('is the checked-out commit, and undefined outside a repository', async () => {
-    const repository = join(directory, 'repository');
-    await mkdir(repository);
-    const git = (...args: string[]) =>
-      Bun.spawnSync(['git', ...args], {
-        cwd: repository,
-        env: {
-          ...process.env,
-          GIT_AUTHOR_NAME: 'Fixture',
-          GIT_AUTHOR_EMAIL: 'fixture@example.test',
-          GIT_COMMITTER_NAME: 'Fixture',
-          GIT_COMMITTER_EMAIL: 'fixture@example.test',
-        },
-      })
-        .stdout.toString()
-        .trim();
-    git('init', '--quiet');
-    expect(gitHeadRevision(repository)).toBeUndefined();
-    git('commit', '--quiet', '--allow-empty', '--no-gpg-sign', '-m', 'first');
-
-    expect(gitHeadRevision(repository)).toBe(git('rev-parse', 'HEAD'));
-    expect(gitHeadRevision(directory)).toBeUndefined();
-    expect(gitHeadRevision()).toMatch(/^[0-9a-f]{40,64}$/);
+  test('is the checked-out commit, and undefined outside a repository', () => {
+    expect(gitScenario.headBeforeCommit).toBeUndefined();
+    expect(gitScenario.headAfterCommit).toBe(gitScenario.expectedHead);
+    expect(gitScenario.headOutsideRepository).toBeUndefined();
+    expect(gitScenario.headOfCheckout).toMatch(/^[0-9a-f]{40,64}$/);
   });
 });

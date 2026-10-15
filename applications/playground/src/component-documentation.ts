@@ -23,6 +23,7 @@ import {
   readmeAnchorId,
   rewriteReadmeFragmentLinks,
 } from './readme-anchors.ts';
+import { wrapReadmeTables } from './readme-tables.ts';
 import { repositorySourceHref, rewriteRelativeRenderedMarkdownLinks } from './repository-links.ts';
 import type { ComponentManifest } from './types.ts';
 
@@ -409,7 +410,7 @@ export function renderReadmeDocumentation(rawMarkdown: string): DocumentationRea
     rawMarkdown: rendered.rawMarkdown,
     // The renderer emits headings without ids, so the fragments READMEs link with (`#usage`) named
     // nothing on the page; see `readme-anchors.ts`.
-    html: rewriteReadmeFragmentLinks(addReadmeHeadingAnchors(rendered.html)),
+    html: wrapReadmeTables(rewriteReadmeFragmentLinks(addReadmeHeadingAnchors(rendered.html))),
     codeBlocks: rendered.codeBlocks,
     hadUnsafeContent: rendered.hadUnsafeContent,
   };

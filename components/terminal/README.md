@@ -1,0 +1,31 @@
+# @lostgradient/terminal
+
+`@lostgradient/terminal` is the browser terminal component for Corvidae. It renders terminal sessions with the engine the [terminal contract](../../documentation/terminal/contract.md) selected, `@xterm/xterm`, composed with [Cinder](../cinder/README.md) components. Its entry exports the [`Terminal` component](./src/lib/components/terminal/README.md) and the engine identity; the session controller and transport arrive in later issues.
+
+## Workspace usage
+
+Declare `"@lostgradient/terminal": "workspace:*"` in the consuming workspace's dependencies and run `bun install` from the Corvidae root. The package is private and exports TypeScript and Svelte source directly, so the consuming application compiles it and there is no build step. Shared external versions come from the root Bun catalog.
+
+## Boundaries
+
+This package is browser-only and is checked by `tsconfig.browser.json`, which has the DOM library, no ambient types, and the `browser` condition. It depends on [`@lostgradient/ventriloquist`](../../packages/ventriloquist/README.md) and may import only that package's platform-neutral root export. It never imports `@lostgradient/ventriloquist/bun`, `@lostgradient/ventriloquist/websocket`, `bun:*`, or Node modules.
+
+`bun run test:boundaries` runs three checks. Each states what it enforces and what it hands to another backstop.
+
+- **Source imports** (`scripts/check-boundaries.ts`): every `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, `.cjs` and `.svelte` file under `src/`, except test scaffolding, is parsed with the script kind its extension implies. A runtime load of `bun`, `bun:*`, a Node built-in, a ventriloquist subpath, a rejected comparison engine, or a relative path that leaves the package fails. That covers static imports, re-exports, `import x = require()`, and `import()` or `require()` with a string-literal argument, including inside Svelte `<script>` blocks and markup. Type-only imports erase before runtime and are allowed. A dynamic `import()` or `require()` whose argument is not a string literal or a plain template is a computed specifier: it cannot be resolved statically, so it fails closed. The check does not read tsconfig `paths` or bundler aliases; the browser typecheck (`tsconfig.browser.json`) is the backstop for what an alias resolves to.
+- **Engine pin** (`scripts/check-boundaries.ts`): the root catalog pins `@xterm/xterm` at the contract version, this package takes it through `catalog:`, and no key in the root `catalog`, in any named `catalogs` entry, or in the same fields under an object-form `workspaces` is a rejected comparison engine (`ghostty-web`, `@wterm/*`). What Bun actually resolved is the gate: every `bun.lock` package must not be a rejected engine, `@xterm/xterm` must resolve to exactly the contract version wherever it is installed, and no lockfile workspace may declare a rejected engine. Aliases, git sources, `overrides` and `resolutions` are not parsed; the lockfile shows their result. The lockfile is only as current as the last install, and every turbo task begins with `bun install --frozen-lockfile`, which fails on a lockfile out of step with the manifests; running the check directly without that preflight reads whatever lockfile is on disk.
+- **Import probe** (`scripts/import-probe.ts`): importing only `src/index.ts` under plain Bun, with no test preload and no DOM, must not load `@xterm/xterm` or a Bun-only ventriloquist entry, read, from this package's own source, the listed DOM globals (`window`, `document`, `navigator`, `HTMLElement`, `customElements`, `requestAnimationFrame`, `ResizeObserver`, `MutationObserver`), call `fetch`, `WebAssembly.compile`, `instantiate` or their streaming forms, construct `WebAssembly.Module`, `WebAssembly.Instance`, `Worker`, `SharedWorker`, `WebSocket`, `EventSource` or `XMLHttpRequest`, arm a timer with `setTimeout`, `setInterval` or `setImmediate`, add a property to `globalThis`, or throw. It sees only the modules `src/index.ts` reaches, so source that nothing under the entry imports is covered by the source-import check alone, and a computed specifier is covered by neither the probe nor the static check except by failing closed.
+
+The import check compiles this package's own Svelte components for the server and evaluates them, so their module-level code is what it inspects. Another workspace's components are not compiled, and a guarded DOM read made by a dependency while it imports (Cinder's does) is not counted against this package; the server-render test owns that. The engine is imported dynamically when a terminal mounts, so a server never loads it.
+
+## Commands
+
+- `bun run typecheck`: `svelte-check` against the browser program and then the Bun-typed program that also covers tests and scripts.
+- `bun run test`: the colocated `*.test.ts` files under `src/`, plus the boundary tests, with the `browser` and `svelte` conditions.
+- `bun run test:renderer`: the component's colocated tests under `src/lib/components/terminal`: lifecycle, the accepted parse boundary, geometry, fail-closed behavior, inert output, server render and hydration, and the shared byte corpus checked against declared oracles. An empty selection fails.
+- `bun run test:boundaries`: the boundary tests and the boundary check described above.
+- `bun run test:coverage`: the tests with LCOV output, then the ratchet in `coverage-ratchet.json` through `@lostgradient/testing/coverage-ratchet`. TypeScript lines and functions are held at 100 percent. The `svelte` ratchet was seeded from the first measurement of the renderer suite and is never lowered.
+
+## Testing
+
+`src/test/mount-harness.ts` mounts a Svelte component into its own container, flushes reactive updates, and tears it down, so a test can prove that a component renders, reacts, and leaves nothing behind. It is test-only and excluded from the browser program and from coverage.

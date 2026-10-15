@@ -40,8 +40,12 @@
       "reason": "Release history is generated in the target by its own release tooling (changesets in cinder, hand-maintained in weft) against versions that only exist downstream."
     },
     {
-      "glob": ".changeset/**",
-      "reason": "Changesets configuration and pending changeset files drive the target's release pipeline. Cinder carries `.changeset/config.json` and `.changeset/README.md`; corvidae has no changesets at all."
+      "glob": ".changeset/config.json",
+      "reason": "The target's Changesets configuration drives its release pipeline and has no corvidae source. COR-1433 narrowed the former `.changeset/**` glob to this file and the README below: the transform now delivers corvidae's pending changesets as new `.changeset/corvidae-<12 hex>-<name>.md` files, which must be writable, while a target-authored changeset such as `.changeset/mcp-x.md` stays outside everything the transform writes, prunes or retires."
+    },
+    {
+      "glob": ".changeset/README.md",
+      "reason": "The target's own Changesets readme. Corvidae's `.changeset/README.md` documents corvidae's authoring rules and is never copied across (COR-1433)."
     },
     {
       "glob": ".github/workflows/release.yaml",

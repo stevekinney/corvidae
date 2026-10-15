@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
 import {
@@ -112,8 +113,9 @@ function fixtureVerificationOptions(fixture: { directory: string }): {
   return { corvidaeRoot: fixture.directory, remote: fixture.directory };
 }
 
-describe('prepared sync artifacts', () => {
-  test('verify a prepared bundle without trusting artifact remote or branch data', async () => {
+describe('prepared sync artifacts', async () => {
+  // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     const fixture = await fixtureRepository();
     try {
       const artifactDirectory = join(fixture.root, 'artifact');
@@ -138,8 +140,10 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('verify a prepared bundle without trusting artifact remote or branch data', () =>
+    rethrow(outcome1));
 
-  test('reject unknown manifest fields before importing the bundle', async () => {
+  const outcome2 = await outcomeOf(async () => {
     const fixture = await fixtureRepository();
     try {
       const artifactDirectory = join(fixture.root, 'artifact');
@@ -179,8 +183,9 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('reject unknown manifest fields before importing the bundle', () => rethrow(outcome2));
 
-  test('rejects workflow input mismatches before importing the bundle', async () => {
+  const outcome3 = await outcomeOf(async () => {
     const fixture = await fixtureRepository();
     try {
       const artifactDirectory = join(fixture.root, 'artifact');
@@ -250,8 +255,9 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('rejects workflow input mismatches before importing the bundle', () => rethrow(outcome3));
 
-  test('verify skip artifacts from the bundled base commit and release workflow tree', async () => {
+  const outcome4 = await outcomeOf(async () => {
     const fixture = await fixtureRepository();
     try {
       await git(fixture.directory, 'reset', '--hard', fixture.baseCommit);
@@ -270,8 +276,10 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('verify skip artifacts from the bundled base commit and release workflow tree', () =>
+    rethrow(outcome4));
 
-  test('reject tampered bundles, non-parent bases, and mismatched workflow filenames', async () => {
+  const outcome5 = await outcomeOf(async () => {
     const fixture = await fixtureRepository();
     try {
       const artifactDirectory = join(fixture.root, 'artifact');
@@ -336,8 +344,10 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('reject tampered bundles, non-parent bases, and mismatched workflow filenames', () =>
+    rethrow(outcome5));
 
-  test('rejects manifest commit and tree mismatches without any push command', async () => {
+  const outcome6 = await outcomeOf(async () => {
     const fixture = await fixtureRepository();
     try {
       const artifactDirectory = join(fixture.root, 'artifact');
@@ -386,8 +396,10 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('rejects manifest commit and tree mismatches without any push command', () =>
+    rethrow(outcome6));
 
-  test('rejects a prepared bundle whose sync commit is not a direct child of the base', async () => {
+  const outcome7 = await outcomeOf(async () => {
     const fixture = await fixtureRepository();
     try {
       await git(fixture.directory, 'reset', '--hard', fixture.baseCommit);
@@ -431,8 +443,10 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('rejects a prepared bundle whose sync commit is not a direct child of the base', () =>
+    rethrow(outcome7));
 
-  test('requires an exact corvidae trailer in prepared commits', async () => {
+  const outcome8 = await outcomeOf(async () => {
     const fixture = await fixtureRepository({
       trailer: `${provenanceTrailer}: ${corvidaeCommit}-extra`,
     });
@@ -459,8 +473,9 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('requires an exact corvidae trailer in prepared commits', () => rethrow(outcome8));
 
-  test('rejects a matching-looking body line that is not a Git trailer', async () => {
+  const outcome9 = await outcomeOf(async () => {
     const fixture = await fixtureRepository({
       message: `Sync weft from corvidae\n\n${provenanceTrailer}: ${corvidaeCommit}\nnot a trailer footer`,
     });
@@ -487,4 +502,5 @@ describe('prepared sync artifacts', () => {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
+  test('rejects a matching-looking body line that is not a Git trailer', () => rethrow(outcome9));
 });

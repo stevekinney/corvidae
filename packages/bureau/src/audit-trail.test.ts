@@ -105,6 +105,7 @@ function createControllableKv(): {
   const kv: ReturnType<typeof textValueStore> = {
     ...base,
     async set(key: string, value: string) {
+      if (!key.startsWith('audit:v1:')) return base.set(key, value);
       setCallCount += 1;
       await gate;
       await base.set(key, value);
@@ -115,11 +116,15 @@ function createControllableKv(): {
     // than a plain `set` — gated identically (and counted on the SAME
     // counter) so a caller simulating a slow/in-flight write via this kv
     // still observes it regardless of which write path a given caller
-    // takes.
+    // takes. COR-1390: only a record write is gated and counted; the
+    // sequence reservation that precedes it is not the write under test.
     async conditionalBatch(
       preconditions: Parameters<typeof base.conditionalBatch>[0],
       operations: Parameters<typeof base.conditionalBatch>[1],
     ) {
+      if (!operations.some((operation) => operation.key.startsWith('audit:v1:'))) {
+        return base.conditionalBatch(preconditions, operations);
+      }
       setCallCount += 1;
       await gate;
       return base.conditionalBatch(preconditions, operations);
@@ -1443,8 +1448,9 @@ describe('createAuditTrail', () => {
       const trail = createAuditTrail(bureau, kv);
 
       emit(new SchedulePausedEvent('schedule-inflight'));
-      // The listener dispatches synchronously, so `kv.set` has already been
-      // called (and is gated) before `query()` below ever runs.
+      // The listener dispatches synchronously; once its sequence is claimed
+      // the record write is issued (and gated) before `query()` below runs.
+      await yieldToPortableEventLoop();
       expect(setCallCount()).toBe(1);
 
       // Filtered by the schedule's own synthetic owner id — the shape every
@@ -1479,6 +1485,7 @@ describe('createAuditTrail', () => {
       // This write is gated forever within this test — deliberately never
       // released, standing in for a genuinely stalled storage backend.
       emit(new SchedulePausedEvent('schedule-stuck'));
+      await yieldToPortableEventLoop();
       expect(setCallCount()).toBe(1);
 
       // A query scoped to a DIFFERENT owner must resolve promptly — it has
@@ -1581,6 +1588,108 @@ describe('createAuditTrail', () => {
       expect(record?.sequence).toBe(13);
 
       trail.dispose();
+    });
+
+    // COR-1390: two live bureaus over one store (`workflow-lease`) both seed
+    // from the same boot scan. When a run is handed from one to the other
+    // mid-flight, each used to issue the same next value for it.
+    it('never issues one sequence twice across two live trails seeded from the same boot scan', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const prior = createAuditTrail(createStubBureau().bureau, kv);
+      for (const timestampMs of [1000, 1001, 1002]) {
+        await prior.record({
+          runId: 'run-handoff',
+          type: 'step.completed',
+          detail: {},
+          timestampMs,
+        });
+      }
+      await prior.dispose();
+
+      const initialSequence = await computeInitialAuditSequence(kv);
+      expect(initialSequence).toBe(3);
+      const first = createAuditTrail(createStubBureau().bureau, kv, undefined, { initialSequence });
+      const second = createAuditTrail(createStubBureau().bureau, kv, undefined, {
+        initialSequence,
+      });
+
+      // The first holder writes, then the run moves to the second holder,
+      // which writes too; then both write at once.
+      await first.record({
+        runId: 'run-handoff',
+        type: 'step.completed',
+        detail: {},
+        timestampMs: 2000,
+      });
+      await second.record({
+        runId: 'run-handoff',
+        type: 'run.completed',
+        detail: {},
+        timestampMs: 3000,
+      });
+      await Promise.all([
+        first.record({
+          runId: 'run-handoff',
+          type: 'run.cleanup-settled',
+          detail: {},
+          timestampMs: 4000,
+        }),
+        second.record({
+          runId: 'run-handoff',
+          type: 'run.cleanup-settled',
+          detail: {},
+          timestampMs: 4001,
+        }),
+      ]);
+
+      const records = await first.query({ runId: 'run-handoff' });
+      const sequences = records.map((record) => record.sequence);
+      expect(sequences).toHaveLength(7);
+      expect(new Set(sequences).size).toBe(7);
+      expect(sequences.slice(0, 5)).toEqual([0, 1, 2, 3, 4]);
+
+      // A later boot resumes above every value either trail issued.
+      expect(await computeInitialAuditSequence(kv)).toBe(7);
+
+      await first.dispose();
+      await second.dispose();
+    });
+
+    it("keeps one trail's sequences in its own dispatch order while another trail claims values", async () => {
+      const kv = textValueStore(new MemoryStorage());
+      const local = createAuditTrail(createStubBureau().bureau, kv);
+      const peer = createAuditTrail(createStubBureau().bureau, kv);
+
+      const writes = [
+        local.record({
+          runId: 'run-order',
+          type: 'step.completed',
+          detail: { n: 0 },
+          timestampMs: 1000,
+        }),
+        peer.record({ runId: 'run-peer', type: 'step.completed', detail: {}, timestampMs: 1000 }),
+        local.record({
+          runId: 'run-order',
+          type: 'step.completed',
+          detail: { n: 1 },
+          timestampMs: 1000,
+        }),
+        local.record({
+          runId: 'run-order',
+          type: 'step.completed',
+          detail: { n: 2 },
+          timestampMs: 1000,
+        }),
+      ];
+      await Promise.all(writes);
+
+      const ordered = await local.query({ runId: 'run-order' });
+      expect(ordered.map((record) => (record.detail as { n: number }).n)).toEqual([0, 1, 2]);
+      const all = await local.query();
+      expect(new Set(all.map((record) => record.sequence)).size).toBe(4);
+
+      await local.dispose();
+      await peer.dispose();
     });
 
     it('query() sorts a sequence-less legacy record before every real sequence sharing its millisecond, using a transitive comparator (Codex P2 review finding, PR #594)', async () => {

@@ -1,0 +1,76 @@
+{
+  "manifestVersion": 1,
+  "package": {
+    "name": "@lostgradient/terminal",
+    "version": "0.0.0",
+    "framework": "svelte",
+    "frameworkVersionRange": ">=5.56.0 <6",
+    "classPrefix": "cinder-",
+    "cssVarPrefix": "--cinder-",
+    "tokenNamespaces": [
+      "accent",
+      "border",
+      "font",
+      "ring",
+      "space",
+      "status",
+      "surface",
+      "terminal",
+      "text"
+    ],
+    "stylesEntry": "@lostgradient/cinder",
+    "schemaDialect": "https://json-schema.org/draft/2020-12/schema"
+  },
+  "categories": {
+    "domain": {
+      "label": "Domain",
+      "description": "Application-specific components that encode product-level business concepts."
+    }
+  },
+  "statusLevels": {
+    "alpha": "Experimental; no stability guarantee and subject to removal or significant redesign."
+  },
+  "overlapFamilies": {},
+  "components": [
+    {
+      "id": "terminal",
+      "category": "domain",
+      "status": "alpha",
+      "purpose": "Render a terminal session's screen, cursor, colors, and scrollback inside Cinder's TerminalFrame, with the selected engine mounted only in the browser.",
+      "tags": ["terminal", "pty"],
+      "useWhen": [
+        "Showing the output of a real terminal session, with a measured grid the host sizes its process to."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Rendering a read-only log of finished text — use TerminalOutput."
+        }
+      ],
+      "related": ["terminal-frame", "terminal-output"],
+      "a11y": {
+        "pattern": "Labelled region with a live status and a text-input surface",
+        "keyboard": [
+          {
+            "keys": "Tab",
+            "action": "Moves focus onto the engine input surface and off it again."
+          }
+        ],
+        "notes": [
+          "Each state is announced once through a polite status region; output arrival never moves focus.",
+          "Output is selectable and scrollable in every state that keeps the engine mounted.",
+          "Sending input, safe paste, and key capture belong to the input layer and are not part of this renderer."
+        ]
+      },
+      "name": "Terminal",
+      "import": "@lostgradient/terminal",
+      "exportName": "Terminal",
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "@lostgradient/terminal",
+        "variables": "@lostgradient/terminal",
+        "examples": "@lostgradient/terminal"
+      }
+    }
+  ]
+}

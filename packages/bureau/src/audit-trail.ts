@@ -7,7 +7,8 @@
  * in-memory operative/store ring buffer (`maxActions`).
  *
  * Key schema: `audit:v1:<timestamp-padded>:<sequence>` so natural sort order
- * is chronological. Values are JSON-serialized {@link AuditRecord}.
+ * is chronological. Values are JSON-serialized {@link AuditRecord}. Every trail
+ * over one store claims `sequence` values from `audit-sequence:v1:high-water`.
  *
  * Layer A (live) is the operative/store; Layer B is this trail. Together they
  * form the glass-box audit surface for the gateway.
@@ -235,9 +236,11 @@ export interface AuditRecord {
    * trail has — the action-stream listener below AND every out-of-band write
    * (`record()`, the schedule-definition listeners, `sessionDeletedListener`)
    * all draw the next value from the SAME per-bureau counter (see
-   * `allocateSequence` in {@link createAuditTrail}), seeded above the highest
+   * `reserveSequence` in {@link createAuditTrail}), seeded above the highest
    * sequence already persisted at boot (`computeInitialAuditSequence`, called
-   * by `create-bureau.ts` before this factory runs). Before this change,
+   * by `create-bureau.ts` before this factory runs). COR-1390: the values are
+   * claimed from a durable high-water mark the store keeps, so two live
+   * bureaus over one store never issue the same one. Before this change,
    * action-stream records carried the operative store's own per-process
    * `action.sequence` while out-of-band records carried a deliberately huge,
    * disjoint `manualSequence` — two numbering domains that could never be
@@ -245,10 +248,10 @@ export interface AuditRecord {
    * released run's own terminal action landing in the same millisecond had
    * no way to record which one genuinely happened first (see AB-228's
    * `create-bureau.ts` comment this fix replaces). Because every write now
-   * draws from one counter at the moment it is dispatched (before the
-   * fire-and-forget `kv.set` even starts), the persisted value reflects true
-   * call order regardless of which write's `kv.set` promise happens to
-   * settle first.
+   * reserves its value at the moment it is dispatched (before the
+   * fire-and-forget write even starts) and reservations are claimed in that
+   * order, the persisted value reflects this bureau's true call order
+   * regardless of which write's promise happens to settle first.
    *
    * Optional because a record written before this field existed at all
    * carries none — {@link AuditTrail.query} falls back to timestamp-only
@@ -748,6 +751,28 @@ const PREFIX = 'audit:v1:';
 const PRUNE_FLOOR_KEY = 'audit-retention:v1:highest-pruned-sequence';
 
 /**
+ * COR-1390: the highest `sequence` any trail over this store has claimed, so
+ * two live trails sharing a store never issue the same value (see
+ * `reserveSequence` in {@link createAuditTrail}). Outside {@link PREFIX} for
+ * the same reason as {@link PRUNE_FLOOR_KEY}. Pruning never lowers it.
+ */
+const SEQUENCE_HIGH_WATER_KEY = 'audit-sequence:v1:high-water';
+
+/** How many contended compare-and-swaps one sequence claim tolerates. */
+const SEQUENCE_CLAIM_ATTEMPTS = 64;
+
+/**
+ * The stored high-water mark, or `-1` when absent or unreadable — a corrupt
+ * value is ignored the way {@link computeInitialAuditSequence} ignores a
+ * corrupt prune floor, leaving the boot-scan floor to keep values fresh.
+ */
+function parseSequenceHighWater(raw: string | null): number {
+  if (raw === null) return -1;
+  const parsed: unknown = Number(raw);
+  return typeof parsed === 'number' && Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : -1;
+}
+
+/**
  * AB-391 (Codex review finding, PR #601, "Make attachment replay
  * deduplication atomic"): the reserved key prefix for
  * {@link AuditTrail.record}'s `dedupeKey` marker — mirrors
@@ -976,16 +1001,74 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
   // (`computeInitialAuditSequence`, called by `create-bureau.ts` before this
   // factory runs) so a fresh process resumes above anything a prior process
   // lifetime already persisted rather than reissuing a value. Each call
-  // returns the next value and advances the counter — called synchronously,
-  // at the moment a write is DISPATCHED (before its underlying storage call
-  // starts), so the assigned value reflects true call order regardless of
-  // which write's fire-and-forget promise happens to settle first. Also
+  // reserves the next value — queued synchronously, at the moment a write is
+  // DISPATCHED (before its underlying storage call starts), so the assigned
+  // value reflects true call order regardless of which write's
+  // fire-and-forget promise happens to settle first. Also
   // called again, mid-flight, by `attemptKeyFencedWrite`'s own retry on a
   // key collision — each retry mints a genuinely fresh sequence/key rather
   // than reusing the one that just collided.
-  let nextSequence = auditTrailOptions?.initialSequence ?? 0;
-  function allocateSequence(): number {
-    return nextSequence++;
+  //
+  // COR-1390: the counter is the store's, not this instance's. Two live
+  // bureaus over one store (the `workflow-lease` deployment) both seed from
+  // the same boot scan, so a run handed from one to the other mid-flight used
+  // to receive the same sequence from each. A reservation is queued
+  // synchronously at dispatch and the queue claims sequences in order from
+  // the durable high-water mark `SEQUENCE_HIGH_WATER_KEY` by compare-and-swap,
+  // one block per drain, so values stay in this instance's call order and are
+  // never issued twice across instances. `initialSequence` remains the floor
+  // for a store whose records predate the high-water mark.
+  let sequenceFloor = auditTrailOptions?.initialSequence ?? 0;
+  const queuedReservations: Array<PromiseWithResolvers<number>> = [];
+  let drainingReservations = false;
+  function reserveSequence(store: ConditionalTextValueStore): Promise<number> {
+    const reservation = Promise.withResolvers<number>();
+    queuedReservations.push(reservation);
+    if (!drainingReservations) {
+      drainingReservations = true;
+      void drainSequenceReservations(store);
+    }
+    return reservation.promise;
+  }
+
+  async function drainSequenceReservations(store: ConditionalTextValueStore): Promise<void> {
+    try {
+      while (queuedReservations.length > 0) {
+        const batch = queuedReservations.splice(0);
+        try {
+          const first = await claimSequenceBlock(store, batch.length);
+          batch.forEach((reservation, offset) => reservation.resolve(first + offset));
+        } catch (error: unknown) {
+          for (const reservation of batch) reservation.reject(error);
+        }
+      }
+    } finally {
+      drainingReservations = false;
+    }
+  }
+
+  async function claimSequenceBlock(
+    store: ConditionalTextValueStore,
+    count: number,
+  ): Promise<number> {
+    // Every failed compare-and-swap means another instance claimed a block,
+    // so the bound only stops a pathological storm, never a healthy race.
+    for (let attempt = 0; attempt < SEQUENCE_CLAIM_ATTEMPTS; attempt++) {
+      const observed = await store.get(SEQUENCE_HIGH_WATER_KEY);
+      const first = Math.max(parseSequenceHighWater(observed) + 1, sequenceFloor);
+      const last = first + count - 1;
+      const claimed = await store.conditionalBatch(
+        [{ key: SEQUENCE_HIGH_WATER_KEY, expectedValue: observed }],
+        [{ type: 'set', key: SEQUENCE_HIGH_WATER_KEY, value: String(last) }],
+      );
+      if (claimed) {
+        sequenceFloor = last + 1;
+        return first;
+      }
+    }
+    throw new Error(
+      `[audit-trail] Could not claim an audit sequence after ${SEQUENCE_CLAIM_ATTEMPTS} contended attempts.`,
+    );
   }
 
   // AB-391 (Codex P1 review findings, PR #601, "Guard the audit record key
@@ -1012,13 +1095,21 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
   // best-effort caller, drop loudly) rather than loop forever. Takes
   // `store` explicitly (rather than closing over `kv`) so every call site
   // can narrow `kv` non-null however it needs to before calling in.
+  //
+  // COR-1390: each attempt reserves its own sequence (see `reserveSequence`)
+  // and asks `buildRecord` for the record carrying it.
   async function attemptKeyFencedWrite(
     store: ConditionalTextValueStore,
-    attemptKey: string,
-    attemptRecord: AuditRecord,
+    buildRecord: (sequence: number) => AuditRecord,
     markerKey: string | undefined,
     attemptsRemaining: number,
   ): Promise<void> {
+    const attemptRecord = buildRecord(await reserveSequence(store));
+    const attemptKey = encodeKey(
+      attemptRecord.timestampMs,
+      attemptRecord.sequence as number,
+      attemptRecord.runId,
+    );
     const preconditions = markerKey
       ? [
           { key: markerKey, expectedValue: null },
@@ -1047,10 +1138,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         `[audit-trail] Exhausted retries resolving an audit-record key collision for ${target}.`,
       );
     }
-    const allocatedSequence = allocateSequence();
-    const nextKey = encodeKey(attemptRecord.timestampMs, allocatedSequence, attemptRecord.runId);
-    const nextRecord: AuditRecord = { ...attemptRecord, sequence: allocatedSequence };
-    await attemptKeyFencedWrite(store, nextKey, nextRecord, markerKey, attemptsRemaining - 1);
+    await attemptKeyFencedWrite(store, buildRecord, markerKey, attemptsRemaining - 1);
   }
 
   // Subscribe to the bureau's action stream. The bureau re-emits every
@@ -1071,8 +1159,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     // other non-JSON-safe values so the record is safe to JSON.stringify.
     const serializedDetail = serializeActionDetail(action.type, action.detail);
 
-    const sequence = allocateSequence();
-    const record: AuditRecord = {
+    const buildRecord = (sequence: number): AuditRecord => ({
       timestamp: new Date(action.timestamp).toISOString(),
       timestampMs: action.timestamp,
       sequence,
@@ -1083,9 +1170,8 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       runId: action.runId,
       type: action.type,
       detail: serializedDetail,
-    };
+    });
 
-    const key = encodeKey(action.timestamp, sequence, action.runId);
     // Fire-and-forget from the run's perspective: a write failure must never
     // crash the run, so nothing here is awaited inline. Tracked in
     // `activeWrites` so `dispose()` can await it (AB-207) instead of racing
@@ -1094,11 +1180,11 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     // writer in this file (see `attemptKeyFencedWrite`'s own doc comment) —
     // this was the last remaining plain `kv.set` write.
     trackWrite(
-      attemptKeyFencedWrite(store, key, record, undefined, 3).catch((error: unknown) => {
+      attemptKeyFencedWrite(store, buildRecord, undefined, 3).catch((error: unknown) => {
         diagnose({
           level: 'error',
           scope: 'audit-trail',
-          message: `[audit-trail] Failed to persist audit record for key "${key}":`,
+          message: `[audit-trail] Failed to persist the "${action.type}" audit record for run "${action.runId}":`,
           cause: error,
         });
       }),
@@ -1210,9 +1296,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       diagnose({ level: 'error', scope: 'audit-trail', message });
       return Promise.resolve();
     }
-    const sequence = allocateSequence();
-
-    const record: AuditRecord = {
+    const buildRecord = (sequence: number): AuditRecord => ({
       timestamp: new Date(timestampMs).toISOString(),
       timestampMs,
       sequence,
@@ -1220,9 +1304,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       type: entry.type,
       detail: entry.detail,
       ...(entry.principal !== undefined ? { principal: entry.principal } : {}),
-    };
-
-    const key = encodeKey(timestampMs, sequence, entry.runId);
+    });
 
     // AB-391 (Codex review finding, PR #601, "Make attachment replay
     // deduplication atomic"): `dedupeKey` routes this write through an
@@ -1251,7 +1333,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       // See `attemptKeyFencedWrite`'s own doc comment above for the
       // key-collision fencing this shares with the ordinary write path
       // below.
-      const dedupedWrite = attemptKeyFencedWrite(store, key, record, markerKey, 3);
+      const dedupedWrite = attemptKeyFencedWrite(store, buildRecord, markerKey, 3);
       // AB-391 (Codex P2 review finding, PR #601, "Track deduplicated audit
       // writes before returning"): unlike every other write path in this
       // function, this branch used to return its write promise directly
@@ -1291,7 +1373,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     // callers still never reject: retry exhaustion here degrades to
     // diagnose-and-drop below, exactly like any other storage failure,
     // rather than looping forever or silently overwriting.
-    const rawWrite = attemptKeyFencedWrite(store, key, record, undefined, 3);
+    const rawWrite = attemptKeyFencedWrite(store, buildRecord, undefined, 3);
 
     // Best-effort observability path: never rejects. This is what gets
     // tracked in `activeWrites`/`activeWritesByRunId` — `dispose()` awaits
@@ -1306,7 +1388,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
       diagnose({
         level: 'error',
         scope: 'audit-trail',
-        message: `[audit-trail] Failed to persist audit record for key "${key}":`,
+        message: `[audit-trail] Failed to persist the "${entry.type}" audit record for run "${entry.runId}":`,
         cause: error,
       });
     });
@@ -1690,7 +1772,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     }
 
     const timestampMs = runtime.clock.now();
-    const sequence = allocateSequence();
+    const sequence = await reserveSequence(kv);
     const record: AuditRecord = {
       timestamp: new Date(timestampMs).toISOString(),
       timestampMs,

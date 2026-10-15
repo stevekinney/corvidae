@@ -158,6 +158,76 @@ describe('createPullRequest', () => {
   });
 });
 
+describe('supersession methods (COR-1433)', () => {
+  test('listOpenPullRequests pages through open pull requests as the App', async () => {
+    const page = (start: number, count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        number: start + index,
+        html_url: `https://github.com/stevekinney/weft/pull/${start + index}`,
+        user: { login: 'lost-gradient-mirror-sync[bot]' },
+        head: { ref: `mirror-sync-${start + index}`, sha: 'a'.repeat(40) },
+        base: { ref: 'main' },
+      }));
+    const { api, seen } = harness([
+      { status: 200, body: page(1, 100) },
+      { status: 200, body: page(101, 2) },
+    ]);
+    const pullRequests = await api.listOpenPullRequests('stevekinney/weft');
+    expect(pullRequests).toHaveLength(102);
+    expect(pullRequests.at(0)).toEqual({
+      number: 1,
+      htmlUrl: 'https://github.com/stevekinney/weft/pull/1',
+      author: 'lost-gradient-mirror-sync[bot]',
+      headRef: 'mirror-sync-1',
+      headSha: 'a'.repeat(40),
+      baseRef: 'main',
+    });
+    expect(seen.map(({ url }) => url)).toEqual([
+      'https://api.github.com/repos/stevekinney/weft/pulls?state=open&per_page=100&page=1',
+      'https://api.github.com/repos/stevekinney/weft/pulls?state=open&per_page=100&page=2',
+    ]);
+    expect(
+      seen.every(({ authorization }) => authorization === 'Bearer installation-credential'),
+    ).toBe(true);
+  });
+
+  test('getCommitMessage returns the full message of one commit', async () => {
+    const { api, seen } = harness([
+      { status: 200, body: { commit: { message: 'Subject\n\nBody' } } },
+    ]);
+    expect(await api.getCommitMessage('stevekinney/weft', 'deadbeef')).toBe('Subject\n\nBody');
+    expect(seen.at(0)?.url).toBe('https://api.github.com/repos/stevekinney/weft/commits/deadbeef');
+  });
+
+  test('createIssueComment posts a comment on a pull request', async () => {
+    const { api, seen } = harness([{ status: 201, body: { id: 1 } }]);
+    await api.createIssueComment({
+      fullName: 'stevekinney/weft',
+      issueNumber: 4,
+      body: 'Superseded',
+    });
+    expect(seen.at(0)).toMatchObject({
+      url: 'https://api.github.com/repos/stevekinney/weft/issues/4/comments',
+      method: 'POST',
+      body: { body: 'Superseded' },
+    });
+  });
+
+  test('closePullRequest closes without merging, and a refusal throws', async () => {
+    const { api, seen } = harness([{ status: 200, body: {} }]);
+    await api.closePullRequest('stevekinney/weft', 4);
+    expect(seen.at(0)).toMatchObject({
+      url: 'https://api.github.com/repos/stevekinney/weft/pulls/4',
+      method: 'PATCH',
+      body: { state: 'closed' },
+    });
+    const refusing = harness([{ status: 403, body: { message: 'no' } }]);
+    expect(await throwingRejectionOf(refusing.api.closePullRequest('stevekinney/weft', 4))).toThrow(
+      GitHubApiError,
+    );
+  });
+});
+
 describe('dispatchWorkflow', () => {
   test('dispatches through the App installation with the exact ref and inputs', async () => {
     const { api, seen } = harness([{ status: 204 }]);

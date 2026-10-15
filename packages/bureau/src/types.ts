@@ -77,6 +77,8 @@ import type {
   AgentRunForName,
   BureauAgentCatalog,
 } from './agent-catalog';
+import type { BureauAssetOptions } from './assets/asset-service';
+import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
@@ -723,6 +725,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   onlineEvals?: OnlineEvalSamplerOptions;
   /**
+   * Managed assets (COR-794) — composes one asset service over the injected
+   * asset storage, policy, and ports, running on this bureau's runtime
+   * services. Exposed as {@link Bureau.assets} and shut down as the
+   * `'assets'` owner. Omit to compose none — the default.
+   */
+  assets?: BureauAssetOptions;
+  /**
    * Host sink for internal operational diagnostics — recovery failures,
    * live-frame listener exceptions, dispose errors, and persistence
    * failures (see {@link BureauDiagnostic}). Distinct from {@link onLog},
@@ -733,6 +742,18 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * the run.
    */
   onDiagnostic?: DiagnosticSink;
+  /**
+   * A listener on the Bureau's own event emitter that is registered before any
+   * recovery pass can dispatch, so it hears every boot-time event (recovery
+   * decisions, `run.registered` and `action` events of recovered runs) that a
+   * listener added through `addEventListener` after `createBureau()` returns
+   * would miss. It receives every event the emitter dispatches for the life of
+   * the Bureau, in dispatch order. A throwing listener, or an async one that rejects, is
+   * reported through {@link onDiagnostic} and does not affect the Bureau. Live frames have no
+   * such option: `subscribeLiveFrames` replays the frames emitted during
+   * recovery to its first subscriber.
+   */
+  onEvent?: (event: BureauEventMap[BureauEventType]) => void | Promise<void>;
   /**
    * AB-42/AB-194 — per-session and per-principal backlog caps for pending
    * `SessionInputRecord`s admitted through {@link Bureau.submitSessionInput}.
@@ -993,6 +1014,7 @@ export interface BureauShutdownOwnerReport {
     | 'audit-trail'
     | 'event-history'
     | 'durable-engine'
+    | 'assets'
     | 'heartbeat';
   readonly id?: string;
   readonly outcome: CleanupAcknowledgement;
@@ -1221,12 +1243,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   /**
    * @deprecated Use {@link Bureau.run} with a catalog `RunnableAgent` instead
-   * (per-agent `generate`/tools on `createAgent`). For a call that passes
-   * `principal`, `bureau.run` does NOT yet accept it — `BureauRunOptions`
-   * validation rejects any defined `principal` with `BAD_REQUEST` until
-   * AB-241 lands; stay on `createRun` for principal-attributed calls until
-   * then. Not yet removed — see AB-242's decision record and the removal
-   * issue it names (AB-352).
+   * (per-agent `generate`/tools on `createAgent`). A principal-attributed
+   * call migrates by passing {@link BureauRunOptions.principal}: since
+   * AB-241, `bureau.run` forwards it into `AgentRunContext.principal` and, on
+   * the durable branch, records it exactly as `createRun` records
+   * `request.principal`. Only a defined non-string `principal` is rejected
+   * (`BAD_REQUEST`). Not yet removed — see AB-242's decision record and the
+   * removal issue it names (AB-352).
    */
   createRun(request: CreateRunRequest): Promise<RunSummary>;
   submitSchedulerTask(request: SubmitSchedulerTaskRequest): Promise<SubmitSchedulerTaskResponse>;
@@ -1304,6 +1327,30 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * only at terminal transitions, and a recovered run is otherwise opaque.
    */
   getDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
+
+  /**
+   * Waits until a run's durable workflow has reached a terminal state in the durable store, then
+   * resolves with its {@link WorkflowState}. Terminal means any status other than `pending`,
+   * `running` or `suspended` (so `completed`, `failed`, `cancelled` or `timed-out`). A failed or
+   * cancelled run resolves with its state rather than rejecting.
+   *
+   * It resolves after the durable commit. Live frames, bureau events and `getRun(id).status` are
+   * announced by this process and can precede it, so a caller that is about to read the durable
+   * store (`getDurableRun`, `eventHistory`, a second bureau over the same store) waits here
+   * instead. The wait is Weft's own result waiter (`engine.getHandle(runId).result()`): it settles
+   * from this engine's terminal delivery, or from the store when another engine over the same
+   * store finishes the run, which needs the engine to own workflows with
+   * `ownership: 'workflow-lease'` so that Weft polls for the other engine's completion.
+   *
+   * Resolves `undefined` when no durable engine is composed and `null` when the engine has no such
+   * run, the same meanings as {@link Bureau.getDurableRun}. A run that is already terminal
+   * resolves immediately. It rejects when Weft's result waiter fails for a reason that leaves the
+   * run non-terminal in the store (a disposed engine, a transient read failure), and it rejects
+   * with an `UNSUPPORTED_CAPABILITY` `BureauError` for a non-terminal run under
+   * `durableBackgroundTasks: 'manual'`, where nothing re-reads the store between maintenance
+   * passes: use `runDurableMaintenance()` and `getDurableRun()` there.
+   */
+  waitForDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
 
   /**
    * Cancel a durable run that has no live, process-local `ActiveRun` (AB-37,
@@ -1420,8 +1467,8 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   ): Promise<SessionInputAdmissionOutcome>;
 
   /**
-   * AB-67/AB-199 — admit a `pause` or `resume` steering command as a sixth
-   * session verb, scoped to an in-memory (process-local) session. Reads
+   * AB-67/AB-199/AB-200 — admit a steering command as a sixth session verb,
+   * for in-memory and durable sessions alike. Reads
    * authority and terminal status through the same mechanism
    * `submitSessionInput` uses ({@link isSessionAuthorityAuthorized},
    * {@link isSessionRunTerminal}): an unauthorized caller or unknown
@@ -1429,16 +1476,40 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * naming an already-terminal session returns `{ outcome: 'session-terminal',
    * sessionId }`.
    *
-   * Every target other than `pause`/`resume` returns `{ outcome:
-   * 'unsupported-capability', reason: 'selector-unavailable' }` — `ab-67-
-   * bureau-b` owns admitting them (`policyRef` resolution through AB-66's
-   * selector, `override`-against-catalog validation). A `pause`/`resume`
-   * request against a session with `runtime.durable` configured likewise
-   * returns `unsupported-capability`, with `reason:
-   * 'durable-steering-unavailable'`: this method never holds process-local
-   * pause/resume state a restart would lose.
+   * All seven targets are admitted (AB-199/AB-200/AB-68, COR-1227):
+   * `pause`/`resume` bind to one run; `agent-identity` is deferred to the
+   * session's next run, and its `override` must name a key of this
+   * Bureau's `agents` map (otherwise `rejected` with `policy-denied`);
+   * `route`, `model`, `provider`, and `effort` apply at the next step
+   * boundary. A configuration `override` is checked against the live model
+   * catalog (`route` is not catalog-validated), and a configuration
+   * `policyRef` resolves through `modelPolicy.users` — an unknown profile,
+   * a profile that omits the coordinate, or an uncatalogued coordinate is
+   * `rejected` with `policy-denied`. Only an `agent-identity` `policyRef`
+   * returns `{ outcome: 'unsupported-capability', reason:
+   * 'selector-unavailable' }`.
    *
-   * A `pause` against an authorized, non-terminal, in-memory session is
+   * Durable sessions are admitted too: the command is persisted in the
+   * session's steering mailbox before it enters desired state, so recovery
+   * can replay it. `{ outcome: 'unsupported-capability', reason:
+   * 'durable-steering-unavailable' }` is returned only by the guard for a
+   * durably-configured Bureau with no resolved storage backend, which
+   * normal composition does not produce. A durable command the session's
+   * mailbox rejects at admission (for example, an exhausted backlog) returns
+   * `unsupported-capability` with the mailbox's own rejection reason and
+   * never enters desired state. A reused `id` whose persisted identity
+   * differs is not one of those: it falls through to the gate and returns
+   * the typed `conflict` described below.
+   *
+   * Known limit: durability holds across ONE restart. Recovery replays the
+   * mailbox and acknowledges what it replays, so after a second restart the
+   * session's mailbox and in-memory gate are both empty: desired
+   * configuration and agent identity fall back to defaults, and a reused
+   * `(principal, id)` — exact or not — is admitted as a new command rather
+   * than `replayed` or a `conflict`. Steering is also process-local: two
+   * Bureau processes sharing a backend each admit into their own gate.
+   *
+   * A `pause` against an authorized, non-terminal session is
    * accepted, increments the session's `configVersion` by exactly one, and
    * is idempotent against a second `pause` while the first is still
    * `accepted`/`applied` (no second increment). A `resume` against a session
@@ -1644,6 +1715,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   getConfiguration(): ConfigurationResponse;
   getTools(): ToolSummary[];
+  /**
+   * Subscribe to every live frame. The FIRST subscriber is also replayed, in
+   * emission order, the frames emitted during boot recovery and by the runs it recovered (at
+   * most the newest 1024), so a recovered run that emitted while `createBureau()` was
+   * still awaiting is not lost to a caller that can only subscribe after it
+   * returns. The replay runs in a microtask, after this call has returned its unsubscribe
+   * handle, so a listener may unsubscribe itself from inside it. Later
+   * subscribers receive only new frames. Emitter listeners get
+   * no such replay; register them through {@link BureauOptions.onEvent}.
+   */
   subscribeLiveFrames(listener: (frame: ServerFrame) => void): () => void;
 
   addEventListener<K extends keyof BureauEventMap & string>(
@@ -1754,6 +1835,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * evaluations deterministically.
    */
   readonly onlineEvalSampler: OnlineEvalSampler | undefined;
+
+  /**
+   * The managed-asset service (COR-794). Present whenever `options.assets`
+   * is configured; `undefined` otherwise (the default). `shutdown()` aborts
+   * its in-flight asset work and awaits every cleanup acknowledgement.
+   */
+  readonly assets: AssetService | undefined;
 
   /**
    * Pages `owner`'s durable event history (AB-91's `ab91-01` slice,

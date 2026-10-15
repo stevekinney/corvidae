@@ -20,6 +20,7 @@ import { expect, test } from 'bun:test';
 // per-test clock; the test below only asserts on its settled result.
 const scriptPath = new URL('./generate-artifacts.ts', import.meta.url).pathname;
 const child = Bun.spawn(['bun', scriptPath, '--check'], {
+  timeout: 120_000,
   cwd: new URL('../..', import.meta.url).pathname,
   stdout: 'pipe',
   stderr: 'pipe',

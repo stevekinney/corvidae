@@ -8,7 +8,7 @@ import ts from 'typescript';
 import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
-const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui'];
+const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui', 'terminal'];
 const libraries = [
   'bureau',
   'operative',
@@ -28,6 +28,8 @@ const libraries = [
   'editor',
   'markdown',
   'testing',
+  'terminal',
+  'ventriloquist',
 ];
 
 /**
@@ -63,6 +65,8 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/testing',
   '@lostgradient/typescript',
   '@lostgradient/playground',
+  '@lostgradient/terminal',
+  '@lostgradient/ventriloquist',
   'armorer',
   'conversationalist',
 ]);
@@ -140,7 +144,10 @@ async function listVersionedFixtureSource() {
         await Bun.write(join(directory, workspace, path), '');
       }
     }
-    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], { cwd: directory });
+    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], {
+      timeout: 120_000,
+      cwd: directory,
+    });
     const listed = Bun.spawnSync(
       [
         'git',
@@ -152,7 +159,7 @@ async function listVersionedFixtureSource() {
         '--others',
         '--exclude-standard',
       ],
-      { cwd: directory },
+      { timeout: 120_000, cwd: directory },
     );
     return { initialized, listed };
   } finally {
@@ -174,8 +181,15 @@ describe('internal workspace architecture', () => {
       'bun run format:check',
       'bun run audit',
     ]);
+    // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
+    // agent sessions stop oversubscribing it and timing out unrelated tests.
+    for (const stage of ['lint', 'typecheck', 'test', 'coverage', 'build']) {
+      expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
+    }
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
-    expect(scripts['test']).toBe('turbo run test:self test test:browser-fixtures --concurrency=1');
+    expect(scripts['test']).toBe(
+      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures --concurrency=1'",
+    );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.

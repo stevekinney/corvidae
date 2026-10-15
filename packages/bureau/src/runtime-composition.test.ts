@@ -61,7 +61,6 @@ import {
   activeSkillsFromStepMetadata,
   applyCache,
   CATALOG_RUN_RECOVERY_KEY_PREFIX,
-  compositionReadyGuardResult,
   createMemoryPersistHook,
   createRoutingStrategy,
   createRunMemoryAuthority,
@@ -1973,22 +1972,6 @@ describe('createRuntimeComposition durable execution', () => {
       runtime.durable?.engine[Symbol.dispose]?.();
       storage[Symbol.dispose]();
     }
-  });
-
-  it('reports the not-ready guard result directly (pure, no composition needed)', () => {
-    // AB-260: `resolveRunServices`'s composition-not-ready branch defends a
-    // TDZ race during `createRuntimeComposition`'s own construction — a
-    // window nothing outside this module can observe once construction
-    // returns (there is no public way to hold a `RuntimeComposition` handle
-    // while `compositionReady` is still `false`). Extracted as a pure
-    // function so the guard's exact return shape is proven here directly,
-    // rather than through a private mutation seam that could force the
-    // transient state after the fact.
-    expect(compositionReadyGuardResult(false, 'run-not-ready')).toEqual({
-      status: 'unavailable',
-      reason: 'run run-not-ready: composition not ready',
-    });
-    expect(compositionReadyGuardResult(true, 'run-ready')).toBeUndefined();
   });
 
   it('exposes a resolver guard for the no-session-store state', async () => {

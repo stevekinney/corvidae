@@ -273,6 +273,15 @@
   color: inherit;
 }
 
+/* A native select keeps the user agent's own fill, which is the dark "button
+ * face" gray (#6b6b6b) under a dark color scheme. The rule above hands it the
+ * page's light text color, and that pair measures 4.2:1, below WCAG AA. Giving
+ * the control the same raised surface the Input family uses keeps the text the
+ * page color and puts it on a token-controlled background in both themes. */
+:where(select) {
+  background-color: var(--cinder-surface-raised);
+}
+
 :where(button) {
   background: none;
   border: none;

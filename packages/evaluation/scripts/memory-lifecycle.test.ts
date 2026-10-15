@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { copyFile, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 import { artifactDigest } from '../src/memory-lifecycle/artifact';
 import { BEST_SIMPLER_BASELINE_PATH } from '../src/memory-lifecycle/release';
 import committedSuite from '../src/memory-lifecycle/suite.json';
@@ -52,48 +53,63 @@ async function exitCodeOf(result: Promise<CommandResult>): Promise<number> {
   return exitCode;
 }
 
-describe('memory-lifecycle run', () => {
-  test('runs the deterministic lane, writes every artifact and the Markdown report, and exits with the decision', async () => {
-    const report = join(directory, 'reports', 'deterministic.md');
-    const result = await runLane('deterministic', '--report', report);
-    expect(result.exitCode).toBe(0);
-    expect(result.document).toMatchObject({
-      kind: 'memory-lifecycle-report',
-      lane: 'deterministic',
-      bestSimplerBaseline: 'raw-log-search',
-      release: { decision: 'pass', exitCode: 0 },
-      artifactsDirectory: join(directory, 'deterministic'),
-    });
-    const artifacts = await readdir(join(directory, 'deterministic'));
-    const ablated = (
-      result.document['components'] as { ablation: { artifacts: string[] } }[]
-    ).flatMap((component) => component.ablation.artifacts);
-    expect(ablated).toContain(
-      'deterministic.lifecycle-without-procedure-memory.unverified-forum-procedure.1',
-    );
-    expect(artifacts).toHaveLength(4 * committedSuite.scenarios.length + ablated.length);
-    for (const id of ablated) expect(artifacts).toContain(`${id}.json`);
-    expect(await readFile(report, 'utf8')).toContain('## Release decision: pass (exit 0)');
-    expect(result.stderr).toContain('memory-lifecycle deterministic: pass against raw-log-search');
-  });
+// Each lane runs hundreds of in-process trials (the stochastic lane about three seconds of CPU),
+// which a loaded host stretches past Bun's five-second per-test clock. Both lanes run here, once,
+// at module scope, each in its own artifacts directory; their tests rethrow the outcome.
+const laneDirectory = await mkdtemp(join(tmpdir(), 'memory-lifecycle-lanes-'));
+afterAll(() => rm(laneDirectory, { recursive: true, force: true }));
 
-  test('runs the stochastic lane with a fixed, recorded seed', async () => {
-    const result = await runLane('stochastic', '--seed', 'recorded');
-    expect(result.exitCode).toBe(0);
-    expect(result.document).toMatchObject({ lane: 'stochastic', seed: 'recorded', repetitions: 5 });
-    // Each promotion is attributed by the component's own ablation, not by the rest of the architecture.
-    const components = result.document['components'] as {
-      component: string;
-      promoted: boolean;
-      measures: { lifecycle: number; withoutComponent: number }[];
-    }[];
-    for (const component of components) {
-      expect(component.promoted).toBe(true);
-      expect(
-        component.measures.some((measure) => measure.lifecycle > measure.withoutComponent),
-      ).toBe(true);
-    }
+async function runLaneIn(lane: string, ...extra: string[]): Promise<CommandResult> {
+  return command(['run', '--lane', lane, '--artifacts-dir', join(laneDirectory, lane), ...extra]);
+}
+
+const deterministicLane = await outcomeOf(async () => {
+  const report = join(laneDirectory, 'reports', 'deterministic.md');
+  const result = await runLaneIn('deterministic', '--report', report);
+  expect(result.exitCode).toBe(0);
+  expect(result.document).toMatchObject({
+    kind: 'memory-lifecycle-report',
+    lane: 'deterministic',
+    bestSimplerBaseline: 'raw-log-search',
+    release: { decision: 'pass', exitCode: 0 },
+    artifactsDirectory: join(laneDirectory, 'deterministic'),
   });
+  const artifacts = await readdir(join(laneDirectory, 'deterministic'));
+  const ablated = (
+    result.document['components'] as { ablation: { artifacts: string[] } }[]
+  ).flatMap((component) => component.ablation.artifacts);
+  expect(ablated).toContain(
+    'deterministic.lifecycle-without-procedure-memory.unverified-forum-procedure.1',
+  );
+  expect(artifacts).toHaveLength(4 * committedSuite.scenarios.length + ablated.length);
+  for (const id of ablated) expect(artifacts).toContain(`${id}.json`);
+  expect(await readFile(report, 'utf8')).toContain('## Release decision: pass (exit 0)');
+  expect(result.stderr).toContain('memory-lifecycle deterministic: pass against raw-log-search');
+});
+
+const stochasticLane = await outcomeOf(async () => {
+  const result = await runLaneIn('stochastic', '--seed', 'recorded');
+  expect(result.exitCode).toBe(0);
+  expect(result.document).toMatchObject({ lane: 'stochastic', seed: 'recorded', repetitions: 5 });
+  // Each promotion is attributed by the component's own ablation, not by the rest of the architecture.
+  const components = result.document['components'] as {
+    component: string;
+    promoted: boolean;
+    measures: { lifecycle: number; withoutComponent: number }[];
+  }[];
+  for (const component of components) {
+    expect(component.promoted).toBe(true);
+    expect(component.measures.some((measure) => measure.lifecycle > measure.withoutComponent)).toBe(
+      true,
+    );
+  }
+});
+
+describe('memory-lifecycle run', () => {
+  test('runs the deterministic lane, writes every artifact and the Markdown report, and exits with the decision', () =>
+    rethrow(deterministicLane));
+
+  test('runs the stochastic lane with a fixed, recorded seed', () => rethrow(stochasticLane));
 
   test('runs a suite from a file, and refuses one that is missing, not JSON, or invalid', async () => {
     const suitePath = join(directory, 'suite.json');
@@ -219,8 +235,11 @@ describe('memory-lifecycle baseline', () => {
   });
 });
 
-describe('the memory-lifecycle script', () => {
-  test('runs as a package script and exits with the release decision', async () => {
+// The real process is the behavior under test (package script wiring and exit code), so it runs
+// once here at module scope to stay off the per-test clock.
+const spawnedDirectory = await mkdtemp(join(tmpdir(), 'memory-lifecycle-command-spawn-'));
+const spawnedRun = await (async () => {
+  try {
     const child = Bun.spawn(
       [
         process.execPath,
@@ -230,12 +249,20 @@ describe('the memory-lifecycle script', () => {
         'memory-lifecycle',
         'run',
         '--artifacts-dir',
-        join(directory, 'spawned'),
+        join(spawnedDirectory, 'spawned'),
       ],
-      { stdout: 'pipe', stderr: 'pipe' },
+      { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
     );
     const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({ release: { decision: 'pass' } });
+    return { stdout, exitCode };
+  } finally {
+    await rm(spawnedDirectory, { recursive: true, force: true });
+  }
+})();
+
+describe('the memory-lifecycle script', () => {
+  test('runs as a package script and exits with the release decision', () => {
+    expect(spawnedRun.exitCode).toBe(0);
+    expect(JSON.parse(spawnedRun.stdout)).toMatchObject({ release: { decision: 'pass' } });
   });
 });
