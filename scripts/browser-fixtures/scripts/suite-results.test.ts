@@ -9,6 +9,7 @@ import {
   isScreenshotFailure,
   nonPassingTests,
   renderControlComparison,
+  runCompareCommand,
   summarizePlaywrightResults,
   type SuiteResults,
 } from './suite-results.ts';
@@ -226,25 +227,21 @@ describe('stability control comparison output', () => {
     expect(markdown).toContain('### Failing only in the run\n\nNone.');
   });
 
-  it('exits 0 from the compare command only when the rule holds', async () => {
+  it('returns 0 from the compare command only when the rule holds', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'suite-results-'));
     const runPath = join(directory, 'run.json');
     const controlPath = join(directory, 'control.json');
     writeFileSync(runPath, JSON.stringify({ sha: 'b', results: behavioural }));
     writeFileSync(controlPath, JSON.stringify({ sha: 'main', results: behavioural }));
-    const compare = (control: string) =>
-      Bun.spawn(
-        ['bun', join(import.meta.dirname, 'suite-results.ts'), 'compare', runPath, control],
-        {
-          stdout: 'pipe',
-          stderr: 'pipe',
-        },
-      ).exited;
-    expect(await compare(controlPath)).toBe(0);
+    const printed: string[] = [];
+    const output = { stdout: (text: string) => printed.push(text), stderr: () => {} };
+    expect(await runCompareCommand(['compare', runPath, controlPath], output)).toBe(0);
+    expect(printed.join('')).toContain('Verdict: passes');
     writeFileSync(
       controlPath,
       JSON.stringify({ sha: 'main', results: { ...behavioural, failures: [] } }),
     );
-    expect(await compare(controlPath)).toBe(1);
+    expect(await runCompareCommand(['compare', runPath, controlPath], output)).toBe(1);
+    expect(await runCompareCommand(['compare', runPath], output)).toBe(2);
   });
 });
