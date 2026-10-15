@@ -275,7 +275,8 @@ describe('bureau.run() run identity (COR-1302)', () => {
       try {
         const run = bureau.run('echo', 'hi', { principal: 'alice' });
         expect(bureau.abortRun(run.id)).toMatchObject({ id: run.id, status: 'aborting' });
-        expect((await run.result()).finishReason).toBe('aborted');
+        const result = await run.result();
+        expect(result.finishReason).toBe('aborted');
         // `closed()` waits for the dispatch to build the run and finish the
         // cleanup the forwarded cancellation started.
         await run.closed();
