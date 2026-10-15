@@ -28,21 +28,19 @@
   >
 {/if}
 <!--
-  Persistent for as long as completion is configured, so assistive technology
-  registers the live region before the first announcement. An editor with no
-  placeholder configuration renders none: an empty polite status region would
-  otherwise sit beside the host's own announcer (ReviewEditor's comment
-  navigation) and leave consumers with two indistinguishable status regions.
+  The element is always present so its id stays addressable and assistive
+  technology can register it early. It is only a live region while completion
+  is configured: with no placeholder configuration it is an inert, empty
+  element, so a host's own announcer (ReviewEditor's comment navigation) is
+  not joined by a second, empty polite status region.
 -->
-{#if statusVisible}
-  <VisuallyHidden
-    as="div"
-    id={`${id}-placeholder-status`}
-    role="status"
-    aria-live="polite"
-    aria-atomic="true">{statusMessage}</VisuallyHidden
-  >
-{/if}
+<VisuallyHidden
+  as="div"
+  id={`${id}-placeholder-status`}
+  role={statusVisible ? 'status' : undefined}
+  aria-live={statusVisible ? 'polite' : undefined}
+  aria-atomic={statusVisible ? 'true' : undefined}>{statusMessage}</VisuallyHidden
+>
 {#if diagnostics.length > 0}
   <Callout
     id={`${id}-placeholder-diagnostics`}
