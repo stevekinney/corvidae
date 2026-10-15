@@ -1945,6 +1945,67 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     }
   });
 
+  it('a replacement committed on another engine is not mistaken for the run by a late generation read', async () => {
+    const id = `teardown-durable-lateread-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    const readRelease = Promise.withResolvers<void>();
+    let delayGenerationReads = false;
+    const gated = gateFirstWrite(storage, gate, deletes(KEYS.workflowConcurrencyHolder(id)));
+    // Any read of the id's generation after the run starts returns only once the test lets it,
+    // by which time the other engine's replacement has already bumped it.
+    const delayed = new Proxy(gated, {
+      get(target, property, receiver) {
+        if (property === 'get') {
+          return async (key: string) => {
+            if (delayGenerationReads && key === KEYS.workflowGeneration(id)) {
+              await readRelease.promise;
+            }
+            return target.get(key);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await using engineA = await createEngine(delayed);
+    await using engineB = await createEngine(storage);
+    try {
+      const old = await engineA.start(TYPE, 'P1:OLD', { id, searchAttributes: { tag: 'old' } });
+      void old.result().catch(() => undefined);
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      delayGenerationReads = true;
+      const oldDone = engineA.cancel(id);
+      await waitForCondition(
+        async () => {
+          const state = await engineB.get(id);
+          return state?.status === 'cancelled';
+        },
+        {
+          label: 'old run committed its terminal state',
+        },
+      );
+
+      const replacement = await engineB.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        searchAttributes: { tag: 'new' },
+      });
+      await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+      readRelease.resolve();
+      await gate.reached.promise;
+      gate.release.resolve();
+      await oldDone;
+      await Bun.sleep(50);
+
+      await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
+    } finally {
+      readRelease.resolve();
+      gate.release.resolve();
+    }
+  });
+
   it('a replacement that commits mid-batch makes the fenced attribute write fail its condition', async () => {
     const id = `teardown-durable-midbatch-${nextInvocation()}`;
     const storage = new MemoryStorage();

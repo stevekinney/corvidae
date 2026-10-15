@@ -23,7 +23,7 @@ import {
   commitSelfWorkflowStateOperations,
   runSerializedWorkflowStateWrite,
 } from './storage-io.ts';
-import { startTerminalFence, type TerminalFence } from './termination/terminal-fence.ts';
+import { captureTerminalFence, type TerminalFence } from './termination/terminal-fence.ts';
 import {
   decodeWorkflowState,
   isTerminalWorkflowStatus,
@@ -158,13 +158,13 @@ export async function updateWorkflowState(
   options: WorkflowStateUpdateOptions = {},
 ): Promise<WorkflowStateUpdateResult | null> {
   return await runSerializedWorkflowStateWrite(internals, workflowId, async () => {
-    const fence = startTerminalFence(internals, workflowId);
     const bytes = await internals.storage.get(KEYS.workflow(workflowId));
     if (!bytes) {
       return null;
     }
 
     const state = decodeWorkflowState(bytes);
+    const fence = captureTerminalFence(internals, workflowId, state.workflowExecutionToken);
     if (options.allowedStatuses && !options.allowedStatuses.includes(state.status)) {
       return null;
     }

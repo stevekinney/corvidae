@@ -50,7 +50,11 @@ import {
   FORCIBLY_TERMINABLE_STATUSES,
   type TerminationCallbacks,
 } from './cleanup.ts';
-import { fencedTeardownCommit, startTerminalFence } from './terminal-fence.ts';
+import {
+  captureTerminalFence,
+  fencedTeardownCommit,
+  warnUnknownRunIdentity,
+} from './terminal-fence.ts';
 
 async function runCancelHandlers(
   handlers: CancelHandler[],
@@ -199,6 +203,8 @@ export async function terminateWorkflow(
     const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
     const { previousState, updatedAt, fence } = terminationResult;
     await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
+    warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
+    warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
 
     const elapsed = updatedAt - getWorkflowExecutionStartedAt(previousState);
     // Fenced on this run's committed state: the id's attribute record is the replacement's once one lands.
@@ -480,11 +486,11 @@ export async function completeWorkflow(
   const completionMetadata = await callbacks.runSerializedWorkflowStateWrite(
     workflowId,
     async () => {
-      const fence = startTerminalFence(internals, workflowId);
       const state = await callbacks.loadWorkflowState(workflowId);
       if (!state || state.status !== 'running') {
         return null;
       }
+      const fence = captureTerminalFence(internals, workflowId, state.workflowExecutionToken);
 
       const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
       if (visibilityMaintenance !== undefined) await visibilityMaintenance;
@@ -550,6 +556,7 @@ export async function completeWorkflow(
   const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
 
   await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
+  warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
   await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
   const superseded = isSuperseded();
   notifyCompletionWaiters(
@@ -639,6 +646,7 @@ export async function failWorkflow(
   const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
   const fence = failureResult.fence;
   await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
+  warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
   const fenced = fencedTeardownCommit(internals, workflowId, fence, isSuperseded);
 
   // A superseded run touches neither the attribute record nor the deadline timer.

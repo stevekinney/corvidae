@@ -4,43 +4,58 @@ import {
   type BatchOperation,
   type ConditionalBatchCondition,
 } from '../../../storage/interface.ts';
+import { currentExecutionAttempt, type RunIdentity } from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
 
 /**
- * The durable identity of one run, used to fence the teardown that follows its terminal commit.
- *
- * `generation` is the `wf-gen:<id>` counter observed before the commit. It changes only when the
- * id is reused: an `onTerminalConflict: 'start-new'` restart bumps it in its create batch, from
- * this engine or any other, and nothing else the run does touches it. A teardown write
- * conditioned on it therefore applies only while the id still belongs to the run that committed,
- * and still applies after the same run rewrites its terminal record (for example `addTags`),
- * which a condition on the whole `KEYS.workflow(id)` value would not survive. `holderMarker` is
- * the concurrency holder marker read at the same time; it names the partition this run's slot
- * lives in even after a replacement purges the marker.
- *
- * Both reads are started inside the serialized terminal write and ride its existing resolution,
- * so neither adds an await to the terminal success path. `identity` is observed for rejection
- * here so an unawaited failure cannot become an unhandled rejection; the first teardown step to
- * await it caches the result in `resolved`.
+ * The fence for the teardown that follows one run's terminal commit: the durable identity the
+ * engine captured for that run while it was live (see {@link RunIdentity}), or `undefined` when
+ * it never learned it. Nothing is read here, so a replacement that lands between the commit and
+ * the teardown can never be mistaken for the run. A teardown without an identity fails closed:
+ * it skips its fenced durable writes and warns, and the persisted terminal-cleanup timer still
+ * sweeps the run's scratch state.
  */
-export type TerminalIdentity = {
-  readonly generation: Uint8Array | null;
-  readonly holderMarker: Uint8Array | null;
-};
-
 export type TerminalFence = {
-  readonly identity: Promise<TerminalIdentity>;
-  resolved?: TerminalIdentity | undefined;
+  /** The identity as it stands now: read at use, so a read that settles later is still seen. */
+  readonly identity: RunIdentity | undefined;
+  /** The adoption read still in flight, awaited only by a teardown that finds `identity` unset. */
+  readonly pending?: Promise<RunIdentity | undefined> | undefined;
 };
 
-/** Start the run-identity reads for a terminal commit, without awaiting them. */
-export function startTerminalFence(internals: EngineInternals, workflowId: string): TerminalFence {
-  const identity = Promise.all([
-    internals.storage.get(KEYS.workflowGeneration(workflowId)),
-    internals.storage.get(KEYS.workflowConcurrencyHolder(workflowId)),
-  ]).then(([generation, holderMarker]) => ({ generation, holderMarker }));
-  identity.catch(() => undefined);
-  return { identity };
+/**
+ * Capture the fence for a terminal commit of the run identified by `workflowExecutionToken`,
+ * from the attempt this engine holds for it. An engine that does not hold that run (a cancel
+ * issued from another engine, an attempt of another generation) has no identity to fence on.
+ */
+export function captureTerminalFence(
+  internals: EngineInternals,
+  workflowId: string,
+  workflowExecutionToken: string | undefined,
+): TerminalFence {
+  const attempt = currentExecutionAttempt(internals, workflowId);
+  if (attempt === undefined || attempt.workflowExecutionToken !== workflowExecutionToken) {
+    return { identity: undefined };
+  }
+  return {
+    get identity() {
+      return attempt.identity;
+    },
+    pending: attempt.pendingIdentity,
+  };
+}
+
+/** Report that a terminal teardown had no run identity to fence on and skipped its fenced writes. */
+export function warnUnknownRunIdentity(
+  fence: TerminalFence,
+  workflowId: string,
+  handleCleanupError: (source: string, error: unknown, workflowId?: string) => void,
+): void {
+  if (fence.identity !== undefined) return;
+  handleCleanupError(
+    'terminal-teardown-fence',
+    new Error('The run identity is unknown, so its fenced durable teardown was skipped.'),
+    workflowId,
+  );
 }
 
 /** Whether `current` is byte-identical to `expected`; `null` means the key is absent. */
@@ -52,7 +67,7 @@ export function bytesEqual(current: Uint8Array | null, expected: Uint8Array | nu
 /** The condition that holds only while `wf-gen:<id>` is still the committing run's generation. */
 export function sameRunCondition(
   workflowId: string,
-  identity: TerminalIdentity,
+  identity: RunIdentity,
 ): ConditionalBatchCondition {
   return { key: KEYS.workflowGeneration(workflowId), expectedValue: identity.generation };
 }
@@ -76,7 +91,8 @@ export async function commitFencedTeardownBatch(
 ): Promise<boolean> {
   if (isSuperseded()) return false;
   if (internals.storage.capabilities().conditionalBatch) {
-    const identity = fence.resolved ?? (fence.resolved = await fence.identity);
+    const identity = fence.identity ?? (await fence.pending);
+    if (identity === undefined) return false;
     return storageConditionalBatch(
       internals.storage,
       [sameRunCondition(workflowId, identity)],

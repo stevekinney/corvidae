@@ -2,16 +2,18 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS, type BatchOperation } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
+import { beginExecutionAttempt, recordExecutionAttemptIdentity } from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
 import {
   bytesEqual,
+  captureTerminalFence,
   commitFencedTeardownBatch,
-  startTerminalFence,
+  warnUnknownRunIdentity,
   type TerminalFence,
 } from './terminal-fence.ts';
 
 const generation = new Uint8Array([1, 2, 3]);
-const fence: TerminalFence = { identity: Promise.resolve({ generation, holderMarker: null }) };
+const fence: TerminalFence = { identity: { generation, holderMarker: null } };
 
 /** A storage that reports no `conditionalBatch` capability, like a custom adapter without CAS. */
 function storageWithoutConditionalBatch(): MemoryStorage {
@@ -73,22 +75,34 @@ describe('bytesEqual', () => {
   });
 });
 
-describe('startTerminalFence', () => {
-  it('reads the generation and holder marker together, and a failed read is still observed', async () => {
-    const failure = new Error('read failed');
-    const failing = {
-      storage: { get: () => Promise.reject(failure) },
-    } as unknown as EngineInternals;
-    const started = startTerminalFence(failing, 'w');
-    expect(await started.identity.catch((error: unknown) => error)).toBe(failure);
+describe('captureTerminalFence', () => {
+  const identity = { generation: new Uint8Array([3]), holderMarker: null };
 
-    const present = new MemoryStorage();
-    await present.put(KEYS.workflowGeneration('w'), new Uint8Array([3]));
-    await present.put(KEYS.workflowConcurrencyHolder('w'), new Uint8Array([4]));
-    const stored = startTerminalFence({ storage: present } as unknown as EngineInternals, 'w');
-    expect(await stored.identity).toEqual({
-      generation: new Uint8Array([3]),
-      holderMarker: new Uint8Array([4]),
-    });
+  it('takes the identity of the attempt that launched the committing run', () => {
+    const internals = { storage: new MemoryStorage() } as unknown as EngineInternals;
+    beginExecutionAttempt(internals, 'w', 'token-a');
+    recordExecutionAttemptIdentity(internals, 'w', 'token-a', identity);
+    expect(captureTerminalFence(internals, 'w', 'token-a').identity).toBe(identity);
+  });
+
+  it('has no identity for another generation, an unknown run, or an attempt that never learned it', () => {
+    const internals = { storage: new MemoryStorage() } as unknown as EngineInternals;
+    expect(captureTerminalFence(internals, 'w', 'token-a').identity).toBeUndefined();
+    beginExecutionAttempt(internals, 'w', 'token-a');
+    expect(captureTerminalFence(internals, 'w', 'token-a').identity).toBeUndefined();
+    recordExecutionAttemptIdentity(internals, 'w', 'token-a', identity);
+    expect(captureTerminalFence(internals, 'w', 'token-b').identity).toBeUndefined();
+  });
+});
+
+describe('warnUnknownRunIdentity', () => {
+  it('reports a missing identity once per call and stays quiet when it is known', () => {
+    const reports: unknown[][] = [];
+    const report = (...args: unknown[]) => void reports.push(args);
+    warnUnknownRunIdentity({ identity: undefined }, 'w', report);
+    warnUnknownRunIdentity({ identity: { generation: null, holderMarker: null } }, 'w', report);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.[0]).toBe('terminal-teardown-fence');
+    expect(reports[0]?.[2]).toBe('w');
   });
 });

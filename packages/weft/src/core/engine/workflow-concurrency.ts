@@ -17,13 +17,9 @@ import {
 } from '../concurrency.ts';
 import type { WorkflowConcurrencyOptions } from '../types.ts';
 import { WorkflowConcurrencyLimitExceededError } from './errors.ts';
+import type { RunIdentity } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
-import {
-  bytesEqual,
-  sameRunCondition,
-  type TerminalFence,
-  type TerminalIdentity,
-} from './termination/terminal-fence.ts';
+import { bytesEqual, sameRunCondition, type TerminalFence } from './termination/terminal-fence.ts';
 
 const WORKFLOW_CONCURRENCY_HOLDER_VERSION = 1;
 /** Matches `AtomicState`'s default retry budget for the unfenced release. */
@@ -251,7 +247,8 @@ export async function releaseWorkflowConcurrencySlotForRun(
   fence: TerminalFence,
 ): Promise<void> {
   const holderKey = KEYS.workflowConcurrencyHolder(workflowId);
-  const identity = fence.resolved ?? (fence.resolved = await fence.identity);
+  const identity = fence.identity ?? (await fence.pending);
+  if (identity === undefined) return;
   const capturedMarker = identity.holderMarker;
   if (capturedMarker === null) return;
   const marker = decodeHolderRecord(capturedMarker);
@@ -325,7 +322,7 @@ function isSamePartitionMarker(
 async function settleAfterConflict(
   internals: EngineInternals,
   workflowId: string,
-  identity: TerminalIdentity,
+  identity: RunIdentity,
   marker: WorkflowConcurrencyHolderRecord,
   slotVersion: ConditionalBatchCondition,
   slotOperations: BatchOperation[],

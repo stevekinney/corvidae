@@ -39,10 +39,10 @@ describe('workflow concurrency slot release', () => {
     // Runs here use generated ids, so `wf-gen:<id>` is absent for the owning run; another
     // generation is any bytes, as a start-new restart would have written.
     const fenceFor = async (workflowId: string, generation: Uint8Array | null = null) => ({
-      identity: Promise.resolve({
+      identity: {
         generation,
         holderMarker: await internals.storage.get(KEYS.workflowConcurrencyHolder(workflowId)),
-      }),
+      },
     });
     expect(await holderIds()).toEqual([first.id, second.id]);
 
@@ -67,7 +67,7 @@ describe('workflow concurrency slot release', () => {
 
     // A run that never held a slot has nothing to release.
     await releaseWorkflowConcurrencySlotForRun(internals, second.id, {
-      identity: Promise.resolve({ generation: null, holderMarker: null }),
+      identity: { generation: null, holderMarker: null },
     });
     expect(await holderIds()).toEqual([first.id, second.id]);
 
@@ -128,7 +128,7 @@ describe('workflow concurrency slot release', () => {
       },
     });
     await releaseWorkflowConcurrencySlotForRun({ ...internals, storage: racing }, run.id, {
-      identity: Promise.resolve({ generation: new Uint8Array([1]), holderMarker: oldMarker }),
+      identity: { generation: new Uint8Array([1]), holderMarker: oldMarker },
     });
 
     expect(calls).toBe(4);
@@ -185,7 +185,7 @@ describe('workflow concurrency slot release', () => {
 
     const failure = await rejectionOf(
       releaseWorkflowConcurrencySlotForRun({ ...internals, storage: alwaysRaced }, run.id, {
-        identity: Promise.resolve({ generation: null, holderMarker: marker }),
+        identity: { generation: null, holderMarker: marker },
       }),
     );
 
@@ -206,10 +206,10 @@ describe('workflow concurrency slot release', () => {
     const internals = getInternals(engine);
     const fences = await Promise.all(
       runs.map(async (run) => ({
-        identity: Promise.resolve({
+        identity: {
           generation: null,
           holderMarker: await internals.storage.get(KEYS.workflowConcurrencyHolder(run.id)),
-        }),
+        },
       })),
     );
 
