@@ -344,7 +344,9 @@
     void (async () => {
       await tick();
       const active = document.activeElement;
-      if (active !== null && active !== document.body && frameBody?.contains(active)) return;
+      // Only a page that lost focus gets it back: the button the reader used went away. Focus
+      // the reader has put somewhere else is theirs, and a status change never moves it.
+      if (active !== null && active !== document.body) return;
       const first = frameBody?.querySelector<HTMLElement>(
         '.cinder-terminal__recovery button:not(:disabled)',
       );
@@ -369,6 +371,13 @@
     data-state={effectiveState}
     tabindex="-1"
     bind:this={frameBody}
+    onfocusout={(event) => {
+      const next = event.relatedTarget;
+      // Focus that went to another element of the page ends the claim on it.
+      if (next !== null && 'nodeType' in next && !frameBody?.contains(next as Node)) {
+        activatedIn = undefined;
+      }
+    }}
   >
     <p class="cinder-terminal__message" role="status" aria-atomic="true">{message}</p>
     {#if showEngine}

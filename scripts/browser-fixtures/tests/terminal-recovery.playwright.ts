@@ -167,6 +167,19 @@ test.describe('focus follows the action', () => {
     expect(await exportedText(page)).toMatch(/bun run build/);
   });
 
+  test('a refused action, then focus elsewhere, then a state change leaves focus alone', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'denied', { probes: true });
+    await page.getByRole('button', { name: 'Try again' }).click();
+    // The host refused: the state is unchanged and the button stays. The reader moves on.
+    await page.locator('#before-terminal').focus();
+    await page.evaluate(() => window.terminalLab!.setProps({ state: 'connecting' }));
+    await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+    await frames(page, 3);
+    await expect(page.locator('#before-terminal')).toBeFocused();
+  });
+
   test('a button that survives the change keeps focus on every browser, even where a click does not focus it', async ({
     terminalPage,
   }) => {

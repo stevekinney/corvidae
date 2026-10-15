@@ -210,4 +210,46 @@ describe('recovery actions', () => {
       'focus on the frame body',
     );
   });
+
+  test('a later state change does not pull focus back after the reader moved elsewhere', async () => {
+    const props = reactiveProps<TerminalProps>({
+      title: 'Shell',
+      state: 'denied',
+      onTryAgain: () => {},
+      onCancel: () => {},
+    });
+    const harness = mountHarness(Terminal, props);
+    const elsewhere = document.createElement('button');
+    elsewhere.textContent = 'Elsewhere';
+    document.body.append(elsewhere);
+    try {
+      // The host refused the attempt, so the button stays; the reader goes on to something else.
+      button(harness, 'Try again').click();
+      harness.flush();
+      elsewhere.focus();
+      // The host changes the state later, which removes the button the reader used.
+      props.state = 'connecting';
+      harness.flush();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(document.activeElement?.textContent?.trim()).toBe('Elsewhere');
+    } finally {
+      elsewhere.remove();
+    }
+  });
+
+  test('focus that fell to the page when the used button went still moves to the new action', async () => {
+    const props = reactiveProps<TerminalProps>({
+      title: 'Shell',
+      state: 'empty',
+      onNewSession: () => {},
+      onCancel: () => {},
+    });
+    const harness = mountHarness(Terminal, props);
+    button(harness, 'New session').click();
+    harness.flush();
+    // The host answers later, not inside the click.
+    props.state = 'connecting';
+    harness.flush();
+    await waitFor(() => document.activeElement === button(harness, 'Cancel'), 'focus on Cancel');
+  });
 });
