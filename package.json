@@ -147,7 +147,9 @@
     "test:browser:preview": "FIXTURE_HOST_MODE=preview bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts",
     "dev:browser-fixtures": "bun --watch scripts/browser-fixtures/scripts/serve.ts",
     "test:browser:visual": "CINDER_VISUAL_DIFF=block bun run test:browser",
-    "test:browser:update": "CINDER_VISUAL_DIFF=block CINDER_UPDATE_SNAPSHOTS=1 bun run test:browser --update-snapshots=all"
+    "test:browser:update": "bun scripts/browser-fixtures/scripts/update-snapshots.ts",
+    "test:browser:update:docker": "bun scripts/browser-fixtures/scripts/update-snapshots-docker.ts",
+    "test:browser:visual:docker": "bun scripts/browser-fixtures/scripts/run-browser-docker.ts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
