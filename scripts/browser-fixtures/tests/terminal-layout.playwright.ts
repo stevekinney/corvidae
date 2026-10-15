@@ -281,12 +281,56 @@ test.describe('look', () => {
     await focusTerminal(page);
     const focused = await edge();
     expect(focused.equals(resting), 'the ring paints over the engine surface').toBe(false);
-    const ring = await viewport.evaluate((element) => {
+    const ring = await page.locator('.cinder-terminal__screen').evaluate((element) => {
       const style = getComputedStyle(element, '::after');
       return { position: style.position, shadow: style.boxShadow };
     });
     expect(ring.position).toBe('absolute');
     expect(ring.shadow).not.toBe('none');
+  });
+
+  test('the ring stays on all four edges when a scrolled owner-grid view has focus', async ({
+    terminalPage,
+  }) => {
+    const page = await terminalPage.open({ query: { quiet: true, state: 'read-only' } });
+    await page.evaluate(() =>
+      window.terminalLab!.setProps({ ownerGeometry: { columns: 220, rows: 70 } }),
+    );
+    const viewport = page.locator('.cinder-terminal__viewport');
+    await expect(viewport).toHaveAttribute('data-grid', 'owner');
+    await expect
+      .poll(() => viewport.evaluate((element) => element.scrollWidth > element.clientWidth))
+      .toBe(true);
+    await viewport.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+      element.scrollTop = element.scrollHeight;
+    });
+    await frames(page, 3);
+    const box = (await viewport.boundingBox())!;
+    const edges = {
+      top: { x: box.x + 8, y: box.y, width: box.width - 16, height: 2 },
+      bottom: { x: box.x + 8, y: box.y + box.height - 2, width: box.width - 16, height: 2 },
+      left: { x: box.x, y: box.y + 8, width: 2, height: box.height - 16 },
+      right: { x: box.x + box.width - 2, y: box.y + 8, width: 2, height: box.height - 16 },
+    };
+    const strips = async () => ({
+      top: await page.screenshot({ clip: edges.top }),
+      bottom: await page.screenshot({ clip: edges.bottom }),
+      left: await page.screenshot({ clip: edges.left }),
+      right: await page.screenshot({ clip: edges.right }),
+    });
+    const resting = await strips();
+    await focusTerminal(page);
+    // Focusing scrolls the input into view, so scroll to the far corner again before looking.
+    await viewport.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+      element.scrollTop = element.scrollHeight;
+    });
+    await frames(page, 2);
+    const focused = await strips();
+    for (const edge of ['top', 'bottom', 'left', 'right'] as const) {
+      expect(focused[edge].equals(resting[edge]), `the ring is on the ${edge} edge`).toBe(false);
+    }
   });
 
   test('theme colors keep text legible: default text and the colors programs use meet AA', async ({

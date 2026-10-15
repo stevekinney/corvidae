@@ -372,12 +372,16 @@
   >
     <p class="cinder-terminal__message" role="status" aria-atomic="true">{message}</p>
     {#if showEngine}
-      <div
-        class="cinder-terminal__viewport"
-        data-grid={ownsGrid(effectiveState) ? 'fitted' : 'owner'}
-        inert={!ready}
-        {@attach attachEngine}
-      ></div>
+      <!-- The ring is drawn on this wrapper, which never scrolls; the viewport inside it does when
+           the view adopts a larger owner grid. -->
+      <div class="cinder-terminal__screen">
+        <div
+          class="cinder-terminal__viewport"
+          data-grid={ownsGrid(effectiveState) ? 'fitted' : 'owner'}
+          inert={!ready}
+          {@attach attachEngine}
+        ></div>
+      </div>
     {/if}
     <!-- The frame renders Reload for a non-empty error and a handler, so this control exists only
          when that one does not: exactly one recovery control in every state. -->

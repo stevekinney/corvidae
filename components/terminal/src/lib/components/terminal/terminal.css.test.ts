@@ -27,15 +27,17 @@ describe('the terminal stylesheet', () => {
   });
 
   test('the focus ring is an overlay that paints above the engine surface', () => {
-    const viewport = declarations('.cinder-terminal__viewport');
-    expect(viewport).toContain('position: relative');
-    const ring = declarations('.cinder-terminal__viewport:focus-within::after');
+    // The ring belongs to the frame around the viewport, which never scrolls.
+    const frame = declarations('.cinder-terminal__screen');
+    expect(frame).toContain('position: relative');
+    expect(declarations('.cinder-terminal__viewport')).not.toContain('position: relative');
+    const ring = declarations('.cinder-terminal__screen:focus-within::after');
     for (const declaration of ['position: absolute', 'inset: 0', 'pointer-events: none']) {
       expect(ring).toContain(declaration);
     }
     expect(ring).toContain(
       'box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color)',
     );
-    expect(css).not.toMatch(/\.cinder-terminal__viewport:focus-within\s*\{/);
+    expect(css).not.toMatch(/\.cinder-terminal__viewport:focus-within/);
   });
 });

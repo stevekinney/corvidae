@@ -30,8 +30,17 @@
     color: var(--cinder-status-danger-text);
   }
 
-  .cinder-terminal__viewport {
+  /* The viewport's non-scrolling frame: it takes the flex space the viewport used to, and carries
+     the focus ring so the ring stays put when the viewport scrolls. */
+  .cinder-terminal__screen {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-block-size: 0;
+  }
+
+  .cinder-terminal__viewport {
     flex: 1;
     min-block-size: 0;
     /* No padding here: this is the element the fit addon measures, and it subtracts only the
@@ -53,10 +62,11 @@
     overflow: auto;
   }
 
-  /* The ring is an overlay, not the viewport's own shadow: the engine's scrollable element fills
-     the viewport, and an inset shadow paints under it, where it would show only at the edges the
-     engine does not cover. */
-  .cinder-terminal__viewport:focus-within::after {
+  /* The ring is an overlay on the frame, not the viewport's own shadow: the engine's scrollable
+     element fills the viewport, and an inset shadow paints under it, where it would show only at
+     the edges the engine does not cover. It is on the frame and not the viewport so that it does
+     not scroll away with an owner grid larger than the viewport. */
+  .cinder-terminal__screen:focus-within::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -126,7 +136,7 @@
   }
 
   @media (forced-colors: active) {
-    .cinder-terminal__viewport:focus-within::after {
+    .cinder-terminal__screen:focus-within::after {
       outline-color: Highlight;
       box-shadow: none;
     }
