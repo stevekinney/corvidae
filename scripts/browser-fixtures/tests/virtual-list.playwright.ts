@@ -684,3 +684,54 @@ test.describe('Virtual list - COR-374 coalesces held keyboard navigation during 
     }
   });
 });
+
+test.describe('Virtual list - COR-1523 window-scrolled sticky headers keep keyboard steps', () => {
+  // The page scrolls here, not the list. The active header leaves flow when it pins
+  // as its index leaves the rendered window, and the page's native scroll anchoring
+  // then pulled the page back a row, undoing a keyboard step that nothing in the
+  // list re-issues any more. A window-scrolled list with sticky rows therefore opts
+  // out of page anchoring; one without them keeps it.
+  const mountSelector = '#example-mount-sticky-headers-window-scroll';
+  const itemHeight = 40;
+
+  test('N rapid ArrowDown presses advance N rows through a header pinning', async ({
+    componentPage,
+  }) => {
+    const page = await componentPage.open({
+      entry: getEntry('virtual-list'),
+      theme: lightTheme,
+      viewport: desktopViewport,
+      fixtureName: 'assertion',
+    });
+    const list = page.locator(`${mountSelector} .cinder-virtual-list`);
+    await list.scrollIntoViewIfNeeded();
+    const listTop = await list.evaluate(
+      (element) => element.getBoundingClientRect().top + window.scrollY,
+    );
+    await page.evaluate((top) => window.scrollTo(0, top), listTop);
+    // Header 0 sits at the leading edge with row 1 just below it.
+    // Compared rounded on both sides: the list can start on a fractional pixel.
+    await expect
+      .poll(() => page.evaluate(() => Math.round(window.scrollY)))
+      .toBe(Math.round(listTop));
+    await expect
+      .poll(() => renderedIndices(page, mountSelector).then((indices) => indices.includes(1)))
+      .toBe(true);
+    await list.evaluate((element) => element.focus({ preventScroll: true }));
+
+    const presses = 10;
+    for (let index = 0; index < presses; index += 1) {
+      await page.keyboard.press('ArrowDown');
+      await page.waitForTimeout(40);
+    }
+
+    // Row 11 under the 40px header, past the point where header 0 has pinned.
+    await expect
+      .poll(() => page.evaluate(() => Math.round(window.scrollY)), { timeout: 3_000 })
+      .toBe(Math.round(listTop + presses * itemHeight));
+    await page.waitForTimeout(250);
+    expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(
+      Math.round(listTop + presses * itemHeight),
+    );
+  });
+});
