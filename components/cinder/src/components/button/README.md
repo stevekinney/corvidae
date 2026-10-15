@@ -34,6 +34,10 @@ When `href` is set, the component renders as `<a>`; otherwise it renders as `<bu
 
 <!-- generated:props:end -->
 
+### Toggle buttons
+
+Pass `aria-pressed="true"` or `"false"` to make a button a toggle. A pressed button takes the filled accent face (every variant except `primary` and `danger`, which are already filled); see `button.a11y.md`.
+
 ## CSS Variables
 
 <!-- generated:variables:start -->
