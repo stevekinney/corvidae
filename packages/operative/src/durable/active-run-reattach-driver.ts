@@ -129,7 +129,7 @@ export async function driveReattachedRun(
   // COR-1390: `handle.result()` also settles when another engine reclaimed
   // this run after this one recovered it and finished it there; that engine
   // publishes the terminal lifecycle, so this one stays write-free.
-  if (await lostRunToAnotherEngine(context, runId)) {
+  if (lostRunToAnotherEngine(context, handle)) {
     reachability.unreachable = true;
     return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
   }
