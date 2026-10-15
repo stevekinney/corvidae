@@ -279,6 +279,17 @@ async function assertReviewToolbarActionAccess(reviewEditor: Locator, width: num
     await overflowAction.focus();
     await expect(overflowAction).toBeFocused();
   }
+  // The focused action's tooltip appears 100ms after focus and, while visible,
+  // owns Escape (WAI-ARIA APG: dismiss the tooltip without losing focus). So a
+  // single Escape closes the panel only when it lands inside that delay, which
+  // made this step pass or fail with timing. Wait for the tooltip, then assert
+  // the layering the component actually promises: the first Escape dismisses
+  // the tooltip and leaves the panel open, the second closes the panel.
+  const actionTooltip = overflowPanel.page().getByRole('tooltip');
+  await expect(actionTooltip).toBeVisible();
+  await overflowPanel.page().keyboard.press('Escape');
+  await expect(actionTooltip).toBeHidden();
+  await expect(overflowPanel).toBeVisible();
   await overflowPanel.page().keyboard.press('Escape');
   await expect(overflowPanel).toBeHidden();
   await expect(overflowTrigger).toBeFocused();

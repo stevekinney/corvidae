@@ -2369,6 +2369,16 @@ The three retrieval tags mark a distinct trust boundary from `'user-input'`: tha
 
 Pass `guardrails: false` to `bureau`'s options to opt out entirely, or a `GuardrailsOptions` object to replace the preset with your own detectors/validators.
 
+The preset is exported as `createDefaultGuardrailsPreset()`, and `createAgent` applies it too (COR-1367): an agent whose `guardrails` option is omitted resolves its run's guardrails as `inheritedGuardrails ?? createDefaultGuardrailsPreset()`, where `inheritedGuardrails` is the policy a host hands down through `AgentRunContext` (Bureau hands down the deprecated `BureauOptions.guardrails`). `guardrails: false` opts the agent out, and a `GuardrailsOptions` replaces the preset whatever the host says. The guardrails are created per run, registered in the agent's tier (`agent:guardrails-prepare-step`, `agent:guardrails-validate-response`, pinned behind the agent's own hooks), and also scan the agent's skill bodies and resources when `skills` is set.
+
+```typescript
+const guarded = createAgent({ generate }); // AB-40 preset
+const custom = createAgent({ generate, guardrails: { mode: 'tripwire', input: { detectors } } });
+const unguarded = createAgent({ generate, guardrails: false });
+```
+
+A `createAgent` agent does not buffer its own `generate`: if that function streams text to a client as it arrives, the output validator sees the response only after it was delivered. Buffer generation when the output tripwire must gate what a client sees.
+
 **Buffered-generation note:** the default preset's output PII validator only ever sees a complete response—it cannot inspect a stream mid-flight. `bureau` accounts for this: whenever the default preset is in effect (`options.guardrails === undefined`), it forces buffered (non-streaming) generation so the tripwire has a chance to fire before any output reaches the caller. A caller who supplies their own `GuardrailsOptions` (replacing the preset) has opted into managing that tradeoff themselves and keeps streaming enabled.
 
 ### Usage

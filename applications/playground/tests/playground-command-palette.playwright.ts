@@ -221,9 +221,7 @@ test.describe('1440px viewport', () => {
     await expect(palette(page).getByRole('status')).toHaveText('No matching components.');
   });
 
-  test('arrow keys move the selection and Enter performs a document navigation', async ({
-    page,
-  }) => {
+  test('arrow keys move the selection and Enter navigates in place', async ({ page }) => {
     await openDocumentation(page, '/page/action-row');
     await page.evaluate(() => {
       (window as unknown as { __beforeNavigation: boolean }).__beforeNavigation = true;
@@ -247,12 +245,12 @@ test.describe('1440px viewport', () => {
 
     await Promise.all([page.waitForURL(/\/page\/alert-/), page.keyboard.press('Enter')]);
     await page.locator('[data-component-page] .dx-hero h1').waitFor();
-    // A real document navigation discards the previous window's state.
+    // The palette routes through the progressive navigation (CIN-589), so the window survives.
     expect(
       await page.evaluate(
         () => (window as unknown as { __beforeNavigation?: boolean }).__beforeNavigation,
       ),
-    ).toBeUndefined();
+    ).toBe(true);
     expect(destination).toBeDefined();
     await expect(
       page.getByRole('navigation', { name: 'Components' }).locator('[aria-current="page"]'),

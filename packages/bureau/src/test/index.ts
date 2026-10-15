@@ -1,5 +1,10 @@
 export { createBureau } from '../create-bureau';
 export type { Bureau, BureauOptions } from '../types';
+export type { AssetStorageFixture, DurableAssetStorageFixture } from './asset-storage-fixtures';
+export {
+  createDurableAssetStorageFixture,
+  createMemoryAssetStorageFixture,
+} from './asset-storage-fixtures';
 export type {
   DurableEventHistoryFixture,
   DurableEventHistoryFixtureOptions,
@@ -23,6 +28,7 @@ export type {
 } from './fault-plan';
 export {
   BureauFaultSelectorResolutionError,
+  selectAssetWorkFaultTarget,
   selectAuditWriteFaultTarget,
   selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,

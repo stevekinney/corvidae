@@ -1,0 +1,700 @@
+{
+  "schema": "cin-585-playground-measurements/1",
+  "label": "diagnostic-navigation",
+  "startedAt": "2026-10-14T08:36:05.154Z",
+  "finishedAt": "2026-10-14T08:38:33.713Z",
+  "environment": {
+    "sourceSha": "591bf0e0ffa060f788a516a8f955f7f65f49e728",
+    "dirtyPaths": [],
+    "untrackedPaths": [],
+    "workingTreeDiffSha256": null,
+    "lockfileSha256": "727e5e3f8e0cf7de983a273e4583a57913dc0d35fd73d005cf17f757e73f2a33",
+    "versions": {
+      "bun": "1.4.2",
+      "svelte": "5.57.0",
+      "playwright": "1.63.0"
+    },
+    "operatingSystem": {
+      "platform": "darwin",
+      "release": "27.0.0",
+      "architecture": "arm64",
+      "cpuModel": "Apple M1 Max"
+    },
+    "logicalProcessors": 10,
+    "totalMemoryBytes": 68719476736,
+    "containerMemoryLimit": "none detected (no /sys/fs/cgroup/memory.max on darwin)"
+  },
+  "routeInventory": [],
+  "definitions": {
+    "cold": "This checkout's applications/playground/.tmp removed and BUN_RUNTIME_TRANSPILER_CACHE_PATH set to a new empty run-owned directory; the exporter clears build/ itself; no OS cache flush.",
+    "warm": "Immediately after the cold sample, a new process with the same transpiler cache directory and the same disk inputs.",
+    "childMaxResidentBytes": "Bun.Subprocess.resourceUsage().maxRSS, bytes on every platform: one process's own high-water mark.",
+    "treePeakResidentBytes": "Largest sum of ps rss (KiB x 1024) across the child and its descendants, sampled every 100 ms by one observer for baseline and candidate.",
+    "spawnToReadyMilliseconds": "Spawn of bun src/playground-server.ts to the first GET /ready answering 200 \"ready\", polled every 100 ms.",
+    "jsHeap": "Chromium JS heap through CDP Runtime.getHeapUsage after HeapProfiler.collectGarbage; never summed with RSS.",
+    "hostLoad": "uptime load averages and os.availableParallelism() captured before and after every sample."
+  },
+  "prerequisites": [],
+  "staticExport": [],
+  "serverReady": [],
+  "playwright": [],
+  "probes": {
+    "navigation": {
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.468667000000011,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:36:05.263Z",
+          "uptime": "2:36  up 12 days, 10:01, 1 user, load averages: 9.96 12.96 14.59",
+          "loadAverages": {
+            "oneMinute": 9.96,
+            "fiveMinutes": 12.96,
+            "fifteenMinutes": 14.59
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "child": {
+        "command": [
+          "bun",
+          "scripts/measure-playground-probe.ts",
+          "navigation",
+          "--cycles",
+          "5",
+          "--output",
+          "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/diagnostic-navigation-2026-10-14T08-36-05-152Z/probe-navigation.json",
+          "--port",
+          "5610"
+        ],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 148446.77458300002,
+        "childMaxResidentBytes": 3729981440,
+        "userCpuMicroseconds": 185004114,
+        "systemCpuMicroseconds": 148144527,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1465,
+          "skippedTicks": 0,
+          "peakResidentBytes": 5065572352,
+          "peakProcessCount": 6,
+          "observedPids": [36974, 39927, 39962, 39963, 39965, 39979, 40051, 40116, 40207, 40274]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/diagnostic-navigation-2026-10-14T08-36-05-152Z/probe-navigation.log"
+      },
+      "result": {
+        "probe": "navigation",
+        "routes": [
+          "/",
+          "/page/button",
+          "/page/action-row",
+          "/page/chat",
+          "/page/modal",
+          "/page/review-editor"
+        ],
+        "warmup": {
+          "cycle": 0,
+          "requests": 189,
+          "encodedBytes": 14548490,
+          "routes": [
+            {
+              "route": "/",
+              "interactionReadyMilliseconds": 305.41362500000105,
+              "playgroundOpenMilliseconds": null,
+              "playgroundCloseMilliseconds": null
+            },
+            {
+              "route": "/page/button",
+              "interactionReadyMilliseconds": 1102.8485419999924,
+              "playgroundOpenMilliseconds": 142.98095900000772,
+              "playgroundCloseMilliseconds": 47.00562500000524
+            },
+            {
+              "route": "/page/action-row",
+              "interactionReadyMilliseconds": 1179.2410830000008,
+              "playgroundOpenMilliseconds": 69.34574999999313,
+              "playgroundCloseMilliseconds": 47.317582999996375
+            },
+            {
+              "route": "/page/chat",
+              "interactionReadyMilliseconds": 1338.1453330000077,
+              "playgroundOpenMilliseconds": 85.41900000000896,
+              "playgroundCloseMilliseconds": 63.04649999999674
+            },
+            {
+              "route": "/page/modal",
+              "interactionReadyMilliseconds": 1074.4072080000042,
+              "playgroundOpenMilliseconds": 70.77483300000313,
+              "playgroundCloseMilliseconds": 54.62300000000687
+            },
+            {
+              "route": "/page/review-editor",
+              "interactionReadyMilliseconds": 1199.1190829999978,
+              "playgroundOpenMilliseconds": 214.42716700000165,
+              "playgroundCloseMilliseconds": 48.97320900000341
+            },
+            {
+              "route": "/",
+              "interactionReadyMilliseconds": 29.610499999995227,
+              "playgroundOpenMilliseconds": null,
+              "playgroundCloseMilliseconds": null
+            }
+          ],
+          "browser": {
+            "exampleMountHosts": 0,
+            "populatedExampleMountHosts": 0,
+            "openEventSources": 7,
+            "domCounters": {
+              "documents": 1,
+              "nodes": 2622,
+              "jsEventListeners": 23
+            },
+            "jsHeapUsedBytes": 1762988,
+            "jsHeapTotalBytes": 4259840
+          },
+          "server": {
+            "page": {
+              "entryPointers": 181,
+              "artifacts": 2612,
+              "artifactBytes": 365887055
+            },
+            "shell": {
+              "entryPointers": 1,
+              "artifacts": 35,
+              "artifactBytes": 4106878
+            },
+            "scenario": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "fixture": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "totalArtifacts": 2647,
+            "totalArtifactBytes": 369993933,
+            "inFlightBuilds": 0,
+            "cachedManifests": 211,
+            "liveReloadSubscribers": 1
+          },
+          "probeProcess": {
+            "residentBytes": 3728080896,
+            "heapUsedBytes": 1335788597
+          }
+        },
+        "cycles": [
+          {
+            "cycle": 1,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 33.3626660000009,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 115.14929100000882,
+                "playgroundOpenMilliseconds": 79.61720799999603,
+                "playgroundCloseMilliseconds": 48.549915999989025
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 101.22795799998858,
+                "playgroundOpenMilliseconds": 67.89649999998801,
+                "playgroundCloseMilliseconds": 46.095625000001746
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 179.38804099999834,
+                "playgroundOpenMilliseconds": 59.78354200000467,
+                "playgroundCloseMilliseconds": 63.97954200000095
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 106.00587500000256,
+                "playgroundOpenMilliseconds": 51.04183299999568,
+                "playgroundCloseMilliseconds": 50.22320900000341
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 197.65087499999208,
+                "playgroundOpenMilliseconds": 181.89349999999104,
+                "playgroundCloseMilliseconds": 49.31379200000083
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 29.68087500000547,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 14,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1763400,
+              "jsHeapTotalBytes": 3211264
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211,
+              "liveReloadSubscribers": 1
+            },
+            "probeProcess": {
+              "residentBytes": 3729113088,
+              "heapUsedBytes": 1334791039
+            }
+          },
+          {
+            "cycle": 2,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 35.36983300000429,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 78.52570799998648,
+                "playgroundOpenMilliseconds": 82.21624999999767,
+                "playgroundCloseMilliseconds": 51.518167000001995
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 74.5685000000085,
+                "playgroundOpenMilliseconds": 61.38970800000243,
+                "playgroundCloseMilliseconds": 45.045458000007784
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 118.06779100000858,
+                "playgroundOpenMilliseconds": 71.52099999999336,
+                "playgroundCloseMilliseconds": 60.95374999998603
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 76.78058299999975,
+                "playgroundOpenMilliseconds": 61.43404200000805,
+                "playgroundCloseMilliseconds": 48.47054100000241
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 121.6435829999973,
+                "playgroundOpenMilliseconds": 99.2285419999971,
+                "playgroundCloseMilliseconds": 49.50179100000241
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 28.319040999995195,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 21,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1764296,
+              "jsHeapTotalBytes": 3211264
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211,
+              "liveReloadSubscribers": 1
+            },
+            "probeProcess": {
+              "residentBytes": 3729129472,
+              "heapUsedBytes": 1331418601
+            }
+          },
+          {
+            "cycle": 3,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 35.784499999994296,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 74.77425000000221,
+                "playgroundOpenMilliseconds": 69.0957919999928,
+                "playgroundCloseMilliseconds": 45.84124999999767
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 72.88387499999953,
+                "playgroundOpenMilliseconds": 62.79941600000893,
+                "playgroundCloseMilliseconds": 46.15208300000813
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 118.01175000000512,
+                "playgroundOpenMilliseconds": 72.27995799999917,
+                "playgroundCloseMilliseconds": 60.0101250000007
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 54.650250000006054,
+                "playgroundOpenMilliseconds": 61.66291600000113,
+                "playgroundCloseMilliseconds": 47.49070799999754
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 115.09841700000106,
+                "playgroundOpenMilliseconds": 163.2204580000107,
+                "playgroundCloseMilliseconds": 49.327708999975584
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 28.89716700001736,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 28,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1764168,
+              "jsHeapTotalBytes": 3211264
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211,
+              "liveReloadSubscribers": 1
+            },
+            "probeProcess": {
+              "residentBytes": 3729801216,
+              "heapUsedBytes": 1331742854
+            }
+          },
+          {
+            "cycle": 4,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 33.017874999990454,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 75.46070800002781,
+                "playgroundOpenMilliseconds": 84.5714169999992,
+                "playgroundCloseMilliseconds": 46.04833300001337
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 73.94412500000908,
+                "playgroundOpenMilliseconds": 61.38799999997718,
+                "playgroundCloseMilliseconds": 46.28816699999152
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 113.05062500000349,
+                "playgroundOpenMilliseconds": 59.077791000017896,
+                "playgroundCloseMilliseconds": 60.20487499999581
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 77.10374999998021,
+                "playgroundOpenMilliseconds": 64.02466699999059,
+                "playgroundCloseMilliseconds": 47.50695799998357
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 114.67695900000399,
+                "playgroundOpenMilliseconds": 164.86441700000432,
+                "playgroundCloseMilliseconds": 48.495209000015166
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 26.438332999998238,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 35,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1764296,
+              "jsHeapTotalBytes": 3473408
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211,
+              "liveReloadSubscribers": 1
+            },
+            "probeProcess": {
+              "residentBytes": 3729801216,
+              "heapUsedBytes": 1332180060
+            }
+          },
+          {
+            "cycle": 5,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 35.136415999993915,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 57.928584000008414,
+                "playgroundOpenMilliseconds": 74.02608299997519,
+                "playgroundCloseMilliseconds": 44.92570799999521
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 73.25599999999395,
+                "playgroundOpenMilliseconds": 61.170624999998836,
+                "playgroundCloseMilliseconds": 46.50474999999278
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 113.50375000000349,
+                "playgroundOpenMilliseconds": 71.74312500000815,
+                "playgroundCloseMilliseconds": 59.74291599998833
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 77.6482079999987,
+                "playgroundOpenMilliseconds": 60.89320799999405,
+                "playgroundCloseMilliseconds": 47.88216700000339
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 116.70629099998041,
+                "playgroundOpenMilliseconds": 165.75620800000615,
+                "playgroundCloseMilliseconds": 48.33037500001956
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 31.82766700000502,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 42,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1764296,
+              "jsHeapTotalBytes": 3473408
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211,
+              "liveReloadSubscribers": 1
+            },
+            "probeProcess": {
+              "residentBytes": 3729735680,
+              "heapUsedBytes": 1332485694
+            }
+          }
+        ],
+        "growth": {
+          "exampleMountHosts": {
+            "series": [0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "populatedExampleMountHosts": {
+            "series": [0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "openEventSources": {
+            "series": [14, 21, 28, 35, 42],
+            "classification": "monotonic-growth"
+          },
+          "domNodes": {
+            "series": [2622, 2622, 2622, 2622, 2622],
+            "classification": "stable"
+          },
+          "jsEventListeners": {
+            "series": [23, 23, 23, 23, 23],
+            "classification": "stable"
+          },
+          "documents": {
+            "series": [1, 1, 1, 1, 1],
+            "classification": "stable"
+          },
+          "jsHeapUsedBytes": {
+            "series": [1763400, 1764296, 1764168, 1764296, 1764296],
+            "classification": "fluctuating"
+          },
+          "serverArtifacts": {
+            "series": [2647, 2647, 2647, 2647, 2647],
+            "classification": "stable"
+          },
+          "serverArtifactBytes": {
+            "series": [369993933, 369993933, 369993933, 369993933, 369993933],
+            "classification": "stable"
+          },
+          "serverLiveReloadSubscribers": {
+            "series": [1, 1, 1, 1, 1],
+            "classification": "stable"
+          },
+          "probeResidentBytes": {
+            "series": [3729113088, 3729129472, 3729801216, 3729801216, 3729735680],
+            "classification": "fluctuating"
+          }
+        }
+      }
+    }
+  }
+}

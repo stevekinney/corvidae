@@ -27,6 +27,7 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
+import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 import { expect, test } from './review-editor-browser-errors.ts';
 
 const PIXEL_TOLERANCE = 1;
@@ -98,8 +99,12 @@ test.describe('focus-ring sweep — rendered keyboard-focus rings', () => {
     expect(result.matchesFocusVisible).toBe(true);
     // The ring lives in box-shadow, not a colored outline.
     expect(result.boxShadow).not.toBe('none');
-    // The shared recipe is a two-stop ring (offset band + ring); ≥2 layers.
+    // The shared recipe keeps two stops, so ≥2 layers.
     expect(boxShadowLayerCount(result.boxShadow)).toBeGreaterThanOrEqual(2);
+    // Updated for COR-1498: the offset is 0px, so only one band paints, the
+    // 2px ring itself, with no offset-colour halo.
+    const bands = outerBands(parseBoxShadow(result.boxShadow));
+    expect(bands.map((band) => band.spread)).toEqual([2]);
     // It is the focus ring color, not some incidental shadow.
     expect(result.boxShadow).toContain(ringColor);
     // The outer ring is NOT inset (that would be the B-inset variant).
