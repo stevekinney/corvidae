@@ -836,6 +836,35 @@ describe('composition against a manifest the target already carries', () => {
       expect(manifest['peerDependencies']).toEqual(existing.peerDependencies);
       expect(manifest['peerDependenciesMeta']).toEqual(existing.peerDependenciesMeta);
     });
+
+    test('a renamed internal peer keeps its meta entry under its public name', async () => {
+      await withTree(
+        corvidaeFixture({
+          'components/cinder/package.json': {
+            ...workspaces['components/cinder'],
+            peerDependencies: { '@lostgradient/markdown': 'workspace:*' },
+            peerDependenciesMeta: { '@lostgradient/markdown': { optional: true } },
+          },
+        }),
+        async (root) => {
+          const packageMap = await packageMapWithCurrentDigests(root);
+          const markdown = packageMap.workspaces['@lostgradient/markdown'];
+          if (markdown?.disposition !== 'publish-as') {
+            throw new Error('@lostgradient/markdown must be publish-as in the real map');
+          }
+          packageMap.workspaces['@lostgradient/markdown'] = {
+            ...markdown,
+            name: 'renamed-markdown',
+          };
+          const plan = await planManifests({ corvidaeRoot: root, target: 'cinder', packageMap });
+          const cinder = parse(plan, 'packages/components/package.json');
+          expect(cinder['peerDependencies']).toEqual({ 'renamed-markdown': 'workspace:*' });
+          expect(cinder['peerDependenciesMeta']).toEqual({
+            'renamed-markdown': { optional: true },
+          });
+        },
+      );
+    });
   });
 
   test('a dependency the target declares nowhere is added, in corvidae’s block, and reported', async () => {

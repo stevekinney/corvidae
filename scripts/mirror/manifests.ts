@@ -337,6 +337,17 @@ function rewriteWorkspaceManifest(
       context,
     );
   }
+  // COR-1468: `peerDependenciesMeta` qualifies `peerDependencies` by name, so it follows the same
+  // public-name rewrite, or a renamed internal peer would lose its `optional` entry.
+  const peerMeta = workspace.manifest['peerDependenciesMeta'];
+  if (isJsonObject(peerMeta)) {
+    emitted['peerDependenciesMeta'] = Object.fromEntries(
+      Object.entries(peerMeta).map(([name, entry]) => [
+        context.publicNames.get(name) ?? name,
+        entry,
+      ]),
+    );
+  }
   return emitted;
 }
 
