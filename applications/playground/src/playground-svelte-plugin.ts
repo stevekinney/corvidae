@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { VERSION as SVELTE_VERSION } from 'svelte/compiler';
 
 import { readEnvironmentConfiguration } from './environment-configuration.ts';
-import { PLAYGROUND_ROOT } from './playground-paths.ts';
+import { PLAYGROUND_ROOT, repositoryRelativePath } from './playground-paths.ts';
 import {
   createSvelteCompileCache,
   fingerprintCompiler,
@@ -144,7 +144,14 @@ export function playgroundSveltePlugin(options: {
             source,
             path,
             { generate, injectCss: injectCssForFile },
-            { transformServerOutput: transformPlaygroundServerOutput },
+            {
+              transformServerOutput: transformPlaygroundServerOutput,
+              // Svelte hashes the filename into every scoped class name, and keeps it absolute for a
+              // file outside the working directory (every component package), so name each
+              // file relative to the repository: the exported classes are then the same in every
+              // checkout (CIN-591).
+              filename: repositoryRelativePath,
+            },
             development,
           );
         const cache = options.cache === undefined ? sharedSvelteCompileCache() : options.cache;

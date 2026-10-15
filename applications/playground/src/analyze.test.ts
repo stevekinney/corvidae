@@ -80,9 +80,31 @@ describe('analyzeComponent — button.svelte', () => {
     expect(manifest.props.find((p) => p.name === 'class')).toBeUndefined();
   });
 
-  it('file is the absolute path to the svelte file', async () => {
+  it('file is the repository-relative POSIX path, so the export never names the checkout', async () => {
+    // The manifest is published in `/api/manifest/<name>`, `/api/documentation/<name>`, and every
+    // page's inline payload, so an absolute path would make the export depend on (and reveal)
+    // the directory it was built in.
     const manifest = await analyzeComponent(componentPath('button'));
-    expect(manifest.file).toBe(componentPath('button'));
+    expect(manifest.file).toBe('components/cinder/src/components/button/button.svelte');
+  });
+});
+
+describe('analyzeComponent — paths in published types', () => {
+  it('names a type from another module by its repository-relative path', async () => {
+    // ts-morph prints a type it cannot name locally as `import("<absolute path>").Name`, and the
+    // manifest is published, so an absolute path would make the export depend on the checkout.
+    const repositoryRoot = join(import.meta.dirname, '..', '..', '..');
+    const manifest = await analyzeComponent(
+      join(
+        repositoryRoot,
+        'components/editor/src/lib/components/markdown-editor/markdown-editor.svelte',
+      ),
+      { importPath: '@lostgradient/editor' },
+    );
+    const published = JSON.stringify(manifest);
+
+    expect(published).not.toContain(repositoryRoot);
+    expect(published).toContain('import(\\"node_modules/.bun/@milkdown+ctx@');
   });
 });
 
