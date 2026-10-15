@@ -10,7 +10,7 @@ import { createFakeController } from './terminal-attachment-test-support.ts';
 import { engineLoader, loadRendererEngineFactory } from './terminal-engine-loader.ts';
 import { waitFor } from './terminal-test-support.ts';
 import Terminal from './terminal.svelte';
-import type { TerminalProps } from './terminal.types.ts';
+import type { TerminalProps, TerminalRendererController, TerminalState } from './terminal.types.ts';
 
 /** How the next engine load behaves. Swapped per test. */
 let behavior: () => ReturnType<typeof loadRendererEngineFactory> = () =>
@@ -220,5 +220,157 @@ describe('engine failure fails closed', () => {
     props.state = 'loading';
     harness.flush();
     await failed(harness);
+  });
+});
+
+/** Props whose controller a test swaps or clears after mounting. */
+type MutableControllerProps = {
+  title: string;
+  state: TerminalState;
+  controller: TerminalRendererController | undefined;
+  onRecoveryRequest?: () => void;
+};
+
+describe('recovery controls and controller-bound failures (COR-1516)', () => {
+  test("the frame's Reload clears a controller-less renderer failure the way Retry does", async () => {
+    let attempt = 0;
+    behavior = () => {
+      attempt += 1;
+      return attempt === 1 ? Promise.reject(new Error('flaky')) : loadRendererEngineFactory();
+    };
+    let requests = 0;
+    const harness = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'writable',
+      error: 'The engine asset is blocked.',
+      onRecoveryRequest: () => {
+        requests += 1;
+      },
+    } as TerminalProps);
+    await failed(harness);
+    const labels = [...harness.target.querySelectorAll('button')].map((button) =>
+      button.textContent?.trim(),
+    );
+    expect(labels).toEqual(['Reload']);
+    required(harness, 'button').click();
+    harness.flush();
+    await waitFor(() => harness.target.querySelector('.xterm') !== null, 'the engine after reload');
+    expect(requests).toBe(1);
+    expect(loads).toBe(2);
+  });
+
+  test('Reload on a failure bound to a controller asks the host and does not remount that controller', async () => {
+    behavior = () => Promise.reject(new Error('blocked'));
+    const controller = createFakeController();
+    let requests = 0;
+    const harness = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'writable',
+      error: 'The engine asset is blocked.',
+      controller,
+      onRecoveryRequest: () => {
+        requests += 1;
+      },
+    } as TerminalProps);
+    await failed(harness);
+    required(harness, 'button').click();
+    harness.flush();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(requests).toBe(1);
+    expect(loads).toBe(1);
+    expect(controller.subscriptions).toBe(0);
+  });
+
+  test('clearing the controller does not clear a failure tied to it', async () => {
+    let attempt = 0;
+    behavior = () => {
+      attempt += 1;
+      return attempt === 1 ? Promise.reject(new Error('flaky')) : loadRendererEngineFactory();
+    };
+    const revoked = createFakeController();
+    const props = reactiveProps<MutableControllerProps>({
+      title: 'Shell',
+      state: 'writable',
+      controller: revoked,
+    });
+    // Reactive props proxy their values, so the same controller is the one read back, not `revoked`.
+    const sameController = props.controller;
+    const harness = mountHarness(Terminal, props as unknown as TerminalProps);
+    await failed(harness);
+    props.controller = undefined;
+    harness.flush();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(required(harness, '.cinder-terminal__message').textContent).toBe(
+      'Terminal engine unavailable',
+    );
+    expect(loads).toBe(1);
+    expect(harness.target.querySelector('.xterm')).toBeNull();
+    // Bringing the revoked controller back is not a replacement either.
+    props.controller = sameController;
+    harness.flush();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(required(harness, '.cinder-terminal__message').textContent).toBe(
+      'Terminal engine unavailable',
+    );
+    expect(loads).toBe(1);
+    expect(revoked.subscriptions).toBe(0);
+    // A distinct, defined controller is.
+    const replacement = createFakeController();
+    props.controller = replacement;
+    harness.flush();
+    await waitFor(() => harness.target.querySelector('.xterm') !== null, 'the replacement engine');
+    expect(replacement.subscriptions).toBe(1);
+    expect(loads).toBe(2);
+  });
+
+  test('a replaced failure stays gone when the old controller comes back', async () => {
+    let attempt = 0;
+    behavior = () => {
+      attempt += 1;
+      return attempt === 1 ? Promise.reject(new Error('flaky')) : loadRendererEngineFactory();
+    };
+    const revoked = createFakeController();
+    const replacement = createFakeController();
+    const props = reactiveProps<MutableControllerProps>({
+      title: 'Shell',
+      state: 'writable',
+      controller: revoked,
+    });
+    const sameController = props.controller;
+    const harness = mountHarness(Terminal, props as unknown as TerminalProps);
+    await failed(harness);
+    props.controller = replacement;
+    harness.flush();
+    await waitFor(() => harness.target.querySelector('.xterm') !== null, 'the replacement engine');
+    props.controller = sameController;
+    harness.flush();
+    await waitFor(
+      () => revoked.subscriptions === 1,
+      'the original controller to mount again, because its failure was already replaced',
+    );
+  });
+
+  test('Retry with no controller after a controller-bound failure is an explicit controller-less retry', async () => {
+    let attempt = 0;
+    behavior = () => {
+      attempt += 1;
+      return attempt === 1 ? Promise.reject(new Error('flaky')) : loadRendererEngineFactory();
+    };
+    const props = reactiveProps<MutableControllerProps>({
+      title: 'Shell',
+      state: 'writable',
+      controller: createFakeController(),
+      onRecoveryRequest: () => {},
+    });
+    const harness = mountHarness(Terminal, props as unknown as TerminalProps);
+    await failed(harness);
+    props.controller = undefined;
+    harness.flush();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(loads).toBe(1);
+    required(harness, 'button').click();
+    harness.flush();
+    await waitFor(() => harness.target.querySelector('.xterm') !== null, 'the engine after retry');
+    expect(loads).toBe(2);
   });
 });

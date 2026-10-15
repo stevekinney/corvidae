@@ -12,6 +12,7 @@ import {
   type EngineCreateOptions,
 } from './terminal-engine-adapter.ts';
 import { MAXIMUM_TITLE_CODE_POINTS } from './terminal-links.ts';
+import { waitFor } from './terminal-test-support.ts';
 
 const ESC = '\u001b';
 const encoder = new TextEncoder();
@@ -173,6 +174,7 @@ describe('measuring and re-measuring', () => {
       };
       onTitleChange() {}
       registerLinkProvider() {}
+      parser = { registerOscHandler: () => ({ dispose() {} }) };
       loadAddon() {
         calls.push('loadAddon');
       }
@@ -456,6 +458,86 @@ describe('output stays inert', () => {
       window.open = original;
     }
     expect(opened).toEqual([]);
+  });
+
+  test('a hidden OSC 8 destination is consumed by the engine, so it never owns a link', async () => {
+    const { deliver, terminal } = mountedEngine();
+    // The engine registers its own OSC 8 link provider whatever the host does, and it offers a
+    // link for any cell that carries a hyperlink id: so no provider at all may find one.
+    const core = (
+      terminal as unknown as {
+        _core: { _linkProviderService: { linkProviders: ILinkProvider[] } };
+      }
+    )._core;
+    await deliver([
+      bytes(`${ESC}]8;;https://hidden.test/${ESC}\\click here${ESC}]8;;${ESC}\\ plain`),
+    ]);
+    expect(terminal.buffer.active.getLine(0)?.translateToString(true)).toBe('click here plain');
+    const providers = core._linkProviderService.linkProviders;
+    expect(providers.length).toBeGreaterThan(1);
+    for (const provider of providers) expect(await provide(provider, 1)).toEqual([]);
+  });
+
+  test('an OSC 8 with parameters and an id is consumed the same way, even for a visible-looking https target', async () => {
+    const { deliver, terminal } = mountedEngine();
+    const core = (
+      terminal as unknown as {
+        _core: { _linkProviderService: { linkProviders: ILinkProvider[] } };
+      }
+    )._core;
+    await deliver([
+      bytes(`${ESC}]8;id=a:foo=bar;https://id.hidden.test/x${ESC}\\path${ESC}]8;;${ESC}\\`),
+    ]);
+    for (const provider of core._linkProviderService.linkProviders) {
+      expect(await provide(provider, 1)).toEqual([]);
+    }
+  });
+
+  test('an empty chunk behind a held prefix is acknowledged on its own and nothing piles up', async () => {
+    const { engine } = mountedEngine();
+    const acknowledged: string[] = [];
+    // E2 80 starts a three-byte sequence the chunk does not finish, so it is held.
+    engine.write(Uint8Array.of(0xe2, 0x80), () => acknowledged.push('prefix'));
+    for (let index = 0; index < 50; index += 1) {
+      engine.write(new Uint8Array(0), () => acknowledged.push(`empty-${index}`));
+    }
+    await waitFor(() => acknowledged.length === 50, 'every empty chunk to be acknowledged');
+    expect(acknowledged).toEqual(Array.from({ length: 50 }, (_, index) => `empty-${index}`));
+    // The prefix is still held and is acknowledged exactly once, when its sequence finishes.
+    await new Promise<void>((resolve) =>
+      engine.write(Uint8Array.of(0x8b), () => {
+        acknowledged.push('finish');
+        resolve();
+      }),
+    );
+    expect(acknowledged.filter((entry) => entry === 'prefix')).toEqual(['prefix']);
+    expect(acknowledged.slice(-2)).toEqual(['prefix', 'finish']);
+  });
+
+  test('an empty chunk keeps its place behind earlier chunks that need no prefix', async () => {
+    const { engine } = mountedEngine();
+    const order: string[] = [];
+    engine.write(bytes('output'), () => order.push('first'));
+    engine.write(new Uint8Array(0), () => order.push('empty'));
+    await waitFor(() => order.length === 2, 'both acknowledgements');
+    expect(order).toEqual(['first', 'empty']);
+  });
+
+  test('update applies a new font family and size and leaves them alone when absent', () => {
+    const { engine, terminal } = mountedEngine();
+    const settings = {
+      readOnly: false,
+      announceOutput: false,
+      reducedMotion: false,
+      ariaLabel: 'Terminal',
+      theme: {},
+    };
+    engine.update({ ...settings, fontFamily: 'Fira, monospace', fontSize: 19 });
+    expect(terminal.options.fontFamily).toBe('Fira, monospace');
+    expect(terminal.options.fontSize).toBe(19);
+    engine.update(settings);
+    expect(terminal.options.fontFamily).toBe('Fira, monospace');
+    expect(terminal.options.fontSize).toBe(19);
   });
 
   test('titles reach the host as bounded plain text', async () => {
