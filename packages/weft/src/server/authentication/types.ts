@@ -162,7 +162,10 @@ export type AuthConfig = {
    * `AuthenticatedPrincipal`. When configured, the resolver is
    * authoritative for the entire API-key space:
    *   - returns a principal → admitted with that principal entirely
-   *     (scopes authoritative; `defaultApiKeyScopes` IGNORED).
+   *     (scopes authoritative; `defaultApiKeyScopes` IGNORED). Its scopes
+   *     are still narrowed to the handler's vocabulary: built-in scopes and
+   *     the package scopes listed in `additionalScopes`. Any other scope is
+   *     dropped, as it would be from a JWT claim.
    *   - returns `null` → key rejected; static `apiKeys` is NOT
    *     consulted as a fallback.
    *   - throws → treated as `null` (rejected); server log records the
@@ -232,7 +235,9 @@ export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public';
  *     authenticator (resolver admission, or static API-key admission
  *     with `defaultApiKeyScopes`). Downstream pipeline code uses this
  *     verbatim; when absent, `authContextToPrincipal` reconstructs a
- *     minimal principal from `method` + `claims`.
+ *     minimal principal from `method` + `claims`. That reconstruction
+ *     keeps only built-in scopes, so a host that registers package
+ *     scopes must forward the authenticator's `principal`.
  */
 export type AuthContext = {
   method: AuthMethod;

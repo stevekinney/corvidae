@@ -247,8 +247,9 @@ export interface ServeOptions {
    * Package scopes this server recognizes beyond Weft's built-in vocabulary,
    * such as `bureau.tasks:read`, for the packages whose `operations` require
    * them. The server's authenticator retains them from JWT `scope`, `scp`,
-   * and `permissions` claims and from `defaultApiKeyScopes`; any other unknown
-   * scope is still dropped. They belong to this server alone: another
+   * and `permissions` claims, from `defaultApiKeyScopes`, and from the
+   * principal `resolveApiKeyPrincipal` returns; any other unknown scope is
+   * still dropped. They belong to this server alone: another
    * `serve()` in the same process does not see them.
    *
    * Each entry must be `<namespace>.<resource>:<action>`, and the `weft`

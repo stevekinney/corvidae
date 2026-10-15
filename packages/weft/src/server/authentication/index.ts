@@ -124,6 +124,7 @@ type ApiKeyAdmissionOptions = {
   resolver: AuthConfig['resolveApiKeyPrincipal'];
   apiKeyEntries: ReadonlyArray<ConstantTimeApiKeyEntry<undefined>> | null;
   defaultApiKeyScopes: ReadonlyArray<AuthorizationScope>;
+  additionalScopes: AdditionalScopeSet;
 };
 
 type AuthAttempt = {
@@ -146,6 +147,7 @@ async function authenticateViaApiKey(
     options.resolver,
     options.apiKeyEntries,
     options.defaultApiKeyScopes,
+    options.additionalScopes,
   );
   return {
     explicitAuthAttempted: true,
@@ -223,8 +225,9 @@ export type CreateAuthenticatorOptions = {
   /**
    * Package scopes this authenticator recognizes beyond Weft's built-in
    * vocabulary, such as `bureau.tasks:read`. They are retained from JWT
-   * `scope`, `scp`, and `permissions` claims and from `defaultApiKeyScopes`;
-   * any other unknown scope is still dropped. The set belongs to this
+   * `scope`, `scp`, and `permissions` claims, from `defaultApiKeyScopes`, and
+   * from the principal `resolveApiKeyPrincipal` returns; any other unknown
+   * scope, including one in the reserved `weft` namespace, is dropped. The set belongs to this
    * authenticator alone. An entry that is not `<namespace>.<resource>:<action>`
    * or that uses the reserved `weft` namespace rejects construction.
    */
@@ -318,6 +321,7 @@ export async function createAuthenticator(
       resolver,
       apiKeyEntries,
       defaultApiKeyScopes,
+      additionalScopes,
     });
     if (apiKeyAttempt.result !== null) {
       return auditDecision(auditSink, request, apiKeyAttempt.result);

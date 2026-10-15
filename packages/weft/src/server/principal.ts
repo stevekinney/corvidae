@@ -218,8 +218,10 @@ export function anonymousPrincipal(): UnauthenticatedPrincipal {
  * Build the privileged `stdio-local` principal for the Phase 13
  * runtime stdio subcommand. Admission is gated at the CLI boundary
  * (`--startup-token <hex>` or `--allow-unauthenticated-local-admin`);
- * once admitted, the session has every scope because it's running as
- * a local process that can already invoke the binary directly.
+ * once admitted, the session has every built-in scope because it's
+ * running as a local process that can already invoke the binary directly.
+ * It holds no package scope: no handler's `additionalScopes` reach it, so
+ * an operation that requires a package scope is `Forbidden` to it.
  *
  * @example
  * ```ts

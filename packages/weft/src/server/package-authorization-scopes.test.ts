@@ -14,15 +14,26 @@ import { z } from 'zod';
 import type { ClientOperationTypes } from '../client/generated/operation-client.generated.ts';
 import { Engine } from '../core/engine.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { createAuthenticator, signJWT, type AuthResult } from './authentication.ts';
+import {
+  createAuthenticator,
+  createRotatingApiKeyStore,
+  signJWT,
+  type AuthResult,
+} from './authentication.ts';
 import type { PackageAuthorizationScope } from './authorization-scope.ts';
 import { authContextToPrincipal } from './handler.ts';
 import { serve, type WeftServer } from './index.ts';
+import { openWebSocket, waitForMessage } from './json-rpc-websocket-client.test-support.ts';
 import { generateOpenRpcDocument } from './openrpc.ts';
 import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { defineOperation } from './operation-registry.ts';
 import { getPrincipalOperation } from './operations/get-principal.ts';
-import { isAuthenticated, type Principal } from './principal.ts';
+import {
+  isAuthenticated,
+  principalFromApiKey,
+  principalFromStdioLocal,
+  type Principal,
+} from './principal.ts';
 
 const SECRET = 'package-scope-secret-at-least-32-chars!';
 const API_KEY = 'weft_key_package_scopes';
@@ -130,6 +141,38 @@ describe('additionalScopes — retention', () => {
       [TASKS_READ],
     );
     expect(scopesOf(principal)).toEqual([TASKS_READ]);
+  });
+
+  it('narrows a resolver principal to built-in and registered scopes', async () => {
+    const authenticate = await createAuthenticator(
+      {
+        resolveApiKeyPrincipal: async () =>
+          principalFromApiKey({
+            subject: 's',
+            scopes: ['other.pkg:admin', 'weft.secret:write', TASKS_READ, 'workflows:read'],
+          }),
+      },
+      { additionalScopes: [TASKS_READ] },
+    );
+    const principal = principalOf(await authenticate(bearer(API_KEY)));
+    expect(scopesOf(principal)).toEqual([TASKS_READ, 'workflows:read']);
+    if (!isAuthenticated(principal)) throw new Error('expected an authenticated principal');
+    expect(principal.hasScope('weft.secret:write')).toBe(false);
+    expect(principal.hasScope('other.pkg:admin')).toBe(false);
+  });
+
+  it('narrows a rotating-store principal to built-in and registered scopes', async () => {
+    const store = createRotatingApiKeyStore();
+    store.add(API_KEY, {
+      subject: 'svc',
+      scopes: ['weft.system:admin', TASKS_READ, TASKS_WRITE, 'system:read'],
+    });
+    const authenticate = await createAuthenticator(
+      { resolveApiKeyPrincipal: store.resolve },
+      { additionalScopes: [TASKS_READ] },
+    );
+    const principal = principalOf(await authenticate(bearer(API_KEY)));
+    expect(scopesOf(principal)).toEqual([TASKS_READ, 'system:read']);
   });
 
   it('drops every package scope when the handler registers none', async () => {
@@ -250,6 +293,65 @@ describe('additionalScopes — weft.system.principal', () => {
       subject: 'operator',
       scopes: [TASKS_READ, 'system:read'],
     });
+  });
+});
+
+describe('additionalScopes — principals built without an authenticator', () => {
+  it('rebuilds a jwt context without a forwarded principal with built-in scopes only', () => {
+    const principal = authContextToPrincipal({
+      method: 'jwt',
+      claims: { sub: 'u', scope: `${TASKS_READ} workflows:read` },
+    });
+    expect(scopesOf(principal)).toEqual(['workflows:read']);
+  });
+
+  it('gives the trusted-local principal every built-in scope and no package scope', () => {
+    const principal = principalFromStdioLocal();
+    expect(principal.hasScope('system:admin')).toBe(true);
+    expect(principal.hasScope(TASKS_READ)).toBe(false);
+  });
+});
+
+describe('additionalScopes — JSON-RPC over WebSocket', () => {
+  it('keeps a registered scope on the principal admitted at the upgrade', async () => {
+    const engine = new Engine({ storage: new MemoryStorage() });
+    const server = serve({
+      engine,
+      port: 0,
+      auth: { jwt: { secret: SECRET } },
+      additionalScopes: [TASKS_READ],
+    });
+    try {
+      const token = await signJWT({ sub: 'operator', scope: `${TASKS_READ} system:read` }, SECRET);
+      const socket = await openWebSocket(
+        `${server.url.replace('http://', 'ws://')}/jsonrpc`,
+        token,
+      );
+      try {
+        const reply = waitForMessage(
+          socket,
+          (parsed) => (parsed as { id?: unknown } | null)?.id === 'principal',
+        );
+        socket.send(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'principal',
+            method: 'weft.system.principal',
+            params: {},
+          }),
+        );
+        expect(await reply).toEqual({
+          jsonrpc: '2.0',
+          id: 'principal',
+          result: { method: 'jwt', subject: 'operator', scopes: [TASKS_READ, 'system:read'] },
+        });
+      } finally {
+        socket.close();
+      }
+    } finally {
+      await server.stop();
+      engine[Symbol.dispose]();
+    }
   });
 });
 
