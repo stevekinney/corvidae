@@ -717,6 +717,25 @@ describe('request idle timeout configuration', () => {
 
     expect(calls).toEqual([{ request: eventsRequest, seconds: 0 }]);
   });
+
+  it('disables the idle timeout for routes that build on first request, and no others', () => {
+    // A cold lazy build is busy work, not an idle socket. Bun's ten-second idle
+    // timeout drops the connection mid-build on a loaded host, so the browser
+    // sees ERR_EMPTY_RESPONSE for the page bundle and the page never hydrates.
+    const calls: string[] = [];
+    const server = {
+      timeout(request: Request) {
+        calls.push(new URL(request.url).pathname);
+      },
+    };
+    for (const path of ['/page-bundle/combobox.js', '/shell-bundle/shell.js', '/page/combobox']) {
+      configureRequestIdleTimeout(req(path), server);
+    }
+    configureRequestIdleTimeout(req('/ping'), server);
+    configureRequestIdleTimeout(req('/styles.css'), server);
+
+    expect(calls).toEqual(['/page-bundle/combobox.js', '/shell-bundle/shell.js', '/page/combobox']);
+  });
 });
 
 async function fixtureContentHash(componentName: string): Promise<string> {
