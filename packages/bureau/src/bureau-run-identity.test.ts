@@ -12,7 +12,7 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, type RunnableAgent } from '@lostgradient/operative';
+import { createAgent, createStore, type RunnableAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -252,6 +252,42 @@ describe('bureau.run() run identity (COR-1302)', () => {
       }
     });
 
+    it('never registers a durable catalog run whose handle was aborted before its run was built', async () => {
+      // The handle settles `aborted` at once, while the deferred dispatch is
+      // still resolving the agent. When that dispatch resumes it builds the
+      // durable run only to forward the cancellation for cleanup; registering
+      // it then would make `getRun(run.id)` report a live run again after
+      // `run.result()` had already resolved.
+      const store = createStore();
+      const registeredRunIds: string[] = [];
+      const register = store.register;
+      store.register = (activeRun, id) => {
+        registeredRunIds.push(id ?? activeRun.runId);
+        return register(activeRun, id);
+      };
+      const gated = gatedAgent();
+      const bureau = await createBureau({
+        agents: { echo: gated.agent },
+        store,
+        storage: { type: 'sqlite', path: nextDatabasePath() },
+        durableExecution: true,
+      });
+      try {
+        const run = bureau.run('echo', 'hi', { principal: 'alice' });
+        expect(bureau.abortRun(run.id)).toMatchObject({ id: run.id, status: 'aborting' });
+        expect((await run.result()).finishReason).toBe('aborted');
+        // `closed()` waits for the dispatch to build the run and finish the
+        // cleanup the forwarded cancellation started.
+        await run.closed();
+
+        expect(registeredRunIds).not.toContain(run.id);
+        expect(bureau.getRun(run.id)).toBeUndefined();
+      } finally {
+        gated.release();
+        await bureau.dispose();
+      }
+    });
+
     it('leaves an unknown id not found', async () => {
       const bureau = await createBureau({ agents: { echo: echoAgent() } });
       try {
@@ -263,6 +299,26 @@ describe('bureau.run() run identity (COR-1302)', () => {
         await bureau.dispose();
       }
     });
+  });
+
+  it('drops a released catalog run’s actions from the run store’s action log', async () => {
+    // A long-lived bureau calls `bureau.run()` many times; each run's events
+    // must leave the store with the run, not accumulate in its store-wide log.
+    const store = createStore();
+    const bureau = await createBureau({ agents: { echo: echoAgent() }, store });
+    try {
+      const first = bureau.run('echo', 'first');
+      const second = bureau.run('echo', 'second');
+      await Promise.all([first.result(), second.result()]);
+
+      expect(bureau.getRun(first.id)).toBeUndefined();
+      expect(bureau.getRun(second.id)).toBeUndefined();
+      const loggedRunIds = store.getState().actions.map((action) => action.runId);
+      expect(loggedRunIds).not.toContain(first.id);
+      expect(loggedRunIds).not.toContain(second.id);
+    } finally {
+      await bureau.dispose();
+    }
   });
 
   it('keeps catalog runs off the bureau event streams its consumers read', async () => {

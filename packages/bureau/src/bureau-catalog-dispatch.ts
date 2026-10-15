@@ -620,9 +620,15 @@ export function createCatalogDispatcher({
       dispatchedActiveRun = activeRun;
       // COR-1302 — only `runAgent` dispatches without an id override, so this
       // registers exactly the `bureau.run()` runs: a child or a goal attempt
-      // always arrives with the id its owner recorded. Registered before any
-      // cancellation is forwarded below, so the store observes that abort.
-      if (runIdOverride === undefined) registerCatalogRun?.(activeRun);
+      // always arrives with the id its owner recorded. Not registered when a
+      // cancellation is pending: the handle was aborted or disposed while this
+      // dispatch was still resolving, which settled its `result()` at once, so
+      // this run exists only to carry that cancellation's durable cleanup and
+      // must not make `getRun(run.id)` report a live run after its handle
+      // already settled.
+      if (runIdOverride === undefined && !cancellationRequested) {
+        registerCatalogRun?.(activeRun);
+      }
       if (cancellationRequested) {
         if (cancellationRequested.dispose) {
           activeRun[Symbol.dispose]();
