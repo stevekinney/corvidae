@@ -24,14 +24,27 @@ export function createWorkflowHandleWithResultPromise(
  * The run behind `workflowId` was just acquired again on this engine (resume,
  * recovery, reclaim, a delayed start's firing, a retry): point its cached handle
  * at the new claim epoch, so `lostWorkflowClaim(handle)` keeps answering for the
- * same run. Call it only for the SAME run. A `start-new` replacement is a new
- * run and must not call it: the superseded handle keeps its own generation.
+ * same run. Call it only for the SAME run, and only once nothing after it can
+ * fail and release the claim: a `start-new` replacement is a new run and must not
+ * call it (the superseded handle keeps its own generation). Returns a function
+ * that restores the handle's previous epoch, for a caller whose later steps can
+ * still fail, or `undefined` when nothing moved.
  */
-export function rebindHandleClaimEpoch(internals: EngineInternals, workflowId: string): void {
+export function rebindHandleClaimEpoch(
+  internals: EngineInternals,
+  workflowId: string,
+): (() => void) | undefined {
   const epoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
-  if (epoch === null) return;
+  if (epoch === null) return undefined;
   const handle = internals.handleCache.get(workflowId)?.ref.deref();
-  if (handle !== undefined) handle[HANDLE_CLAIM_EPOCH] = epoch;
+  if (handle === undefined) return undefined;
+  const previousEpoch = handle[HANDLE_CLAIM_EPOCH];
+  handle[HANDLE_CLAIM_EPOCH] = epoch;
+  // Undo the move when what followed it fails, so the handle never keeps an epoch
+  // nobody tracks after its own epoch was overwritten. A later rebind is left alone.
+  return () => {
+    if (handle[HANDLE_CLAIM_EPOCH] === epoch) handle[HANDLE_CLAIM_EPOCH] = previousEpoch;
+  };
 }
 
 export function createWorkflowResultWaiter(

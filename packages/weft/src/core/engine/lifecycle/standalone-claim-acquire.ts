@@ -43,7 +43,6 @@
  */
 
 import { KEYS, storageHas } from '../../../storage/interface.ts';
-import { rebindHandleClaimEpoch } from '../handle-result.ts';
 import type { EngineInternals } from '../internals.ts';
 import { WorkflowClaimUnavailableError } from '../lease-errors.ts';
 import { wakeOwnershipCheck } from '../wake-ownership-check.ts';
@@ -183,8 +182,6 @@ export async function ensureDelayedStartClaimAndCleanupBeforeFailure(
   workflowId: string,
 ): Promise<void> {
   await acquireStandaloneClaimBeforeResume(internals, workflowId);
-  // A delayed start has no rejection path after this acquire, so its handle moves now.
-  rebindHandleClaimEpoch(internals, workflowId);
   if (await storageHas(internals.storage, KEYS.terminalCleanupNeeded(workflowId))) {
     internals.workflowsNeedingTerminalCleanup.add(workflowId);
   }

@@ -377,16 +377,21 @@ async function performSerializedResume(
   await reactivateSuspendedWorkflowState(internals, latestState);
 
   // The resume is validated and durably committed: only now does the run's handle
-  // follow the claim this engine holds. Earlier, a rejection would release a freshly
-  // acquired claim after the handle had already left the epoch it lost.
-  rebindHandleClaimEpoch(internals, workflowId);
-  commitSerializedResumeState(internals, args);
+  // follow the claim this engine holds. If the relaunch below fails, the handle goes
+  // back to the epoch it had, since the claim may be released with the resume.
+  const restoreHandleClaimEpoch = rebindHandleClaimEpoch(internals, workflowId);
+  try {
+    commitSerializedResumeState(internals, args);
 
-  if (internals.inlineStrategy) {
-    await relaunchInlineWorkflowAfterResume(internals, latestState, args);
-    return;
+    if (internals.inlineStrategy) {
+      await relaunchInlineWorkflowAfterResume(internals, latestState, args);
+      return;
+    }
+    await relaunchWorkerWorkflowAfterResume(internals, latestState, args);
+  } catch (error) {
+    restoreHandleClaimEpoch?.();
+    throw error;
   }
-  await relaunchWorkerWorkflowAfterResume(internals, latestState, args);
 }
 
 /**

@@ -13,6 +13,7 @@ import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { decode } from '../codec.ts';
 import type { TimerEntry, WorkflowContext } from '../types.ts';
 import { workflow } from '../types.ts';
+import { HANDLE_CLAIM_EPOCH } from './handles.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
@@ -93,6 +94,23 @@ describe('operations-time.ts: delayed-start timer fire folds acquire() under wor
     const handle = engine.getHandle(workflowId);
     expect(await handle.result()).toBe('ran');
     expect(activityRunCounts.get(workflowId)).toBe(1);
+  });
+
+  it('moves the delayed-start handle onto the claim the fire acquired once the run is launched', async () => {
+    const storage = new MemoryStorage();
+    await using engine = await createClaimEngine(storage, 'engine-a');
+    const workflowId = 'wf-delayed-fold-handle';
+
+    const handle = await engine.start('delayed-claim-fold', null, {
+      id: workflowId,
+      startAt: Date.now() + 60_000,
+    });
+    expect(handle[HANDLE_CLAIM_EPOCH]).toBeNull();
+
+    await engine.fireTimer(await loadDelayedStartTimerEntry(storage, workflowId));
+
+    expect(handle[HANDLE_CLAIM_EPOCH]).toBe(1);
+    expect(await handle.result()).toBe('ran');
   });
 
   it('two engines racing the same delayed-start fire: exactly one wins and the loser silently skips (never throws)', async () => {

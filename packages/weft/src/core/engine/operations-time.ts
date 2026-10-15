@@ -8,6 +8,7 @@ import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../typ
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
+import { rebindHandleClaimEpoch } from './handle-result.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveDelayedStartRegistrationOrFail } from './lifecycle/delayed-start-registration.ts';
 import { reprovideRecoveredServices } from './lifecycle/recovered-services.ts';
@@ -344,6 +345,10 @@ export async function startDelayedWorkflow(
     runningState.executionStateOwnerId ?? entry.workflowId,
     registration,
   );
+  // The run is launched: this is the point of no return for the delayed start, so its
+  // handle (created before any claim existed) now follows the claim the fire acquired.
+  // Every earlier exit, the failure paths included, leaves the handle untouched.
+  rebindHandleClaimEpoch(internals, entry.workflowId);
 }
 
 async function loadDelayedWorkflowCheckpoint(

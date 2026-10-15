@@ -87,7 +87,7 @@ describe('bulk-operations.ts: retryFailedAll folds acquire() under workflow-leas
       claimTtlMs: 60_000,
       claimRenewIntervalMs: 5_000,
     });
-    // The run's cached handle, created before the retry acquired a claim, follows the new epoch.
+    // The retry's resume, not the fold, moves a cached handle, once it has validated.
     const cachedHandle = new WorkflowHandle(workflowId, {} as never);
     const internals = createInternals(
       storage,
@@ -100,7 +100,7 @@ describe('bulk-operations.ts: retryFailedAll folds acquire() under workflow-leas
 
     expect(result).toEqual({ retried: 1, failed: 0, errors: [] });
     expect(registry.currentEpoch(workflowId)).toBe(1);
-    expect(cachedHandle[HANDLE_CLAIM_EPOCH]).toBe(1);
+    expect(cachedHandle[HANDLE_CLAIM_EPOCH]).toBeNull();
     expect(
       (internals as { engine: { resume: (id: string) => Promise<void> } }).engine.resume,
     ).toHaveBeenCalledWith(workflowId);
