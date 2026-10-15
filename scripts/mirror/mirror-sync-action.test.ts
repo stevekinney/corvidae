@@ -507,7 +507,7 @@ test('snapshot dispatch discovers the release workflow filename from the staged 
   }
 });
 
-describe('supersession (COR-1433)', () => {
+describe('supersession (COR-1433)', async () => {
   const bot = 'lost-gradient-mirror-sync[bot]';
   const newNumber = 20;
 
@@ -603,7 +603,7 @@ describe('supersession (COR-1433)', () => {
 
   const trailer = (sha: string): string => `Sync weft from corvidae\n\nCorvidae-Commit: ${sha}`;
 
-  test('closes an older sync pull request whose trailer is an ancestor, and nothing else', async () => {
+  const closesOlderSyncPullRequestWhoseOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer, side }, root) => {
       const { api, events } = fake(
         [
@@ -654,8 +654,10 @@ describe('supersession (COR-1433)', () => {
       expect(logged.join('\n')).toContain('not an object in the corvidae checkout');
     });
   });
+  test('closes an older sync pull request whose trailer is an ancestor, and nothing else', () =>
+    rethrow(closesOlderSyncPullRequestWhoseOutcome));
 
-  test('a stale dispatch closes the new pull request when an open one is strictly newer', async () => {
+  const staleDispatchClosesNewPullRequestOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer }, root) => {
       // The new pull request is built from `older`; pull request 11 is built from `newer`.
       const { api, events } = fake([record(11), record(12)], {
@@ -679,8 +681,10 @@ describe('supersession (COR-1433)', () => {
       expect(events.find((event) => event.startsWith(`comment ${newNumber}`))).toContain('pull/11');
     });
   });
+  test('a stale dispatch closes the new pull request when an open one is strictly newer', () =>
+    rethrow(staleDispatchClosesNewPullRequestOutcome));
 
-  test('a stale snapshot dispatch never dispatches the snapshot workflow', async () => {
+  const staleSnapshotDispatchNeverDispatchesSnapshotOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer }, root) => {
       const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
       const message = await openSyncPullRequest({
@@ -704,8 +708,10 @@ describe('supersession (COR-1433)', () => {
       expect(message).toContain('superseded');
     });
   });
+  test('a stale snapshot dispatch never dispatches the snapshot workflow', () =>
+    rethrow(staleSnapshotDispatchNeverDispatchesSnapshotOutcome));
 
-  test('a current snapshot dispatch dispatches before it closes the older pull requests', async () => {
+  const currentSnapshotDispatchDispatchesBeforeClosesOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer }, root) => {
       const { api, events } = fake([record(11)], { 'head-11': trailer(older) });
       await openSyncPullRequest({
@@ -728,6 +734,8 @@ describe('supersession (COR-1433)', () => {
       expect(order).toEqual(['create', 'dispatch', 'close 11']);
     });
   });
+  test('a current snapshot dispatch dispatches before it closes the older pull requests', () =>
+    rethrow(currentSnapshotDispatchDispatchesBeforeClosesOutcome));
 
   const skipManifest = {
     baseBranch: 'main',
@@ -735,7 +743,7 @@ describe('supersession (COR-1433)', () => {
     workflowFile: 'release.yaml',
   } as const;
 
-  test('a skip-path snapshot is not dispatched while a strictly newer sync pull request is open', async () => {
+  const skipPathSnapshotNotDispatchedWhileOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer }, root) => {
       const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
       const logged: string[] = [];
@@ -754,8 +762,10 @@ describe('supersession (COR-1433)', () => {
       expect(message).toContain('nothing dispatched or closed');
     });
   });
+  test('a skip-path snapshot is not dispatched while a strictly newer sync pull request is open', () =>
+    rethrow(skipPathSnapshotNotDispatchedWhileOutcome));
 
-  test('a skip-path snapshot is dispatched when no open sync pull request is newer', async () => {
+  const skipPathSnapshotDispatchedWhenNoOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer }, root) => {
       const { api, events } = fake([record(11), record(12, { author: 'someone-else' })], {
         'head-11': trailer(older),
@@ -779,8 +789,10 @@ describe('supersession (COR-1433)', () => {
       expect(message).toContain('snapshot workflow dispatched');
     });
   });
+  test('a skip-path snapshot is dispatched when no open sync pull request is newer', () =>
+    rethrow(skipPathSnapshotDispatchedWhenNoOutcome));
 
-  test('a non-snapshot skip closes an older sync pull request whose trailer is an ancestor', async () => {
+  const nonSnapshotSkipClosesOlderSyncOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer, side }, root) => {
       const { api, events } = fake(
         [record(11), record(12), record(13, { author: 'someone-else' })],
@@ -808,8 +820,10 @@ describe('supersession (COR-1433)', () => {
       expect(message).toContain('closed');
     });
   });
+  test('a non-snapshot skip closes an older sync pull request whose trailer is an ancestor', () =>
+    rethrow(nonSnapshotSkipClosesOlderSyncOutcome));
 
-  test('a skip with a strictly newer open sync pull request closes nothing, with or without a snapshot', async () => {
+  const skipStrictlyNewerOpenSyncPullOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer }, root) => {
       for (const snapshot of [false, true]) {
         const { api, events } = fake([record(11), record(12)], {
@@ -830,8 +844,10 @@ describe('supersession (COR-1433)', () => {
       }
     });
   });
+  test('a skip with a strictly newer open sync pull request closes nothing, with or without a snapshot', () =>
+    rethrow(skipStrictlyNewerOpenSyncPullOutcome));
 
-  test('a sync of the same corvidae commit closes the earlier attempt', async () => {
+  const syncSameCorvidaeCommitClosesEarlierOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ newer }, root) => {
       const { api, events } = fake([record(11)], { 'head-11': trailer(newer) });
       await supersedeOlderPullRequests({
@@ -846,8 +862,10 @@ describe('supersession (COR-1433)', () => {
       expect(events.some((event) => event === 'close 11')).toBe(true);
     });
   });
+  test('a sync of the same corvidae commit closes the earlier attempt', () =>
+    rethrow(syncSameCorvidaeCommitClosesEarlierOutcome));
 
-  test('opens the new pull request first, and a failed close fails the job after it exists', async () => {
+  const opensNewPullRequestFirstFailedOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ older, newer }, root) => {
       const { api, events } = fake(
         [record(11), record(12)],
@@ -872,8 +890,10 @@ describe('supersession (COR-1433)', () => {
       expect(events).toContain('close 12');
     });
   });
+  test('opens the new pull request first, and a failed close fails the job after it exists', () =>
+    rethrow(opensNewPullRequestFirstFailedOutcome));
 
-  test('a clean publish returns the opened message and leaves unrelated pull requests alone', async () => {
+  const cleanPublishReturnsOpenedMessageLeavesOutcome = await outcomeOf(async () => {
     await withCorvidae(async ({ newer }, root) => {
       const { api, events } = fake([record(15, { author: 'someone-else' })], {});
       const message = await openSyncPullRequest({
@@ -895,4 +915,6 @@ describe('supersession (COR-1433)', () => {
       expect(events).toEqual(['create']);
     });
   });
+  test('a clean publish returns the opened message and leaves unrelated pull requests alone', () =>
+    rethrow(cleanPublishReturnsOpenedMessageLeavesOutcome));
 });

@@ -371,9 +371,6 @@ async function runInProcessGroup(
     await exited;
     return 127;
   }
-  await lock?.recordProcessGroup(processGroup).catch((error: unknown) => {
-    report(`run-exclusively: could not record the command in the host lock: ${String(error)}`);
-  });
   const forward = (signal: NodeJS.Signals): void => {
     try {
       process.kill(-processGroup, signal);
@@ -382,8 +379,14 @@ async function runInProcessGroup(
     }
   };
   const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+  // Registered before the group is recorded in the lock: a caller that reads the recorded group
+  // and signals the wrapper must find the forwarders in place, or the default action ends the
+  // wrapper and orphans the group.
   for (const signal of forwarded) process.on(signal, forward);
   try {
+    await lock?.recordProcessGroup(processGroup).catch((error: unknown) => {
+      report(`run-exclusively: could not record the command in the host lock: ${String(error)}`);
+    });
     const [code, signal] = await exited;
     if (signal) return 128 + (constants.signals[signal] ?? 0);
     return code ?? 1;

@@ -772,13 +772,13 @@ describe('one owner per plan key', () => {
   });
 });
 
-describe('a remapped workspace on disk', () => {
+describe('a remapped workspace on disk', async () => {
   /**
    * The remap is what the other assertions in this file take on trust, so it is checked the way a
    * sync would see it: plan the whole surface for a workspace corvidae keeps under `components/`,
    * write the plan through the guard, and read the result off the filesystem.
    */
-  test('lands at the target’s own directory, read back from the written tree', async () => {
+  const landsAtTargetSOwnDirectoryOutcome = await outcomeOf(async () => {
     const source = 'export const editor = "corvidae";\n';
     await withTree(
       {
@@ -848,6 +848,8 @@ describe('a remapped workspace on disk', () => {
       },
     );
   });
+  test('lands at the target’s own directory, read back from the written tree', () =>
+    rethrow(landsAtTargetSOwnDirectoryOutcome));
 });
 
 describe('the committed workspaces', async () => {

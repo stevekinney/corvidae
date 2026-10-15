@@ -66,13 +66,59 @@ function git(args: string[]): string {
 const PULL_MILLISECONDS = 15 * 60_000;
 const MODE_MILLISECONDS = 30 * 60_000;
 
-async function run(command: string[], milliseconds: number): Promise<number> {
+/** The process's SIGINT and SIGTERM, as the recipe observes them. */
+export type SignalWatch = {
+  received(): NodeJS.Signals | undefined;
+  subscribe(listener: (signal: NodeJS.Signals) => void): () => void;
+};
+
+/** How long a step stopped by SIGTERM has to exit before it is killed. */
+const STOP_GRACE_MILLISECONDS = 5_000;
+
+/**
+ * Run a preliminary step such as `docker pull`, stopping it as soon as a signal arrives instead of
+ * letting it finish first: SIGTERM, then SIGKILL after the grace period. A step never starts once a
+ * signal has arrived. The caller maps the signal to its exit status with {@link pullExitStatus}.
+ */
+export async function runInterruptibly(
+  command: string[],
+  milliseconds: number,
+  signals: SignalWatch,
+): Promise<number> {
+  if (signals.received() !== undefined) return 1;
   const child = Bun.spawn(command, { stdio: ['ignore', 'inherit', 'inherit'] });
-  const status = await exitedWithin(child, milliseconds);
-  if (status !== undefined) return status;
-  child.kill('SIGKILL');
-  process.stderr.write(`[linux-lifecycle] ${command.join(' ')} exceeded ${milliseconds} ms\n`);
-  return 1;
+  let stopping = false;
+  const unsubscribe = signals.subscribe(() => {
+    if (stopping) return;
+    stopping = true;
+    child.kill('SIGTERM');
+    void (async () => {
+      if ((await exitedWithin(child, STOP_GRACE_MILLISECONDS)) === undefined) child.kill('SIGKILL');
+    })();
+  });
+  try {
+    const status = await exitedWithin(child, milliseconds);
+    if (status !== undefined) return status;
+    child.kill('SIGKILL');
+    await child.exited;
+    process.stderr.write(`[linux-lifecycle] ${command.join(' ')} exceeded ${milliseconds} ms\n`);
+    return 1;
+  } finally {
+    unsubscribe();
+  }
+}
+
+/**
+ * The recipe's exit status after the image pull, or `undefined` to go on to the container modes:
+ * `128 + n` when signal `n` arrived during the pull, as {@link recipeExitStatus} reports one during
+ * a mode, and 1 when the pull itself failed.
+ */
+export function pullExitStatus(
+  status: number,
+  signal: NodeJS.Signals | undefined,
+): number | undefined {
+  if (signal !== undefined) return recipeExitStatus([], signal, 0);
+  return status === 0 ? undefined : 1;
 }
 
 async function runMode(mode: ContainerMode): Promise<number> {
@@ -142,8 +188,17 @@ export function recipeExitStatus(
 
 async function main(): Promise<void> {
   let received: NodeJS.Signals | undefined;
+  const listeners = new Set<(signal: NodeJS.Signals) => void>();
   const onSignal = (signal: NodeJS.Signals): void => {
     received ??= signal;
+    for (const listener of listeners) listener(signal);
+  };
+  const signals: SignalWatch = {
+    received: () => received,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
   };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
@@ -151,8 +206,21 @@ async function main(): Promise<void> {
   if (git(['status', '--porcelain']) !== '') {
     process.stderr.write('[linux-lifecycle] the tree is dirty; only HEAD is tested\n');
   }
-  if ((await run(['docker', 'pull', '--quiet', IMAGE], PULL_MILLISECONDS)) !== 0)
-    throw new Error('docker pull failed');
+  const pulled = await runInterruptibly(
+    ['docker', 'pull', '--quiet', IMAGE],
+    PULL_MILLISECONDS,
+    signals,
+  );
+  const stopped = pullExitStatus(pulled, received);
+  if (stopped !== undefined) {
+    process.stderr.write(
+      received === undefined
+        ? '[linux-lifecycle] docker pull failed\n'
+        : `[linux-lifecycle] interrupted by ${received} during docker pull; no mode ran\n`,
+    );
+    process.exitCode = stopped;
+    return;
+  }
   const digest = Bun.spawnSync(
     ['docker', 'image', 'inspect', '--format', '{{index .RepoDigests 0}}', IMAGE],
     { stdout: 'pipe' },
