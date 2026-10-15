@@ -5,7 +5,7 @@
 
 <script lang="ts">
   import { ReviewEditor, type Thread } from '@lostgradient/editor';
-  const original = `# Architecture Notes
+  const original = `## Architecture Notes
 
 This document describes the review workflow for collaborative editing.
 
@@ -18,7 +18,7 @@ owner: platform
 status: draft
 ---
 
-# Architecture Notes
+## Architecture Notes
 
 This document describes the review workflow for collaborative editing and handoff.
 

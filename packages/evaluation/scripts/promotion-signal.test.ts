@@ -342,6 +342,7 @@ const defaultIssue = await (async () => {
 })();
 
 describe('runPromotionSignalCommand', () => {
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', async () => {
     const gateDecisionRecordId = await committedGateRun();
 
@@ -361,6 +362,7 @@ describe('runPromotionSignalCommand', () => {
     expect(expectReport(verified, 0, 'valid').signal).toEqual(report.signal);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('refuses a failing decision with 3 and another revision with 5 on the real clock, appending nothing', async () => {
     // The real clock, as a person's run reads it: the decisions are dated on it too.
     await expectRefusalsAppendNothing(
@@ -369,6 +371,7 @@ describe('runPromotionSignalCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('refuses a failing decision with 3 and another revision with 5 however long after `DECIDED_AT` it runs', async () => {
     // A run on the real clock with decisions dated at `DECIDED_AT` began
     // failing a day later, so this one pins `now` instead.
@@ -388,6 +391,7 @@ describe('runPromotionSignalCommand', () => {
     });
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue on a failing or an expired decision exits 3 and appends nothing', async () => {
     const failing = await decide(fixtureGateFile('regressing'));
     const passing = await decide();
@@ -413,6 +417,7 @@ describe('runPromotionSignalCommand', () => {
     expect(await records()).toEqual(before);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue on a passing decision whose recorded revision is not the injected current one exits 5 and appends nothing', async () => {
     const decision = await decide();
     const before = await records();
@@ -432,6 +437,7 @@ describe('runPromotionSignalCommand', () => {
     expect(await records()).toEqual(before);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each<[string, PromotionSignalCommandOptions]>([
     ['package.sourceRevision', pinned({ packageSourceRevision: () => 'f'.repeat(40) })],
     [
@@ -484,6 +490,7 @@ describe('runPromotionSignalCommand', () => {
     expect(result.stderr).toContain(`  ${field}: bound `);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('verify exits 3 for a signal past its expiry', async () => {
     const decision = await decide();
     const { signal } = expectReport(
@@ -506,6 +513,7 @@ describe('runPromotionSignalCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issuing twice from one decision gives two signals and leaves the first record unchanged', async () => {
     const decision = await decide();
     const first = expectReport(
@@ -526,6 +534,7 @@ describe('runPromotionSignalCommand', () => {
     expect(before?.record).toMatchObject({ signal: { digest: first.signal!.digest } });
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue --gate issues from the newest decision of the gate, and exits 3 for a gate never run', async () => {
     await decide();
     const newest = await decide(fixtureGateFile(), {
@@ -545,6 +554,7 @@ describe('runPromotionSignalCommand', () => {
     });
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('names the issuing principal: the current user unless --actor names someone', async () => {
     const decision = await decide();
     const byDefault = await runInProcess(['issue', decision.id, '--store', storePath]);
@@ -560,6 +570,7 @@ describe('runPromotionSignalCommand', () => {
     expect(expectReport(named, 0, 'issued').signal?.actor).toBe('agent-7');
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('uses the id source it is given', async () => {
     const decision = await decide();
     const result = await runInProcess(
@@ -569,6 +580,7 @@ describe('runPromotionSignalCommand', () => {
     expect(expectReport(result, 0, 'issued').signal?.signalId).toBe(`${decision.id}.promoted`);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('reports the problem when current values cannot be resolved, or no signal exists', async () => {
     const decision = await decide();
     const unresolvable = await runInProcess(
@@ -586,6 +598,7 @@ describe('runPromotionSignalCommand', () => {
     });
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue from a store that does not exist exits 3 without creating it', async () => {
     const absent = join(directory, 'absent.sqlite');
     const result = await runInProcess(['issue', '--gate', FIXTURE_GATE_ID, '--store', absent]);
@@ -593,6 +606,7 @@ describe('runPromotionSignalCommand', () => {
     expect(existsSync(absent)).toBe(false);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each<[string, string[]]>([
     ['no command', []],
     ['an unknown command', ['promote', 'x']],
@@ -611,6 +625,7 @@ describe('runPromotionSignalCommand', () => {
     expect(existsSync(storePath)).toBe(false);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('exits 65 when a record it reads is corrupt', async () => {
     const decision = await decide();
     const { signal } = expectReport(
@@ -633,6 +648,7 @@ describe('runPromotionSignalCommand', () => {
     }
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('propagates a failure that is neither a usage error nor corruption', async () => {
     expect(
       await throwingRejectionOf(runInProcess(['verify', 'signal-1', '--store', directory])),

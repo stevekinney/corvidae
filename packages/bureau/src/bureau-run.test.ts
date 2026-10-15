@@ -871,9 +871,9 @@ describe('Bureau invariants on catalog-agent dispatch (COR-1265, COR-1277)', () 
 
     try {
       const result = await bureau.run('echo', 'hi').result();
-      // `bureau:guardrails-prepare-step` runs before generate and hard-halts,
-      // so the provider is never reached. Identity alone would not prove this —
-      // it is a different registration on the same tier.
+      // The bureau's guardrails, inherited by the agent (COR-1367) and
+      // registered as `agent:guardrails-prepare-step`, run before generate and
+      // hard-halt, so the provider is never reached.
       expect(result.finishReason).toBe('tripwire');
       expect(generateCalls).toBe(0);
     } finally {

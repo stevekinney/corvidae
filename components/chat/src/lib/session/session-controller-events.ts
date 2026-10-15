@@ -11,9 +11,33 @@ import { remapMessageId } from './session-controller-rows.ts';
 import type { TurnState } from './session-controller-run.ts';
 import {
   ChatRunFailureError,
+  notifyObserver,
+  type ChatElicitationActivity,
   type ChatSessionControllerOptions,
+  type ChatToolActivity,
 } from './session-controller-support.ts';
 import type { ChatStreamEvent } from './stream-event-codec.ts';
+
+/**
+ * The `stream:*` frames deliberately left unreduced. Every other
+ * `ChatStreamEvent` type has its own `case` in the switch below; the grouped
+ * `case` that handles these is held to this tuple with `satisfies`, so a
+ * label missing here fails `typecheck`.
+ */
+export const IGNORED_STREAM_EVENT_TYPES = [
+  'stream:block-start',
+  'stream:block-delta',
+  'stream:block-complete',
+  'stream:tool-call-start',
+  'stream:tool-call-delta',
+  'stream:tool-call-complete',
+  'stream:usage',
+  'stream:complete',
+  'stream:error',
+] as const satisfies readonly Exclude<
+  Extract<ChatStreamEvent['type'], `stream:${string}`>,
+  'stream:text-delta'
+>[];
 
 type SessionEventDependencies = {
   events: AsyncIterable<ChatStreamEvent>;
@@ -25,6 +49,7 @@ type SessionEventDependencies = {
   update: (conversation: ConversationHistory) => void;
   toolOwners: Map<string, string>;
   pendingApprovals: Set<string>;
+  elicitations: Map<string, ChatElicitationActivity>;
   reportError: (error: unknown) => void;
   isCurrent: () => boolean;
   isProtocolFailure: () => boolean;
@@ -32,8 +57,7 @@ type SessionEventDependencies = {
 };
 
 export async function consumeSessionEvents(dependencies: SessionEventDependencies): Promise<void> {
-  const { events, controller, state, isCurrent, isProtocolFailure, markProtocolFailure } =
-    dependencies;
+  const { events, controller, isCurrent, isProtocolFailure } = dependencies;
   for await (const event of events) {
     if (controller.signal.aborted && !isProtocolFailure()) break;
     // Re-read per event, not once per stream. Every `await` on the iterator
@@ -41,66 +65,208 @@ export async function consumeSessionEvents(dependencies: SessionEventDependencie
     // and the frame that comes back after one is exactly the stale callback
     // this guard exists to stop.
     if (!isCurrent()) break;
-    switch (event.type) {
-      case 'text':
-        // LEGACY and RICH are two projections of the same tokens, and a host
-        // that emits both would otherwise have its text counted twice.
-        // Whichever vocabulary speaks first owns the row for this turn; the
-        // other is dropped rather than merged, because merging two views of
-        // one stream produces text that never existed.
-        if (state.richTextSeen) break;
-        state.legacyTextSeen = true;
-        appendAssistantText(dependencies, state.currentAssistantText + event.text, event.text);
-        break;
-      case 'stream:text-delta':
-        if (state.legacyTextSeen) break;
-        state.richTextSeen = true;
-        appendAssistantText(dependencies, event.accumulated, event.content);
-        break;
-      case 'tool_call':
-        applyToolCall(dependencies, event.id, event.name, event.arguments);
-        break;
-      case 'tool_result':
-        applyToolResult(dependencies, event.callId, event);
-        break;
-      case 'tool.settled':
-        // A settlement is only reducible once the call it settles has a row.
-        // `tool.settled` reports that a tool FINISHED EXECUTING, which a
-        // producer can know before the step owning the call has completed —
-        // so it legitimately reaches the wire ahead of the `tool_call` frame.
-        // Appending a result for a call the transcript cannot see is rejected
-        // by the conversation model itself, so an early settlement is left to
-        // the transcript-ordered `tool_result` that follows the call.
-        if (!state.toolCalls.has(event.toolCallId)) break;
-        applyToolResult(dependencies, event.toolCallId, event.result);
-        break;
-      case 'assistant.step.started':
-        applyStepStarted(dependencies, event.step, event.messageId);
-        break;
-      case 'run.completed':
-        // Recorded, not applied. Reconciliation happens once, after the
-        // stream has closed, so a frame that follows the terminal cannot be
-        // reduced into a history the terminal has already replaced.
-        state.terminalConversation = event.conversation;
-        break;
-      case 'assistant.step.completed':
-        // Only the step that is actually open: a late or duplicated
-        // completion for a step already closed must not finalize the row the
-        // NEXT step is streaming into.
-        if (event.step === state.currentStep) settleCurrentRow(dependencies);
-        break;
-      case 'run.error':
-      case 'run.tripwire':
-        markProtocolFailure();
-        controller.abort();
-        throw new ChatRunFailureError(event.error);
-      default:
-        // The remaining `stream:*`, `tool.*` and `run.*` members the codec
-        // vocabulary carries have no reducer here yet. They fall through as a
-        // no-op rather than crash this loop.
-        break;
-    }
+    reduceEvent(dependencies, event);
   }
+}
+
+/**
+ * Reduces one frame into turn state.
+ *
+ * The return type is the exhaustiveness check. Every `case` returns `true`
+ * and there is deliberately no `default:`, so a `ChatStreamEvent` type with
+ * no `case` lets control reach the end of the function, which TypeScript
+ * rejects (TS2366) at `typecheck` time. A `never` assertion after the switch
+ * would be flagged as unreachable code instead of checking anything.
+ */
+function reduceEvent(dependencies: SessionEventDependencies, event: ChatStreamEvent): true {
+  const { controller, state, markProtocolFailure } = dependencies;
+  switch (event.type) {
+    case 'text':
+      // LEGACY and RICH are two projections of the same tokens, and a host
+      // that emits both would otherwise have its text counted twice.
+      // Whichever vocabulary speaks first owns the row for this turn; the
+      // other is dropped rather than merged, because merging two views of
+      // one stream produces text that never existed.
+      if (state.richTextSeen) return true;
+      state.legacyTextSeen = true;
+      appendAssistantText(dependencies, state.currentAssistantText + event.text, event.text);
+      return true;
+    case 'stream:text-delta':
+      if (state.legacyTextSeen) return true;
+      state.richTextSeen = true;
+      appendAssistantText(dependencies, event.accumulated, event.content);
+      return true;
+    case 'tool_call':
+      applyToolCall(dependencies, event.id, event.name, event.arguments);
+      return true;
+    case 'tool_result':
+      applyToolResult(dependencies, event.callId, event);
+      return true;
+    case 'tool.settled':
+      // A settlement is only reducible once the call it settles has a row.
+      // `tool.settled` reports that a tool FINISHED EXECUTING, which a
+      // producer can know before the step owning the call has completed —
+      // so it legitimately reaches the wire ahead of the `tool_call` frame.
+      // Appending a result for a call the transcript cannot see is rejected
+      // by the conversation model itself, so an early settlement is left to
+      // the transcript-ordered `tool_result` that follows the call.
+      if (!state.toolCalls.has(event.toolCallId)) {
+        // Dropped as a row, but the call HAS finished: remember that, so
+        // activity frames that trail it cannot regress its record to running.
+        state.settledEarly.add(event.toolCallId);
+        return true;
+      }
+      applyToolResult(dependencies, event.toolCallId, event.result);
+      return true;
+    case 'tool.started':
+    case 'tool.progress':
+    case 'tool.error':
+    case 'tool.policy-denied':
+      applyToolActivity(dependencies, event);
+      return true;
+    case 'elicitation.requested':
+    case 'elicitation.resolved':
+      applyElicitation(dependencies, event);
+      return true;
+    case 'assistant.step.started':
+      applyStepStarted(dependencies, event.step, event.messageId);
+      return true;
+    case 'run.completed':
+      // Recorded, not applied. Reconciliation happens once, after the
+      // stream has closed, so a frame that follows the terminal cannot be
+      // reduced into a history the terminal has already replaced.
+      state.terminalConversation = event.conversation;
+      return true;
+    case 'run.aborted':
+      // Recorded, not applied, for the same reason as `run.completed`. The
+      // controller is deliberately NOT aborted here: the stream guard
+      // rejects any frame after the terminal, and that rejection only
+      // reads as a protocol failure while the controller is still live.
+      // Aborting would turn a trailing bad frame into a silent cancellation.
+      state.runAborted = event.reason === undefined ? {} : { reason: event.reason };
+      return true;
+    case 'assistant.step.completed':
+      // Only the step that is actually open: a late or duplicated
+      // completion for a step already closed must not finalize the row the
+      // NEXT step is streaming into.
+      if (event.step === state.currentStep) settleCurrentRow(dependencies);
+      return true;
+    case 'run.error':
+    case 'run.tripwire':
+      markProtocolFailure();
+      controller.abort();
+      throw new ChatRunFailureError(event.error);
+    case 'stream:block-start':
+    case 'stream:block-delta':
+    case 'stream:block-complete':
+    case 'stream:tool-call-start':
+    case 'stream:tool-call-delta':
+    case 'stream:tool-call-complete':
+    case 'stream:usage':
+    case 'stream:complete':
+    case 'stream:error':
+      // Intentionally ignored, and the compiler holds this list to the
+      // tuple above. Text arrives as `text`/`stream:text-delta`; a tool call
+      // becomes a row only from `tool_call`, which carries the same
+      // arguments; usage and the final conversation arrive on
+      // `run.completed`; and `stream:error` is a raw echo that the host
+      // always follows with one terminal `run.error`, so reducing it too
+      // would report the failure twice.
+      event.type satisfies (typeof IGNORED_STREAM_EVENT_TYPES)[number];
+      return true;
+  }
+}
+
+type ToolActivityEvent = Extract<
+  ChatStreamEvent,
+  { type: 'tool.started' | 'tool.progress' | 'tool.error' | 'tool.policy-denied' }
+>;
+
+function toolActivityOf(event: ToolActivityEvent): ChatToolActivity {
+  const identity = { toolCallId: event.toolCallId, toolName: event.toolName };
+  switch (event.type) {
+    case 'tool.started':
+      return { ...identity, status: 'started' };
+    case 'tool.progress':
+      return {
+        ...identity,
+        status: 'progress',
+        ...(event.percent === undefined ? {} : { percent: event.percent }),
+        ...(event.message === undefined ? {} : { message: event.message }),
+      };
+    case 'tool.error':
+      return { ...identity, status: 'error', error: event.error };
+    case 'tool.policy-denied':
+      return {
+        ...identity,
+        status: 'policy-denied',
+        ...(event.reason === undefined ? {} : { reason: event.reason }),
+      };
+  }
+}
+
+/**
+ * Records a `tool.*` activity frame per call and tells the observer.
+ *
+ * Activity is keyed by `toolCallId` alone and never needs a transcript row:
+ * a producer writes these frames while the tool executes, ahead of the
+ * `tool_call` that gives the call a row. It also never writes
+ * `toolCalls`, `toolResults`, or the approval state, so it cannot change
+ * whether the turn continues.
+ *
+ * Terminal-sticky: a call that errored, was denied, or already settled takes
+ * no further activity, so a late `tool.progress` cannot resurrect it.
+ */
+function applyToolActivity(dependencies: SessionEventDependencies, event: ToolActivityEvent): void {
+  const { state, options, reportError } = dependencies;
+  const id = event.toolCallId;
+  const current = state.toolActivity.get(id);
+  if (state.toolResults.has(id) || state.settledEarly.has(id)) return;
+  if (current?.status === 'error' || current?.status === 'policy-denied') return;
+  if (event.type === 'tool.started' && current !== undefined) return;
+  const activity = toolActivityOf(event);
+  // Recorded BEFORE the observer runs, so a throwing observer cannot roll it back.
+  state.toolActivity.set(id, activity);
+  // A copy, so an observer that keeps or edits what it was handed cannot
+  // change what the reducer remembers.
+  notifyObserver(() => options.hooks?.onToolActivity?.(structuredClone(activity)), reportError);
+}
+
+/**
+ * Records an `elicitation.*` frame by `requestId` and tells the observer.
+ *
+ * Kept entirely apart from approval: a resolution reports the human's answer,
+ * not tool settlement, so neither frame touches `approvalRequired` or
+ * `pendingApprovals`. Request identity is immutable, so a repeated request is
+ * ignored, and a resolution with nothing pending to settle is dropped. A
+ * resolved request is retained rather than removed so duplicates are seen.
+ */
+function applyElicitation(
+  { elicitations, options, reportError }: SessionEventDependencies,
+  event: Extract<ChatStreamEvent, { type: 'elicitation.requested' | 'elicitation.resolved' }>,
+): void {
+  const existing = elicitations.get(event.requestId);
+  let activity: ChatElicitationActivity;
+  if (event.type === 'elicitation.requested') {
+    if (existing !== undefined) return;
+    activity = {
+      status: 'requested',
+      requestId: event.requestId,
+      message: event.message,
+      ...(event.toolCallId === undefined ? {} : { toolCallId: event.toolCallId }),
+      ...(event.action === undefined ? {} : { action: event.action }),
+    };
+  } else {
+    if (existing?.status !== 'requested') return;
+    activity = {
+      status: 'resolved',
+      requestId: event.requestId,
+      accepted: event.accepted,
+      ...(event.toolCallId === undefined ? {} : { toolCallId: event.toolCallId }),
+    };
+  }
+  elicitations.set(event.requestId, activity);
+  notifyObserver(() => options.hooks?.onElicitation?.(structuredClone(activity)), reportError);
 }
 
 function appendAssistantText(
@@ -174,11 +340,7 @@ function applyToolResult(
   update(next);
   recordProvisionalRow(state, next, (message) => message.toolResult?.callId === callId);
   state.committed = options.getConversation();
-  try {
-    options.hooks?.onToolResult?.(result);
-  } catch (observerError) {
-    reportError(observerError);
-  }
+  notifyObserver(() => options.hooks?.onToolResult?.(result), reportError);
 }
 
 /**

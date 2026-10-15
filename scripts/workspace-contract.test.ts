@@ -144,7 +144,10 @@ async function listVersionedFixtureSource() {
         await Bun.write(join(directory, workspace, path), '');
       }
     }
-    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], { cwd: directory });
+    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], {
+      timeout: 120_000,
+      cwd: directory,
+    });
     const listed = Bun.spawnSync(
       [
         'git',
@@ -156,7 +159,7 @@ async function listVersionedFixtureSource() {
         '--others',
         '--exclude-standard',
       ],
-      { cwd: directory },
+      { timeout: 120_000, cwd: directory },
     );
     return { initialized, listed };
   } finally {
@@ -168,11 +171,21 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
-    const validationStages = scripts['validate']?.split(' && ');
+    // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
+    // instead of rejoining the queue at every stage. Its stages find the lock held by their parent
+    // and reuse it rather than queueing behind it.
+    const validationChain = scripts['validate']?.match(
+      /^bun scripts\/run-exclusively\.ts '([^']+)'$/,
+    );
+    const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
       'bun run lint',
       'bun run typecheck',
       'bun run test',
+      // COR-1499: slow correctness tests run serially after the fast phase, then the duration report
+      // (warnings only) reads the fast phase's reports.
+      'bun run test:slow',
+      'bun run report:test-durations',
       'bun run coverage',
       'bun run build',
       'bun run format:check',
@@ -180,7 +193,7 @@ describe('internal workspace architecture', () => {
     ]);
     // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
     // agent sessions stop oversubscribing it and timing out unrelated tests.
-    for (const stage of ['lint', 'typecheck', 'test', 'coverage', 'build']) {
+    for (const stage of ['lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
       expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
     }
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
@@ -191,7 +204,7 @@ describe('internal workspace architecture', () => {
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
     expect(scripts['test:self']).toBe(
-      'bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
+      'bun scripts/bun-test-junit.ts --report-name=self ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
     );
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
@@ -255,12 +268,15 @@ describe('internal workspace architecture', () => {
         // The playground isolates build-driving test files in fresh Bun processes, so its `test`
         // script names the runner, and the runner is what must spawn `bun test`.
         expect(scripts['test'], directory).toBe('bun scripts/run-tests.ts');
+        expect(scripts['test:slow'], directory).toBe('bun scripts/run-tests.ts --slow');
         expect(
           await Bun.file(join(root, directory, 'scripts/run-tests.ts')).text(),
           directory,
         ).toContain("['bun', 'test',");
       } else {
-        expect(scripts['test'], directory).toMatch(/\bbun test\b/);
+        // Fast-lane tests run through the JUnit wrapper, which spawns `bun test`, so the duration
+        // ratchet sees every workspace (COR-1499). A direct `bun test` would drop one silently.
+        expect(scripts['test'], directory).toMatch(/\bbun-test-junit\.ts\b/);
       }
       expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
 

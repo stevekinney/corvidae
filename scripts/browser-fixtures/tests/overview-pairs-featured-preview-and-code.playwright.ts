@@ -22,7 +22,7 @@ const playgroundOrigin = `http://127.0.0.1:${playgroundPort}`;
 const playgroundDirectory = resolve(import.meta.dirname, '../../../applications/playground');
 let playgroundServer: ReturnType<typeof Bun.spawn> | undefined;
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ browser }) => {
   // The first request builds the playground's bundles from cold, which is the
   // cost of starting a real server rather than a wait on a flaky condition.
   test.setTimeout(240_000);
@@ -47,6 +47,27 @@ test.beforeAll(async () => {
     .toBe(200);
   const warmed = await fetch(`${playgroundOrigin}/page/combobox`);
   expect(warmed.status).toBe(200);
+
+  // Fetching the HTML only builds the server-rendered page. The client bundle,
+  // the scenario loaders and the hydration path build on the first request
+  // from a browser, which would otherwise land inside whichever test runs
+  // first and be charged against its 5 s assertion. Visit each page the way a
+  // test does and wait until its preview is interactive.
+  const warmContext = await browser.newContext({ baseURL: playgroundOrigin });
+  try {
+    for (const component of components) {
+      const warmPage = await warmContext.newPage();
+      await warmPage.goto(`/page/${component.slug}`, { waitUntil: 'load' });
+      await expect(warmPage.locator(`#overview-mount-${component.scenario}`)).toHaveAttribute(
+        'data-example-preview-ready',
+        '',
+        { timeout: 60_000 },
+      );
+      await warmPage.close();
+    }
+  } finally {
+    await warmContext.close();
+  }
 });
 
 test.afterAll(() => {

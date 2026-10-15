@@ -12,14 +12,17 @@
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.neutral.json",
-    "test": "bun test",
+    "test": "bun ../../scripts/bun-test-junit.ts",
     "test:protocol": "bun test src/protocol",
+    "test:session": "bun test src/session",
     "test:coverage": "bun test --coverage --coverage-reporter=lcov && bun scripts/check-coverage.ts"
   },
   "devDependencies": {
     "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@types/bun": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
     "oxlint": "catalog:",
     "typescript": "catalog:"
   }

@@ -6,14 +6,17 @@
  * the trapped calls and constructors named below, loads of the engine and Bun-only ventriloquist
  * entries, globals the import added, and an error thrown by the import.
  */
+import { sveltePlugin } from '@lostgradient/testing';
 import { plugin } from 'bun';
+import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const entry = process.argv[2];
 if (entry === undefined) throw new Error('usage: bun import-probe.ts <entry>');
 
 /** Modules the entry's import graph must not load: the engine and the Bun-only host entries. */
-const FORBIDDEN_MODULE = /\/@xterm\/xterm\/|\/ventriloquist\/src\/(?:bun|websocket)\//;
+const FORBIDDEN_MODULE =
+  /(?:\/@xterm\/xterm\/|\/ventriloquist\/src\/(?:bun|websocket)\/).*\.(?:[cm]?[jt]s|[jt]sx)$/;
 const DOM_GLOBALS = [
   'window',
   'document',
@@ -24,6 +27,19 @@ const DOM_GLOBALS = [
   'ResizeObserver',
   'MutationObserver',
 ];
+
+// The package's own source, by real path and as the working directory spells it. A DOM read counts
+// against the package only when its call stack passes through here: a dependency that checks
+// `typeof document` at import, as Cinder's components do, is covered by the server-render test.
+Error.stackTraceLimit = 64;
+const packageSources = [
+  ...new Set([resolve(process.cwd(), 'src'), resolve(realpathSync(process.cwd()), 'src')]),
+].map((directory) => `${directory}/`);
+
+function readsFromPackageSource(): boolean {
+  const stack = new Error().stack ?? '';
+  return packageSources.some((directory) => stack.includes(directory));
+}
 
 const trappedCalls: string[] = [];
 const forbiddenModules: string[] = [];
@@ -51,15 +67,16 @@ function trapConstructor(owner: object, name: string, label: string): void {
   });
 }
 
-// Any read of a DOM global, even behind a `typeof` guard, means the import looked at the DOM. A
-// name Bun already defines (`navigator`) keeps its value, behind a getter that records the read.
+// Any read of a DOM global from the package's source, even behind a `typeof` guard, means the
+// import looked at the DOM. A name Bun already defines (`navigator`) keeps its value, behind a
+// getter that records the read.
 for (const name of DOM_GLOBALS) {
   const existing = Object.getOwnPropertyDescriptor(globalThis, name);
   const inherited = name in globalThis ? (globalThis as Record<string, unknown>)[name] : undefined;
   Object.defineProperty(globalThis, name, {
     configurable: true,
     get() {
-      domGlobalReads.push(name);
+      if (readsFromPackageSource()) domGlobalReads.push(name);
       return existing?.get ? existing.get.call(globalThis) : (existing?.value ?? inherited);
     },
   });
@@ -82,32 +99,58 @@ for (const name of ['Worker', 'SharedWorker', 'WebSocket', 'EventSource', 'XMLHt
   trapConstructor(globalThis, name, name);
 }
 
-// Record every source module the import graph loads. A forbidden module is replaced with an empty
-// one, so the report names it without running it; everything else loads unchanged. Bun's runtime
+// Record every forbidden module the import graph loads. A forbidden module is replaced with an
+// empty one, so the report names it without running it. Only forbidden paths reach the callback,
+// so every other module, including a CommonJS dependency, keeps Bun's own loader and its interop.
+// The engine's stylesheet is an asset, not engine code, and is not matched. Bun's runtime
 // `onResolve` never sees bare specifiers, so loaded paths are the reliable signal. Built-in `bun:`
 // and `node:` modules never reach `onLoad`; the static import scan in `check-boundaries.ts` owns
 // those.
-const LOADERS = {
-  ts: 'ts',
-  mts: 'ts',
-  cts: 'ts',
-  tsx: 'tsx',
-  js: 'js',
-  mjs: 'js',
-  cjs: 'js',
-  jsx: 'jsx',
-} as const;
 plugin({
   name: 'terminal-import-probe',
   setup(build) {
-    build.onLoad({ filter: /\.(?:[cm]?[jt]s|[jt]sx)$/ }, async ({ path }) => {
-      if (FORBIDDEN_MODULE.test(path)) {
-        forbiddenModules.push(path);
-        return { contents: 'export {};', loader: 'js' };
-      }
-      const extension = path.slice(path.lastIndexOf('.') + 1) as keyof typeof LOADERS;
-      return { contents: await Bun.file(path).text(), loader: LOADERS[extension] };
+    build.onLoad({ filter: FORBIDDEN_MODULE }, ({ path }) => {
+      forbiddenModules.push(path);
+      return { contents: 'export {};', loader: 'js' };
     });
+  },
+});
+
+// Svelte components compile for the server, as a server render would load them: with no DOM, and
+// with the `browser` export condition unset, so a client-only guard such as `esm-env` reads false.
+// Only this package's own components are compiled and evaluated. Without the plugin Bun resolves
+// a `.svelte` import to a file path and the component's module graph, which is what has to be
+// side-effect free, would never run. Another workspace's component stays a path: compiling all of
+// Cinder's server graph costs seconds, and its import behavior is Cinder's own, covered by the
+// server-render test. Rune modules (`.svelte.ts`) compile wherever they are, because their
+// `$state` calls cannot run uncompiled.
+const serverCompiler = sveltePlugin({ generate: 'server' });
+await plugin({
+  name: 'terminal-import-probe-svelte',
+  async setup(build) {
+    const scoped = new Proxy(build, {
+      get(target, property) {
+        if (property !== 'onLoad') {
+          const value: unknown = Reflect.get(target, property);
+          return typeof value === 'function' ? value.bind(target) : value;
+        }
+        return (
+          constraints: { filter: RegExp },
+          callback: (arguments_: { path: string }) => unknown,
+        ) =>
+          constraints.filter.test('component.svelte')
+            ? target.onLoad(constraints, (arguments_) =>
+                packageSources.some((directory) => arguments_.path.startsWith(directory))
+                  ? (callback(arguments_) as never)
+                  : {
+                      contents: `export default ${JSON.stringify(arguments_.path)};`,
+                      loader: 'js',
+                    },
+              )
+            : target.onLoad(constraints, callback as never);
+      },
+    });
+    await serverCompiler.setup(scoped);
   },
 });
 

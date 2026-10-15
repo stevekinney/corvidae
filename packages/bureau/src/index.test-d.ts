@@ -15,6 +15,7 @@ import type {
   AgentRunForName,
   AssembleReproductionArtifactOptions,
   Bureau,
+  BureauOptions,
   BureauFaultOperation,
   BureauFaultPlan,
   BureauFaultPlanEntry,
@@ -25,6 +26,7 @@ import type {
   BureauStorageFixture,
   BureauTestHarness,
   BureauTestHarnessOptions,
+  CreatedRunSummary,
   CreateLmdbStorageFixtureOptions,
   CreateMemoryStorageFixtureOptions,
   CreatePersistentStorageFixtureOptions,
@@ -34,19 +36,29 @@ import type {
   DurableRunRegistration,
   ReproductionArtifact,
   ReproductionArtifactEnvironment,
+  RunCreationReceipt,
+  RunCreationReceiptLocation,
 } from './index';
 import {
   assembleReproductionArtifact,
   assertBureauQuiescent,
   BureauFaultSelectorResolutionError,
   BureauHarnessUnsupportedError,
+  BureauLedgerConflictError,
+  COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
   createBureauTestHarness,
+  createCommandLedger,
   createDurableEventHistoryFixture,
   createLmdbStorageFixture,
   createMemoryStorageFixture,
+  createRunCreationLedger,
   createSqliteStorageFixture,
+  digestCommandPayload,
+  digestRunCreationPayload,
   DURABLE_EVENT_HISTORY_FIXTURE_SEQUENCE,
   locateWorkspaceRoot,
+  RUN_CREATION_OPERATION_VERSION,
+  RunCreationReceiptUnrecordedError,
   selectAuditWriteFaultTarget,
   selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,
@@ -122,3 +134,24 @@ export const locateToOperative: SchedulerTaskLocation = locateFromBureau;
 export const locateFromOperative: LocateReturn = locationFromOperative;
 export const awaitToOperative: Promise<RunResult | null> = awaitFromBureau;
 export const awaitFromOperativeToBureau: AwaitReturn = awaitFromOperative;
+
+// COR-424: the run-creation command ledger and its receipt are on the barrel,
+// and `createRun` resolves with a summary that can carry the receipt.
+void BureauLedgerConflictError;
+void createCommandLedger;
+void createRunCreationLedger;
+void digestCommandPayload;
+void digestRunCreationPayload;
+void RUN_CREATION_OPERATION_VERSION;
+void RunCreationReceiptUnrecordedError;
+type CreateRunReturn = Awaited<ReturnType<Bureau['createRun']>>;
+declare const createdRun: CreateRunReturn;
+export const createdRunReceipt: RunCreationReceipt | undefined = createdRun.receipt;
+export const createdRunSummary: CreatedRunSummary = createdRun;
+
+// COR-424: the run-creation binding's retention window and its receipt query.
+void COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS;
+export const retentionOption: BureauOptions['runCreationTerminalRetentionMs'] = 86_400_000;
+type LocateReturn424 = Awaited<ReturnType<Bureau['locateRunCreationReceipt']>>;
+declare const locatedReceipt: LocateReturn424;
+export const receiptLocation: RunCreationReceiptLocation = locatedReceipt;
