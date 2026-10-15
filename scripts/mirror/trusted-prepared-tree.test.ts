@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
+import { singleEntryPolicyDocuments } from './policy-documents.test-support.ts';
 import {
   preparedSyncManifestFile,
   verifyPreparedSyncArtifact,
@@ -13,7 +14,9 @@ import {
 import { git, provenanceTrailer, stageSurface, type SyncResult } from './sync.ts';
 import { verifyTrustedPreparedTree } from './trusted-prepared-tree.ts';
 
-const target = 'agent-bureau' as const;
+const target = 'cinder' as const;
+/** `sync.test.ts`'s header says why markdown carries a fixture surface here. */
+const policyDocuments = await singleEntryPolicyDocuments(['@lostgradient/markdown']);
 const licence = 'MIT License\n\nCopyright (c) 2026 Steve Kinney\n';
 const source = 'export const digest = (value: string): string => `sha256:${value}`;\n';
 const staleSource = 'export const digest = (value: string): string => `stale:${value}`;\n';
@@ -96,8 +99,8 @@ function corvidaeFixture(): Record<string, unknown> {
       compilerOptions: { types: ['bun'] },
     },
     'internal/typescript/browser.json': { extends: './base.json' },
-    'packages/cryptography/package.json': {
-      name: '@lostgradient/cryptography',
+    'packages/markdown/package.json': {
+      name: '@lostgradient/markdown',
       private: true,
       type: 'module',
       exports: { '.': './src/index.ts' },
@@ -108,34 +111,34 @@ function corvidaeFixture(): Record<string, unknown> {
         typescript: 'catalog:',
       },
     },
-    'packages/cryptography/tsconfig.json': {
+    'packages/markdown/tsconfig.json': {
       extends: '@lostgradient/typescript/library.json',
       include: ['src'],
     },
-    'packages/cryptography/src/index.ts': source,
+    'packages/markdown/src/index.ts': source,
   };
 }
 
 function targetFixture(marker?: string): Record<string, unknown> {
   return {
-    'README.md': '# agent-bureau\n',
+    'README.md': '# cinder\n',
     LICENSE: licence,
     '.gitignore': 'node_modules\n',
     '.github/workflows/release.yaml': fixtureReleaseWorkflow,
     ...(marker === undefined
       ? {}
       : {
-          'packages/cryptography/package.json': {
-            name: '@lostgradient/cryptography',
+          'packages/markdown/package.json': {
+            name: '@lostgradient/markdown',
             version: '0.1.0',
             type: 'module',
             scripts: { preinstall: 'bun ./scripts/preinstall.ts' },
           },
-          'packages/cryptography/scripts/preinstall.ts': `await Bun.write(${JSON.stringify(marker)}, 'ran');\n`,
+          'packages/markdown/scripts/preinstall.ts': `await Bun.write(${JSON.stringify(marker)}, 'ran');\n`,
         }),
-    'packages/cryptography/tsdown.config.ts': tsdownConfiguration,
-    'packages/cryptography/README.md': '# @lostgradient/cryptography\n',
-    'packages/cryptography/src/index.ts': staleSource,
+    'packages/markdown/tsdown.config.ts': tsdownConfiguration,
+    'packages/markdown/README.md': '# @lostgradient/markdown\n',
+    'packages/markdown/src/index.ts': staleSource,
   };
 }
 
@@ -225,9 +228,14 @@ async function prepareArtifact(
 ): Promise<string> {
   const clone = join(harness.root, `prepared-${crypto.randomUUID()}`);
   await git(harness.root, 'clone', '--quiet', '--branch', baseBranch, harness.remote, clone);
-  await stageSurface({ corvidaeRoot: harness.corvidae, target, directory: clone });
+  await stageSurface({
+    corvidaeRoot: harness.corvidae,
+    target,
+    directory: clone,
+    policyDocuments,
+  });
   if (sourceText !== source) {
-    await Bun.write(join(clone, 'packages/cryptography/src/index.ts'), sourceText);
+    await Bun.write(join(clone, 'packages/markdown/src/index.ts'), sourceText);
   }
   const porcelain = await git(clone, 'status', '--porcelain');
   const changed = porcelain.split('\n').filter((line) => line.length > 0);
@@ -261,7 +269,12 @@ async function prepareArtifact(
 async function skipArtifact(harness: Harness): Promise<string> {
   const current = join(harness.root, 'current');
   await git(harness.root, 'clone', '--quiet', harness.remote, current);
-  await stageSurface({ corvidaeRoot: harness.corvidae, target, directory: current });
+  await stageSurface({
+    corvidaeRoot: harness.corvidae,
+    target,
+    directory: current,
+    policyDocuments,
+  });
   await git(current, 'add', '--all');
   await git(
     current,
@@ -295,6 +308,7 @@ async function verifyArtifact(
     expectedTarget: target,
     expectedCorvidaeCommit: harness.corvidaeCommit,
     expectedSnapshot: false,
+    policyDocuments,
     ...(expectedBaseBranch === undefined ? {} : { expectedBaseBranch }),
   });
 }
@@ -405,7 +419,7 @@ describe('trusted prepared tree reconstruction', async () => {
     const harness = await trustedHarness();
     try {
       const artifactDirectory = await prepareArtifact(harness);
-      await Bun.write(join(harness.corvidae, 'packages/cryptography/src/extra.ts'), 'export {};\n');
+      await Bun.write(join(harness.corvidae, 'packages/markdown/src/extra.ts'), 'export {};\n');
       await commitAll(harness.corvidae, 'Move trusted source');
       expect(await throwingRejectionOf(verifyArtifact(harness, artifactDirectory))).toThrow(
         /corvidae checkout does not match/,
@@ -435,7 +449,7 @@ describe('trusted prepared tree reconstruction', async () => {
     try {
       const symlinkClone = join(harness.root, 'symlink-seed');
       await git(harness.root, 'clone', '--quiet', harness.remote, symlinkClone);
-      await symlink('../outside', join(symlinkClone, 'packages/cryptography/symlink'));
+      await symlink('../outside', join(symlinkClone, 'packages/markdown/symlink'));
       await commitAll(symlinkClone, 'Add target symlink');
       await git(symlinkClone, 'push', '--quiet', 'origin', 'HEAD:main');
       const baseCommit = await git(symlinkClone, 'rev-parse', 'HEAD');
@@ -444,6 +458,7 @@ describe('trusted prepared tree reconstruction', async () => {
           verifyTrustedPreparedTree({
             corvidaeRoot: harness.corvidae,
             remote: harness.remote,
+            policyDocuments,
             manifest: {
               decision: 'skip',
               target,
@@ -491,6 +506,7 @@ describe('trusted prepared tree reconstruction', async () => {
           verifyTrustedPreparedTree({
             corvidaeRoot: harness.corvidae,
             remote: harness.remote,
+            policyDocuments,
             manifest: {
               decision: 'skip',
               target,

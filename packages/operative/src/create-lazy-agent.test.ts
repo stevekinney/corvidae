@@ -76,6 +76,7 @@ function createFakeAgentRun(): {
   });
 
   const handle = {
+    id: 'stub-run',
     result(): Promise<RunResult<string, false>> {
       return resultPromise;
     },
@@ -947,9 +948,12 @@ describe('createLazyAgent', () => {
 
     // Before the internal resolution microtask has run, there is no
     // underlying handle yet — a synthetic 'created' snapshot, not a throw.
+    // COR-1302: its id is the run's own, already fixed on the handle, never
+    // the lazy agent's label.
     const beforeSnapshot = run.snapshot();
     expect(beforeSnapshot.status).toBe('created');
-    expect(beforeSnapshot.id).toBe('lazy-liveness');
+    expect(beforeSnapshot.id).toBe(run.id);
+    expect(beforeSnapshot.id).not.toBe('lazy-liveness');
 
     // AB-214 review (PRRT_kwDORvupsc6esZSA): a subscription registered
     // before `underlying` resolves must stay OPEN and keep receiving
@@ -1269,6 +1273,7 @@ describe('createLazyAgent', () => {
     let releaseNext!: () => void;
     const nextGate = new Promise<void>((resolve) => (releaseNext = resolve));
     const throwingHandle = {
+      id: 'throwing-run',
       result: () => new Promise<RunResult<string, false>>(() => {}),
       unwrap: () => new Promise<string>(() => {}),
       abort() {},
@@ -1309,6 +1314,7 @@ describe('createLazyAgent', () => {
 
   it('surfaces an error thrown mid-iteration by the underlying handle, buffered for a later consumer', async () => {
     const throwingHandle = {
+      id: 'throwing-run',
       result: () => new Promise<RunResult<string, false>>(() => {}),
       unwrap: () => new Promise<string>(() => {}),
       abort() {},
@@ -1433,6 +1439,7 @@ describe('createLazyAgent', () => {
   it('folds a rejected underlying result() into an error RunResult instead of hanging forever', async () => {
     const rejection = new Error('result rejected');
     const queuelessHandle = {
+      id: 'queueless-run',
       result: () => Promise.reject(rejection),
       unwrap: () => Promise.reject(rejection),
       abort() {},

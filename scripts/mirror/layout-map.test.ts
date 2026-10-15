@@ -40,7 +40,6 @@ describe('the layout table against the committed tree', () => {
 
   test('the components become the packages the targets publish them from', async () => {
     expect(await targetDirectoryFor('@lostgradient/cinder')).toBe('packages/components');
-    expect(await targetDirectoryFor('@lostgradient/chat')).toBe('packages/chat');
     expect(await targetDirectoryFor('@lostgradient/editor')).toBe('packages/editor');
     expect(await targetDirectoryFor('@lostgradient/weft-ui')).toBe('packages/weft-ui');
     expect(await targetDirectoryFor('@lostgradient/weft')).toBe('packages/weft');

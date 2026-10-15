@@ -3,29 +3,27 @@
  * seeded local Weft server on port 7233 that the Bun browser host targets.
  * Run directly with `bun run dev:server`.
  *
- * Ground truth note: `serve()` is exported from `@lostgradient/weft`,
- * not the package root (verified against `weft/src/server/index.ts` and
- * `weft/src/index.ts`).
+ * **It starts Weft through `dashboard()`, so port 7233 also serves the
+ * console.** `dashboard()` is `serve()` plus the console's page routes and
+ * its `/assets/*` route, so everything below about `serve()` holds for it.
+ * The console it serves is compiled once into `build/dashboard/` (ignored,
+ * like the browser host's own `build/`) in the layout `dashboard()` expects:
+ * `index.html` at the top and every script, stylesheet, and chunk under
+ * `assets/`. That compile runs only when `build/dashboard/index.html` is
+ * missing, because `bun --watch` restarts this process on every Weft edit;
+ * delete the directory to pick up console changes here. The browser host on
+ * port 5173 rebuilds on every change and remains the place to work on the
+ * console itself. This harness compile is not Weft's production dashboard
+ * build, which writes `packages/weft/dashboard/` and is what `dashboard()`
+ * serves when no `distDir` is passed.
  *
- * **This is a plain `serve()` call — the earlier hand-rolled workaround is
- * gone.** `@lostgradient/weft@0.11.0` had `serve({ engine })` throw "Engine
- * internals not initialized" for any root-imported `Engine`
- * (https://github.com/stevekinney/weft/issues/710), so this file used to
- * drive `@lostgradient/weft/handler`'s `handleRequest()` directly
- * behind a thin `Bun.serve()`, with a synthetic fleet event feed
- * reimplementing weft's own production wiring. `0.12.0` shipped the actual
- * fix (#716: every entry point that transitively touches `Engine`'s
- * module-scope singleton state now resolves the same unbundled module
- * `Engine.create()` does, instead of a separately-bundled duplicate) —
- * confirmed empirically here, not assumed: this file now calls `serve()`
- * with no cast, no manual `/api`-prefix stripping (`serve()` does that
- * itself — `src/server/runtime/authentication-bridge.ts`'s
+ * It calls Weft with no cast, no manual `/api`-prefix stripping (`serve()`
+ * does that itself — `src/server/runtime/authentication-bridge.ts`'s
  * `stripApiPrefix()`), and no reimplemented event feed (`serve()` wires
  * both the fleet feed and the per-workflow feed via its own
- * `wireEventBroadcasting()` / `createWorkflowEventFeed()` internally). That
- * also means WebSocket upgrades and JSON-RPC over HTTP (`/api/jsonrpc`) —
- * both `serve()`-pipeline-only, unavailable through bare `handleRequest` —
- * now work in this dev harness for the first time.
+ * `wireEventBroadcasting()` / `createWorkflowEventFeed()` internally), so
+ * WebSocket upgrades and JSON-RPC over HTTP (`/api/jsonrpc`) work in this
+ * dev harness.
  *
  * **Auth — real, not full-trust, and narrower than the old harness.**
  * `unauthenticatedAccess: 'warn'` only controls whether `serve()` refuses to
@@ -87,7 +85,10 @@
  * `GET /api/v1/workflows` for a non-empty result instead of trusting
  * `/v1/health` alone.
  */
-import { AUTHORIZATION_SCOPES, Engine, serve } from '@lostgradient/weft';
+import { sveltePlugin } from '@lostgradient/testing';
+import { AUTHORIZATION_SCOPES, dashboard, Engine } from '@lostgradient/weft';
+import { existsSync, renameSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { DEV_API_KEY } from './dev-credentials.ts';
 
@@ -101,13 +102,54 @@ import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 
 const PORT = 7233;
+const DASHBOARD_DIRECTORY = join(import.meta.dir, 'build', 'dashboard');
+
+/**
+ * Compile the console into `dashboard()`'s layout unless a previous run
+ * already did. The output is written beside the target and renamed into
+ * place, so an interrupted compile never leaves an `index.html` behind that a
+ * later run would mistake for a finished one.
+ */
+async function ensureDashboardBuild(directory: string): Promise<void> {
+  if (existsSync(join(directory, 'index.html'))) return;
+  const partialDirectory = `${directory}.partial`;
+  rmSync(partialDirectory, { recursive: true, force: true });
+  console.log(`Compiling the console into ${directory} (delete it to recompile)…`);
+  const result = await Bun.build({
+    entrypoints: [join(import.meta.dir, 'index.html')],
+    outdir: partialDirectory,
+    conditions: ['browser', 'svelte'],
+    define: { 'process.env.NODE_ENV': JSON.stringify('development') },
+    format: 'esm',
+    publicPath: '/',
+    naming: {
+      entry: '[name].[ext]',
+      chunk: 'assets/[name]-[hash].[ext]',
+      asset: 'assets/[name]-[hash].[ext]',
+    },
+    target: 'browser',
+    plugins: [sveltePlugin({ generate: 'client', injectCss: true, development: true })],
+    optimizeImports: ['@lostgradient/cinder'],
+    sourcemap: 'none',
+    splitting: true,
+  });
+  const problems = result.logs.filter((log) => log.level === 'error' || log.level === 'warning');
+  if (!result.success || problems.length > 0) {
+    throw new AggregateError(problems, 'Console compilation failed');
+  }
+  rmSync(directory, { recursive: true, force: true });
+  renameSync(partialDirectory, directory);
+}
+
+await ensureDashboardBuild(DASHBOARD_DIRECTORY);
 
 const engine = await Engine.create({ workflows });
 
-const server = serve({
+const server = dashboard({
   engine,
   port: PORT,
   auth: { apiKeys: [DEV_API_KEY], defaultApiKeyScopes: AUTHORIZATION_SCOPES },
+  distDir: DASHBOARD_DIRECTORY,
 });
 
 await seed(engine);
@@ -126,7 +168,7 @@ await seedWorkflowRevisions(engine);
 // this name deliberately is not one.
 seedDynamicSources(engine);
 
-console.log(`weft dev server listening on ${server.url}`);
+console.log(`weft dev server and console listening on ${server.url}`);
 console.log(
   'Seeded fixture workflows: order-processing, payment-failing, long-sleeper, review-gate, ' +
     'signal-stepped, checkout-coordination, trip-booking-saga, sandbox-session, ' +

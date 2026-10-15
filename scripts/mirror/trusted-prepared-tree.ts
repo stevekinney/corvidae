@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { PolicyDocumentOverrides } from './surface.ts';
 import {
   assertNoForeignCommits,
   cloneTarget,
@@ -30,6 +31,8 @@ export interface TrustedPreparedTreeOptions {
   manifest: TrustedPreparedManifest;
   remote: string;
   expectedBaseBranch?: string;
+  /** Fixture policy documents; see `PolicyDocumentOverrides`. */
+  policyDocuments?: PolicyDocumentOverrides | undefined;
 }
 
 function fail(message: string): never {
@@ -157,11 +160,13 @@ async function stagedTree(options: {
   clone: string;
   corvidaeRoot: string;
   manifest: TrustedPreparedManifest;
+  policyDocuments: PolicyDocumentOverrides | undefined;
 }): Promise<{ changed: readonly string[]; tree: string }> {
   await stageSurface({
     corvidaeRoot: options.corvidaeRoot,
     target: options.manifest.target,
     directory: options.clone,
+    policyDocuments: options.policyDocuments,
   });
   const porcelain = await git(options.clone, 'status', '--porcelain');
   const changed = porcelain.split('\n').filter((line) => line.length > 0);
@@ -176,6 +181,7 @@ export async function verifyTrustedPreparedTree({
   manifest,
   remote,
   expectedBaseBranch,
+  policyDocuments,
 }: TrustedPreparedTreeOptions): Promise<void> {
   await assertTrustedSource({ corvidaeRoot, expectedCommit: manifest.corvidaeCommit });
   const root = await mkdtemp(join(tmpdir(), 'mirror-trusted-prepared-tree-'));
@@ -190,9 +196,14 @@ export async function verifyTrustedPreparedTree({
     await assertNoTrackedSpecialEntries(clone);
     await assertNoForeignCommits(
       clone,
-      await foreignCommitOwnership({ corvidaeRoot, target: manifest.target, clone }),
+      await foreignCommitOwnership({
+        corvidaeRoot,
+        target: manifest.target,
+        clone,
+        policyDocuments,
+      }),
     );
-    const expected = await stagedTree({ clone, corvidaeRoot, manifest });
+    const expected = await stagedTree({ clone, corvidaeRoot, manifest, policyDocuments });
     assertSameEntries(
       expected.changed,
       manifest.changed,

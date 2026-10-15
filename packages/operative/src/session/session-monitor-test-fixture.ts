@@ -23,6 +23,7 @@ export function createMonitorRun(result: Promise<RunResult>): AgentRun {
     durability: 'process-local',
   });
   const activeRun: ActiveRun = {
+    runId: 'session-monitor-fixture',
     result,
     abort: () => {},
     // COR-1270: a liveness fixture with no hook plan to describe.

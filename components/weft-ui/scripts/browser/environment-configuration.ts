@@ -9,7 +9,7 @@ const schema = z.object({
     .transform((value) => Boolean(value))
     .meta({ env: 'CI' }),
   weftApiBaseUrl: z.string().optional().meta({ env: 'WEFT_API_BASE_URL' }),
-  weftUiPort: z.string().transform(Number).optional().meta({ env: 'WEFT_UI_PORT' }),
+  browserHostPort: z.string().transform(Number).optional().meta({ env: 'WEFT_UI_PORT' }),
 });
 
 const environmentSource: Source = {
@@ -24,7 +24,7 @@ function loadEnvironment() {
   const environmentNames = {
     ci: 'CI',
     weftApiBaseUrl: 'WEFT_API_BASE_URL',
-    weftUiPort: 'WEFT_UI_PORT',
+    browserHostPort: 'WEFT_UI_PORT',
   } as const;
   for (const [key, name] of Object.entries(environmentNames)) {
     const value = typeof process === 'undefined' ? undefined : process.env[name];

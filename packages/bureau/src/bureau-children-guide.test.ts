@@ -225,10 +225,12 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
     await bureau.dispose();
 
     expect(placeholder).toMatchObject({
-      id: 'planner',
+      id: firstRunId,
       durability: 'process-local',
       status: 'created',
     });
+    expect(first.id).toBe(firstRunId);
+    expect(second.id).toBe(secondRunId);
     expect(firstRunId).not.toBe(secondRunId);
     expect(firstRunIdAgain).toBe(firstRunId);
     expect(first.snapshot()).toMatchObject({ id: firstRunId, durability: 'durable' });

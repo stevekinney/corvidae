@@ -387,6 +387,15 @@ export function createSessionRun(
     // Build the ActiveRun surface backed by the outer emitter so createAgentRun
     // can subscribe to events and abort the run.
     const activeRunWrapper: ActiveRun = {
+      // COR-1302 — a session run's id is `deriveRunId(sessionId, sequence)`,
+      // and the sequence is chosen inside the reservation's async
+      // `store.update`, so no final id exists when this handle is returned.
+      // Until the reservation commits this reads from the same source the
+      // synthetic `snapshot()` below does, so `runId === snapshot().id` at
+      // every instant; it is final only once the reservation has committed.
+      get runId(): string {
+        return activeInnerRun?.runId ?? state.currentRunId ?? sessionId;
+      },
       result: resultPromise,
       // COR-1270 — forwarded from the inner run once it exists. Before that
       // there is no plan to describe, and saying so is more honest than

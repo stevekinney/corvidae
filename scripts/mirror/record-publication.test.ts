@@ -7,12 +7,13 @@ import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { loadPackageMap } from './package-map.ts';
 import { readPackagePayload } from './package-payload.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
+import { singleEntrySurface } from './policy-documents.test-support.ts';
 import { requireGit } from './publication-history.ts';
 import { recordSourceDigest, type RecordOptions } from './record-source-digest.ts';
 import { committedPublicationManifest } from './registry-manifest.ts';
 import { publicationInputContract } from './source-digest.ts';
 
-const workspace = '@lostgradient/operative';
+const workspace = '@lostgradient/markdown';
 const sourceRoot = join(import.meta.dir, '../..');
 const json = (value: unknown) => `${JSON.stringify(value)}\n`;
 
@@ -56,8 +57,8 @@ async function withPublication(
   }) => Promise<void>,
   historicalExtra = false,
   targetConfiguration: { mirrorTarget: string; targetDirectory: string } = {
-    mirrorTarget: 'agent-bureau',
-    targetDirectory: 'packages/operative',
+    mirrorTarget: 'cinder',
+    targetDirectory: 'packages/markdown',
   },
 ): Promise<void> {
   const scratch = await mkdtemp(join(tmpdir(), 'publication-proof-'));
@@ -78,14 +79,14 @@ async function withPublication(
       }),
     );
     await Bun.write(
-      join(historical, 'packages/operative/package.json'),
+      join(historical, 'packages/markdown/package.json'),
       json({ name: workspace, private: true, type: 'module' }),
     );
     await Bun.write(
-      join(historical, 'packages/operative/src/index.ts'),
+      join(historical, 'packages/markdown/src/index.ts'),
       'export const value = 1;\n',
     );
-    await Bun.write(join(historical, 'packages/operative/runtime.wasm'), 'published extra input');
+    await Bun.write(join(historical, 'packages/markdown/runtime.wasm'), 'published extra input');
     await Bun.write(
       join(historical, 'scripts/mirror/source.ts'),
       `export const sourceTree = 'src'; export const versionConstants = {}; export const additionalSourceRoots = ${historicalExtra ? `{"${workspace}":[{"paths":["runtime.wasm"]}]}` : '{}'}; export const isSourceFile = (name: string) => name.endsWith('.ts');`,
@@ -95,14 +96,17 @@ async function withPublication(
       join(historical, 'scripts/mirror/sync.ts'),
       `export async function foreignCommitOwnership() { return { transform: { files: new Set(), prefixes: ['${targetConfiguration.targetDirectory}/src'] } }; }\n`,
     );
+    // Markdown's committed surface is built by a pack script no fixture carries, so the fixture
+    // lends it the single-entry tsdown surface; `sync.test.ts`'s header says why.
     const surface = await Bun.file(join(sourceRoot, 'scripts/mirror/package-surface.json')).json();
+    surface.packages[workspace] = singleEntrySurface(workspace);
     if (historicalExtra) surface.packages[workspace].files.push('runtime.wasm');
     await Bun.write(join(historical, 'scripts/mirror/package-surface.json'), json(surface));
     const map = structuredClone(await loadPackageMap());
-    const operative = map.workspaces[workspace];
-    if (!operative || operative.disposition !== 'publish-as')
-      throw new Error('Operative publication fixture requires a published workspace');
-    operative.lastPublishedVersion = '0.12.1';
+    const published = map.workspaces[workspace];
+    if (!published || published.disposition !== 'publish-as')
+      throw new Error('The publication fixture requires a published workspace');
+    published.lastPublishedVersion = '0.12.1';
     await Bun.write(join(historical, 'scripts/mirror/package-map.json'), json(map));
     await Bun.write(
       join(historical, 'scripts/mirror/target-owned.json'),
@@ -115,10 +119,10 @@ async function withPublication(
       );
     }
     if (
-      targetConfiguration.mirrorTarget !== 'agent-bureau' ||
-      targetConfiguration.targetDirectory !== 'packages/operative'
+      targetConfiguration.mirrorTarget !== 'cinder' ||
+      targetConfiguration.targetDirectory !== 'packages/markdown'
     ) {
-      if (targetConfiguration.mirrorTarget !== 'agent-bureau') {
+      if (targetConfiguration.mirrorTarget !== 'cinder') {
         await Bun.write(
           join(historical, 'scripts/mirror/target-definitions.ts'),
           `export const targetFor = (_workspace: string) => '${targetConfiguration.mirrorTarget}';\n`,
@@ -131,7 +135,7 @@ async function withPublication(
     }
     await mkdir(join(historical, 'internal/typescript'), { recursive: true });
     await Bun.write(
-      join(historical, 'packages/operative/tsconfig.json'),
+      join(historical, 'packages/markdown/tsconfig.json'),
       json({ extends: '@lostgradient/typescript/library.json' }),
     );
     for (const file of ['base.json', 'library.json', 'browser.json']) {
@@ -139,7 +143,7 @@ async function withPublication(
     }
     const sourceCommit = await commit(historical, 'source');
     await cp(historical, current, { recursive: true, filter: (path) => !path.includes('/.git') });
-    // Current policy declares no operative additional root: the historical extra must be detected.
+    // Current policy declares no markdown additional root: the historical extra must be detected.
     const currentSurface = structuredClone(surface);
     currentSurface.packages[workspace].files = currentSurface.packages[workspace].files.filter(
       (path: string) => path !== 'runtime.wasm',
@@ -294,7 +298,7 @@ const outcome3 = await outcomeOf(async () => {
       expect(result.snapshot.corvidaeCommit).toHaveLength(40);
     },
     false,
-    { mirrorTarget: 'cinder', targetDirectory: 'packages/operative' },
+    { mirrorTarget: 'weft', targetDirectory: 'packages/markdown' },
   );
 });
 test('recorder uses the historical target for provenance verification', () => rethrow(outcome3));
@@ -306,14 +310,14 @@ const outcome4 = await outcomeOf(async () => {
       expect(result.snapshot.corvidaeCommit).toHaveLength(40);
     },
     false,
-    { mirrorTarget: 'agent-bureau', targetDirectory: 'packages/operative-legacy' },
+    { mirrorTarget: 'cinder', targetDirectory: 'packages/markdown-legacy' },
   );
 });
 test('recorder uses the historical directory for commit comparison', () => rethrow(outcome4));
 
 const outcome5 = await outcomeOf(async () => {
   await withPublication(async ({ options, current, historical }) => {
-    const path = join(current, 'packages/operative/package.json');
+    const path = join(current, 'packages/markdown/package.json');
     const initial = await Bun.file(path).text();
     await Bun.write(
       path,
@@ -323,11 +327,11 @@ const outcome5 = await outcomeOf(async () => {
       'historical publication inputs differ',
     );
     await Bun.write(path, initial);
-    await Bun.write(join(current, 'packages/operative/src/index.ts'), 'export const value = 2;\n');
+    await Bun.write(join(current, 'packages/markdown/src/index.ts'), 'export const value = 2;\n');
     expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
       'historical source paths or bytes',
     );
-    await Bun.write(join(current, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
+    await Bun.write(join(current, 'packages/markdown/src/index.ts'), 'export const value = 1;\n');
     await Bun.write(join(historical, 'unexpected'), 'dirty');
     expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow('must be clean');
     await commit(historical, 'different source revision');
@@ -369,7 +373,7 @@ test('rejects altered JavaScript and declarations despite matching manifest and 
 const outcome8 = await outcomeOf(async () => {
   await withPublication(async ({ options, target }) => {
     await Bun.write(
-      join(target, 'packages/operative/src/index.ts'),
+      join(target, 'packages/markdown/src/index.ts'),
       'export const changed = true;\n',
     );
     const changedCommit = await commit(target, 'change source after mirroring');
@@ -447,13 +451,13 @@ test('rejects missing registry commits and invalid publication-map entries', () 
 const outcome10 = await outcomeOf(async () => {
   await withPublication(async ({ current }) => {
     const rootPath = join(current, 'package.json');
-    const packagePath = join(current, 'packages/operative/package.json');
+    const packagePath = join(current, 'packages/markdown/package.json');
     const root = await Bun.file(rootPath).json();
     const manifest = await Bun.file(packagePath).json();
     const read = () =>
       publicationInputContract({
         corvidaeRoot: current,
-        corvidaeDirectory: 'packages/operative',
+        corvidaeDirectory: 'packages/markdown',
         workspace,
       });
     const initial = await read();
@@ -483,13 +487,13 @@ for (const field of ['type', 'imports']) {
   // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
   const outcome11 = await outcomeOf(async () => {
     await withPublication(async ({ options, target, sourceCommit, registry }) => {
-      const path = join(target, 'packages/operative/package.json');
+      const path = join(target, 'packages/markdown/package.json');
       const change =
         field === 'type' ? { type: 'commonjs' } : { imports: { '#worker': './worker.js' } };
       await Bun.write(path, json({ ...registry, ...change }));
       const changedCommit = await commit(
         target,
-        `Sync agent-bureau from corvidae\n\nCorvidae-Commit: ${sourceCommit}`,
+        `Sync cinder from corvidae\n\nCorvidae-Commit: ${sourceCommit}`,
         true,
       );
       const registryRunner = options.registryRunner!;
@@ -503,7 +507,7 @@ for (const field of ['type', 'imports']) {
             })
           : registryRunner(command, settings);
       expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
-        `source-owned manifest field packages/operative/package.json:${field}`,
+        `source-owned manifest field packages/markdown/package.json:${field}`,
       );
     });
   });
@@ -515,7 +519,7 @@ for (const field of ['scripts', 'devDependencies', 'packageManager']) {
   // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
   const outcome12 = await outcomeOf(async () => {
     await withPublication(async ({ options, target, registry, setRegistry }) => {
-      const path = join(target, 'packages/operative/package.json');
+      const path = join(target, 'packages/markdown/package.json');
       const change =
         field === 'scripts'
           ? { scripts: { build: 'bun run changed-build.ts' } }
@@ -536,7 +540,7 @@ for (const field of ['scripts', 'devDependencies', 'packageManager']) {
             })
           : registryRunner(command, settings);
       expect(await throwingRejectionOf(recordSourceDigest(options))).toThrow(
-        `source-owned manifest field packages/operative/package.json:${field}`,
+        `source-owned manifest field packages/markdown/package.json:${field}`,
       );
     });
   });
@@ -546,7 +550,7 @@ for (const field of ['scripts', 'devDependencies', 'packageManager']) {
 // Real local repositories and their processes are the behavior; they run at module scope, off the per-test clock.
 const outcome13 = await outcomeOf(async () => {
   await withPublication(async ({ options, target, registry, setRegistry }) => {
-    const path = join(target, 'packages/operative/package.json');
+    const path = join(target, 'packages/markdown/package.json');
     await Bun.write(path, json({ ...registry, description: 'release metadata' }));
     await setRegistry({ ...registry, description: 'release metadata' });
     const changedCommit = await commit(target, 'Describe release', false);
@@ -578,7 +582,7 @@ const outcome14 = await outcomeOf(async () => {
     const parents = await requireGit(target, ['show', '-s', '--format=%P', mergeCommit]);
     expect(parents.split(' ').filter(Boolean)).toHaveLength(2);
     await Bun.write(
-      join(target, 'packages/operative/package.json'),
+      join(target, 'packages/markdown/package.json'),
       json({ ...registry, version: '0.12.1' }),
     );
     const mergedRelease = await commit(target, 'Version packages after mirror merge');
@@ -611,64 +615,64 @@ const mergeSideChangeCases: {
     name: 'merge resolution source change',
     mutateAfterMerge: async (target: string) => {
       await Bun.write(
-        join(target, 'packages/operative/src/index.ts'),
+        join(target, 'packages/markdown/src/index.ts'),
         'export const value = "resolved-maliciously";\n',
       );
     },
-    expected: 'non-target-owned path packages/operative/src/index.ts',
+    expected: 'non-target-owned path packages/markdown/src/index.ts',
   },
   {
     name: 'side branch build input',
     mutateSideBranch: async (target: string) => {
       const manifest = JSON.parse(
-        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+        await Bun.file(join(target, 'packages/markdown/package.json')).text(),
       );
       await Bun.write(
-        join(target, 'packages/operative/package.json'),
+        join(target, 'packages/markdown/package.json'),
         json({ ...manifest, scripts: { build: 'bun run bad.ts' } }),
       );
     },
-    expected: 'source-owned manifest field packages/operative/package.json:scripts',
+    expected: 'source-owned manifest field packages/markdown/package.json:scripts',
   },
   {
     name: 'old default side branch build input',
     mutateOldDefault: async (target: string) => {
       const manifest = JSON.parse(
-        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+        await Bun.file(join(target, 'packages/markdown/package.json')).text(),
       );
       await Bun.write(
-        join(target, 'packages/operative/package.json'),
+        join(target, 'packages/markdown/package.json'),
         json({ ...manifest, scripts: { build: 'bun run old-default-bad.ts' } }),
       );
     },
-    expected: 'source-owned manifest field packages/operative/package.json:scripts',
+    expected: 'source-owned manifest field packages/markdown/package.json:scripts',
   },
   {
     name: 'transient source change reverted on a descendant branch',
     mutateSideBranch: async (target: string) => {
       await Bun.write(
-        join(target, 'packages/operative/src/index.ts'),
+        join(target, 'packages/markdown/src/index.ts'),
         'export const value = "transient";\n',
       );
       await commit(target, 'Transient source change');
-      await Bun.write(join(target, 'packages/operative/src/index.ts'), 'export const value = 1;\n');
+      await Bun.write(join(target, 'packages/markdown/src/index.ts'), 'export const value = 1;\n');
     },
-    expected: 'non-target-owned path packages/operative/src/index.ts',
+    expected: 'non-target-owned path packages/markdown/src/index.ts',
   },
   {
     name: 'manifest field add and delete',
     mutateSideBranch: async (target: string) => {
       const manifest = JSON.parse(
-        await Bun.file(join(target, 'packages/operative/package.json')).text(),
+        await Bun.file(join(target, 'packages/markdown/package.json')).text(),
       );
       await Bun.write(
-        join(target, 'packages/operative/package.json'),
+        join(target, 'packages/markdown/package.json'),
         json({ ...manifest, imports: { '#bad': './bad.ts' } }),
       );
       await commit(target, 'Add source-owned manifest field');
-      await Bun.write(join(target, 'packages/operative/package.json'), json(manifest));
+      await Bun.write(join(target, 'packages/markdown/package.json'), json(manifest));
     },
-    expected: 'source-owned manifest field packages/operative/package.json:imports',
+    expected: 'source-owned manifest field packages/markdown/package.json:imports',
   },
 ];
 
@@ -714,7 +718,7 @@ for (const testCase of mergeSideChangeCases) {
         expect(parents.split(' ').filter(Boolean)).toHaveLength(2);
       }
       await Bun.write(
-        join(target, 'packages/operative/package.json'),
+        join(target, 'packages/markdown/package.json'),
         json({ ...registry, version: '0.12.1' }),
       );
       const release = await commit(target, `Release after ${testCase.name}`);
@@ -742,7 +746,7 @@ const outcome16 = await outcomeOf(async () => {
     const read = () =>
       publicationInputContract({
         corvidaeRoot: current,
-        corvidaeDirectory: 'packages/operative',
+        corvidaeDirectory: 'packages/markdown',
         workspace,
       });
     const initial = await read();
@@ -770,7 +774,7 @@ for (const configuration of ['library', 'browser'] as const) {
     await withPublication(async ({ current }) => {
       await mkdir(join(current, 'internal/typescript'), { recursive: true });
       await Bun.write(
-        join(current, 'packages/operative/tsconfig.json'),
+        join(current, 'packages/markdown/tsconfig.json'),
         json({
           extends: `@lostgradient/typescript/${configuration}.json`,
           compilerOptions: { declaration: true },
@@ -789,20 +793,20 @@ for (const configuration of ['library', 'browser'] as const) {
         json({ extends: './base.json', compilerOptions: { lib: ['DOM'] } }),
       );
       await Bun.write(
-        join(current, 'packages/operative/examples/tsconfig.json'),
+        join(current, 'packages/markdown/examples/tsconfig.json'),
         json({ compilerOptions: { strict: false } }),
       );
 
       const read = () =>
         publicationInputContract({
           corvidaeRoot: current,
-          corvidaeDirectory: 'packages/operative',
+          corvidaeDirectory: 'packages/markdown',
           workspace,
         });
       const initial = await read();
 
       await Bun.write(
-        join(current, 'packages/operative/tsconfig.json'),
+        join(current, 'packages/markdown/tsconfig.json'),
         json({
           extends: `@lostgradient/typescript/${configuration}.json`,
           compilerOptions: { declaration: false },
@@ -826,21 +830,21 @@ for (const configuration of ['library', 'browser'] as const) {
       expect(afterBaseConfiguration).not.toEqual(afterSharedConfiguration);
 
       await Bun.write(
-        join(current, 'packages/operative/examples/tsconfig.json'),
+        join(current, 'packages/markdown/examples/tsconfig.json'),
         json({ compilerOptions: { strict: true } }),
       );
       expect(await read()).toEqual(afterBaseConfiguration);
-      await cp(join(current, 'packages/operative'), join(current, 'components/operative'), {
+      await cp(join(current, 'packages/markdown'), join(current, 'components/markdown'), {
         recursive: true,
       });
       const layoutPath = join(current, 'scripts/mirror/layout-map.json');
       const layout = await Bun.file(layoutPath).json();
-      layout.workspaces[workspace].corvidaeDirectory = 'components/operative';
+      layout.workspaces[workspace].corvidaeDirectory = 'components/markdown';
       await Bun.write(layoutPath, json(layout));
       expect(
         await publicationInputContract({
           corvidaeRoot: current,
-          corvidaeDirectory: 'components/operative',
+          corvidaeDirectory: 'components/markdown',
           workspace,
         }),
       ).toEqual(afterBaseConfiguration);
@@ -856,7 +860,7 @@ const outcome18 = await outcomeOf(async () => {
     const writeCompilerInputs = async (root: string) => {
       await mkdir(join(root, 'internal/typescript'), { recursive: true });
       await Bun.write(
-        join(root, 'packages/operative/tsconfig.json'),
+        join(root, 'packages/markdown/tsconfig.json'),
         json({ extends: '@lostgradient/typescript/library.json' }),
       );
       for (const file of ['base.json', 'library.json', 'browser.json']) {
@@ -868,7 +872,7 @@ const outcome18 = await outcomeOf(async () => {
     const read = (root: string) =>
       publicationInputContract({
         corvidaeRoot: root,
-        corvidaeDirectory: 'packages/operative',
+        corvidaeDirectory: 'packages/markdown',
         workspace,
       });
     const currentContract = await read(current);
@@ -877,7 +881,7 @@ const outcome18 = await outcomeOf(async () => {
 
     const historicalLayoutPath = join(historical, 'scripts/mirror/layout-map.json');
     const historicalLayout = await Bun.file(historicalLayoutPath).json();
-    historicalLayout.workspaces[workspace].targetDirectory = 'packages/operative-legacy';
+    historicalLayout.workspaces[workspace].targetDirectory = 'packages/markdown-legacy';
     await Bun.write(historicalLayoutPath, json(historicalLayout));
     const relocatedHistoricalContract = await read(historical);
     expect(relocatedHistoricalContract.digest).not.toBe(currentContract.digest);
@@ -890,7 +894,7 @@ const outcome19 = await outcomeOf(async () => {
     const writeCompilerInputs = async (root: string) => {
       await mkdir(join(root, 'internal/typescript'), { recursive: true });
       await Bun.write(
-        join(root, 'packages/operative/tsconfig.json'),
+        join(root, 'packages/markdown/tsconfig.json'),
         json({ extends: '@lostgradient/typescript/library.json' }),
       );
       for (const file of ['base.json', 'library.json', 'browser.json']) {
@@ -902,13 +906,13 @@ const outcome19 = await outcomeOf(async () => {
     const read = (root: string) =>
       publicationInputContract({
         corvidaeRoot: root,
-        corvidaeDirectory: 'packages/operative',
+        corvidaeDirectory: 'packages/markdown',
         workspace,
       });
     const currentContract = await read(current);
     await Bun.write(
       join(historical, 'scripts/mirror/target-definitions.ts'),
-      `export const targetFor = (_workspace: string) => 'cinder';\n`,
+      `export const targetFor = (workspace: string) => workspace === '@lostgradient/typescript' ? 'cinder' : 'weft';\n`,
     );
     const reroutedHistoricalContract = await read(historical);
     expect(reroutedHistoricalContract.digest).not.toBe(currentContract.digest);
@@ -921,7 +925,7 @@ const outcome20 = await outcomeOf(async () => {
     const writeCompilerInputs = async (root: string) => {
       await mkdir(join(root, 'internal/typescript'), { recursive: true });
       await Bun.write(
-        join(root, 'packages/operative/tsconfig.json'),
+        join(root, 'packages/markdown/tsconfig.json'),
         json({ extends: '@lostgradient/typescript/library.json' }),
       );
       for (const file of ['base.json', 'library.json', 'browser.json']) {
@@ -933,16 +937,16 @@ const outcome20 = await outcomeOf(async () => {
     await rm(join(historical, 'scripts/mirror/target-definitions.ts'));
     await Bun.write(
       join(historical, 'scripts/mirror/manifests.ts'),
-      `export const targetFor = (_workspace: string) => 'cinder';\n`,
+      `export const targetFor = (workspace: string) => workspace === '@lostgradient/typescript' ? 'cinder' : 'weft';\n`,
     );
     const currentContract = await publicationInputContract({
       corvidaeRoot: current,
-      corvidaeDirectory: 'packages/operative',
+      corvidaeDirectory: 'packages/markdown',
       workspace,
     });
     const historicalContract = await publicationInputContract({
       corvidaeRoot: historical,
-      corvidaeDirectory: 'packages/operative',
+      corvidaeDirectory: 'packages/markdown',
       workspace,
     });
     expect(historicalContract.digest).not.toBe(currentContract.digest);
@@ -955,30 +959,30 @@ const outcome21 = await outcomeOf(async () => {
     for (const root of [current, historical]) {
       await mkdir(join(root, 'internal/typescript'), { recursive: true });
       await Bun.write(
-        join(root, 'packages/operative/tsconfig.json'),
+        join(root, 'packages/markdown/tsconfig.json'),
         json({ extends: '@lostgradient/typescript/library.json' }),
       );
       for (const file of ['base.json', 'library.json', 'browser.json']) {
         await Bun.write(join(root, 'internal/typescript', file), json({}));
       }
-      const manifestPath = join(root, 'packages/operative/package.json');
+      const manifestPath = join(root, 'packages/markdown/package.json');
       const manifest = await Bun.file(manifestPath).json();
-      manifest.dependencies = { '@lostgradient/lifecycle': 'workspace:*' };
+      manifest.dependencies = { '@lostgradient/editor': 'workspace:*' };
       await Bun.write(manifestPath, json(manifest));
       const map = await Bun.file(join(root, 'scripts/mirror/package-map.json')).json();
-      map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = '1.0.0';
+      map.workspaces['@lostgradient/editor'].lastPublishedVersion = '1.0.0';
       await Bun.write(join(root, 'scripts/mirror/package-map.json'), json(map));
     }
     const read = (root: string) =>
       publicationInputContract({
         corvidaeRoot: root,
-        corvidaeDirectory: 'packages/operative',
+        corvidaeDirectory: 'packages/markdown',
         workspace,
       });
     const currentContract = await read(current);
     await Bun.write(
       join(historical, 'scripts/mirror/target-definitions.ts'),
-      `export const targetFor = (workspace: string) => workspace === '@lostgradient/lifecycle' || workspace === '@lostgradient/typescript' ? 'cinder' : 'agent-bureau';\n`,
+      `export const targetFor = (workspace: string) => workspace === '@lostgradient/editor' || workspace === '@lostgradient/typescript' ? 'cinder' : 'weft';\n`,
     );
     const historicalContract = await read(historical);
     expect(historicalContract.digest).not.toBe(currentContract.digest);
@@ -994,7 +998,7 @@ const outcome22 = await outcomeOf(async () => {
       await throwingRejectionOf(
         publicationInputContract({
           corvidaeRoot: historical,
-          corvidaeDirectory: 'packages/operative',
+          corvidaeDirectory: 'packages/markdown',
           workspace,
         }),
       ),
@@ -1011,7 +1015,7 @@ const outcome23 = await outcomeOf(async () => {
       await throwingRejectionOf(
         publicationInputContract({
           corvidaeRoot: historical,
-          corvidaeDirectory: 'packages/operative',
+          corvidaeDirectory: 'packages/markdown',
           workspace,
         }),
       ),
@@ -1023,34 +1027,34 @@ test('publication inputs fail closed when historical routing modules are missing
 
 const outcome24 = await outcomeOf(async () => {
   await withPublication(async ({ current }) => {
-    const manifestPath = join(current, 'packages/operative/package.json');
+    const manifestPath = join(current, 'packages/markdown/package.json');
     const manifest = await Bun.file(manifestPath).json();
-    manifest.dependencies = { '@lostgradient/lifecycle': 'workspace:*' };
+    manifest.dependencies = { '@lostgradient/editor': 'workspace:*' };
     await Bun.write(manifestPath, json(manifest));
     const mapPath = join(current, 'scripts/mirror/package-map.json');
     const map = await Bun.file(mapPath).json();
     const read = () =>
       publicationInputContract({
         corvidaeRoot: current,
-        corvidaeDirectory: 'packages/operative',
+        corvidaeDirectory: 'packages/markdown',
         workspace,
       });
-    map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = '1.0.0';
+    map.workspaces['@lostgradient/editor'].lastPublishedVersion = '1.0.0';
     await Bun.write(mapPath, json(map));
     const before = await read();
-    map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = '1.0.1';
+    map.workspaces['@lostgradient/editor'].lastPublishedVersion = '1.0.1';
     await Bun.write(mapPath, json(map));
     const after = await read();
     expect(after).not.toEqual(before);
-    map.workspaces['@lostgradient/lifecycle'].lastPublishedVersion = null;
+    map.workspaces['@lostgradient/editor'].lastPublishedVersion = null;
     await Bun.write(mapPath, json(map));
     expect(await throwingRejectionOf(read())).toThrow('no recorded published version');
     expect(
       await publicationInputContract({
         corvidaeRoot: current,
-        corvidaeDirectory: 'packages/operative',
+        corvidaeDirectory: 'packages/markdown',
         workspace,
-        publishedWorkspaceVersions: new Map([['@lostgradient/lifecycle', '1.0.1']]),
+        publishedWorkspaceVersions: new Map([['@lostgradient/editor', '1.0.1']]),
       }),
     ).toEqual(after);
   });
@@ -1060,13 +1064,13 @@ test('publication inputs bind workspace dependencies to their recorded published
 
 const outcome25 = await outcomeOf(async () => {
   await withPublication(async ({ current }) => {
-    const manifestPath = join(current, 'packages/operative/package.json');
+    const manifestPath = join(current, 'packages/markdown/package.json');
     const manifest = await Bun.file(manifestPath).json();
     const map = await Bun.file(join(current, 'scripts/mirror/package-map.json')).json();
     const read = () =>
       publicationInputContract({
         corvidaeRoot: current,
-        corvidaeDirectory: 'packages/operative',
+        corvidaeDirectory: 'packages/markdown',
         workspace,
       });
     manifest.dependencies = { '@lostgradient/weft': 'workspace:*' };

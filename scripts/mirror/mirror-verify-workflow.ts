@@ -81,7 +81,7 @@ export interface RenderMirrorVerifyWorkflowOptions {
   privateWorkspaces: readonly PrivateWorkspace[];
   /**
    * Filename of the target's release workflow. Resolved from the clone when omitted, because the
-   * spelling is the target's: weft and cinder carry `release.yaml`, agent-bureau `release.yml`.
+   * spelling is the target's: weft and cinder carry `release.yaml`, and GitHub also accepts `release.yml`.
    */
   releaseWorkflowFile?: string;
 }
@@ -203,8 +203,7 @@ function renderStep(step: VerifyStep): string[] {
 /**
  * Render `mirror-verify.yaml` for one target's staged clone.
  *
- * `on: pull_request` is the workflow this replaces (`ci.yaml`, retired for weft; `ci.yml` for
- * agent-bureau): a mirror sync opens a pull request against the target, so the jobs that used to
+ * `on: pull_request` is the workflow this replaces (`ci.yaml`, retired for weft): a mirror sync opens a pull request against the target, so the jobs that used to
  * gate a pull request there now gate it here instead. `merge_group` is carried over from that same
  * retired CI workflow rather than from the release workflow, which triggers on a tag push and has
  * never used a merge queue — every target's CI/release split confirms `merge_group` belongs to the

@@ -3,6 +3,7 @@ import {
   createFleetEventFeed,
   createMetricsCollectorExporter,
   createWorkflowEventFeed,
+  dashboard,
   Engine,
   handleRequest,
   serve,
@@ -12,8 +13,7 @@ import {
   type AlertStateSnapshot,
   type AuthConfig,
   type Cursor,
-  type DashboardAssets,
-  type DashboardRouteTarget,
+  type DashboardOptions,
   type DiscoveryInfo,
   type EventEnvelope,
   type FleetEventEnvelope,
@@ -25,6 +25,7 @@ import {
   type RoutingPolicy,
   type SchedulingPolicy,
   type ServeOptions,
+  type ServeRoutes,
   type TaskDispatch,
   type TaskResultView,
   type WeftServer,
@@ -51,40 +52,50 @@ const packageRootServeOptions: ServeOptions = {
 };
 void packageRootServeOptions;
 
-const packageRootDashboardTarget: DashboardRouteTarget = new Response('<html></html>');
-void packageRootDashboardTarget;
-
-const packageRootDashboardAssets: DashboardAssets = {
-  prefix: '/assets',
-  directory: './dist/assets',
+const packageRootRoutes: ServeRoutes = {
+  '/status': new Response('ok'),
+  '/reports/:id': (request) => Response.json({ id: request.params['id'] }),
 };
-void packageRootDashboardAssets;
+void packageRootRoutes;
 
-const packageRootDashboardHandlerTarget: DashboardRouteTarget = (_request, server) => {
-  void server;
-  return new Response('<html></html>');
-};
-void packageRootDashboardHandlerTarget;
-
-const packageRootDashboardServeOptions: ServeOptions = {
+const packageRootRoutesServeOptions: ServeOptions = {
   engine: packageRootEngine,
+  routes: packageRootRoutes,
+};
+void packageRootRoutesServeOptions;
+
+const invalidPackageRootRoutesServeOptions: ServeOptions = {
+  engine: packageRootEngine,
+  // @ts-expect-error each route must be a Bun route value.
+  routes: { '/status': { shell: true } },
+};
+void invalidPackageRootRoutesServeOptions;
+
+const removedPackageRootDashboardServeOptions: ServeOptions = {
+  engine: packageRootEngine,
+  // @ts-expect-error `dashboard` is no longer a server option; dashboard() mounts the dashboard.
   dashboard: new Response('<html></html>'),
 };
-void packageRootDashboardServeOptions;
+void removedPackageRootDashboardServeOptions;
 
-const packageRootDashboardHandlerServeOptions: ServeOptions = {
-  engine: packageRootEngine,
-  dashboard: packageRootDashboardHandlerTarget,
-  dashboardAssets: packageRootDashboardAssets,
+// dashboard() accepts every ServeOptions field plus distDir, and returns the
+// same WeftServer handle serve() does.
+const packageRootDashboardOptions: DashboardOptions = {
+  ...packageRootRoutesServeOptions,
+  distDir: './dashboard',
 };
-void packageRootDashboardHandlerServeOptions;
+async function verifyPackageRootDashboardReturnsWeftServer(): Promise<void> {
+  await using dashboardServer: WeftServer = dashboard(packageRootDashboardOptions);
+  void dashboardServer;
+}
+void verifyPackageRootDashboardReturnsWeftServer;
 
-const invalidPackageRootDashboardServeOptions: ServeOptions = {
+const invalidPackageRootDashboardOptions: DashboardOptions = {
   engine: packageRootEngine,
-  // @ts-expect-error dashboard must be a Bun route target.
-  dashboard: { shell: true },
+  // @ts-expect-error distDir is a directory path.
+  distDir: 42,
 };
-void invalidPackageRootDashboardServeOptions;
+void invalidPackageRootDashboardOptions;
 
 const removedMetricsCollectorServeOptions: ServeOptions = {
   engine: packageRootEngine,

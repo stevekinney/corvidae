@@ -1,6 +1,6 @@
 {
   "documentation": "Paths in the public mirror targets that the corvidae transform must never write, and the keys it must not author inside the files it does write. Change detection in the mirror works by transforming into a clone of the target and asking git whether anything differs: an empty `git status --porcelain` means skip the sync. That only holds when this enumeration is exhaustive, so a missing entry degrades the mirror into 'always open a pull request'. `paths` is enforced by the guard in `target-owned.ts`, over a plan's writes and, since COR-1221, over its deletions. `retired` is the opposite list and the only place a whole target directory may be removed; it is enforced by the same guard and never relaxes `paths`. `insideFiles` states the ownership default for the structured files the transform does write — manifests and tsconfigs — which a whole-file guard cannot express; it is applied by `manifests.ts` and `typescript-configuration.ts` rather than by the guard. `targets` names the public repositories an entry applies to; omit it when the entry applies to every target.",
-  "targets": ["weft", "cinder", "agent-bureau"],
+  "targets": ["weft", "cinder"],
   "paths": [
     {
       "glob": "LICENSE",
@@ -53,11 +53,6 @@
       "targets": ["weft", "cinder"]
     },
     {
-      "glob": ".github/workflows/release.yml",
-      "reason": "The same ruling as `release.yaml` above, for the target that spells the file `release.yml`. Verified against a clone of stevekinney/agent-bureau (2026-09-21): a changesets/action release coordinator on push to main, pinning Bun 1.4.0 and installing with `bun install --frozen-lockfile`. Target-owned twice over — corvidae has no source for it, and its *filename* is load-bearing downstream: the workflow's own header records that `release.yml` is what each package registers as its npm trusted publisher (org stevekinney, repo agent-bureau, workflow release.yml), so rewriting or renaming it would break publishing until every registration was redone. `resolveReleaseWorkflowFile` in `install-parity.ts` is what finds this spelling rather than assuming the other one.",
-      "targets": ["agent-bureau"]
-    },
-    {
       "glob": ".github/workflows/release-manual.yaml",
       "reason": "Cinder's manually-triggered release workflow, same release-infrastructure class as `release.yaml`. Not independently verified against a cinder clone in this pass (COR-1286 worked offline against a weft-only seed); named by the issue's own ruling.",
       "targets": ["cinder"]
@@ -99,8 +94,8 @@
     },
     {
       "glob": ".worktreeinclude",
-      "reason": "Worktree bootstrap list naming target-local non-secret files. Present in cinder and, verified against a clone on 2026-09-21, in agent-bureau.",
-      "targets": ["cinder", "agent-bureau"]
+      "reason": "Worktree bootstrap list naming target-local non-secret files. Present in cinder.",
+      "targets": ["cinder"]
     },
     {
       "glob": "**/AGENTS.md",
@@ -153,11 +148,6 @@
       "glob": "MIGRATION-NOTES.md",
       "reason": "Target-maintained migration notes keyed to published versions.",
       "targets": ["cinder"]
-    },
-    {
-      "glob": "RELEASING.md",
-      "reason": "Target working document with no corvidae counterpart: the release runbook `release.yml` itself points at for registering npm trusted publishers. Same one-off document class as `AUDIT-BACKLOG.md` and `MIGRATION-NOTES.md`; present at agent-bureau's root, absent from the other two targets.",
-      "targets": ["agent-bureau"]
     },
     {
       "glob": "packages/weft/scripts/build-binary-main.ts",
@@ -493,130 +483,10 @@
         "issue": "COR-1196"
       },
       {
-        "directory": ".github/workflows/ci.yml",
-        "target": "agent-bureau",
-        "reason": "COR-1286's ruling, applied to the third target: a mirror runs one transform-emitted verification workflow (`mirror-verify.yaml`, whose jobs are exactly `verifyTarget`'s steps) plus the target's existing release workflow, unchanged. `ci.yml` is agent-bureau's pull-request CI gate that `mirror-verify.yaml` replaces; its jobs (`validate`, `coverage-and-package-shape`, `lifecycle-contract`, `crash-conformance-smoke`, `runtime-matrix`) run target-side tooling `verifyTarget` does not exercise, and four of the five reach packages this same pull request retires, so the file becomes dead CI once the mirror opens its own PR-time workflow. Note the `.yml` spelling: it is the target's, and `resolveReleaseWorkflowFile` is what keeps the transform reading the target's own filenames rather than weft's.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": ".github/workflows/nightly.yml",
-        "target": "agent-bureau",
-        "reason": "The slower-cadence half of the same CI gate, retired under the same COR-1286 ruling. Its lanes are the full process-crash marker matrix, the full Gateway conformance lane, the Cloudflare real-runtime lane and a targeted lifecycle mutation check — three of the four run against `packages/gateway`, `packages/cloudflare` and `packages/integration`, which this same pull request retires, so the workflow would be scheduling nightly runs over directories that no longer exist. It also points at `documentation/testing-cadence.md`, which the transform neither writes nor prunes: that document simply survives the retirement, and the reference to it dies with this file, so it needs no follow-up of its own.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "lefthook.yml",
-        "target": "agent-bureau",
-        "reason": "Git hook configuration, retired under the same ruling as weft's `.husky` (COR-1286): corvidae's own AGENTS.md forbids Git-hook installation, and a mirror does not carry hook infrastructure for CI it no longer runs. agent-bureau keeps its hooks in a single root `lefthook.yml` rather than a directory of scripts — there is no `.lefthook/` in the clone — so this one file is the whole of it, which D3 (COR-1286) is what makes a legal `retired` entry. Its `pre-commit` commands run `bun run lint` and `bun run check-types`, both root scripts the mirror does not gate on. Out of band, in the target's own pull request: the root manifest's `\"prepare\": \"lefthook install\"` still names the tool after this retirement, and `scripts` is target-owned under COR-1223's inversion, so the transform cannot remove that reference and must not try.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/cloudflare",
-        "target": "agent-bureau",
-        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/cloudflare` and have to stop.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/evaluation",
-        "target": "agent-bureau",
-        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/evaluation` and have to stop.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/gateway",
-        "target": "agent-bureau",
-        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/gateway` and have to stop.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/integration",
-        "target": "agent-bureau",
-        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/integration` and have to stop.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/interoperability",
-        "target": "agent-bureau",
-        "reason": "By D1 (repository owner, 2026-09-21) and the `packages/weft-ui` precedent above: a mirror carries only what its source of truth carries. Corvidae has never held this package — it was not part of the consolidation — so no sync writes the directory, `package-map.json` rules its name `orphan-untouched` (private upstream, never published), and every path inside it is source the mirror would otherwise publish and never maintain. Retired rather than deferred, because deferring emits nothing and leaves the directory standing, which is the state that makes a public mirror ship unmaintained source. Out of band, in the target's own pull request: the root `coverage:check` and `check-package-shape` scripts, `.github/workflows/ci.yml` and `nightly.yml`, and the helper scripts under `scripts/` all name `packages/interoperability` and have to stop. This one has a second, harder out-of-band half the other four do not: six surviving package manifests — armorer, bureau, conversationalist, memory, operative and skills — declare `\"interoperability\": \"workspace:*\"`. Corvidae carries no workspace of that name under any spelling, so those edges are the target's own and `composeDependencies` keeps them (rule 2); once this directory is gone they resolve against the registry, where the name 404s, and a staged install fails. Verified against a clone on 2026-09-21. The cleanup pull request has to drop those six edges, and `dependencies` is not a key the transform can author on its behalf.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/armorer/test",
-        "target": "agent-bureau",
-        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/conversationalist/test",
-        "target": "agent-bureau",
-        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/lifecycle/test",
-        "target": "agent-bureau",
-        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/memory/test",
-        "target": "agent-bureau",
-        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/operative/test",
-        "target": "agent-bureau",
-        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/skills/test",
-        "target": "agent-bureau",
-        "reason": "The target's own test tree for this package, retired under COR-1286's ruling that tests, lint and coverage run in corvidae alone. Corvidae carries this package's tests in its own `test/` directory and never emits them (the emitted source root is `src`), so the target's copy is a fork that drifts from the source it tests: the agent-bureau staging proof of 2026-09-23 found it calling overloads corvidae removed (lifecycle's one-type-argument `eventIterator`), importing adapter internals corvidae renamed (conversationalist), and importing `lifecycle` by the bare alias the transform correctly drops (armorer). It reached verification only through the package's `tsconfig.test.json`, retired alongside it; the mirror's `typecheck` checks the emitted `src`.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/armorer/tsconfig.test.json",
-        "target": "agent-bureau",
-        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/bureau/tsconfig.test.json",
-        "target": "agent-bureau",
-        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/conversationalist/tsconfig.test.json",
-        "target": "agent-bureau",
-        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/lifecycle/tsconfig.test.json",
-        "target": "agent-bureau",
-        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/memory/tsconfig.test.json",
-        "target": "agent-bureau",
-        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/operative/tsconfig.test.json",
-        "target": "agent-bureau",
-        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
-        "issue": "COR-1287"
-      },
-      {
-        "directory": "packages/skills/tsconfig.test.json",
-        "target": "agent-bureau",
-        "reason": "The configuration that type-checks this package's retired `test/` tree (or, for bureau, a test configuration corvidae does not carry), retired with it under COR-1286's ruling. Kept, it would name a directory that no longer exists and fail `tsc -p` with no inputs. Corvidae emits a single `tsconfig.json` per package; the target's `check-types` and `typecheck` scripts run `tsc --noEmit` against it alone after the cleanup pull request.",
-        "issue": "COR-1287"
+        "directory": "packages/chat",
+        "target": "cinder",
+        "reason": "The repository owner ruled on 2026-10-14 to stop publishing `@lostgradient/chat`, and `package-map.json` now excludes it. Excluding a workspace only stops the transform from emitting it; under COR-1221 the cinder mirror's existing copy would survive every later sync, stay a workspace under `packages/*`, and keep releasing through the mirror's own Changesets flow from frozen source. Retired here so the next sync removes it. Any reference to `packages/chat` in Cinder-owned release tooling has to go in the target's own pull request.",
+        "issue": "COR-1432"
       },
       {
         "directory": "packages/playground",
@@ -695,7 +565,7 @@
       }
     ],
     "dependencies": {
-      "policy": "Classification is the target's, ranges follow the package that declares them, and nothing is silently dropped. Three cases, applied to the union of corvidae's `dependencies`, `devDependencies` and `optionalDependencies` and the target's. `peerDependencies` is deliberately not one of them: a peer range is half of a packaging declaration whose other half is `peerDependenciesMeta`, so the pair is composed together, by name, under `peerDependencies` below rather than split across these three cases. (1) A package that ships from this mirror is the transform's outright — name, block and specifier — because only the transform knows what it is called downstream and whether the edge stays a `workspace:*`. Its stale entries are removed first, so an edge corvidae dropped does not linger. (2) A third-party package the target declares anywhere keeps the target's block and the target's range. Weft putting `better-sqlite3` in `optionalDependencies` and `peerDependencies` is a packaging decision of weft's; corvidae having it in `dependencies` is an artifact of being an internal workspace where every dependency is a plain one, and emitting that moves seven storage drivers into every consumer's install. (3) A third-party package the target declares nowhere is added in corvidae's own block at corvidae's own range, and reported as `addedDependencies`: a package legitimately gains a dependency, and the alternative to adding it is emitting source that cannot resolve its own imports. The asymmetry with `scripts`, which are never unioned, is deliberate: a dependency is a fact about the source, while a script is a choice about the repository. COR-1287 widened case (1) to the target's own spelling: `mirrorPackages` carries not just each workspace's public name but the name the target's manifest at that workspace's directory already uses, where the two differ. agent-bureau calls corvidae's `@lostgradient/lifecycle` just `lifecycle`, and under the public name alone rule (1) never matched that entry while rule (2) kept it, so the composed manifest declared the same workspace twice under two names and `bun install` refused the staged tree. The alias is read off the clone at the directory `layout-map.json` assigns, never recorded, and a target name that collides with a *different* workspace's public name is a hard failure rather than an alias."
+      "policy": "Classification is the target's, ranges follow the package that declares them, and nothing is silently dropped. Three cases, applied to the union of corvidae's `dependencies`, `devDependencies` and `optionalDependencies` and the target's. `peerDependencies` is deliberately not one of them: a peer range is half of a packaging declaration whose other half is `peerDependenciesMeta`, so the pair is composed together, by name, under `peerDependencies` below rather than split across these three cases. (1) A package that ships from this mirror is the transform's outright — name, block and specifier — because only the transform knows what it is called downstream and whether the edge stays a `workspace:*`. Its stale entries are removed first, so an edge corvidae dropped does not linger. (2) A third-party package the target declares anywhere keeps the target's block and the target's range. Weft putting `better-sqlite3` in `optionalDependencies` and `peerDependencies` is a packaging decision of weft's; corvidae having it in `dependencies` is an artifact of being an internal workspace where every dependency is a plain one, and emitting that moves seven storage drivers into every consumer's install. (3) A third-party package the target declares nowhere is added in corvidae's own block at corvidae's own range, and reported as `addedDependencies`: a package legitimately gains a dependency, and the alternative to adding it is emitting source that cannot resolve its own imports. The asymmetry with `scripts`, which are never unioned, is deliberate: a dependency is a fact about the source, while a script is a choice about the repository. COR-1287 widened case (1) to the target's own spelling: `mirrorPackages` carries not just each workspace's public name but the name the target's manifest at that workspace's directory already uses, where the two differ. The since-retired agent-bureau target called corvidae's `@lostgradient/lifecycle` just `lifecycle`, and under the public name alone rule (1) never matched that entry while rule (2) kept it, so the composed manifest declared the same workspace twice under two names and `bun install` refused the staged tree. The alias is read off the clone at the directory `layout-map.json` assigns, never recorded, and a target name that collides with a *different* workspace's public name is a hard failure rather than an alias."
     },
     "peerDependencies": {
       "policy": "COR-1468. Peer ranges and `peerDependenciesMeta` are one packaging declaration and are composed as a pair, name by name, so the two halves can never drift apart. For each peer a workspace's own corvidae manifest declares in `peerDependencies`, corvidae's range and its `peerDependenciesMeta` entry win over both the target's existing value and the vendored `package-surface.json` entry — including the absence of a meta entry, which declares a required peer and so removes an `optional` entry the other side held for that name. A declared peer is a fact about corvidae's source: Weft's A2A subpath imports `@a2a-js/sdk` and must not install it into every consumer, and a hand edit after the sync to say so is exactly what `publication-history.ts` refuses. Every peer corvidae does not declare keeps today's answer: the target's range and meta where the target has `peerDependencies`, otherwise the vendored `package-surface.json` entry, which is a port of what the target published. A workspace that declares no peers composes exactly as before. `manifests.ts`'s `composeManifest` merges the declarations into a target manifest's pair; `surface.ts`'s `applySurfaceToManifest` handles only a target without `peerDependencies`, merging the declarations over the vendored entry, and passes an already-composed pair through unchanged."

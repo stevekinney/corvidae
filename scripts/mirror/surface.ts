@@ -25,10 +25,16 @@ import {
   loadPackageSurface,
   resolveSurface,
   type CoverageFinding,
+  type PackageSurfaceDocument,
   type PackageSurfaceEntry,
   type SurfaceExportsMap,
 } from './package-surface.ts';
-import { checkParity, loadRegistryBaseline, type ParityResult } from './registry-baseline.ts';
+import {
+  checkParity,
+  loadRegistryBaseline,
+  type ParityResult,
+  type RegistryBaseline,
+} from './registry-baseline.ts';
 import {
   applyVersionConstants,
   assertSingleOwner,
@@ -105,7 +111,8 @@ export interface PublishedPackage {
    * COR-1289: verification builds and type-checks each published package in its own directory, and
    * a typecheck resolves an edge to a sibling package through that sibling's `exports`, which point
    * at `dist/`. A sibling that has not been built yet has no `dist/`, so the typecheck fails with
-   * `Cannot find module '@lostgradient/<dependency>'` — which is exactly what agent-bureau hit,
+   * `Cannot find module '@lostgradient/<dependency>'` — which is exactly what the since-retired
+   * agent-bureau target hit,
    * `armorer` being first in discovery order with four unbuilt dependencies behind it. Recording
    * the edges here is what lets `verify-steps.ts` order the step list by them instead of by the
    * order the workspace walk happened to find directories in.
@@ -283,7 +290,25 @@ export function applySurfaceToManifest(
   if (entry.bin !== undefined) manifest['bin'] = entry.bin;
 }
 
+/**
+ * Overrides for the two committed policy documents a plan reads beside the package map.
+ *
+ * Every production call omits them and reads the committed files, the same contract as
+ * `PlanOptions.packageMap`. The end-to-end sync harnesses pass them because no real `publish-as`
+ * package has a surface a fixture can build: since the owner retired the agent-bureau target on
+ * 2026-10-14, every remaining published package ships many subpaths through its own build or pack
+ * script. A harness therefore substitutes a one-entry tsdown surface for the packages it stands
+ * up, and the registry subpaths that surface is compared against, and passes the same documents to
+ * every step of the run so that planning, staging and the foreign-commit guard agree.
+ */
+export interface PolicyDocumentOverrides {
+  packageSurface?: PackageSurfaceDocument | undefined;
+  registryBaseline?: RegistryBaseline | undefined;
+}
+
 export interface SurfacePlanOptions extends PlanOptions {
+  /** Fixture policy documents; see `PolicyDocumentOverrides`. */
+  policyDocuments?: PolicyDocumentOverrides | undefined;
   /**
    * The corvidae commit the target's newest mirror commit records (`null` when the mirror has
    * never written there). `sync.ts` reads it once per run and passes the same value to every plan
@@ -303,8 +328,8 @@ export interface SurfacePlanOptions extends PlanOptions {
  */
 export async function planSurface(options: SurfacePlanOptions): Promise<SurfacePlan> {
   const manifestPlan = await planManifests(options);
-  const surface = await loadPackageSurface();
-  const baseline = await loadRegistryBaseline();
+  const surface = options.policyDocuments?.packageSurface ?? (await loadPackageSurface());
+  const baseline = options.policyDocuments?.registryBaseline ?? (await loadRegistryBaseline());
   const root = (await Bun.file(join(options.corvidaeRoot, 'package.json')).json()) as JsonObject;
   const catalog = isJsonObject(root['catalog']) ? (root['catalog'] as Record<string, string>) : {};
   const targetHasCatalog = targetCanHoldCatalog(options.target);

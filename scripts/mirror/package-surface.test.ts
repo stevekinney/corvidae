@@ -55,9 +55,9 @@ function entryFor(overrides: Partial<PackageSurfaceEntry> = {}): PackageSurfaceE
 }
 
 describe('package-surface.json', () => {
-  test('keeps generated test artifacts out of packed Chat and Editor packages', async () => {
+  test('keeps generated test artifacts out of the packed Editor package', async () => {
     const surface = await loadPackageSurface();
-    for (const workspace of ['@lostgradient/chat', '@lostgradient/editor']) {
+    for (const workspace of ['@lostgradient/editor']) {
       const files = surface.packages[workspace]?.files;
       expect(Array.isArray(files), workspace).toBe(true);
       if (!Array.isArray(files)) continue;

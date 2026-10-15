@@ -1,6 +1,7 @@
 import type { ProcessBackend } from '../session/session-types.ts';
 import { attempt, combineOutcomes } from '../session/settle.ts';
 import { BoundedByteFeed } from './bounded-byte-feed.ts';
+import type { HostPlatform } from './host-platform.ts';
 import {
   assembleHostedProcess,
   createOwnedProcess,
@@ -29,6 +30,20 @@ function notRunnable(profile: ProcessProfile): string | undefined {
     ...(path === undefined ? {} : { PATH: path }),
   });
   return found === null ? 'no executable file was found' : undefined;
+}
+
+/**
+ * Whether the terminal closing with `status` is the end of its output rather than a failure of it.
+ * macOS closes a finished terminal with status 0. Linux's `read` on the master of a pseudo-terminal
+ * returns `EIO` once every holder of the slave has closed it, which is that platform's end of
+ * file, and Bun reports it as a close with status 1. Any other status is a failure on both.
+ *
+ * The cost: Bun reports no errno, so a genuine read error that also closes with status 1 on Linux
+ * cannot be told from that end of file and is read as the end of output, not as a failed source.
+ * The process exit is tracked separately and is what tells a session how the process really ended.
+ */
+function endsOutput(host: HostPlatform, status: number): boolean {
+  return status === 0 || (host.platform === 'linux' && status === 1);
 }
 
 /** The master side of a child's pseudo-terminal, as `Bun.Terminal` offers it. */
@@ -107,7 +122,7 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
               rows: dimensions.rows,
               data: (_terminal: unknown, bytes: Uint8Array) => feed.push(bytes),
               exit: (_terminal: unknown, status: number) =>
-                status === 0
+                endsOutput(settings.host, status)
                   ? feed.end()
                   : feed.fail(new Error(`the terminal closed with status ${status}`)),
               drain: () => flushed(),

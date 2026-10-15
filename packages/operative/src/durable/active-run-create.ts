@@ -377,6 +377,7 @@ export function createDurableActiveRun(
   });
 
   return {
+    runId,
     result,
     abort,
     // COR-1270 — the durable branch reads the same snapshot the in-memory

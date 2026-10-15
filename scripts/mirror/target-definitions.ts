@@ -1,4 +1,4 @@
-export type MirrorTarget = 'weft' | 'cinder' | 'agent-bureau';
+export type MirrorTarget = 'weft' | 'cinder';
 
 export class MirrorTargetError extends Error {}
 
@@ -10,16 +10,14 @@ export const workspaceDirectories = ['applications', 'components', 'packages', '
  * rather than on which repository it lands in.
  *
  * `rootName` and `workspaces` are read off the targets as they exist today (`weft-monorepo` with
- * `packages/*`, `cinder-workspace` with its explicit list, `agent-bureau` with `packages/*`)
- * rather than invented, so a sync does not rewrite a key that was already correct. `catalog`
- * records whether the target has a workspace root able to hold one: `agent-bureau`'s root declares
- * `workspaces` but no `catalog`, so its specifiers inline to concrete ranges the way weft's do.
+ * `packages/*`, `cinder-workspace` with its explicit list) rather than invented, so a sync does not
+ * rewrite a key that was already correct. `catalog` records whether the target has a workspace root
+ * able to hold one: weft's root has none, so its specifiers inline to concrete ranges.
  *
- * `members` is exhaustive as of COR-1287. It used to be a single list — weft's — with every other
- * workspace falling through to cinder, which was correct while there were two targets and stopped
- * being correct the moment a third one claimed ten of the workspaces that fell through. Every
- * non-excluded workspace in `package-map.json` is now named by exactly one list, enforced by
- * `manifests.test.ts` against the map rather than left to this comment.
+ * `members` is exhaustive as of COR-1287: every non-excluded workspace in `package-map.json` is
+ * named by exactly one list, enforced by `manifests.test.ts` against the map rather than left to
+ * this comment. A third target, `agent-bureau`, was retired on 2026-10-14 when the owner stopped
+ * publishing everything except Weft and Cinder's packages; its former members are `exclude`d.
  */
 export const targetDefinitions = {
   weft: {
@@ -35,29 +33,11 @@ export const targetDefinitions = {
     catalog: true,
     members: [
       '@lostgradient/cinder',
-      '@lostgradient/chat',
       '@lostgradient/editor',
       '@lostgradient/markdown',
       '@lostgradient/weft-ui',
       '@lostgradient/testing',
       '@lostgradient/typescript',
-    ],
-  },
-  'agent-bureau': {
-    rootName: 'agent-bureau',
-    workspaces: ['packages/*'],
-    catalog: false,
-    members: [
-      '@lostgradient/operative',
-      'armorer',
-      'conversationalist',
-      '@lostgradient/cryptography',
-      '@lostgradient/embeddings',
-      '@lostgradient/tool-protocol',
-      '@lostgradient/lifecycle',
-      '@lostgradient/bureau',
-      '@lostgradient/memory',
-      '@lostgradient/skills',
     ],
   },
 } as const satisfies Record<
@@ -76,8 +56,8 @@ export const mirrorTargets = Object.keys(targetDefinitions) as readonly MirrorTa
  * Which target a workspace ships from.
  *
  * Throws rather than defaulting. A default was what made the two-target version read cleanly, and
- * it is exactly what a third target cannot have: an unlisted workspace silently joining whichever
- * target held the fallback is a package published from the wrong repository, which no downstream
+ * it is exactly what the member lists exist to prevent: an unlisted workspace silently joining
+ * whichever target held the fallback is a package published from the wrong repository, which no downstream
  * check would notice. Every caller here filters `exclude` first, so a workspace reaching this
  * function is one the mirror emits and therefore one that must have a home.
  */
@@ -100,8 +80,8 @@ export function publishedVersionRange(version: string, crossTarget: boolean): st
  * survives into it or is inlined to the concrete range corvidae's root catalog declares.
  *
  * Exported because `surface.ts` asks the same question about the toolchain dependencies it adds
- * and used to answer it with its own `options.target === 'cinder'`. Two literals, one fact: a
- * third target made the copy wrong rather than merely duplicated.
+ * and used to answer it with its own `options.target === 'cinder'`. Two literals, one fact, kept in
+ * one place.
  */
 export function targetHasCatalog(target: MirrorTarget): boolean {
   return targetDefinitions[target].catalog;

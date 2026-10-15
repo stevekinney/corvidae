@@ -57,6 +57,6 @@ bun run test:deployment
 bun run test:browser
 ```
 
-`bun run dev:server` starts the seeded Weft API. `bun run dev:browser` builds the real Svelte source with Bun and serves it with API, JSON-RPC, SSE, and WebSocket forwarding. The browser build is a development artifact; the library remains direct-source and has no publishing contract.
+`bun run dev:server` starts the seeded Weft API through Weft's `dashboard()`, so port 7233 also serves a snapshot of the console, compiled once into `scripts/browser/build/dashboard/` (delete that directory to recompile it). `bun run dev:browser` builds the real Svelte source with Bun and serves it with API, JSON-RPC, SSE, and WebSocket forwarding. The browser build is a development artifact; the library remains direct-source and has no publishing contract.
 
 From the Corvidae root, use `bunx turbo run lint typecheck test --filter=@lostgradient/weft-ui` for this library or `bun run validate` for all workspaces.

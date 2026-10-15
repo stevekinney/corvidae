@@ -116,6 +116,23 @@ describe('createCatalogDispatcher — startChildRun', () => {
     expect(runAttribution.has('child-1')).toBe(false);
   });
 
+  it('gives a process-local child handle the id the topology recorded for it (COR-1302)', async () => {
+    const dispatcher = createDispatcher(false, {
+      runtime: { createBureauInvariantHooks: () => undefined } as unknown as RuntimeComposition,
+    });
+
+    const run = dispatcher.startChildRun({ ...start, agentName: 'worker' });
+    expect(run.id).toBe('child-1');
+    expect(run.snapshot().id).toBe('child-1');
+    // A child is controlled through `children`, never through `getRun`/`abortRun`.
+    expect(dispatcher.findCatalogRun('child-1')).toBeUndefined();
+    const result = await run.result();
+    expect(result.error).toBeUndefined();
+    expect(result.content).toBe('done');
+    expect(run.id).toBe('child-1');
+    expect(run.snapshot().id).toBe('child-1');
+  });
+
   it('refuses to start a child for an agent the catalog does not have', () => {
     const dispatcher = createDispatcher(false);
 

@@ -75,6 +75,19 @@ export type UnwrappedValue<O, H extends boolean> = [H] extends [true] ? O : stri
 export type AgentRun<O = never, H extends boolean = false> = AsyncIterable<RunEvent> &
   OutputMethod<O, H> & {
     /**
+     * COR-1302 — this run's identifier, equal to `snapshot().id`. It is the
+     * id a durable run's workflow is stored under, so it survives recovery
+     * unchanged. It is fixed for the handle's whole life, with two
+     * exceptions. A `SessionHandle.run()` handle reads a provisional id until
+     * its session's sequence reservation commits. A handle that wraps a
+     * hand-written `RunnableAgent` (a lazy agent's, or Bureau's catalog
+     * dispatch) keeps the id it passed as `AgentRunContext.runId`; if that
+     * agent ignores the id, the handle's `snapshot().id` reports the agent's
+     * own id once the agent's run starts, and the two differ.
+     */
+    readonly id: string;
+
+    /**
      * Returns a cached `Promise` for the terminal `RunResult`. Ordinary model,
      * tool, and caller cancellation outcomes resolve with a `finishReason`,
      * including `'aborted'` after `abort()`. Infrastructure failures such as a
@@ -373,6 +386,13 @@ export function createAgentRun<O = never, H extends boolean = false>(
   }
 
   const handle = {
+    // COR-1302 — read through to the wrapped run, which every producer but
+    // one fixes at construction. A session run's wrapper learns its id only
+    // once its reservation commits; see `session-run.ts`.
+    get id(): string {
+      return activeRun.runId;
+    },
+
     result(): Promise<RunResult<O, H>> {
       return cachedResult;
     },
