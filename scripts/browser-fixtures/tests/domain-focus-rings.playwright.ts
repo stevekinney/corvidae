@@ -10,6 +10,7 @@ import { expect, test, type Browser, type Locator, type Page } from '@playwright
 
 import { environmentConfiguration } from '../environment-configuration.ts';
 import { fixtureRoute } from './overlay-fixture.ts';
+import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 const HARNESS = '[data-testid="chat-private-harness"]';
 const FIXTURE_ROUTE = fixtureRoute('chat', { fixtureName: 'private-harness' });
@@ -140,7 +141,11 @@ async function waitForSettledFocusPaint(target: Locator, label: string): Promise
   return paint;
 }
 
-async function assertSharedOuterRing(target: Locator, label: string): Promise<void> {
+async function assertSharedOuterRing(
+  target: Locator,
+  label: string,
+  options: { filled?: boolean } = {},
+): Promise<void> {
   const paint = await waitForSettledFocusPaint(target, label);
   expect(paint.matchesFocusVisible, `${label} should match :focus-visible`).toBe(true);
   expect(paint.outlineStyle, `${label} should reserve an outline channel`).toBe('solid');
@@ -150,6 +155,14 @@ async function assertSharedOuterRing(target: Locator, label: string): Promise<vo
     boxShadowLayerCount(paint.boxShadow),
     `${label} should use the shared two-stop ring`,
   ).toBeGreaterThanOrEqual(2);
+  // Updated for COR-1498: unfilled targets paint one tight 2px ring (the offset
+  // stop is 0px). A solid accent fill (the enabled send button) paints a 2px
+  // page-coloured gap and then the ring, so its hard bands are 2px and 4px.
+  // Blurred elevation layers are not bands.
+  expect(
+    outerBands(parseBoxShadow(paint.boxShadow)).map((band) => band.spread),
+    `${label} should paint ${options.filled ? 'a gap then the ring' : 'one tight 2px ring'}`,
+  ).toEqual(options.filled ? [2, 4] : [2]);
   expect(paint.boxShadow, `${label} should not use an inset ring`).not.toContain('inset');
 }
 
@@ -207,7 +220,7 @@ test.describe('domain focus rings -- chat harness', () => {
       await composer.click();
       await tabUntilFocused(page, sendButton, 'send button', 8);
       await expect(sendButton).toBeFocused();
-      await assertSharedOuterRing(sendButton, 'send button');
+      await assertSharedOuterRing(sendButton, 'send button', { filled: true });
     } finally {
       await dispose();
     }

@@ -11,8 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { outcomeOf, rethrow } from '@lostgradient/testing';
-
+import { outcomeOf, rethrow } from '../../module-scope-scenario.test-support.ts';
 import { playwrightBaseImage, readRepositoryPins } from './baseline-provenance.ts';
 import {
   DOCKERFILE_PATH,
@@ -32,8 +31,9 @@ import {
   type DockerRunner,
 } from './docker-baseline-runner.ts';
 
-/** The stub docker binary is a real process, so the whole scenario runs at module scope. */
-const signalDuringRunScenario = await outcomeOf(async () => {
+// The stub docker binary is a real shell process, so this scenario runs once at module scope,
+// off the per-test clock (COR-1507), and its test rethrows what it recorded.
+const stubbedDockerSignalOutcome = await outcomeOf(async () => {
   const directory = mkdtempSync(join(tmpdir(), 'docker-stub-'));
   const log = join(directory, 'calls.log');
   const stub = join(directory, 'docker');
@@ -218,8 +218,9 @@ describe('kill on signal', () => {
     ).toBe(130);
   });
 
-  it('turns a signal during a run into the signal status through a stubbed docker binary', () =>
-    rethrow(signalDuringRunScenario));
+  it('turns a signal during a run into the signal status through a stubbed docker binary', () => {
+    rethrow(stubbedDockerSignalOutcome);
+  });
 
   it('returns the container status when no signal arrives', async () => {
     const docker: DockerRunner = async () => 3;

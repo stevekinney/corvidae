@@ -239,24 +239,37 @@ export function renderControlComparison(
   ].join('\n');
 }
 
-if (import.meta.main) {
-  const [command, runPath, controlPath] = process.argv.slice(2);
+/**
+ * The `compare` command: prints the control comparison and returns 0 when the stability
+ * rule holds, 1 when it does not, and 2 for a usage error.
+ */
+export async function runCompareCommand(
+  argv: readonly string[],
+  output: { stdout: (text: string) => void; stderr: (text: string) => void },
+): Promise<number> {
+  const [command, runPath, controlPath] = argv;
   if (command !== 'compare' || runPath === undefined || controlPath === undefined) {
-    process.stderr.write(
+    output.stderr(
       'usage: suite-results.ts compare <run suite-results.json> <control suite-results.json>\n',
     );
-    process.exitCode = 2;
-  } else {
-    const run = readStoredRun(runPath, await Bun.file(runPath).text());
-    const control = readStoredRun(controlPath, await Bun.file(controlPath).text());
-    const comparison = compareWithControl(run, control);
-    process.stdout.write(
-      renderControlComparison(
-        comparison,
-        { label: runPath, results: run },
-        { label: controlPath, results: control },
-      ),
-    );
-    process.exitCode = comparison.passes ? 0 : 1;
+    return 2;
   }
+  const run = readStoredRun(runPath, await Bun.file(runPath).text());
+  const control = readStoredRun(controlPath, await Bun.file(controlPath).text());
+  const comparison = compareWithControl(run, control);
+  output.stdout(
+    renderControlComparison(
+      comparison,
+      { label: runPath, results: run },
+      { label: controlPath, results: control },
+    ),
+  );
+  return comparison.passes ? 0 : 1;
+}
+
+if (import.meta.main) {
+  process.exitCode = await runCompareCommand(process.argv.slice(2), {
+    stdout: (text) => process.stdout.write(text),
+    stderr: (text) => process.stderr.write(text),
+  });
 }

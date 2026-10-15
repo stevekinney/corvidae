@@ -1,7 +1,7 @@
 import type { Subprocess } from 'bun';
 import { describe, expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,7 +13,9 @@ import {
 import { rejectionOf } from './promise-outcome.test-support.ts';
 import {
   acquireHostLock,
+  heldLockTokenVariable,
   ownerFileName,
+  queueDirectoryFor,
   reclaimAbandoned,
   runExclusively,
   type HostLockHolder,
@@ -452,4 +454,193 @@ describe('runExclusively', () => {
 
   test('runs unlocked with a warning when the lock cannot be created', () =>
     rethrow(runsUnlockedWhenLockCannotBeCreated));
+});
+
+/** Resolves once `count` tickets are queued beside the lock, so arrival order is under the test's control. */
+async function waitForTickets(lockDirectory: string, count: number): Promise<void> {
+  for (;;) {
+    const tickets = await readdir(queueDirectoryFor(lockDirectory)).catch(() => []);
+    if (tickets.length >= count) return;
+    await Bun.sleep(2);
+  }
+}
+
+async function writeTicket(
+  lockDirectory: string,
+  name: string,
+  contents: OwnerRecord,
+): Promise<void> {
+  await mkdir(queueDirectoryFor(lockDirectory), { recursive: true });
+  await writeFile(join(queueDirectoryFor(lockDirectory), name), JSON.stringify(contents));
+}
+
+const grantsInArrivalOrder = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory } = scratch;
+  const first = await acquireHostLock({ lockDirectory, holder: holder(scratch) });
+  const order: number[] = [];
+  const waiters: Promise<void>[] = [];
+  for (let index = 0; index < 5; index++) {
+    // Different poll intervals would let a later, faster poller win without a queue.
+    waiters.push(
+      acquireHostLock({
+        lockDirectory,
+        holder: holder(scratch),
+        pollIntervalMs: index % 2 === 0 ? 1 : 7,
+      }).then(async (lock) => {
+        order.push(index);
+        await Bun.sleep(3);
+        await lock.release();
+      }),
+    );
+    await waitForTickets(lockDirectory, index + 1);
+  }
+  await first.release();
+  await Promise.all(waiters);
+  expect(order).toEqual([0, 1, 2, 3, 4]);
+  expect(await readdir(queueDirectoryFor(lockDirectory))).toEqual([]);
+});
+
+const livingEarlierWaiterBlocksLaterOnes = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory } = scratch;
+  // The lock is free, but a live waiter arrived first and has not taken its turn yet.
+  await writeTicket(lockDirectory, '0000000000000001-earlier.json', {
+    ...holder(scratch),
+    token: 'earlier',
+  });
+  const controller = new AbortController();
+  const reason = rejectionOf(
+    acquireHostLock({
+      lockDirectory,
+      holder: holder(scratch),
+      pollIntervalMs: 1,
+      signal: controller.signal,
+      onWait: () => setTimeout(() => controller.abort(), 20),
+    }),
+  );
+  expect(await reason).toBeInstanceOf(Error);
+  expect(await Bun.file(join(lockDirectory, ownerFileName)).exists()).toBe(false);
+  // The abandoned wait left only the earlier waiter's ticket behind.
+  expect(await readdir(queueDirectoryFor(lockDirectory))).toEqual([
+    '0000000000000001-earlier.json',
+  ]);
+});
+
+const skipsDeadWaiter = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory } = scratch;
+  const holding = await acquireHostLock({ lockDirectory, holder: holder(scratch) });
+  await writeTicket(lockDirectory, '0000000000000001-dead.json', {
+    ...holder(scratch, await exitedPid()),
+    token: 'dead',
+  });
+  await writeTicket(lockDirectory, '0000000000000002-recycled.json', {
+    ...holder(scratch),
+    pidStartedAt: 'Thu Jan  1 00:00:00 1970',
+    token: 'recycled',
+  });
+  const { promise: waiting, resolve: markWaiting } = Promise.withResolvers<void>();
+  const next = acquireHostLock({
+    lockDirectory,
+    holder: holder(scratch),
+    pollIntervalMs: 1,
+    onWait: () => markWaiting(),
+  });
+  await waiting;
+  await holding.release();
+  const lock = await next;
+  await lock.release();
+  expect(await readdir(queueDirectoryFor(lockDirectory))).toEqual([]);
+});
+
+const abortedWaiterLeavesQueue = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory } = scratch;
+  const holding = await acquireHostLock({ lockDirectory, holder: holder(scratch) });
+  const controller = new AbortController();
+  const reason = rejectionOf(
+    acquireHostLock({
+      lockDirectory,
+      holder: holder(scratch),
+      pollIntervalMs: 1,
+      signal: controller.signal,
+      onWait: () => controller.abort(),
+    }),
+  );
+  expect(await reason).toBeInstanceOf(Error);
+  expect(await readdir(queueDirectoryFor(lockDirectory))).toEqual([]);
+  await holding.release();
+});
+
+describe('the waiting queue', () => {
+  test('grants the lock to waiters in the order they arrived', () => rethrow(grantsInArrivalOrder));
+
+  test('a live earlier waiter keeps a later one from taking a free lock', () =>
+    rethrow(livingEarlierWaiterBlocksLaterOnes));
+
+  test('skips waiters whose process has exited or been recycled', () => rethrow(skipsDeadWaiter));
+
+  test('a waiter that gives up leaves the queue', () => rethrow(abortedWaiterLeavesQueue));
+});
+
+const nestedStageReusesReservation = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory, directory } = scratch;
+  const fixture = join(directory, 'nested.ts');
+  await writeFile(
+    fixture,
+    `import { runExclusively } from ${JSON.stringify(join(import.meta.dir, 'run-exclusively.ts'))};
+process.exitCode = await runExclusively({
+  lockDirectory: process.argv[2],
+  script: process.argv[3],
+  pollIntervalMs: 5,
+  report: () => {},
+});
+`,
+  );
+  // The outer run holds the lock; the stage it starts asks for the same lock and must not wait.
+  const code = await runExclusively({
+    lockDirectory,
+    script: `'${process.execPath}' '${fixture}' '${lockDirectory}' 'exit 5'`,
+    pollIntervalMs: 5,
+    report: () => {},
+  });
+  expect(code).toBe(5);
+  expect(await Bun.file(join(lockDirectory, ownerFileName)).exists()).toBe(false);
+});
+
+const exposesTokenOnlyToItsCommand = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory, directory } = scratch;
+  const output = join(directory, 'token');
+  await runExclusively({
+    lockDirectory,
+    script: `printf '%s' "$${heldLockTokenVariable}" > '${output}'`,
+    report: () => {},
+  });
+  const token = await readFile(output, 'utf8');
+  expect(token.length).toBeGreaterThan(0);
+});
+
+const staleReservationDoesNotBypassLock = await inScratchDirectory(async (scratch) => {
+  const { lockDirectory } = scratch;
+  const holding = await acquireHostLock({ lockDirectory, holder: holder(scratch) });
+  const reports: string[] = [];
+  const running = runExclusively({
+    lockDirectory,
+    script: 'exit 0',
+    pollIntervalMs: 1,
+    // A token inherited from a lock that has since been released names nothing now held.
+    environment: { [heldLockTokenVariable]: 'not-the-holder' },
+    report: (line) => reports.push(line),
+  });
+  while (reports.length === 0) await Bun.sleep(2);
+  await holding.release();
+  expect(await running).toBe(0);
+});
+
+describe('a reservation held across stages', () => {
+  test('a stage started under the lock reuses it instead of queueing behind its own parent', () =>
+    rethrow(nestedStageReusesReservation));
+
+  test('the lock token reaches the command through the environment', () =>
+    rethrow(exposesTokenOnlyToItsCommand));
+
+  test('a token that does not match the current holder does not bypass the lock', () =>
+    rethrow(staleReservationDoesNotBypassLock));
 });
