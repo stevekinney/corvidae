@@ -55,14 +55,58 @@ export type BenchmarkCell = {
   readonly control: ObservedWorkload;
 };
 
+/** Whether a cell meets its target and, for a cleanup cell, ended with a complete cleanup. */
+export function cellPasses(cell: BenchmarkCell): boolean {
+  const observation = cell.observed.metrics[cell.target.metric];
+  const complete = cell.observed.metrics['cleanupComplete'];
+  return (
+    observation !== undefined &&
+    meets(cell.target, observation.value) &&
+    (complete === undefined || complete.value === 1)
+  );
+}
+
+/** What a measurement that threw leaves behind: no metric the target could be read from, and the reason. */
+export function failedObservation(
+  error: unknown,
+  sampleCount: number,
+  warmupCount: number,
+): ObservedWorkload {
+  return {
+    durationMilliseconds: Number.EPSILON,
+    sampleCount,
+    warmupCount,
+    metrics: { measurementFailed: { value: 1, unit: 'boolean' } },
+    raw: { error: error instanceof Error ? error.message : String(error), host: hostConditions() },
+  };
+}
+
+export type CellSpecification = Omit<BenchmarkCell, 'observed' | 'control'> & {
+  readonly control: () => ObservedWorkload | Promise<ObservedWorkload>;
+  readonly measure: () => Promise<ObservedWorkload>;
+};
+
+/** Run one cell's control and measurement. A throw is a failed cell on record, not the loss of every other cell. */
+export async function runCell(specification: CellSpecification): Promise<BenchmarkCell> {
+  const { control, measure, ...cell } = specification;
+  const failed = (error: unknown) => failedObservation(error, cell.sampleCount, cell.warmupCount);
+  // One after the other: a control running beside a measurement would be measuring the measurement.
+  const controlled = await Promise.resolve().then(control).catch(failed);
+  const observed = await Promise.resolve().then(measure).catch(failed);
+  return { ...cell, control: controlled, observed };
+}
+
 function toCell(cell: BenchmarkCell): EvidenceCell {
   const observation = cell.observed.metrics[cell.target.metric];
-  const passed = observation !== undefined && meets(cell.target, observation.value);
+  const passed = cellPasses(cell);
   return {
     id: cell.id,
     passed,
     observations: [
       `${cell.target.metric} ${observation?.value ?? 'missing'} ${cell.target.unit}, target ${cell.target.comparator} ${cell.target.value}`,
+      ...(cell.observed.raw['outcome'] === undefined
+        ? []
+        : [`cleanup outcome ${String(cell.observed.raw['outcome'])}, required complete`]),
     ],
     versions: { bun: Bun.version, platform: `${platform()}/${arch()}`, kernel: release() },
     metrics: cell.observed.metrics,

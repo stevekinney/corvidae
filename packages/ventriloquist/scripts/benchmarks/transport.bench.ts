@@ -30,11 +30,16 @@ import {
   SAMPLES,
   TARGETS,
   buildBenchmarkReport,
+  cellPasses,
+  failedObservation,
   meets,
+  runCell,
   type BenchmarkCell,
+  type CellSpecification,
   type Target,
 } from './benchmark-report.ts';
 import {
+  cleanupObservation,
   measureAcknowledgementLatency,
   measureCleanup,
   measureControlPath,
@@ -77,7 +82,7 @@ const cleanupTarget: Target = {
 rmSync(reportPath, { force: true });
 
 // Each measurement drives real sockets and processes, one after another, off Bun's per-test clock.
-const cells: BenchmarkCell[] = [
+const specifications: CellSpecification[] = [
   {
     id: 'throughput-and-queues',
     method:
@@ -85,8 +90,8 @@ const cells: BenchmarkCell[] = [
     target: throughputTarget,
     sampleCount: SAMPLES.transfer,
     warmupCount: 0,
-    control: throughputControl(),
-    observed: await measureThroughput('websocket'),
+    control: () => throughputControl(),
+    measure: () => measureThroughput('websocket'),
   },
   {
     id: 'direct-throughput-and-queues',
@@ -94,8 +99,8 @@ const cells: BenchmarkCell[] = [
     target: throughputTarget,
     sampleCount: SAMPLES.transfer,
     warmupCount: 0,
-    control: throughputControl(),
-    observed: await measureThroughput('direct'),
+    control: () => throughputControl(),
+    measure: () => measureThroughput('direct'),
   },
   {
     id: 'input-latency',
@@ -104,8 +109,8 @@ const cells: BenchmarkCell[] = [
     target: latencyTarget,
     sampleCount: SAMPLES.latency,
     warmupCount: 0,
-    control: latencyControl(),
-    observed: await measureAcknowledgementLatency('websocket'),
+    control: () => latencyControl(),
+    measure: () => measureAcknowledgementLatency('websocket'),
   },
   {
     id: 'direct-input-latency',
@@ -113,8 +118,8 @@ const cells: BenchmarkCell[] = [
     target: latencyTarget,
     sampleCount: SAMPLES.latency,
     warmupCount: 0,
-    control: latencyControl(),
-    observed: await measureAcknowledgementLatency('direct'),
+    control: () => latencyControl(),
+    measure: () => measureAcknowledgementLatency('direct'),
   },
   {
     id: 'pty-echo-latency',
@@ -123,8 +128,8 @@ const cells: BenchmarkCell[] = [
     target: latencyTarget,
     sampleCount: SAMPLES.latency,
     warmupCount: 0,
-    control: latencyControl(),
-    observed: await measureTerminalEchoLatency('websocket'),
+    control: () => latencyControl(),
+    measure: () => measureTerminalEchoLatency('websocket'),
   },
   {
     id: 'memory-plateau',
@@ -133,8 +138,8 @@ const cells: BenchmarkCell[] = [
     target: memoryTarget,
     sampleCount: SAMPLES.transfer,
     warmupCount: SAMPLES.memoryWarmup,
-    control: memoryControl(),
-    observed: await measureMemoryPlateau('websocket'),
+    control: () => memoryControl(),
+    measure: () => measureMemoryPlateau('websocket'),
   },
   {
     id: 'cleanup-duration',
@@ -142,8 +147,8 @@ const cells: BenchmarkCell[] = [
     target: cleanupTarget,
     sampleCount: SAMPLES.transfer,
     warmupCount: 0,
-    control: await cleanupControl(),
-    observed: await measureCleanup('websocket', 'pty', false),
+    control: () => cleanupControl(),
+    measure: () => measureCleanup('websocket', 'pty', false),
   },
   {
     id: 'stubborn-cleanup-duration',
@@ -152,8 +157,8 @@ const cells: BenchmarkCell[] = [
     target: cleanupTarget,
     sampleCount: SAMPLES.transfer,
     warmupCount: 0,
-    control: await cleanupControl(),
-    observed: await measureCleanup('websocket', 'pty', true),
+    control: () => cleanupControl(),
+    measure: () => measureCleanup('websocket', 'pty', true),
   },
   {
     id: 'control-path-under-backlog',
@@ -162,10 +167,13 @@ const cells: BenchmarkCell[] = [
     target: cleanupTarget,
     sampleCount: SAMPLES.transfer,
     warmupCount: 0,
-    control: await cleanupControl(),
-    observed: await measureControlPath('websocket'),
+    control: () => cleanupControl(),
+    measure: () => measureControlPath('websocket'),
   },
 ];
+
+const cells: BenchmarkCell[] = [];
+for (const specification of specifications) cells.push(await runCell(specification));
 
 const sourceSha = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
   cwd: repositoryRoot,
@@ -206,14 +214,51 @@ describe('the benchmark controls', () => {
   });
 });
 
+describe('a cell that does not hold', () => {
+  const cleanup = cells.find((cell) => cell.id === 'cleanup-duration') as BenchmarkCell;
+  const withOutcome = (outcome: string): BenchmarkCell => ({
+    ...cleanup,
+    observed: cleanupObservation(1, outcome),
+  });
+
+  test('a fast cleanup that is not complete fails its cell, for every outcome but complete', () => {
+    expect(cellPasses(withOutcome('complete'))).toBe(true);
+    expect(cellPasses(withOutcome('incomplete'))).toBe(false);
+    expect(cellPasses(withOutcome('unknown'))).toBe(false);
+    const report = buildBenchmarkReport([withOutcome('unknown')], 'a'.repeat(40));
+    expect(report.passed).toBe(false);
+    expect(report.cells[0]?.observations.join(' ')).toContain('cleanup outcome unknown');
+  });
+
+  test('a measurement that throws is a failed cell on record, and the other cells keep their numbers', async () => {
+    const thrown = await runCell({
+      ...cleanup,
+      id: 'throws',
+      control: () => cleanupControl(),
+      measure: () => Promise.reject(new Error('the host went away')),
+    });
+    expect(cellPasses(thrown)).toBe(false);
+    expect(thrown.observed.raw['error']).toBe('the host went away');
+    expect(thrown.observed.metrics['measurementFailed']?.value).toBe(1);
+    expect(failedObservation('text', 1, 0).raw['error']).toBe('text');
+    const report = buildBenchmarkReport([thrown, cleanup], 'a'.repeat(40));
+    expect(report.cells.map((cell) => cell.passed)).toEqual([false, cellPasses(cleanup)]);
+  });
+});
+
 describe('the benchmark report', () => {
   test('is a valid resource report under the shared evidence schema, whatever the measurements were', () => {
     const written = JSON.parse(readFileSync(reportPath, 'utf8')) as EvidenceReport;
     expect(structuralErrors(written)).toEqual([]);
-    // A missed target is evidence, not a malformed report; the targets are asserted below.
-    expect(
-      validateEvidence(written, 'resource').filter((error) => error !== 'target comparator failed'),
-    ).toEqual([]);
+    // A missed target is evidence, not a malformed report; the targets are asserted below. A
+    // measurement that threw has no metric to validate, and its own test below names the error.
+    if (!cells.some((cell) => cell.observed.metrics['measurementFailed'] !== undefined)) {
+      expect(
+        validateEvidence(written, 'resource').filter(
+          (error) => error !== 'target comparator failed',
+        ),
+      ).toEqual([]);
+    }
     expect(written.cells.map((cell) => cell.id)).toEqual(written.expectedCellIds);
   });
 
@@ -230,7 +275,10 @@ describe('the COR-483 targets', () => {
   for (const cell of cells) {
     test(`${cell.id}: ${cell.target.metric} ${cell.target.comparator} ${cell.target.value} ${cell.target.unit}`, () => {
       const measured = cell.observed.metrics[cell.target.metric]?.value ?? Number.NaN;
-      expect(meets(cell.target, measured), `measured ${measured} ${cell.target.unit}`).toBe(true);
+      expect(
+        cellPasses(cell),
+        `measured ${measured} ${cell.target.unit}, outcome ${String(cell.observed.raw['outcome'])}, error ${String(cell.observed.raw['error'])}`,
+      ).toBe(true);
     });
   }
 });

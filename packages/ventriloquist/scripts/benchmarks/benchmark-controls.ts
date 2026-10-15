@@ -55,5 +55,5 @@ export function memoryControl(): ObservedWorkload {
 export async function cleanupControl(): Promise<ObservedWorkload> {
   const startedAt = performance.now();
   await Promise.resolve('complete');
-  return cleanupObservation(nonZero(startedAt), { outcome: 'complete', standIn: true });
+  return cleanupObservation(nonZero(startedAt), 'complete', { standIn: true });
 }

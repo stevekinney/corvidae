@@ -193,13 +193,21 @@ export async function measureMemoryPlateau(path: TransportPath): Promise<Observe
   return memoryObservation(before, Math.max(before, run.rssPeakBytes), duration);
 }
 
-export function cleanupObservation(duration: number, extra: Record<string, unknown> = {}) {
+export function cleanupObservation(
+  duration: number,
+  outcome: string,
+  extra: Record<string, unknown> = {},
+) {
   return observation(
     duration,
     SAMPLES.transfer,
     0,
-    { cleanup: { value: duration, unit: 'milliseconds' } },
-    { duration, ...extra },
+    {
+      cleanup: { value: duration, unit: 'milliseconds' },
+      // Unknown or incomplete cleanup is a failure however quick it was (security-and-budgets.md).
+      cleanupComplete: { value: outcome === 'complete' ? 1 : 0, unit: 'boolean' },
+    },
+    { duration, outcome, ...extra },
   );
 }
 
@@ -224,7 +232,7 @@ export async function measureCleanup(
   const cleanup = await rig.client.waitForKind('cleanup-result');
   const duration = performance.now() - startedAt;
   await rig.stop();
-  return cleanupObservation(duration, { outcome: cleanup.outcome, pids, stubborn });
+  return cleanupObservation(duration, cleanup.outcome, { pids, stubborn });
 }
 
 /** Stop, sent while a half-budget backlog of output is unparsed and the input FIFO is full. */
@@ -247,5 +255,5 @@ export async function measureControlPath(path: TransportPath): Promise<ObservedW
   const duration = performance.now() - startedAt;
   scripted.releaseWrites();
   await rig.stop();
-  return cleanupObservation(duration, { outcome: cleanup.outcome, backlogBytes: 8 * CHUNK_BYTES });
+  return cleanupObservation(duration, cleanup.outcome, { backlogBytes: 8 * CHUNK_BYTES });
 }
