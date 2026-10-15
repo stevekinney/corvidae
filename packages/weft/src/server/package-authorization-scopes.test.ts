@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { ClientOperationTypes } from '../client/generated/operation-client.generated.ts';
 import { Engine } from '../core/engine.ts';
 import { MemoryStorage } from '../storage/memory.ts';
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   createAuthenticator,
   createRotatingApiKeyStore,
@@ -187,16 +188,20 @@ describe('additionalScopes — validation at construction', () => {
   it('rejects a scope that does not match the namespaced template', async () => {
     for (const scope of malformed) {
       const additionalScopes = [scope] as unknown as PackageAuthorizationScope[];
-      await expect(
-        createAuthenticator({ jwt: { secret: SECRET } }, { additionalScopes }),
-      ).rejects.toThrow(/additionalScopes/);
+      expect(
+        await throwingRejectionOf(
+          createAuthenticator({ jwt: { secret: SECRET } }, { additionalScopes }),
+        ),
+      ).toThrow(/additionalScopes/);
     }
   });
 
   it('rejects a scope in the reserved `weft` namespace', async () => {
-    await expect(
-      createAuthenticator({ jwt: { secret: SECRET } }, { additionalScopes: ['weft.tasks:read'] }),
-    ).rejects.toThrow(/reserved/);
+    expect(
+      await throwingRejectionOf(
+        createAuthenticator({ jwt: { secret: SECRET } }, { additionalScopes: ['weft.tasks:read'] }),
+      ),
+    ).toThrow(/reserved/);
   });
 
   it('serve() rejects a malformed or reserved scope before binding', () => {
