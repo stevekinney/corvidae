@@ -170,6 +170,22 @@ describe('steering log', () => {
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
     );
+    // A run control is decided by the gate, never refused before it.
+    await kv.set(
+      entryKey,
+      JSON.stringify({
+        type: 'refused',
+        command: command({ requestedValue: { target: 'pause' } }),
+        outcome: {
+          outcome: 'rejected',
+          failure: { failedAt: '2026-09-02T00:00:01.000Z', reason: 'policy-denied' },
+        },
+        now: '2026-09-02T00:00:01.000Z',
+      }),
+    );
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
     // The selector refusal belongs to an identity selector, nothing else.
     await kv.set(
       entryKey,
