@@ -297,6 +297,8 @@ The shell criterion was first written against parsed inputs, and the coordinator
 - every Cinder component script that contributes bytes is reachable from the shell's own imports, resolved through the barrel's named re-exports and `export *` targets and then the metafile's import graph, not a hand-kept list;
 - every Shiki grammar the shell reads is one the curated adapter itself allows (14 of 14).
 
-### Pre-existing finding: the shell ships every component stylesheet
+### Pre-existing finding: every bundle build emits an unreferenced stylesheet
 
-On `main` and independently of CIN-588, the shell's JavaScript entry is 837,209 bytes, and 823,012 of them come from 195 inlined CSS inputs, 180 of which are Cinder component stylesheets (745,218 bytes). They arrive through the barrel's side-effect `import './styles/index.css'`. The reachability check is therefore scoped to scripts. The CSS is left for its own issue, to be delivered after CIN-588 merges.
+On `main` and independently of CIN-588, the shell build's 837,209-byte output is not its JavaScript entry, which is 48,332 bytes. It is a CSS asset that Bun names `shell-entry-<hash>.js` because the build's entry naming pattern ends in `.js`, and 823,012 of its bytes come from 195 CSS inputs, 180 of which are Cinder component stylesheets (745,218 bytes). They arrive through the barrel's side-effect `import './styles/index.css'`. No page references the asset and the export does not ship it, so the shell's reachability check is scoped to scripts.
+
+Each browser bundle build also emits an unreferenced CSS asset holding all Cinder styles: a build-time and dev-server-memory cost, not shipped bytes.
