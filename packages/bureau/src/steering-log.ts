@@ -417,6 +417,11 @@ export async function appendSteeringLogEvent(
   event: SteeringLogEvent,
   expectedBinding: string | null = null,
 ): Promise<SteeringLogAppendResult> {
+  if (!isReadableSteeringLogEvent(event, sessionId)) {
+    throw new SteeringLogCorruptError(
+      `Steering log event "${event.type}" for session "${sessionId}" could not be read back, so it was not appended.`,
+    );
+  }
   const sequence = head.sequence + 1;
   const nextHead = JSON.stringify({ sequence });
   const conditions: { key: string; expectedValue: string | null }[] = [
@@ -524,10 +529,15 @@ export function steeringSessionRunTag(sessionId: string, incarnation: string): s
 }
 
 /**
- * Whether `command` can be logged: exactly the shape the log parser accepts
- * when it reads the entry back. Anything else, once appended, would make the
- * whole session's log unreadable to every other process and every restart.
+ * Whether the log can read `event` back. The writer appends nothing the
+ * reader would refuse: an event the reader rejects as impossible would leave
+ * the session's log unfoldable for every process, from the next read on.
  */
-export function isLoggableSteeringCommand(command: unknown): boolean {
-  return isSteeringCommand(command);
+export function isReadableSteeringLogEvent(event: SteeringLogEvent, sessionId: string): boolean {
+  try {
+    parseEvent(JSON.stringify(event), 0, sessionId);
+    return true;
+  } catch {
+    return false;
+  }
 }

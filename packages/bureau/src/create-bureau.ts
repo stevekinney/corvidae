@@ -232,7 +232,7 @@ import {
   readSteeringKeyBinding,
   readSteeringLogEntries,
   readSteeringLogHead,
-  isLoggableSteeringCommand,
+  isReadableSteeringLogEvent,
   SteeringLogCorruptError,
   steeringSessionRunTag,
   type SteeringKeyBinding,
@@ -8763,8 +8763,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
         };
       }
-      // Only what the log parser can read back is ever appended.
-      if (!isLoggableSteeringCommand(command)) {
+      // Only what the log parser can read back is ever appended: the command,
+      // and with it the value the caller submitted, if one is kept.
+      const probe: SteeringLogEvent =
+        decidedRefusal === undefined
+          ? {
+              type: 'admit',
+              command,
+              liveRunIds: [],
+              now: runtimeServices.clock.nowISO(),
+              ...(submittedValue !== undefined ? { submittedValue } : {}),
+            }
+          : {
+              type: 'refused',
+              command,
+              outcome: decidedRefusal,
+              now: runtimeServices.clock.nowISO(),
+              ...(submittedValue !== undefined ? { submittedValue } : {}),
+            };
+      if (!isReadableSteeringLogEvent(probe, sessionId)) {
         if (decidedRefusal !== undefined) return decidedRefusal;
         throw new BureauError('Malformed steering command.', 'BAD_REQUEST');
       }

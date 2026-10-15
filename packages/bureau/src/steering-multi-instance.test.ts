@@ -683,6 +683,27 @@ describe('durable steering across two Bureau processes', () => {
       expect(refusedHere.outcome).toBe('rejected');
       expect(await withPolicy.submitSteeringCommand(sessionId, unresolvable)).toEqual(refusedHere);
 
+      // A value naming both a policy and an override is malformed. It is
+      // refused before anything is logged, so every process still reads the
+      // log: the next admission elsewhere succeeds.
+      await expect(
+        withPolicy.submitSteeringCommand(sessionId, {
+          id: 'p-both',
+          principal: 'alice',
+          requestedValue: {
+            target: 'model',
+            policyRef: 'fast-tier',
+            override: 'claude-opus-4-8',
+          } as never,
+        }),
+      ).rejects.toThrow('Malformed steering command.');
+      const afterBoth = await withoutPolicy.submitSteeringCommand(sessionId, {
+        id: 'p-after-both',
+        principal: 'alice',
+        requestedValue: { target: 'provider', override: 'anthropic' },
+      });
+      expect(afterBoth.outcome).toBe('accepted');
+
       // Refused by the catalog after the selector resolved: the logged command
       // is the resolved value that was refused, and the selector stays its
       // retry key, so a conflict discloses the value and a retry replays.
