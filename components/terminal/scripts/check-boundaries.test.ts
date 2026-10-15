@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+
 import {
   checkBoundaries,
   findImportViolations,
@@ -486,13 +488,26 @@ describe('findLockfileViolations', () => {
 });
 
 describe('import probe', () => {
-  function probe(entrySource: string, extraFiles: Record<string, string> = {}) {
-    const { packageRoot } = workspaceFixture({ 'src/index.ts': entrySource, ...extraFiles });
-    return runImportProbe(packageRoot, join(packageRoot, 'src/index.ts'));
+  type ProbeReport = ReturnType<typeof runImportProbe>;
+
+  // Each probe starts a real Bun process, so it runs once while this block is collected, off Bun's
+  // five-second per-test clock. The returned function hands the report to the test that asserts on
+  // it, or rethrows what the probe threw, so a failure still surfaces under that test.
+  function probe(entrySource: string, extraFiles: Record<string, string> = {}): () => ProbeReport {
+    try {
+      const { packageRoot } = workspaceFixture({ 'src/index.ts': entrySource, ...extraFiles });
+      const report = runImportProbe(packageRoot, join(packageRoot, 'src/index.ts'));
+      return () => report;
+    } catch (error) {
+      return () => {
+        throw error;
+      };
+    }
   }
 
+  const definesOnlyExports = probe('export const value = 1;\n');
   test('reports nothing for a module that only defines exports', () => {
-    expect(probe('export const value = 1;\n')).toEqual({
+    expect(definesOnlyExports()).toEqual({
       forbiddenModules: [],
       trappedCalls: [],
       domGlobals: [],
@@ -500,7 +515,7 @@ describe('import probe', () => {
     });
   });
 
-  test.each([
+  const trappedStatements: [string, string, string[]][] = [
     ['fetch', "await fetch('https://example.invalid/');", ['fetch']],
     [
       'WebAssembly compilation',
@@ -522,19 +537,28 @@ describe('import probe', () => {
     ['an immediate', 'setImmediate(() => {});', ['setImmediate']],
     ['a worker', "new Worker('worker.js');", ['new Worker']],
     ['a socket', "new WebSocket('ws://example.invalid/');", ['new WebSocket']],
-  ])('traps %s made while importing', (_name, statement, calls) => {
-    const report = probe(`try { ${statement} } catch {}\nexport {};\n`);
+  ];
+  const trappedReports = new Map(
+    trappedStatements.map(([name, statement]) => [
+      name,
+      probe(`try { ${statement} } catch {}\nexport {};\n`),
+    ]),
+  );
+  test.each(trappedStatements)('traps %s made while importing', (name, _statement, calls) => {
+    const report = trappedReports.get(name)!();
     expect(report.trappedCalls).toEqual(calls);
   });
 
+  const guardedDomRead = probe("export const live = typeof document !== 'undefined';\n");
   test('reports a read of a DOM global, even behind a typeof guard', () => {
-    expect(probe("export const live = typeof document !== 'undefined';\n").domGlobals).toEqual([
-      'document',
-    ]);
+    expect(guardedDomRead().domGlobals).toEqual(['document']);
   });
 
-  test('counts a DOM read made on the package behalf by a dependency it calls', () => {
-    const report = probe("import { read } from 'dependency';\nexport const live = read();\n", {
+  const domLikeRead = probe('export const agent = navigator.userAgent;\n');
+
+  const dependencyDomRead = probe(
+    "import { read } from 'dependency';\nexport const live = read();\n",
+    {
       'node_modules/dependency/package.json': JSON.stringify({
         name: 'dependency',
         type: 'module',
@@ -542,79 +566,82 @@ describe('import probe', () => {
       }),
       'node_modules/dependency/index.js':
         "export const read = () => typeof document !== 'undefined';\n",
-    });
-    expect(report.domGlobals).toEqual(['document']);
+    },
+  );
+  test('counts a DOM read made on the package behalf by a dependency it calls', () => {
+    expect(dependencyDomRead().domGlobals).toEqual(['document']);
   });
 
+  const dependencyGuardedImportRead = probe("import 'dependency';\nexport {};\n", {
+    'node_modules/dependency/package.json': JSON.stringify({
+      name: 'dependency',
+      type: 'module',
+      exports: './index.js',
+    }),
+    'node_modules/dependency/index.js': "export const live = typeof document !== 'undefined';\n",
+  });
   test('does not count a guarded DOM read a dependency makes by itself while importing', () => {
-    const report = probe("import 'dependency';\nexport {};\n", {
-      'node_modules/dependency/package.json': JSON.stringify({
-        name: 'dependency',
-        type: 'module',
-        exports: './index.js',
-      }),
-      'node_modules/dependency/index.js': "export const live = typeof document !== 'undefined';\n",
-    });
+    const report = dependencyGuardedImportRead();
     expect(report.domGlobals).toEqual([]);
     expect(report.error).toBeUndefined();
   });
 
-  test('evaluates the package own Svelte components, compiled for the server', () => {
-    const throwing = probe("import './lib/component.svelte';\nexport {};\n", {
+  const throwingPackageComponent = probe("import './lib/component.svelte';\nexport {};\n", {
+    'src/lib/component.svelte':
+      '<script lang="ts" module>\n  throw new Error("component module evaluated");\n</script>\n<p>hi</p>\n',
+  });
+  const quietPackageComponent = probe(
+    "import Component from './lib/component.svelte';\nexport const kind = typeof Component;\n",
+    {
       'src/lib/component.svelte':
-        '<script lang="ts" module>\n  throw new Error("component module evaluated");\n</script>\n<p>hi</p>\n',
-    });
-    expect(throwing.error).toBe('component module evaluated');
-    const quiet = probe(
-      "import Component from './lib/component.svelte';\nexport const kind = typeof Component;\n",
-      {
-        'src/lib/component.svelte':
-          '<script lang="ts">\n  const { label }: { label: string } = $props();\n</script>\n<p>{label}</p>\n',
-      },
-    );
+        '<script lang="ts">\n  const { label }: { label: string } = $props();\n</script>\n<p>{label}</p>\n',
+    },
+  );
+  test('evaluates the package own Svelte components, compiled for the server', () => {
+    expect(throwingPackageComponent().error).toBe('component module evaluated');
+    const quiet = quietPackageComponent();
     expect(quiet.error).toBeUndefined();
     expect(quiet.domGlobals).toEqual([]);
   });
 
+  const componentDomRead = probe("import './lib/component.svelte';\nexport {};\n", {
+    'src/lib/component.svelte':
+      '<script lang="ts" module>\n  export const live = typeof document !== "undefined";\n</script>\n<p>hi</p>\n',
+  });
   test('reports a DOM read a package Svelte component makes while importing', () => {
-    const report = probe("import './lib/component.svelte';\nexport {};\n", {
-      'src/lib/component.svelte':
-        '<script lang="ts" module>\n  export const live = typeof document !== "undefined";\n</script>\n<p>hi</p>\n',
-    });
-    expect(report.domGlobals).toEqual(['document']);
+    expect(componentDomRead().domGlobals).toEqual(['document']);
   });
 
+  const dependencyComponentImport = probe("import 'dependency';\nexport {};\n", {
+    'node_modules/dependency/package.json': JSON.stringify({
+      name: 'dependency',
+      type: 'module',
+      exports: './index.js',
+    }),
+    'node_modules/dependency/index.js': "import './widget.svelte';\nexport {};\n",
+    'node_modules/dependency/widget.svelte':
+      '<script lang="ts" module>\n  throw new Error("dependency component evaluated");\n</script>\n',
+  });
   test('leaves another workspace component unevaluated, because its import behavior is its own', () => {
-    const report = probe("import 'dependency';\nexport {};\n", {
-      'node_modules/dependency/package.json': JSON.stringify({
-        name: 'dependency',
-        type: 'module',
-        exports: './index.js',
-      }),
-      'node_modules/dependency/index.js': "import './widget.svelte';\nexport {};\n",
-      'node_modules/dependency/widget.svelte':
-        '<script lang="ts" module>\n  throw new Error("dependency component evaluated");\n</script>\n',
-    });
-    expect(report.error).toBeUndefined();
+    expect(dependencyComponentImport().error).toBeUndefined();
   });
 
   test('reports a read of a DOM-like global Bun already defines', () => {
-    const report = probe('export const agent = navigator.userAgent;\n');
+    const report = domLikeRead();
     expect(report.domGlobals).toEqual(['navigator']);
     expect(report.error).toBeUndefined();
   });
 
+  const definedGlobal = probe('Object.assign(globalThis, { leakedByImport: 1 });\nexport {};\n');
   test('reports a global the import defines', () => {
-    expect(
-      probe('Object.assign(globalThis, { leakedByImport: 1 });\nexport {};\n').addedGlobals,
-    ).toEqual(['leakedByImport']);
+    expect(definedGlobal().addedGlobals).toEqual(['leakedByImport']);
   });
 
+  const definedSymbolGlobal = probe(
+    "(globalThis as Record<symbol, unknown>)[Symbol.for('terminal')] = 1;\nexport {};\n",
+  );
   test('reports a symbol-keyed global the import defines', () => {
-    expect(
-      probe("(globalThis as Record<symbol, unknown>)[Symbol.for('terminal')] = 1;\nexport {};\n")
-        .addedGlobals,
-    ).toEqual(['Symbol(terminal)']);
+    expect(definedSymbolGlobal().addedGlobals).toEqual(['Symbol(terminal)']);
   });
 
   const installedPackages = {
@@ -633,7 +660,7 @@ describe('import probe', () => {
     'node_modules/@lostgradient/ventriloquist/src/websocket/index.ts': 'export const socket = 1;\n',
   };
 
-  test.each([
+  const forbiddenImports: [string, string, string][] = [
     ['the engine', "import '@xterm/xterm';", '/node_modules/@xterm/xterm/lib/xterm.js'],
     [
       'the Bun pipe and PTY entry',
@@ -645,25 +672,40 @@ describe('import probe', () => {
       "import '@lostgradient/ventriloquist/websocket';",
       '/ventriloquist/src/websocket/index.ts',
     ],
-  ])('reports %s when the import graph loads it', (_name, statement, suffix) => {
-    const report = probe(`import './lib/reaches.ts';\nexport {};\n`, {
-      ...installedPackages,
-      'src/lib/reaches.ts': `${statement}\n`,
-    });
-    expect(report.forbiddenModules).toHaveLength(1);
-    expect(report.forbiddenModules[0]).toEndWith(suffix);
-    // The probe replaces a forbidden module with an empty one, so the engine never runs.
-    expect(report.addedGlobals).toEqual([]);
-  });
+  ];
+  const forbiddenImportReports = new Map(
+    forbiddenImports.map(([name, statement]) => [
+      name,
+      probe(`import './lib/reaches.ts';\nexport {};\n`, {
+        ...installedPackages,
+        'src/lib/reaches.ts': `${statement}\n`,
+      }),
+    ]),
+  );
+  test.each(forbiddenImports)(
+    'reports %s when the import graph loads it',
+    (name, _statement, suffix) => {
+      const report = forbiddenImportReports.get(name)!();
+      expect(report.forbiddenModules).toHaveLength(1);
+      expect(report.forbiddenModules[0]).toEndWith(suffix);
+      // The probe replaces a forbidden module with an empty one, so the engine never runs.
+      expect(report.addedGlobals).toEqual([]);
+    },
+  );
 
+  const neutralEntry = probe(
+    "import '@lostgradient/ventriloquist';\nexport {};\n",
+    installedPackages,
+  );
   test('allows the neutral ventriloquist entry', () => {
-    const report = probe("import '@lostgradient/ventriloquist';\nexport {};\n", installedPackages);
+    const report = neutralEntry();
     expect(report.forbiddenModules).toEqual([]);
     expect(report.error).toBeUndefined();
   });
 
+  const throwingImport = probe("throw new Error('boom');\n");
   test('reports an import that throws', () => {
-    expect(probe("throw new Error('boom');\n").error).toBe('boom');
+    expect(throwingImport().error).toBe('boom');
   });
 
   test('turns each finding into a violation against the entry', () => {
@@ -714,53 +756,52 @@ describe('README contract', () => {
   );
 });
 
+// Each scenario starts a real Bun process (the import probe or the command line), so it runs once
+// at module scope, off Bun's five-second per-test clock; its test rethrows whatever it threw.
+const boundariesHoldForThisPackage = await outcomeOf(() => {
+  expect(formatViolations(checkBoundaries(realPackageRoot))).toBe('');
+});
+
+const forbiddenBunEntryFailsCommandLine = await outcomeOf(() => {
+  const { packageRoot } = workspaceFixture({
+    'src/lib/forbidden.ts':
+      "import { spawn } from '@lostgradient/ventriloquist/bun';\nexport { spawn };\n",
+  });
+  const result = Bun.spawnSync(
+    [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root', packageRoot],
+    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+  );
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr.toString()).toContain('src/lib/forbidden.ts:1');
+  expect(result.stderr.toString()).toContain('@lostgradient/ventriloquist/bun is a Bun host entry');
+});
+
+const cleanPackagePassesCommandLine = await outcomeOf(() => {
+  const { packageRoot } = workspaceFixture();
+  const result = Bun.spawnSync(
+    [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root', packageRoot],
+    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+  );
+  expect(result.stderr.toString()).toBe('');
+  expect(result.exitCode).toBe(0);
+});
+
+const packageRootRequiresPath = await outcomeOf(() => {
+  const result = Bun.spawnSync(
+    [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root'],
+    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+  );
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr.toString()).toContain('--package-root requires a path argument');
+});
+
 describe('checkBoundaries', () => {
-  test('holds for this package', () => {
-    expect(formatViolations(checkBoundaries(realPackageRoot))).toBe('');
-  });
+  test('holds for this package', () => rethrow(boundariesHoldForThisPackage));
 
-  test('fails the command line, naming the file and line, when browser source imports a Bun entry', () => {
-    const { packageRoot } = workspaceFixture({
-      'src/lib/forbidden.ts':
-        "import { spawn } from '@lostgradient/ventriloquist/bun';\nexport { spawn };\n",
-    });
-    const result = Bun.spawnSync(
-      [
-        process.execPath,
-        join(import.meta.dir, 'check-boundaries.ts'),
-        '--package-root',
-        packageRoot,
-      ],
-      { cwd: realPackageRoot },
-    );
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr.toString()).toContain('src/lib/forbidden.ts:1');
-    expect(result.stderr.toString()).toContain(
-      '@lostgradient/ventriloquist/bun is a Bun host entry',
-    );
-  });
+  test('fails the command line, naming the file and line, when browser source imports a Bun entry', () =>
+    rethrow(forbiddenBunEntryFailsCommandLine));
 
-  test('passes the command line for a clean package', () => {
-    const { packageRoot } = workspaceFixture();
-    const result = Bun.spawnSync(
-      [
-        process.execPath,
-        join(import.meta.dir, 'check-boundaries.ts'),
-        '--package-root',
-        packageRoot,
-      ],
-      { cwd: realPackageRoot },
-    );
-    expect(result.stderr.toString()).toBe('');
-    expect(result.exitCode).toBe(0);
-  });
+  test('passes the command line for a clean package', () => rethrow(cleanPackagePassesCommandLine));
 
-  test('requires a path after --package-root', () => {
-    const result = Bun.spawnSync(
-      [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root'],
-      { cwd: realPackageRoot },
-    );
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.toString()).toContain('--package-root requires a path argument');
-  });
+  test('requires a path after --package-root', () => rethrow(packageRootRequiresPath));
 });

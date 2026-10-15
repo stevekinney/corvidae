@@ -6,11 +6,13 @@
   let {
     id,
     instructionsVisible,
+    statusVisible,
     statusMessage,
     diagnostics,
   }: {
     id: string;
     instructionsVisible: boolean;
+    statusVisible: boolean;
     statusMessage: string;
     diagnostics: readonly PlaceholderDiagnostic[];
   } = $props();
@@ -25,13 +27,22 @@
     >{PLACEHOLDER_INSTRUCTIONS}</VisuallyHidden
   >
 {/if}
-<VisuallyHidden
-  as="div"
-  id={`${id}-placeholder-status`}
-  role="status"
-  aria-live="polite"
-  aria-atomic="true">{statusMessage}</VisuallyHidden
->
+<!--
+  Persistent for as long as completion is configured, so assistive technology
+  registers the live region before the first announcement. An editor with no
+  placeholder configuration renders none: an empty polite status region would
+  otherwise sit beside the host's own announcer (ReviewEditor's comment
+  navigation) and leave consumers with two indistinguishable status regions.
+-->
+{#if statusVisible}
+  <VisuallyHidden
+    as="div"
+    id={`${id}-placeholder-status`}
+    role="status"
+    aria-live="polite"
+    aria-atomic="true">{statusMessage}</VisuallyHidden
+  >
+{/if}
 {#if diagnostics.length > 0}
   <Callout
     id={`${id}-placeholder-diagnostics`}
