@@ -651,10 +651,7 @@ describe('changeset emission', async () => {
     const definitions = (members: Record<string, string[]>): string =>
       `export const targetDefinitions = ${JSON.stringify(
         Object.fromEntries(
-          ['weft', 'cinder'].map((name) => [
-            name,
-            { members: members[name] ?? [] },
-          ]),
+          ['weft', 'cinder'].map((name) => [name, { members: members[name] ?? [] }]),
         ),
       )};\n`;
 
