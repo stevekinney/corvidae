@@ -178,6 +178,55 @@ test.describe('capture, focus and page navigation', () => {
     expect(await sentBytes(page)).toEqual(bytes(`\t${ESC}[Z`));
   });
 
+  test('on a Mac, Option+Tab leaves the terminal while capture is off and goes to the shell while it is on', async ({
+    terminalPage,
+    browserName,
+  }) => {
+    const page = await terminalPage.open({
+      query: { probes: true },
+      prepare: (target) =>
+        target.addInitScript(() => {
+          Object.defineProperty(Navigator.prototype, 'platform', {
+            get: () => 'MacIntel',
+            configurable: true,
+          });
+          Object.defineProperty(navigator, 'userAgentData', {
+            get: () => ({ platform: 'macOS' }),
+            configurable: true,
+          });
+        }),
+    });
+    expect(await isMac(page)).toBe(true);
+    // What the page's own default action would be: whether anything cancelled the key.
+    await page.evaluate(() => {
+      const seen: boolean[] = [];
+      (window as unknown as { altTabCancelled: boolean[] }).altTabCancelled = seen;
+      window.addEventListener('keydown', (event) => {
+        if (event.key === 'Tab' && event.altKey) {
+          queueMicrotask(() => seen.push(event.defaultPrevented));
+        }
+      });
+    });
+    const cancelled = () =>
+      page.evaluate(() => (window as unknown as { altTabCancelled: boolean[] }).altTabCancelled);
+    await focusTerminal(page);
+    await page.keyboard.press('Alt+Tab');
+    expect(
+      await cancelled(),
+      'the terminal leaves Option+Tab to the page while capture is off',
+    ).toEqual([false]);
+    expect(await sentBytes(page)).toEqual([]);
+    // Firefox does not move focus on Option+Tab whatever the page does, so focus is read elsewhere.
+    if (browserName !== 'firefox') {
+      await expect(terminalInput(page)).not.toBeFocused();
+    }
+
+    await captureKeys(page);
+    await page.keyboard.press('Alt+Tab');
+    expect((await sentBytes(page)).length, 'with capture on the shell owns it').toBeGreaterThan(0);
+    await expect(terminalInput(page)).toBeFocused();
+  });
+
   test('Ctrl+Shift+Escape releases capture, bare Escape does not, and each is said once', async ({
     terminalPage,
   }) => {
