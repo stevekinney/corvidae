@@ -89,6 +89,25 @@ describe('analyzeComponent — button.svelte', () => {
   });
 });
 
+describe('analyzeComponent — paths in published types', () => {
+  it('names a type from another module by its repository-relative path', async () => {
+    // ts-morph prints a type it cannot name locally as `import("<absolute path>").Name`, and the
+    // manifest is published, so an absolute path would make the export depend on the checkout.
+    const repositoryRoot = join(import.meta.dirname, '..', '..', '..');
+    const manifest = await analyzeComponent(
+      join(
+        repositoryRoot,
+        'components/editor/src/lib/components/markdown-editor/markdown-editor.svelte',
+      ),
+      { importPath: '@lostgradient/editor' },
+    );
+    const published = JSON.stringify(manifest);
+
+    expect(published).not.toContain(repositoryRoot);
+    expect(published).toContain('import(\\"node_modules/.bun/@milkdown+ctx@');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Spinner
 // ---------------------------------------------------------------------------

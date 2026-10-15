@@ -1,6 +1,8 @@
 import type { BuildArtifact } from 'bun';
+import { join } from 'node:path';
 
 import { curatedShikiAdapterPlugin } from './curated-shiki-adapter-plugin.ts';
+import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { playgroundSveltePlugin } from './playground-svelte-plugin.ts';
 
 /**
@@ -55,6 +57,16 @@ export const PUBLIC_PATH_BY_FAMILY: Record<ArtifactFamily, string> = {
  * peer-chunk imports get the subdirectory stripped from their URL, so the
  * naming template stays flat.
  */
+/**
+ * Where the generated entry modules of the shipped bundle families (page and shell) are named.
+ * They are handed to `Bun.build` in memory through its `files` option and never written, so
+ * concurrent builds cannot collide and nothing needs cleaning up. The path must still be fixed:
+ * Bun derives output hashes and module comments from module paths relative to the working
+ * directory, and a random directory here made every export's bundle names differ (CIN-591). It
+ * sits two levels below the Playground root, so an entry's `../../src/…` imports resolve.
+ */
+export const GENERATED_ENTRY_DIRECTORY = join(PLAYGROUND_TEMP_ROOT, 'entries');
+
 export const SHARED_BUILD_OPTIONS = {
   plugins: [
     playgroundSveltePlugin({ generate: 'client', injectCss: true }),

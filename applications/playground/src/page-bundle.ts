@@ -1,8 +1,7 @@
-import { randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  GENERATED_ENTRY_DIRECTORY,
   PUBLIC_PATH_BY_FAMILY,
   SHARED_BUILD_OPTIONS,
   artifactRelativePath,
@@ -16,7 +15,6 @@ import {
 } from './build-artifacts-shared.ts';
 import { componentExportNameFor } from './component-sources.ts';
 import { discoverComponentDefinition, discoverComponents, discoverExamples } from './discover.ts';
-import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 /**
@@ -52,10 +50,10 @@ export function bareComponentShimSource(importPath: string, exportName: string):
  * `component-page.svelte` loads each example only when its preview is attached
  * and the bare component only after the reader opens Playground.
  */
-async function writePageEntry(
+async function addPageEntry(
   componentName: string,
   knownComponents: ReadonlySet<string> | undefined,
-  entryTempDir: string,
+  files: Record<string, string>,
 ): Promise<string | null> {
   // Validate that this is an actual component before building. A bundle for a
   // bogus name still compiles (empty scenario list + the no-examples fallback)
@@ -79,9 +77,9 @@ async function writePageEntry(
   // which renders a "No examples found" fallback.
 
   const entryBasename = `page-${componentName}`;
-  const entryTempPath = join(entryTempDir, `${entryBasename}.ts`);
+  const entryPath = join(GENERATED_ENTRY_DIRECTORY, `${entryBasename}.ts`);
   const bareComponentShimBasename = `${entryBasename}-bare-component.ts`;
-  const bareComponentShimPath = join(entryTempDir, bareComponentShimBasename);
+  const bareComponentShimPath = join(GENERATED_ENTRY_DIRECTORY, bareComponentShimBasename);
 
   const scenarioLoaders = scenarios
     .map(
@@ -439,15 +437,12 @@ installProgressiveNavigation();
 void boot().catch(() => undefined);
 `;
 
-  await Bun.write(
-    bareComponentShimPath,
-    bareComponentShimSource(
-      componentDefinition.importPath,
-      componentExportNameFor(componentDefinition.source, componentName),
-    ),
+  files[bareComponentShimPath] = bareComponentShimSource(
+    componentDefinition.importPath,
+    componentExportNameFor(componentDefinition.source, componentName),
   );
-  await Bun.write(entryTempPath, entrySource);
-  return entryTempPath;
+  files[entryPath] = entrySource;
+  return entryPath;
 }
 
 type CompiledPageBundle = { entryPath: string; entryCode: string; artifacts: Map<string, string> };
@@ -460,34 +455,31 @@ export async function compilePageBundleArtifacts(
   componentName: string,
   knownComponents?: ReadonlySet<string>,
 ): Promise<CompiledPageBundle | null> {
-  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
-  try {
-    const entryTempPath = await writePageEntry(componentName, knownComponents, entryTempDir);
-    if (entryTempPath === null) return null;
+  const files: Record<string, string> = {};
+  const entryPath = await addPageEntry(componentName, knownComponents, files);
+  if (entryPath === null) return null;
 
-    const result = await coordinatedBuild(() =>
-      Bun.build({
-        entrypoints: [entryTempPath],
-        publicPath: PUBLIC_PATH_BY_FAMILY.page,
-        ...SHARED_BUILD_OPTIONS,
-      }),
-    );
+  const result = await coordinatedBuild(() =>
+    Bun.build({
+      entrypoints: [entryPath],
+      files,
+      publicPath: PUBLIC_PATH_BY_FAMILY.page,
+      ...SHARED_BUILD_OPTIONS,
+    }),
+  );
 
-    if (!result.success) {
-      console.error(`[playground] page bundle failed for ${componentName}:`, result.logs);
-      return null;
-    }
-
-    const entry = await collectBuildArtifacts(result.outputs);
-    if (entry === null) {
-      console.error(`[playground] page bundle for ${componentName} produced no entry chunk`);
-      return null;
-    }
-
-    return entry;
-  } finally {
-    rmSync(entryTempDir, { recursive: true, force: true });
+  if (!result.success) {
+    console.error(`[playground] page bundle failed for ${componentName}:`, result.logs);
+    return null;
   }
+
+  const entry = await collectBuildArtifacts(result.outputs);
+  if (entry === null) {
+    console.error(`[playground] page bundle for ${componentName} produced no entry chunk`);
+    return null;
+  }
+
+  return entry;
 }
 
 /** Page entries per shared `Bun.build` in the eager prebuild and the static export. */
@@ -511,43 +503,44 @@ export async function compilePageBundleBatch(
   componentNames: readonly string[],
   knownComponents?: ReadonlySet<string>,
 ): Promise<Map<string, CompiledPageBundle>> {
-  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
   const compiled = new Map<string, CompiledPageBundle>();
-  try {
-    const entrypoints: string[] = [];
-    for (const name of componentNames) {
-      const entryTempPath = await writePageEntry(name, knownComponents, entryTempDir);
-      if (entryTempPath !== null) entrypoints.push(entryTempPath);
-    }
-    if (entrypoints.length === 0) return compiled;
-    const result = await coordinatedBuild(() =>
-      Bun.build({ entrypoints, publicPath: PUBLIC_PATH_BY_FAMILY.page, ...SHARED_BUILD_OPTIONS }),
-    );
-    if (!result.success) {
-      console.error('[playground] shared page bundle build failed:', result.logs);
-      return compiled;
-    }
-    const names = new Set(componentNames);
-    const shared = new Map<string, string>();
-    const entries: { name: string; path: string; code: string }[] = [];
-    for (const output of result.outputs) {
-      const path = artifactRelativePath(output.path);
-      const code = await output.text();
-      const name = output.kind === 'entry-point' ? pageEntryComponent(path, names) : undefined;
-      if (name === undefined) shared.set(path, code);
-      else entries.push({ name, path, code });
-    }
-    for (const entry of entries) {
-      compiled.set(entry.name, {
-        entryPath: entry.path,
-        entryCode: entry.code,
-        artifacts: new Map([[entry.path, entry.code], ...shared]),
-      });
-    }
-    return compiled;
-  } finally {
-    rmSync(entryTempDir, { recursive: true, force: true });
+  const files: Record<string, string> = {};
+  const entrypoints: string[] = [];
+  for (const name of componentNames) {
+    const entryPath = await addPageEntry(name, knownComponents, files);
+    if (entryPath !== null) entrypoints.push(entryPath);
   }
+  if (entrypoints.length === 0) return compiled;
+  const result = await coordinatedBuild(() =>
+    Bun.build({
+      entrypoints,
+      files,
+      publicPath: PUBLIC_PATH_BY_FAMILY.page,
+      ...SHARED_BUILD_OPTIONS,
+    }),
+  );
+  if (!result.success) {
+    console.error('[playground] shared page bundle build failed:', result.logs);
+    return compiled;
+  }
+  const names = new Set(componentNames);
+  const shared = new Map<string, string>();
+  const entries: { name: string; path: string; code: string }[] = [];
+  for (const output of result.outputs) {
+    const path = artifactRelativePath(output.path);
+    const code = await output.text();
+    const name = output.kind === 'entry-point' ? pageEntryComponent(path, names) : undefined;
+    if (name === undefined) shared.set(path, code);
+    else entries.push({ name, path, code });
+  }
+  for (const entry of entries) {
+    compiled.set(entry.name, {
+      entryPath: entry.path,
+      entryCode: entry.code,
+      artifacts: new Map([[entry.path, entry.code], ...shared]),
+    });
+  }
+  return compiled;
 }
 
 /**

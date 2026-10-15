@@ -71,15 +71,17 @@ async function cloneAndExport(directory: string, components: string): Promise<Ex
   );
   await run(['git', 'checkout', '--quiet', '--detach', sha], directory, 300_000);
   await run(['bun', 'install', '--frozen-lockfile'], directory, INSTALL_MILLISECONDS);
+  // From the Playground directory, as `bun run build` runs locally and on the host: Bun derives
+  // bundle hashes and module comments from paths relative to the working directory.
   const stdout = await run(
     [
       'bun',
-      join(PLAYGROUND, 'scripts', 'check-export-path-independence.ts'),
+      join('scripts', 'check-export-path-independence.ts'),
       '--export-in-place',
       '--components',
       components,
     ],
-    directory,
+    join(directory, PLAYGROUND),
     EXPORT_MILLISECONDS,
   );
   const last = stdout.trimEnd().split('\n').at(-1) ?? '';

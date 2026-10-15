@@ -30,7 +30,7 @@ import {
 
 import { CINDER_COMPONENT_SOURCE, COMPONENT_SOURCES } from './component-sources.ts';
 import { discoverComponentFilePaths } from './discover.ts';
-import { repositoryRelativePath } from './playground-paths.ts';
+import { repositoryRelativePath, withRepositoryRelativePaths } from './playground-paths.ts';
 import type {
   ComponentManifest,
   ControlKind,
@@ -1430,7 +1430,7 @@ export async function analyzeComponent(
     kebabName: fileBaseName,
     file: repositoryRelativePath(filePath),
     importPath: options.importPath ?? '@lostgradient/cinder',
-    props,
+    props: withRepositoryRelativePaths(props),
     ...(isCompound ? { isCompound: true } : {}),
   };
 }
