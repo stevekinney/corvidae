@@ -153,7 +153,7 @@ export async function mutateWorkflowTags(
     await internals.storage.batch([
       ...buildTerminalWorkflowIndexOperations(state, updatedState),
       { type: 'put', key: KEYS.workflow(workflowId), value: encode(updatedState) },
-      ...visibilityIndexOperations(internals, workflowId, state, updatedState),
+      ...visibilityIndexOperations(internals, state, updatedState),
       ...buildWorkflowTagIndexOperations(workflowId, currentTags, nextTags),
     ]);
 

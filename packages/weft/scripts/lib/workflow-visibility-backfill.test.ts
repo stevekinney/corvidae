@@ -3,8 +3,6 @@ import { describe, expect, it } from 'bun:test';
 import { decode, encode } from '../../src/core/codec.ts';
 import { decodeWorkflowState } from '../../src/core/engine/validation.ts';
 import {
-  WORKFLOW_VISIBILITY_INDEX_VERSION,
-  decodeWorkflowVisibilityManifest,
   deriveWorkflowVisibilityIndexKeys,
   getWorkflowVisibilityWatermark,
 } from '../../src/core/engine/workflow-indexes.ts';
@@ -44,7 +42,7 @@ function isIndexRow(key: string): boolean {
 }
 
 describe('runWorkflowVisibilityBackfill', () => {
-  it('writes the manifest, index rows, and watermark for a fresh database', async () => {
+  it('writes the index rows and watermark for a fresh database', async () => {
     using storage = new MemoryStorage();
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
     await seedWorkflow(storage, makeWorkflowState({ id: 'wf-b', type: 'payment' }));
@@ -58,11 +56,11 @@ describe('runWorkflowVisibilityBackfill', () => {
     expect(await getWorkflowVisibilityWatermark(storage)).toBe('current');
     expect(await storage.get(KEYS.workflowVisibilityMetaCursor())).toBeNull();
 
-    const manifestA = decodeWorkflowVisibilityManifest(
-      await storage.get(KEYS.workflowVisibilityManifest('wf-a')),
-    );
-    expect(manifestA?.version).toBe(WORKFLOW_VISIBILITY_INDEX_VERSION);
-    expect(manifestA?.keys.length).toBeGreaterThan(0);
+    const storedA = await storage.get(KEYS.workflow('wf-a'));
+    for (const key of deriveWorkflowVisibilityIndexKeys(decodeWorkflowState(storedA!))) {
+      expect(await storage.has(key)).toBe(true);
+    }
+    expect(await collectKeys(storage, 'wf-idx-manifest:')).toEqual([]);
 
     const statusRows = await collectKeys(storage, 'wf-idx-status:');
     expect(statusRows).toContain(KEYS.workflowVisibilityStatus('running', 'wf-a'));
@@ -115,10 +113,10 @@ describe('runWorkflowVisibilityBackfill', () => {
     expect(report.processed).toBe(2);
     expect(report.watermarkWritten).toBe(true);
 
-    // wf-a was skipped, so it has no manifest.
-    expect(await storage.get(KEYS.workflowVisibilityManifest('wf-a'))).toBeNull();
-    expect(await storage.get(KEYS.workflowVisibilityManifest('wf-b'))).not.toBeNull();
-    expect(await storage.get(KEYS.workflowVisibilityManifest('wf-c'))).not.toBeNull();
+    // wf-a was skipped, so it has no index rows.
+    expect(await storage.has(KEYS.workflowVisibilityStatus('running', 'wf-a'))).toBe(false);
+    expect(await storage.has(KEYS.workflowVisibilityStatus('running', 'wf-b'))).toBe(true);
+    expect(await storage.has(KEYS.workflowVisibilityStatus('running', 'wf-c'))).toBe(true);
   });
 
   it.each([
@@ -161,11 +159,11 @@ describe('runWorkflowVisibilityBackfill', () => {
         expect(await storage.get(KEYS.workflowVisibilityMetaVersion())).toBeNull();
         expect(await storage.get(KEYS.workflowVisibilityMetaBuiltAt())).toBeNull();
         for (const id of targets) {
-          const manifest = decodeWorkflowVisibilityManifest(
-            await storage.get(KEYS.workflowVisibilityManifest(id)),
-          );
-          if (manifest === null) throw new Error(`Missing manifest before watermark: ${id}`);
-          for (const key of manifest.keys) expect(await storage.get(key)).not.toBeNull();
+          const stateBytes = await storage.get(KEYS.workflow(id));
+          if (stateBytes === null) throw new Error(`Missing workflow before watermark: ${id}`);
+          for (const key of deriveWorkflowVisibilityIndexKeys(decodeWorkflowState(stateBytes))) {
+            expect(await storage.has(key)).toBe(true);
+          }
         }
         watermarkChecks += 1;
       });
@@ -269,7 +267,7 @@ describe('runWorkflowVisibilityBackfill', () => {
     ]);
   });
 
-  it('restores rows a manifest lists but a sweep removed before a runtime write rewrote it', async () => {
+  it('restores every derived row when a runtime write between the sweep and the scan put back only one', async () => {
     const state = makeWorkflowState({ id: 'wf-a' });
     // Derived the way the backfill derives them: from the record as it is stored.
     const derivedKeys = deriveWorkflowVisibilityIndexKeys(decodeWorkflowState(encode(state)));
@@ -282,10 +280,7 @@ describe('runWorkflowVisibilityBackfill', () => {
       ): AsyncIterable<[string, Uint8Array]> {
         if (prefix === 'wf:' && !this.wroteAfterSweep) {
           this.wroteAfterSweep = true;
-          // A runtime transition between the sweep and the scan: a full manifest, but only the
-          // changed row put back.
-          const manifest = { version: WORKFLOW_VISIBILITY_INDEX_VERSION, keys: derivedKeys };
-          await this.put(KEYS.workflowVisibilityManifest('wf-a'), encode(manifest));
+          // A runtime transition between the sweep and the scan puts back only the row it changed.
           await this.put(derivedKeys[0]!, new Uint8Array(0));
         }
         yield* super.scan(prefix, options);
@@ -353,16 +348,15 @@ describe('runWorkflowVisibilityBackfill', () => {
     // that still names the workflow's old status.
     await storage.put(KEYS.workflowVisibilityStatus('running', 'ghost'), new Uint8Array(0));
     await storage.put(KEYS.workflowVisibilityStatus('running', 'wf-a'), new Uint8Array(0));
-    await storage.put(KEYS.workflowVisibilityManifest('ghost'), encode({ version: 1, keys: [] }));
+    // A per-workflow manifest row, which only index layout version 1 wrote.
+    await storage.put('wf-idx-manifest:ghost', encode({ version: 1, keys: [] }));
 
     await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
 
     expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([
       KEYS.workflowVisibilityStatus('completed', 'wf-a'),
     ]);
-    expect(await collectKeys(storage, 'wf-idx-manifest:')).toEqual([
-      KEYS.workflowVisibilityManifest('wf-a'),
-    ]);
+    expect(await collectKeys(storage, 'wf-idx-manifest:')).toEqual([]);
   });
 
   it('keeps the rows it already wrote when it resumes from a saved cursor', async () => {
@@ -374,6 +368,27 @@ describe('runWorkflowVisibilityBackfill', () => {
 
     await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
 
+    expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([
+      KEYS.workflowVisibilityStatus('running', 'wf-a'),
+      KEYS.workflowVisibilityStatus('running', 'wf-b'),
+    ]);
+  });
+
+  it('rebuilds from empty instead of resuming over rows a layout-version-1 run left (COR-1387)', async () => {
+    using storage = new MemoryStorage();
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-a' }));
+    await seedWorkflow(storage, makeWorkflowState({ id: 'wf-b' }));
+    // An interrupted version-1 run: its cursor, a manifest row, and an exact-timestamp updated row.
+    await storage.put(KEYS.workflowVisibilityMetaCursor(), encode(KEYS.workflow('wf-a')));
+    await storage.put('wf-idx-manifest:wf-a', encode({ version: 1, keys: [] }));
+    const versionOneUpdatedRow = `wf-idx-updated:0001700000000500:wf-a`;
+    await storage.put(versionOneUpdatedRow, new Uint8Array(0));
+
+    const report = await runWorkflowVisibilityBackfill(storage, { settleMilliseconds: 0 });
+
+    expect(report).toEqual({ processed: 2, conflicts: 0, watermarkWritten: true });
+    expect(await collectKeys(storage, 'wf-idx-manifest:')).toEqual([]);
+    expect(await storage.has(versionOneUpdatedRow)).toBe(false);
     expect(await collectKeys(storage, 'wf-idx-status:')).toEqual([
       KEYS.workflowVisibilityStatus('running', 'wf-a'),
       KEYS.workflowVisibilityStatus('running', 'wf-b'),
@@ -480,7 +495,8 @@ describe('runWorkflowVisibilityDrop', () => {
 
     const keysAfter = await collectKeys(storage, 'wf-idx-');
     const rowsAfter = keysAfter.filter(isIndexRow);
-    expect(rowsBefore).toHaveLength(25);
+    // Four index rows per workflow: status, type, created and updated.
+    expect(rowsBefore).toHaveLength(20);
     expect(report.rowsDeleted).toBe(rowsBefore.length);
     expect(rowsAfter).toEqual([]);
   });
