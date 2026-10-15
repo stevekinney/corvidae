@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { curatedShikiAdapterPlugin } from './curated-shiki-adapter-plugin.ts';
 import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { playgroundSveltePlugin } from './playground-svelte-plugin.ts';
 
@@ -44,6 +43,14 @@ export const PUBLIC_PATH_BY_FAMILY: Record<ArtifactFamily, string> = {
   scenario: '/page-bundle/',
   fixture: '/fixture-bundle/',
 };
+
+/**
+ * Barrel packages whose root re-exports a playground build follows only as far
+ * as the names it imports. Shared by the client families below and the SSR
+ * renderer's server builds, so neither side walks Cinder's full Shiki registry
+ * unless a page imports it (only `<Chat>` does).
+ */
+export const PLAYGROUND_IMPORT_OPTIMIZATION = ['@lostgradient/cinder'];
 
 /**
  * Shared Bun.build options used by every family.
@@ -87,10 +94,14 @@ export async function writeGeneratedEntries(
 }
 
 export const SHARED_BUILD_OPTIONS = {
-  plugins: [
-    playgroundSveltePlugin({ generate: 'client', injectCss: true }),
-    curatedShikiAdapterPlugin(),
-  ],
+  plugins: [playgroundSveltePlugin({ generate: 'client', injectCss: true })],
+  // Follow only the `@lostgradient/cinder` root exports a page actually
+  // imports. Without it, every page bundle walks every module the root
+  // re-exports, including `fullShikiHighlighter`'s `shiki/langs` and
+  // `shiki/themes` lookup tables: 249 grammar imports resolved per build even
+  // though tree-shaking emits none of them, which is the walk that took the
+  // eager pre-build to 18 GB resident (CIN-523). See `PLAYGROUND_IMPORT_OPTIMIZATION`.
+  optimizeImports: PLAYGROUND_IMPORT_OPTIMIZATION,
   target: 'browser',
   format: 'esm',
   // The workspace component packages (`@lostgradient/cinder`, `chat`, `editor`)

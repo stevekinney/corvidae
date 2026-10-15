@@ -10,7 +10,6 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
 
 import { PUBLIC_PATH_BY_FAMILY, SHARED_BUILD_OPTIONS } from './build-artifacts-shared.ts';
-import { CURATED_SHIKI_ADAPTER_PATH } from './curated-shiki-adapter-plugin.ts';
 import { PLAYGROUND_ROOT } from './playground-paths.ts';
 
 type Metafile = {
@@ -19,6 +18,8 @@ type Metafile = {
 };
 
 const CINDER_ROOT = '@lostgradient/cinder';
+/** The curated highlighter the playground publishes beneath every component it mounts. */
+const CURATED_SHIKI_ADAPTER_PATH = join(PLAYGROUND_ROOT, 'src', 'curated-shiki-adapter.ts');
 const BARREL_SUFFIX = 'components/cinder/src/index.ts';
 const GRAMMAR = /@shikijs[\\/]langs[\\/]dist[\\/]([^\\/]+)$/u;
 

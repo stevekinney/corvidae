@@ -35,6 +35,9 @@ const {
   resetProbe: () => void;
 };
 
+const { default: CodeProbe } = await import('./component-page-example-mounts-code-probe.svelte');
+const { waitFor } = await import('@testing-library/svelte');
+
 type CinderWindow = typeof globalThis & {
   __CINDER_SCENARIOS__?: Record<string, unknown>;
   __CINDER_SCENARIO_LOADERS__?: Record<string, () => Promise<unknown>>;
@@ -137,6 +140,37 @@ describe('createExampleMountHelpers().mountScenario', () => {
 
     expect(mountErrors['example-mount-broken']?.message).toContain('boom');
   });
+
+  it("mounts a scenario beneath the playground's curated highlighter, so its CodeBlock highlights", async () => {
+    (window as CinderWindow).__CINDER_SCENARIOS__ = { code: CodeProbe };
+    const mountErrors: Record<string, MountErrorDetail | undefined> = {};
+    const { mountScenario } = createExampleMountHelpers({ mountErrors });
+
+    const element = document.createElement('div');
+    element.id = 'example-mount-code';
+    document.body.appendChild(element);
+
+    const cleanup = mountScenario('code')(element);
+    flushSync();
+
+    // The example passes no highlighter; only the context the mount root
+    // publishes can highlight it. Real Shiki loads its engine on first use.
+    await waitFor(
+      () => {
+        expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
+      },
+      { timeout: 30_000 },
+    );
+    expect(mountErrors['example-mount-code']).toBeUndefined();
+    expect(
+      element.querySelector('.example-mounts-code-probe')?.getAttribute('data-mount-id-prefix'),
+    ).toBe('example-mount-code');
+    expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')?.textContent).toBe(
+      'SELECT 1;',
+    );
+
+    cleanup();
+  }, 60_000);
 
   it('calls unmount exactly once and does not throw when no app was mounted', () => {
     (window as CinderWindow).__CINDER_SCENARIOS__ = {};

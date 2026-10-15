@@ -12,7 +12,11 @@ import {
   fixtureArtifactByPath,
   fixtureBuildPromiseByKey,
 } from './build-artifacts-shared.ts';
-import { PLAYGROUND_TEMP_ROOT, relativeImportSpecifier } from './playground-paths.ts';
+import {
+  CODE_HIGHLIGHTER_ROOT_PATH,
+  PLAYGROUND_TEMP_ROOT,
+  relativeImportSpecifier,
+} from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 const startFixtureBuildMemoryCycle = createSettledBuildCollector(24);
@@ -193,10 +197,12 @@ export async function compileFixtureBundleArtifacts(
   const entryTempPath = join(entryTempDir, `${entryBasename}.ts`);
   const propsTempPath = join(entryTempDir, `${entryBasename}-props.ts`);
   const componentImport = relativeImportSpecifier(entryTempDir, componentOrHostPath);
+  const highlighterRootImport = relativeImportSpecifier(entryTempDir, CODE_HIGHLIGHTER_ROOT_PATH);
   const fixtureProps = 'props' in fixture && fixture.props !== undefined ? fixture.props : {};
 
   const entrySource = `import { flushSync, mount } from 'svelte';
 
+import CodeHighlighterRoot from ${JSON.stringify(highlighterRootImport)};
 import Component from ${JSON.stringify(componentImport)};
 import props from './${entryBasename}-props.ts';
 
@@ -205,7 +211,7 @@ if (target === null) {
   throw new Error('[cinder playground] #app target not found');
 }
 
-mount(Component, { target, props });
+mount(CodeHighlighterRoot, { target, props: { component: Component, componentProps: props } });
 flushSync();
 `;
 
