@@ -12,6 +12,7 @@ import {
   bytesEqual,
   captureOrReadTerminalFence,
   commitFencedTeardownBatch,
+  deleteKeysInGuardedChunks,
   warnUnknownRunIdentity,
   type TerminalFence,
 } from './terminal-fence.ts';
@@ -124,5 +125,46 @@ describe('warnUnknownRunIdentity', () => {
     expect(reports).toHaveLength(1);
     expect(reports[0]?.[0]).toBe('terminal-teardown-fence');
     expect(reports[0]?.[2]).toBe('w');
+  });
+});
+
+describe('deleteKeysInGuardedChunks', () => {
+  const keysOf = async function* (count: number): AsyncGenerator<string> {
+    for (let index = 0; index < count; index += 1) yield `k:${String(index)}`;
+  };
+
+  it('commits the initial deletes and the listed keys in chunks of 500', async () => {
+    const sizes: number[] = [];
+    const applied = await deleteKeysInGuardedChunks(
+      keysOf(1_200),
+      async (operations) => {
+        sizes.push(operations.length);
+        return true;
+      },
+      [{ type: 'delete', key: 'first' }],
+    );
+    expect(applied).toBe(true);
+    expect(sizes).toEqual([500, 500, 201]);
+  });
+
+  it('stops at the first chunk the fence rejects', async () => {
+    const sizes: number[] = [];
+    const applied = await deleteKeysInGuardedChunks(keysOf(1_200), async (operations) => {
+      sizes.push(operations.length);
+      return sizes.length < 2;
+    });
+    expect(applied).toBe(false);
+    expect(sizes).toEqual([500, 500]);
+  });
+
+  it('commits nothing when there is nothing to delete', async () => {
+    let calls = 0;
+    expect(
+      await deleteKeysInGuardedChunks(keysOf(0), async () => {
+        calls += 1;
+        return true;
+      }),
+    ).toBe(true);
+    expect(calls).toBe(0);
   });
 });
