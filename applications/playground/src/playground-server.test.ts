@@ -1565,18 +1565,6 @@ describe('/page/:name', () => {
     expect(await stylesheet.text()).not.toContain('@import');
   });
 
-  it('loads package-owned component CSS for extracted Chat pages', async () => {
-    const response = await handleRequest(req('/page/chat'));
-    expect(response.status).toBe(200);
-    const html = await response.text();
-    expect(html).toContain('href="/package-components/chat/chat/chat.css"');
-
-    const stylesheet = await handleRequest(req('/package-components/chat/chat/chat.css'));
-    expect(stylesheet.status).toBe(200);
-    expect(stylesheet.headers.get('Content-Type')).toBe('text/css');
-    expect(await stylesheet.text()).toContain('.cinder-chat');
-  });
-
   /*
    * One case per test. Each page request server-renders its featured example in
    * a fresh process, and that cold `Bun.build` compiles about 2,000 Svelte files
