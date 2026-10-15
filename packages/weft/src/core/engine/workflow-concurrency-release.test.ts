@@ -36,9 +36,13 @@ describe('workflow concurrency slot release', () => {
       const record = decode(bytes!) as { holders: { holderId: string }[] };
       return record.holders.map((holder) => holder.holderId);
     };
-    const fenceFor = async (workflowId: string, committedState?: Uint8Array) => ({
-      committedState: committedState ?? (await internals.storage.get(KEYS.workflow(workflowId)))!,
-      holderMarker: internals.storage.get(KEYS.workflowConcurrencyHolder(workflowId)),
+    // Runs here use generated ids, so `wf-gen:<id>` is absent for the owning run; another
+    // generation is any bytes, as a start-new restart would have written.
+    const fenceFor = async (workflowId: string, generation: Uint8Array | null = null) => ({
+      identity: Promise.resolve({
+        generation,
+        holderMarker: await internals.storage.get(KEYS.workflowConcurrencyHolder(workflowId)),
+      }),
     });
     expect(await holderIds()).toEqual([first.id, second.id]);
 
@@ -63,8 +67,7 @@ describe('workflow concurrency slot release', () => {
 
     // A run that never held a slot has nothing to release.
     await releaseWorkflowConcurrencySlotForRun(internals, second.id, {
-      committedState: new Uint8Array(),
-      holderMarker: Promise.resolve(null),
+      identity: Promise.resolve({ generation: null, holderMarker: null }),
     });
     expect(await holderIds()).toEqual([first.id, second.id]);
 
@@ -125,8 +128,7 @@ describe('workflow concurrency slot release', () => {
       },
     });
     await releaseWorkflowConcurrencySlotForRun({ ...internals, storage: racing }, run.id, {
-      committedState: new Uint8Array([1]),
-      holderMarker: Promise.resolve(oldMarker),
+      identity: Promise.resolve({ generation: new Uint8Array([1]), holderMarker: oldMarker }),
     });
 
     expect(calls).toBe(4);
@@ -180,16 +182,49 @@ describe('workflow concurrency slot release', () => {
         return typeof value === 'function' ? value.bind(target) : value;
       },
     });
-    const committedState = (await internals.storage.get(KEYS.workflow(run.id)))!;
 
     const failure = await rejectionOf(
       releaseWorkflowConcurrencySlotForRun({ ...internals, storage: alwaysRaced }, run.id, {
-        committedState,
-        holderMarker: Promise.resolve(marker),
+        identity: Promise.resolve({ generation: null, holderMarker: marker }),
       }),
     );
 
     expect(failure).toBeInstanceOf(AtomicStateConflictError);
     expect(attempts).toBe(10);
+  });
+
+  it('releases every contender of one partition, even with more than the retry budget', async () => {
+    await using engine = new TestEngine({ startTime: 1_000 });
+    engine.register(
+      workflow({ name: 'limited-crowd', concurrency: { max: 40 } }).execute(waitForRelease),
+    );
+    // Start them one at a time: concurrent starts would contend on the same slot themselves.
+    const runs = [];
+    for (let index = 0; index < 24; index += 1) {
+      runs.push(await engine.start('limited-crowd', { value: `run-${String(index)}` }));
+    }
+    const internals = getInternals(engine);
+    const fences = await Promise.all(
+      runs.map(async (run) => ({
+        identity: Promise.resolve({
+          generation: null,
+          holderMarker: await internals.storage.get(KEYS.workflowConcurrencyHolder(run.id)),
+        }),
+      })),
+    );
+
+    // Lock-step contenders each lose the slot race to a peer; only jittered backoff spreads them out.
+    await Promise.all(
+      runs.map((run, index) =>
+        releaseWorkflowConcurrencySlotForRun(internals, run.id, fences[index]!),
+      ),
+    );
+
+    const slot = decode(
+      (await internals.storage.get(KEYS.workflowConcurrency('limited-crowd', 'limited-crowd')))!,
+    ) as {
+      holders: unknown[];
+    };
+    expect(slot.holders).toEqual([]);
   });
 });

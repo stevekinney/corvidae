@@ -1719,7 +1719,7 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
         if (property === 'deletePrefix' && target.deletePrefix) {
           return async (prefix: string) => {
             await park([{ type: 'delete', key: prefix }]);
-            return target.deletePrefix!(prefix);
+            return target.deletePrefix(prefix);
           };
         }
         const value = Reflect.get(target, property, receiver);
@@ -1917,6 +1917,29 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
 
       expect(await storage.get(reviewKey('new'))).not.toBeNull();
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
+    } finally {
+      gate.release.resolve();
+    }
+  });
+
+  it('a tag edit by the same run between commit and teardown still releases its slot and marker', async () => {
+    const id = `teardown-durable-tagedit-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    await using engine = await createEngine(
+      gateFirstWrite(storage, gate, deletes(KEYS.workflowConcurrencyHolder(id))),
+    );
+    try {
+      const oldDone = terminateOldRun(engine, id, 'cancel', gate);
+      await gate.reached.promise;
+      // Rewrites the terminal workflow record without reusing the id.
+      await engine.addTags(id, 'edited');
+      gate.release.resolve();
+      await oldDone;
+      await Bun.sleep(50);
+
+      expect(await slotHolders(storage, 'P1')).toEqual([]);
+      expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
     } finally {
       gate.release.resolve();
     }

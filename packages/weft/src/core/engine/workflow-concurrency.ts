@@ -1,3 +1,4 @@
+import { sleep } from '../../runtime/portable.ts';
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS, storageConditionalBatch } from '../../storage/interface.ts';
 import {
@@ -5,6 +6,7 @@ import {
   AtomicStateConflictError,
   atomicStateVersionKey,
   readAtomicStateSnapshot,
+  retryDelay,
 } from '../atomic-state.ts';
 import { decode, encode } from '../codec.ts';
 import {
@@ -18,8 +20,9 @@ import { WorkflowConcurrencyLimitExceededError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   bytesEqual,
-  committedStateCondition,
+  sameRunCondition,
   type TerminalFence,
+  type TerminalIdentity,
 } from './termination/terminal-fence.ts';
 
 const WORKFLOW_CONCURRENCY_HOLDER_VERSION = 1;
@@ -248,10 +251,11 @@ export async function releaseWorkflowConcurrencySlotForRun(
   fence: TerminalFence,
 ): Promise<void> {
   const holderKey = KEYS.workflowConcurrencyHolder(workflowId);
-  const capturedMarker = await fence.holderMarker;
+  const identity = fence.resolved ?? (fence.resolved = await fence.identity);
+  const capturedMarker = identity.holderMarker;
   if (capturedMarker === null) return;
   const marker = decodeHolderRecord(capturedMarker);
-  const ownCommit = committedStateCondition(workflowId, fence);
+  const ownCommit = sameRunCondition(workflowId, identity);
   if (marker === null) {
     await storageConditionalBatch(
       internals.storage,
@@ -281,14 +285,20 @@ export async function releaseWorkflowConcurrencySlotForRun(
     }
 
     // Either the slot version moved or the id changed hands; find out which.
-    const [stateNow, markerNow] = await Promise.all([
-      internals.storage.get(KEYS.workflow(workflowId)),
-      internals.storage.get(holderKey),
-    ]);
-    if (bytesEqual(stateNow, fence.committedState)) continue;
-    if (isSamePartitionMarker(markerNow, marker)) return;
-    const conditions = [slotVersion, { key: holderKey, expectedValue: markerNow }];
-    if (await storageConditionalBatch(internals.storage, conditions, slotOperations)) return;
+    if (
+      await settleAfterConflict(
+        internals,
+        workflowId,
+        identity,
+        marker,
+        slotVersion,
+        slotOperations,
+      )
+    ) {
+      return;
+    }
+    // Lost a race for the slot: back off with jitter, as `AtomicState` does, so contenders spread out.
+    if (attempt < MAX_FENCED_RELEASE_ATTEMPTS - 1) await sleep(retryDelay(attempt));
   }
   throw new AtomicStateConflictError(stateKey, MAX_FENCED_RELEASE_ATTEMPTS);
 }
@@ -304,4 +314,29 @@ function isSamePartitionMarker(
     current.workflowType === marker.workflowType &&
     current.partitionKey === marker.partitionKey
   );
+}
+
+/**
+ * After a fenced release lost its conditional batch, decide whether it is finished. Returns
+ * `true` when there is nothing left to do (the id changed hands and the entry is the
+ * replacement's, or the old partition's own entry was freed) and `false` to retry, which is the
+ * case for a same-run slot race.
+ */
+async function settleAfterConflict(
+  internals: EngineInternals,
+  workflowId: string,
+  identity: TerminalIdentity,
+  marker: WorkflowConcurrencyHolderRecord,
+  slotVersion: ConditionalBatchCondition,
+  slotOperations: BatchOperation[],
+): Promise<boolean> {
+  const holderKey = KEYS.workflowConcurrencyHolder(workflowId);
+  const [generationNow, markerNow] = await Promise.all([
+    internals.storage.get(KEYS.workflowGeneration(workflowId)),
+    internals.storage.get(holderKey),
+  ]);
+  if (bytesEqual(generationNow, identity.generation)) return false;
+  if (isSamePartitionMarker(markerNow, marker)) return true;
+  const conditions = [slotVersion, { key: holderKey, expectedValue: markerNow }];
+  return storageConditionalBatch(internals.storage, conditions, slotOperations);
 }

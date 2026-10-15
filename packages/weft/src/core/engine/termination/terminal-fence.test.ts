@@ -6,14 +6,12 @@ import type { EngineInternals } from '../internals.ts';
 import {
   bytesEqual,
   commitFencedTeardownBatch,
-  startHolderMarkerRead,
+  startTerminalFence,
   type TerminalFence,
 } from './terminal-fence.ts';
 
-const fence: TerminalFence = {
-  committedState: new Uint8Array([1, 2, 3]),
-  holderMarker: Promise.resolve(null),
-};
+const generation = new Uint8Array([1, 2, 3]);
+const fence: TerminalFence = { identity: Promise.resolve({ generation, holderMarker: null }) };
 
 /** A storage that reports no `conditionalBatch` capability, like a custom adapter without CAS. */
 function storageWithoutConditionalBatch(): MemoryStorage {
@@ -53,11 +51,11 @@ describe('commitFencedTeardownBatch', () => {
   it('with conditionalBatch, applies only while the committed state is still stored', async () => {
     const storage = new MemoryStorage();
     const internals = { storage } as unknown as EngineInternals;
-    await storage.put(KEYS.workflow('w'), fence.committedState);
+    await storage.put(KEYS.workflowGeneration('w'), generation);
     expect(await commitFencedTeardownBatch(internals, 'w', fence, put('a'), () => false)).toBe(
       true,
     );
-    await storage.put(KEYS.workflow('w'), new Uint8Array([7]));
+    await storage.put(KEYS.workflowGeneration('w'), new Uint8Array([7]));
     expect(await commitFencedTeardownBatch(internals, 'w', fence, put('b'), () => false)).toBe(
       false,
     );
@@ -75,18 +73,22 @@ describe('bytesEqual', () => {
   });
 });
 
-describe('startHolderMarkerRead', () => {
-  it('hands back the read, and a failed read is still observed by the caller', async () => {
+describe('startTerminalFence', () => {
+  it('reads the generation and holder marker together, and a failed read is still observed', async () => {
     const failure = new Error('read failed');
-    const internals = {
+    const failing = {
       storage: { get: () => Promise.reject(failure) },
     } as unknown as EngineInternals;
-    const read = startHolderMarkerRead(internals, 'w');
-    expect(await read.catch((error: unknown) => error)).toBe(failure);
+    const started = startTerminalFence(failing, 'w');
+    expect(await started.identity.catch((error: unknown) => error)).toBe(failure);
 
     const present = new MemoryStorage();
+    await present.put(KEYS.workflowGeneration('w'), new Uint8Array([3]));
     await present.put(KEYS.workflowConcurrencyHolder('w'), new Uint8Array([4]));
-    const stored = startHolderMarkerRead({ storage: present } as unknown as EngineInternals, 'w');
-    expect(await stored).toEqual(new Uint8Array([4]));
+    const stored = startTerminalFence({ storage: present } as unknown as EngineInternals, 'w');
+    expect(await stored.identity).toEqual({
+      generation: new Uint8Array([3]),
+      holderMarker: new Uint8Array([4]),
+    });
   });
 });

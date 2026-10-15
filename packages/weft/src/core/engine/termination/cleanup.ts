@@ -287,6 +287,16 @@ export async function cleanupWorkflowStorage(
   options: CleanupStorageOptions = {},
 ): Promise<void> {
   const { releaseConcurrencySlot = true, fencedCommit, extraDeleteKeys = [] } = options;
+  const prefixes = prefixesToSweep(workflowId, includeOutputArtifacts);
+  if (fencedCommit !== undefined && internals.storage.capabilities().conditionalBatch) {
+    await sweepFenced(internals, workflowId, prefixes, extraDeleteKeys, fencedCommit);
+    return;
+  }
+  await sweepUnfenced(internals, workflowId, prefixes, releaseConcurrencySlot);
+}
+
+/** The key prefixes a terminal cleanup sweeps for `workflowId`. */
+function prefixesToSweep(workflowId: string, includeOutputArtifacts: boolean): string[] {
   const encodedWorkflowId = encodeStorageKeyComponent(workflowId);
 
   // Always sweep internal state. Signals are workflow-scoped scratch space,
@@ -310,12 +320,16 @@ export async function cleanupWorkflowStorage(
     // TTL or explicit pruning.
     prefixes.push(`offload:${encodedWorkflowId}:`, `blob:${encodedWorkflowId}:`);
   }
+  return prefixes;
+}
 
-  if (fencedCommit !== undefined && internals.storage.capabilities().conditionalBatch) {
-    await sweepFenced(internals, workflowId, prefixes, extraDeleteKeys, fencedCommit);
-    return;
-  }
-
+/** The unfenced sweep: native prefix deletion when available, otherwise scan and batch-delete. */
+async function sweepUnfenced(
+  internals: EngineInternals,
+  workflowId: string,
+  prefixes: string[],
+  releaseConcurrencySlot: boolean,
+): Promise<void> {
   await internals.storage.delete(KEYS.workflowHeaders(workflowId));
   await internals.storage.delete(KEYS.signalSequence(workflowId));
   // A terminal commit's own teardown already released its slot, fenced on that commit.

@@ -23,7 +23,7 @@ import {
   commitSelfWorkflowStateOperations,
   runSerializedWorkflowStateWrite,
 } from './storage-io.ts';
-import { startHolderMarkerRead, type TerminalFence } from './termination/terminal-fence.ts';
+import { startTerminalFence, type TerminalFence } from './termination/terminal-fence.ts';
 import {
   decodeWorkflowState,
   isTerminalWorkflowStatus,
@@ -158,7 +158,7 @@ export async function updateWorkflowState(
   options: WorkflowStateUpdateOptions = {},
 ): Promise<WorkflowStateUpdateResult | null> {
   return await runSerializedWorkflowStateWrite(internals, workflowId, async () => {
-    const holderMarker = startHolderMarkerRead(internals, workflowId);
+    const fence = startTerminalFence(internals, workflowId);
     const bytes = await internals.storage.get(KEYS.workflow(workflowId));
     if (!bytes) {
       return null;
@@ -191,7 +191,6 @@ export async function updateWorkflowState(
       category === 'self'
         ? commitSelfWorkflowStateOperations
         : commitExternalTerminalWorkflowStateOperations;
-    const committedState = encode(updated);
     const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
     if (visibilityMaintenance !== undefined) await visibilityMaintenance;
     await commit(
@@ -199,7 +198,7 @@ export async function updateWorkflowState(
       state,
       [
         ...buildTerminalWorkflowIndexOperations(state, updated),
-        { type: 'put', key: KEYS.workflow(workflowId), value: committedState },
+        { type: 'put', key: KEYS.workflow(workflowId), value: encode(updated) },
         ...visibilityIndexOperations(internals, workflowId, state, updated),
         ...additionalOperations,
       ],
@@ -211,7 +210,7 @@ export async function updateWorkflowState(
     return {
       previousState: state,
       updatedAt,
-      fence: { committedState, holderMarker },
+      fence,
     };
   });
 }

@@ -1,4 +1,3 @@
-import type { BatchOperation } from '../../storage/interface.ts';
 import { KEYS, encodeStorageKeyComponent } from '../../storage/interface.ts';
 import { ReviewCompletedEvent, ReviewRequestedEvent } from '../review/events.ts';
 import {
@@ -16,9 +15,7 @@ import type {
   SubmitReviewOptions,
 } from '../types.ts';
 import {
-  deleteCompletedReviewsForWorkflow,
   listCompletedReviewsFromStorage,
-  listReviewKeysForWorkflow,
   matchesReviewListFilter,
   persistCompletedReviewRecord,
   stageTimedOutReviewDeletion,
@@ -27,7 +24,6 @@ import type { EngineInternals } from './internals.ts';
 import { parseStoredReviewRequest, toPendingReviewEntry } from './review-list-entries.ts';
 import { trackWaiterKey, untrackWaiterKey } from './signals.ts';
 import type { CapturedRejectionReason } from './strategy-helpers.ts';
-import { deleteKeysInGuardedChunks } from './termination/terminal-fence.ts';
 type ReviewOperationOutcome = { ok: true; value: HumanReviewResult } | { ok: false; error: Error };
 
 export type SubmitReviewCallbacks = {
@@ -326,40 +322,6 @@ export async function sendReviewWebhook(
   } finally {
     internals.pendingWebhooks.delete(webhookAbort);
   }
-}
-
-/** Remove all pending review entries from storage for a given workflow. */
-export async function cleanupReviews(
-  internals: EngineInternals,
-  workflowId: string,
-  fencedCommit?: (operations: BatchOperation[]) => Promise<boolean>,
-): Promise<void> {
-  // A terminal commit's teardown lists the review keys and deletes exactly those in guarded
-  // chunks, so a same-id replacement's review entries are never deleted.
-  if (fencedCommit !== undefined && internals.storage.capabilities().conditionalBatch) {
-    await deleteKeysInGuardedChunks(
-      listReviewKeysForWorkflow(internals.storage, workflowId),
-      fencedCommit,
-    );
-    return;
-  }
-
-  const pendingPrefix = `review:${encodeStorageKeyComponent(workflowId)}:`;
-  const deleteOperations: BatchOperation[] = [];
-
-  if (internals.storage.deletePrefix) {
-    await internals.storage.deletePrefix(pendingPrefix);
-  } else {
-    for await (const [key] of internals.storage.scan(pendingPrefix)) {
-      deleteOperations.push({ type: 'delete', key });
-    }
-  }
-
-  if (deleteOperations.length > 0) {
-    await internals.storage.batch(deleteOperations);
-  }
-
-  await deleteCompletedReviewsForWorkflow(internals.storage, workflowId);
 }
 
 function setReviewOption<K extends keyof ReviewOptions>(

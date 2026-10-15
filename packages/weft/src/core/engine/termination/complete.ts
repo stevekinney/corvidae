@@ -50,7 +50,7 @@ import {
   FORCIBLY_TERMINABLE_STATUSES,
   type TerminationCallbacks,
 } from './cleanup.ts';
-import { fencedTeardownCommit, startHolderMarkerRead } from './terminal-fence.ts';
+import { fencedTeardownCommit, startTerminalFence } from './terminal-fence.ts';
 
 async function runCancelHandlers(
   handlers: CancelHandler[],
@@ -480,7 +480,7 @@ export async function completeWorkflow(
   const completionMetadata = await callbacks.runSerializedWorkflowStateWrite(
     workflowId,
     async () => {
-      const holderMarker = startHolderMarkerRead(internals, workflowId);
+      const fence = startTerminalFence(internals, workflowId);
       const state = await callbacks.loadWorkflowState(workflowId);
       if (!state || state.status !== 'running') {
         return null;
@@ -542,13 +542,6 @@ export async function completeWorkflow(
       // must not be re-read after the awaits below.
       const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
       const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
-      const committedState = completionOperations.find(
-        (operation) => operation.type === 'put' && operation.key === KEYS.workflow(workflowId),
-      );
-      const fence = {
-        committedState: (committedState as { value: Uint8Array }).value,
-        holderMarker,
-      };
       return { duration, claimEpoch, executionToken, fence };
     },
   );
