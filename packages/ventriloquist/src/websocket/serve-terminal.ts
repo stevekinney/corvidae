@@ -2,7 +2,10 @@ import { createBunProcessFactory } from './bun-process-factory.ts';
 import { createTerminalWebSocketServer, type TerminalWebSocketServer } from './websocket-server.ts';
 import type { SocketData, TerminalWebSocketServerOptions } from './websocket-types.ts';
 
-export type ServeTerminalOptions = Omit<TerminalWebSocketServerOptions, 'createProcess'> &
+export type ServeTerminalOptions = Omit<
+  TerminalWebSocketServerOptions,
+  'createProcess' | 'boundHostname'
+> &
   Partial<Pick<TerminalWebSocketServerOptions, 'createProcess'>> & {
     readonly port?: number;
     /**
@@ -27,8 +30,13 @@ export type ServedTerminal = {
  */
 export function serveTerminalWebSocket(options: ServeTerminalOptions): ServedTerminal {
   const path = options.path ?? '/terminal';
+  // The bound hostname comes from `hostname` alone: a property smuggled in past the type, or left
+  // over from another options object, must not let a wildcard bind claim loopback.
+  const { boundHostname: _injected, ...supplied } = options as typeof options & {
+    boundHostname?: unknown;
+  };
   const terminal = createTerminalWebSocketServer({
-    ...options,
+    ...supplied,
     createProcess: options.createProcess ?? createBunProcessFactory(),
     // `Bun.serve({ port })` listens on every interface but reports `localhost`, so the hostname that
     // is bound, not the one reported, is what the development switch is judged by.

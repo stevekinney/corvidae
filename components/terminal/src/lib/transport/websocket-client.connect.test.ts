@@ -331,3 +331,39 @@ describe('frames for another attachment', () => {
     expect(states).toEqual([]);
   });
 });
+
+describe('probe and stop timing options', () => {
+  const build = (options: Record<string, number>) =>
+    new TerminalWebSocketClient({
+      url: 'wss://terminal.example/terminal?profile=shell',
+      sessionId: SESSION_IDENTIFIER,
+      ticket: TICKET,
+      ...options,
+    });
+
+  test.each([
+    ['zero', { probeInitialMilliseconds: 0 }],
+    ['NaN', { probeInitialMilliseconds: Number.NaN }],
+    ['negative', { probeInitialMilliseconds: -5 }],
+    ['fractional', { probeInitialMilliseconds: 1.5 }],
+    ['infinite', { probeInitialMilliseconds: Infinity }],
+    ['above the range', { probeInitialMilliseconds: 60_001 }],
+    ['a zero maximum', { probeMaximumMilliseconds: 0 }],
+    ['a NaN maximum', { probeMaximumMilliseconds: Number.NaN }],
+    ['a maximum above the range', { probeMaximumMilliseconds: 60_001 }],
+    [
+      'a maximum below the initial',
+      { probeInitialMilliseconds: 500, probeMaximumMilliseconds: 499 },
+    ],
+    ['a maximum below the default initial', { probeMaximumMilliseconds: 100 }],
+  ])('refuses %s at construction', (_name, options) => {
+    expect(() => build(options)).toThrow(RangeError);
+  });
+
+  test('accepts the bounds, and a maximum equal to the initial', () => {
+    expect(() => build({ probeInitialMilliseconds: 1, probeMaximumMilliseconds: 1 })).not.toThrow();
+    expect(() =>
+      build({ probeInitialMilliseconds: 60_000, probeMaximumMilliseconds: 60_000 }),
+    ).not.toThrow();
+  });
+});

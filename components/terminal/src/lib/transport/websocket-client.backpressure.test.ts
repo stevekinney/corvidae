@@ -5,7 +5,7 @@ import { createFakeInputEngine, createInputSettings } from '../input/input-test-
 import type { InputRefusal } from '../input/input-types.ts';
 import { createTerminalInput } from '../input/terminal-input.ts';
 import { WRITABLE, rig, type Rig } from './transport-test-support.ts';
-import type { TerminalTransportState } from './transport-types.ts';
+import type { TerminalTransportEvent, TerminalTransportState } from './transport-types.ts';
 
 const decoder = new TextDecoder();
 
@@ -107,6 +107,39 @@ describe('the operation window', () => {
       code: 'fifo-full',
     });
     expect(subject.client.state).toBe('backpressured');
+  });
+});
+
+describe('probes are not user input', () => {
+  async function paused() {
+    const subject = await windowOf(8);
+    const sending = subject.client.sendInput('a');
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(1, 'fifo-full', 'input-overflow'));
+    await sending;
+    const events: TerminalTransportEvent[] = [];
+    subject.client.subscribe((event) => events.push(event));
+    return { subject, events };
+  }
+
+  test('a refused probe emits no operation failure, and an acknowledged one no acknowledgement', async () => {
+    const { subject, events } = await paused();
+    subject.clock.advance(250);
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(2, 'fifo-full', 'input-overflow'));
+    subject.clock.advance(500);
+    subject.fromClient();
+    subject.serve(subject.host.acknowledgeOperation(3));
+    expect(subject.client.state).toBe('writable');
+    expect(events.map((event) => event.type)).toEqual(['state']);
+  });
+
+  test('a probe in flight when the socket drops is not lost input', async () => {
+    const { subject, events } = await paused();
+    subject.clock.advance(250);
+    subject.socket().drop(1006);
+    expect(subject.client.deliveryUnknown).toEqual([]);
+    expect(events.map((event) => event.type)).not.toContain('delivery-unknown');
   });
 });
 

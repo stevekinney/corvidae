@@ -35,6 +35,8 @@ const DEFAULT_PENDING_OUTPUT_BYTES = 1024 * 1024;
 const DEFAULT_PROBE_INITIAL_MILLISECONDS = 250;
 const DEFAULT_PROBE_MAXIMUM_MILLISECONDS = 8_000;
 const DEFAULT_STOP_TIMEOUT_MILLISECONDS = 10_000;
+/** The longest a probe wait may be set to: one minute. */
+const MAXIMUM_PROBE_MILLISECONDS = 60_000;
 
 /** Why `connect()` did not produce capabilities. The state names the same thing for a view. */
 export class TerminalConnectError extends Error {
@@ -147,6 +149,20 @@ export class TerminalWebSocketClient {
       options.maximumPendingOutputBytes ?? DEFAULT_PENDING_OUTPUT_BYTES;
     this.#probeInitial = options.probeInitialMilliseconds ?? DEFAULT_PROBE_INITIAL_MILLISECONDS;
     this.#probeMaximum = options.probeMaximumMilliseconds ?? DEFAULT_PROBE_MAXIMUM_MILLISECONDS;
+    // A zero or non-finite wait would double to itself and probe in a hot loop, so both are refused.
+    for (const [name, value] of [
+      ['probeInitialMilliseconds', this.#probeInitial],
+      ['probeMaximumMilliseconds', this.#probeMaximum],
+    ] as const) {
+      if (!Number.isInteger(value) || value < 1 || value > MAXIMUM_PROBE_MILLISECONDS) {
+        throw new RangeError(
+          `${name} must be an integer from 1 to ${MAXIMUM_PROBE_MILLISECONDS}, got ${value}`,
+        );
+      }
+    }
+    if (this.#probeMaximum < this.#probeInitial) {
+      throw new RangeError('probeMaximumMilliseconds must be at least probeInitialMilliseconds');
+    }
     this.#stopTimeout = options.stopTimeoutMilliseconds ?? DEFAULT_STOP_TIMEOUT_MILLISECONDS;
     this.#probeDelay = this.#probeInitial;
     this.#release = new OutputReleaseQueue((bytes) => this.#acknowledgeOutput(bytes));
@@ -420,15 +436,17 @@ export class TerminalWebSocketClient {
     if (!wasProbe) this.#probeDelay = this.#probeInitial;
     // An acknowledgement is the only thing that frees the window, so it is the only way back.
     if (this.#state === 'backpressured') this.#setState('writable');
-    this.#emit({ type: 'operation-ack', sequence });
+    // A probe carries no user bytes, so nothing a view shows is about it.
+    if (!wasProbe) this.#emit({ type: 'operation-ack', sequence });
   }
 
   #onOperationFailure(sequence: number, code: FailureCode, message: string): void {
+    const wasProbe = this.#probeSequences.has(sequence);
     this.#settle(sequence, { status: 'failed', sequence, code });
     if (code === 'fifo-full' && this.#state === 'writable') this.#setState('backpressured');
     // The host revoked the generation: the failure is the terminal status, never an exit.
     if (code === 'backend-failed' || code === 'transport-failed') this.#end('failed');
-    this.#emit({ type: 'operation-failure', sequence, code, message });
+    if (!wasProbe) this.#emit({ type: 'operation-failure', sequence, code, message });
   }
 
   #onAttachmentError(code: FailureCode, message: string): void {
@@ -592,8 +610,10 @@ export class TerminalWebSocketClient {
     } else {
       this.#end('disconnected');
     }
-    const unknown = [...this.#pendingOperations.keys()];
-    for (const sequence of unknown) this.#settle(sequence, { status: 'unknown', sequence });
+    const pending = [...this.#pendingOperations.keys()];
+    const unknown = pending.filter((sequence) => !this.#probeSequences.has(sequence));
+    for (const sequence of pending) this.#settle(sequence, { status: 'unknown', sequence });
+    this.#probeSequences.clear();
     this.#unknownSequences.push(...unknown);
     for (const waiter of this.#stopWaiters.splice(0))
       waiter({ outcome: 'unknown', source: 'local' });

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { SessionSlot } from '../session/session-slot.ts';
-import { serveTerminalWebSocket } from './serve-terminal.ts';
+import { serveTerminalWebSocket, type ServeTerminalOptions } from './serve-terminal.ts';
 import type { TerminalHostCallbacks } from './websocket-types.ts';
 import {
   LAUNCH,
@@ -100,5 +100,22 @@ describe('serveTerminalWebSocket and the development switch', () => {
       hostname: '127.0.0.1',
     });
     await served.server.stop(true);
+  });
+});
+
+describe('ServeTerminalOptions and boundHostname', () => {
+  const base = { host, allowedOrigins: [ORIGIN], slotFor: () => new SessionSlot() };
+
+  test('does not accept boundHostname at the type level: it is derived from hostname alone', () => {
+    // @ts-expect-error a caller cannot state the bound hostname separately from the one it binds
+    const options: ServeTerminalOptions = { ...base, boundHostname: '127.0.0.1' };
+    expect(options.slotFor).toBeFunction();
+  });
+
+  // spawn-free: the server is refused at construction, so no listener or process is ever made
+  test('an injected boundHostname is ignored: a wildcard or missing hostname cannot claim loopback', () => {
+    const injected = { ...base, allowInsecureLoopback: true, boundHostname: '127.0.0.1' };
+    expect(() => serveTerminalWebSocket(injected as never)).toThrow(/loopback/);
+    expect(() => serveTerminalWebSocket({ ...injected, hostname: '0.0.0.0' })).toThrow(/loopback/);
   });
 });
