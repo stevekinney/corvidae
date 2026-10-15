@@ -5,8 +5,18 @@ import { encode } from '../../codec.ts';
 import { buildIndexOperations } from '../../search-attributes.ts';
 import type { SearchAttributeValue, WorkflowState } from '../../types.ts';
 import { buildRetainedTerminalSearchAttributes } from '../attributes-tags.ts';
+import type { EngineInternals } from '../internals.ts';
+
+/** The engine ID a terminal write stamps as `terminalCommittedBy`, only under `workflow-lease`. */
+export function terminalCommitterStamp(
+  internals: EngineInternals,
+): Pick<WorkflowState, 'terminalCommittedBy'> {
+  const engineId = internals.workflowClaimRegistry?.engineId;
+  return engineId === undefined ? {} : { terminalCommittedBy: engineId };
+}
 
 export function buildCompletedWorkflowState(
+  internals: EngineInternals,
   state: WorkflowState,
   result: unknown,
   now: number,
@@ -18,6 +28,7 @@ export function buildCompletedWorkflowState(
     result,
     updatedAt: now,
     ...(terminalCleanupToken !== undefined ? { terminalCleanupToken } : {}),
+    ...terminalCommitterStamp(internals),
   };
 }
 
