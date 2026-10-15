@@ -32,7 +32,7 @@ The Docker wrapper passes both as build arguments. The image bakes `BASELINE_PLA
 - the image baked the same Playwright version and `BASELINE_DOCKER=1`, which proves the container was built from this repository's Dockerfile rather than being any container with a flag set;
 - `process.arch` is `arm64`. The Playwright base image is multi-arch, so an amd64 container passes the first three checks with a different rasterizer.
 
-On a development host it exits non-zero and points at the Docker path. Inside the renderer it runs the suite with `--update-snapshots=all --retries=0`, because a retry-passing run is never authoritative. When Playwright completes, whether every case passed or some failed, it writes `provenance.json`; a crash or an interrupt writes none.
+On a development host it exits non-zero and points at the Docker path. Inside the renderer it runs the suite with `--update-snapshots=all --retries=0`, because a retry-passing run is never authoritative. When Playwright completes, whether every case passed or some failed, it writes `provenance.json`; a crash or an interrupt writes none. It first reads the JSON report back from `PLAYWRIGHT_JSON_OUTPUT_FILE`, which it requires: a webServer or globalSetup failure also exits 1, so when the report is missing, unreadable, or shows the run did not complete normally (see below), it writes no provenance and exits 3.
 
 ## The Docker workflow
 
@@ -60,6 +60,19 @@ Both accept `--source <ref>` (default `HEAD`) and forward any other arguments to
 
 A suite that completed with behavioural failures is applied only with `--accept-behavioural-failures`, after confirming each failure also occurs on an `origin/main` control. A screenshot failure is never accepted, and a run that crashed or was interrupted is never applied. The report records the suite's exit code and every failing test either way.
 
+### Incomplete runs fail closed
+
+Because the container deletes every Linux baseline before the suite runs, a run that never reached a test leaves nothing regenerated, and every committed baseline then reads as an orphan. On 2026-10-15 a host load spike timed out Playwright's webServer at startup: no test ran, Playwright still exited 1 with a report, and the wrapper wrote nothing and deleted all 1,624 committed baselines from the working tree, which the operator restored before committing (COR-1537). The wrapper now refuses such a run before building a review report. It writes nothing, deletes nothing, prints why on standard error, and exits non-zero, whatever the exit code and whether or not `--accept-behavioural-failures` was passed. A run is incomplete when:
+
+- it left no `results.json`, or one that does not parse (a crash mid-write);
+- the report carries a top-level error, outside any test: a webServer timeout, a globalSetup failure, or a test file that failed to load;
+- Playwright selected no tests, or no selected test executed;
+- any selected test never ran. This uses Playwright's own "did not run": a test with no result, an interrupted result, or a skipped result on a test that did not skip itself. Tests that call `test.skip()` are not counted. The check is exact rather than a ratio, so one unreached test is enough to refuse.
+
+Two further guards apply to a run that did complete. If it regenerated no baseline at all, the wrapper deletes nothing and exits 1. And orphans are deleted only after a full, unfiltered run: when `CINDER_TEST_COMPONENTS` scoped the run or any Playwright argument was forwarded (for example `--grep`), the wrapper still writes the changed baselines and provenance, but keeps every orphan and says how many it kept, because such a run never selected the tests that own them.
+
+The stability comparison follows the same rule. `suite-results.ts compare` fails when either the run or the control did not complete normally, and lists why, because a run that executed nothing has no failures to compare.
+
 ## Host load
 
 Host load never blocks a run. Each run records the 1-minute load average and the logical CPU count at its start and end, prints them, and the update run writes them into the review report. A behavioural timeout can then be read against the load it ran under; if the same failure reproduces against an `origin/main` control at the same time, it is not the refresh's blocker and is recorded as such. Suite timeouts are never raised to compensate.
@@ -83,7 +96,7 @@ After the pull request merges, run the same visual command against the merged co
 - a dimension change is reported as such, with no ratio;
 - added baselines (no committed counterpart) are listed;
 - a committed baseline that was not regenerated, but belongs to a test that failed or was skipped in the run, is restored: it keeps its committed bytes and is listed as "restored, not regenerated" with the failure reason, because that test may never have reached its screenshot. A sweep test owns the images its title names (and their `-resting` partners); any other spec owns the screenshot names it quotes;
-- orphans (committed, regenerated by no test in a full run, and owned by no failing or skipped test) are deleted, because no test can ever compare against them. A cinder-era `<theme>-<viewport>-default.png` whose `-assertion.png` counterpart was added is a rename: the report compares the pair pixel by pixel and lists it with its partner. Every other orphan is listed with the evidence that no current fixture or spec names it;
+- orphans (committed, regenerated by no test in a full, unfiltered run, and owned by no failing or skipped test) are deleted, because no test can ever compare against them. A scoped run keeps them, and an incomplete run is refused before any report is written. A cinder-era `<theme>-<viewport>-default.png` whose `-assertion.png` counterpart was added is a rename: the report compares the pair pixel by pixel and lists it with its partner. Every other orphan is listed with the evidence that no current fixture or spec names it;
 - the suite's exit code, every failing test, and the host load.
 
 Every changed or renamed image above 1%, and every dimension change, gets one line in the pull request with one of three classifications:
@@ -100,7 +113,7 @@ All live in `scripts/browser-fixtures/scripts/`, each with a unit test:
 - `baseline-provenance.ts`: provenance read and write, the lockfile and `packageManager` pins, and the image tag.
 - `update-snapshots.ts`: the in-container update entry point.
 - `update-snapshots-docker.ts` and `run-browser-docker.ts`: the host entry points.
-- `suite-results.ts`: summaries of Playwright's JSON report, the apply decision, and the stability comparison (`compare` command).
+- `suite-results.ts`: summaries of Playwright's JSON report, the incomplete-run check, the apply decision, and the stability comparison (`compare` command).
 - `docker-baseline-runner.ts`: the shared host load record, image build, archive, container run, kill-on-signal, and apply step.
 - `baseline-diff-report.ts`: the review report.
 - `snapshot-change-detection.ts`: exits 0 when the working tree has baseline or provenance changes, 1 when it has none.

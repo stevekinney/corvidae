@@ -4,9 +4,15 @@ import { resolve } from 'node:path';
 import { SCENARIO_HANG_GUARD_MILLISECONDS } from '../../module-scope-scenario.test-support.ts';
 import { REPOSITORY_ROOT } from './baseline-provenance.ts';
 import {
+  WEB_SERVER_TIMEOUT_REPORT,
+  passed,
+  playwrightReport,
+} from './playwright-report.test-support.ts';
+import {
   completedSuite,
   playwrightUpdateArguments,
   provenanceComponentScope,
+  provenanceRefusal,
   snapshotUpdateEnvironment,
 } from './update-snapshots.ts';
 
@@ -49,6 +55,25 @@ describe('completedSuite', () => {
     expect(completedSuite(1)).toBe(true);
     expect(completedSuite(130)).toBe(false);
     expect(completedSuite(2)).toBe(false);
+  });
+});
+
+describe('provenanceRefusal (COR-1537)', () => {
+  it('records no provenance for a webServer timeout, which Playwright still exits 1 for', () => {
+    expect(completedSuite(1)).toBe(true);
+    expect(provenanceRefusal(WEB_SERVER_TIMEOUT_REPORT)).toContain('config.webServer');
+  });
+
+  it('records none without a readable report, or when selected tests never ran', () => {
+    expect(provenanceRefusal(undefined)).toBe('Playwright wrote no JSON report.');
+    expect(provenanceRefusal('{"suites": [')).toContain('unreadable');
+    expect(
+      provenanceRefusal(playwrightReport([passed('a'), { title: 'b', results: [] }])),
+    ).toContain('1 of 2 selected tests never ran');
+  });
+
+  it('records provenance for a complete run', () => {
+    expect(provenanceRefusal(playwrightReport([passed('a')]))).toBeUndefined();
   });
 });
 
