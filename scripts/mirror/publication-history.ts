@@ -1,7 +1,12 @@
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { runCommand, type CommandRunner } from './packaging.ts';
-import { canonicalManifest, objectRecord, readGitJson } from './registry-manifest.ts';
+import {
+  canonicalManifest,
+  committedWorkspaceManifests,
+  objectRecord,
+  readGitJson,
+} from './registry-manifest.ts';
 import { collectDigestedFiles, type DigestScope, type DigestedFile } from './source-digest.ts';
 import { isSafeVersionConstant } from './source.ts';
 import type { ForeignCommitOwnership } from './sync.ts';
@@ -40,7 +45,8 @@ async function isAncestor(
  * commit between the merged sync and the release's `gitHead` to change only paths that were the
  * target's own.
  *
- * A changed path is accepted when it is a `package.json` whose changed keys are all release keys,
+ * A changed path is accepted when it is a `package.json` whose changed keys are all release keys or
+ * the internal peer widening a Version Packages commit writes (`isReleasePeerWidening`, COR-1534),
  * the declared version constant changed only to the manifest's version, a pending changeset, or
  * target-owned under the historical `target-owned.json`. COR-1192 and the owner's ruling of
  * 2026-10-15 add the sync guard's own rule (`blockingDeltaChanges` in `sync.ts`): a path is also
@@ -156,6 +162,16 @@ export async function verifyHistoricalCheckout(options: {
     'funding',
     'maintainers',
   ]);
+  // Read on first need, once per commit: only a commit that changes a peer range consults them.
+  const publishedVersions = new Map<string, Promise<ReadonlyMap<string, string>>>();
+  const publishedVersionsAt = (commit: string): Promise<ReadonlyMap<string, string>> => {
+    let versions = publishedVersions.get(commit);
+    if (versions === undefined) {
+      versions = publishedWorkspaceVersions(targetRoot, commit, runner);
+      publishedVersions.set(commit, versions);
+    }
+    return versions;
+  };
   let ownership: Promise<ForeignCommitOwnership> | undefined;
   // Loaded on first need: most histories are explained by the cheaper rules above.
   const historicalOwnership = (): Promise<ForeignCommitOwnership> => {
@@ -194,15 +210,22 @@ export async function verifyHistoricalCheckout(options: {
           const after = await readGitJson(targetRoot, commit, path, runner);
           for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
             if (releaseManifestKeys.has(key)) continue;
+            const ordered = key === 'exports' || key === 'imports';
             if (
-              JSON.stringify(
-                canonicalManifest(before[key], key === 'exports' || key === 'imports'),
-              ) !==
-              JSON.stringify(canonicalManifest(after[key], key === 'exports' || key === 'imports'))
+              JSON.stringify(canonicalManifest(before[key], ordered)) ===
+              JSON.stringify(canonicalManifest(after[key], ordered))
             )
-              throw new Error(
-                `Intervening commit ${commit} changes source-owned manifest field ${path}:${key}`,
-              );
+              continue;
+            if (
+              key === 'peerDependencies' &&
+              (await isReleasePeerWidening(before[key], after[key], () =>
+                publishedVersionsAt(commit),
+              ))
+            )
+              continue;
+            throw new Error(
+              `Intervening commit ${commit} changes source-owned manifest field ${path}:${key}`,
+            );
           }
         } else if (
           path === versionConstantPath &&
@@ -270,6 +293,66 @@ async function loadHistoricalOwnership(options: {
 /** A target-root `.changeset/<name>.md` other than the README. */
 function isPendingChangesetPath(path: string): boolean {
   return /^\.changeset\/[^/]+\.md$/.test(path) && path !== '.changeset/README.md';
+}
+
+/**
+ * COR-1534: whether a `peerDependencies` change is exactly the widening the Cinder mirror's
+ * `changeset:version` writes into a Version Packages commit. After `changeset version` bumps a
+ * package, `reconcile-internal-peers.ts` rewrites each dependent's peer entry on it to
+ * `^<new version>` whenever the old range no longer admits that version (cinder #1606 widened
+ * Editor's `^0.26.0` to `^0.27.0`). The entry set stays the same; every entry that changed must
+ * name a workspace the target itself publishes (a non-private manifest of the same commit), its
+ * old range must not admit that workspace's declared version, and its new range must be exactly
+ * `^<that version>`. Anything else, including an added or removed entry, is still refused.
+ *
+ * `dependencies` and `devDependencies` get no such rule. The Cinder mirror sets
+ * `bumpVersionsWithWorkspaceProtocolOnly` and spells every internal edge `workspace:*`, so
+ * `updateInternalDependencies` rewrites no range in a manifest, and the Weft mirror has no
+ * internal edges at all.
+ */
+async function isReleasePeerWidening(
+  before: unknown,
+  after: unknown,
+  publishedVersions: () => Promise<ReadonlyMap<string, string>>,
+): Promise<boolean> {
+  if (!isPlainObject(before) || !isPlainObject(after)) return false;
+  const names = Object.keys(after);
+  if (
+    names.length !== Object.keys(before).length ||
+    names.some((name) => !Object.hasOwn(before, name))
+  )
+    return false;
+  const changed = names.filter((name) => before[name] !== after[name]);
+  if (changed.length === 0) return false;
+  const versions = await publishedVersions();
+  return changed.every((name) => {
+    const previous = before[name];
+    const version = versions.get(name);
+    return (
+      typeof previous === 'string' &&
+      version !== undefined &&
+      after[name] === `^${version}` &&
+      !Bun.semver.satisfies(version, previous)
+    );
+  });
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Name to version for every workspace a target commit's own manifests publish. */
+async function publishedWorkspaceVersions(
+  targetRoot: string,
+  commit: string,
+  runner: CommandRunner,
+): Promise<ReadonlyMap<string, string>> {
+  const versions = new Map<string, string>();
+  for (const [name, manifest] of await committedWorkspaceManifests(targetRoot, commit, runner)) {
+    if (manifest['private'] !== true && typeof manifest['version'] === 'string')
+      versions.set(name, manifest['version']);
+  }
+  return versions;
 }
 
 export async function isManifestVersionOnlyChange(
