@@ -15,6 +15,7 @@
     "test:browser": "bun --bun playwright test --config playwright.config.ts",
     "test:lifecycle": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 ./scripts/static-playground-lifecycle.test.ts && bun scripts/static-playground-browser-lifecycle.check.ts",
     "test:production": "bun scripts/check-static-playground.ts",
+    "test:path-independence": "bun scripts/check-export-path-independence.ts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "validate": "bun scripts/validate-playground.ts"
   },
