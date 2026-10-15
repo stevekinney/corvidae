@@ -151,13 +151,27 @@ async function assembleDeterministicCase(
 
 // The assembler discovers `git rev-parse HEAD` once and caches it, so the one real `git` process
 // this file needs runs here at module scope, ahead of the tests, to stay off the per-test clock.
+// The 120-second timeout is a hang guard, so a stuck `git` fails the file instead of holding it.
+const revisionProcess = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
+  timeout: 120_000,
+  stdout: 'pipe',
+  stderr: 'pipe',
+});
 const [expectedSourceRevision] = await Promise.all([
-  Bun.$`git rev-parse HEAD`.quiet().text(),
+  (async () => {
+    const [output, exitCode] = await Promise.all([
+      new Response(revisionProcess.stdout).text(),
+      revisionProcess.exited,
+    ]);
+    if (exitCode !== 0) throw new Error(`git rev-parse HEAD exited ${exitCode}`);
+    return output;
+  })(),
   assembleDeterministicCase(),
 ]);
 await disposeAll();
 
 describe('assembleReproductionArtifact', () => {
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('produces byte-identical JSON.stringify output across two independently constructed harnesses given the same deterministic inputs', async () => {
     const first = await assembleDeterministicCase();
     const second = await assembleDeterministicCase();
@@ -165,6 +179,7 @@ describe('assembleReproductionArtifact', () => {
     expect(JSON.stringify(second)).toBe(JSON.stringify(first));
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('redacts a privileged value out of terminalResult so it never appears in JSON.stringify(artifact)', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
@@ -190,6 +205,7 @@ describe('assembleReproductionArtifact', () => {
     expect(serialized).toContain('[redacted]');
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('reads sourceRevision from git rev-parse HEAD', async () => {
     const expected = expectedSourceRevision.trim();
     const { artifact } = await runScriptedCase();
@@ -197,6 +213,7 @@ describe('assembleReproductionArtifact', () => {
     expect(artifact.sourceRevision).toBe(expected);
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('reads the exact versioned package manifests currently present in the workspace', async () => {
     const root = await locateWorkspaceRoot();
     const glob = new Bun.Glob('packages/*/package.json');
@@ -223,6 +240,7 @@ describe('assembleReproductionArtifact', () => {
     ).toEqual({ '@lostgradient/versioned': '1.2.3' });
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('reads clockOrigin, identifierSeed, and randomSeed from an explicitly pinned harness runtime', async () => {
     const runtime = createManualRuntimeServices({
       origin: '2031-06-01T00:00:00.000Z',
@@ -236,6 +254,7 @@ describe('assembleReproductionArtifact', () => {
     expect(artifact.randomSeed).toBe('pinned-random-seed');
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('records the generated (default) seeds rather than omitting them when the harness runtime is unpinned', async () => {
     const { harness, artifact } = await runScriptedCase();
 
@@ -248,12 +267,14 @@ describe('assembleReproductionArtifact', () => {
     expect(artifact.randomSeed).toBe('manual-runtime-services');
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it("reads effectiveModel from the harness bureau's configured provider", async () => {
     const { artifact } = await runScriptedCase();
 
     expect(artifact.effectiveModel).toEqual({ provider: 'anthropic', model: 'claude-test' });
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('throws rather than inventing a provider/model when the harness has no configured provider', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
@@ -278,6 +299,7 @@ describe('assembleReproductionArtifact', () => {
     ).toThrow(/no configured `provider`/);
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('sets causalTrace to exactly EventRecorder.normalize() output and nothing else', async () => {
     const { recorder, artifact } = await runScriptedCase();
 
@@ -285,6 +307,7 @@ describe('assembleReproductionArtifact', () => {
     expect(artifact.causalTrace.length).toBeGreaterThan(0);
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('assembles empty scriptedOutcomes and firedFaults — no fault engine exists yet', async () => {
     const { artifact } = await runScriptedCase();
 
@@ -292,12 +315,14 @@ describe('assembleReproductionArtifact', () => {
     expect(artifact.firedFaults).toEqual([]);
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('forwards cleanupReport verbatim', async () => {
     const { artifact } = await runScriptedCase();
 
     expect(artifact.cleanupReport).toMatchObject({ status: expect.any(String) });
   });
 
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('bypasses sourceRevision/packageVersions discovery when an explicit environment is supplied (AB-264)', async () => {
     const storage = createMemoryStorageFixture();
     const harness = await createBureauTestHarness({
@@ -336,6 +361,7 @@ describe('assembleReproductionArtifact', () => {
 });
 
 describe('ReproductionArtifact — cross-package shape (AB-334)', () => {
+  // spawn-free: the repository revision is memoized by the module-scope warm-up, so assembly never runs git.
   it('round-trips a Bureau-assembled artifact through operative’s writer/reader without a cast', async () => {
     // The whole point of AB-334: bureau's `ReproductionArtifact` is an
     // instantiation of operative's canonical declaration, not a second

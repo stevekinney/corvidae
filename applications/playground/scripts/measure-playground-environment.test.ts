@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { describe, expect, it } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -103,22 +104,20 @@ describe('waitForSettledLoad', () => {
   });
 });
 
-describe('captureSourceState untracked content (4274040383)', () => {
-  let repository: string | undefined;
-  afterEach(async () => {
-    if (repository !== undefined) await rm(repository, { recursive: true, force: true });
-  });
+/** The scenario runs real `git` and `captureSourceState`, so it runs at module scope. */
+const untrackedContentIsFingerprinted = await outcomeOf(async () => {
+  const repository = await mkdtemp(join(tmpdir(), 'measure-playground-source-'));
 
   async function git(...args: string[]): Promise<void> {
-    const child = Bun.spawn(['git', '-C', repository!, ...args], {
+    const child = Bun.spawn(['git', '-C', repository, ...args], {
       stdout: 'ignore',
       stderr: 'pipe',
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     if ((await child.exited) !== 0) throw new Error(await new Response(child.stderr).text());
   }
 
-  it('fingerprints the contents of untracked, non-ignored files and ignores ignored ones', async () => {
-    repository = await mkdtemp(join(tmpdir(), 'measure-playground-source-'));
+  try {
     await git('init', '-q');
     await git(
       '-c',
@@ -153,5 +152,12 @@ describe('captureSourceState untracked content (4274040383)', () => {
     expect(first).toMatch(/^[0-9a-f]{64}$/);
     await writeFile(join(repository, 'added.ts'), 'export const value = 2;\n');
     expect(captureSourceState(repository).untrackedSha256).not.toBe(first);
-  });
+  } finally {
+    await rm(repository, { recursive: true, force: true });
+  }
+});
+
+describe('captureSourceState untracked content (4274040383)', () => {
+  it('fingerprints the contents of untracked, non-ignored files and ignores ignored ones', () =>
+    rethrow(untrackedContentIsFingerprinted));
 });
