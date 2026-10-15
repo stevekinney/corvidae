@@ -16,10 +16,16 @@ async function readManifest(path: string): Promise<Manifest> {
 }
 
 describe('package entry', () => {
-  test('exports the Terminal component and the engine identity, and nothing else at runtime', () => {
-    expect(Object.keys(terminal).toSorted()).toEqual(['TERMINAL_ENGINE', 'Terminal']);
+  test('exports the Terminal component, the engine identity and the WebSocket client, and nothing else at runtime', () => {
+    expect(Object.keys(terminal).toSorted()).toEqual([
+      'TERMINAL_ENGINE',
+      'Terminal',
+      'TerminalConnectError',
+      'TerminalWebSocketClient',
+    ]);
     expect(terminal.TERMINAL_ENGINE).toBe(TERMINAL_ENGINE);
     expect(typeof terminal.Terminal).toBe('function');
+    expect(typeof terminal.TerminalWebSocketClient).toBe('function');
   });
 
   test('names the engine the root catalog pins and this package depends on', async () => {
