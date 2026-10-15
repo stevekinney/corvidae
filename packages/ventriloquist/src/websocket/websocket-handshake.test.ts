@@ -54,6 +54,7 @@ describe('a successful handshake', () => {
     await withHarness({}, async (harness) => {
       const client = connect(harness);
       const capabilities = await client.handshake();
+      expect(await client.refused()).toBe(false);
       expect(capabilities.sessionId).toBe(SESSION_IDENTIFIER);
       expect(capabilities.attachmentGeneration).toBeGreaterThanOrEqual(1);
       expect(capabilities.maxFrameBytes).toBe(65_536);

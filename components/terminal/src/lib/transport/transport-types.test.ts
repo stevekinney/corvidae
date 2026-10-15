@@ -27,5 +27,6 @@ test('an operation result names how it ended, and nothing claims more than the h
   ];
   // @ts-expect-error a result cannot claim a status the transport never reports
   const invented: OperationResult = { status: 'delivered', sequence: 4 };
-  expect([states.length, results.length, String(invented.status)]).toEqual([10, 4, 'delivered']);
+  expect([states.length, results.length]).toEqual([10, 4]);
+  expect(JSON.stringify(invented)).toBe('{"status":"delivered","sequence":4}');
 });
