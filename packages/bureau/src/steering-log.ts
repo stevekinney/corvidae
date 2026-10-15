@@ -271,19 +271,16 @@ function hasValidSubmittedValue(parsed: Record<string, unknown>): boolean {
 }
 
 /**
- * Each pre-gate refusal belongs to one kind of command. `selector-unavailable`
- * is refused only for an `agent-identity` command naming a `policyRef`, which
- * Bureau cannot yet resolve; `policy-denied` only for an identity or
- * configuration value it could not validate. A `pause` or `resume` is never
- * refused before the gate: the gate decides it, and the log records an
- * `admit`. Any other pairing is a decision no process made.
+ * `selector-unavailable` is refused for exactly one kind of command: an
+ * `agent-identity` command naming a `policyRef`, which Bureau cannot yet
+ * resolve. `policy-denied` can be refused for any target, a `pause` or
+ * `resume` included: an `expectedRevision` JSON cannot represent is refused
+ * that way, before the gate, for every target.
  */
 function refusalFitsCommand(outcome: unknown, command: ImplementedSteeringCommand): boolean {
+  if ((outcome as { outcome: unknown }).outcome !== 'unsupported-capability') return true;
   const requested = command.requestedValue as { target: string; policyRef?: unknown };
-  if ((outcome as { outcome: unknown }).outcome === 'unsupported-capability') {
-    return requested.target === 'agent-identity' && typeof requested.policyRef === 'string';
-  }
-  return requested.target !== 'pause' && requested.target !== 'resume';
+  return requested.target === 'agent-identity' && typeof requested.policyRef === 'string';
 }
 
 function parseEvent(raw: string, sequence: number, sessionId: string): SteeringLogEvent {

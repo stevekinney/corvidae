@@ -1204,6 +1204,23 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(reused.outcome).toBe('conflict');
 
+      // A run control with such a revision is refused the same way, and the
+      // log stays foldable: a later admission and a fresh process both read it.
+      const pauseRevision = await bureauA.submitSteeringCommand(longId, {
+        id: 'nan-pause',
+        principal: 'alice',
+        expectedRevision: Number.NaN,
+        requestedValue: { target: 'pause' },
+      });
+      expect(pauseRevision.outcome).toBe('rejected');
+      const pauseRevisionElsewhere = await bureauB.submitSteeringCommand(longId, {
+        id: 'nan-pause',
+        principal: 'alice',
+        expectedRevision: Number.NaN,
+        requestedValue: { target: 'pause' },
+      });
+      expect(pauseRevisionElsewhere).toEqual(pauseRevision);
+
       // A malformed command from an untyped caller is refused without
       // reaching the log, which every process can still fold.
       const malformed = await bureauA.submitSteeringCommand(longId, {
