@@ -13,12 +13,17 @@ import {
 } from '../../../../scripts/terminal/evidence-schema.ts';
 import { scenarioTest, settleScenarios } from '../bun/bun-process.test-support.ts';
 import {
+  REQUIRED_CORPUS_FIXTURE_IDS,
+  SUPPLEMENTARY_CORPUS_FIXTURE_IDS,
+} from '../protocol/corpus/fixtures.ts';
+import {
   BEHAVIOR_CASES,
   runCell,
   type CaseDefinition,
   type CellResult,
 } from './conformance-cases.test-support.ts';
 import { CONTROL_CASES } from './conformance-control-cases.test-support.ts';
+import { CORPUS_CASES } from './conformance-corpus-cases.test-support.ts';
 import { FAULT_CASES } from './conformance-fault-cases.test-support.ts';
 import { descriptorStability } from './conformance-leak-cases.test-support.ts';
 import { SOURCE_CASES } from './conformance-source-cases.test-support.ts';
@@ -46,6 +51,7 @@ const FAMILIES: readonly { readonly family: string; readonly cases: readonly Cas
   [
     { family: 'control', cases: CONTROL_CASES },
     { family: 'behavior', cases: BEHAVIOR_CASES },
+    { family: 'corpus', cases: CORPUS_CASES },
     { family: 'sources', cases: SOURCE_CASES },
     { family: 'faults', cases: FAULT_CASES },
   ];
@@ -259,6 +265,9 @@ describe('the conformance matrix', () => {
     for (const path of TRANSPORT_PATHS) {
       for (const mode of PROCESS_MODES) {
         expect(covered).toContain(`:behavior:${path}:${mode}:output-bytes`);
+        for (const id of [...REQUIRED_CORPUS_FIXTURE_IDS, ...SUPPLEMENTARY_CORPUS_FIXTURE_IDS]) {
+          expect(covered, id).toContain(`:corpus:${path}:${mode}:corpus-${id}`);
+        }
       }
     }
   });

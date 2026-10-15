@@ -72,19 +72,23 @@ const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
 export const channelFor = (mode: ProcessMode): OutputChannel =>
   mode === 'pipe' ? 'stdout' : 'pty';
 
-/** The text one channel carried, in arrival order. */
-export function textOn(messages: readonly ServerMessage[], channel: OutputChannel): string {
+/** The bytes one channel carried, in arrival order, joined and not decoded. */
+export function bytesOn(messages: readonly ServerMessage[], channel: OutputChannel): Uint8Array {
   const chunks = messages.flatMap((message) =>
     message.kind === 'output' && message.channel === channel ? [message.payload] : [],
   );
-  // Decode the joined bytes: a character can be split across frames, and each half alone is invalid.
   const joined = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
   let offset = 0;
   for (const chunk of chunks) {
     joined.set(chunk, offset);
     offset += chunk.length;
   }
-  return decode(joined);
+  return joined;
+}
+
+/** The text one channel carried. The joined bytes are decoded together: a character can be split across frames. */
+export function textOn(messages: readonly ServerMessage[], channel: OutputChannel): string {
+  return decode(bytesOn(messages, channel));
 }
 
 export function signatureOf(messages: readonly ServerMessage[], closeCode: number | undefined) {

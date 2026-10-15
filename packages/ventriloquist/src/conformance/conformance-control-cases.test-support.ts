@@ -236,9 +236,15 @@ const leakDetectors: CaseDefinition = {
     await rig.client.handshake();
     // Each detector the other cells rely on, shown to see a leak when one is made and to go quiet when it is released.
     const timers = new ManualClock();
-    const cancel = timers.schedule(() => undefined, 1);
-    const withTimer = timers.pendingTimers;
+    let fired = 0;
+    const fire = (weight: number) => () => {
+      fired += weight;
+    };
+    timers.schedule(fire(1), 1);
+    const cancel = timers.schedule(fire(10), 1);
+    const pending = timers.pendingTimers;
     cancel();
+    timers.advance(1);
     const descriptorsBefore = openDescriptorCount();
     const descriptor = openSync('/dev/null', 'r');
     const descriptorsHeld = openDescriptorCount();
@@ -248,8 +254,8 @@ const leakDetectors: CaseDefinition = {
     await conclude(rig);
     return [
       check(
-        'a pending timer is counted, and released when canceled',
-        withTimer === 1 && timers.pendingTimers === 0,
+        'pending timers are counted, a canceled one never fires, and none is left once due',
+        pending === 2 && fired === 1 && timers.pendingTimers === 0,
       ),
       check('a held descriptor is counted', descriptorsHeld === descriptorsBefore + 1),
       check('a closed descriptor is no longer counted', descriptorsAfter === descriptorsBefore),
