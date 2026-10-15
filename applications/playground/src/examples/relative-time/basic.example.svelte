@@ -6,8 +6,16 @@
 
 <script lang="ts">
   import { RelativeTime } from '@lostgradient/cinder';
+  import { onMount } from 'svelte';
 
-  const yesterday = new Date(Date.now() - 86_400_000);
+  // Read the clock in the browser, so the label is relative to the reader's now and the
+  // server-rendered page never records the time it was built.
+  let yesterday = $state<Date>();
+  onMount(() => {
+    yesterday = new Date(Date.now() - 86_400_000);
+  });
 </script>
 
-<RelativeTime date={yesterday} tick={false} />
+{#if yesterday !== undefined}
+  <RelativeTime date={yesterday} tick={false} />
+{/if}

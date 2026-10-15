@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "NODE_ENV=production PLAYGROUND_BASE_URL=https://cinder.website bun scripts/static-export.ts",
+    "build": "NODE_ENV=production PLAYGROUND_BASE_URL=https://cinder.website TZ=UTC LANG=en_US.UTF-8 bun scripts/static-export.ts",
     "check:source-temp": "bun scripts/check-source-temp.ts",
     "clean": "bun scripts/clean.ts",
     "dev": "bun --watch src/playground-server.ts",

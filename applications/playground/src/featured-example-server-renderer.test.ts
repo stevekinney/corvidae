@@ -8,6 +8,7 @@ import {
   setFeaturedExampleRenderer,
   type RenderedFeaturedExample,
 } from './featured-example-server-renderer.ts';
+import { incrementRebuildGeneration } from './rebuild-generation.ts';
 
 /*
  * Every real render spawns a `bun` process that cold-compiles the example's Svelte graph: about a
@@ -62,6 +63,25 @@ const substituteRendererScenario = await outcomeOf(async () => {
   );
   expect(calls).toHaveLength(1);
 });
+
+/*
+ * The static export publishes each featured example's server render, so two renders of one
+ * example must be byte-identical: a build-time clock reading or a random id makes the export
+ * differ between any two builds (CIN-591). Each example renders twice in fresh processes, with the
+ * rebuild generation bumped between them so the second is not answered from the first's memo.
+ */
+const DETERMINISM_SCENARIOS = [
+  ['relative-time', 'basic'],
+  ['chat-navigation-rail', 'basic'],
+  ['chat-sub-session', 'basic'],
+] as const;
+const repeatedRenders = new Map<string, [RenderedFeaturedExample, RenderedFeaturedExample]>();
+for (const [componentName, scenario] of DETERMINISM_SCENARIOS) {
+  const first = await renderFeaturedExample(componentName, scenario, `overview-mount-${scenario}`);
+  incrementRebuildGeneration();
+  const second = await renderFeaturedExample(componentName, scenario, `overview-mount-${scenario}`);
+  repeatedRenders.set(`${componentName}/${scenario}`, [first, second]);
+}
 
 describe('featured example server renderer', () => {
   test('removes every Svelte hydration marker form without touching authored comments', () => {
@@ -129,6 +149,17 @@ describe('featured example server renderer', () => {
       const scopedClasses = new Set(editor.body.match(/\bsvelte-[a-z0-9]+\b/g) ?? []);
       expect(scopedClasses.size).toBeGreaterThan(0);
       for (const scopedClass of scopedClasses) expect(editor.head).toContain(`.${scopedClass}`);
+    },
+  );
+});
+
+describe('featured example determinism', () => {
+  test.each(DETERMINISM_SCENARIOS)(
+    '%s/%s renders the same markup every time',
+    (componentName, scenario) => {
+      const [first, second] = repeatedRenders.get(`${componentName}/${scenario}`)!;
+      expect(second.body).toBe(first.body);
+      expect(second.head).toBe(first.head);
     },
   );
 });

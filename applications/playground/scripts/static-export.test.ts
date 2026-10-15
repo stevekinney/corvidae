@@ -710,3 +710,15 @@ test('clears a legacy /c/ tree left by a previous export', async () => {
     await rm(outputDirectory, { recursive: true, force: true });
   }
 }, 120_000);
+
+test('the build pins the time zone and locale its server renders format dates in', async () => {
+  // Server-rendered examples format dates with the default `Intl` time zone and locale, so a build
+  // that inherited them would export different bytes on each machine (CIN-591).
+  const manifest = (await Bun.file(join(import.meta.dirname, '..', 'package.json')).json()) as {
+    scripts: Record<string, string>;
+  };
+  const assignments = manifest.scripts['build']?.split(' bun ')[0]?.split(' ') ?? [];
+
+  expect(assignments).toContain('TZ=UTC');
+  expect(assignments).toContain('LANG=en_US.UTF-8');
+});
