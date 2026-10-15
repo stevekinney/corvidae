@@ -102,6 +102,10 @@ const goodFixturePassesWithoutCredentials = await outcomeOf(async () => {
   expect(report.servedDigest).toBe(report.buildDigest);
   expect(report.caseCount).toBe(6);
   expect(report.passedCount).toBe(6);
+  // Stopping our own server at teardown is not a server death.
+  expect(report.failurePhase).toBeNull();
+  expect(report.inFlightCases).toEqual([]);
+  expect(report.diagnosis).toBeNull();
   expect(report.peakResidentSetBytes).toBe(104_857_600);
   expect(report.exportDurationMilliseconds).toBe(1250);
 });
