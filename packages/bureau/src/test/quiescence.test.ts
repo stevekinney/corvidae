@@ -688,6 +688,7 @@ describe('assertBureauQuiescent / BureauTestHarness.close()', () => {
       pendingWebhookDeliveries: [],
       openStorageResources: [],
       durableAttempts: [],
+      assetWork: [],
       abortingRuns: [{ runId: 'run-leaked-abort', since: 1_700_000_000_000 }],
       incomplete: [{ kind: 'scheduler', id: 'task-1', reason: 'unresolved' }],
       shutdownReport: {
