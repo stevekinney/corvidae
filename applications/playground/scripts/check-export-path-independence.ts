@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { readScrubbedEnvironment } from '../src/environment-configuration.ts';
 import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
 import {
   buildDigestOf,
@@ -32,8 +33,19 @@ const EXPORT_MILLISECONDS = 60 * 60_000;
 
 type ExportResult = { digest: string; manifest: DigestManifestEntry[] };
 
-async function run(command: string[], cwd: string, milliseconds: number): Promise<string> {
-  const child = Bun.spawn(command, { cwd, stdout: 'pipe', stderr: 'pipe', timeout: milliseconds });
+async function run(
+  command: string[],
+  cwd: string,
+  milliseconds: number,
+  env?: Record<string, string>,
+): Promise<string> {
+  const child = Bun.spawn(command, {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: milliseconds,
+    ...(env === undefined ? {} : { env }),
+  });
   const [stdout, stderr, status] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -83,6 +95,8 @@ async function cloneAndExport(directory: string, components: string): Promise<Ex
     ],
     join(directory, PLAYGROUND),
     EXPORT_MILLISECONDS,
+    // The time zone and locale `bun run build` pins, which server-rendered dates are formatted in.
+    { ...readScrubbedEnvironment(), TZ: 'UTC', LANG: 'en_US.UTF-8' },
   );
   const last = stdout.trimEnd().split('\n').at(-1) ?? '';
   return JSON.parse(last) as ExportResult;
