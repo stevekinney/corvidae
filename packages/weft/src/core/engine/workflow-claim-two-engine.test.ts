@@ -2590,6 +2590,27 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     }
   });
 
+  it('a local cancel of a run another engine already terminated settles the local result waiter', async () => {
+    const id = `teardown-durable-localwaiter-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    await using engineA = await createEngine(storage);
+    await using engineB = await createEngine(storage);
+    const old = await engineA.start(TYPE, 'P1:OLD', { id });
+    const outcome = old.result().then(
+      () => 'resolved',
+      () => 'rejected',
+    );
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+    // Another engine terminates the run durably; this engine's waiter is not told.
+    await engineB.cancel(id);
+    // Cancelling again locally finds the record already terminal and must still settle the waiter.
+    await engineA.cancel(id);
+
+    const settled = await Promise.race([outcome, Bun.sleep(3_000).then(() => 'hung')]);
+    expect(settled).toBe('rejected');
+  });
+
   it('a completion racing a remote cancel of the same run both settle and release the slot once', async () => {
     const id = `teardown-durable-racing-${nextInvocation()}`;
     const storage = new MemoryStorage();

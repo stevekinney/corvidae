@@ -56,6 +56,7 @@ import {
   buildCompletedWorkflowState,
   terminalCommitterStamp,
 } from './completion-operations.ts';
+import { settleLocalWaiterFromTerminalRecord } from './settle-refused-terminal.ts';
 import {
   captureCurrentClaimEpoch,
   releaseWorkflowClaimAfterTerminalSettlement,
@@ -204,6 +205,7 @@ export async function terminateWorkflow(
       },
     );
     if (!terminationResult) {
+      await settleLocalWaiterFromTerminalRecord(internals, workflowId, callbacks);
       return;
     }
     // Captured synchronously after the commit — see `releaseWorkflowClaimAfterTerminalSettlement`.
