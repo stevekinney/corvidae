@@ -545,6 +545,83 @@ describe('trailing output after the process exit', () => {
   });
 });
 
+/** A rejection that carries one of the startup failure codes, as the Bun helpers' `ProcessStartFailure` does. */
+function startRejectedWith(code: string): Error {
+  return Object.assign(new Error('refused'), { code });
+}
+
+describe('the code a backend refused to start with', () => {
+  test('reaches a client that arrives after the failure as unsupported-runtime, with no attachment', async () => {
+    const harness = createHarness({
+      backend: { start: () => Promise.reject(startRejectedWith('unsupported-runtime')) },
+    });
+    void harness.session.start();
+    await flush();
+    expect(harness.session.startFailureCode).toBe('unsupported-runtime');
+    const transport = createFixtureTransport({ session: harness.session });
+    transport.connect();
+    expect(transport.received).toMatchObject([
+      { kind: 'attachment-error', code: 'unsupported-runtime' },
+    ]);
+    expect(transport.failures).toEqual([]);
+    expect(transport.closeCodes).toEqual([1011]);
+  });
+
+  test('reaches a client that arrives after the failure as spawn-failed when that is the code', async () => {
+    const harness = createHarness({
+      backend: { start: () => Promise.reject(startRejectedWith('spawn-failed')) },
+    });
+    void harness.session.start();
+    await flush();
+    expect(harness.session.startFailureCode).toBe('spawn-failed');
+    const transport = createFixtureTransport({ session: harness.session });
+    transport.connect();
+    expect(transport.received).toMatchObject([{ kind: 'attachment-error', code: 'spawn-failed' }]);
+  });
+
+  test('is read from a start that throws synchronously, too', async () => {
+    const harness = createHarness({
+      backend: {
+        start: () => {
+          throw startRejectedWith('unsupported-runtime');
+        },
+      },
+    });
+    void harness.session.start();
+    await flush();
+    expect(harness.session.startFailureCode).toBe('unsupported-runtime');
+  });
+
+  test.each([
+    ['an error with no code', new Error('no shell')],
+    ['an unrelated code', startRejectedWith('EACCES')],
+    ['a value that is not an error', null],
+  ])('is absent for %s, which is a spawn-failed', async (_label, rejection) => {
+    const harness = createHarness({ backend: { start: () => Promise.reject(rejection) } });
+    void harness.session.start();
+    await flush();
+    expect(harness.session.startFailureCode).toBeUndefined();
+    const transport = createFixtureTransport({ session: harness.session });
+    transport.connect();
+    expect(transport.received).toMatchObject([{ kind: 'attachment-error', code: 'spawn-failed' }]);
+  });
+
+  test('is spawn-failed for a client already attached, whose generation the protocol will not call unsupported', async () => {
+    const harness = createHarness({
+      backend: { start: () => Promise.reject(startRejectedWith('unsupported-runtime')) },
+    });
+    const transport = createFixtureTransport({ session: harness.session });
+    transport.connect();
+    void harness.session.start();
+    await flush();
+    const messages = transport.pump();
+    expect(messages.map((message) => message.kind)).toEqual(['attachment-error', 'cleanup-result']);
+    expect(messages[0]).toMatchObject({ code: 'spawn-failed' });
+    expect(transport.failures).toEqual([]);
+    expect(transport.closeCodes).toEqual([1011]);
+  });
+});
+
 describe('startup failure', () => {
   test('a backend that fails to start after capabilities were issued is reported as spawn-failed before the cleanup result', async () => {
     const harness = createHarness({
