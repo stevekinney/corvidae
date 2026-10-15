@@ -17,8 +17,8 @@ test.afterEach(() => {
   expect(problems, 'console errors and warnings are defects').toEqual([]);
 });
 
-const RADIUS = '#theme-builder-value-radius-medium';
-const dimension = (value: number) => `{"value": ${value}, "unit": "px"}`;
+const RADIUS = '#theme-builder-foundation-radius-medium-amount';
+const RADIUS_UNIT = '#theme-builder-foundation-radius-medium-unit';
 
 async function openReady(page: Page): Promise<void> {
   await openBuilder(page, { width: 1440, height: 900 });
@@ -28,7 +28,8 @@ async function openReady(page: Page): Promise<void> {
 async function setRadius(page: Page, value: number): Promise<void> {
   await page.getByRole('navigation', { name: 'Token categories' }).getByText('Foundations').click();
   await page.locator('[data-token-path="radius.medium"]').click();
-  await page.locator(RADIUS).fill(dimension(value));
+  await page.locator(RADIUS_UNIT).selectOption('px');
+  await page.locator(RADIUS).fill(String(value));
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page.getByTestId('draft-value')).toHaveText(`${value}px`);
 }

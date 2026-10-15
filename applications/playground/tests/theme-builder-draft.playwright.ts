@@ -146,6 +146,9 @@ test.describe('two tabs', () => {
     await conflict.getByRole('button', { name: 'Reload stored version' }).click();
     await other.getByRole('dialog').getByRole('button', { name: 'Discard and reload' }).click();
     await expect(conflict).toHaveCount(0);
+    // The dialog closes once the stored version has been evaluated; a modal that is still open
+    // makes the page inert, so typing waits for it.
+    await expect(other.getByRole('dialog')).toHaveCount(0);
     await expect(other.locator(RADIUS)).toHaveValue(dimension(7).replace(/ /g, ''));
 
     await other.locator(RADIUS).fill('11x');

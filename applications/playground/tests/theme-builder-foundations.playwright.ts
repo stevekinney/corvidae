@@ -266,6 +266,8 @@ test.describe('scale presets', () => {
   }) => {
     await select(page, 'space.4');
     await page.getByLabel('Lock Space 4 (space.4)').check();
+    // The lock is a commit the runtime evaluates first; the proposal is made once it has landed.
+    await expect(undo(page)).toBeEnabled();
     await spacing(page).getByRole('button', { name: 'Compact (0.75)' }).click();
     const locked = proposal(page).locator('tr[data-path="space.4"] input[type="checkbox"]');
     await expect(locked).toBeDisabled();

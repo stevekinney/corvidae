@@ -237,7 +237,13 @@ export class ThemeBuilderCore {
       return;
     }
     const values = await this.#valuesFor(entry.draft.envelope, entry.draft.revision, context);
-    if (!values.ok) return;
+    if (!values.ok) {
+      // A superseded request is answered by the newer one; a real failure ends the request.
+      if (values.path !== null || values.message !== 'Superseded by a newer edit.') {
+        this.workbench.dropPendingContext(context);
+      }
+      return;
+    }
     this.draftValues = values.map;
     this.workbench.proposalPreview = false;
     this.workbench.applyContext(context, values.list);

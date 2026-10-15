@@ -438,6 +438,19 @@ describe('static export', () => {
       expect(builderHtml).toMatch(
         /\/assets\/[a-f0-9]{64}\/theme-builder-bundle\/theme-builder\.js/,
       );
+      // The builder starts its evaluation workers by URL, so no import names the worker file:
+      // it is exported by name, and the builder bundle carries its fingerprinted URL.
+      const workerUrl = [...rendered].find((url) =>
+        /\/theme-builder-bundle\/theme-runtime-worker\.js$/.test(url),
+      );
+      if (workerUrl === undefined) throw new Error('the evaluation worker was not exported');
+      expect(workerUrl).toMatch(/^\/assets\/[a-f0-9]{64}\//);
+      const builderGraph = await Promise.all(
+        [...rendered]
+          .filter((url) => url.includes('/theme-builder-bundle/'))
+          .map((url) => readFile(join(outputDirectory, url.slice(1)), 'utf8')),
+      );
+      expect(builderGraph.some((code) => code.includes(workerUrl))).toBe(true);
       expect(previewHtml).toContain('<meta name="robots" content="noindex, nofollow" />');
       expect(previewHtml).not.toContain('rel="canonical"');
       expect(previewHtml).toMatch(
