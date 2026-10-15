@@ -22,8 +22,8 @@ const runtime = createDefaultRuntimeServices();
  * reported as stuck. The clock starts at `loaded`, not at spawn: native Node
  * loads the workspace's TypeScript source module by module, which on a
  * contended host has taken over four minutes, while everything after loading
- * is light work. A child that never finishes loading is bounded by the test's
- * own timeout instead, and `stop()` still kills it.
+ * is light work. A child that never finishes loading is bounded by its
+ * scenario's hang guard instead, which calls `stop()` to kill it.
  */
 export const HOST_DEADLINE_MS = 120_000;
 
