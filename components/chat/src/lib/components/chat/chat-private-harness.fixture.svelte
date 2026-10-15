@@ -134,6 +134,9 @@
   // has started — so an already-dequeued timer can't write into a fresh stream.
   let activeOperation = 0;
   let holdNextFirstStreamToken = false;
+  // Test hook: keep a streamed reply open after its last chunk, so the Stop
+  // affordance lasts until the test stops it instead of until a timer fires.
+  let holdStreamOpen = false;
 
   function later(callback: () => void, delay: number): void {
     const handle = setTimeout(() => {
@@ -287,6 +290,10 @@
     if (operation !== activeOperation) return;
 
     if (index >= chunks.length) {
+      if (holdStreamOpen) {
+        later(() => streamChunk(chunks, index, operation), 120);
+        return;
+      }
       // Commit the final content into the message, then clear the streaming flag.
       conversation = updateStreamingMessage(
         conversation,
@@ -480,6 +487,7 @@
     corvidaeChatHarnessSetCustomMessageSnippets?: (enabled: boolean) => void;
     corvidaeChatHarnessUseAdapter?: () => void;
     corvidaeChatHarnessHoldNextFirstStreamToken?: () => void;
+    corvidaeChatHarnessHoldStreamOpen?: (held: boolean) => void;
     corvidaeChatHarnessPushTypingSnapshot?: (participants: TypingParticipant[]) => void;
     corvidaeChatHarnessSetDirectTypingParticipants?: (
       participants: TypingParticipant[] | undefined,
@@ -712,6 +720,9 @@
     harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken = () => {
       holdNextFirstStreamToken = true;
     };
+    harnessWindow.corvidaeChatHarnessHoldStreamOpen = (held) => {
+      holdStreamOpen = held;
+    };
     harnessWindow.corvidaeChatHarnessPushTypingSnapshot = (participants) => {
       if (!adapterHandlers) throw new Error('Chat harness adapter is not subscribed.');
       adapterHandlers.onTypingChange(participants);
@@ -725,6 +736,7 @@
       delete harnessWindow.corvidaeChatHarnessSetCustomMessageSnippets;
       delete harnessWindow.corvidaeChatHarnessUseAdapter;
       delete harnessWindow.corvidaeChatHarnessHoldNextFirstStreamToken;
+      delete harnessWindow.corvidaeChatHarnessHoldStreamOpen;
       delete harnessWindow.corvidaeChatHarnessPushTypingSnapshot;
       delete harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants;
     };
