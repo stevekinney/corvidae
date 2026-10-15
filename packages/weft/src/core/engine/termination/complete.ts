@@ -20,7 +20,6 @@ import {
   buildRetainedTerminalSearchAttributes,
   buildTerminalWorkflowIndexOperations,
   cleanupAttributeIndex,
-  updateWorkflowState,
   writeRetainedTerminalSearchAttributes,
 } from '../attributes-tags.ts';
 import { TERMINAL_CLEANUP_DELAY_MS } from '../bulk-operations.ts';
@@ -40,6 +39,7 @@ import {
   type TeardownClaim,
 } from '../state-utilities.ts';
 import { releaseWorkflowConcurrencySlotForRun } from '../workflow-concurrency.ts';
+import { updateWorkflowState } from '../workflow-state-update.ts';
 import {
   refreshWorkflowVisibilityMaintenance,
   visibilityIndexOperations,

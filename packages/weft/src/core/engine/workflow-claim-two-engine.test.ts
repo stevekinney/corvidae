@@ -2471,27 +2471,30 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     }
   });
 
-  it('a remote cancel still commits when concurrent tag edits keep changing the record under it', async () => {
-    const id = `teardown-durable-tagstorm-${nextInvocation()}`;
+  /** B cancels a run A holds; `beforeCancelWrite` runs on each cancel commit attempt, just before it. */
+  async function cancelWithInterference(
+    id: string,
+    beforeCancelWrite: (
+      attempt: number,
+      engineA: Awaited<ReturnType<typeof createEngine>>,
+    ) => Promise<void>,
+  ) {
     const storage = new MemoryStorage();
-    await using engineA = await createEngine(storage);
-    // Every cancel commit attempt is beaten by a tag edit landing just before it, more times than
-    // any bounded retry budget would absorb.
-    let edits = 0;
-    const cancelWrites = (operations: BatchOperation[]) =>
-      operations.some(
-        (operation) =>
-          operation.type === 'put' &&
-          operation.key === KEYS.workflow(id) &&
-          (decode(operation.value) as { status?: string }).status === 'cancelled',
-      );
+    const engineA = await createEngine(storage);
+    let attempts = 0;
     const racing = new Proxy(storage, {
       get(target, property, receiver) {
         if (property === 'conditionalBatch') {
           return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
-            if (cancelWrites(operations) && edits < 14) {
-              edits += 1;
-              await engineA.addTags(id, `edit-${String(edits)}`);
+            const cancelling = operations.some(
+              (operation) =>
+                operation.type === 'put' &&
+                operation.key === KEYS.workflow(id) &&
+                (decode(operation.value) as { status?: string }).status === 'cancelled',
+            );
+            if (cancelling) {
+              attempts += 1;
+              await beforeCancelWrite(attempts, engineA);
             }
             return target.conditionalBatch(conditions, operations);
           };
@@ -2500,19 +2503,90 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
         return typeof value === 'function' ? value.bind(target) : value;
       },
     });
-    await using engineB = await createEngine(racing);
+    const engineB = await createEngine(racing);
     const old = await engineA.start(TYPE, 'P1:OLD', { id });
     void old.result().catch(() => undefined);
     await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    return { storage, engineA, engineB, attempts: () => attempts };
+  }
 
-    await engineB.cancel(id);
+  it('a remote cancel still commits when many concurrent tag edits race it', async () => {
+    const id = `teardown-durable-tagstorm-${nextInvocation()}`;
+    const { storage, engineA, engineB } = await cancelWithInterference(id, async () => {});
+    try {
+      // Fourteen edits genuinely in flight against the cancel; jittered backoff lets it through.
+      const edits = Array.from({ length: 14 }, (_, index) =>
+        engineA.addTags(id, `edit-${String(index)}`),
+      );
+      await Promise.all([engineB.cancel(id), ...edits]);
 
-    // The cancel committed, so the run is not left durably running with its slot held.
-    const state = await engineA.get(id);
-    expect(state?.status).toBe('cancelled');
-    expect(edits).toBeGreaterThan(3);
-    expect(await slotHolders(storage, 'P1')).toEqual([]);
-    expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
+      const state = await engineA.get(id);
+      expect(state?.status).toBe('cancelled');
+      expect(await slotHolders(storage, 'P1')).toEqual([]);
+      expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
+    } finally {
+      await engineB[Symbol.asyncDispose]();
+      await engineA[Symbol.asyncDispose]();
+    }
+  });
+
+  it('a spent retry budget rethrows to the caller, who can cancel again once the interference stops', async () => {
+    const id = `teardown-durable-exhausted-${nextInvocation()}`;
+    const { storage, engineA, engineB, attempts } = await cancelWithInterference(
+      id,
+      async (_attempt, engine) => {
+        if (attempts() <= 10) await engine.addTags(id, `edit-${String(attempts())}`);
+      },
+    );
+    try {
+      // Every attempt of the first cancel is beaten, so it throws after its budget.
+      await expect(engineB.cancel(id)).rejects.toThrow('lost a commit precondition');
+      expect(attempts()).toBe(10);
+      const stillRunning = await engineA.get(id);
+      expect(stillRunning?.status).toBe('running');
+
+      // The error reached the caller, and a second cancel commits.
+      await engineB.cancel(id);
+      const nowCancelled = await engineA.get(id);
+      expect(nowCancelled?.status).toBe('cancelled');
+      expect(await slotHolders(storage, 'P1')).toEqual([]);
+    } finally {
+      await engineB[Symbol.asyncDispose]();
+      await engineA[Symbol.asyncDispose]();
+    }
+  });
+
+  it("a same-run completion that lands before the cancel's final commit survives it", async () => {
+    const id = `teardown-durable-lastcommit-${nextInvocation()}`;
+    const { storage, engineA, engineB } = await cancelWithInterference(
+      id,
+      async (attempt, engine) => {
+        if (attempt < 10) {
+          await engine.addTags(id, `edit-${String(attempt)}`);
+          return;
+        }
+        // The final attempt: the run completes just before the cancel's commit.
+        await engine.signal(id, 'go');
+        await waitForCondition(
+          async () => {
+            const state = await engine.get(id);
+            return state?.status === 'completed';
+          },
+          { label: 'completion landed' },
+        );
+      },
+    );
+    try {
+      await engineB.cancel(id);
+
+      // The cancel found the run finished and did nothing: completed is not overwritten.
+      const stillCompleted = await engineA.get(id);
+      expect(stillCompleted?.status).toBe('completed');
+      expect(await slotHolders(storage, 'P1')).toEqual([]);
+    } finally {
+      await engineB[Symbol.asyncDispose]();
+      await engineA[Symbol.asyncDispose]();
+    }
   });
 
   it('a completion racing a remote cancel of the same run both settle and release the slot once', async () => {
