@@ -115,6 +115,8 @@ import {
 import { Conversation, createConversationHistory, isConversationHistory } from 'conversationalist';
 
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
+import { createAssetService } from './assets/asset-service';
+import type { AssetService } from './assets/types';
 import {
   type AuditTrail,
   auditTrailSessionOwnerId,
@@ -8485,6 +8487,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     'webhook-notifier',
     'audit-trail',
     'event-history',
+    'assets',
     'durable-engine',
   ] as const;
 
@@ -8530,6 +8533,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (kind === 'webhook-notifier') return Boolean(webhookNotifierInstance);
       if (kind === 'audit-trail') return Boolean(auditTrailInstance);
       if (kind === 'event-history') return Boolean(eventHistoryInstance);
+      if (kind === 'assets') return Boolean(assetServiceInstance);
       return Boolean(runtime.durable);
     });
     const ownerOutcomes = new Map<
@@ -8874,6 +8878,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             const onlineEvalSampler = onlineEvalSamplerInstance;
             ownerDrains.push(settleOwner('online-evals', () => onlineEvalSampler.dispose()));
           }
+          if (assetServiceInstance) {
+            // COR-794: aborts every in-flight asset operation and awaits each
+            // one's cleanup acknowledgement, and clears the collection timer.
+            const assetService = assetServiceInstance;
+            ownerDrains.push(
+              settleOwner('assets', async () => {
+                const report = await assetService.shutdown();
+                // A work handle whose cleanup did not complete fails the owner, not just its report.
+                const unclean = report.acknowledgements.filter(
+                  ({ acknowledgement }) => acknowledgement.status !== 'completed',
+                );
+                if (unclean.length > 0) {
+                  throw new Error(
+                    `Asset work did not clean up: ${unclean.map(({ workId }) => workId).join(', ')}`,
+                  );
+                }
+              }),
+            );
+          }
           await Promise.allSettled(ownerDrains);
 
           emitter.dispatch(new BureauDisposedEvent());
@@ -9038,6 +9061,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let auditTrailInstance: AuditTrail | undefined;
   let webhookNotifierInstance: WebhookNotifier | undefined;
   let onlineEvalSamplerInstance: OnlineEvalSampler | undefined;
+  // COR-794: the managed-asset owner, on this bureau's runtime services so
+  // its timers, identifiers, and deferred cleanup are the bureau's own.
+  const assetServiceInstance: AssetService | undefined = options.assets
+    ? await createAssetService({ ...options.assets, runtime: runtimeServices })
+    : undefined;
 
   // The durable event history store (AB-91's `ab91-01` slice, AB-310) —
   // built eagerly (unlike `auditTrailInstance`/`webhookNotifierInstance`
@@ -9653,6 +9681,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     },
     get onlineEvalSampler(): OnlineEvalSampler | undefined {
       return onlineEvalSamplerInstance;
+    },
+    get assets(): AssetService | undefined {
+      return assetServiceInstance;
     },
     get ready() {
       return runtime.ready;
