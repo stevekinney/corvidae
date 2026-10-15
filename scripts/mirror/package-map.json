@@ -11,12 +11,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.28.0",
+      "lastPublishedVersion": "0.29.0",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.28.0",
-        "gitHead": "aff7eb387661b16bb98640eb4916084e340cdeda",
-        "corvidaeCommit": "6c00d7c84461eab57e749edc579a6167cbf98eb9",
+        "version": "0.29.0",
+        "gitHead": "45a13b9f40116688b9f268811604dddf64b8e8dc",
+        "corvidaeCommit": "244cb20e235ce1692b22ff4f6e1c0f13a45cdfd9",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -32,6 +32,7 @@
             "src/cli/__fixtures__/codegen/typecheck/tsconfig.json",
             "src/cli/__fixtures__/codegen/typecheck/weft.generated.d.ts",
             "src/cli/__fixtures__/conformance-broken-worker.ts",
+            "src/cli/__fixtures__/conformance-hanging-replacement-worker.ts",
             "src/cli/__fixtures__/conformance-legacy-protocol-worker.ts",
             "src/cli/__fixtures__/conformance-lost-ack-worker.ts",
             "src/cli/__fixtures__/conformance-manifest.ts",
@@ -62,7 +63,6 @@
             "src/cli/codegen.ts",
             "src/cli/command-suggestions.ts",
             "src/cli/completions.ts",
-            "src/cli/conformance-harness.ts",
             "src/cli/conformance.ts",
             "src/cli/doctor.ts",
             "src/cli/help-text.ts",
@@ -148,6 +148,9 @@
             "src/client/sse-event-stream.ts",
             "src/client/start-body.ts",
             "src/client/workflow-name-typing.ts",
+            "src/conformance/harness.ts",
+            "src/conformance/run-conformance.ts",
+            "src/conformance/targets.ts",
             "src/connection.ts",
             "src/core/__tests__/definition-vocabulary.test-d.ts",
             "src/core/__tests__/finalizer-teardown.test-support.ts",
@@ -213,6 +216,7 @@
             "src/core/context/run-operation.ts",
             "src/core/context/saga.ts",
             "src/core/context/session-state.ts",
+            "src/core/context/sleep-deadline.ts",
             "src/core/context/speculate-operations.ts",
             "src/core/context/speculative-child.ts",
             "src/core/context/state-namespace.ts",
@@ -348,6 +352,7 @@
             "src/core/engine/lifecycle/start-commit.ts",
             "src/core/engine/lifecycle/start-condition-tags.ts",
             "src/core/engine/lifecycle/start-exec.ts",
+            "src/core/engine/lifecycle/start-identity.ts",
             "src/core/engine/lifecycle/start-or-signal-create.ts",
             "src/core/engine/lifecycle/start-or-signal-resolution.ts",
             "src/core/engine/lifecycle/start-or-signal.ts",
@@ -398,6 +403,7 @@
             "src/core/engine/retained-recovery-record-count.ts",
             "src/core/engine/retention-scan.ts",
             "src/core/engine/retention.ts",
+            "src/core/engine/review-cleanup.ts",
             "src/core/engine/review-list-entries.ts",
             "src/core/engine/reviews.ts",
             "src/core/engine/revision-errors.ts",
@@ -435,15 +441,19 @@
             "src/core/engine/termination.ts",
             "src/core/engine/termination/cleanup.ts",
             "src/core/engine/termination/complete.ts",
+            "src/core/engine/termination/completion-operations.ts",
+            "src/core/engine/termination/fenced-sweep.ts",
             "src/core/engine/termination/finalizer-activity.ts",
             "src/core/engine/termination/finalizer-claim.ts",
             "src/core/engine/termination/finalizer-dead-letter.ts",
             "src/core/engine/termination/finalizer-heartbeat.ts",
             "src/core/engine/termination/finalizer-registration.ts",
             "src/core/engine/termination/finalizer.ts",
+            "src/core/engine/termination/settle-refused-terminal.ts",
             "src/core/engine/termination/state-commit-callbacks.ts",
             "src/core/engine/termination/suspend.ts",
             "src/core/engine/termination/terminal-claim-release.ts",
+            "src/core/engine/termination/terminal-fence.ts",
             "src/core/engine/time-operation-callbacks.ts",
             "src/core/engine/timeline-coordinator-constants.ts",
             "src/core/engine/timeline-coordinator-detail.ts",
@@ -479,6 +489,7 @@
             "src/core/engine/workflow-indexes.ts",
             "src/core/engine/workflow-retention-deadline.ts",
             "src/core/engine/workflow-state-stream.ts",
+            "src/core/engine/workflow-state-update.ts",
             "src/core/engine/workflow-visibility-maintenance.ts",
             "src/core/engine/workflow-visibility-queries.ts",
             "src/core/event-log-shared.ts",
@@ -643,6 +654,7 @@
             "src/core/task-ledger/task-ledger-types.ts",
             "src/core/task-ledger/task-ledger-worker-binding-codec.ts",
             "src/core/task-ledger/task-ledger.ts",
+            "src/core/task-ledger/task-result-delivery.ts",
             "src/core/timeouts.ts",
             "src/core/type-ergonomics-client.test-d.ts",
             "src/core/type-ergonomics-engine.test-d.ts",
@@ -787,6 +799,7 @@
             "src/server/authorization.ts",
             "src/server/bind-feed-lifetime.ts",
             "src/server/dashboard-assets.ts",
+            "src/server/dashboard.ts",
             "src/server/deadline-tracker.ts",
             "src/server/discovery-filter.ts",
             "src/server/discovery-info.ts",
@@ -873,6 +886,7 @@
             "src/server/operations/cancel-schedule.ts",
             "src/server/operations/cancel-workflow.ts",
             "src/server/operations/clear-task-dead-letter.ts",
+            "src/server/operations/conformance.ts",
             "src/server/operations/create-schedule.ts",
             "src/server/operations/event-stream-contracts.ts",
             "src/server/operations/failure-category-filter.ts",
@@ -891,6 +905,7 @@
             "src/server/operations/get-stream-chunks.ts",
             "src/server/operations/get-system-lease.ts",
             "src/server/operations/get-system-metrics.ts",
+            "src/server/operations/get-task-deliveries.ts",
             "src/server/operations/get-task-detail-schema.ts",
             "src/server/operations/get-task-detail.test-support.ts",
             "src/server/operations/get-task-detail.ts",
@@ -953,6 +968,7 @@
             "src/server/operations/submit-review-decision.ts",
             "src/server/operations/suspend-workflow.ts",
             "src/server/operations/task-attempt-identity-filter.ts",
+            "src/server/operations/task-delivery-schemas.ts",
             "src/server/operations/task-diagnostics-capacity.ts",
             "src/server/operations/task-diagnostics-collector.ts",
             "src/server/operations/timeout-workflow.ts",
@@ -997,6 +1013,7 @@
             "src/server/runtime/task-reconciliation.ts",
             "src/server/runtime/task-result-application.ts",
             "src/server/runtime/task-result-authorization.ts",
+            "src/server/runtime/task-result-delivery-recorder.ts",
             "src/server/runtime/task-result-resolution.ts",
             "src/server/runtime/task-result-submission.ts",
             "src/server/runtime/task-result-view.ts",
@@ -1098,6 +1115,7 @@
             "src/testing/async-activity.test-support.ts",
             "src/testing/browser-smoke-gate.test-support.ts",
             "src/testing/chaos.ts",
+            "src/testing/conformance-targets.ts",
             "src/testing/event-loop.ts",
             "src/testing/fake-timers.test-support.ts",
             "src/testing/index.ts",
@@ -1183,7 +1201,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "b90abc8dcfb4d1b9bd3bd5a0c5c695b326171159a5b5d44029d7f043ce9379b9"
+          "digest": "4603c9d233dc828559b832193f78450b3c6341882913ed3d91385a20b09dbaf1"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1191,7 +1209,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "10529b439ab01f8e83e6106d7d001025b4076a78cbd3ea01d49851875fa75884"
+          "digest": "0e158654a2c0ad75cd56e3ddf12b5f6073ca73ea91557db193621f678e7195a1"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -1330,14 +1348,6 @@
             },
             {
               "path": "package/dist/cli/completions.js",
-              "executable": false
-            },
-            {
-              "path": "package/dist/cli/conformance-harness.d.ts",
-              "executable": false
-            },
-            {
-              "path": "package/dist/cli/conformance-harness.js",
               "executable": false
             },
             {
@@ -1957,6 +1967,30 @@
               "executable": false
             },
             {
+              "path": "package/dist/conformance/harness.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conformance/harness.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conformance/run-conformance.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conformance/run-conformance.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conformance/targets.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/conformance/targets.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/connection.d.ts",
               "executable": false
             },
@@ -2458,6 +2492,14 @@
             },
             {
               "path": "package/dist/core/context/session-state.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/context/sleep-deadline.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/context/sleep-deadline.js",
               "executable": false
             },
             {
@@ -3461,6 +3503,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/lifecycle/start-identity.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/lifecycle/start-identity.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/lifecycle/start-or-signal-create.d.ts",
               "executable": false
             },
@@ -3845,6 +3895,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/review-cleanup.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/review-cleanup.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/review-list-entries.d.ts",
               "executable": false
             },
@@ -4125,6 +4183,22 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/termination/completion-operations.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/completion-operations.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/fenced-sweep.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/fenced-sweep.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/termination/finalizer-activity.d.ts",
               "executable": false
             },
@@ -4173,6 +4247,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/termination/settle-refused-terminal.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/settle-refused-terminal.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/termination/state-commit-callbacks.d.ts",
               "executable": false
             },
@@ -4194,6 +4276,14 @@
             },
             {
               "path": "package/dist/core/engine/termination/terminal-claim-release.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/terminal-fence.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/terminal-fence.js",
               "executable": false
             },
             {
@@ -4458,6 +4548,14 @@
             },
             {
               "path": "package/dist/core/engine/workflow-state-stream.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/workflow-state-update.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/workflow-state-update.js",
               "executable": false
             },
             {
@@ -5549,6 +5647,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/task-ledger/task-result-delivery.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/task-ledger/task-result-delivery.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/timeouts.d.ts",
               "executable": false
             },
@@ -6533,6 +6639,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/dashboard.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/dashboard.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/deadline-tracker.d.ts",
               "executable": false
             },
@@ -7141,6 +7255,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/operations/conformance.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/conformance.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/operations/create-schedule.d.ts",
               "executable": false
             },
@@ -7282,6 +7404,14 @@
             },
             {
               "path": "package/dist/server/operations/get-system-metrics.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/get-task-deliveries.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/get-task-deliveries.js",
               "executable": false
             },
             {
@@ -7733,6 +7863,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/server/operations/task-delivery-schemas.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/operations/task-delivery-schemas.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/server/operations/task-diagnostics-capacity.d.ts",
               "executable": false
             },
@@ -8058,6 +8196,14 @@
             },
             {
               "path": "package/dist/server/runtime/task-result-authorization.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/task-result-delivery-recorder.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/server/runtime/task-result-delivery-recorder.js",
               "executable": false
             },
             {
@@ -8709,6 +8855,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/testing/conformance-targets.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/testing/conformance-targets.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/testing/event-loop.d.ts",
               "executable": false
             },
@@ -9253,7 +9407,7 @@
               "executable": false
             }
           ],
-          "digest": "f00df7f2b7986e0176c5c99daccc70d6cca114d3327b0ffd5f42806fadb1cef3"
+          "digest": "76e2df7987c2d64dda2187d299616ebe51e2d37a4b412cd3da66c475251a35d8"
         }
       }
     },
