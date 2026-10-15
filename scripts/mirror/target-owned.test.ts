@@ -859,11 +859,30 @@ describe('retiring a directory the target still carries', async () => {
     // corvidae genuinely has no replacement for at all.
     // COR-1201: the playground copy and its deployment workflow, which cinder#1602 deleted once
     // cinder.website built from corvidae; retired so a restored copy cannot survive a sync.
+    // COR-491: the token kernel modules that moved from scripts/tokens/ into src/tokens/runtime/.
+    // Corvidae has nothing left at the old paths, so the target's stale copies are retired.
     // `packages/chat`: the owner stopped publishing @lostgradient/chat on 2026-10-14, and the
     // mirror's copy would otherwise keep releasing from frozen source.
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([
       'packages/components/scripts/tokens/generate-artifacts.test.ts',
       'packages/components/scripts/tokens/generate.test.ts',
+      ...[
+        'corpus',
+        'css-configuration',
+        'css-stylelint',
+        'css-support',
+        'registry',
+        'resolve',
+        'types',
+        'validate-schema',
+        'validate',
+        'value-color',
+        'value-entry',
+        'value-formatters',
+      ].map((name) => `packages/components/scripts/tokens/${name}.ts`),
+      ...['registry', 'resolve', 'validate-corpus', 'validate-schema', 'validate'].map(
+        (name) => `packages/components/scripts/tokens/${name}.test.ts`,
+      ),
       'packages/chat',
       'packages/playground',
       '.github/workflows/deploy-playground.yaml',
@@ -871,7 +890,9 @@ describe('retiring a directory the target still carries', async () => {
     for (const entry of policy.retired.entries) {
       expect(['weft', 'cinder']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1286', 'COR-1196', 'COR-1201', 'COR-1432']).toContain(entry.issue);
+      expect(['COR-1192', 'COR-1286', 'COR-1196', 'COR-1201', 'COR-1432', 'COR-491']).toContain(
+        entry.issue,
+      );
     }
     // A retirement names exactly one repository, so no target's list may reach another's paths.
     for (const target of mirrorTargets) {

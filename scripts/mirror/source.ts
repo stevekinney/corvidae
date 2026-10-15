@@ -205,9 +205,10 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
         'scripts/tokens/generator-configuration.ts',
         'scripts/tokens/load.ts',
         'scripts/tokens/resolved-contexts.ts',
+        'scripts/tokens/validate-corpus.ts',
       ],
       reason:
-        'The generator half of the token parity suites. `src/styles/tokens-doc-drift.test.ts` and the suites under `src/tokens/runtime/` import `generate.ts`, `css-generator.ts` and `authoring-test-support.ts` to compare the runtime with what the CLI generates, and this is their module closure outside `src/`. The pure token kernel itself now lives in `src/tokens/runtime/`; the directory still holds the generator’s own fixtures, docs sections and tests, which nothing emitted imports.',
+        'The generator half of the token parity suites, and `validate-corpus.ts`, which the target’s `tokens:validate` script runs: undeclared, the target keeps a stale copy importing kernel modules COR-491 moved into `src/tokens/runtime/`. `src/styles/tokens-doc-drift.test.ts` and the suites under `src/tokens/runtime/` import `generate.ts`, `css-generator.ts` and `authoring-test-support.ts` to compare the runtime with what the CLI generates, and this is their module closure outside `src/`. The pure token kernel itself now lives in `src/tokens/runtime/`; the directory still holds the generator’s own fixtures, docs sections and tests, which nothing emitted imports.',
     },
     {
       paths: [
