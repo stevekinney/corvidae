@@ -122,6 +122,7 @@ function isPrivateIpv6(groups: readonly number[]): boolean {
     inRange(bytes, [0x00, 0x64, 0xff, 0x9b, 0x00, 0x01], 48) || // local-use NAT64 (RFC 8215)
     inRange(bytes, [0xfc], 7) || // unique local
     inRange(bytes, [0xfe, 0x80], 10) || // link-local
+    inRange(bytes, [0xfe, 0xc0], 10) || // site-local (deprecated, still routable on some networks)
     inRange(bytes, [0xff], 8) || // multicast
     inRange(bytes, [0x20, 0x01, 0x0d, 0xb8], 32) || // documentation
     inRange(bytes, [0x01, 0x00, 0, 0, 0, 0, 0, 0], 64) // discard-only

@@ -25,7 +25,12 @@
  * - a blob with no owner key and no lease → purged; an expired upload
  *   session → purged with its chunks; a chunk with no session → purged.
  */
-import { AssetAdmissionError, AssetHeldError, AssetUnavailableError } from './errors';
+import {
+  AssetAdmissionError,
+  AssetHeldError,
+  AssetUnavailableError,
+  AssetWorkAbortedError,
+} from './errors';
 import { type AssetInternals, classifyFailure } from './internals';
 import type { AssetWorkContext } from './operation';
 import { readVerifiedBytes, type UploadSessionRecord } from './admission';
@@ -288,10 +293,15 @@ export function startDeletion(
     { kind: 'deletion', assetId, owner: principal.id, classify: (error) => classifyFailure(error) },
     async (context) => {
       let alreadyDeleted = false;
+      const refuseIfAborted = () => {
+        if (context.signal.aborted) throw new AssetWorkAbortedError('The deletion was aborted.');
+      };
+      refuseIfAborted();
       const record = await transition(
         internals,
         assetId,
         (current) => {
+          refuseIfAborted();
           const owned = authorizeOwner(current, assetId, principal);
           if (owned.state === 'deleted') return owned;
           if (owned.state === 'pending') throw new AssetUnavailableError(assetId, owned.state);
@@ -305,13 +315,17 @@ export function startDeletion(
             return undefined;
           }
           const now = internals.nowIso();
+          const extra =
+            current.state === 'available' ? await releaseOwnership(internals, current) : [];
+          // The last point an abort is honoured: once the tombstone write starts, the deletion stands.
+          refuseIfAborted();
           return {
             next: bump(internals, current, {
               state: 'deleted',
               deletedAt: now,
               tombstoneUntil: internals.isoAfter(internals.policy.tombstoneRetentionMilliseconds),
             }),
-            extra: current.state === 'available' ? await releaseOwnership(internals, current) : [],
+            extra,
           };
         },
       );
@@ -410,14 +424,24 @@ export function startProviderTransfer(
         transport.upload({ bytes, mediaType: record.mediaType, signal: context.signal }),
       );
       const copy: AssetProviderCopy = { provider, providerFileId: uploaded.providerFileId };
-      const committed = await transition(
-        internals,
-        assetId,
-        (current) => requireAvailable(authorize(current, assetId, principal)),
-        ({ record: current }) => ({
-          next: bump(internals, current, { providerCopies: [...current.providerCopies, copy] }),
-        }),
-      );
+      let committed: AssetRecord;
+      try {
+        committed = await transition(
+          internals,
+          assetId,
+          (current) => requireAvailable(authorize(current, assetId, principal)),
+          ({ record: current }) => ({
+            next: bump(internals, current, { providerCopies: [...current.providerCopies, copy] }),
+          }),
+        );
+      } catch (error) {
+        // The copy exists at the provider but no record will list it (the asset was deleted or
+        // expired meanwhile, or the write failed), so nothing could clean it up later: delete it now.
+        await transport
+          .delete?.({ providerFileId: copy.providerFileId, signal: new AbortController().signal })
+          .catch(() => undefined);
+        throw error;
+      }
       await internals.emit({
         type: 'asset.provider-copy.created',
         assetId,
@@ -518,7 +542,9 @@ async function collectRecord(
     if (
       terminal &&
       record.holds.length === 0 &&
-      deletableCopies(internals, record).length === 0 &&
+      // Any listed copy keeps the record, even one no transport can delete now:
+      // purging it would lose the provider file id that cleanup needs later.
+      record.providerCopies.length === 0 &&
       record.tombstoneUntil !== undefined &&
       Date.parse(record.tombstoneUntil) <= state.now
     ) {

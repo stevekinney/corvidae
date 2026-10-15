@@ -30,12 +30,21 @@ export function resolveAssetPolicy(input: AssetPolicyInput = {}): AssetPolicy {
   const definedUrl = Object.fromEntries(
     Object.entries(url ?? {}).filter(([, value]) => value !== undefined),
   ) as Partial<AssetPolicy['url']>;
+  const resolvedUrl = { ...DEFAULT_ASSET_POLICY.url, ...definedUrl };
+  // Every nested list is copied, so a caller mutating the arrays it passed cannot change the policy.
   return Object.freeze({
     ...DEFAULT_ASSET_POLICY,
     ...defined,
     limits: Object.freeze(
       (defined.limits ?? DEFAULT_ASSET_POLICY.limits).map((limit) => Object.freeze({ ...limit })),
     ),
-    url: Object.freeze({ ...DEFAULT_ASSET_POLICY.url, ...definedUrl }),
+    allowedMediaTypes:
+      defined.allowedMediaTypes === undefined
+        ? undefined
+        : Object.freeze([...defined.allowedMediaTypes]),
+    url: Object.freeze({
+      ...resolvedUrl,
+      allowedSchemes: Object.freeze([...resolvedUrl.allowedSchemes]),
+    }),
   });
 }

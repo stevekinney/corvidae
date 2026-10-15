@@ -400,7 +400,13 @@ export async function readVerifiedBytes(
   try {
     const raw = await track(internals.storage.get(KEYS.blob(digest)));
     if (raw === null) throw new AssetIntegrityError(record.assetId);
-    const bytes = decodeBase64(raw);
+    let bytes: Uint8Array;
+    try {
+      bytes = decodeBase64(raw);
+    } catch {
+      // A stored blob that is not base64 is corruption, the same as a digest mismatch.
+      throw new AssetIntegrityError(record.assetId);
+    }
     if (`sha256:${await sha256BytesHex(bytes)}` !== digest)
       throw new AssetIntegrityError(record.assetId);
     return bytes;
@@ -690,13 +696,15 @@ async function inspect(
       (error) => classifyFailure(error, 'metadata-extraction-failed'),
     );
     // Only measured numbers survive; `extractedText` is dropped here, at the boundary.
+    // The extractor fills facts the bytes did not reveal; it never replaces a built-in
+    // measurement, so it cannot shrink trusted dimensions under a limit.
     const measured: AssetMediaFacts = {};
     for (const key of ['width', 'height', 'durationSeconds', 'pageCount'] as const) {
       const value = extracted[key];
-      if (typeof value === 'number' && Number.isFinite(value))
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0)
         Object.assign(measured, { [key]: value });
     }
-    facts = { ...facts, ...measured };
+    facts = { ...measured, ...facts };
   }
   return { mediaType, facts };
 }

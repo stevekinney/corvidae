@@ -197,6 +197,20 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
     if (closed) throw new AssetServiceClosedError();
   }
 
+  // Calls that passed `open()` but have not yet registered work or finished writing: shutdown
+  // waits for them, so nothing they start or commit lands after it returns.
+  const inFlightCalls = new Set<Promise<unknown>>();
+  async function guarded<T>(operation: () => Promise<T>): Promise<T> {
+    open();
+    const call = operation();
+    inFlightCalls.add(call);
+    try {
+      return await call;
+    } finally {
+      inFlightCalls.delete(call);
+    }
+  }
+
   let collectionTimer: unknown;
   const interval = options.garbageCollectionIntervalMilliseconds;
   if (interval !== undefined) {
@@ -212,46 +226,38 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
     durability: storage.durability,
     policy,
 
-    async admit(request, principal) {
-      open();
-      return beginAdmission(internals, principal, request, undefined, 0);
-    },
+    admit: (request, principal) =>
+      guarded(() => beginAdmission(internals, principal, request, undefined, 0)),
 
-    async admitAll(requests, principal) {
-      open();
-      // Every part is refused or accepted up front, so a refusal never strands parts already started.
-      for (const request of requests)
-        await preflightAdmission(internals, principal, request.source);
-      const budget = createAggregateBudget(policy.limits, requests.length);
-      const admissions: AssetAdmission[] = [];
-      try {
-        for (const [slot, request] of requests.entries()) {
-          admissions.push(
-            await beginAdmission(internals, principal, request, budget, slot, {
-              preflighted: true,
-            }),
-          );
+    admitAll: (requests, principal) =>
+      guarded(async () => {
+        // Every part is refused or accepted up front, so a refusal never strands parts already started.
+        for (const request of requests)
+          await preflightAdmission(internals, principal, request.source);
+        const budget = createAggregateBudget(policy.limits, requests.length);
+        const admissions: AssetAdmission[] = [];
+        try {
+          for (const [slot, request] of requests.entries()) {
+            admissions.push(
+              await beginAdmission(internals, principal, request, budget, slot, {
+                preflighted: true,
+              }),
+            );
+          }
+        } catch (error) {
+          // A later part failed to persist: the caller gets no handles, so the started parts are aborted.
+          for (const admission of admissions) admission.work.abort('admitAll failed');
+          throw error;
         }
-      } catch (error) {
-        // A later part failed to persist: the caller gets no handles, so the started parts are aborted.
-        for (const admission of admissions) admission.work.abort('admitAll failed');
-        throw error;
-      }
-      return admissions;
-    },
+        return admissions;
+      }),
 
-    beginUpload: async (principal, request) => {
-      open();
-      return uploads.beginUpload(internals, principal, request);
-    },
-    appendUpload: async (uploadId, principal, bytes) => {
-      open();
-      return uploads.appendUpload(internals, uploadId, principal, bytes);
-    },
-    abortUpload: async (uploadId, principal) => {
-      open();
-      return uploads.abortUpload(internals, uploadId, principal);
-    },
+    beginUpload: (principal, request) =>
+      guarded(() => uploads.beginUpload(internals, principal, request)),
+    appendUpload: (uploadId, principal, bytes) =>
+      guarded(() => uploads.appendUpload(internals, uploadId, principal, bytes)),
+    abortUpload: (uploadId, principal) =>
+      guarded(() => uploads.abortUpload(internals, uploadId, principal)),
 
     async inspect(assetId, principal, inspectOptions) {
       open();
@@ -291,42 +297,31 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
       return Object.freeze(resolved);
     },
 
-    retain: async (assetId, principal, reference) => {
-      open();
-      return lifecycle.retain(internals, assetId, principal, reference);
-    },
-    release: async (assetId, principal, holderId) => {
-      open();
-      return lifecycle.release(internals, assetId, principal, holderId);
-    },
-    placeHold: async (assetId, principal, hold) => {
-      open();
-      return lifecycle.placeHold(internals, assetId, principal, hold);
-    },
-    releaseHold: async (assetId, principal, holdId) => {
-      open();
-      return lifecycle.releaseHold(internals, assetId, principal, holdId);
-    },
-    expire: async (assetId, principal) => {
-      open();
-      return lifecycle.expire(internals, assetId, principal);
-    },
+    retain: (assetId, principal, reference) =>
+      guarded(() => lifecycle.retain(internals, assetId, principal, reference)),
+    release: (assetId, principal, holderId) =>
+      guarded(() => lifecycle.release(internals, assetId, principal, holderId)),
+    placeHold: (assetId, principal, hold) =>
+      guarded(() => lifecycle.placeHold(internals, assetId, principal, hold)),
+    releaseHold: (assetId, principal, holdId) =>
+      guarded(() => lifecycle.releaseHold(internals, assetId, principal, holdId)),
+    expire: (assetId, principal) => guarded(() => lifecycle.expire(internals, assetId, principal)),
 
     delete(assetId, principal) {
       open();
       return lifecycle.startDeletion(internals, assetId, principal);
     },
 
-    async transform(assetId, principal, request) {
-      open();
-      return beginAdmission(
-        internals,
-        principal,
-        { source: { kind: 'derived', sourceAssetId: assetId, transform: request.transform } },
-        undefined,
-        0,
-      );
-    },
+    transform: (assetId, principal, request) =>
+      guarded(() =>
+        beginAdmission(
+          internals,
+          principal,
+          { source: { kind: 'derived', sourceAssetId: assetId, transform: request.transform } },
+          undefined,
+          0,
+        ),
+      ),
 
     transferToProvider(assetId, principal, request) {
       open();
@@ -363,6 +358,8 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
         runtime.timers.clearInterval(collectionTimer);
         collectionTimer = undefined;
       }
+      // Work those calls register is then aborted with the rest.
+      await Promise.allSettled(inFlightCalls);
       const report = await registry.abortAll('shutdown');
       await audit.drain();
       return report;

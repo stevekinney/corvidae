@@ -324,6 +324,26 @@ describe('admission API', () => {
   });
 });
 
+describe('admission policy', () => {
+  it('copies the allowlists it is given, so mutating them later changes nothing', async () => {
+    const allowedMediaTypes = ['image/png'];
+    const allowedSchemes = ['https:'];
+    const { assets, harness } = await open({
+      storage: memoryFixture().storage,
+      policy: { allowedMediaTypes, url: { allowedSchemes } },
+    });
+    allowedMediaTypes.push('application/pdf');
+    allowedSchemes.push('http:');
+    expect(assets.policy.allowedMediaTypes).toEqual(['image/png']);
+    expect(assets.policy.url.allowedSchemes).toEqual(['https:']);
+    const admission = await assets.admit({ source: { kind: 'inline', bytes: pdfBytes(1) } }, alice);
+    expect(await admission.work.result()).toMatchObject({
+      rejection: { code: 'media-type-not-allowed' },
+    });
+    await harness.close();
+  });
+});
+
 describe('AssetDescriptor', () => {
   it('is a frozen snapshot whose revision only ever increases', async () => {
     const { assets, harness, runtime } = await open({ storage: memoryFixture().storage });
@@ -680,6 +700,22 @@ describe('admission validation fails closed on unmeasured facts', () => {
     );
     expect(measured.result.outcome).toBe('completed');
     expect(measured.descriptor.modality).toBe('image');
+  });
+
+  it('lets the extractor fill unmeasured facts but never replace or undercut a built-in one', async () => {
+    const shrinking = await outcomeOf(
+      { policy: maxPixels, ports: { extractMetadata: async () => ({ width: 1, height: 1 }) } },
+      { source: { kind: 'inline', bytes: pngBytes(20, 20) } },
+    );
+    expect(shrinking.result).toMatchObject({ rejection: { code: 'dimensions-exceeded' } });
+    const negative = await outcomeOf(
+      {
+        policy: { limits: [{ scope: 'per-part', modality: 'audio', maxDurationSeconds: 30 }] },
+        ports: { extractMetadata: async () => ({ durationSeconds: -5 }) },
+      },
+      { source: { kind: 'inline', bytes: wavBytes() } },
+    );
+    expect(negative.result).toMatchObject({ rejection: { code: 'media-facts-unmeasured' } });
   });
 
   it('refuses a PDF whose pages sit in compressed object streams under maxPageCount', async () => {

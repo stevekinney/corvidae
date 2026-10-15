@@ -39,9 +39,11 @@ import {
   AssetHeldError,
   AssetNotFoundError,
   AssetServiceClosedError,
+  AssetStorageCapacityError,
   AssetUnavailableError,
   type AssetStorage,
   type BureauAssetOptions,
+  createMemoryAssetStorage,
 } from '../index';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -812,5 +814,205 @@ describe('quiescence after shutdown', () => {
     expect(report.assetWork).toEqual([]);
     expect(opened.assets.activeTimers()).toEqual([]);
     expect(opened.runtime.pendingTimers().length).toBeLessThan(armed);
+  });
+});
+
+describe('shutdown overlapping a call', () => {
+  it('waits for an admission still persisting, then aborts the work it started', async () => {
+    const fixture = createMemoryAssetStorageFixture();
+    const writeReached = deferred();
+    const writeGate = deferred();
+    let stallNextWrite = false;
+    const stalled = async () => {
+      if (!stallNextWrite) return;
+      stallNextWrite = false;
+      writeReached.resolve();
+      await writeGate.promise;
+    };
+    const storage: AssetStorage = {
+      ...fixture.storage,
+      set: async (key, value) => {
+        await stalled();
+        return fixture.storage.set(key, value);
+      },
+      conditionalBatch: async (conditions, operations) => {
+        await stalled();
+        return fixture.storage.conditionalBatch(conditions, operations);
+      },
+    };
+    const opened = await open({ storage });
+    stallNextWrite = true;
+    const admitting = opened.assets.admit({ source: { kind: 'inline', bytes: PNG } }, alice);
+    await writeReached.promise;
+
+    let shutDown = false;
+    const shutdown = opened.assets.shutdown().then(() => {
+      shutDown = true;
+    });
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+    expect(shutDown).toBe(false);
+
+    writeGate.resolve();
+    const admission = await admitting;
+    await shutdown;
+    expect(await admission.work.result()).toMatchObject({ outcome: 'aborted' });
+    expect(opened.assets.activeWork()).toEqual([]);
+    await opened.close();
+  });
+});
+
+describe('provider transfer racing deletion', () => {
+  it('deletes an uploaded copy at the provider when the asset was deleted during the upload', async () => {
+    const uploadReached = deferred();
+    const uploadGate = deferred();
+    const deletedCopies: string[] = [];
+    const opened = await open({
+      ports: {
+        providers: {
+          openai: {
+            download: async () => ({ bytes: new Uint8Array() }),
+            upload: async () => {
+              uploadReached.resolve();
+              await uploadGate.promise;
+              return { providerFileId: 'file-orphan' };
+            },
+            delete: async ({ providerFileId }) => {
+              deletedCopies.push(providerFileId);
+            },
+          },
+        },
+      },
+    });
+    const admission = await admitted(opened);
+    const transfer = opened.assets.transferToProvider(admission.assetId, alice, {
+      provider: 'openai',
+    });
+    await uploadReached.promise;
+    expect(await opened.assets.delete(admission.assetId, alice).result()).toMatchObject({
+      outcome: 'completed',
+    });
+
+    uploadGate.resolve();
+    expect(await transfer.result()).toMatchObject({ outcome: 'failed' });
+    expect(deletedCopies).toEqual(['file-orphan']);
+    await opened.close();
+  });
+});
+
+describe('targeted deletion abort', () => {
+  it('commits no tombstone when the deletion is aborted before its write', async () => {
+    const opened = await open();
+    const admission = await admitted(opened);
+    const deletion = opened.assets.delete(admission.assetId, alice);
+    deletion.abort('changed my mind');
+
+    expect(await deletion.result()).toMatchObject({
+      outcome: 'aborted',
+      reason: 'changed my mind',
+    });
+    expect(await stateOf(opened, admission.assetId)).toBe('available');
+    await opened.close();
+  });
+});
+
+describe('provider copies no transport can delete', () => {
+  it('keep their tombstone past retention, so the provider file id is never lost', async () => {
+    const opened = await open({
+      policy: { tombstoneRetentionMilliseconds: 1_000 },
+      ports: {
+        providers: {
+          archive: {
+            download: async () => ({ bytes: new Uint8Array() }),
+            upload: async () => ({ providerFileId: 'file-kept' }),
+          },
+        },
+      },
+    });
+    const admission = await admitted(opened);
+    expect(
+      await opened.assets
+        .transferToProvider(admission.assetId, alice, { provider: 'archive' })
+        .result(),
+    ).toMatchObject({ outcome: 'completed' });
+    await opened.assets.delete(admission.assetId, alice).result();
+
+    await opened.runtime.advance(5_000);
+    expect(await collect(opened)).toMatchObject({ purgedTombstones: [] });
+    const descriptor = await opened.assets.inspect(admission.assetId, aliceAdministrator, {
+      projection: 'privileged',
+    });
+    expect(descriptor.projection === 'privileged' && descriptor.providerCopies).toEqual([
+      { provider: 'archive', providerFileId: 'file-kept' },
+    ]);
+    await opened.close();
+  });
+});
+
+describe('upload chunks', () => {
+  it('refuses an empty chunk, storing nothing', async () => {
+    const opened = await open();
+    const session = await opened.assets.beginUpload(alice, { declaredByteLength: 4 });
+    const refused = await rejectionOf(
+      opened.assets.appendUpload(session.uploadId, alice, new Uint8Array()),
+    );
+    expect(refused).toBeInstanceOf(AssetAdmissionError);
+    expect((refused as AssetAdmissionError).code).toBe('upload-incomplete');
+    expect(await opened.storage.list(`asset:v1:upload-chunk:${session.uploadId}:`)).toEqual([]);
+    await opened.close();
+  });
+});
+
+describe('bounded in-memory storage capacity', () => {
+  it('sizes a key named twice in one batch against its intermediate value', async () => {
+    const storage = createMemoryAssetStorage({ maxBytes: 10 });
+    await storage.set('k', '12345678');
+    // Deleting the same key twice frees it once, so the space is still bounded afterwards.
+    expect(
+      await storage.conditionalBatch(
+        [],
+        [
+          { type: 'delete', key: 'k' },
+          { type: 'delete', key: 'k' },
+        ],
+      ),
+    ).toBe(true);
+    expect(await rejectionOf(storage.set('big', '1234567890'))).toBeInstanceOf(
+      AssetStorageCapacityError,
+    );
+    // Writing one key twice counts only its final value.
+    expect(
+      await storage.conditionalBatch(
+        [],
+        [
+          { type: 'set', key: 'a', value: '1234' },
+          { type: 'set', key: 'a', value: '1234' },
+        ],
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('Bureau shutdown report', () => {
+  it('reports the assets owner failed when an asset handle fails its cleanup', async () => {
+    const opened = await open({
+      ports: {
+        safetyGates: [
+          {
+            name: 'slow',
+            inspect: ({ signal }) =>
+              new Promise((_resolve, reject) =>
+                signal.addEventListener('abort', () => reject(new Error('aborted'))),
+              ),
+          },
+        ],
+      },
+    });
+    const admission = await opened.assets.admit({ source: { kind: 'inline', bytes: PNG } }, alice);
+    admission.work.subscribeSnapshot((snapshot) => {
+      if (snapshot.status === 'settled') throw new Error('observer failed');
+    });
+
+    const report = await opened.harness.close();
+    expect(report.shutdownReport.owners).toContainEqual({ kind: 'assets', outcome: 'failed' });
   });
 });

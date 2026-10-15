@@ -101,6 +101,10 @@ export function appendUpload(
 ): Promise<AssetUploadSession> {
   return internals.withLock(`upload:${uploadId}`, async () => {
     const session = await loadOpenSession(internals, uploadId, principal);
+    // An empty chunk would add a stored key without advancing the byte count, unbounded.
+    if (bytes.byteLength === 0) {
+      throw new AssetAdmissionError('upload-incomplete', 'An upload chunk must not be empty.');
+    }
     if (session.receivedBytes + bytes.byteLength > session.declaredByteLength) {
       throw new AssetAdmissionError(
         'per-part-limit-exceeded',

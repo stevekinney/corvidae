@@ -8882,7 +8882,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // COR-794: aborts every in-flight asset operation and awaits each
             // one's cleanup acknowledgement, and clears the collection timer.
             const assetService = assetServiceInstance;
-            ownerDrains.push(settleOwner('assets', () => assetService.shutdown()));
+            ownerDrains.push(
+              settleOwner('assets', async () => {
+                const report = await assetService.shutdown();
+                // A work handle whose cleanup did not complete fails the owner, not just its report.
+                const unclean = report.acknowledgements.filter(
+                  ({ acknowledgement }) => acknowledgement.status !== 'completed',
+                );
+                if (unclean.length > 0) {
+                  throw new Error(
+                    `Asset work did not clean up: ${unclean.map(({ workId }) => workId).join(', ')}`,
+                  );
+                }
+              }),
+            );
           }
           await Promise.allSettled(ownerDrains);
 

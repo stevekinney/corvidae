@@ -64,10 +64,16 @@ export function createMemoryAssetStorage(options: MemoryAssetStorageOptions = {}
     value === undefined ? 0 : key.length + value.length;
 
   function apply(operations: readonly AssetStorageOperation[]): void {
+    // Operations apply in order, so a key named twice is sized against its intermediate value.
+    const pending = new Map<string, string | undefined>();
     let projected = usedBytes;
     for (const operation of operations) {
-      projected -= sizeOf(operation.key, entries.get(operation.key));
-      if (operation.type === 'set') projected += sizeOf(operation.key, operation.value);
+      const current = pending.has(operation.key)
+        ? pending.get(operation.key)
+        : entries.get(operation.key);
+      const next = operation.type === 'set' ? operation.value : undefined;
+      projected += sizeOf(operation.key, next) - sizeOf(operation.key, current);
+      pending.set(operation.key, next);
     }
     if (projected > maxBytes) throw new AssetStorageCapacityError(maxBytes);
     for (const operation of operations) {

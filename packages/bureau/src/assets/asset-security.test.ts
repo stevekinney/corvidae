@@ -122,6 +122,11 @@ describe('URL admission', () => {
     expect(isPrivateAddress('::ffff:0:a00:1')).toBe(true);
   });
 
+  it('treats deprecated IPv6 site-local fec0::/10 as private', () => {
+    expect(isPrivateAddress('fec0::1')).toBe(true);
+    expect(isPrivateAddress('[feff:ffff::1]')).toBe(true);
+  });
+
   it('refuses a body over the asset ceiling, telling the fetch port where to stop', async () => {
     const fetcher = scriptedFetcher({ 'https://cdn.example.com/big.png': ok(pngBytes(2, 2, 64)) });
     const opened = await open({
@@ -498,6 +503,20 @@ describe('content digest', () => {
 
     const [blobKey] = await fixture.storage.list('asset:v1:blob:');
     await fixture.storage.set(blobKey!, base64Of(textBytes('tampered')));
+    expect(await rejectionOf(opened.assets.resolve(admission.source, alice))).toBeInstanceOf(
+      AssetIntegrityError,
+    );
+    await opened.close();
+  });
+
+  it('reports a stored blob that is not base64 as an integrity failure', async () => {
+    const fixture = createMemoryAssetStorageFixture();
+    const opened = await open({ storage: fixture.storage });
+    const admission = await opened.assets.admit({ source: { kind: 'inline', bytes: PNG } }, alice);
+    await admission.work.result();
+
+    const [blobKey] = await fixture.storage.list('asset:v1:blob:');
+    await fixture.storage.set(blobKey!, '%%% not base64 %%%');
     expect(await rejectionOf(opened.assets.resolve(admission.source, alice))).toBeInstanceOf(
       AssetIntegrityError,
     );
