@@ -53,6 +53,7 @@ import { KEYS, storageConditionalBatch, type Storage } from '../../storage/inter
 import { emitWorkflowClaimLostWarning, type EmitWorkflowLeaseWarning } from './lease-deposition.ts';
 import { decodeEpoch, decodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 import { WorkflowClaimTakeoverCooldown } from './workflow-claim-cooldown.ts';
+import { WorkflowClaimLostGenerations } from './workflow-claim-lost-generations.ts';
 import {
   buildWorkflowClaimAcquireTransition,
   buildWorkflowClaimReleaseTransition,
@@ -162,11 +163,6 @@ function mintNextEpoch(observedEpochBytes: Uint8Array | null): number {
   return (observed ?? 0) + 1;
 }
 
-/** The epoch a claim was minted from, or `null` when the durable epoch key was absent. */
-function observedEpochOf(observedEpochBytes: Uint8Array | null): number | null {
-  return observedEpochBytes === null ? null : decodeEpoch(observedEpochBytes);
-}
-
 /**
  * Owns this engine's per-workflow ownership claims: reads storage, executes
  * the pure transition fragments, and tracks the exact bytes last written for
@@ -181,8 +177,7 @@ export class WorkflowClaimRegistry {
   readonly #warn: EmitWorkflowLeaseWarning | undefined;
 
   readonly #claims = new Map<string, ClaimTrackingEntry>();
-  /** Per workflow id, the claim epochs this engine acquired and later lost to another engine. */
-  readonly #lostEpochs = new Map<string, Set<number>>();
+  readonly #lostGenerations = new WorkflowClaimLostGenerations();
   readonly #inFlightRenewals = new Map<string, Promise<WorkflowClaimRenewResult>>();
   readonly #releasing = new Set<string>();
   readonly #takeoverCooldown: WorkflowClaimTakeoverCooldown;
@@ -263,46 +258,19 @@ export class WorkflowClaimRegistry {
     };
   }
 
-  /**
-   * Whether another engine took the claim generation `epoch` that this engine
-   * acquired for `workflowId`. The answer belongs to that generation alone, so
-   * a later run under the same workflow id (a `start-new` replacement) never
-   * changes it. `true` when this generation was recorded lost: a renewal found
-   * it taken, or a replacement claim installed over it while the durable epoch
-   * had already moved past it. Otherwise, while `epoch` is still the tracked
-   * claim, `true` when the stored epoch moved past it (a reclaim no renewal
-   * noticed yet, or any external terminal rotation). `false` for a generation
-   * this engine released or superseded itself. A read failure rejects.
-   */
+  /** Whether another engine took generation `epoch` of this engine's claim on `workflowId`; a read failure rejects. */
   async lostClaim(workflowId: string, epoch: number): Promise<boolean> {
-    if (this.#lostEpochs.get(workflowId)?.has(epoch) === true) return true;
+    if (this.#lostGenerations.has(workflowId, epoch)) return true;
     const entry = this.#claims.get(workflowId);
     if (entry === undefined || entry.epoch !== epoch) return false;
     const stored = await this.#claimStorage.get(KEYS.workflowOwnerEpoch(workflowId));
     return stored === null || decodeEpoch(stored) !== epoch;
   }
 
-  /** Remember that the generation `epoch` of `workflowId` was lost to another engine. */
-  #recordLostEpoch(workflowId: string, epoch: number): void {
-    const lost = this.#lostEpochs.get(workflowId);
-    if (lost === undefined) this.#lostEpochs.set(workflowId, new Set([epoch]));
-    else lost.add(epoch);
-  }
-
-  /**
-   * Install `entry` as `workflowId`'s tracked claim. An entry this replaces is
-   * a generation that never reached `release` here. When the durable epoch the
-   * new claim was minted from (`observedEpoch`) is not that generation's epoch,
-   * another engine moved the epoch past it, so that generation is recorded
-   * lost before its entry disappears. A matching epoch is this engine
-   * re-minting its own claim, which supersedes the old generation without
-   * losing it.
-   */
-  #installClaim(workflowId: string, entry: ClaimTrackingEntry, observedEpoch: number | null): void {
+  /** Install `entry`; a claim is minted from epoch `entry.epoch - 1`, per `mintNextEpoch`. */
+  #installClaim(workflowId: string, entry: ClaimTrackingEntry): void {
     const replaced = this.#claims.get(workflowId);
-    if (replaced !== undefined && replaced.epoch !== observedEpoch) {
-      this.#recordLostEpoch(workflowId, replaced.epoch);
-    }
+    this.#lostGenerations.recordReplaced(workflowId, replaced?.epoch, entry.epoch - 1);
     this.#claims.set(workflowId, entry);
     this.#takeoverCooldown.clear(workflowId);
   }
@@ -350,11 +318,7 @@ export class WorkflowClaimRegistry {
       fragment.operations,
       KEYS.workflowOwnerHolder(workflowId),
     );
-    this.#installClaim(
-      workflowId,
-      { epoch, claimedAt: now, epochBytes, holderBytes },
-      observedEpochOf(observedEpochBytes),
-    );
+    this.#installClaim(workflowId, { epoch, claimedAt: now, epochBytes, holderBytes });
     return { status: 'acquired', workflowId, epoch };
   }
 
@@ -413,11 +377,12 @@ export class WorkflowClaimRegistry {
       preparation.fragment.operations,
       KEYS.workflowOwnerHolder(workflowId),
     );
-    this.#installClaim(
-      workflowId,
-      { epoch: preparation.epoch, claimedAt: preparation.claimedAt, epochBytes, holderBytes },
-      preparation.epoch - 1,
-    );
+    this.#installClaim(workflowId, {
+      epoch: preparation.epoch,
+      claimedAt: preparation.claimedAt,
+      epochBytes,
+      holderBytes,
+    });
   }
 
   /**
@@ -459,7 +424,7 @@ export class WorkflowClaimRegistry {
       // fresh entry, which must not be dropped or throttled in its place.
       if (this.#claims.get(workflowId) === entry) {
         this.#claims.delete(workflowId);
-        this.#recordLostEpoch(workflowId, entry.epoch);
+        this.#lostGenerations.record(workflowId, entry.epoch);
         this.#takeoverCooldown.recordDeposition(workflowId, this.#getNow());
       }
       emitWorkflowClaimLostWarning(workflowId, this.#warn);
@@ -597,11 +562,7 @@ export class WorkflowClaimRegistry {
       fragment.operations,
       KEYS.workflowOwnerHolder(workflowId),
     );
-    this.#installClaim(
-      workflowId,
-      { epoch, claimedAt: now, epochBytes, holderBytes },
-      observedEpochOf(observedEpochBytes),
-    );
+    this.#installClaim(workflowId, { epoch, claimedAt: now, epochBytes, holderBytes });
     return { status: 'acquired', workflowId, epoch };
   }
 
