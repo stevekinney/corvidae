@@ -1,5 +1,7 @@
 /**
- * Records one JSON line per finished case for `scripts/check-static-playground.ts`.
+ * Records one JSON line when each case begins and one when it finishes, for
+ * `scripts/check-static-playground.ts`. The begin lines let the runner name the cases in flight
+ * when the static server dies under them.
  *
  * A reporter runs in Playwright's main process, so it records a case that timed out or whose
  * worker crashed, which a hook inside the test cannot promise. The runner reads these lines to
@@ -19,6 +21,8 @@ export type StaticCaseResultLine = {
   screenshot: string | null;
 };
 
+export type StaticCaseBeginLine = { caseId: string; event: 'begin' };
+
 function attachmentText(result: TestResult, name: string): string | undefined {
   const attachment = result.attachments.find((candidate) => candidate.name === name);
   return attachment?.body === undefined ? undefined : attachment.body.toString('utf8');
@@ -26,6 +30,12 @@ function attachmentText(result: TestResult, name: string): string | undefined {
 
 export default class StaticPlaygroundReporter implements Reporter {
   readonly #resultsPath = readEnvironmentConfiguration().playgroundStaticResults;
+
+  onTestBegin(test: TestCase): void {
+    if (this.#resultsPath === undefined) return;
+    const line: StaticCaseBeginLine = { caseId: test.title, event: 'begin' };
+    appendFileSync(this.#resultsPath, `${JSON.stringify(line)}\n`);
+  }
 
   onTestEnd(test: TestCase, result: TestResult): void {
     if (this.#resultsPath === undefined) return;

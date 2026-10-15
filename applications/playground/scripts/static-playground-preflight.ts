@@ -31,6 +31,11 @@ export type PreflightOptions = {
   /** Credential-shaped variables whose values must never appear in served bytes. */
   secretEntries: readonly (readonly [name: string, value: string])[];
   git?: GitRunner;
+  /**
+   * Aborts every outstanding request and stops the remaining checks, so a caller that has given up
+   * (because the server died) is not held open by a request nothing will answer.
+   */
+  signal?: AbortSignal;
 };
 
 export type PreflightResult = {
@@ -75,8 +80,12 @@ export async function fetchWithin(
   }
 }
 
-function fetchStatic(url: string, init: RequestInit): Promise<Response> {
-  return fetchWithin(url, init, FETCH_MILLISECONDS);
+function fetchStatic(url: string, signal: AbortSignal | undefined): Promise<Response> {
+  return fetchWithin(
+    url,
+    signal === undefined ? { redirect: 'manual' } : { redirect: 'manual', signal },
+    FETCH_MILLISECONDS,
+  );
 }
 
 /** The minimum length of a credential value the leak check looks for. */
@@ -201,12 +210,13 @@ type RouteContext = {
   titles: Map<string, string>;
   descriptions: Map<string, string>;
   assets: Set<string>;
+  signal: AbortSignal | undefined;
 };
 
 /** Status, prerendered content, metadata, headings, and the inline examples payload. */
 async function checkRoute(route: string, html: string, context: RouteContext): Promise<string[]> {
   const failures: string[] = [];
-  const response = await fetchStatic(`${context.origin}${route}`, { redirect: 'manual' });
+  const response = await fetchStatic(`${context.origin}${route}`, context.signal);
   await response.arrayBuffer();
   if (response.status !== 200) failures.push(`${route} answered ${response.status}, not 200`);
   if (html.includes('<div id="app"></div>') || (await visibleTextLength(html)) === 0) {
@@ -264,7 +274,7 @@ async function checkHosting(
       /:([A-Za-z_]\w*)/g,
       (_whole, name: string) => match.groups?.[name] ?? '',
     );
-    const response = await fetchStatic(`${options.origin}${pathname}`, { redirect: 'manual' });
+    const response = await fetchStatic(`${options.origin}${pathname}`, options.signal);
     await response.arrayBuffer();
     const location = response.headers.get('Location');
     if (response.status !== redirect.statusCode || location !== expected) {
@@ -275,7 +285,7 @@ async function checkHosting(
     failures.push(...headerFailures(options.configuration, pathname, response));
   }
   const unknown = `/static-playground-unknown-${crypto.randomUUID()}`;
-  const missing = await fetchStatic(`${options.origin}${unknown}`, { redirect: 'manual' });
+  const missing = await fetchStatic(`${options.origin}${unknown}`, options.signal);
   await missing.arrayBuffer();
   if (missing.status !== 404) failures.push(`unknown path answered ${missing.status}, not 404`);
   failures.push(...headerFailures(options.configuration, unknown, missing));
@@ -286,17 +296,21 @@ async function checkHosting(
   ].filter((path) => path !== undefined);
   for (const path of representative) {
     const pathname = path.startsWith('/') ? path : `/${path}`;
-    const response = await fetchStatic(`${options.origin}${pathname}`, { redirect: 'manual' });
+    const response = await fetchStatic(`${options.origin}${pathname}`, options.signal);
     await response.arrayBuffer();
     failures.push(...headerFailures(options.configuration, pathname, response));
   }
   return failures;
 }
 
-async function checkAssets(origin: string, assets: ReadonlySet<string>): Promise<string[]> {
+async function checkAssets(
+  origin: string,
+  assets: ReadonlySet<string>,
+  signal: AbortSignal | undefined,
+): Promise<string[]> {
   const failures: string[] = [];
   for (const asset of [...assets].toSorted()) {
-    const response = await fetchStatic(`${origin}${asset}`, { redirect: 'manual' });
+    const response = await fetchStatic(`${origin}${asset}`, signal);
     await response.arrayBuffer();
     if (response.status !== 200) {
       failures.push(`required asset ${asset} answered ${response.status}`);
@@ -314,10 +328,11 @@ function sitemapUrls(sitemap: string | undefined): string[] {
 /** Run every HTTP-level check and return the failures, the manifest, and the build digest. */
 export async function runPreflight(options: PreflightOptions): Promise<PreflightResult> {
   const { report, directory } = options;
-  const manifest = await createDigestManifest(directory);
+  const manifest = await createDigestManifest(directory, options.signal);
   const buildDigest = buildDigestOf(manifest);
   const contents = new Map<string, string>();
   for (const { path } of manifest) {
+    options.signal?.throwIfAborted();
     contents.set(path, await readFile(join(directory, path), 'utf8'));
   }
   const failures = [...checkSource(report, options.allowSourceMismatch, options.git ?? runGit)];
@@ -343,8 +358,10 @@ export async function runPreflight(options: PreflightOptions): Promise<Preflight
     titles: new Map(),
     descriptions: new Map(),
     assets: new Set(),
+    signal: options.signal,
   };
   for (const route of report.routes) {
+    options.signal?.throwIfAborted();
     if (!sitemap.includes(`${canonicalOrigin}${route}`)) failures.push(`sitemap omits ${route}`);
     const html = contents.get(htmlPathForRoute(route));
     if (html === undefined) {
@@ -353,7 +370,7 @@ export async function runPreflight(options: PreflightOptions): Promise<Preflight
     }
     failures.push(...(await checkRoute(route, html, context)));
   }
-  failures.push(...(await checkAssets(options.origin, context.assets)));
+  failures.push(...(await checkAssets(options.origin, context.assets, options.signal)));
   try {
     await assertInitialRoutePayloadBudgets(directory, report.routes);
   } catch (error) {
