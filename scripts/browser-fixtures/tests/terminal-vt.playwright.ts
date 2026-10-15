@@ -173,7 +173,7 @@ test.describe('queries and what hostile output cannot do', () => {
     await frames(page, 3);
 
     const effects = await sideEffects(page);
-    expect(effects).toEqual({
+    expect(effects).toMatchObject({
       clipboardWrites: [],
       clipboardReads: 0,
       opened: [],

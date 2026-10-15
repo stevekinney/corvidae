@@ -49,6 +49,8 @@ export type SideEffects = {
   workers: string[];
   eventSources: string[];
   downloads: string[];
+  /** Every distinct message the polite live regions showed, in order. */
+  announced: string[];
 };
 
 declare global {
@@ -103,8 +105,26 @@ function installSideEffectRecorder(): void {
     workers: [],
     eventSources: [],
     downloads: [],
+    announced: [],
   };
   window.__sideEffects = effects;
+  // A live region's text is replaced by the next message, so a poll can miss one. Record each
+  // distinct message as the region shows it.
+  const seen = new WeakMap<Element, string>();
+  const record = (): void => {
+    for (const region of document.querySelectorAll('[aria-live="polite"]')) {
+      const text = region.textContent?.trim() ?? '';
+      if (text !== '' && seen.get(region) !== text) effects.announced.push(text);
+      seen.set(region, text);
+    }
+  };
+  document.addEventListener('DOMContentLoaded', () => {
+    new MutationObserver(record).observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+  });
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: {
@@ -359,10 +379,10 @@ export function navigationKey(browserName: string): string {
   return browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
 }
 
-/** What the polite regions say, joined, for polling on. */
+/** Every message the polite regions showed so far, joined, for polling on. */
 export async function announcementText(page: Page): Promise<string> {
-  const heard = await announcements(page);
-  return heard.join('|');
+  const effects = await sideEffects(page);
+  return effects.announced.join('|');
 }
 
 export async function screenText(page: Page): Promise<string> {
