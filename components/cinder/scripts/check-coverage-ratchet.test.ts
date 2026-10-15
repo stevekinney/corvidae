@@ -102,11 +102,7 @@ async function runPlatformNoticeRatchet(): Promise<RatchetRun> {
 
   const child = Bun.spawn(
     ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
-    {
-      cwd: import.meta.dir,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    },
+    { timeout: 120_000, cwd: import.meta.dir, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -146,11 +142,7 @@ async function runSupportImportRatchet(): Promise<RatchetRun> {
 
   const child = Bun.spawn(
     ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
-    {
-      cwd: import.meta.dir,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    },
+    { timeout: 120_000, cwd: import.meta.dir, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),

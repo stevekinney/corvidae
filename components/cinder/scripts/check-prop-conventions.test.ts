@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import {
@@ -188,11 +189,14 @@ describe('check-prop-conventions type-aware surface pass', () => {
     string,
     ReturnType<typeof collectResolvedSurfaceViolations>
   > {
-    const root = mkdtempSync(join(import.meta.dir, '..', 'src', 'components', '.tmp-propcheck-'));
+    // The checker polices declarations under a `/src/` path segment, so the fixtures sit in a
+    // `src/components` tree, inside the system temporary directory rather than this package's own
+    // `src/`, where a concurrent scan or `git add` would pick them up mid-run.
+    const root = mkdtempSync(join(tmpdir(), 'cinder-propcheck-'));
     try {
       const fixturePaths = new Map<string, string>();
       for (const [name, source] of Object.entries(FIXTURES)) {
-        const componentDirectory = join(root, name);
+        const componentDirectory = join(root, 'src', 'components', name);
         mkdirSync(componentDirectory, { recursive: true });
         const fixturePath = join(componentDirectory, `${name}.types.ts`);
         writeFileSync(fixturePath, source);

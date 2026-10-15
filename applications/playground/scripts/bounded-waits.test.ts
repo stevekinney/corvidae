@@ -8,6 +8,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+
 import { interruptRunner, readProcessTable, signalTarget } from './static-playground-processes.ts';
 
 function signalGroupOf(pid: number): void {
@@ -36,6 +38,47 @@ async function watchdog<T>(work: Promise<T>, milliseconds: number): Promise<T | 
   }
 }
 
+/** The stand-in runner starts a real process, so the whole body runs at module scope. */
+const standInRunnerEndsAtItsWaitBudget = await outcomeOf(async () => {
+  const record = await mkdtemp(join(tmpdir(), 'bounded-wait-record-'));
+  try {
+    const standIn = Bun.spawn(
+      [
+        process.execPath,
+        STAND_IN_RUNNER,
+        '--mode',
+        'pass',
+        '--record',
+        record,
+        '--wait-milliseconds',
+        '300',
+      ],
+      {
+        env: { PATH: '/usr/bin:/bin' },
+        stdout: 'ignore',
+        stderr: 'pipe',
+        detached: true,
+        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+      },
+    );
+
+    const exitCode = await watchdog(standIn.exited, 3_000);
+    if (exitCode === 'hung') standIn.kill('SIGKILL');
+
+    expect(exitCode).toBe(1);
+    expect(await new Response(standIn.stderr).text()).toContain('timed out waiting for');
+  } finally {
+    // The stand-in's sleepers: one in its own group, one detached into a group of its own.
+    for (const label of ['runner-grandchild', 'runner-detached']) {
+      const file = Bun.file(join(record, `${label}.pid`));
+      if (!(await file.exists())) continue;
+      const pid = await file.text();
+      signalGroupOf(Number(pid.trim()));
+    }
+    await rm(record, { recursive: true, force: true });
+  }
+});
+
 describe('bounded waits', () => {
   it('stops waiting for a runner whose exit is never reported', async () => {
     // A subprocess whose `exited` never settles, as when an exit is never observed.
@@ -56,37 +99,6 @@ describe('bounded waits', () => {
     expect(outcome).toEqual({ survivors: [], runnerExited: false });
   });
 
-  it('ends a stand-in test runner that never receives its proceed file', async () => {
-    const record = await mkdtemp(join(tmpdir(), 'bounded-wait-record-'));
-    try {
-      const standIn = Bun.spawn(
-        [
-          process.execPath,
-          STAND_IN_RUNNER,
-          '--mode',
-          'pass',
-          '--record',
-          record,
-          '--wait-milliseconds',
-          '300',
-        ],
-        { env: { PATH: '/usr/bin:/bin' }, stdout: 'ignore', stderr: 'pipe', detached: true },
-      );
-
-      const exitCode = await watchdog(standIn.exited, 3_000);
-      if (exitCode === 'hung') standIn.kill('SIGKILL');
-
-      expect(exitCode).toBe(1);
-      expect(await new Response(standIn.stderr).text()).toContain('timed out waiting for');
-    } finally {
-      // The stand-in's sleepers: one in its own group, one detached into a group of its own.
-      for (const label of ['runner-grandchild', 'runner-detached']) {
-        const file = Bun.file(join(record, `${label}.pid`));
-        if (!(await file.exists())) continue;
-        const pid = await file.text();
-        signalGroupOf(Number(pid.trim()));
-      }
-      await rm(record, { recursive: true, force: true });
-    }
-  });
+  it('ends a stand-in test runner that never receives its proceed file', () =>
+    rethrow(standInRunnerEndsAtItsWaitBudget));
 });
