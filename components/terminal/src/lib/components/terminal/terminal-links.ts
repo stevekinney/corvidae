@@ -137,12 +137,21 @@ export function linksForRow(buffer: LinkBuffer, row: number): CellLink[] {
     .filter(({ range }) => range.start.y <= row + 1 && range.end.y >= row + 1);
 }
 
-/** Terminal title text safe to show: control characters removed, bounded by code points. */
+/**
+ * Terminal title text safe to show: control characters removed, bounded by code points. It walks
+ * the title one code point at a time and stops once it holds the first
+ * {@link MAXIMUM_TITLE_CODE_POINTS} printable ones, so the work and the allocation follow the
+ * bound rather than the size of a hostile payload.
+ */
 export function boundTitle(title: string): string {
-  // oxlint-disable-next-line no-control-regex -- stripping control characters is the purpose
-  const printable = title.replace(/[\u0000-\u001f\u007f-\u009f]/gu, '');
-  const codePoints = Array.from(printable);
-  return codePoints.length > MAXIMUM_TITLE_CODE_POINTS
-    ? codePoints.slice(0, MAXIMUM_TITLE_CODE_POINTS).join('')
-    : printable;
+  let bounded = '';
+  let collected = 0;
+  for (const character of title) {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)) continue;
+    bounded += character;
+    collected += 1;
+    if (collected === MAXIMUM_TITLE_CODE_POINTS) break;
+  }
+  return bounded;
 }

@@ -32,12 +32,13 @@ export type EngineSettings = {
   reducedMotion: boolean;
   ariaLabel: string;
   theme: EngineTheme;
+  /** The computed font, re-read on refresh. Left as it is when absent. */
+  fontFamily?: string | undefined;
+  fontSize?: number | undefined;
 };
 
 export type EngineCreateOptions = EngineSettings & {
   geometry: TerminalGeometry;
-  fontFamily?: string | undefined;
-  fontSize?: number | undefined;
   /** Called with a bounded plain-text title whenever the program sets one. */
   onTitle?: ((title: string) => void) | undefined;
 };
@@ -89,7 +90,8 @@ export type RendererEngine = {
    * caller may reuse its buffer at once. A unicode sequence the chunk leaves unfinished (at most
    * three bytes) is held and parsed with the next chunk, so the chunk is acknowledged only when
    * the write that includes its last byte completes: with the next chunk, or on
-   * {@link RendererEngine.finishOutput}.
+   * {@link RendererEngine.finishOutput}. An empty chunk has no bytes to wait for: it is
+   * acknowledged by its own write, never held behind a prefix.
    */
   write(chunk: Uint8Array, parsed: () => void): void;
   /**
@@ -138,6 +140,11 @@ export function createRendererEngine(
     });
   }
 
+  // OSC 8 carries a destination the reader cannot see. The engine turns it into a link of its own
+  // (`OscLinkProvider`, always registered) whenever the sequence reaches its parser, whatever the
+  // link handler does, so the sequence is consumed here instead: the most recently registered
+  // handler runs first and returning true ends the search. The text it wrapped still prints.
+  terminal.parser.registerOscHandler(8, () => true);
   terminal.onTitleChange((title) => options.onTitle?.(boundTitle(title)));
   terminal.registerLinkProvider({
     provideLinks(bufferLineNumber, callback) {
@@ -166,6 +173,14 @@ export function createRendererEngine(
     },
     write(chunk, parsed) {
       if (disposed) return;
+      // An empty chunk has no bytes, so a held prefix is no reason to wait: it is acknowledged by
+      // its own write, which completes behind the writes already queued (so acknowledgements
+      // that need no prefix stay in order) and never behind the prefix, which is not queued yet.
+      // Holding it would collect one acknowledgement per empty chunk for as long as the prefix lasts.
+      if (chunk.length === 0) {
+        writeBytes(chunk, [parsed]);
+        return;
+      }
       // `take` returns a view of a fresh buffer, so the engine never aliases the caller's chunk.
       const bytes = carry.take(chunk);
       if (bytes.length === 0 && carry.pending > 0) {
@@ -206,6 +221,15 @@ export function createRendererEngine(
       terminal.options.screenReaderMode = settings.announceOutput;
       terminal.options.theme = { ...settings.theme };
       terminal.textarea?.setAttribute('aria-label', settings.ariaLabel);
+      if (
+        settings.fontFamily !== undefined &&
+        settings.fontFamily !== terminal.options.fontFamily
+      ) {
+        terminal.options.fontFamily = settings.fontFamily;
+      }
+      if (settings.fontSize !== undefined && settings.fontSize !== terminal.options.fontSize) {
+        terminal.options.fontSize = settings.fontSize;
+      }
     },
     remeasure() {
       // The engine measures its cell only when a font option changes, so it never notices a web

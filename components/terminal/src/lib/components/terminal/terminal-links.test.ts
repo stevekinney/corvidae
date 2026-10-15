@@ -261,3 +261,58 @@ describe('boundTitle', () => {
     expect(bounded).toBe('\u{1f600}'.repeat(MAXIMUM_TITLE_CODE_POINTS));
   });
 });
+
+describe('boundTitle does bounded work (COR-1516)', () => {
+  /** Counts the code points the string iterator hands out while `action` runs. */
+  function countIterated(action: () => void): number {
+    const original = String.prototype[Symbol.iterator];
+    let pulled = 0;
+    const patched = function iterate(this: string) {
+      const inner = original.call(this);
+      return {
+        next() {
+          pulled += 1;
+          return inner.next();
+        },
+        [Symbol.iterator]() {
+          return this;
+        },
+      } as unknown as StringIterator<string>;
+    };
+    Reflect.defineProperty(String.prototype, Symbol.iterator, {
+      value: patched,
+      configurable: true,
+      writable: true,
+    });
+    try {
+      action();
+    } finally {
+      Reflect.defineProperty(String.prototype, Symbol.iterator, {
+        value: original,
+        configurable: true,
+        writable: true,
+      });
+    }
+    return pulled;
+  }
+
+  test('stops after the first 256 printable code points of a huge title', () => {
+    const title = 'x'.repeat(200_000);
+    let bounded = '';
+    const pulled = countIterated(() => {
+      bounded = boundTitle(title);
+    });
+    expect(bounded).toBe('x'.repeat(MAXIMUM_TITLE_CODE_POINTS));
+    expect(pulled).toBeLessThanOrEqual(MAXIMUM_TITLE_CODE_POINTS + 1);
+  });
+
+  test('skips control characters without counting them toward the bound', () => {
+    const title = `${'\u0007'.repeat(10)}${'y'.repeat(MAXIMUM_TITLE_CODE_POINTS + 5)}${'z'.repeat(50_000)}`;
+    let bounded = '';
+    const pulled = countIterated(() => {
+      bounded = boundTitle(title);
+    });
+    expect(bounded).toBe('y'.repeat(MAXIMUM_TITLE_CODE_POINTS));
+    expect(pulled).toBeLessThanOrEqual(MAXIMUM_TITLE_CODE_POINTS + 11);
+  });
+});
