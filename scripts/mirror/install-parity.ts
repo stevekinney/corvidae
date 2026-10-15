@@ -127,7 +127,7 @@ const releaseWorkflowNames = ['release.yaml', 'release.yml'] as const;
  * `release.yaml` was a default parameter until COR-1287, which is the same class of mistake this
  * module was written to catch one layer down: a constant standing in for something that is only
  * true of the targets that existed when it was written. weft and cinder spell it `release.yaml`,
- * stevekinney/agent-bureau spells it `release.yml`, GitHub Actions accepts both, and a default
+ * the since-retired stevekinney/agent-bureau target spelled it `release.yml`, GitHub Actions accepts both, and a default
  * that guesses wrong does not fail cleanly — `readWorkflowInstalls` finds the install line under
  * the real name, the `find` for `releaseWorkflowFile` misses it, and the rendered workflow
  * silently loses the release workflow's install arguments. So the name is read off the clone, for

@@ -126,11 +126,11 @@ describe('mirror package map', () => {
   });
 
   test('resolves a known workspace to its settled published name', async () => {
-    const armorer = await dispositionFor('armorer');
+    const markdown = await dispositionFor('@lostgradient/markdown');
 
-    expect(armorer.disposition).toBe('publish-as');
-    if (armorer.disposition !== 'publish-as') throw new Error('unreachable');
-    expect(armorer.name, 'armorer keeps its unscoped name').toBe('armorer');
+    expect(markdown.disposition).toBe('publish-as');
+    if (markdown.disposition !== 'publish-as') throw new Error('unreachable');
+    expect(markdown.name, 'markdown publishes under its own name').toBe('@lostgradient/markdown');
   });
 
   test('excludes the playground application so the transform never emits it into the cinder target', async () => {
@@ -146,18 +146,35 @@ describe('mirror package map', () => {
     expect(publishedOnly.entries.map((entry) => entry.name)).not.toContain('@cinder/playground');
   });
 
-  test('publishes every package inside a published package runtime closure', async () => {
-    const names = await publishableNames();
+  /**
+   * The repository owner ruled on 2026-10-14 that only Weft and Cinder's packages publish. This is
+   * the regression guard for that ruling: a retired workspace given back a `publish-as` entry would
+   * put it on a mirror's release path again, so the published set is pinned exactly, and every
+   * retired workspace must be `exclude`d rather than merely left unpublished.
+   */
+  test('publishes only Weft and Cinder’s packages', async () => {
+    expect(await publishableNames()).toEqual([
+      '@lostgradient/cinder',
+      '@lostgradient/editor',
+      '@lostgradient/markdown',
+      '@lostgradient/weft',
+    ]);
 
-    // armorer, conversationalist, and operative publish, so everything reachable from their
-    // runtime dependencies must publish too or those tarballs are uninstallable.
-    for (const required of [
+    for (const retired of [
+      '@lostgradient/chat',
+      '@lostgradient/operative',
+      'armorer',
+      'conversationalist',
       '@lostgradient/cryptography',
       '@lostgradient/embeddings',
       '@lostgradient/tool-protocol',
       '@lostgradient/lifecycle',
+      '@lostgradient/bureau',
+      '@lostgradient/memory',
+      '@lostgradient/skills',
     ]) {
-      expect(names, `${required} is forced by the runtime closure`).toContain(required);
+      const disposition = await dispositionFor(retired);
+      expect(disposition.disposition, `${retired} is retired`).toBe('exclude');
     }
   });
 

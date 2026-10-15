@@ -17,6 +17,8 @@ node_modules/
 # Application and test output
 build/
 dist/
+# Weft's prebuilt dashboard, which `dashboard()` serves by default.
+packages/weft/dashboard/
 artifacts/
 # The playground's build scratch directories; they are deleted when a build ends,
 # but an interrupted build can leave them behind.

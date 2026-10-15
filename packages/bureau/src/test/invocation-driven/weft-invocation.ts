@@ -87,9 +87,9 @@ async function settledReason(): Promise<string | undefined> {
   if (TERMINAL.has(state.status)) return 'terminal';
   const holder = await engine.claimHolder(WEFT_WORKFLOW_ID);
   if (holder?.heldByAnyProcess === true && !holder.heldByThisProcess) return 'held-elsewhere';
-  // The workflow sleeps once, and the scenarios never wake it before its
-  // timer is due, so the deadline is `WEFT_SLEEP_MS` after the timeline entry
-  // that first scheduled it.
+  // The workflow sleeps once, so the deadline is `WEFT_SLEEP_MS` after the
+  // timeline entry that first scheduled it. A wake-up before the deadline adds
+  // another sleep entry but re-parks on that same deadline.
   const timeline = await engine.getTimeline(WEFT_WORKFLOW_ID);
   const sleeps = timeline.filter((entry) => entry.operationType === 'sleep');
   const scheduled = sleeps[0];

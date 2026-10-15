@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { mirrorPlatformEnvironment } from './environment-configuration.ts';
 import { runCommand, type CommandRunner } from './packaging.ts';
+import type { PolicyDocumentOverrides } from './surface.ts';
 import { git, provenanceTrailer, type SyncResult } from './sync.ts';
 import { mirrorTargets, type MirrorTarget } from './target-definitions.ts';
 import { verifyTrustedPreparedTree } from './trusted-prepared-tree.ts';
@@ -408,6 +409,8 @@ export async function verifyPreparedSyncArtifact(options: {
   expectedBaseBranch?: string;
   environment?: Record<string, string | undefined>;
   run?: CommandRunner;
+  /** Fixture policy documents; see `PolicyDocumentOverrides`. */
+  policyDocuments?: PolicyDocumentOverrides | undefined;
 }): Promise<VerifiedPreparedSync> {
   if (!isAbsolute(options.artifactDirectory)) {
     throw new PreparedSyncError('Prepared sync artifact directory must be absolute');
@@ -448,6 +451,7 @@ export async function verifyPreparedSyncArtifact(options: {
     corvidaeRoot: options.corvidaeRoot,
     manifest,
     remote: options.remote,
+    policyDocuments: options.policyDocuments,
     ...(options.expectedBaseBranch === undefined
       ? {}
       : { expectedBaseBranch: options.expectedBaseBranch }),

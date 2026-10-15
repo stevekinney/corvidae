@@ -33,15 +33,15 @@ describe('parseChangeset', () => {
   test('accepts single quotes, double quotes and an unscoped name', () => {
     const parsed = parseChangeset(
       changeset([
-        "'@lostgradient/operative': major",
-        '"@lostgradient/lifecycle": patch',
-        'armorer: patch',
+        "'@lostgradient/cinder': major",
+        '"@lostgradient/editor": patch',
+        'unscoped-package: patch',
       ]),
     );
     expect(parsed.bumps.map(({ name }) => name)).toEqual([
-      '@lostgradient/operative',
-      '@lostgradient/lifecycle',
-      'armorer',
+      '@lostgradient/cinder',
+      '@lostgradient/editor',
+      'unscoped-package',
     ]);
   });
 
@@ -71,8 +71,10 @@ describe('validateChangeset', () => {
   test('accepts a single-target changeset and names its target', async () => {
     expect(await validateChangeset(changeset(['"@lostgradient/weft": patch']))).toBe('weft');
     expect(
-      await validateChangeset(changeset(['"@lostgradient/operative": patch', 'armorer: minor'])),
-    ).toBe('agent-bureau');
+      await validateChangeset(
+        changeset(['"@lostgradient/editor": patch', '"@lostgradient/markdown": minor']),
+      ),
+    ).toBe('cinder');
   });
 
   test('accepts CRLF and double-quoted fixtures', async () => {
@@ -98,13 +100,32 @@ describe('validateChangeset', () => {
     expect((error as Error).message).toContain('@lostgradient/not-a-package');
   });
 
-  test.each(['@lostgradient/bureau', '@lostgradient/memory', '@lostgradient/skills'])(
+  test.each(['@lostgradient/weft-ui', '@lostgradient/testing', '@lostgradient/typescript'])(
     'rejects the private workspace %s',
     async (name) => {
       const error = await rejectionOf(validateChangeset(changeset([`"${name}": patch`])));
       expect(error).toBeInstanceOf(ChangesetError);
     },
   );
+
+  /**
+   * The owner stopped publishing these on 2026-10-14. A changeset naming one has no mirror to
+   * release it, so it is refused here rather than carried to a target that no longer ships it.
+   */
+  test.each([
+    '@lostgradient/chat',
+    '@lostgradient/operative',
+    'armorer',
+    'conversationalist',
+    '@lostgradient/cryptography',
+    '@lostgradient/embeddings',
+    '@lostgradient/tool-protocol',
+    '@lostgradient/lifecycle',
+  ])('rejects the retired package %s', async (name) => {
+    const error = await rejectionOf(validateChangeset(changeset([`"${name}": patch`])));
+    expect(error).toBeInstanceOf(ChangesetError);
+    expect((error as Error).message).toContain('not the npm name of a publish-as workspace');
+  });
 
   test('rejects prerelease, none, empty frontmatter and an empty body', async () => {
     for (const text of [
@@ -118,7 +139,7 @@ describe('validateChangeset', () => {
   });
 
   test('targetOfChangeset resolves a parsed changeset without re-reading the text', async () => {
-    const parsed = parseChangeset(changeset(['"@lostgradient/chat": patch']));
+    const parsed = parseChangeset(changeset(['"@lostgradient/editor": patch']));
     expect(await targetOfChangeset(parsed)).toBe('cinder');
   });
 });

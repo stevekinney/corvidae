@@ -72,6 +72,12 @@ const excludeSchema = z.object({
   disposition: z.literal('exclude'),
   basis: z.string().min(1),
   reason,
+  /**
+   * A retired package's last registry release. The mirror never reads it; the Playground does,
+   * because cinder.website still documents `@lostgradient/chat` and shows the version a reader
+   * can install.
+   */
+  lastPublishedVersion: z.string().min(1).optional(),
 });
 
 const workspaceEntrySchema = z.discriminatedUnion('disposition', [

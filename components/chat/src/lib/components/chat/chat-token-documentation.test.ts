@@ -1,26 +1,21 @@
 import { describe, expect, it } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
-const tokenDocumentationPath = join(import.meta.dirname, '..', '..', 'documentation', 'tokens.md');
-const sourcePath = (...candidates: string[]) => {
-  const path = candidates.map((candidate) => join(repositoryRoot, candidate)).find(existsSync);
-  if (path === undefined)
-    throw new Error(`Expected one of these repository paths: ${candidates.join(', ')}`);
-  return path;
-};
+/**
+ * Chat's own tokens are documented in Cinder's token reference, and this pins the two together.
+ * It lived in Cinder's `src/styles` until @lostgradient/chat stopped publishing (2026-10-14): the
+ * Cinder mirror no longer carries Chat's source, so a Cinder test that read it would throw there.
+ * It belongs to Chat, which now runs only in corvidae.
+ */
+const repositoryRoot = join(import.meta.dirname, '..', '..', '..', '..', '..', '..');
+const chatComponentDirectory = import.meta.dirname;
+const tokenDocumentationPath = join(repositoryRoot, 'components/cinder/documentation/tokens.md');
+const tokenBaseCssPath = join(repositoryRoot, 'components/cinder/src/styles/tokens-base.css');
 
-describe('non-color component tokens', () => {
+describe('Chat tokens in the Cinder token reference', () => {
   it('documents the Chat typography control and keeps it out of the color contract', () => {
-    const chatCss = readFileSync(
-      sourcePath(
-        'components/chat/src/lib/components/chat/chat.css',
-        'packages/chat/src/lib/components/chat/chat.css',
-      ),
-      'utf8',
-    );
+    const chatCss = readFileSync(join(chatComponentDirectory, 'chat.css'), 'utf8');
     const tokenDocumentation = readFileSync(tokenDocumentationPath, 'utf8');
 
     expect(chatCss).toContain('--cinder-chat-font-size: 1rem');
@@ -34,28 +29,10 @@ describe('non-color component tokens', () => {
   // changed in CSS without the docs following, or the token removed from one
   // side only, fails here.
   it('documents the Chat transcript measure and keeps it out of the color contract', () => {
-    const chatCss = readFileSync(
-      sourcePath(
-        'components/chat/src/lib/components/chat/chat.css',
-        'packages/chat/src/lib/components/chat/chat.css',
-      ),
-      'utf8',
-    );
-    const chatVariables = readFileSync(
-      sourcePath(
-        'components/chat/src/lib/components/chat/chat.variables.json',
-        'packages/chat/src/lib/components/chat/chat.variables.json',
-      ),
-      'utf8',
-    );
+    const chatCss = readFileSync(join(chatComponentDirectory, 'chat.css'), 'utf8');
+    const chatVariables = readFileSync(join(chatComponentDirectory, 'chat.variables.json'), 'utf8');
     const tokenDocumentation = readFileSync(tokenDocumentationPath, 'utf8');
-    const tokenBaseCss = readFileSync(
-      sourcePath(
-        'components/cinder/src/styles/tokens-base.css',
-        'packages/components/src/styles/tokens-base.css',
-      ),
-      'utf8',
-    );
+    const tokenBaseCss = readFileSync(tokenBaseCssPath, 'utf8');
 
     // Registered with `@property` (so ancestor overrides inherit) rather than
     // declared on the component root, where a value would beat inheritance.

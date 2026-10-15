@@ -107,10 +107,23 @@ export async function committedWorkspaceVersions(
   commit: string,
   runner: CommandRunner = runCommand,
 ): Promise<ReadonlyMap<string, string>> {
+  const workspaceVersions = new Map<string, string>();
+  for (const [name, manifest] of await committedWorkspaceManifests(directory, commit, runner)) {
+    if (typeof manifest['version'] === 'string') workspaceVersions.set(name, manifest['version']);
+  }
+  return workspaceVersions;
+}
+
+/** Every workspace manifest the root `workspaces` declaration matches at `commit`, by name. */
+export async function committedWorkspaceManifests(
+  directory: string,
+  commit: string,
+  runner: CommandRunner = runCommand,
+): Promise<ReadonlyMap<string, Record<string, unknown>>> {
   const root = await readGitJson(directory, commit, 'package.json', runner);
   const listed = await runner(['git', 'ls-tree', '-r', '--name-only', commit], { cwd: directory });
   if (listed.exitCode !== 0) throw new Error(`Cannot list manifests at ${commit}`);
-  const workspaceVersions = new Map<string, string>();
+  const workspaceManifests = new Map<string, Record<string, unknown>>();
   const workspaceDeclaration = root['workspaces'];
   const workspacePatterns = Array.isArray(workspaceDeclaration)
     ? workspaceDeclaration
@@ -126,10 +139,9 @@ export async function committedWorkspaceVersions(
     if (!workspacePatterns.some((pattern) => new Bun.Glob(pattern).match(workspaceDirectory)))
       continue;
     const manifest = await readGitJson(directory, commit, path, runner);
-    if (typeof manifest['name'] === 'string' && typeof manifest['version'] === 'string')
-      workspaceVersions.set(manifest['name'], manifest['version']);
+    if (typeof manifest['name'] === 'string') workspaceManifests.set(manifest['name'], manifest);
   }
-  return workspaceVersions;
+  return workspaceManifests;
 }
 
 export async function committedPublicationManifest(

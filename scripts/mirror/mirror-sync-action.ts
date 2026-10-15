@@ -13,6 +13,7 @@ import {
   type PreparedSyncManifest,
 } from './prepared-sync.ts';
 import { scratchOwner } from './scratch-repository.ts';
+import type { PolicyDocumentOverrides } from './surface.ts';
 import {
   assertNoForeignCommits,
   cloneTarget,
@@ -564,6 +565,8 @@ export async function reportDrift(options: {
   target: MirrorTarget;
   remote: string;
   directory: string;
+  /** Fixture policy documents; see `PolicyDocumentOverrides`. */
+  policyDocuments?: PolicyDocumentOverrides | undefined;
 }): Promise<DriftReport> {
   const clone = await cloneTarget({ remote: options.remote, directory: options.directory });
   const provenance = await newestMirrorProvenance(clone, options.target, { strict: true });
@@ -574,6 +577,7 @@ export async function reportDrift(options: {
       target: options.target,
       clone,
       provenance,
+      policyDocuments: options.policyDocuments,
     }),
   );
   await stageSurface({
@@ -581,6 +585,7 @@ export async function reportDrift(options: {
     target: options.target,
     directory: clone,
     provenance,
+    policyDocuments: options.policyDocuments,
   });
   const porcelain = await git(clone, 'status', '--porcelain');
   const changed = porcelain.split('\n').filter((line) => line.length > 0);

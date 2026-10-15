@@ -38,6 +38,16 @@ export type AgentInput = string | { conversation: ConversationHistory };
  * identity stamped on curated `tool.*` events.
  */
 export interface AgentRunContext {
+  /**
+   * COR-1302 — the id this run must take, so a handle returned before the run
+   * itself exists (a lazy agent's, or Bureau's catalog dispatch) already
+   * carries the id the run will report. `createAgent`'s run path forwards it
+   * into `RunOptions.runId`, making it the returned handle's `AgentRun.id` and
+   * its liveness `snapshot().id`. A hand-written `RunnableAgent` honoring the
+   * contract uses it the same way; one that ignores it reports an id its
+   * caller's wrapper does not, so `id` and `snapshot().id` disagree.
+   */
+  runId?: string | undefined;
   signal?: AbortSignal | undefined;
   traceContext?: unknown;
   withTraceContext?: (<T>(parentContext: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;

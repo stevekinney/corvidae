@@ -8393,6 +8393,7 @@ function createParkedActiveRun(): {
   // methods cannot structurally satisfy — the same cast operative's own
   // production adapters use for this exact assignment.
   const activeRun: ActiveRun = {
+    runId: 'stub-run',
     result: new Promise<never>(() => {}),
     abort: () => {},
     // COR-1270: this stub run was never dispatched with a hook plan, so it
@@ -14400,9 +14401,10 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
       // `LivenessSnapshot.owner`) carries this catalog run's principal the
       // same way it would for a `Bureau.createRun`-dispatched run. Unlike
       // `createRun`, a catalog run keeps no durable event of its own kind
-      // recorded against it here (no bureau session backs this dispatch),
-      // so an empty page is the expected shape — the AB-313 "never-recorded
-      // id reads as an ordinary empty page" convention, not a failure.
+      // recorded against it here (no bureau session backs this dispatch, and
+      // COR-1302 keeps its actions off the bureau's `'action'` stream), so an
+      // empty page is the expected shape — the AB-313 "never-recorded id
+      // reads as an ordinary empty page" convention, not a failure.
       const allowedOutcome = await bureau.eventHistory(
         { kind: 'run', id: runId },
         { principal: 'alice' },

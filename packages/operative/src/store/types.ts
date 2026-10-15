@@ -125,6 +125,7 @@ export interface Store {
   complete(): void;
   readonly completed: boolean;
 
+  /** Removes the run's record and drops its actions from the store-wide `actions` log. */
   removeRun(id: string): void;
   deregister(id: string): void;
   dispose(): void;

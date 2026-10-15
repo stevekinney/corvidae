@@ -11,17 +11,17 @@ afterEach(() => {
 describe('browser environment configuration', () => {
   test('preserves Number conversion for empty, invalid, and infinite ports', () => {
     process.env['WEFT_UI_PORT'] = '';
-    expect(environmentConfiguration().weftUiPort).toBe(0);
+    expect(environmentConfiguration().browserHostPort).toBe(0);
 
     process.env['WEFT_UI_PORT'] = 'invalid';
-    expect(Number.isNaN(environmentConfiguration().weftUiPort)).toBe(true);
+    expect(Number.isNaN(environmentConfiguration().browserHostPort)).toBe(true);
 
     process.env['WEFT_UI_PORT'] = 'Infinity';
-    expect(environmentConfiguration().weftUiPort).toBe(Infinity);
+    expect(environmentConfiguration().browserHostPort).toBe(Infinity);
   });
 
   test('uses the default port when the variable is absent', () => {
     delete process.env['WEFT_UI_PORT'];
-    expect(environmentConfiguration().weftUiPort).toBeUndefined();
+    expect(environmentConfiguration().browserHostPort).toBeUndefined();
   });
 });

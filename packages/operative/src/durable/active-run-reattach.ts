@@ -270,6 +270,7 @@ export function reattachDurableActiveRun(
   });
 
   return {
+    runId,
     result,
     abort,
     // COR-1270/COR-1267 — always `undefined`, and meaningfully so: a

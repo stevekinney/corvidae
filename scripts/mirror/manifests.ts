@@ -52,7 +52,7 @@ import {
  * - Every emitted package directory gets the root `LICENSE`, per COR-1183's ruling that
  *   per-package `LICENSE` is transform-owned while the root one is target-owned.
  * - Every emitted path is the target's own directory for that workspace, read from
- *   `layout-map.json`. Corvidae's `components/chat` is cinder's `packages/chat`, so reusing
+ *   `layout-map.json`. Corvidae's `components/cinder` is cinder's `packages/components`, so reusing
  *   corvidae's directory would write a second tree beside the target's real one.
  *
  * None of that applies to a key the target already has an answer for. `composeManifest` is the
@@ -724,8 +724,8 @@ export async function readExistingManifest(
  * is "the transform's outright — name, block and specifier — because only the transform knows what
  * it is called downstream", and `composeDependencies` implements that by dropping the target's
  * entry whenever its name is in `mirrorPackages`. That worked while every target already spelled
- * a mirror workspace the way the mirror publishes it, which was true of weft and cinder and is not
- * true of agent-bureau: it calls corvidae's `@lostgradient/lifecycle` simply `lifecycle`, and the
+ * a mirror workspace the way the mirror publishes it, which was true of weft and cinder and was not
+ * true of the since-retired agent-bureau target: it called corvidae's `@lostgradient/lifecycle` simply `lifecycle`, and the
  * same for `bureau`, `memory` and `skills`. Under the public name alone, rule (1) never matched
  * those entries, rule (2) kept them as ordinary third-party edges, and the composed manifest
  * carried the same workspace twice under two names. A live staging against the real target

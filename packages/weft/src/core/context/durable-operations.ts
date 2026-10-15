@@ -2,8 +2,9 @@ import type { HumanReviewOptions, HumanReviewResult } from '../review/index.ts';
 import { parseDuration } from '../scheduler.ts';
 import type { Duration } from '../types.ts';
 import type { Context } from './index.ts';
-import { yieldOperation, type ContextInternals } from './internals.ts';
+import { getInternals, yieldOperation, type ContextInternals } from './internals.ts';
 import type { ContextOperationRequest } from './operation-request.ts';
+import { dropSleepFireAt, readOrInitSleepFireAt } from './sleep-deadline.ts';
 import type { OffloadReference, StreamReference, StreamSink } from './types.ts';
 import { captureCallerStack } from './validation.ts';
 import { resolveWorkflowVersionPatch } from './version-patching.ts';
@@ -42,8 +43,6 @@ export function prepareSleepOperation(
   // deadline, so a terminated run's stale timer is ignored (see resolveSleepTimer).
   const operationId = `${internals.context.workflowId}:${step}`;
   const callerStack = captureCallerStack();
-  const referenceTime = internals.sleepReferenceTime ?? internals.getNow();
-  internals.sleepReferenceTime = undefined;
 
   return {
     cached: false,
@@ -52,7 +51,7 @@ export function prepareSleepOperation(
       type: 'sleep',
       operationId,
       duration: milliseconds,
-      scheduledFireAt: referenceTime + milliseconds,
+      scheduledFireAt: readOrInitSleepFireAt(internals, step, milliseconds),
       callerStack,
     },
     step,
@@ -65,6 +64,7 @@ export function* completePreparedSleepOperation(
 ): Generator<ContextOperationRequest, void, unknown> {
   yield prepared.request;
   context.accumulatedResults.set(prepared.step, undefined);
+  dropSleepFireAt(getInternals(context), prepared.step);
 }
 
 export function* sleep(
