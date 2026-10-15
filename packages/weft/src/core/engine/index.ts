@@ -2669,6 +2669,9 @@ export class Engine<
     if (options?.onRecoveredWorkflow !== undefined) {
       getInternals(this).onRecoveredWorkflowHook = options.onRecoveredWorkflow;
     }
+    // Captured now: an overlapping `recoverAll()` may replace the shared field
+    // while this call yields, and this call must keep running its own hook.
+    const recoveredWorkflowHook = getInternals(this).onRecoveredWorkflowHook;
     // Run the `ownership: 'workflow-lease'` boot gates on the `new Engine()` +
     // `recoverAll()` construction path too, not just via `Engine.create` — ADR
     // 0002 is explicit that attaching them to `Engine.create` alone leaves a
@@ -2701,7 +2704,6 @@ export class Engine<
     // before (or during) workflow replay still resolves a parked activity.
     await recoverPendingAsyncActivities(getInternals(this));
     await recoverOrphanedScheduleTimers(getInternals(this));
-    const recoveredWorkflowHook = getInternals(this).onRecoveredWorkflowHook;
     return recoverAllFromLifecycle(
       getInternals(this),
       this.#createLifecycleCallbacks(),

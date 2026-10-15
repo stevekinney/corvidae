@@ -408,6 +408,77 @@ describe('ctx.services — recovery re-provision', () => {
     await engine[Symbol.asyncDispose]();
   });
 
+  it('runs each overlapping recoverAll() with its own hook, not whichever call wrote the shared hook last', async () => {
+    const storage = new MemoryStorage();
+    const wf = workflow({ name: 'overlap-hook' }).execute(async function* (ctx: WorkflowContext) {
+      yield* ctx.waitForSignal('continue');
+      return 'completed';
+    });
+    {
+      await using seedEngine = await Engine.create({
+        storage,
+        recover: false,
+        workflows: { 'overlap-hook': wf },
+      });
+      await seedEngine.start('overlap-hook', null, { id: 'overlap-run' });
+      await flush();
+    }
+    await using engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'overlap-hook': wf },
+    });
+    // Park every recoverAll() in its async-activity reload, so both calls are in flight at once.
+    const internals = getInternals(engine);
+    const realStorage = internals.storage;
+    const parked: Array<PromiseWithResolvers<void>> = [];
+    const bothParked = Promise.withResolvers<void>();
+    internals.storage = new Proxy(realStorage, {
+      get(target, property, receiver) {
+        if (property === 'scan') {
+          return (prefix: string, ...rest: unknown[]) => {
+            const scan = Reflect.get(target, 'scan', target) as (
+              ...scanArguments: unknown[]
+            ) => AsyncIterable<[string, Uint8Array]>;
+            if (prefix !== ASYNC_ACTIVITY_KEY_PREFIX) return scan.call(target, prefix, ...rest);
+            const gate = Promise.withResolvers<void>();
+            parked.push(gate);
+            if (parked.length === 2) bothParked.resolve();
+            return (async function* () {
+              await gate.promise;
+              yield* scan.call(target, prefix, ...rest);
+            })();
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+
+    const firstHookRuns: string[] = [];
+    const secondHookRuns: string[] = [];
+    const first = engine.recoverAll({
+      onRecoveredWorkflow: ({ workflowId }) => {
+        firstHookRuns.push(workflowId);
+      },
+    });
+    await waitForCondition(() => parked.length === 1, { label: 'first recoverAll() parks' });
+    const second = engine.recoverAll({
+      onRecoveredWorkflow: ({ workflowId }) => {
+        secondHookRuns.push(workflowId);
+      },
+    });
+    await bothParked.promise;
+    // The first call resumes and recovers the run while the second is still parked.
+    parked[0]!.resolve();
+    await first;
+    parked[1]!.resolve();
+    await second;
+
+    expect(firstHookRuns).toEqual(['overlap-run']);
+    expect(secondHookRuns).toEqual([]);
+  });
+
   it('isolates a recovery hook failure to its run and continues recovering siblings', async () => {
     const storage = new MemoryStorage();
     const wf = workflow({ name: 'hook-failure-sibling' }).execute(async function* (
