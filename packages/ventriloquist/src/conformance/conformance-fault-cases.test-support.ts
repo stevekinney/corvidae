@@ -203,7 +203,12 @@ const outputOverflow: CaseDefinition = {
         `output stopped at the queue budget (${received} of ${DEFAULT_SESSION_BUDGETS.outputQueueBytes} bytes unparsed)`,
         received <= DEFAULT_SESSION_BUDGETS.outputQueueBytes,
       ),
-      check('the budget was actually reached, not stopped early', received > 0 && consumed === 0),
+      check(
+        `the budget was reached, not stopped early (${summary.drain.unavailableBytes} bytes offered against ${DEFAULT_SESSION_BUDGETS.outputQueueBytes}, ${received} delivered)`,
+        consumed === 0 &&
+          received > DEFAULT_SESSION_BUDGETS.outputQueueBytes / 2 &&
+          summary.drain.unavailableBytes > DEFAULT_SESSION_BUDGETS.outputQueueBytes,
+      ),
       check('the failure is visible as the cause', summary.cause === 'output-overflow'),
       check(
         'the bytes it could not deliver are counted',

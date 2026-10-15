@@ -16,6 +16,22 @@ const SESSIONS_MEASURED = 6;
 const MAXIMUM_RELEASE_TURNS = 1_000;
 
 /** Turns of the event loop until the descriptor count is back at `baseline`, or the bound is spent. */
+const BASELINE_SAMPLES = 5;
+
+/**
+ * The lowest descriptor count over several event-loop turns. A descriptor still being released when
+ * the baseline is read would raise it, and one leaked afterwards could then hide behind that
+ * excess, so the baseline is the minimum the process settles to, not a single reading.
+ */
+export async function stableDescriptorBaseline(): Promise<number> {
+  let lowest = Number.POSITIVE_INFINITY;
+  for (let sample = 0; sample < BASELINE_SAMPLES; sample += 1) {
+    await Bun.sleep(0);
+    lowest = Math.min(lowest, openDescriptorCount());
+  }
+  return lowest;
+}
+
 export async function settledDescriptorCount(
   baseline: number,
   maximumTurns = MAXIMUM_RELEASE_TURNS,
@@ -44,7 +60,7 @@ export async function descriptorStability(
   const stop = BEHAVIOR_CASES.find((definition) => definition.id === 'client-stop');
   if (stop === undefined) throw new Error('the client-stop case is the leak probe and must exist');
   await runCell(stop, path, mode, scratch);
-  const before = openDescriptorCount();
+  const before = await stableDescriptorBaseline();
   let failedChecks = 0;
   for (let session = 0; session < SESSIONS_MEASURED; session += 1) {
     const result = await runCell(stop, path, mode, scratch);

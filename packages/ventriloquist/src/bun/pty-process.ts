@@ -37,6 +37,10 @@ function notRunnable(profile: ProcessProfile): string | undefined {
  * macOS closes a finished terminal with status 0. Linux's `read` on the master of a pseudo-terminal
  * returns `EIO` once every holder of the slave has closed it, which is that platform's end of
  * file, and Bun reports it as a close with status 1. Any other status is a failure on both.
+ *
+ * The cost: Bun reports no errno, so a genuine read error that also closes with status 1 on Linux
+ * cannot be told from that end of file and is read as the end of output, not as a failed source.
+ * The process exit is tracked separately and is what tells a session how the process really ended.
  */
 function endsOutput(host: HostPlatform, status: number): boolean {
   return status === 0 || (host.platform === 'linux' && status === 1);

@@ -16,6 +16,8 @@ import type { ScriptedProcess } from '../websocket/websocket.test-support.ts';
 import {
   check,
   createRig,
+  processListenerCount,
+  trackRealTimers,
   type CellMode,
   type Check,
   type ProcessMode,
@@ -133,6 +135,8 @@ export async function runCell(
   });
   let checks: readonly Check[] = [];
   let leaks;
+  const listenersBefore = processListenerCount();
+  const timers = trackRealTimers();
   try {
     checks = await definition.run({
       rig,
@@ -145,6 +149,7 @@ export async function runCell(
   } finally {
     leaks = await rig.stop();
     await launch.dispose?.();
+    timers.stop();
   }
   const [closed] = await Promise.allSettled([rig.closeCode()]);
   const closeCode = closed.status === 'fulfilled' ? closed.value : undefined;
@@ -154,6 +159,8 @@ export async function runCell(
       check('no timer is left running', leaks.timers === 0),
       check('no connection remains', leaks.connections === 0),
       check('no socket remains open', leaks.openSockets === 0),
+      check('no real timer is left running', timers.outstanding() === 0),
+      check('no listener was left on the process', processListenerCount() === listenersBefore),
     ],
     notes: [
       ...(definition.scope === undefined ? [] : [definition.scope]),

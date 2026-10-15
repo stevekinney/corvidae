@@ -296,6 +296,11 @@ export type Rig = {
   shutdown(): Promise<void>;
   /** The client vanishes without a close frame, as a killed browser does. */
   drop(): void;
+  /**
+   * Frames the host tried to put on the transport after it closed it. Only the in-memory transport
+   * can count them; a real socket silently drops them, so there it is `undefined`.
+   */
+  framesAfterClose(): number | undefined;
   /** The code the transport was closed with, once it closed; `undefined` when it never closed. */
   closeCode(): Promise<number | undefined>;
   /** Stop everything the rig started, then report what it left behind. */
@@ -370,6 +375,7 @@ function createDirectRig(options: RigOptions, observed: ObservedProcess): Rig {
     drop: () => {
       sessionDisposal = transport.connection.transportClosed();
     },
+    framesAfterClose: () => transport.sentAfterClose.length,
     closeCode: async () => {
       await session.closed;
       await sessionDisposal;
@@ -451,6 +457,7 @@ function createWebSocketRig(options: RigOptions, observed: ObservedProcess): Rig
     drop: () => {
       (socketClient.socket as unknown as { terminate(): void }).terminate();
     },
+    framesAfterClose: () => undefined,
     closeCode: async () => {
       const closed = await socketClient.closed;
       return closed.code;
@@ -483,4 +490,50 @@ export function createRig(path: TransportPath, options: RigOptions): Rig {
 /** How many descriptors this process holds. The directory read adds one, the same one every time. */
 export function openDescriptorCount(): number {
   return readdirSync(process.platform === 'linux' ? '/proc/self/fd' : '/dev/fd').length;
+}
+
+export type TimerTracker = {
+  /** Timers created since tracking began that have neither fired nor been cleared. */
+  outstanding(): number;
+  stop(): void;
+};
+
+/**
+ * Count the real timers a cell leaves behind. The fake clock cannot see them: the process helpers
+ * wait out their termination grace and probe the process group on the system clock, which reads
+ * `globalThis.setTimeout` each time it schedules. While tracking, that is a wrapper that notes
+ * each timer until it fires or is cleared.
+ */
+export function trackRealTimers(): TimerTracker {
+  const originalSet = globalThis.setTimeout;
+  const originalClear = globalThis.clearTimeout;
+  const live = new Set<unknown>();
+  globalThis.setTimeout = ((
+    callback: (...rest: unknown[]) => void,
+    delay?: number,
+    ...rest: unknown[]
+  ) => {
+    const handle: unknown = originalSet(() => {
+      live.delete(handle);
+      callback(...rest);
+    }, delay);
+    live.add(handle);
+    return handle;
+  }) as unknown as typeof setTimeout;
+  globalThis.clearTimeout = ((handle: never) => {
+    live.delete(handle);
+    originalClear(handle);
+  }) as typeof clearTimeout;
+  return {
+    outstanding: () => live.size,
+    stop: () => {
+      globalThis.setTimeout = originalSet;
+      globalThis.clearTimeout = originalClear;
+    },
+  };
+}
+
+/** Listeners registered on the process for any event. A helper that adds one and never removes it leaks it here. */
+export function processListenerCount(): number {
+  return process.eventNames().reduce((total, name) => total + process.listenerCount(name), 0);
 }
