@@ -1105,21 +1105,21 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
   'AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS',
   [
     [
-      'src/cli/conformance.ts',
+      'src/conformance/run-conformance.ts',
       {
         reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered. Realigned a third time (still COR-235) after adding the `waitForReassignmentPastFirstAttempt` import shifted the graceful-shutdown throw from line 216 to 217. Realigned a fourth time after `createRegisterCheck` (unit-tested directly, so fully covered) was added above the dispatch helper, moving the same three throws from 63/136/217 to 91/158/239.',
-        lines: new Set([91, 158, 239]),
+          'The shared conformance check sequence (COR-1365 moved it here from `src/cli/conformance.ts`, which carried this allowance at lines 91/158/239). Only the three defensive dispatch/cancel/shutdown failure throws remain uncovered: a sandbox server that refuses a dispatch, refuses to record a cancellation it was just handed, or loses the worker it just registered is not something any conformance fixture can produce.',
+        lines: new Set([131, 220, 301]),
         requireUncoveredLines: true,
       },
     ],
     [
-      'src/cli/conformance-harness.ts',
+      'src/conformance/harness.ts',
       {
         reason:
-          "Process lifecycle and observation primitives extracted from `conformance.ts` (COR-235, to keep that file under the line-count ceiling). Same rationale as that file previously carried: `waitForCondition`'s catch clause is never exercised because no predicate in the passing conformance fixtures throws, and the disconnected-worker/registry-empty throws in `waitForRegisteredWorker`/`waitForReplacementWorker`/`waitForWorkerHeartbeat` are defensive failure paths no passing conformance run reaches.",
+          "Process lifecycle and observation primitives for the shared conformance check sequence (moved from `src/cli/conformance-harness.ts` by COR-1365; its import block grew by six lines, so every line below shifted by six). `waitForCondition`'s catch clause is never exercised because no predicate in the passing conformance fixtures throws, and the disconnected-worker/registry-empty throws in `waitForRegisteredWorker`/`waitForReplacementWorker`/`waitForWorkerHeartbeat` are defensive failure paths no passing conformance run reaches.",
         functions: 1,
-        lines: new Set([45, 99, 121, 134, 144, 161]),
+        lines: new Set([51, 105, 127, 140, 150, 167]),
         requireUncoveredLines: true,
       },
     ],
