@@ -111,7 +111,8 @@ describe('the PTY start gate', () => {
       ]);
       expect(releaseGate(process)).toBe(true);
       expect(await child.exited).toBe(0);
-      const text = (await output()).replace(/\r/g, '');
+      const printed = await output();
+      const text = printed.replace(/\r/g, '');
       // A process that leads its group, whose group is the terminal's foreground group, owns the terminal.
       const [pid, group, foreground] = text.trim().split(/\s+/);
       expect(Number(pid)).toBe(child.pid);

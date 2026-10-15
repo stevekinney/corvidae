@@ -172,6 +172,41 @@ describe('a source the session can pause', () => {
   });
 });
 
+describe('two channels of one process', () => {
+  test('share the one output budget: together they never hold more than it, and neither starves', async () => {
+    const out = createScriptedStream('stdout');
+    const err = createScriptedStream('stderr');
+    const harness = createHarness({
+      backend: { mode: 'pipe' },
+      sources: [out.source, err.source],
+      budgets: { outputQueueBytes: BUDGET },
+    });
+    const attachment = await startAndAttach(harness);
+    out.push(pattern(30_000, 1));
+    err.push(pattern(30_000, 2));
+    out.push(pattern(30_000, 3));
+    err.push(pattern(30_000, 4));
+    await flush();
+    const held = (channel: string): number =>
+      harness.recorder
+        .ofType('output')
+        .filter((event) => event.channel === channel)
+        .reduce((total, event) => total + event.bytes.length, 0);
+    expect(held('stdout') + held('stderr')).toBeLessThanOrEqual(BUDGET);
+    expect(held('stdout')).toBeGreaterThan(0);
+    expect(held('stderr')).toBeGreaterThan(0);
+    expect(harness.recorder.ofType('attachmentRevoked')).toEqual([]);
+    for (let round = 0; round < 20; round += 1) {
+      attachment.outputParsedThrough(
+        harness.recorder.ofType('output').reduce((total, event) => total + event.bytes.length, 0),
+      );
+      await flush();
+    }
+    expect(held('stdout')).toBe(60_000);
+    expect(held('stderr')).toBe(60_000);
+  });
+});
+
 describe('a paused session still answers control', () => {
   async function pausedSession() {
     const stream = createScriptedStream('pty');
@@ -210,12 +245,12 @@ describe('a paused session still answers control', () => {
 
   test('revoking authorization and disposal both end a paused session', async () => {
     const revoked = await pausedSession();
-    expect((await revoked.harness.session.revokeAuthorization()).cause).toBe(
-      'authorization-revoked',
-    );
+    const awaited13 = await revoked.harness.session.revokeAuthorization();
+    expect(awaited13.cause).toBe('authorization-revoked');
     expect(revoked.stream.cancelCount).toBe(1);
     const disposed = await pausedSession();
-    expect((await disposed.harness.session.dispose()).cleanup).toBe('complete');
+    const awaited14 = await disposed.harness.session.dispose();
+    expect(awaited14.cleanup).toBe('complete');
     expect(disposed.stream.cancelCount).toBe(1);
   });
 

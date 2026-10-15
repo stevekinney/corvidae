@@ -532,11 +532,14 @@ const LINUX = { platform: 'linux', architecture: 'arm64' };
 
 /** A reader thread the test drives: it never reads the terminal, and says whatever the test makes it say. */
 function fakeWorker() {
+  let listener: ((event: MessageEvent<MasterMessage>) => void) | undefined;
   const worker: MasterWorker & { say(message: MasterMessage): void } = {
-    onmessage: null,
+    addEventListener: (_type, handler) => {
+      listener = handler;
+    },
     postMessage: () => undefined,
     terminate: () => undefined,
-    say: (message) => worker.onmessage?.({ data: message } as MessageEvent<MasterMessage>),
+    say: (message) => listener?.({ data: message } as MessageEvent<MasterMessage>),
   };
   return worker;
 }
@@ -572,7 +575,8 @@ describe('the end of the terminal stream', () => {
         ]);
         expect(run.session.snapshot.process.kind).toBe('running');
         expect(run.attachment.stop().accepted).toBe(true);
-        expect((await run.session.closed).cause).toBe('attachment-stop');
+        const awaited1 = await run.session.closed;
+        expect(awaited1.cause).toBe('attachment-stop');
       },
     );
   }
@@ -587,14 +591,16 @@ describe('the end of the terminal stream', () => {
 
   scenarioTest('on macOS EIO is a failure of the output source, not of the process', async () => {
     const run = await endTerminalWith(DARWIN, { type: 'end', how: 'eio', code: 'EIO' });
-    expect((await run.session.closed).cause).toBe('source-failed');
+    const awaited2 = await run.session.closed;
+    expect(awaited2.cause).toBe('source-failed');
     expect(run.recorder.ofType('sourceComplete')).toEqual([]);
   });
 
   scenarioTest('any other read error is a failure on both', async () => {
     for (const host of [DARWIN, LINUX]) {
       const run = await endTerminalWith(host, { type: 'end', how: 'error', code: 'EBADF' });
-      expect((await run.session.closed).cause).toBe('source-failed');
+      const awaited3 = await run.session.closed;
+      expect(awaited3.cause).toBe('source-failed');
     }
   });
 

@@ -38,7 +38,7 @@ export function createDeferredByteStream(): DeferredByteStream {
 
   const read = async (): Promise<ByteReadResult> => {
     await attached;
-    if (inner === undefined) return { done: true };
+    if (inner === undefined || canceled) return { done: true };
     const result = await inner.read();
     // The end of the output ends the claim on it, as a pump that reads to the end would.
     if (result.done) releaseInner();

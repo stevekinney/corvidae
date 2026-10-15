@@ -11,8 +11,8 @@ import {
 
 /** The slice of a `Worker` the master uses. */
 export type MasterWorker = {
-  onmessage: ((event: MessageEvent<MasterMessage>) => void) | null;
-  postMessage(message: unknown): void;
+  addEventListener(type: 'message', listener: (event: MessageEvent<MasterMessage>) => void): void;
+  postMessage(message: unknown, transfer: Transferable[]): void;
   terminate(): void;
 };
 
@@ -53,7 +53,7 @@ const defaultWrite: MasterWrite = (descriptor, bytes, offset) =>
   writeSync(descriptor, bytes, offset, bytes.length - offset, null);
 
 function defaultWorker(): MasterWorker {
-  return new Worker(new URL('./pty-master-worker.ts', import.meta.url).href) as MasterWorker;
+  return new Worker(new URL('./pty-master-worker.ts', import.meta.url).href);
 }
 
 /** Whether `error` says the other end of the terminal is gone, so no write can ever land. */
@@ -97,7 +97,7 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
     return new Error(`the terminal could not be read (${ending.code ?? ending.how})`);
   };
 
-  worker.onmessage = (event) => {
+  worker.addEventListener('message', (event) => {
     const message = event.data;
     if (message.type === 'data') {
       if (canceled) {
@@ -127,8 +127,8 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
       if (result instanceof Error) waiting.reject(result);
       else waiting.resolve(result);
     }
-  };
-  worker.postMessage({ fd: descriptor, shared });
+  });
+  worker.postMessage({ fd: descriptor, shared }, []);
 
   const take = (): ByteReadResult | Error | undefined => {
     const chunk = queue.shift();
@@ -181,7 +181,8 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
 
   const flush = (): void => {
     retryTimer = undefined;
-    while (pending.length > 0 && !closed) {
+    for (;;) {
+      if (closed || pending.length === 0) return;
       const head = pending[0] as QueuedWrite;
       try {
         head.offset += writeBytes(descriptor, head.bytes, head.offset);
