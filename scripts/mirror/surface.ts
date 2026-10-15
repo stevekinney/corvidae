@@ -267,8 +267,12 @@ export function applySurfaceToManifest(
     const peers = overlayDeclaredPeers(
       {
         peerDependencies: entry.peerDependencies,
-        // The vendored meta where it was just supplied, otherwise the target's own.
-        peerDependenciesMeta: manifest['peerDependenciesMeta'],
+        // Chosen rather than read back off `manifest`: where neither the target nor the entry has
+        // a meta block, what is left there is corvidae's own, and its entries for names corvidae
+        // does not declare as peers must not survive as the base.
+        peerDependenciesMeta: supplies('peerDependenciesMeta')
+          ? entry.manifestFields['peerDependenciesMeta']
+          : manifest['peerDependenciesMeta'],
       },
       declared,
     );

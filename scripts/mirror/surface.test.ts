@@ -106,6 +106,37 @@ describe('peers corvidae declares, against the vendored surface', () => {
     expect(manifest['peerDependenciesMeta']).toEqual({ pg: { optional: true } });
   });
 
+  test('corvidae’s meta for a name it does not declare is dropped on a fresh target', () => {
+    // The entry vendors peers but no meta, so nothing but corvidae's own meta block is on the
+    // manifest; its entry for `stray` qualifies no declared peer and must not become the base.
+    const manifest: Record<string, unknown> = {
+      name: '@lostgradient/weft',
+      peerDependencies: { a: '^1.0.0' },
+      peerDependenciesMeta: { a: { optional: true }, stray: { optional: true } },
+    };
+    applySurfaceToManifest(
+      manifest,
+      { ...entry, peerDependencies: { pg: '^8.0.0' }, manifestFields: {} },
+      { '.': './dist/index.js' },
+      ['dist'],
+      undefined,
+    );
+    expect(manifest['peerDependencies']).toEqual({ a: '^1.0.0', pg: '^8.0.0' });
+    expect(manifest['peerDependenciesMeta']).toEqual({ a: { optional: true } });
+  });
+
+  test('a vendored meta block is not supplied beside the target’s own peers', () => {
+    // A workspace that declares no peers, on a target that carries peers but no meta block: the
+    // target owns its pair outright, so the vendored meta half is not attached to it.
+    const targetPeers = { pg: '^8.11.0' };
+    const manifest = apply(
+      { name: '@lostgradient/weft', peerDependencies: { ...targetPeers } },
+      { name: '@lostgradient/weft', peerDependencies: { ...targetPeers } },
+    );
+    expect(manifest['peerDependencies']).toEqual(targetPeers);
+    expect(manifest).not.toHaveProperty('peerDependenciesMeta');
+  });
+
   test('an already-composed pair passes through unchanged where the target has peers', () => {
     const composed = {
       peerDependencies: { '@a2a-js/sdk': '^0.3.4', 'better-sqlite3': '^12.8.0' },
