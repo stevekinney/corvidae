@@ -55,13 +55,22 @@
   // A failure the renderer found itself. It outranks the state the host passed in: the engine is
   // gone, so no other state can be shown truthfully, and nothing is silently reset or replaced.
   // The failure is remembered with the controller it happened to: that controller was revoked by
-  // the failure, so the failure ends when the host supplies another one, and never before.
+  // the failure, so the failure ends when the host supplies another defined one, and never before.
   let failed = $state.raw<{ failure: TerminalRendererFailure; controller: typeof controller }>();
   let ready = $state(false);
 
-  const failure = $derived(
-    failed !== undefined && failed.controller === controller ? failed.failure : undefined,
+  // A failure tied to a controller outlives that controller being cleared: nothing was replaced,
+  // so the host has not recovered. Only a different, defined controller ends it.
+  const replaced = $derived(
+    failed !== undefined && controller !== undefined && controller !== failed.controller,
   );
+  const failure = $derived(failed !== undefined && !replaced ? failed.failure : undefined);
+
+  // Forget the failure for good once it was replaced, so bringing the old controller back later
+  // cannot revive it.
+  $effect(() => {
+    if (replaced) failed = undefined;
+  });
   const effectiveState: TerminalState = $derived(
     failure === undefined ? sessionState : 'engine-load-failed',
   );
@@ -87,7 +96,7 @@
     // transition into the state) and the chip stays visible but quiet.
     announceStatus: false,
     ...(error === undefined ? {} : { error }),
-    ...(onRecoveryRequest === undefined ? {} : { onReloadRequest: onRecoveryRequest }),
+    ...(onRecoveryRequest === undefined ? {} : { onReloadRequest: retry }),
   });
 
   function readSettings(): AttachmentSettings {
@@ -157,10 +166,11 @@
   // Recovery is the host's: a renderer failure revoked the controller and cleaned it up, so
   // remounting against it would revive a dead session. The host answers by supplying a new
   // controller or session. The one exception is a failure with no controller, where nothing was
-  // revoked, so the engine can be loaded again once the host has been told.
+  // revoked, so the engine can be loaded again once the host has been told. That holds for both
+  // recovery controls: this component's Retry and the frame's Reload both come through here.
   function retry(): void {
     onRecoveryRequest?.();
-    if (failed !== undefined && failed.controller === undefined) failed = undefined;
+    if (failed !== undefined && controller === undefined) failed = undefined;
   }
 </script>
 

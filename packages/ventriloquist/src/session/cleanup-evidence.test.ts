@@ -1,3 +1,4 @@
+import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, test } from 'bun:test';
@@ -130,10 +131,15 @@ async function buildCell(id: (typeof EXPECTED_CELL_IDS)[number]): Promise<Eviden
   };
 }
 
-function sourceSha(): string {
-  const result = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: repositoryRoot });
+// Reading the commit starts a real `git` process, so it happens once at module scope, off the
+// per-test clock, and the report builders below stay in process.
+const sourceSha = ((): string => {
+  const result = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
+    cwd: repositoryRoot,
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  });
   return result.stdout.toString().trim();
-}
+})();
 
 async function buildReport(): Promise<EvidenceReport> {
   const cells: EvidenceCell[] = [];
@@ -141,7 +147,7 @@ async function buildReport(): Promise<EvidenceReport> {
   return {
     schemaVersion: 1,
     reportKind: 'runtime',
-    sourceSha: sourceSha(),
+    sourceSha,
     runId: crypto.randomUUID(),
     observedAt: new Date().toISOString(),
     expectedCellIds: [...EXPECTED_CELL_IDS],

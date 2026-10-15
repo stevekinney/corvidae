@@ -8,6 +8,7 @@ import {
   createTestProcessPlan,
   discoverTestFiles,
   requiresFreshProcess,
+  selectLaneFiles,
   type PlaygroundTestFile,
 } from './run-tests.ts';
 
@@ -136,5 +137,26 @@ describe('playground test process isolation', () => {
     expect(
       spawning.filter((testFile) => !requiresFreshProcess(testFile)).map((t) => t.path),
     ).toEqual([]);
+  });
+});
+
+describe('playground test lanes', () => {
+  const files = [
+    testFile('src/analyze.test.ts'),
+    testFile('src/analyze.slow.test.ts'),
+    testFile('scripts/run-tests.test.ts'),
+  ];
+
+  it('keeps slow files out of the fast lane', () => {
+    expect(selectLaneFiles(files, 'fast').map(({ path }) => path)).toEqual([
+      'src/analyze.test.ts',
+      'scripts/run-tests.test.ts',
+    ]);
+  });
+
+  it('runs only slow files in the slow lane', () => {
+    expect(selectLaneFiles(files, 'slow').map(({ path }) => path)).toEqual([
+      'src/analyze.slow.test.ts',
+    ]);
   });
 });

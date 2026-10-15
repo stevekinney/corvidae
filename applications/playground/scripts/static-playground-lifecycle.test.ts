@@ -12,13 +12,16 @@
  * "Gone" tolerates a zombie unless `PLAYGROUND_LIFECYCLE_REQUIRE_REAPED=1`, which the Linux
  * `docker run --init` recipe sets so captured processes must also have been reaped.
  */
-import { afterEach, describe, expect, it } from 'bun:test';
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
+import type { GateReport } from './check-static-playground.ts';
+import { createCaseList } from './static-playground-cases.ts';
 import { fetchWithin } from './static-playground-preflight.ts';
 import {
   descendantProcesses,
@@ -55,14 +58,7 @@ type RunningCase = {
 
 const cleanups: (() => Promise<void>)[] = [];
 
-afterEach(async () => {
-  for (const cleanup of cleanups.splice(0)) await cleanup();
-});
-
-/**
- * Every wait in these cases is bounded below the test's own 5 s timeout, so a stuck step fails the
- * case with a named reason instead of polling on in the background after the test gives up.
- */
+/** Every wait in these cases is bounded, so a stuck step fails the case with a named reason. */
 const WAIT_MILLISECONDS = 4_000;
 
 function waitFor(condition: () => boolean, description = 'a lifecycle condition'): Promise<void> {
@@ -84,13 +80,14 @@ async function readPid(record: string, label: string): Promise<number> {
 }
 
 async function startCase(
-  mode: 'pass' | 'fail' | 'hang',
+  mode: 'pass' | 'fail' | 'hang' | 'progress',
   extraArguments: string[] = [],
 ): Promise<RunningCase> {
   const record = await mkdtemp(join(tmpdir(), 'static-lifecycle-record-'));
   const output = await mkdtemp(join(tmpdir(), 'static-lifecycle-output-'));
   const sentinel = Bun.spawn(['/bin/sh', '-c', 'while :; do sleep 1; done'], {
     stdio: ['ignore', 'ignore', 'ignore'],
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   const driver = Bun.spawn(
     [
@@ -104,7 +101,12 @@ async function startCase(
       output,
       ...extraArguments,
     ],
-    { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+    {
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    },
   );
   let stdout = '';
   void (async () => {
@@ -177,95 +179,254 @@ async function expectEverythingGone(running: RunningCase, capture: Capture): Pro
   expect(port).toBe('closed');
 }
 
+/**
+ * Run one lifecycle scenario at module scope, where Bun applies no per-test timeout, and record
+ * its outcome for the test that names it. Whatever `startCase` registered is torn down in the
+ * scenario's own `finally`, because a hook cannot start or stop a process.
+ */
+function lifecycleOutcome(scenario: () => Promise<void>): Promise<unknown> {
+  return outcomeOf(async () => {
+    try {
+      await scenario();
+    } finally {
+      for (const cleanup of cleanups.splice(0)) await cleanup();
+    }
+  });
+}
+
+const normalExitCleansUp = await lifecycleOutcome(async () => {
+  const running = await startCase('pass');
+  const capture = await captureAndSpawnLate(running);
+  await writeFile(join(running.record, 'proceed'), '');
+
+  expect(await driverExit(running)).toBe(0);
+  await expectEverythingGone(running, capture);
+});
+
+const testRunnerFailureCleansUp = await lifecycleOutcome(async () => {
+  const running = await startCase('fail');
+  const capture = await captureAndSpawnLate(running);
+  await writeFile(join(running.record, 'proceed'), '');
+
+  expect(await driverExit(running)).toBe(3);
+  await expectEverythingGone(running, capture);
+});
+
+const signalOutcomes = new Map<string, unknown>();
+for (const [signal, status] of [
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+] as const) {
+  signalOutcomes.set(
+    signal,
+    await lifecycleOutcome(async () => {
+      const running = await startCase('hang');
+      const capture = await captureAndSpawnLate(running);
+      running.driver.kill(signal);
+
+      expect(await driverExit(running)).toBe(status);
+      await expectEverythingGone(running, capture);
+    }),
+  );
+}
+
+const interruptDuringCleanupExits130 = await lifecycleOutcome(async () => {
+  const running = await startCase('pass', ['--stubborn']);
+  const capture = await captureAndSpawnLate(running);
+  const stubborn = await readPid(running.record, 'stubborn');
+  capture.pids.add(stubborn);
+  await writeFile(join(running.record, 'proceed'), '');
+  // The stubborn sleeper ignores SIGTERM, which holds cleanup in its grace period.
+  await waitFor(() => running.stdout().includes('cleaning up owned processes'));
+  running.driver.kill('SIGINT');
+  // Let cleanup finish promptly rather than wait out the grace and escalate.
+  process.kill(stubborn, 'SIGKILL');
+
+  expect(await driverExit(running)).toBe(130);
+  await expectEverythingGone(running, capture);
+});
+
+const unmarkedGrandchildIsKilled = await lifecycleOutcome(async () => {
+  // The stand-in test runner starts a sleeper in a new process group with no run-directory
+  // marker, then exits normally. Once it has exited the sleeper is reparented; only the group
+  // the owner retained while the runner was alive still identifies it.
+  const running = await startCase('pass', ['--unmarked-detached']);
+  const capture = await captureAndSpawnLate(running);
+  const unmarked = await readPid(running.record, 'unmarked-detached');
+  capture.pids.add(unmarked);
+  // Let the owner's periodic sample observe the sleeper while its parent still lives.
+  await Bun.sleep(SAMPLE_INTERVAL_MILLISECONDS * 3);
+  await writeFile(join(running.record, 'proceed'), '');
+
+  expect(await driverExit(running)).toBe(0);
+  await expectEverythingGone(running, capture);
+});
+
+const outsideInterruptLeavesNothing = await lifecycleOutcome(async () => {
+  // What the real-Chromium check does when it fails early: interrupt the runner, let its cleanup
+  // run, and kill anything still attributable. SIGKILL of the runner alone would leave the
+  // server's and the test runner's own process groups running.
+  const running = await startCase('hang');
+  const capture = await captureAndSpawnLate(running);
+
+  expect(await interruptRunner(running.driver, capture.runDirectory)).toEqual({
+    survivors: [],
+    runnerExited: true,
+  });
+  expect(running.driver.exitCode).toBe(130);
+  await expectEverythingGone(running, capture);
+});
+
+const serverDeathIsDiagnosed = await lifecycleOutcome(async () => {
+  const running = await startCase('hang');
+  const capture = await captureAndSpawnLate(running);
+  process.kill(await readPid(running.record, 'server'), 'SIGKILL');
+
+  expect(await driverExit(running)).toBe(1);
+  expect(await running.stderr).toContain(
+    '[static-playground] static server exited unexpectedly with signal SIGKILL',
+  );
+  await expectEverythingGone(running, capture);
+});
+
+const cleanupRunsOnce = await lifecycleOutcome(async () => {
+  const marker = await mkdtemp(join(tmpdir(), 'static-owner-'));
+  const sent: [number, NodeJS.Signals][] = [];
+  const owner = new ProcessOwner({
+    marker,
+    signal: (target, signal) => {
+      sent.push([target, signal]);
+      signalTarget(target, signal);
+    },
+  });
+  const child = owner.spawn('sleeper', ['/bin/sh', '-c', 'while :; do sleep 1; done'], {
+    cwd: marker,
+    env: { PATH: '/usr/bin:/bin' },
+  });
+
+  const first = await owner.cleanup();
+  const signalsAfterFirst = sent.length;
+  const second = await owner.cleanup();
+
+  expect(first.complete).toBe(true);
+  expect(sent).toContainEqual([-child.subprocess.pid, 'SIGTERM']);
+  expect(second).toBe(first);
+  expect(sent).toHaveLength(signalsAfterFirst);
+  await rm(marker, { recursive: true, force: true });
+});
+
+/** The good fixture's cases, in the order the gate hands them to the test runner. */
+const FIXTURE_CASES = createCaseList(['/', '/page/button']);
+
+async function gateReport(running: RunningCase): Promise<GateReport> {
+  return (await Bun.file(join(running.output, 'report.json')).json()) as GateReport;
+}
+
+const startupDeathIsNamed = await lifecycleOutcome(async () => {
+  const running = await startCase('hang', ['--hold-port']);
+  process.kill(await readPid(running.record, 'server'), 'SIGKILL');
+
+  expect(await driverExit(running)).toBe(1);
+  expect(await running.stderr).toContain(
+    '[static-playground] static server exited before it was ready with signal SIGKILL (phase: startup)',
+  );
+  const report = await gateReport(running);
+  expect(report.failurePhase).toBe('startup');
+  expect(report.inFlightCases).toEqual([]);
+});
+
+const firstRequestDeathIsNamedAndAborted = await lifecycleOutcome(async () => {
+  // A responder this test owns accepts the preflight's first request and never answers, so the
+  // check is still outstanding when the server dies. Unaborted, it would hold the runner open
+  // for the preflight's 30 s fetch bound after the report was written.
+  let received = false;
+  let aborted = false;
+  const stalled = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    idleTimeout: 0,
+    fetch(request) {
+      received = true;
+      request.signal.addEventListener('abort', () => {
+        aborted = true;
+      });
+      return new Promise<Response>(() => undefined);
+    },
+  });
+  cleanups.push(async () => {
+    await stalled.stop(true);
+  });
+  const running = await startCase('hang', ['--advertise-port', String(stalled.port)]);
+  await waitFor(() => received, 'the first preflight request');
+  process.kill(await readPid(running.record, 'server'), 'SIGKILL');
+
+  expect(await driverExit(running)).toBe(1);
+  await waitFor(() => aborted, 'the preflight request to be aborted');
+  expect(await running.stderr).toContain(
+    '[static-playground] static server exited unexpectedly with signal SIGKILL (phase: first-request)',
+  );
+  const report = await gateReport(running);
+  expect(report.failurePhase).toBe('first-request');
+  expect(report.caseCount).toBeNull();
+});
+
+const browserPhaseOutcomes = new Map<string, unknown>();
+for (const [phase, completed] of [
+  ['hydration', 0],
+  ['mid-run', 2],
+] as const) {
+  browserPhaseOutcomes.set(
+    phase,
+    await lifecycleOutcome(async () => {
+      const running = await startCase('progress', ['--completed', String(completed)]);
+      const capture = await captureAndSpawnLate(running);
+      await waitFor(() => existsSync(join(running.record, 'progressed')));
+      process.kill(await readPid(running.record, 'server'), 'SIGKILL');
+
+      expect(await driverExit(running)).toBe(1);
+      const inFlight = FIXTURE_CASES[completed]!.id;
+      expect(await running.stderr).toContain(
+        `[static-playground] static server exited unexpectedly with signal SIGKILL (phase: ${phase}; in flight: ${inFlight})`,
+      );
+      expect(running.stdout()).toContain(
+        `exit 1: ${completed}/${FIXTURE_CASES.length} cases passed`,
+      );
+      const report = await gateReport(running);
+      expect(report.failurePhase).toBe(phase);
+      expect(report.passedCount).toBe(completed);
+      expect(report.failedCases).toEqual([]);
+      expect(report.inFlightCases).toEqual([inFlight]);
+      expect(report.missingCases).toEqual(FIXTURE_CASES.slice(completed).map((c) => c.id));
+      await expectEverythingGone(running, capture);
+    }),
+  );
+}
+
 describe('static gate runner lifecycle with stand-in children', () => {
-  it('cleans up after a normal exit and returns the test runner status', async () => {
-    const running = await startCase('pass');
-    const capture = await captureAndSpawnLate(running);
-    await writeFile(join(running.record, 'proceed'), '');
+  it('cleans up after a normal exit and returns the test runner status', () =>
+    rethrow(normalExitCleansUp));
 
-    expect(await driverExit(running)).toBe(0);
-    await expectEverythingGone(running, capture);
-  });
-
-  it('cleans up after a test-runner failure and returns its exit code', async () => {
-    const running = await startCase('fail');
-    const capture = await captureAndSpawnLate(running);
-    await writeFile(join(running.record, 'proceed'), '');
-
-    expect(await driverExit(running)).toBe(3);
-    await expectEverythingGone(running, capture);
-  });
+  it('cleans up after a test-runner failure and returns its exit code', () =>
+    rethrow(testRunnerFailureCleansUp));
 
   it.each([
     ['SIGINT', 130],
     ['SIGTERM', 143],
-  ] as const)('cleans up after %s to the runner and exits %i', async (signal, status) => {
-    const running = await startCase('hang');
-    const capture = await captureAndSpawnLate(running);
-    running.driver.kill(signal);
+  ] as const)('cleans up after %s to the runner and exits %i', (signal) =>
+    rethrow(signalOutcomes.get(signal)),
+  );
 
-    expect(await driverExit(running)).toBe(status);
-    await expectEverythingGone(running, capture);
-  });
+  it('exits 128 + signal for a SIGINT that arrives during cleanup of a passing run', () =>
+    rethrow(interruptDuringCleanupExits130));
 
-  it('exits 128 + signal for a SIGINT that arrives during cleanup of a passing run', async () => {
-    const running = await startCase('pass', ['--stubborn']);
-    const capture = await captureAndSpawnLate(running);
-    const stubborn = await readPid(running.record, 'stubborn');
-    capture.pids.add(stubborn);
-    await writeFile(join(running.record, 'proceed'), '');
-    // The stubborn sleeper ignores SIGTERM, which holds cleanup in its grace period.
-    await waitFor(() => running.stdout().includes('cleaning up owned processes'));
-    running.driver.kill('SIGINT');
-    // Let cleanup finish promptly rather than wait out the grace and escalate.
-    process.kill(stubborn, 'SIGKILL');
+  it('kills a detached, unmarked grandchild after its parent exits before cleanup', () =>
+    rethrow(unmarkedGrandchildIsKilled));
 
-    expect(await driverExit(running)).toBe(130);
-    await expectEverythingGone(running, capture);
-  });
+  it('stops a runner from outside without orphaning its detached groups', () =>
+    rethrow(outsideInterruptLeavesNothing));
 
-  it('kills a detached, unmarked grandchild after its parent exits before cleanup', async () => {
-    // The stand-in test runner starts a sleeper in a new process group with no run-directory
-    // marker, then exits normally. Once it has exited the sleeper is reparented; only the group
-    // the owner retained while the runner was alive still identifies it.
-    const running = await startCase('pass', ['--unmarked-detached']);
-    const capture = await captureAndSpawnLate(running);
-    const unmarked = await readPid(running.record, 'unmarked-detached');
-    capture.pids.add(unmarked);
-    // Let the owner's periodic sample observe the sleeper while its parent still lives.
-    await Bun.sleep(SAMPLE_INTERVAL_MILLISECONDS * 3);
-    await writeFile(join(running.record, 'proceed'), '');
-
-    expect(await driverExit(running)).toBe(0);
-    await expectEverythingGone(running, capture);
-  });
-
-  it('stops a runner from outside without orphaning its detached groups', async () => {
-    // What the real-Chromium check does when it fails early: interrupt the runner, let its cleanup
-    // run, and kill anything still attributable. SIGKILL of the runner alone would leave the
-    // server's and the test runner's own process groups running.
-    const running = await startCase('hang');
-    const capture = await captureAndSpawnLate(running);
-
-    expect(await interruptRunner(running.driver, capture.runDirectory)).toEqual({
-      survivors: [],
-      runnerExited: true,
-    });
-    expect(running.driver.exitCode).toBe(130);
-    await expectEverythingGone(running, capture);
-  });
-
-  it('diagnoses static-server death during active test-runner work', async () => {
-    const running = await startCase('hang');
-    const capture = await captureAndSpawnLate(running);
-    process.kill(await readPid(running.record, 'server'), 'SIGKILL');
-
-    expect(await driverExit(running)).toBe(1);
-    expect(await running.stderr).toContain(
-      '[static-playground] static server exited unexpectedly with signal SIGKILL',
-    );
-    await expectEverythingGone(running, capture);
-  });
+  it('diagnoses static-server death during active test-runner work', () =>
+    rethrow(serverDeathIsDiagnosed));
 });
 
 describe('process ownership', () => {
@@ -307,29 +468,21 @@ describe('process ownership', () => {
     ]);
   });
 
-  it('cleans up once: a second call sends no signal and returns the first result', async () => {
-    const marker = await mkdtemp(join(tmpdir(), 'static-owner-'));
-    const sent: [number, NodeJS.Signals][] = [];
-    const owner = new ProcessOwner({
-      marker,
-      signal: (target, signal) => {
-        sent.push([target, signal]);
-        signalTarget(target, signal);
-      },
-    });
-    const child = owner.spawn('sleeper', ['/bin/sh', '-c', 'while :; do sleep 1; done'], {
-      cwd: marker,
-      env: { PATH: '/usr/bin:/bin' },
-    });
+  it('cleans up once: a second call sends no signal and returns the first result', () =>
+    rethrow(cleanupRunsOnce));
+});
 
-    const first = await owner.cleanup();
-    const signalsAfterFirst = sent.length;
-    const second = await owner.cleanup();
+describe('the phase of a static-server death', () => {
+  it('names startup when the server dies before reporting its port', () =>
+    rethrow(startupDeathIsNamed));
 
-    expect(first.complete).toBe(true);
-    expect(sent).toContainEqual([-child.subprocess.pid, 'SIGTERM']);
-    expect(second).toBe(first);
-    expect(sent).toHaveLength(signalsAfterFirst);
-    await rm(marker, { recursive: true, force: true });
-  });
+  it('names first-request and aborts the outstanding preflight check', () =>
+    rethrow(firstRequestDeathIsNamedAndAborted));
+
+  it.each([
+    ['hydration', 0],
+    ['mid-run', 2],
+  ] as const)('names %s and keeps the %i completed cases', (phase) =>
+    rethrow(browserPhaseOutcomes.get(phase)),
+  );
 });

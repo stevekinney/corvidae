@@ -18,6 +18,7 @@
 import { boxShadowLayerCount, resolvedTokenColor, tabUntilFocused } from '@lostgradient/testing';
 import { expect, test } from '@playwright/test';
 import { fixtureRoute } from './overlay-fixture.ts';
+import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 test.describe('input-frame danger ring — focused invalid-state error affordance (#409)', () => {
   test('a focused invalid select keeps a danger-colored ring', async ({ page }) => {
@@ -67,8 +68,14 @@ test.describe('input-frame danger ring — focused invalid-state error affordanc
     expect(result.boxShadow).not.toBe('none');
     expect(result.boxShadow).toContain(dangerColor);
     expect(result.boxShadow).not.toContain('inset');
-    // The two-stop recipe is offset band + danger ring.
+    // The recipe keeps two stops (offset stop + danger ring).
     expect(boxShadowLayerCount(result.boxShadow)).toBeGreaterThanOrEqual(2);
+    // Updated for COR-1498: the offset stop is 0px and paints nothing, so the
+    // only painted band is the 2px danger ring.
+    const bands = outerBands(parseBoxShadow(result.boxShadow));
+    expect(bands.map((band) => ({ spread: band.spread, color: band.color }))).toEqual([
+      { spread: 2, color: dangerColor },
+    ]);
     // The danger border is swapped for the ring while focused, so the border is
     // transparent — the regression left it transparent with NO ring to replace it.
     expect(result.borderAlpha).toBe(0);

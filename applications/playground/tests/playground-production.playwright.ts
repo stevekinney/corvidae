@@ -137,3 +137,27 @@ for (const testCase of cases) {
     expect(diagnostics, `${testCase.id} browser diagnostics`).toEqual([]);
   });
 }
+
+test('a component-to-component click swaps the page in place on the static export', async ({
+  page,
+  diagnostics,
+}) => {
+  await page.goto('/page/button', { waitUntil: 'load' });
+  await expect(page.locator('[data-component-page][data-page-hydrated]')).toBeAttached();
+  await page.evaluate(() => {
+    (window as unknown as Record<string, unknown>)['__productionNavigationMarker'] = 'alive';
+  });
+
+  await page.locator('nav.dx-nav a[href="/page/chat"]').click();
+
+  await expect(page).toHaveURL(/\/page\/chat$/);
+  await expect(page.locator('#app h1').first()).toHaveText('Chat');
+  await expect(page.locator('[data-component-page][data-page-hydrated]')).toBeAttached();
+  // A fallback to a full load would have discarded the window and its marker.
+  expect(
+    await page.evaluate(
+      () => (window as unknown as Record<string, unknown>)['__productionNavigationMarker'],
+    ),
+  ).toBe('alive');
+  expect(diagnostics, 'browser diagnostics').toEqual([]);
+});

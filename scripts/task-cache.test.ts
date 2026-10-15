@@ -453,9 +453,14 @@ test('the playground build hashes the root package map its documentation reads',
   expect(build?.inputs).toContain('$TURBO_ROOT$/scripts/mirror/package-map.json');
   expect(build?.dependsOn).toContain('transit');
   expect(build?.outputs).toContain('build/**');
-  // The Svelte compiler picks development or production output from `NODE_ENV`, so a build run
-  // under one value must not be restored for the other. `test` declares it for the same reason.
-  expect(build?.env).toContain('NODE_ENV');
+  // The Svelte compiler picks development or production output from `NODE_ENV`, but the build
+  // script pins `NODE_ENV=production` itself, so the caller's value never reaches the compiler.
+  // Hashing it would only split the cache between shells that export different values.
+  expect(build?.env ?? []).not.toContain('NODE_ENV');
+  const playgroundManifest = await Bun.file(
+    join(root, 'applications/playground/package.json'),
+  ).json();
+  expect(playgroundManifest.scripts.build).toStartWith('NODE_ENV=production ');
   expect(await Bun.file(join(root, 'scripts/mirror/package-map.json')).exists()).toBe(true);
   // Pin the read the input covers, so removing the read prompts removing the input. The path is
   // defined once in `playground-paths.ts`, shared by the documentation read and the file watcher,

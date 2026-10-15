@@ -13,6 +13,8 @@ export type DeferredShortcutOptions = {
   activate: () => void;
   /** Receives a failed hydration attempt. */
   onError: (error: unknown) => void;
+  /** Removes the listener when aborted, for a page that is swapped out of the document. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -31,23 +33,29 @@ export type DeferredShortcutOptions = {
  */
 export function attachDeferredShortcut(
   target: Pick<Window, 'addEventListener'>,
-  { matches, hydrate, isLiveListenerAttached, activate, onError }: DeferredShortcutOptions,
+  { matches, hydrate, isLiveListenerAttached, activate, onError, signal }: DeferredShortcutOptions,
 ): void {
   let attempting = false;
-  target.addEventListener('keydown', (event) => {
-    if (isLiveListenerAttached() || !matches(event)) return;
-    event.preventDefault();
-    if (attempting) return;
-    attempting = true;
-    void hydrate()
-      .then(() => {
-        attempting = false;
-        activate();
-        return undefined;
-      })
-      .catch((error: unknown) => {
-        attempting = false;
-        onError(error);
-      });
-  });
+  target.addEventListener(
+    'keydown',
+    (event) => {
+      if (isLiveListenerAttached() || !matches(event)) return;
+      event.preventDefault();
+      if (attempting) return;
+      attempting = true;
+      void hydrate()
+        .then(() => {
+          attempting = false;
+          // The page was swapped out while the shell hydrated: there is nothing to activate.
+          if (signal?.aborted === true) return undefined;
+          activate();
+          return undefined;
+        })
+        .catch((error: unknown) => {
+          attempting = false;
+          onError(error);
+        });
+    },
+    signal === undefined ? {} : { signal },
+  );
 }

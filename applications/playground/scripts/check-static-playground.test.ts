@@ -1,7 +1,8 @@
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 import { describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import {
   readScrubbedEnvironment,
@@ -27,7 +28,7 @@ const CHECK = join(import.meta.dirname, 'check-static-playground.ts');
 
 type GateRun = { exitCode: number; report: GateReport; stderr: string };
 
-/** Below the test's 5 s timeout, so a stuck gate fails the case rather than leaking it. */
+/** A stuck gate fails its scenario at this bound rather than leaking. */
 const GATE_RUN_MILLISECONDS = 4_500;
 
 type GateRunOptions = { guardMilliseconds?: number };
@@ -52,6 +53,7 @@ async function runGate(
       env: environment,
       stdout: 'pipe',
       stderr: 'pipe',
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     let stdout = '';
     void (async () => {
@@ -78,6 +80,271 @@ function runFixture(fixture: string, environment = readScrubbedEnvironment()): P
   return runGate([process.execPath, DRIVER, '--fixture', fixture], environment);
 }
 
+/**
+ * Each scenario below starts a real gate or Bun process, so it runs once at module scope, where
+ * Bun applies no per-test timeout, and its test rethrows the recorded outcome.
+ */
+const goodFixturePassesWithoutCredentials = await outcomeOf(async () => {
+  const scrubbedEnvironment = readScrubbedEnvironment();
+  expect(
+    Object.keys(scrubbedEnvironment).filter((name) => SECRET_ENVIRONMENT_NAME.test(name)),
+  ).toEqual([]);
+
+  const { exitCode, report } = await runFixture('good', scrubbedEnvironment);
+
+  expect(report.preflightFailures).toEqual([]);
+  expect(exitCode).toBe(0);
+  expect(report.servedDigest).toBe(report.buildDigest);
+  expect(report.caseCount).toBe(6);
+  expect(report.passedCount).toBe(6);
+  expect(report.peakResidentSetBytes).toBe(104_857_600);
+  expect(report.exportDurationMilliseconds).toBe(1250);
+});
+
+const missingAssetFailsBeforeRunner = await outcomeOf(async () => {
+  const { exitCode, report } = await runFixture('missing-asset');
+
+  expect(exitCode).toBe(1);
+  expect(report.preflightFailures).toContain(
+    'required asset /assets/fixture/site.css answered 404',
+  );
+  expect(report.shardCaseCount).toBeNull();
+});
+
+const brokenPrerenderFails = await outcomeOf(async () => {
+  const { exitCode, report } = await runFixture('broken-prerender');
+
+  expect(exitCode).toBe(1);
+  expect(report.preflightFailures).toEqual(
+    expect.arrayContaining([
+      '/page/button has no prerendered content',
+      '/page/button has 0 h1 elements, not exactly one',
+    ]),
+  );
+  expect(report.shardCaseCount).toBeNull();
+});
+
+const leakedTokenFailsTheGate = await outcomeOf(async () => {
+  const leakingEnvironment = {
+    ...readScrubbedEnvironment(),
+    STATIC_FIXTURE_TOKEN: 'prerendered component page',
+  };
+
+  const { exitCode, report } = await runFixture('good', leakingEnvironment);
+
+  expect(exitCode).toBe(1);
+  expect(report.preflightFailures).toEqual([
+    'served file page/button/index.html contains the value of STATIC_FIXTURE_TOKEN',
+  ]);
+});
+
+const childrenInheritNoCredentials = await outcomeOf(async () => {
+  const record = await mkdtemp(join(tmpdir(), 'static-gate-environment-'));
+  try {
+    const parentEnvironment = {
+      ...readScrubbedEnvironment(),
+      STATIC_GATE_CHILD_TOKEN: 'a value no fixture file contains',
+      VERCEL_ENV: 'preview',
+    };
+    const environmentRecord = join(record, 'child-secrets.json');
+
+    const { exitCode, report } = await runGate(
+      [process.execPath, DRIVER, '--fixture', 'good', '--environment-record', environmentRecord],
+      parentEnvironment,
+    );
+
+    expect(exitCode).toBe(0);
+    expect(report.preflightFailures).toEqual([]);
+    expect(await Bun.file(environmentRecord).json()).toEqual([]);
+  } finally {
+    await rm(record, { recursive: true, force: true });
+  }
+});
+
+const onlySecretValuesAreScanned = await outcomeOf(async () => {
+  // The good fixture's prose says "production". `VERCEL_ENV` is stripped from children but is
+  // not a secret, so it must not fail the leak scan; a real token value in served bytes must.
+  const metadataOnly = await runFixture('good', {
+    ...readScrubbedEnvironment(),
+    VERCEL_ENV: 'production',
+  });
+  const realToken = await runFixture('good', {
+    ...readScrubbedEnvironment(),
+    VERCEL_ENV: 'production',
+    VERCEL_OIDC_TOKEN: 'static production gate',
+  });
+
+  expect(metadataOnly.report.preflightFailures).toEqual([]);
+  expect(metadataOnly.exitCode).toBe(0);
+  expect(realToken.exitCode).toBe(1);
+  expect(realToken.report.preflightFailures).toContain(
+    'served file index.html contains the value of VERCEL_OIDC_TOKEN',
+  );
+});
+
+const connectionStringPasswordIsScanned = await outcomeOf(async () => {
+  // The good fixture's component page says "prerendered component page".
+  const leaking = await runFixture('good', {
+    ...readScrubbedEnvironment(),
+    DATABASE_URL: 'postgres://playground:prerendered%20component%20page@db.example/app',
+  });
+  const notLeaking = await runFixture('good', {
+    ...readScrubbedEnvironment(),
+    DATABASE_URL: 'postgres://playground:never-served-password@db.example/app',
+  });
+
+  expect(leaking.exitCode).toBe(1);
+  expect(leaking.report.preflightFailures).toEqual([
+    'served file page/button/index.html contains the value of DATABASE_URL',
+  ]);
+  expect(notLeaking.exitCode).toBe(0);
+});
+
+const nestedOutputDirectoryIsRefused = await outcomeOf(async () => {
+  const served = await mkdtemp(join(tmpdir(), 'static-gate-served-'));
+  try {
+    const gate = Bun.spawn(
+      [
+        process.execPath,
+        CHECK,
+        '--directory',
+        served,
+        '--output',
+        join(served, 'nested', 'report'),
+        '--allow-source-mismatch',
+      ],
+      {
+        env: readScrubbedEnvironment(),
+        stdout: 'pipe',
+        stderr: 'pipe',
+        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+      },
+    );
+    const exitCode = await exitedWithin(gate, GATE_RUN_MILLISECONDS);
+    if (exitCode === undefined) gate.kill('SIGKILL');
+    const stderr = await new Response(gate.stderr).text();
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('must be outside the served directory');
+    expect(await Array.fromAsync(new Bun.Glob('**/*').scan({ cwd: served }))).toEqual([]);
+  } finally {
+    await rm(served, { recursive: true, force: true });
+  }
+});
+
+const hungGateStopsGracefully = await outcomeOf(async () => {
+  // The stand-in test runner hangs, so the gate never finishes on its own.
+  const outcome = await runGate(
+    [process.execPath, DRIVER, '--fixture', 'good', '--mode', 'hang'],
+    readScrubbedEnvironment(),
+    { guardMilliseconds: 1_500 },
+  ).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+
+  expect(outcome).toBeInstanceOf(GateHang);
+  const hang = outcome as GateHang;
+  expect(hang.stop).toEqual({ survivors: [], runnerExited: true });
+  // 130 is the gate's own exit for SIGINT: it ran its cleanup, rather than being SIGKILLed.
+  expect(hang.exitCode).toBe(130);
+});
+
+const lateDiagnosticFailsTheCase = await outcomeOf(async () => {
+  // A console error that arrives after a case's last assertion still reaches the reporter.
+  const { exitCode, report } = await runGate(
+    [process.execPath, DRIVER, '--fixture', 'good', '--late-diagnostic'],
+    readScrubbedEnvironment(),
+  );
+
+  expect(exitCode).toBe(1);
+  expect(report.failedCases.map((failure) => failure.diagnostics)).toEqual([
+    ['console error: a late failure'],
+  ]);
+});
+
+const missingExportReportFails = await outcomeOf(async () => {
+  const { exitCode, report } = await runGate(
+    [
+      process.execPath,
+      CHECK,
+      '--directory',
+      join(FIXTURES, 'good'),
+      '--export-report',
+      join(FIXTURES, 'absent.export-report.json'),
+      '--allow-source-mismatch',
+    ],
+    readScrubbedEnvironment(),
+  );
+
+  expect(exitCode).toBe(1);
+  expect(report.diagnosis).toContain('absent.export-report.json is missing');
+});
+
+const digestMismatchFails = await outcomeOf(async () => {
+  const { exitCode, report } = await runGate(
+    [
+      process.execPath,
+      CHECK,
+      '--directory',
+      join(FIXTURES, 'good'),
+      '--export-report',
+      join(FIXTURES, 'missing-asset.export-report.json'),
+      '--allow-source-mismatch',
+    ],
+    readScrubbedEnvironment(),
+  );
+
+  expect(exitCode).toBe(1);
+  expect(report.preflightFailures.some((failure) => failure.includes('is not served digest'))).toBe(
+    true,
+  );
+});
+
+const defaultOutputAvoidsPlaywrightDirectories = await outcomeOf(async () => {
+  // Playwright empties its `outputDir` (default `test-results/`) before each run, so a gate
+  // report written inside it is destroyed by the next `test:browser`.
+  const playgroundRoot = join(import.meta.dirname, '..');
+  // The configuration deletes `NO_COLOR` from its process when loaded, so read it in a child
+  // rather than let that leak into this file's gate runs.
+  const loaded = Bun.spawnSync(
+    [
+      process.execPath,
+      '-e',
+      "const { default: c } = await import('./playwright.config.ts'); console.log(JSON.stringify([c.outputDir ?? null, ...(c.projects ?? []).map((p) => p.outputDir ?? null)]))",
+    ],
+    {
+      cwd: playgroundRoot,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    },
+  );
+  expect(loaded.exitCode).toBe(0);
+  const [configured, ...projects] = JSON.parse(loaded.stdout.toString()) as (string | null)[];
+  // Playwright's own default when a configuration names no `outputDir`.
+  const cleaned = [configured ?? 'test-results', ...projects]
+    .filter((directory) => directory !== null)
+    .map((directory) => resolve(playgroundRoot, directory));
+  const overlaps = (first: string, second: string): boolean =>
+    [relative(first, second), relative(second, first)].some(
+      (path) => path === '' || (!path.startsWith('..') && !isAbsolute(path)),
+    );
+
+  for (const output of [
+    parseGateArguments([]).output,
+    parseGateArguments(['--shard', '2/8']).output,
+  ]) {
+    for (const directory of cleaned) {
+      expect({ output, directory, overlaps: overlaps(output, directory) }).toEqual({
+        output,
+        directory,
+        overlaps: false,
+      });
+    }
+  }
+});
+
 describe('credential-shaped environment names', () => {
   it('scrubs every secret-value name from child environments, not only the narrower leak-scan set', () => {
     // Each of these names is a secret that the served-byte leak scan already recognizes;
@@ -103,103 +370,23 @@ describe('credential-shaped environment names', () => {
 });
 
 describe('static production gate over fixtures', () => {
-  it('passes the good fixture with every credential-shaped variable removed', async () => {
-    const scrubbedEnvironment = readScrubbedEnvironment();
-    expect(
-      Object.keys(scrubbedEnvironment).filter((name) => SECRET_ENVIRONMENT_NAME.test(name)),
-    ).toEqual([]);
+  it('passes the good fixture with every credential-shaped variable removed', () =>
+    rethrow(goodFixturePassesWithoutCredentials));
 
-    const { exitCode, report } = await runFixture('good', scrubbedEnvironment);
+  it('fails a fixture whose required asset is missing, before any test runner starts', () =>
+    rethrow(missingAssetFailsBeforeRunner));
 
-    expect(report.preflightFailures).toEqual([]);
-    expect(exitCode).toBe(0);
-    expect(report.servedDigest).toBe(report.buildDigest);
-    expect(report.caseCount).toBe(6);
-    expect(report.passedCount).toBe(6);
-    expect(report.peakResidentSetBytes).toBe(104_857_600);
-    expect(report.exportDurationMilliseconds).toBe(1250);
-  });
+  it('fails a fixture whose documentation page was not prerendered', () =>
+    rethrow(brokenPrerenderFails));
 
-  it('fails a fixture whose required asset is missing, before any test runner starts', async () => {
-    const { exitCode, report } = await runFixture('missing-asset');
+  it('fails when a credential-shaped variable value appears in a served file', () =>
+    rethrow(leakedTokenFailsTheGate));
 
-    expect(exitCode).toBe(1);
-    expect(report.preflightFailures).toContain(
-      'required asset /assets/fixture/site.css answered 404',
-    );
-    expect(report.shardCaseCount).toBeNull();
-  });
+  it('gives its children no credential-shaped variable, while still scanning for its value', () =>
+    rethrow(childrenInheritNoCredentials));
 
-  it('fails a fixture whose documentation page was not prerendered', async () => {
-    const { exitCode, report } = await runFixture('broken-prerender');
-
-    expect(exitCode).toBe(1);
-    expect(report.preflightFailures).toEqual(
-      expect.arrayContaining([
-        '/page/button has no prerendered content',
-        '/page/button has 0 h1 elements, not exactly one',
-      ]),
-    );
-    expect(report.shardCaseCount).toBeNull();
-  });
-
-  it('fails when a credential-shaped variable value appears in a served file', async () => {
-    const leakingEnvironment = {
-      ...readScrubbedEnvironment(),
-      STATIC_FIXTURE_TOKEN: 'prerendered component page',
-    };
-
-    const { exitCode, report } = await runFixture('good', leakingEnvironment);
-
-    expect(exitCode).toBe(1);
-    expect(report.preflightFailures).toEqual([
-      'served file page/button/index.html contains the value of STATIC_FIXTURE_TOKEN',
-    ]);
-  });
-
-  it('gives its children no credential-shaped variable, while still scanning for its value', async () => {
-    const record = await mkdtemp(join(tmpdir(), 'static-gate-environment-'));
-    try {
-      const parentEnvironment = {
-        ...readScrubbedEnvironment(),
-        STATIC_GATE_CHILD_TOKEN: 'a value no fixture file contains',
-        VERCEL_ENV: 'preview',
-      };
-      const environmentRecord = join(record, 'child-secrets.json');
-
-      const { exitCode, report } = await runGate(
-        [process.execPath, DRIVER, '--fixture', 'good', '--environment-record', environmentRecord],
-        parentEnvironment,
-      );
-
-      expect(exitCode).toBe(0);
-      expect(report.preflightFailures).toEqual([]);
-      expect(await Bun.file(environmentRecord).json()).toEqual([]);
-    } finally {
-      await rm(record, { recursive: true, force: true });
-    }
-  });
-
-  it('scans served bytes only for secret values, not public deployment metadata', async () => {
-    // The good fixture's prose says "production". `VERCEL_ENV` is stripped from children but is
-    // not a secret, so it must not fail the leak scan; a real token value in served bytes must.
-    const metadataOnly = await runFixture('good', {
-      ...readScrubbedEnvironment(),
-      VERCEL_ENV: 'production',
-    });
-    const realToken = await runFixture('good', {
-      ...readScrubbedEnvironment(),
-      VERCEL_ENV: 'production',
-      VERCEL_OIDC_TOKEN: 'static production gate',
-    });
-
-    expect(metadataOnly.report.preflightFailures).toEqual([]);
-    expect(metadataOnly.exitCode).toBe(0);
-    expect(realToken.exitCode).toBe(1);
-    expect(realToken.report.preflightFailures).toContain(
-      'served file index.html contains the value of VERCEL_OIDC_TOKEN',
-    );
-  });
+  it('scans served bytes only for secret values, not public deployment metadata', () =>
+    rethrow(onlySecretValuesAreScanned));
 
   it.each([
     ['VERCEL_ENV', false],
@@ -213,50 +400,11 @@ describe('static production gate over fixtures', () => {
     expect(SECRET_ENVIRONMENT_NAME.test(name)).toBe(true);
   });
 
-  it('fails when the password of a connection string appears in a served file', async () => {
-    // The good fixture's component page says "prerendered component page".
-    const leaking = await runFixture('good', {
-      ...readScrubbedEnvironment(),
-      DATABASE_URL: 'postgres://playground:prerendered%20component%20page@db.example/app',
-    });
-    const notLeaking = await runFixture('good', {
-      ...readScrubbedEnvironment(),
-      DATABASE_URL: 'postgres://playground:never-served-password@db.example/app',
-    });
+  it('fails when the password of a connection string appears in a served file', () =>
+    rethrow(connectionStringPasswordIsScanned));
 
-    expect(leaking.exitCode).toBe(1);
-    expect(leaking.report.preflightFailures).toEqual([
-      'served file page/button/index.html contains the value of DATABASE_URL',
-    ]);
-    expect(notLeaking.exitCode).toBe(0);
-  });
-
-  it('refuses an output directory inside the served directory', async () => {
-    const served = await mkdtemp(join(tmpdir(), 'static-gate-served-'));
-    try {
-      const gate = Bun.spawn(
-        [
-          process.execPath,
-          CHECK,
-          '--directory',
-          served,
-          '--output',
-          join(served, 'nested', 'report'),
-          '--allow-source-mismatch',
-        ],
-        { env: readScrubbedEnvironment(), stdout: 'pipe', stderr: 'pipe' },
-      );
-      const exitCode = await exitedWithin(gate, GATE_RUN_MILLISECONDS);
-      if (exitCode === undefined) gate.kill('SIGKILL');
-      const stderr = await new Response(gate.stderr).text();
-
-      expect(exitCode).toBe(1);
-      expect(stderr).toContain('must be outside the served directory');
-      expect(await Array.fromAsync(new Bun.Glob('**/*').scan({ cwd: served }))).toEqual([]);
-    } finally {
-      await rm(served, { recursive: true, force: true });
-    }
-  });
+  it('refuses an output directory inside the served directory', () =>
+    rethrow(nestedOutputDirectoryIsRefused));
 
   it('rejects the served directory itself as output and accepts a sibling', () => {
     const directory = join(FIXTURES, 'good');
@@ -269,74 +417,16 @@ describe('static production gate over fixtures', () => {
     ).not.toThrow();
   });
 
-  it('stops a gate that outlives its hang guard gracefully, leaving nothing behind', async () => {
-    // The stand-in test runner hangs, so the gate never finishes on its own.
-    const outcome = await runGate(
-      [process.execPath, DRIVER, '--fixture', 'good', '--mode', 'hang'],
-      readScrubbedEnvironment(),
-      { guardMilliseconds: 1_500 },
-    ).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
+  it('stops a gate that outlives its hang guard gracefully, leaving nothing behind', () =>
+    rethrow(hungGateStopsGracefully));
 
-    expect(outcome).toBeInstanceOf(GateHang);
-    const hang = outcome as GateHang;
-    expect(hang.stop).toEqual({ survivors: [], runnerExited: true });
-    // 130 is the gate's own exit for SIGINT: it ran its cleanup, rather than being SIGKILLed.
-    expect(hang.exitCode).toBe(130);
-  });
+  it('fails a case that passed but recorded a browser diagnostic', () =>
+    rethrow(lateDiagnosticFailsTheCase));
 
-  it('fails a case that passed but recorded a browser diagnostic', async () => {
-    // A console error that arrives after a case's last assertion still reaches the reporter.
-    const { exitCode, report } = await runGate(
-      [process.execPath, DRIVER, '--fixture', 'good', '--late-diagnostic'],
-      readScrubbedEnvironment(),
-    );
+  it('fails when the export report is missing', () => rethrow(missingExportReportFails));
 
-    expect(exitCode).toBe(1);
-    expect(report.failedCases.map((failure) => failure.diagnostics)).toEqual([
-      ['console error: a late failure'],
-    ]);
-  });
-
-  it('fails when the export report is missing', async () => {
-    const { exitCode, report } = await runGate(
-      [
-        process.execPath,
-        CHECK,
-        '--directory',
-        join(FIXTURES, 'good'),
-        '--export-report',
-        join(FIXTURES, 'absent.export-report.json'),
-        '--allow-source-mismatch',
-      ],
-      readScrubbedEnvironment(),
-    );
-
-    expect(exitCode).toBe(1);
-    expect(report.diagnosis).toContain('absent.export-report.json is missing');
-  });
-
-  it('fails when the report digest differs from the served directory', async () => {
-    const { exitCode, report } = await runGate(
-      [
-        process.execPath,
-        CHECK,
-        '--directory',
-        join(FIXTURES, 'good'),
-        '--export-report',
-        join(FIXTURES, 'missing-asset.export-report.json'),
-        '--allow-source-mismatch',
-      ],
-      readScrubbedEnvironment(),
-    );
-
-    expect(exitCode).toBe(1);
-    expect(
-      report.preflightFailures.some((failure) => failure.includes('is not served digest')),
-    ).toBe(true);
-  });
+  it('fails when the report digest differs from the served directory', () =>
+    rethrow(digestMismatchFails));
 });
 
 describe('preflight inventory and source checks', () => {
@@ -429,9 +519,12 @@ describe('case list and shards', () => {
     expect(options.workers).toBe(4);
     expect(options.allowSourceMismatch).toBe(false);
     expect(parseGateArguments(['--shard', '2/8']).output).toEndWith(
-      join('test-results', 'static-production', 'shard-2-of-8'),
+      join('production-gate-results', 'shard-2-of-8'),
     );
   });
+
+  it('keeps the default output out of every directory the development Playwright run cleans', () =>
+    rethrow(defaultOutputAvoidsPlaywrightDirectories));
 });
 
 describe('case evidence', () => {

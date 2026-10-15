@@ -2,7 +2,7 @@
  * Runs the real gate runner over the good fixture with stand-in children, as its own process, so
  * a lifecycle case can signal it like a reader pressing Ctrl-C.
  *
- *   bun lifecycle-driver.ts --mode pass|fail|hang --record <dir> --output <dir>
+ *   bun lifecycle-driver.ts --mode pass|fail|hang|progress --record <dir> --output <dir>
  *   bun lifecycle-driver.ts --browser --output <dir>   (real server and real Playwright)
  *
  * `--fixture <name>` serves another fixture directory (default `good`) with its own export report.
@@ -52,6 +52,10 @@ process.exitCode = await runStaticPlaygroundGate({
                 portFile,
                 '--record',
                 record,
+                ...(process.argv.includes('--hold-port') ? ['--hold-port'] : []),
+                ...(argumentValue('--advertise-port') === undefined
+                  ? []
+                  : ['--advertise-port', argumentValue('--advertise-port') ?? '']),
               ],
             }),
         testRunnerCommand: () => [
@@ -66,6 +70,9 @@ process.exitCode = await runStaticPlaygroundGate({
           ...(process.argv.includes('--stubborn') ? ['--stubborn'] : []),
           ...(process.argv.includes('--unmarked-detached') ? ['--unmarked-detached'] : []),
           ...(process.argv.includes('--late-diagnostic') ? ['--late-diagnostic'] : []),
+          ...(argumentValue('--completed') === undefined
+            ? []
+            : ['--completed', argumentValue('--completed') ?? '']),
         ],
       }),
 });
