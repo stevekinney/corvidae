@@ -276,6 +276,8 @@ export type ConnectOptions = {
   readonly sessionId?: string;
   readonly mode?: RequestedMode;
   readonly url?: string;
+  /** Extra request headers, for a test that plays a proxy. */
+  readonly headers?: Record<string, string>;
 };
 
 /** A raw WebSocket client that decodes with the real `ClientEndpoint`, and can send anything. */
@@ -292,6 +294,7 @@ export class TestClient {
     const headers: Record<string, string> = {};
     if (options.origin !== null) headers['Origin'] = options.origin ?? ORIGIN;
     if (options.cookie !== null) headers['Cookie'] = options.cookie ?? SESSION_COOKIE;
+    Object.assign(headers, options.headers);
     const url = options.url ?? harnessUrl + (options.query ?? '');
     this.socket = new WebSocket(url, { headers } as never);
     this.socket.binaryType = 'arraybuffer';

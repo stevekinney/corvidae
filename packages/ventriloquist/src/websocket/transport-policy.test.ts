@@ -104,3 +104,47 @@ describe('decideTransport', () => {
     },
   );
 });
+
+describe('decideTransport behind a trusted proxy', () => {
+  const behind: TransportFacts = {
+    protocol: 'http:',
+    listenerHostname: '0.0.0.0',
+    peerAddress: '10.0.0.5',
+    allowInsecureLoopback: false,
+    trustedProxies: new Set(['10.0.0.5']),
+    forwardedProto: 'https',
+  };
+
+  test('honors https from a trusted peer', () => {
+    expect(decideTransport(behind)).toEqual({ allowed: true, transport: 'trusted-proxy' });
+  });
+
+  test('ignores the header from a peer that is not trusted', () => {
+    expect(decideTransport({ ...behind, peerAddress: '10.0.0.6' })).toEqual({
+      allowed: false,
+      reason: 'insecure-transport',
+    });
+  });
+
+  test('uses the last value of a list, which the nearest trusted proxy appended', () => {
+    expect(decideTransport({ ...behind, forwardedProto: 'http, https' }).allowed).toBe(true);
+    expect(decideTransport({ ...behind, forwardedProto: 'https, http' }).allowed).toBe(false);
+  });
+
+  test.each([null, '', 'http', 'wss'])('refuses %j', (forwardedProto) => {
+    expect(decideTransport({ ...behind, forwardedProto }).allowed).toBe(false);
+  });
+
+  test('the loopback development switch is unchanged', () => {
+    expect(
+      decideTransport({
+        ...behind,
+        listenerHostname: '127.0.0.1',
+        peerAddress: '127.0.0.1',
+        trustedProxies: new Set(),
+        forwardedProto: null,
+        allowInsecureLoopback: true,
+      }),
+    ).toEqual({ allowed: true, transport: 'loopback-development' });
+  });
+});

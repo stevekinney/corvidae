@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createDeferred } from '../session/fixtures/deferred.ts';
+import { SessionSlot } from '../session/session-slot.ts';
 import { createTerminalWebSocketServer, type UpgradeServer } from './websocket-server.ts';
 import type { Authentication, TerminalWebSocketServerOptions } from './websocket-types.ts';
 import { LAUNCH, ORIGIN, SESSION_COOKIE, scriptedProcess } from './websocket.test-support.ts';
@@ -39,6 +40,7 @@ function build(overrides: Partial<TerminalWebSocketServerOptions> = {}) {
     createProcess: () => process.hosted,
     allowedOrigins: [ORIGIN],
     allowInsecureLoopback: true,
+    slotFor: () => new SessionSlot(),
     ...overrides,
   });
 }
@@ -339,5 +341,11 @@ describe('handleUpgrade admission', () => {
     expect(await first).toBeUndefined();
     const third = await terminal.handleUpgrade(upgradeRequest(), fakeServer());
     expect(third).toBeUndefined();
+  });
+});
+
+describe('slotFor is a required host decision', () => {
+  test('a server built without it throws, and says what to supply', () => {
+    expect(() => build({ slotFor: undefined as never })).toThrow(/slotFor/);
   });
 });

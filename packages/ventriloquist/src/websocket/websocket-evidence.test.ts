@@ -52,6 +52,7 @@ const EXPECTED_CELL_IDS = [
   'websocket-operation-window',
   'websocket-liveness',
   'websocket-transport-security',
+  'websocket-trusted-proxy',
 ] as const;
 
 type CellId = (typeof EXPECTED_CELL_IDS)[number];
@@ -796,6 +797,81 @@ const transportSecurity: Variant[] = [
   },
 ];
 
+const trustedProxy: Variant[] = [
+  {
+    label: 'a trusted proxy reporting https is admitted, over a real socket',
+    run: () =>
+      observe(
+        { allowInsecureLoopback: false, server: { trustedProxies: ['127.0.0.1'] } },
+        async (harness) => {
+          const client = connect(harness, { headers: { 'X-Forwarded-Proto': 'https' } });
+          await client.handshake();
+          return [
+            check('the attachment was issued', client.endpoint.phase === 'attached'),
+            check('origin and cookie were still required', harness.authorizations.length === 1),
+          ];
+        },
+      ),
+  },
+  ...[
+    ['the header from a peer that is not trusted', ['10.0.0.1'], { 'x-forwarded-proto': 'https' }],
+    ['the header with no trusted proxies at all', [], { 'x-forwarded-proto': 'https' }],
+    ['http from a trusted peer', ['127.0.0.1'], { 'x-forwarded-proto': 'http' }],
+    ['a missing header from a trusted peer', ['127.0.0.1'], {}],
+    [
+      'X-Forwarded-For alone from a trusted peer',
+      ['127.0.0.1'],
+      { 'x-forwarded-for': '203.0.113.9' },
+    ],
+    [
+      'a client-prepended https ahead of the proxy-appended http',
+      ['127.0.0.1'],
+      { 'x-forwarded-proto': 'https, http' },
+    ],
+  ].map(([label, proxies, headers]): Variant => ({
+    label: `refuses ${label as string}`,
+    run: () =>
+      observe(
+        { allowInsecureLoopback: false, server: { trustedProxies: proxies as string[] } },
+        async (harness) => {
+          const status = await upgradeStatus(harness, {
+            origin: ORIGIN,
+            cookie: SESSION_COOKIE,
+            ...(headers as Record<string, string>),
+          });
+          return [
+            check('answered 403', status === 403),
+            check('the host was never asked', harness.authorizations.length === 0),
+          ];
+        },
+      ),
+  })),
+  {
+    label: 'origin and credentials still apply behind a trusted proxy',
+    run: () =>
+      observe(
+        { allowInsecureLoopback: false, server: { trustedProxies: ['127.0.0.1'] } },
+        async (harness) => {
+          const secure = { 'x-forwarded-proto': 'https' };
+          const badOrigin = await upgradeStatus(harness, {
+            ...secure,
+            origin: 'https://evil.example',
+            cookie: SESSION_COOKIE,
+          });
+          const badCookie = await upgradeStatus(harness, {
+            ...secure,
+            origin: ORIGIN,
+            cookie: 'sid=forged',
+          });
+          return [
+            check('a foreign origin is refused', badOrigin === 403),
+            check('a forged cookie is refused', badCookie === 401),
+          ];
+        },
+      ),
+  },
+];
+
 const MATRIX: Record<CellId, readonly Variant[]> = {
   'websocket-close-during-handshake': handshakeClose,
   'websocket-close-during-input': [
@@ -817,6 +893,7 @@ const MATRIX: Record<CellId, readonly Variant[]> = {
   'websocket-operation-window': operationWindow,
   'websocket-liveness': liveness,
   'websocket-transport-security': transportSecurity,
+  'websocket-trusted-proxy': trustedProxy,
 };
 
 async function buildCell(id: CellId): Promise<EvidenceCell> {

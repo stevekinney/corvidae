@@ -37,9 +37,11 @@ describe('package entry points', () => {
       'createOriginPolicy',
       'createTerminalWebSocketServer',
       'decideTransport',
+      'forwardedSchemeIsSecure',
       'isLoopbackAddress',
       'isLoopbackListener',
       'isSendableCloseCode',
+      'normalizeAddress',
       'serveTerminalWebSocket',
     ]);
     expect(Object.keys(neutralEntry).toSorted()).toEqual(

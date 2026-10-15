@@ -99,8 +99,18 @@ export type TerminalWebSocketServerOptions = {
    * to loopback and the peer is loopback, and origin and authentication still apply.
    */
   readonly allowInsecureLoopback?: boolean;
-  /** One slot per principal by default; supply it to share a slot between principals. */
-  readonly slotFor?: (subject: string) => SessionSlot;
+  /**
+   * Which `SessionSlot` holds a subject's session. Required, with no default: how many sessions a
+   * principal may have, how long a slot is kept, and when a quarantined one is cleared are the
+   * host's decisions, and a package default would grow without bound.
+   */
+  readonly slotFor: (subject: string) => SessionSlot;
+  /**
+   * Exact IP addresses of reverse proxies that terminate TLS. Only a request whose peer address is
+   * listed has its `X-Forwarded-Proto` honored (the last value, and only `https`). Default: none,
+   * so the scheme comes from the URL alone. Ranges are not supported; list each address.
+   */
+  readonly trustedProxies?: readonly string[];
   readonly clock?: SessionClock;
   readonly budgets?: Partial<SessionBudgets>;
   readonly limits?: WebSocketLimits;

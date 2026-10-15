@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { SessionSlot } from '../session/session-slot.ts';
 import { serveTerminalWebSocket } from './serve-terminal.ts';
 import type { TerminalHostCallbacks } from './websocket-types.ts';
 import {
@@ -28,6 +29,7 @@ describe('serveTerminalWebSocket', () => {
       host,
       createProcess: () => process.hosted,
       allowedOrigins: [ORIGIN],
+      slotFor: () => new SessionSlot(),
       allowInsecureLoopback: true,
       hostname: '127.0.0.1',
     });
@@ -55,6 +57,7 @@ describe('serveTerminalWebSocket', () => {
     const served = serveTerminalWebSocket({
       host,
       allowedOrigins: [ORIGIN],
+      slotFor: () => new SessionSlot(),
       path: '/pty',
       hostname: '127.0.0.1',
     });

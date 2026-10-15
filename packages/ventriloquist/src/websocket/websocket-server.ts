@@ -1,8 +1,8 @@
+import { isIP } from 'node:net';
 import { systemClock } from '../session/session-clock.ts';
-import { SessionSlot } from '../session/session-slot.ts';
 import { createOriginPolicy } from './origin-policy.ts';
 import { TerminalConnection, type TerminalSocket } from './terminal-connection.ts';
-import { decideTransport } from './transport-policy.ts';
+import { decideTransport, normalizeAddress } from './transport-policy.ts';
 import { resolveWebSocketLimits } from './websocket-limits.ts';
 import type {
   Authentication,
@@ -143,17 +143,17 @@ export function createTerminalWebSocketServer(
   const originAllowed = createOriginPolicy(options.allowedOrigins);
   const limits = resolveWebSocketLimits(options.limits, options.budgets);
   const clock = options.clock ?? systemClock;
-  const slots = new Map<string, SessionSlot>();
-  const slotFor =
-    options.slotFor ??
-    ((subject: string): SessionSlot => {
-      let slot = slots.get(subject);
-      if (slot === undefined) {
-        slot = new SessionSlot();
-        slots.set(subject, slot);
-      }
-      return slot;
-    });
+  if (typeof options.slotFor !== 'function') {
+    throw new TypeError('slotFor is required: the host decides which SessionSlot holds a subject');
+  }
+  const trustedProxies = new Set<string>();
+  for (const entry of options.trustedProxies ?? []) {
+    if (isIP(entry) === 0) {
+      throw new RangeError(`trustedProxies entry ${JSON.stringify(entry)} is not an IP address`);
+    }
+    trustedProxies.add(normalizeAddress(entry));
+  }
+  const { slotFor } = options;
   const settings = {
     host: options.host,
     createProcess: options.createProcess,
@@ -189,6 +189,8 @@ export function createTerminalWebSocketServer(
       listenerHostname: server.hostname,
       peerAddress: server.requestIP(request)?.address,
       allowInsecureLoopback: options.allowInsecureLoopback === true,
+      trustedProxies,
+      forwardedProto: request.headers.get('x-forwarded-proto'),
     });
     if (!transport.allowed) return refuse(403, 'forbidden');
     if (!originAllowed(request.headers.get('origin'))) return refuse(403, 'forbidden');
