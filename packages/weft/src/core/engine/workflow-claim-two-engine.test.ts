@@ -2540,7 +2540,8 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     );
     try {
       // Every attempt of the first cancel is beaten, so it throws after its budget.
-      await expect(engineB.cancel(id)).rejects.toThrow('lost a commit precondition');
+      const failure = await rejectionOf(engineB.cancel(id));
+      expect(String(failure)).toContain('lost a commit precondition');
       expect(attempts()).toBe(10);
       const stillRunning = await engineA.get(id);
       expect(stillRunning?.status).toBe('running');
