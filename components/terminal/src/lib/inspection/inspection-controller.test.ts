@@ -1,12 +1,22 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { settle } from '../components/terminal/terminal-test-support.ts';
 import { textSaver } from './export.ts';
+import { inspectionTimer } from './inspection-controller.ts';
 import { createFakeSource, createHarness } from './inspection-test-support.ts';
 import {
   RETAINED_READ_CEILING,
+  SEARCH_REFRESH_DELAY_MS,
   SEARCH_TEXT_BYTE_LIMIT,
+  SEARCH_TYPING_DELAY_MS,
   SNAPSHOT_BYTE_LIMIT,
 } from './inspection-types.ts';
+
+/** Type a query and let the pause that follows it pass. */
+function typed(harness: ReturnType<typeof createHarness>, query: string): void {
+  harness.inspection.setQuery(query);
+  harness.timer.flush();
+}
 
 const originalSave = textSaver.save;
 const saved: string[] = [];
@@ -34,8 +44,9 @@ describe('search', () => {
     const source = createFakeSource('alpha beta alpha');
     const harness = createHarness(source);
     harness.inspection.openSearch();
+    expect(source.reads).toEqual([]);
+    typed(harness, 'alpha');
     expect(source.reads).toEqual([SEARCH_TEXT_BYTE_LIMIT]);
-    harness.inspection.setQuery('alpha');
     expect(harness.inspection.view.search.count).toBe(2);
     expect(harness.inspection.view.query).toBe('alpha');
     expect(harness.events).toEqual([
@@ -46,7 +57,7 @@ describe('search', () => {
   test('next and previous wrap once and report the match count, not the match', () => {
     const harness = createHarness(createFakeSource('a a'));
     harness.inspection.openSearch();
-    harness.inspection.setQuery('a');
+    typed(harness, 'a');
     harness.events.length = 0;
     harness.inspection.next();
     harness.inspection.next();
@@ -73,15 +84,15 @@ describe('search', () => {
     const source = createFakeSource('find');
     const harness = createHarness(source);
     harness.inspection.openSearch();
-    harness.inspection.setQuery('find');
+    typed(harness, 'find');
     source.reads.length = 0;
     source.text = 'find find';
     harness.inspection.contentChanged();
     harness.inspection.contentChanged();
     harness.inspection.contentChanged();
     expect(source.reads).toEqual([]);
-    expect(harness.scheduler.pending).toBe(1);
-    harness.scheduler.flush();
+    expect(harness.timer.pending).toBe(1);
+    harness.timer.flush();
     expect(source.reads).toHaveLength(1);
     expect(harness.inspection.view.search.count).toBe(2);
   });
@@ -90,12 +101,12 @@ describe('search', () => {
     const source = createFakeSource('find');
     const harness = createHarness(source);
     harness.inspection.openSearch();
-    harness.inspection.setQuery('find');
+    typed(harness, 'find');
     source.text = 'find find find';
     harness.inspection.contentChanged();
     harness.inspection.next();
     expect(harness.inspection.view.search.count).toBe(3);
-    expect(harness.scheduler.pending).toBe(0);
+    expect(harness.timer.pending).toBe(0);
   });
 
   test('a re-search that fires after the search closed or the controller was disposed does nothing', () => {
@@ -104,12 +115,12 @@ describe('search', () => {
     closed.inspection.openSearch();
     closed.inspection.contentChanged();
     closed.inspection.closeSearch();
-    expect(closed.scheduler.pending).toBe(0);
+    expect(closed.timer.pending).toBe(0);
     const disposed = createHarness(createFakeSource('find'));
     disposed.inspection.openSearch();
     disposed.inspection.contentChanged();
     disposed.inspection.dispose();
-    expect(disposed.scheduler.pending).toBe(0);
+    expect(disposed.timer.pending).toBe(0);
   });
 
   test('a re-search that was scheduled and then closed in place does nothing when it runs', () => {
@@ -120,7 +131,7 @@ describe('search', () => {
     // The frame callback escapes cancellation, as a callback already queued can.
     harness.inspection.closeSearch();
     source.reads.length = 0;
-    harness.scheduler.flush();
+    harness.timer.flush();
     expect(source.reads).toEqual([]);
   });
 
@@ -128,11 +139,11 @@ describe('search', () => {
     const source = createFakeSource('keep drop');
     const harness = createHarness(source);
     harness.inspection.openSearch();
-    harness.inspection.setQuery('drop');
+    typed(harness, 'drop');
     expect(harness.inspection.view.search.count).toBe(1);
     source.text = 'keep';
     harness.inspection.contentChanged();
-    harness.scheduler.flush();
+    harness.timer.flush();
     expect(harness.inspection.view.search.count).toBe(0);
     expect(harness.inspection.view.search.status).toBe('no-matches');
   });
@@ -141,7 +152,7 @@ describe('search', () => {
     const source = createFakeSource('find');
     const harness = createHarness(source);
     harness.inspection.openSearch();
-    harness.inspection.setQuery('find');
+    typed(harness, 'find');
     harness.source.current = undefined;
     harness.inspection.sourceChanged();
     expect(harness.inspection.view.search.status).toBe('unavailable');
@@ -155,21 +166,161 @@ describe('search', () => {
     const source = createFakeSource('find');
     const harness = createHarness(source);
     harness.inspection.openSearch();
-    harness.inspection.setQuery('find');
+    typed(harness, 'find');
     source.gone = true;
     harness.inspection.contentChanged();
-    harness.scheduler.flush();
+    harness.timer.flush();
     expect(harness.inspection.view.search.status).toBe('unavailable');
   });
 
-  test('closing the search keeps the query for next time and stops work', () => {
-    const harness = createHarness(createFakeSource('a'));
+  test('closing the search stops work: a source change afterwards reads nothing', () => {
+    const source = createFakeSource('a');
+    const harness = createHarness(source);
     harness.inspection.openSearch();
-    harness.inspection.setQuery('a');
+    typed(harness, 'a');
     harness.inspection.closeSearch();
     expect(harness.inspection.view.searchOpen).toBe(false);
+    source.reads.length = 0;
     harness.inspection.sourceChanged();
-    expect(harness.inspection.view.query).toBe('a');
+    expect(source.reads).toEqual([]);
+  });
+});
+
+describe('the real clock', () => {
+  test('runs a callback after its delay, and not at all once cancelled', async () => {
+    const ran: string[] = [];
+    inspectionTimer.start(() => ran.push('kept'), 0);
+    inspectionTimer.start(() => ran.push('cancelled'), 0)();
+    await settle();
+    await settle();
+    expect(ran).toEqual(['kept']);
+  });
+});
+
+describe('typing a query', () => {
+  test('echoes the query at once but searches once per pause, however many keys came first', () => {
+    const source = createFakeSource('a b a b');
+    const harness = createHarness(source);
+    harness.inspection.openSearch();
+    source.reads.length = 0;
+    for (const query of ['a', 'a ', 'a b']) harness.inspection.setQuery(query);
+    expect(harness.inspection.view.query).toBe('a b');
+    expect(source.reads).toEqual([]);
+    expect(harness.events).toEqual([]);
+    expect(harness.timer.delays).toEqual([SEARCH_TYPING_DELAY_MS]);
+    harness.timer.flush();
+    expect(source.reads).toEqual([SEARCH_TEXT_BYTE_LIMIT]);
+    expect(harness.inspection.view.search.count).toBe(2);
+    expect(harness.events).toEqual([
+      { kind: 'search', matches: 2, capped: false, truncated: false },
+    ]);
+  });
+
+  test('a one-character query and a query with a line feed are searched after the pause', () => {
+    const harness = createHarness(createFakeSource('x\ny'));
+    harness.inspection.openSearch();
+    typed(harness, 'x');
+    expect(harness.inspection.view.search.count).toBe(1);
+    typed(harness, 'x\ny');
+    expect(harness.inspection.view.search.count).toBe(1);
+  });
+
+  test('stepping before the pause ends searches the query the reader typed', () => {
+    const harness = createHarness(createFakeSource('find find'));
+    harness.inspection.openSearch();
+    harness.inspection.setQuery('find');
+    harness.inspection.next();
+    expect(harness.inspection.view.search.index).toBe(0);
+    expect(harness.inspection.view.search.count).toBe(2);
+    expect(harness.timer.pending).toBe(0);
+  });
+
+  test('a search that outlives its pause because the search closed does nothing', () => {
+    const source = createFakeSource('find');
+    const harness = createHarness(source);
+    harness.inspection.openSearch();
+    harness.inspection.setQuery('find');
+    harness.inspection.closeSearch();
+    expect(harness.timer.pending).toBe(0);
+    harness.timer.flush();
+    expect(harness.inspection.view.search.count).toBe(0);
+  });
+
+  test('output refreshes the results at most once per refresh interval', () => {
+    const source = createFakeSource('find');
+    const harness = createHarness(source);
+    harness.inspection.openSearch();
+    typed(harness, 'find');
+    harness.inspection.contentChanged();
+    harness.inspection.contentChanged();
+    expect(harness.timer.delays).toEqual([SEARCH_REFRESH_DELAY_MS]);
+  });
+});
+
+describe('closing the search', () => {
+  test('releases the searched text, the matches and the query, so a reopened search starts empty', () => {
+    const source = createFakeSource('find find');
+    const harness = createHarness(source);
+    harness.inspection.openSearch();
+    typed(harness, 'find');
+    harness.inspection.next();
+    expect(harness.inspection.view.search.count).toBe(2);
+    harness.inspection.closeSearch();
+    const closed = harness.inspection.view;
+    expect(closed.query).toBe('');
+    expect(closed.search).toMatchObject({ status: 'idle', count: 0, index: undefined });
+    expect(closed.search.excerpt).toBeUndefined();
+    expect(closed.search.match).toBeUndefined();
+    source.reads.length = 0;
+    harness.inspection.openSearch();
+    expect(harness.inspection.view.query).toBe('');
+    expect(harness.inspection.view.search.count).toBe(0);
+    // With no query there is nothing to search for, so nothing is read.
+    expect(source.reads).toEqual([]);
+  });
+
+  test('no match survives a replaced session', () => {
+    const first = createFakeSource('find here');
+    const harness = createHarness(first);
+    harness.inspection.openSearch();
+    typed(harness, 'find');
+    harness.inspection.next();
+    expect(harness.inspection.view.search.match).toBeDefined();
+    const second = createFakeSource('nothing like it', 2);
+    harness.source.current = second;
+    harness.inspection.sourceChanged();
+    expect(harness.inspection.view.search).toMatchObject({ count: 0, index: undefined });
+    expect(harness.inspection.view.search.match).toBeUndefined();
+    expect(harness.inspection.view.search.excerpt).toBeUndefined();
+    expect(second.selectionClears).toBeGreaterThan(0);
+    harness.source.current = undefined;
+    harness.inspection.sourceChanged();
+    expect(harness.inspection.view.search.status).toBe('unavailable');
+  });
+});
+
+describe('a match that cannot be selected', () => {
+  test('is reported, and the report ends when a match can be selected or the search closes', () => {
+    const source = createFakeSource('find find');
+    source.selectable = false;
+    const harness = createHarness(source);
+    harness.inspection.openSearch();
+    typed(harness, 'find');
+    expect(harness.inspection.view.selectionFailed).toBe(false);
+    harness.inspection.next();
+    expect(harness.inspection.view.selectionFailed).toBe(true);
+    source.selectable = true;
+    harness.inspection.next();
+    expect(harness.inspection.view.selectionFailed).toBe(false);
+    source.selectable = false;
+    harness.inspection.next();
+    expect(harness.inspection.view.selectionFailed).toBe(true);
+    typed(harness, 'fin');
+    expect(harness.inspection.view.selectionFailed).toBe(false);
+    harness.inspection.next();
+    expect(harness.inspection.view.selectionFailed).toBe(true);
+    harness.inspection.closeSearch();
+    expect(harness.inspection.view.selectionFailed).toBe(false);
   });
 });
 
@@ -482,7 +633,7 @@ describe('selecting the match in the terminal', () => {
     const source = createFakeSource(text);
     const harness = createHarness(source);
     harness.inspection.openSearch();
-    harness.inspection.setQuery('find');
+    typed(harness, 'find');
     return { source, harness };
   }
 
@@ -502,7 +653,7 @@ describe('selecting the match in the terminal', () => {
     expect(source.selectionClears).toBeGreaterThan(0);
     harness.inspection.next();
     const before = source.selectionClears;
-    harness.inspection.setQuery('missing');
+    typed(harness, 'missing');
     expect(source.selectionClears).toBeGreaterThan(before);
   });
 
@@ -521,12 +672,12 @@ describe('selecting the match in the terminal', () => {
     const cleared = source.selectionClears;
     source.text = 'find more';
     harness.inspection.contentChanged();
-    harness.scheduler.flush();
+    harness.timer.flush();
     expect(source.selections).toHaveLength(selected);
     expect(source.selectionClears).toBe(cleared);
     source.text = 'gone';
     harness.inspection.contentChanged();
-    harness.scheduler.flush();
+    harness.timer.flush();
     expect(source.selectionClears).toBe(cleared + 1);
   });
 
@@ -575,7 +726,7 @@ describe('clear', () => {
     const harness = createHarness(source);
     harness.inspection.openSnapshot();
     harness.inspection.openSearch();
-    harness.inspection.setQuery('find');
+    typed(harness, 'find');
     source.text = '';
     harness.inspection.clear('retained');
     expect(harness.inspection.view.snapshot!.stale).toBe(true);
@@ -597,7 +748,7 @@ describe('observers', () => {
     };
     expect(() => {
       harness.inspection.openSearch();
-      harness.inspection.setQuery('x');
+      typed(harness, 'x');
       harness.inspection.openSnapshot();
       harness.inspection.clear('visible');
     }).not.toThrow();
@@ -618,7 +769,7 @@ describe('observers', () => {
     const harness = createHarness(source);
     harness.link.current = () => {};
     harness.inspection.openSearch();
-    harness.inspection.setQuery(query);
+    typed(harness, query);
     harness.inspection.next();
     harness.inspection.previous();
     harness.inspection.openSnapshot();

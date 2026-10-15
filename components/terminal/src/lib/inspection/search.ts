@@ -114,6 +114,8 @@ export type Search = {
    * a match at the same logical position with the same text before it; otherwise nothing is.
    */
   update(text: string, truncated: boolean): void;
+  /** Forget the text, the query and every match, as a closed search does. */
+  release(): void;
   /** Nothing can be searched: the output is gone, or belongs to another session. */
   makeUnavailable(): void;
   next(): void;
@@ -208,6 +210,15 @@ export function createSearch(): Search {
       if (survivor >= 0 && contextOf(result.matches[survivor]!) === previousContext) {
         current = survivor;
       }
+    },
+    release() {
+      query = '';
+      text = '';
+      truncated = false;
+      unavailable = false;
+      result = { matches: [], capped: false, refusal: 'empty' };
+      current = undefined;
+      wrapped = false;
     },
     makeUnavailable() {
       unavailable = true;

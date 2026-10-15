@@ -1,4 +1,3 @@
-import { createManualScheduler } from '../components/terminal/terminal-attachment-test-support.ts';
 import type { ClearScope } from '../components/terminal/terminal-engine-adapter.ts';
 import type { TerminalProjection } from '../components/terminal/terminal-projection.ts';
 import { createInspection, type Inspection } from './inspection-controller.ts';
@@ -63,12 +62,37 @@ export function createFakeSource(text = '', generation = 1): FakeSource {
   return source;
 }
 
+/** A timer whose callbacks run only when the test says so, remembering the delay each asked for. */
+export function createManualTimer() {
+  const pending: Array<{ callback: () => void; delay: number }> = [];
+  return {
+    start(callback: () => void, delay: number) {
+      const entry = { callback, delay };
+      pending.push(entry);
+      return () => {
+        const index = pending.indexOf(entry);
+        if (index >= 0) pending.splice(index, 1);
+      };
+    },
+    /** Run what is waiting, as the clock reaching every delay would. */
+    flush() {
+      for (const entry of pending.splice(0)) entry.callback();
+    },
+    get pending() {
+      return pending.length;
+    },
+    get delays() {
+      return pending.map((entry) => entry.delay);
+    },
+  };
+}
+
 export type InspectionHarness = {
   inspection: Inspection;
   source: { current: InspectionSource | undefined };
   events: InspectionEvent[];
   announcements: string[];
-  scheduler: ReturnType<typeof createManualScheduler>;
+  timer: ReturnType<typeof createManualTimer>;
   link: { current: ((url: string) => void) | undefined };
   hook: { current: ((event: InspectionEvent) => void) | undefined };
 };
@@ -78,7 +102,7 @@ export function createHarness(initial?: InspectionSource): InspectionHarness {
   const source = { current: initial };
   const events: InspectionEvent[] = [];
   const announcements: string[] = [];
-  const scheduler = createManualScheduler();
+  const timer = createManualTimer();
   const link: InspectionHarness['link'] = { current: undefined };
   const hook: InspectionHarness['hook'] = { current: (event) => events.push(event) };
   const inspection = createInspection({
@@ -86,7 +110,7 @@ export function createHarness(initial?: InspectionSource): InspectionHarness {
     readActivateLink: () => link.current,
     readOnEvent: () => hook.current,
     announce: (message) => announcements.push(message),
-    schedule: scheduler.schedule,
+    timer: (callback, delay) => timer.start(callback, delay),
   });
-  return { inspection, source, events, announcements, scheduler, link, hook };
+  return { inspection, source, events, announcements, timer, link, hook };
 }

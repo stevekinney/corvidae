@@ -32,7 +32,7 @@
   let searchTrigger: HTMLElement | null = null;
   let exportTrigger = $state.raw<HTMLElement | null>(null);
 
-  const searchSummary = $derived(describeSearch(view.search));
+  const searchSummary = $derived(describeSearch(view.search, view.selectionFailed));
   const notices = $derived(view.snapshot === undefined ? [] : describeSnapshot(view.snapshot));
 
   /** Focus returns to the control that opened the dialog while it is mounted, else to the frame. */

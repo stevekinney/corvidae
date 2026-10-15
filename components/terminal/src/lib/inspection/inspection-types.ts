@@ -17,6 +17,10 @@ export const SEARCH_QUERY_CODE_POINT_LIMIT = 256;
 export const SEARCH_MATCH_LIMIT = 10_000;
 /** The retained text a search reads: the export budget, 1 MiB. */
 export const SEARCH_TEXT_BYTE_LIMIT = 1024 * 1024;
+/** The pause after the last key before a query is searched, in milliseconds. */
+export const SEARCH_TYPING_DELAY_MS = 150;
+/** The shortest interval between re-searches while output arrives, in milliseconds. */
+export const SEARCH_REFRESH_DELAY_MS = 500;
 /** The accessible snapshot budget: 64 KiB. */
 export const SNAPSHOT_BYTE_LIMIT = DEFAULT_PROJECTION_BYTE_LIMIT;
 /** The export budget: 1 MiB. */

@@ -55,10 +55,17 @@ function columnWithin(
   return undefined;
 }
 
+/**
+ * Where `offset` sits in the buffer. A range starts at the first cell of its first character and
+ * ends just after the content of its last: at a soft wrap, a range ends in the row it ends in, and
+ * a range that starts there starts in the next row, so the unwritten cell a wrapped wide character
+ * leaves at the end of a row is never part of the selection.
+ */
 function positionOf(
   buffer: LocateBuffer,
   projection: TerminalProjection,
   offset: number,
+  role: 'start' | 'end',
 ): Position | undefined {
   const { lines, text } = projection;
   let index = -1;
@@ -77,8 +84,8 @@ function positionOf(
     const length = line.translateToString(true).length;
     const next = buffer.getLine(row + 1);
     const last = next === undefined || !next.isWrapped;
-    if (remaining < length || (remaining === length && last)) {
-      const column = columnWithin(line, remaining, length, last && remaining === length);
+    if (remaining < length || (remaining === length && (last || role === 'end'))) {
+      const column = columnWithin(line, remaining, length, remaining === length);
       return column === undefined ? undefined : { row, column };
     }
     remaining -= length;
@@ -97,8 +104,8 @@ export function locateRange(
   columns: number,
   range: { start: number; end: number },
 ): CellSelection | undefined {
-  const from = positionOf(buffer, projection, range.start);
-  const to = positionOf(buffer, projection, range.end);
+  const from = positionOf(buffer, projection, range.start, 'start');
+  const to = positionOf(buffer, projection, range.end, 'end');
   if (from === undefined || to === undefined) return undefined;
   const length = (to.row - from.row) * columns + (to.column - from.column);
   return length > 0 ? { column: from.column, row: from.row, length } : undefined;

@@ -7,7 +7,12 @@ import {
 import type { EngineInputReport } from '../components/terminal/terminal-engine-adapter.ts';
 import { SCROLLBACK_LINES } from '../components/terminal/terminal-engine-adapter.ts';
 import { waitFor } from '../components/terminal/terminal-test-support.ts';
-import { SEARCH_TEXT_BYTE_LIMIT, SNAPSHOT_BYTE_LIMIT } from './inspection-types.ts';
+import { buildTextExport } from './export.ts';
+import {
+  RETAINED_READ_CEILING,
+  SEARCH_TEXT_BYTE_LIMIT,
+  SNAPSHOT_BYTE_LIMIT,
+} from './inspection-types.ts';
 import { findMatches } from './search.ts';
 
 const ESC = '\u001b';
@@ -216,17 +221,26 @@ describe('clearing', () => {
     },
   );
 
-  test('a clear after dispose does nothing, and one pending at dispose never reports done', async () => {
+  test('a clear after dispose does nothing, and one pending at dispose never reports done', () => {
     const { engine, captured } = mounted();
+    // The engine finishes a write by calling the function it was given; hold that function so the
+    // test, not a clock, decides when it runs.
+    const finishers: Array<() => void> = [];
+    captured.terminal.write = (_data, callback) => {
+      if (callback !== undefined) finishers.push(callback);
+    };
     let done = 0;
     engine.clear('retained', () => {
       done += 1;
     });
+    expect(finishers).toHaveLength(1);
     engine.dispose();
+    for (const finish of finishers.splice(0)) finish();
+    expect(done).toBe(0);
     engine.clear('reset', () => {
       done += 1;
     });
-    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(finishers).toHaveLength(0);
     expect(done).toBe(0);
     expect(captured.replies).toEqual([]);
   });
@@ -373,6 +387,47 @@ describe('selecting a search match', () => {
     expect(captured.terminal.hasSelection()).toBe(false);
   });
 
+  test('a match ending where a wide character wraps whole ends in that row, with no extra blank cell', async () => {
+    const { captured, engine, text } = mounted({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes(`${'a'.repeat(19)}日x\r\nnext`)]);
+    const last = { start: 15, end: 19, text: 'aaaa' };
+    expect(engine.selectMatch(last, SEARCH_TEXT_BYTE_LIMIT)).toBe(true);
+    expect(captured.terminal.getSelectionPosition()?.end).toEqual({ x: 19, y: 0 });
+    expect(engine.selectMatch(matchOf(text(), '日x'), SEARCH_TEXT_BYTE_LIMIT)).toBe(true);
+    expect(captured.terminal.getSelection()).toBe('日x');
+  });
+
+  test('a match that ends with a line break selects up to the end of that line', async () => {
+    const { captured, engine, text } = mounted();
+    await captured.deliver([bytes('one\r\ntwo\r\nthree')]);
+    expect(engine.selectMatch(matchOf(text(), 'one\n'), SEARCH_TEXT_BYTE_LIMIT)).toBe(true);
+    expect(captured.terminal.getSelection()).toBe('one');
+    expect(engine.selectMatch(matchOf(text(), 'e\ntwo\n'), SEARCH_TEXT_BYTE_LIMIT)).toBe(true);
+    expect(captured.terminal.getSelection()).toBe('e\ntwo');
+  });
+
+  test('a match that is only line breaks cannot be selected', async () => {
+    const { captured, engine, text } = mounted();
+    await captured.deliver([bytes('one\r\n\r\nthree')]);
+    expect(engine.selectMatch(matchOf(text(), '\n\n'), SEARCH_TEXT_BYTE_LIMIT)).toBe(false);
+    expect(captured.terminal.hasSelection()).toBe(false);
+  });
+
+  test('every substring of wrapped wide-character output is selected exactly, less a trailing line break', async () => {
+    const { captured, engine, text } = mounted({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes(`${'a'.repeat(19)}日x\r\nnext`)]);
+    const retained = text();
+    for (let start = 0; start < retained.length; start += 1) {
+      for (let end = start + 1; end <= retained.length; end += 1) {
+        const needle = retained.slice(start, end);
+        if (/^\n+$/u.test(needle)) continue;
+        const selected = engine.selectMatch({ start, end, text: needle }, SEARCH_TEXT_BYTE_LIMIT);
+        expect(selected).toBe(true);
+        expect(captured.terminal.getSelection()).toBe(needle.replace(/\n+$/u, ''));
+      }
+    }
+  });
+
   test('selects nothing for a match that starts inside one cell’s characters', async () => {
     const { captured, engine, text } = mounted();
     await captured.deliver([bytes('é end')]);
@@ -404,5 +459,14 @@ describe('keeping the newest output within the bounds', () => {
     expect(projection.text).toBe('日'.repeat(33));
     expect(projection.bytes).toBe(99);
     expect(projection.truncated).toBe(true);
+  });
+});
+
+describe('a retained buffer that starts with a blank line', () => {
+  test('exports it whole and not as a truncation', async () => {
+    const { captured, engine } = mounted();
+    await captured.deliver([bytes('\r\nhello')]);
+    const exported = buildTextExport(engine.readProjection(RETAINED_READ_CEILING));
+    expect(exported).toMatchObject({ text: '\nhello', truncated: false });
   });
 });

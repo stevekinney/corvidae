@@ -18,7 +18,7 @@ import type { SearchView } from './search.ts';
 const number = (value: number): string => value.toLocaleString('en-US');
 
 /** What the search status line says. */
-export function describeSearch(view: SearchView): string {
+export function describeSearch(view: SearchView, selectionFailed = false): string {
   let message: string;
   switch (view.status) {
     case 'idle':
@@ -42,9 +42,12 @@ export function describeSearch(view: SearchView): string {
       }
       break;
   }
-  return view.truncated
+  const searched = view.truncated
     ? `${message} Only the most recent ${number(SEARCH_TEXT_BYTE_LIMIT)} bytes were searched.`
     : message;
+  return selectionFailed && view.index !== undefined
+    ? `${searched} This match cannot be selected in the terminal.`
+    : searched;
 }
 
 /** The notices above a snapshot: empty, truncated, stale, replaced, and what Download will save. */

@@ -13,24 +13,32 @@ import {
 import { waitFor } from '../components/terminal/terminal-test-support.ts';
 import Terminal from '../components/terminal/terminal.svelte';
 import type { TerminalProps } from '../components/terminal/terminal.types.ts';
-import { createFakeInputController } from '../input/input-test-support.ts';
+import { createFakeInputController, sentText } from '../input/input-test-support.ts';
 import { textSaver } from './export.ts';
-import type { InspectionEvent } from './inspection-types.ts';
+import { inspectionTimer } from './inspection-controller.ts';
+import { createManualTimer } from './inspection-test-support.ts';
+import { SEARCH_REFRESH_DELAY_MS, type InspectionEvent } from './inspection-types.ts';
 
 const ESC = '\u001b';
 const encoder = new TextEncoder();
 const bytes = (text: string) => encoder.encode(text);
 
 const originalSave = textSaver.save;
+const originalTimer = inspectionTimer.start;
+/** The search's pauses pass when a test says so, not when a clock does. */
+const timer = createManualTimer();
 const saved: string[] = [];
 
 beforeEach(() => {
+  inspectionTimer.start = (callback, delay) => timer.start(callback, delay);
   textSaver.save = (text) => {
     saved.push(text);
   };
 });
 
 afterEach(async () => {
+  inspectionTimer.start = originalTimer;
+  timer.flush();
   textSaver.save = originalSave;
   saved.length = 0;
   await destroyAllHarnesses();
@@ -96,6 +104,7 @@ function typeQuery(harness: MountedHarness, query: string): HTMLTextAreaElement 
   const field = required<HTMLTextAreaElement>(harness.target, '.cinder-terminal__search textarea');
   field.value = query;
   field.dispatchEvent(new Event('input', { bubbles: true }));
+  timer.flush();
   harness.flush();
   return field;
 }
@@ -240,6 +249,8 @@ describe('search', () => {
     typeQuery(harness, 'find');
     expect(status(harness)).toBe('1 match.');
     await send(controller, ' find find');
+    expect(timer.delays).toEqual([SEARCH_REFRESH_DELAY_MS]);
+    timer.flush();
     await waitFor(() => status(harness) === '3 matches.', 'the results to recompute');
   });
 
@@ -295,6 +306,35 @@ describe('search', () => {
     expect(status(harness)).toBe('1 match.');
     props.controller = wired();
     await waitFor(() => status(harness) === 'No matches.', 'the old output to be unavailable');
+  });
+
+  test('says when the match cannot be selected in the terminal', async () => {
+    const { harness } = await searching('one\r\n\r\nthree');
+    typeQuery(harness, '\n\n');
+    button('Next match', harness.target).click();
+    harness.flush();
+    expect(status(harness)).toBe('Match 1 of 1. This match cannot be selected in the terminal.');
+    typeQuery(harness, 'one');
+    button('Next match', harness.target).click();
+    harness.flush();
+    expect(status(harness)).toBe('Match 1 of 1.');
+  });
+
+  test('closing releases the query and the results, so reopening starts empty', async () => {
+    const { harness, trigger } = await searching('alpha alpha');
+    typeQuery(harness, 'alpha');
+    expect(status(harness)).toBe('2 matches.');
+    button('Close search', harness.target).click();
+    harness.flush();
+    click(trigger, harness);
+    await waitFor(
+      () => harness.target.querySelector('.cinder-terminal__search') !== null,
+      'search',
+    );
+    expect(status(harness)).toBe('');
+    expect(
+      required<HTMLTextAreaElement>(harness.target, '.cinder-terminal__search textarea').value,
+    ).toBe('');
   });
 
   test('Previous and Next are off until there is a match', async () => {
@@ -652,16 +692,9 @@ describe('clearing', () => {
 });
 
 describe('what inspection never does', () => {
-  test('sends no input to the process, restarts nothing, and tells the controller nothing', async () => {
-    const controller = wired();
-    const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
-    // A focused program that asked for focus reports would send them on any focus change.
-    await send(controller, `${ESC}[?1004h${ESC}[?2004houtput https://example.com/x`);
-    // Turning focus reporting on makes the engine report its own current focus once, at the
-    // program's request. Everything after this baseline would be inspection's doing.
-    const baseline = controller.input.sent.length;
-    const trigger = button('Search', harness.target);
-    click(trigger, harness);
+  /** Every inspection action, in the order a reader might use them. */
+  async function useEveryTool(harness: MountedHarness): Promise<void> {
+    click(button('Search', harness.target), harness);
     await waitFor(
       () => harness.target.querySelector('.cinder-terminal__search') !== null,
       'search',
@@ -671,19 +704,44 @@ describe('what inspection never does', () => {
     button('Close search', harness.target).click();
     await openSnapshot(harness);
     button('Refresh', dialog()!).click();
-    await closeDialog(harness, 'Close');
-    await openSnapshot(harness);
     button('Download', dialog()!).click();
     await closeDialog(harness, 'Close');
     button('Clear screen', harness.target).click();
     button('Clear history', harness.target).click();
     button('Reset terminal', harness.target).click();
     await waitFor(() => announcement(harness) === 'Terminal reset', 'the reset');
-    expect(controller.input.sent.slice(baseline)).toEqual([]);
+  }
+
+  const focusEngine = (harness: MountedHarness) =>
+    required<HTMLTextAreaElement>(harness.target, '.xterm-helper-textarea').focus();
+
+  test('with the terminal focused, sends no input, restarts nothing, and tells the controller nothing', async () => {
+    const controller = wired();
+    const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
+    await send(controller, 'output https://example.com/x');
+    focusEngine(harness);
+    await useEveryTool(harness);
+    expect(controller.input.sent).toEqual([]);
     expect(controller.failures).toEqual([]);
     expect(controller.disposals).toBe(0);
     expect(controller.subscriptions).toBe(1);
     expect(controller.unsubscriptions).toBe(0);
+  });
+
+  test('under focus reporting, the only bytes are the engine’s own focus reports', async () => {
+    const controller = wired();
+    const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
+    focusEngine(harness);
+    // The program asked to be told about focus; the engine reports its focus once, at once.
+    await send(controller, `${ESC}[?1004h${ESC}[?2004houtput https://example.com/x`);
+    expect(sentText(controller.input)).toBe(`${ESC}[I`);
+    await useEveryTool(harness);
+    // Opening Search moved focus off the terminal, so the engine reported that, as the protocol
+    // requires. Nothing else was sent: no key, no query text, no paste, no reset.
+    const sent = sentText(controller.input);
+    expect(sent.startsWith(`${ESC}[I${ESC}[O`)).toBe(true);
+    expect(sent.replaceAll(`${ESC}[I`, '').replaceAll(`${ESC}[O`, '')).toBe('');
+    expect(controller.failures).toEqual([]);
   });
 
   test('a read-only view stays input-free through every action', async () => {

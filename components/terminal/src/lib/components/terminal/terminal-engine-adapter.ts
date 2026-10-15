@@ -152,7 +152,8 @@ export type RendererEngine = {
    * Select the retained text a search found, without scrolling the viewport or moving focus. The
    * match is `text.slice(start, end)` of the projection read within `maximumBytes` now; if the
    * buffer no longer holds exactly `text` there, or the cells cannot be placed exactly, nothing is
-   * selected and this returns `false`.
+   * selected and this returns `false`. A trailing line break is not selected, because a selection
+   * cannot end after one; a match of nothing but line breaks cannot be selected.
    */
   selectMatch(match: { start: number; end: number; text: string }, maximumBytes: number): boolean;
   /** Drop the selection {@link RendererEngine.selectMatch} made. A reader's own selection stays. */
@@ -365,13 +366,17 @@ export function createRendererEngine(
     selectMatch(match, maximumBytes) {
       const buffer = terminal.buffer.active;
       const projection = projectBuffer(buffer, maximumBytes);
+      // A selection cannot end after a line feed, so a match that ends with one selects up to the
+      // end of its last line.
+      const selected = match.text.replace(/\n+$/u, '');
+      const end = match.start + selected.length;
       const cells =
-        projection.text.slice(match.start, match.end) === match.text
-          ? locateRange(buffer, projection, terminal.cols, match)
+        selected !== '' && projection.text.slice(match.start, end) === selected
+          ? locateRange(buffer, projection, terminal.cols, { start: match.start, end })
           : undefined;
       if (cells !== undefined) {
         terminal.select(cells.column, cells.row, cells.length);
-        if (terminal.getSelection() === match.text) {
+        if (terminal.getSelection() === selected) {
           ownsSelection = true;
           return true;
         }

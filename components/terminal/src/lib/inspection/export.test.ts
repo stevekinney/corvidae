@@ -89,6 +89,18 @@ describe('buildTextExport', () => {
     expect(whole.truncated).toBe(false);
   });
 
+  test('a leading blank line is a line, not a truncation', () => {
+    for (const maximumLines of [100, 2]) {
+      const result = buildTextExport(projectionOf('\nabc'), { maximumBytes: 100, maximumLines });
+      expect(result).toMatchObject({ text: '\nabc', truncated: false });
+    }
+    const one = buildTextExport(projectionOf('\nabc'), { maximumBytes: 100, maximumLines: 1 });
+    expect(one.text).toBe('abc');
+    expect(one.truncated).toBe(true);
+    const blanks = buildTextExport(projectionOf('\n\nabc'), { maximumBytes: 100, maximumLines: 3 });
+    expect(blanks).toMatchObject({ text: '\n\nabc', truncated: false });
+  });
+
   test('is truncated when the projection itself stopped at its read limit', () => {
     expect(buildTextExport(projectionOf('abc', true)).truncated).toBe(true);
   });

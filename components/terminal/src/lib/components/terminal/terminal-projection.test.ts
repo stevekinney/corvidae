@@ -276,10 +276,14 @@ describe('the work is bounded by the limit, not by the scrollback or a row', () 
     expect(projection.text).toBe('日' + 'a'.repeat(255));
     expect(projection.bytes).toBe(258);
   });
+});
 
-  test('never asks for more cells than the limit needs when every cell carries combining marks', () => {
-    const marks = '́'.repeat(1000);
-    let widest = 0;
+describe('slices are bounded by bytes before they are materialized (COR-1516)', () => {
+  const MARKS = '\u0301'.repeat(1000);
+
+  /** Every cell is a letter carrying a long run of combining marks, and the fake counts what it hands out. */
+  function markedBuffer() {
+    const counts = { cells: 0, characters: 0, widest: 0 };
     const buffer: ProjectionBuffer = {
       length: 1,
       getLine: () => ({
@@ -287,14 +291,58 @@ describe('the work is bounded by the limit, not by the scrollback or a row', () 
         length: 100_000,
         translateToString: (_trimRight, start = 0, end = 100_000) => {
           const cells = Math.max(0, Math.min(end, 100_000) - start);
-          widest = Math.max(widest, cells);
-          return `a${marks}`.repeat(cells);
+          counts.cells += cells;
+          counts.widest = Math.max(counts.widest, cells);
+          const text = `a${MARKS}`.repeat(cells);
+          counts.characters += text.length;
+          return text;
         },
       }),
     };
+    return { buffer, counts };
+  }
+
+  test('never asks for more cells than the bytes still unspent', () => {
+    const { buffer, counts } = markedBuffer();
     const projection = projectBuffer(buffer, 8);
+    // Newest first: the last four marks, two bytes each, are the whole code points that fit eight.
+    expect(projection.text).toBe('\u0301'.repeat(4));
+    expect(projection.bytes).toBe(8);
     expect(projection.truncated).toBe(true);
-    expect(projection.bytes).toBeLessThanOrEqual(8);
-    expect(widest).toBeLessThanOrEqual(256);
+    expect(counts.widest).toBeLessThanOrEqual(8);
+    expect(counts.cells).toBeLessThanOrEqual(8);
+  });
+
+  test('clips an oversized slice before it is encoded', () => {
+    const encoded: number[] = [];
+    const original = TextEncoder.prototype.encode;
+    TextEncoder.prototype.encode = function encode(this: TextEncoder, input?: string) {
+      encoded.push(input?.length ?? 0);
+      return original.call(this, input);
+    };
+    try {
+      const { buffer } = markedBuffer();
+      const projection = projectBuffer(buffer, 8);
+      expect(projection.text).toBe('\u0301'.repeat(4));
+      expect(projection.bytes).toBe(8);
+    } finally {
+      TextEncoder.prototype.encode = original;
+    }
+    expect(Math.max(...encoded)).toBeLessThanOrEqual(16);
+  });
+
+  test('a clip never leaves half of a surrogate pair', () => {
+    const buffer: ProjectionBuffer = {
+      length: 1,
+      getLine: () => ({
+        isWrapped: false,
+        length: 10,
+        translateToString: (_trimRight, start = 0, end = 10) =>
+          '\u{1f600}'.repeat(10).slice(start * 2, end * 2),
+      }),
+    };
+    const projection = projectBuffer(buffer, 5);
+    expect(projection.text).toBe('\u{1f600}');
+    expect(projection.bytes).toBe(4);
   });
 });

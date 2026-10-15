@@ -169,6 +169,23 @@ describe('locateRange', () => {
     ).toBeUndefined();
   });
 
+  test('a range ending where a row wraps ends at that row’s content, not in the next row', () => {
+    // The row ends with an unwritten cell, as when a wide character does not fit and wraps whole.
+    const buffer = bufferOf(row('abcdefg', false, 8), row('hi', true, 8));
+    const projection = projectionOf('abcdefghi', [{ row: 0, start: 0 }]);
+    expect(locateRange(buffer, projection, 8, { start: 4, end: 7 })).toEqual({
+      column: 4,
+      row: 0,
+      length: 3,
+    });
+    // A range that starts where the next row starts begins in that row.
+    expect(locateRange(buffer, projection, 8, { start: 7, end: 9 })).toEqual({
+      column: 0,
+      row: 1,
+      length: 2,
+    });
+  });
+
   test('cannot place a range when a cell is missing', () => {
     const missing: Row = { cells: [cell('a'), undefined], wrapped: false, text: 'ab' };
     const projection = projectionOf('ab', [{ row: 0, start: 0 }]);

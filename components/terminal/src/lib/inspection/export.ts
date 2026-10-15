@@ -38,6 +38,8 @@ const decoder = new TextDecoder();
 function limitLines(text: string, maximumLines: number): string {
   let boundary = text.length;
   for (let line = 0; line < maximumLines; line += 1) {
+    // `lastIndexOf` treats a negative start as 0, so at the first character it would find itself.
+    if (boundary <= 0) return text;
     boundary = text.lastIndexOf('\n', boundary - 1);
     if (boundary < 0) return text;
   }

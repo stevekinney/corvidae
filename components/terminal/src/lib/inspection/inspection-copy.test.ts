@@ -73,6 +73,16 @@ function viewOf(
 
 const READY = 'Download ready: 4 bytes of plain text.';
 
+describe('describeSearch when the match cannot be selected', () => {
+  test('says so only for an active match', () => {
+    expect(describeSearch({ ...base, index: 0 }, true)).toBe(
+      'Match 1 of 3. This match cannot be selected in the terminal.',
+    );
+    expect(describeSearch({ ...base }, true)).toBe('3 matches.');
+    expect(describeSearch({ ...base, index: 0 }, false)).toBe('Match 1 of 3.');
+  });
+});
+
 describe('describeSnapshot', () => {
   test('always ends with what Download will save', () => {
     expect(describeSnapshot(viewOf('text'))).toEqual([READY]);

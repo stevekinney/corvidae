@@ -1,9 +1,10 @@
 import type { ClearScope } from '../components/terminal/terminal-engine-adapter.ts';
-import { scheduleFitOnNextFrame, type FitScheduler } from '../components/terminal/terminal-fit.ts';
 import { buildTextExport, textSaver } from './export.ts';
 import {
   RETAINED_READ_CEILING,
+  SEARCH_REFRESH_DELAY_MS,
   SEARCH_TEXT_BYTE_LIMIT,
+  SEARCH_TYPING_DELAY_MS,
   SNAPSHOT_BYTE_LIMIT,
   type InspectionEvent,
   type InspectionEventListener,
@@ -34,6 +35,8 @@ export type InspectionView = {
   snapshotOpen: boolean;
   /** Held from capture until the dialog has fully closed, then released. */
   snapshot: SnapshotView | undefined;
+  /** The last step could not select its match in the terminal. */
+  selectionFailed: boolean;
   /** The host enabled links, so the snapshot lists addresses. */
   linksEnabled: boolean;
 };
@@ -45,9 +48,19 @@ export type InspectionOptions = {
   readOnEvent: () => InspectionEventListener | undefined;
   /** Say something politely. Never given output, only fixed words and counts. */
   announce: (message: string) => void;
-  /** Coalesces re-searching while output arrives. */
-  schedule?: FitScheduler;
+  /** Starts a timer for `delay` milliseconds and returns what cancels it. */
+  timer?: Timer;
 };
+
+export type Timer = (callback: () => void, delay: number) => () => void;
+
+const startTimeout: Timer = (callback, delay) => {
+  const handle = setTimeout(callback, delay);
+  return () => clearTimeout(handle);
+};
+
+/** The clock the search waits on. Replaceable, so a test can pass time without waiting for it. */
+export const inspectionTimer: { start: Timer } = { start: startTimeout };
 
 export type Inspection = {
   readonly view: InspectionView;
@@ -81,7 +94,7 @@ const CLEAR_ANNOUNCEMENT: Record<ClearScope, string> = {
 };
 
 export function createInspection(options: InspectionOptions): Inspection {
-  const schedule = options.schedule ?? scheduleFitOnNextFrame;
+  const timer = options.timer ?? ((callback, delay) => inspectionTimer.start(callback, delay));
   const listeners = new Set<() => void>();
   const search = createSearch();
   let searchOpen = false;
@@ -90,6 +103,8 @@ export function createInspection(options: InspectionOptions): Inspection {
   let snapshotOpen = false;
   let stale = false;
   let cancelPending: (() => void) | undefined;
+  let cancelTyping: (() => void) | undefined;
+  let selectionFailed = false;
   let disposed = false;
   let view: InspectionView;
 
@@ -127,6 +142,7 @@ export function createInspection(options: InspectionOptions): Inspection {
       search: search.view,
       snapshotOpen,
       snapshot: snapshotView(),
+      selectionFailed,
       linksEnabled: options.readActivateLink() !== undefined,
     };
   }
@@ -140,20 +156,24 @@ export function createInspection(options: InspectionOptions): Inspection {
   /** Keep the terminal's selection on the active match, or drop it when there is none. */
   function syncSelection(select: boolean): void {
     const source = currentSource();
-    if (source === undefined) return;
     const match = search.view.match;
-    if (searchOpen && match !== undefined) {
-      if (select) source.selectMatch(match, SEARCH_TEXT_BYTE_LIMIT);
-    } else {
-      source.clearMatchSelection();
+    if (source !== undefined && searchOpen && match !== undefined) {
+      if (select) selectionFailed = !source.selectMatch(match, SEARCH_TEXT_BYTE_LIMIT);
+      return;
     }
+    selectionFailed = false;
+    source?.clearMatchSelection();
   }
 
   function researchNow(): void {
     cancelPending?.();
     cancelPending = undefined;
     const source = currentSource();
-    const projection = source?.readProjection(SEARCH_TEXT_BYTE_LIMIT);
+    // With no query there is nothing to look for, so the retained output is not read at all.
+    const projection =
+      query === ''
+        ? { text: '', truncated: false }
+        : source?.readProjection(SEARCH_TEXT_BYTE_LIMIT);
     if (projection === undefined) search.makeUnavailable();
     else search.update(projection.text, projection.truncated);
     syncSelection(false);
@@ -161,12 +181,12 @@ export function createInspection(options: InspectionOptions): Inspection {
 
   function scheduleResearch(): void {
     if (cancelPending !== undefined) return;
-    cancelPending = schedule(() => {
+    cancelPending = timer(() => {
       cancelPending = undefined;
       if (!searchOpen || disposed) return;
       researchNow();
       publish();
-    });
+    }, SEARCH_REFRESH_DELAY_MS);
   }
 
   function cancelResearch(): void {
@@ -184,8 +204,19 @@ export function createInspection(options: InspectionOptions): Inspection {
     });
   }
 
+  /** Search the query as it stands now, without waiting for the pause. */
+  function applyQuery(): void {
+    cancelTyping?.();
+    cancelTyping = undefined;
+    search.setQuery(query);
+    researchNow();
+    syncSelection(false);
+    reportSearch();
+  }
+
   function step(direction: 'next' | 'previous'): void {
     if (!searchOpen) return;
+    if (cancelTyping !== undefined) applyQuery();
     // Output may have arrived since the last search; step through what the reader can see now.
     if (cancelPending !== undefined) researchNow();
     if (direction === 'next') search.next();
@@ -235,14 +266,21 @@ export function createInspection(options: InspectionOptions): Inspection {
     closeSearch() {
       searchOpen = false;
       cancelResearch();
+      cancelTyping?.();
+      cancelTyping = undefined;
       syncSelection(false);
+      // Nothing of the search outlives it: not the text, the matches, or the query.
+      search.release();
+      query = '';
       publish();
     },
     setQuery(next) {
       query = next;
-      search.setQuery(next);
-      researchNow();
-      reportSearch();
+      cancelTyping?.();
+      cancelTyping = timer(() => {
+        applyQuery();
+        publish();
+      }, SEARCH_TYPING_DELAY_MS);
       publish();
     },
     next: () => step('next'),
@@ -353,6 +391,7 @@ export function createInspection(options: InspectionOptions): Inspection {
     dispose() {
       disposed = true;
       cancelResearch();
+      cancelTyping?.();
       snapshot = undefined;
       listeners.clear();
     },

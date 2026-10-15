@@ -251,4 +251,22 @@ describe('createSearch', () => {
     search.update('a', false);
     expect(search.view.status).toBe('matches');
   });
+
+  test('release forgets the text, the query and the matches', () => {
+    const search = searching('find find', 'find');
+    search.next();
+    search.release();
+    expect(search.view).toEqual({
+      status: 'idle',
+      count: 0,
+      index: undefined,
+      capped: false,
+      truncated: false,
+      wrapped: false,
+      excerpt: undefined,
+      match: undefined,
+    });
+    search.update('find', false);
+    expect(search.view.status).toBe('idle');
+  });
 });

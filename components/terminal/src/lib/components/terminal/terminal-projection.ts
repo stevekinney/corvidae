@@ -74,11 +74,9 @@ function tailWithinBytes(text: string, maximumBytes: number): string {
 
 /**
  * The cell just past a row's content, found without reading the row: a two-cell window is empty
- * exactly when it starts past the last content, so the first empty window marks the end. A row no
- * wider than one slice is simply read whole, so its end is its width.
+ * exactly when it starts past the last content, so the first empty window marks the end.
  */
 function contentEnd(line: ProjectionLine): number {
-  if (line.length <= ROW_SLICE_CELLS) return line.length;
   let low = 0;
   let high = line.length;
   while (low < high) {
@@ -90,8 +88,12 @@ function contentEnd(line: ProjectionLine): number {
 }
 
 /**
- * The end of one row's text, read backwards in bounded slices until `budget` bytes are held or the
- * row's first cell is reached. `complete` is false when cells before the text were left unread.
+ * The end of one row's text, read backwards until `budget` bytes are held or the row's first cell
+ * is reached. A slice is never wider than the bytes still unspent: every cell that holds anything
+ * contributes at least one byte, so a wider read could only fetch text that is about to be
+ * discarded. A slice is also clipped to its last `unspent` code units before it is encoded, because
+ * a code unit encodes to at least one byte, so only those can matter. `complete` is false when
+ * cells before the text were left unread.
  */
 function readRowTail(
   line: ProjectionLine,
@@ -99,15 +101,36 @@ function readRowTail(
 ): { text: string; bytes: number; complete: boolean } {
   const slices: string[] = [];
   let bytes = 0;
-  let column = contentEnd(line);
+  let column = line.length;
+  let clipped = false;
+  let probed = false;
   while (column > 0 && bytes < budget) {
-    const start = Math.max(0, column - ROW_SLICE_CELLS);
-    const slice = line.translateToString(true, start, column);
+    const unspent = budget - bytes;
+    const start = Math.max(0, column - Math.min(ROW_SLICE_CELLS, unspent));
+    let slice = line.translateToString(true, start, column);
+    if (slice === '' && bytes === 0) {
+      // A blank tail. A wide row jumps straight to where its content ends instead of stepping
+      // across the blank cells.
+      if (!probed && line.length > ROW_SLICE_CELLS) {
+        probed = true;
+        column = contentEnd(line);
+      } else {
+        column = start;
+      }
+      continue;
+    }
+    if (slice.length > unspent) {
+      slice = slice.slice(slice.length - unspent);
+      // Clipping can land between the halves of a surrogate pair; the stray half goes.
+      const first = slice.charCodeAt(0);
+      if (first >= 0xdc00 && first <= 0xdfff) slice = slice.slice(1);
+      clipped = true;
+    }
     slices.push(slice);
     bytes += byteLength(slice);
     column = start;
   }
-  return { text: slices.reverse().join(''), bytes, complete: column === 0 };
+  return { text: slices.reverse().join(''), bytes, complete: column === 0 && !clipped };
 }
 
 /**
