@@ -483,6 +483,78 @@
         "issue": "COR-1196"
       },
       {
+        "directory": "packages/components/scripts/tokens/corpus.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/corpus.ts` into `src/tokens/runtime/corpus.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/css-configuration.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/css-configuration.ts` into `src/tokens/runtime/css-configuration.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/css-stylelint.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/css-stylelint.ts` into `src/tokens/runtime/css-stylelint.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/css-support.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/css-support.ts` into `src/tokens/runtime/css-support.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/registry.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/registry.ts` into `src/tokens/runtime/registry.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/resolve.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/resolve.ts` into `src/tokens/runtime/resolve.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/types.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/types.ts` into `src/tokens/runtime/types.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/validate-schema.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/validate-schema.ts` into `src/tokens/runtime/validate-schema.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/validate.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/validate.ts` into `src/tokens/runtime/validate.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/value-color.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/value-color.ts` into `src/tokens/runtime/value-color.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/value-entry.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/value-entry.ts` into `src/tokens/runtime/value-entry.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/value-formatters.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of a token kernel module COR-491 moved from `scripts/tokens/value-formatters.ts` into `src/tokens/runtime/value-formatters.ts`, where corvidae declares it now. Nothing corvidae emits imports this path, so the sync never overwrites it, and left in place it is type-checked against the moved modules' new exports (a live prepare run failed `typecheck` on `registry.ts`). Retired rather than declared because there is nothing at this path in corvidae to declare.",
+        "issue": "COR-491"
+      },
+      {
         "directory": "packages/chat",
         "target": "cinder",
         "reason": "The repository owner ruled on 2026-10-14 to stop publishing `@lostgradient/chat`, and `package-map.json` now excludes it. Excluding a workspace only stops the transform from emitting it; under COR-1221 the cinder mirror's existing copy would survive every later sync, stay a workspace under `packages/*`, and keep releasing through the mirror's own Changesets flow from frozen source. Retired here so the next sync removes it. Any reference to `packages/chat` in Cinder-owned release tooling has to go in the target's own pull request.",
