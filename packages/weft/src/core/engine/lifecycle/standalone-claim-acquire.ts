@@ -43,6 +43,7 @@
  */
 
 import { KEYS, storageHas } from '../../../storage/interface.ts';
+import { rebindHandleClaimEpoch } from '../handle-result.ts';
 import type { EngineInternals } from '../internals.ts';
 import { WorkflowClaimUnavailableError } from '../lease-errors.ts';
 import { wakeOwnershipCheck } from '../wake-ownership-check.ts';
@@ -114,6 +115,7 @@ export async function acquireStandaloneClaimBeforeResume(
   if (result.status === 'lost-race') {
     throw new WorkflowClaimUnavailableError(workflowId, result.heldBy);
   }
+  rebindHandleClaimEpoch(internals, workflowId);
   return { freshlyAcquired: true, epoch: result.epoch };
 }
 

@@ -1,7 +1,7 @@
 import { abandonedGenerationConflict } from './checkpoint-conflict-abandon.ts';
 import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { EngineDisposedError } from './errors.ts';
-import { WorkflowHandle } from './handles.ts';
+import { HANDLE_CLAIM_EPOCH, WorkflowHandle } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from './storage-io.ts';
 
@@ -18,6 +18,20 @@ export function createWorkflowHandleWithResultPromise(
   const handle = new WorkflowHandle(workflowId, internals.engine, claimEpoch);
   cacheHandle(internals, workflowId, handle);
   return handle;
+}
+
+/**
+ * The run behind `workflowId` was just acquired again on this engine (resume,
+ * recovery, reclaim, a delayed start's firing, a retry): point its cached handle
+ * at the new claim epoch, so `lostWorkflowClaim(handle)` keeps answering for the
+ * same run. Call it only for the SAME run. A `start-new` replacement is a new
+ * run and must not call it: the superseded handle keeps its own generation.
+ */
+export function rebindHandleClaimEpoch(internals: EngineInternals, workflowId: string): void {
+  const epoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
+  if (epoch === null) return;
+  const handle = internals.handleCache.get(workflowId)?.ref.deref();
+  if (handle !== undefined) handle[HANDLE_CLAIM_EPOCH] = epoch;
 }
 
 export function createWorkflowResultWaiter(

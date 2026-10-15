@@ -182,11 +182,13 @@ export interface WorkflowHandleEngine extends EventTarget {
 export class WorkflowHandle<TResult = unknown> extends EventTarget implements AsyncDisposable {
   readonly id: string;
   /**
-   * The `ownership: 'workflow-lease'` claim epoch this engine held for the run
-   * when the handle was created, or `null` when it held none (another
-   * ownership mode, or a workflow this engine never claimed).
+   * The `ownership: 'workflow-lease'` claim epoch this engine holds for the run
+   * this handle drives, or `null` when it holds none (another ownership mode, or
+   * a workflow this engine never claimed). Taken when the handle is created and
+   * moved forward by `rebindHandleClaimEpoch` when the same run is acquired
+   * again (resume, recovery, reclaim), never by a `start-new` replacement.
    */
-  readonly [HANDLE_CLAIM_EPOCH]: number | null;
+  [HANDLE_CLAIM_EPOCH]: number | null;
   readonly #engine: WorkflowHandleEngine;
   #resultPromise: Promise<TResult> | undefined;
 

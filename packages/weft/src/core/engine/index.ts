@@ -205,6 +205,7 @@ import {
   createWorkflowHandleWithResultPromise as createWorkflowHandleWithResultPromiseFromInternals,
   getWorkflowResultPromise as getWorkflowResultPromiseFromInternals,
   pollPendingCrossEngineResultWaiters,
+  rebindHandleClaimEpoch,
 } from './handle-result.ts';
 import {
   HANDLE_RESULT_PROMISE,
@@ -1246,6 +1247,7 @@ export class Engine<
           // takeover-CAS side of this race; this closes the drive side for a
           // takeover that had already landed before disposal was signaled.
           if (internals.disposed) return;
+          rebindHandleClaimEpoch(internals, workflowId);
           await resumeFromLifecycle(
             internals,
             workflowId,

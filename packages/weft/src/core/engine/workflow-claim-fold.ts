@@ -43,6 +43,7 @@ import {
   type BatchOperation,
   type ConditionalBatchCondition,
 } from '../../storage/interface.ts';
+import { rebindHandleClaimEpoch } from './handle-result.ts';
 import type { EngineInternals } from './internals.ts';
 import { WorkflowClaimUnavailableError } from './lease-errors.ts';
 import { decodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
@@ -161,6 +162,7 @@ export async function commitWithWorkflowClaimFold(
   operations: BatchOperation[],
   conditions: ConditionalBatchCondition[],
   featureName: string,
+  options: { startsNewRun?: boolean } = {},
 ): Promise<WorkflowClaimFoldCommitResult> {
   requireStorageCapability(internals.storage, 'conditionalBatch', featureName);
   const committed = await storageConditionalBatch(
@@ -170,6 +172,9 @@ export async function commitWithWorkflowClaimFold(
   );
   if (committed) {
     fold.registry.recordFoldedAcquire(fold.workflowId, fold.preparation);
+    // Every fold but a start acquires a run that already has a handle (a delayed
+    // start's firing, a retry), so that handle follows the new epoch.
+    if (options.startsNewRun !== true) rebindHandleClaimEpoch(internals, fold.workflowId);
     return { status: 'committed' };
   }
   return {

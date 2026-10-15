@@ -190,6 +190,7 @@ async function persistStartBatch(
       startOperations,
       conditions.map((entry) => entry.condition),
       'workflow claim acquisition',
+      { startsNewRun: true },
     );
     if (result.status === 'committed') return 'committed';
     return result.claimConflict ? 'claim-lost' : 'precondition-lost';
