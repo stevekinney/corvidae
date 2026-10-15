@@ -22,7 +22,12 @@ import { HttpClient } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { createClient, readRuntimeConfig } from '@lostgradient/weft-ui';
+// The two modules under test, imported directly rather than through `@lostgradient/weft/ui`: the
+// entry also evaluates the app shell (`app/app.svelte` and `app/shell/`), which this file does not
+// render, and loading it here would add those unexercised components to the UI coverage
+// ratchet's measured files (`scripts/ui-coverage/`), whose recorded floors never included them.
+import { createClient } from '../../../../src/ui/lib/client.ts';
+import { readRuntimeConfig } from '../../../../src/ui/lib/config.ts';
 
 const CONFIG_ELEMENT_ID = 'weft-ui-config';
 const CONSOLE_ORIGIN = 'https://weft-ui.example.com';

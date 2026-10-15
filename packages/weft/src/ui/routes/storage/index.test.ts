@@ -1,4 +1,4 @@
-import { requireElement } from '../../../tests/dom-test-support.ts';
+import { requireElement } from '../../tests/dom.test-support.ts';
 
 /**
  * Component tests for the Storage route (plan §9.6, Appendix B "denied

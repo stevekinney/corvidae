@@ -1,8 +1,8 @@
 /**
  * Component tests for `<RealmsTab>` (COR-243): the empty "not in realm
- * mode" state and a populated realm-pool table.
+ * mode" state, a populated realm-pool table, and the fault banner.
  */
-import { render } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { createQueryClient } from '../../lib/query.ts';
@@ -70,6 +70,29 @@ describe('RealmsTab', () => {
     // `realms-view.test.ts`; the summary line's own "2 revision pool(s)" and
     // the table's "2" pending-turn-count cell are both literally "2", so
     // asserting on that digit here would be ambiguous rather than useful.
+    unmount();
+  });
+
+  test('shows the fault banner when the diagnostics read is refused, and Retry reads again', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcError('weft.realms.diagnostics', {
+      code: -32000,
+      message: 'forbidden',
+      data: { httpStatus: 403, weftCode: 'Forbidden' },
+    });
+
+    const { findByRole, unmount } = renderRealmsTab();
+    const banner = await findByRole('alert');
+    expect(banner.textContent).toContain('Not authorized');
+
+    const reads = () =>
+      scripted?.calls.filter(
+        (call) =>
+          typeof call.init?.body === 'string' && call.init.body.includes('weft.realms.diagnostics'),
+      ).length ?? 0;
+    const readsBeforeRetry = reads();
+    await fireEvent.click(await findByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(reads()).toBeGreaterThan(readsBeforeRetry));
     unmount();
   });
 });

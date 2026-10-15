@@ -8,8 +8,8 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { rejectionOf } from '@lostgradient/testing';
-import { installFetchImplementation } from '../../lib/live-source/fetch-test-support.ts';
+import { rejectionOf } from '../../../testing/promise-outcome.test-support.ts';
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import {
   probeConditionalBatchSupported,
   storageDelete,

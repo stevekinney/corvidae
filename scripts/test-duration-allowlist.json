@@ -15,8 +15,6 @@
     "applications/playground :: src/playground-server.test.ts :: chunks under /page-bundle/<filename>.js :: serves markdown-backed editor page bundles and their chunks",
     "components/cinder :: scripts/check-platform-features.test.ts :: scan \u2014 live inventory against the real source tree :: reports usage for every classified probe and only real viewport flags",
     "components/cinder :: scripts/stylelint/z-index-scale.test.ts :: cinder/z-index-scale :: reduces wide min, max, and hypot fallbacks without argument-limit bypasses",
-    "components/weft-ui :: src/routes/schedules/schedule-detail.test.ts :: ScheduleDetail :: queued runs (weft 0.13+ ScheduleQueuedRun[]) render as links with a queued-at timestamp",
-    "components/weft-ui :: src/routes/system/dynamic-source-panel.additional.test.ts :: additional coverage :: never renders a preload outcome under a different key\u2019s identity badges",
     "packages/bureau :: src/create-bureau.test.ts :: createBureau :: evicts the oldest boot frames at overflow so the newest history survives (COR-1421)",
     "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a recurring schedule into a fixed session and accumulates conversation across fires",
     "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a stateless interval schedule and runs the agent with a fresh session per fire",
@@ -25,6 +23,8 @@
     "packages/weft :: src/server/index.test.ts :: concurrent scanner deduplication :: does not double-process an orphaned operationId visible only to reconcileOrphanedRecords",
     "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownAllWorkers shuts down all connected workers",
     "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownWorker sends shutdown message and waits for disconnect",
-    "packages/weft :: src/server/remote-activity-integration.test.ts :: remote activity end-to-end integration (COR-152) :: preserves and completes a remote task across a server restart and engine recovery"
+    "packages/weft :: src/server/remote-activity-integration.test.ts :: remote activity end-to-end integration (COR-152) :: preserves and completes a remote task across a server restart and engine recovery",
+    "packages/weft :: src/ui/routes/schedules/schedule-detail.test.ts :: ScheduleDetail :: queued runs (weft 0.13+ ScheduleQueuedRun[]) render as links with a queued-at timestamp",
+    "packages/weft :: src/ui/routes/system/dynamic-source-panel.additional.test.ts :: additional coverage :: never renders a preload outcome under a different key\u2019s identity badges"
   ]
 }

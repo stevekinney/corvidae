@@ -1,4 +1,4 @@
-import { requireElement } from '../../../tests/dom-test-support.ts';
+import { requireElement } from '../../tests/dom.test-support.ts';
 
 /**
  * Component tests for `ReviewDecisionForm` (plan §9.5, Track D — the

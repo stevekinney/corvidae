@@ -2127,6 +2127,11 @@ export function parseLcov(content: string): CoverageResult {
  * coverage. So the shard applies exactly the exclusion `test` applies, read from the script
  * rather than copied, and the runner modules only those benchmarks exercise are ignored from
  * instrumentation in `bunfig.toml` with their reasons.
+ *
+ * The script's engine invocation also excludes the UI's trees (`src/ui/**`,
+ * `scripts/ui-browser/**`, `scripts/ui-coverage/**`). Its second invocation runs them under
+ * `bunfig.ui.toml`, and `scripts/ui-coverage/` gates their coverage with the UI's ratchet, so
+ * the engine shard, read from the same exclusions, never runs or measures a UI test.
  */
 export function readTestScriptPathIgnorePatterns(): string[] {
   const script = packageJson.scripts?.test;
@@ -2146,11 +2151,16 @@ export async function listCoverageTestFiles(): Promise<string[]> {
   const repositoryFileOutput = await $`git ls-files --cached --others --exclude-standard`.text();
   const repositoryFiles = repositoryFileOutput.split('\n').filter(Boolean);
   const testFileGlobs = COVERAGE_TEST_FILE_GLOBS.map((pattern) => new Glob(pattern));
-  const excludedByTestScript = new Set(readTestScriptPathIgnorePatterns());
+  // Matched as globs, as `bun test` matches them: the benchmark entries name single files, and the
+  // UI's (`src/ui/**`, `scripts/ui-browser/**`, `scripts/ui-coverage/**`) name the trees the UI's
+  // own invocation and ratchet cover, so the engine shard never runs a UI test.
+  const excludedByTestScript = readTestScriptPathIgnorePatterns().map(
+    (pattern) => new Glob(pattern),
+  );
 
   return repositoryFiles
     .filter((file) => {
-      if (excludedByTestScript.has(file)) return false;
+      if (excludedByTestScript.some((pattern) => pattern.match(file))) return false;
       const basename = file.slice(file.lastIndexOf('/') + 1);
       return testFileGlobs.some((glob) => glob.match(basename));
     })

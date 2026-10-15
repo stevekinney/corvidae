@@ -1,4 +1,4 @@
-import { requireElement } from '../../../../tests/dom-test-support.ts';
+import { requireElement } from '../../../tests/dom.test-support.ts';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';

@@ -1,7 +1,7 @@
 import { waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { installFetchImplementation } from './fetch-test-support.ts';
+import { installFetchImplementation } from './fetch.test-support.ts';
 import { FleetEventSource, type FleetEventFrame } from './fleet-event-source.svelte.ts';
 
 interface FetchCall {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing';
-import { installFetchImplementation } from '../../lib/live-source/fetch-test-support.ts';
+import { throwingRejectionOf } from '../../../testing/promise-outcome.test-support.ts';
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { probeHealth } from './health-probe.ts';
 
 let restoreFetch = (): void => {};

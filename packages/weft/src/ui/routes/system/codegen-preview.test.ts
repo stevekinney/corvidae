@@ -68,6 +68,16 @@ describe('previewInterface', () => {
     );
   });
 
+  test('renders a boolean field as the TypeScript boolean type', () => {
+    const output = previewInterface('FlagInput', {
+      type: 'object',
+      required: ['enabled'],
+      properties: { enabled: { type: 'boolean' } },
+    });
+
+    expect(output).toBe(['export interface FlagInput {', '  enabled: boolean;', '}'].join('\n'));
+  });
+
   test('falls back to unknown for an unrecognized fragment type', () => {
     const output = previewInterface('X', {
       type: 'object',

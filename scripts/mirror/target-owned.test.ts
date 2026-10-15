@@ -863,7 +863,10 @@ describe('retiring a directory the target still carries', async () => {
     // Corvidae has nothing left at the old paths, so the target's stale copies are retired.
     // `packages/chat`: the owner stopped publishing @lostgradient/chat on 2026-10-14, and the
     // mirror's copy would otherwise keep releasing from frozen source.
+    // COR-1455: the UI's old workspace, which no cinder sync writes now that the UI is part of
+    // Weft; retired so the unpublished copy does not outlive its source.
     expect(retiredDirectoriesFor(policy, 'cinder')).toEqual([
+      'packages/weft-ui',
       'packages/components/scripts/tokens/generate-artifacts.test.ts',
       'packages/components/scripts/tokens/generate.test.ts',
       ...[
@@ -890,18 +893,38 @@ describe('retiring a directory the target still carries', async () => {
     for (const entry of policy.retired.entries) {
       expect(['weft', 'cinder']).toContain(entry.target);
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['COR-1192', 'COR-1286', 'COR-1196', 'COR-1201', 'COR-1432', 'COR-491']).toContain(
-        entry.issue,
-      );
+      expect([
+        'COR-1192',
+        'COR-1286',
+        'COR-1196',
+        'COR-1201',
+        'COR-1432',
+        'COR-491',
+        'COR-1455',
+      ]).toContain(entry.issue);
     }
-    // A retirement names exactly one repository, so no target's list may reach another's paths.
+    // A retirement names exactly one repository, so no target's list may reach another's paths:
+    // each target's path comes from exactly one entry naming that target, the key
+    // `assertRetirementsCoherent` enforces. One path may be retired from two repositories only by
+    // two entries, as `packages/weft-ui` is: COR-1192 for weft's drifted copy, COR-1455 for
+    // cinder's copy of the workspace the UI left.
     for (const target of mirrorTargets) {
       for (const directory of retiredDirectoriesFor(policy, target)) {
         expect(
-          policy.retired.entries.filter((entry) => entry.directory === directory),
+          policy.retired.entries.filter(
+            (entry) => entry.directory === directory && entry.target === target,
+          ),
         ).toHaveLength(1);
       }
     }
+    expect(
+      policy.retired.entries
+        .filter((entry) => entry.directory === 'packages/weft-ui')
+        .map(({ target, issue }) => [target, issue]),
+    ).toEqual([
+      ['weft', 'COR-1192'],
+      ['cinder', 'COR-1455'],
+    ]);
     // The one retired entry that names a file rather than a directory — D3's own evidence that
     // `retiredEntrySchema`'s `directory` key needed no widening to carry it.
     const fileEntry = policy.retired.entries.find(

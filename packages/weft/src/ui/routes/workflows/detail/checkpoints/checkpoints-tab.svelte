@@ -18,7 +18,7 @@
    * has no JSON-RPC-over-HTTP route — `serve()`-pipeline-only, per that
    * file's own module doc; fixed upstream #716); verified live post-bump:
    * `weft.workflows.checkpoints.list` round-trips real checkpoint data
-   * through `bun run dev:server`. `checkpointsQuery.isError`
+   * through `bun run dev:ui-server`. `checkpointsQuery.isError`
    * still renders the real fault treatment rather than folding an error
    * into the empty state (an earlier draft did exactly that and silently
    * mislabeled a 404 as "no checkpoint history retained") — that stays

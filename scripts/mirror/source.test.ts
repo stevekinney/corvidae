@@ -274,21 +274,20 @@ function weftDeclarationFixture(omitted?: string): Record<string, string> {
 }
 
 /**
- * `@lostgradient/weft-ui`'s `bunfig.toml` preloads `tests/setup.ts` (`preload =
- * ["./tests/setup.ts"]`), which is where the `declare module 'bun:test'` augmentation adding
- * `@testing-library/jest-dom`'s matchers to `expect(...)` lives. Every one of the twenty-six
- * `src/routes/` suites that calls a jest-dom matcher (`toBeInTheDocument`, and
- * friends) type-checks against that augmentation, but `tests/setup.ts` was never declared in
- * `additionalSourceRoots['@lostgradient/weft-ui']` — only its sibling `tests/dom-test-support.ts`
- * was — so the file never shipped to the cinder target, and the target's own
- * `typecheck-private` step for weft-ui failed with six `Property 'toBeInTheDocument' does not
- * exist on type 'Assertion<...>'`-shaped errors, one per matcher call site the augmentation would
- * otherwise cover.
+ * The UI's `bun:test` preload is where the `declare module 'bun:test'` augmentation adding
+ * `@testing-library/jest-dom`'s matchers to `expect(...)` lives, and every UI suite that calls a
+ * jest-dom matcher (`toBeInTheDocument`, and friends) type-checks against it. While the UI was its
+ * own workspace the preload sat outside `src/` and had to be declared, and once it was not
+ * (COR-1196 round 11), the target's typecheck failed once per matcher call site. Since COR-1455 it
+ * lives at `src/ui/tests/setup.ts`, inside Weft's source tree, and the Svelte compile plugin it
+ * imports from `scripts/lib/` is what Weft declares instead.
  */
-describe('weft-ui’s bun:test preload ships with its source', () => {
-  test('the real cinder plan emits tests/setup.ts', () => {
-    const { plan } = committedPlans.cinder;
-    expect(Object.keys(plan.files)).toContain('packages/weft-ui/tests/setup.ts');
+describe('the UI’s bun:test preload ships with Weft’s source', () => {
+  test('the real weft plan emits the preload and the plugin it imports', () => {
+    const emitted = Object.keys(committedPlans.weft.plan.files);
+    expect(emitted).toContain('packages/weft/src/ui/tests/setup.ts');
+    expect(emitted).toContain('packages/weft/scripts/lib/svelte-plugin.ts');
+    expect(emitted).toContain('packages/weft/scripts/lib/environment-configuration.ts');
   });
 });
 

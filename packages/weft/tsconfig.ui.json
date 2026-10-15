@@ -3,6 +3,6 @@
   "compilerOptions": {
     "types": ["bun"]
   },
-  "include": ["src", "fixtures", "scripts", "tests"],
+  "include": ["src/ui", "scripts/ui-browser", "scripts/ui-coverage"],
   "exclude": ["node_modules", "coverage"]
 }

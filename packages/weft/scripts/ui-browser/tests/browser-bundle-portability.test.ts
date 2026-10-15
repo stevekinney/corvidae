@@ -1,8 +1,9 @@
-import { buildBrowser } from '@lostgradient/testing';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
+
+import { buildBrowserBundle } from '../server.ts';
 
 // BEGIN node-crypto-predicate
 const nodeCryptoFindingKinds = [
@@ -98,7 +99,7 @@ function nodeCryptoResolutions(evidence: NodeCryptoEvidence): NodeCryptoFinding[
 // END node-crypto-predicate
 
 const applicationRoot = join(import.meta.dir, '..', '..', '..');
-const htmlEntrypoint = join(applicationRoot, 'scripts', 'browser', 'index.html');
+const htmlEntrypoint = join(applicationRoot, 'scripts', 'ui-browser', 'index.html');
 
 async function readEmittedScripts(directory: string): Promise<Map<string, string>> {
   const files = new Map<string, string>();
@@ -115,12 +116,12 @@ afterAll(async () => {
   await rm(workDirectory, { recursive: true, force: true });
 });
 
-type ShippedBuild = Awaited<ReturnType<typeof buildBrowser>>;
+type ShippedBuild = Awaited<ReturnType<typeof buildBrowserBundle>>;
 let shipped: ShippedBuild | undefined;
 let shippedBuildError: unknown;
 let shippedFiles = new Map<string, string>();
 try {
-  shipped = await buildBrowser({
+  shipped = await buildBrowserBundle({
     entrypoints: [htmlEntrypoint],
     outdir: join(workDirectory, 'shipped'),
     development: false,
@@ -181,8 +182,14 @@ describe('weft-ui browser bundle portability', () => {
   });
 
   it('bundles weft source and emits index.html', () => {
-    const inputs = Object.keys(shipped?.metafile?.inputs ?? {});
-    expect(inputs.some((key) => key.includes('packages/weft/src/'))).toBe(true);
+    // Metafile inputs are relative to the working directory, which is Weft's own root now that the
+    // UI lives inside it, so they are resolved before asking whether engine source was bundled.
+    const engineSource = `${join(applicationRoot, 'src')}${sep}`;
+    const uiSource = `${join(applicationRoot, 'src', 'ui')}${sep}`;
+    const inputs = Object.keys(shipped?.metafile?.inputs ?? {}).map((key) => resolve(key));
+    expect(inputs.some((path) => path.startsWith(engineSource) && !path.startsWith(uiSource))).toBe(
+      true,
+    );
     const outputs = Object.keys(shipped?.metafile?.outputs ?? {});
     expect(outputs.some((key) => key.endsWith('index.html'))).toBe(true);
   });

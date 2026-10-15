@@ -1,5 +1,5 @@
 /**
- * Measured coverage floor for `bun run check:coverage` (scripts/check-coverage.ts).
+ * Measured UI coverage floor for Weft's `test:coverage` (`check-coverage.ts`, in the UI layout).
  *
  * This is a RATCHET, not the plan's target: `docs/implementation-plan.md` §11
  * targets 100% adjusted coverage with an explicit reviewed allowance file,
@@ -7,7 +7,7 @@
  * not enforced here — this file only records the highest measured watermark
  * so coverage cannot silently regress below it. Bump numbers upward (never
  * downward without a written reason in the PR) whenever `bun run
- * check:coverage` reports a new high-water mark; regenerate by running it and
+ * test:coverage` reports a new high-water mark; regenerate by running it and
  * copying the printed per-area/overall counts below.
  *
  * PROVISIONAL — see the note above `overall` before trusting these numbers.

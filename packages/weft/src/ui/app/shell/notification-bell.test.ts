@@ -4,10 +4,19 @@
  */
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
 import type { FleetEventFrame } from '../../lib/live-source/fleet-event-source.svelte.ts';
+import { router } from '../../lib/router.svelte.ts';
 import { NotificationStore } from '../notifications.svelte.ts';
 import NotificationBell from './notification-bell.svelte';
+
+/** Gives happy-dom's `about:blank` window a real origin, so `pushState` takes effect, at `path`. */
+function landAt(path: string): void {
+  if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+  window.happyDOM.setURL('http://localhost/');
+  router.navigate(path, { replace: true });
+}
 
 function fleetFrame(kind: string, overrides: Partial<FleetEventFrame> = {}): FleetEventFrame {
   return { kind, sequence: 1, cursor: 'c1', emittedAtMs: 1, payload: {}, ...overrides };
@@ -78,6 +87,19 @@ describe('NotificationBell', () => {
     await fireEvent.click(getByText('Workflow started'));
 
     expect(store.items[0]?.read).toBe(true);
+  });
+
+  test('"Open alerts view" navigates to the System route and closes the panel', async () => {
+    landAt('/workflows');
+    const store = new NotificationStore();
+    const { getByRole, queryByText } = render(NotificationBell, {
+      props: { store, liveStatus: 'live' },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Notifications, 0 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Open alerts view →' }));
+
+    expect(router.pathname).toBe('/system');
+    expect(queryByText('No notifications yet.')).toBeNull();
   });
 
   test('regression: item groups render inside a bounded scroll wrapper, header/footer stay outside it', async () => {

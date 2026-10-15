@@ -1,14 +1,12 @@
-# @lostgradient/weft-ui
+# Weft UI
 
-Private [Svelte](https://svelte.dev/) components and client helpers for the [Weft](../../packages/weft/README.md) operator console. The library owns the interface for workflows, human reviews, workers, schedules, storage, and system diagnostics. Browser tooling and the seeded test host live under `scripts/browser`.
+[Svelte](https://svelte.dev/) components and client helpers for the [Weft](../../README.md) operator console. The UI owns the interface for workflows, human reviews, workers, schedules, storage, and system diagnostics. Its source lives in `src/ui`, its tests beside it and in `src/ui/tests`, its fixtures in `src/ui/fixtures`, its browser tooling and seeded test host in `scripts/ui-browser`, and its coverage ratchet in `scripts/ui-coverage`. Engine code never imports `src/ui`.
 
-## Workspace usage
+## Usage
 
-Declare `"@lostgradient/weft-ui": "workspace:*"` in the consuming workspace's dependencies. Install from the Corvidae root with `bun install --frozen-lockfile`; shared external versions come from the root Bun catalog.
+Inside Corvidae the UI is Weft's `./ui` entry, which resolves to the TypeScript and Svelte source. It is not yet part of the published `@lostgradient/weft`; COR-1449 and COR-1452 decide and ship that surface (`documentation/weft-ui-public-surface.md` at the Corvidae root). The entry exports the console and its client configuration helpers:
 
-The only package entry point exports the console and its client configuration helpers:
-
-```ts
+```ts partial
 import {
   WeftConsole,
   createClient,
@@ -16,7 +14,7 @@ import {
   provideClient,
   getClient,
   setApiKey,
-} from '@lostgradient/weft-ui';
+} from '@lostgradient/weft/ui';
 ```
 
 `WeftConsole` is the browser application shell. It reads runtime configuration, creates the HTTP client, resolves the current principal, and presents API-key entry when authentication is required. Its root import includes the shared interface styles. Application tooling compiles the TypeScript and Svelte source directly.
@@ -47,16 +45,24 @@ The interface enables controls according to the principal's scopes. The Weft ser
 
 ## Development
 
-From `components/weft-ui`, run:
+From `packages/weft`, run:
 
 ```bash
 bun run lint
 bun run typecheck
 bun run test
-bun run test:deployment
-bun run test:browser
+bun run test:coverage
+bun run test:ui-deployment
+bun run test:ui-browser
 ```
 
-`bun run dev:server` starts the seeded Weft API through Weft's `dashboard()`, so port 7233 also serves a snapshot of the console, compiled once into `scripts/browser/build/dashboard/` (delete that directory to recompile it). `bun run dev:browser` builds the real Svelte source with Bun and serves it with API, JSON-RPC, SSE, and WebSocket forwarding. The browser build is a development artifact; the library remains direct-source and has no publishing contract.
+Each of `lint`, `typecheck`, `test`, and `test:coverage` covers the engine and the UI together:
 
-From the Corvidae root, use `bunx turbo run lint typecheck test --filter=@lostgradient/weft-ui` for this library or `bun run validate` for all workspaces.
+- `test` runs the engine's suite under `bunfig.toml`, then the UI's under `bunfig.ui.toml`, whose preload installs happy-dom and the Svelte compile plugin (`scripts/lib/svelte-plugin.ts`, a copy of `@lostgradient/testing`'s that a root drift check keeps identical).
+- `test:coverage` runs the engine's 100% adjusted-coverage gate, then the UI's ratchet against the floors in `scripts/ui-coverage/coverage-baseline.ts`.
+- `typecheck` runs `tsc` for the engine and `svelte-check` against `tsconfig.ui.browser.json` (browser source) and `tsconfig.ui.json` (source, tests, and tooling).
+- `lint` runs oxlint for the engine under Weft's own configuration and for the UI under the root browser policy, then Weft's custom checks.
+
+`bun run dev:ui-server` starts the seeded Weft API through Weft's `dashboard()`, so port 7233 also serves a snapshot of the console, compiled once into `scripts/ui-browser/build/dashboard/` (delete that directory to recompile it). `bun run dev:ui-browser` builds the real Svelte source with Bun and serves it with API, JSON-RPC, SSE, and WebSocket forwarding. The browser build is a development artifact.
+
+From the Corvidae root, use `bunx turbo run lint typecheck test --filter=@lostgradient/weft` for Weft and its UI, or `bun run validate` for all workspaces.

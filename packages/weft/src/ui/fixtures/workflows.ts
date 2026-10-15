@@ -173,7 +173,7 @@ export const reviewGate = workflow({ name: 'review-gate' }).execute(async functi
 // ---------------------------------------------------------------------------
 // signal-stepped — parks on a named signal before each of N durable steps.
 // T1.4's LiveSource realtime-transport integration tests drive it
-// deterministically via `engine.signal(id, 'advance')` to produce a
+// deterministically by signalling `advance` through `engine.signal` to produce a
 // controlled catch-up phase (steps committed before subscribing) followed
 // by a controlled live phase (steps committed after), without racing real
 // wall-clock timing the way a fast-completing workflow like

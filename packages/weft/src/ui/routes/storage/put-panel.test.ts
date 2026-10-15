@@ -2,7 +2,7 @@
  * Component tests for `<PutPanel>` (plan §9.6, §10.6: Tier-2 `ConfirmDialog`
  * on writes; reserved-prefix inline warning).
  */
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import type { StorageConnection } from './storage-client.ts';
 
@@ -59,6 +59,31 @@ describe('PutPanel', () => {
     expect(activeStub.calls).toHaveLength(1);
     expect(activeStub.calls[0]?.method).toBe('PUT');
     expect(activeStub.calls[0]?.url).toContain('/v1/storage/app%3Aconfig');
+  });
+
+  test('shows the refused write’s fault under the form', async () => {
+    activeStub = stubStorageFetch(() =>
+      Response.json(
+        { error: { code: 'Conflict', message: 'The stored value changed during the write' } },
+        { status: 409 },
+      ),
+    );
+
+    const { container, getByLabelText, getByText, findByRole } = render(PutPanelHarness, {
+      props: { client: fakeClient() },
+    });
+
+    await fireEvent.input(getByLabelText('Key'), { target: { value: 'app:config' } });
+    await fireEvent.input(getByLabelText('Value'), { target: { value: 'hello' } });
+    await fireEvent.click(getByText('Put · confirm'));
+    await findByRole('dialog');
+    await fireEvent.click(getByText('Write'));
+
+    await waitFor(() =>
+      expect(container.querySelector('.weft-storage-error')?.textContent).toBe(
+        'The stored value changed during the write',
+      ),
+    );
   });
 
   test('shows the reserved-prefix warning when the key matches a Weft-owned prefix', async () => {

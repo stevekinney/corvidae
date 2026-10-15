@@ -35,9 +35,9 @@
  */
 import { AUTHORIZATION_SCOPES, Engine, RemoteWorker, serve } from '@lostgradient/weft';
 
-import { seedDynamicSources } from '../../../../fixtures/dynamic-sources.ts';
-import { seedWorkflowRevisions } from '../../../../fixtures/workflow-revisions.ts';
-import { seed, workflows } from '../../../../fixtures/workflows.ts';
+import { seedDynamicSources } from '../../../../src/ui/fixtures/dynamic-sources.ts';
+import { seedWorkflowRevisions } from '../../../../src/ui/fixtures/workflow-revisions.ts';
+import { seed, workflows } from '../../../../src/ui/fixtures/workflows.ts';
 import {
   E2E_API_KEY,
   E2E_DEPLOYMENT_NAME,

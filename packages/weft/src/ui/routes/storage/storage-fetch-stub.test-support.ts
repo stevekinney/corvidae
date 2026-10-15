@@ -1,4 +1,4 @@
-import { installFetchImplementation } from '../../lib/live-source/fetch-test-support.ts';
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 
 /**
  * Test-only `globalThis.fetch` stub for component tests exercising

@@ -3,6 +3,10 @@
  *
  * Bun runs all files in one process, so module state can change LCOV attribution.
  * Keep this order explicit; newly discovered tests are appended lexically.
+ *
+ * Paths are in the UI layout the baselines were recorded in (`tests/…` for
+ * `src/ui/tests/…`, `src/…` for `src/ui/…`, `scripts/…` for
+ * `scripts/ui-coverage/…`); `uiLayoutPath` in `check-coverage.ts` translates.
  */
 export const LINUX_BASELINE_COVERAGE_TEST_ORDER = [
   'tests/component-harness.test.ts',

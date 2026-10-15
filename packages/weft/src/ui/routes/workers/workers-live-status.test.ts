@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, expect, spyOn, test } from 'bun:test';
 
-import { installFetchImplementation } from '../../lib/live-source/fetch-test-support.ts';
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import type { AuthorizationScope } from '../../lib/scopes.svelte.ts';
 import WorkersLiveStatus from './workers-live-status.svelte';

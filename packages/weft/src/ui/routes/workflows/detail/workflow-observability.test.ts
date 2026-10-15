@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing';
+import { throwingRejectionOf } from '../../../../testing/promise-outcome.test-support.ts';
 import {
   finalizerQueryKey,
   getFinalizerStatus,

@@ -1,4 +1,4 @@
-import { requireElement } from '../../../tests/dom-test-support.ts';
+import { requireElement } from '../../tests/dom.test-support.ts';
 
 /**
  * Component tests for `<ScheduleFormFields>` — a pure presentational

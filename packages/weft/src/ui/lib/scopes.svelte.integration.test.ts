@@ -26,8 +26,8 @@
 import { Engine, HttpClient, serve } from '@lostgradient/weft';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { throwingRejectionOf } from '@lostgradient/testing';
-import { workflows } from '../../fixtures/workflows.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { workflows } from '../fixtures/workflows.ts';
 import { resolvePrincipal, type AuthorizationScope } from './scopes.svelte.ts';
 
 /** Not a secret — a fixed key for an ephemeral, localhost-only test server. */

@@ -28,7 +28,7 @@ import { plugin } from 'bun';
 import { afterEach, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { sveltePlugin } from '@lostgradient/testing';
+import { sveltePlugin } from '../../../scripts/lib/svelte-plugin.ts';
 
 declare module 'bun:test' {
   interface Matchers<T = unknown> extends TestingLibraryMatchers<

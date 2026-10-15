@@ -26,7 +26,7 @@
    * ## Live tail in the dev harness
    *
    * The per-workflow WS/SSE tail works end to end against `bun run
-   * dev:server` as of `@lostgradient/weft@0.12.0` (weft#714, fixed
+   * dev:ui-server` as of `@lostgradient/weft@0.12.0` (weft#714, fixed
    * upstream — `scripts/dev-server.ts`'s plain `serve()` wires the real
    * per-workflow feed; verified live: `ws://localhost:7233/api/v1/workflows/
    * :id/watch` upgrades and delivers real checkpoint/lifecycle frames).

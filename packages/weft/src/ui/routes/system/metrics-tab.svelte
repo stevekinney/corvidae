@@ -11,10 +11,10 @@
    *
    * The raw view's `CodeBlock` passes `highlight={false}` alongside
    * `language="text"`: Prometheus's line-oriented exposition format has no
-   * Shiki grammar, and `"text"` isn't a key in Shiki's `bundledLanguages`
-   * table (verified directly against the installed `shiki` package) — only
-   * an EMPTY `language` short-circuits to plaintext without going through
-   * the highlighter at all (`code-block-default-highlighter`'s module doc).
+   * Shiki grammar, and `"text"` is not a language the UI's curated
+   * highlighter loads (`lib/code-highlighter.ts`, published by the app root)
+   * — Cinder's `CodeBlock` skips its highlighter only for an EMPTY
+   * `language` (`code-block.svelte`) and tries every other one.
    * `highlight={false}` is Cinder's documented off switch for exactly this:
    * it keeps the "text" header label while skipping the Shiki attempt (and
    * the resulting "language not in Shiki's bundle" console warning)

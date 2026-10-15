@@ -1,13 +1,13 @@
-import { requireElement } from '../../../tests/dom-test-support.ts';
+import { requireElement } from '../../tests/dom.test-support.ts';
 
 /**
  * Component tests for `<BatchPanel>` (plan §9.6, §10.6: atomic put/delete
  * batches, conditional (compare-and-swap) batch gated on
  * `conditionalBatchSupported`, Tier-2 `ConfirmDialog` before applying).
  */
-import { requiredValue } from '@lostgradient/testing';
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { requiredValue } from '../../../testing/required-value.test-support.ts';
 import type { StorageConnection } from './storage-client.ts';
 
 import ToastHost from '../../app/toast-host.svelte';

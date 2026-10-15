@@ -1,4 +1,4 @@
-import { requireElement } from '../../../../tests/dom-test-support.ts';
+import { requireElement } from '../../../tests/dom.test-support.ts';
 
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';

@@ -1,22 +1,35 @@
 /**
- * Deterministic coverage gate for `bun run check:coverage` (plan §11.7, T0.1
- * leftovers). Runs one `bun run test:coverage` pass (the repo's `bun test
- * --coverage` invocation, with the same `--conditions browser --conditions
- * svelte` flags `bun run test` uses), parses the LCOV report it writes to
- * `coverage/lcov.info`, prints per-area line/function coverage, and fails
- * when either the run itself failed or adjusted coverage drops below the
- * floor recorded in `scripts/coverage-baseline.ts`.
+ * Deterministic coverage gate for the UI, the second half of Weft's
+ * `test:coverage` (plan §11.7, T0.1 leftovers). `check-coverage-cli.ts` runs
+ * one `run-coverage.ts` pass (the UI's `bun test --coverage` invocation, with
+ * the same `--config=./bunfig.ui.toml --conditions browser --conditions
+ * svelte` flags the UI half of `test` uses), parses the LCOV report it writes
+ * to `coverage/ui/lcov.info`, prints per-area line/function coverage, and
+ * fails when either the run itself failed or adjusted coverage drops below
+ * the floor recorded in `coverage-baseline.ts`.
  *
  * This is a RATCHET, not a 100%-coverage gate. `docs/implementation-plan.md`
  * §11 targets 100% adjusted coverage with an explicit reviewed allowance
  * file, weft-style, once the console's surfaces stabilize — that is the
  * aspirational end state, not what this script enforces today. See
- * `scripts/coverage-baseline.ts` for how to move the floor forward.
+ * `coverage-baseline.ts` for how to move the floor forward.
  *
- * Deliberately NOT a clone of weft's `scripts/check-coverage.ts`: no
+ * Deliberately NOT a clone of the engine's `scripts/check-coverage.ts`: no
  * per-file line-keyed allowance layers, no refresh-layer partitioning. That
  * machinery was earned over dozens of PRs restoring coverage on a mature
  * codebase; a bootstrapping console gates on area-level totals instead.
+ *
+ * **The UI layout.** The floors in `coverage-baseline.ts` and the test orders
+ * in `coverage-test-order*.ts` were recorded while the UI was a workspace of
+ * its own, so they name files by that workspace's layout: `src/…` for its
+ * source, `tests/…` and `fixtures/…` beside it, `scripts/browser/…` for the
+ * browser tooling, and `scripts/…` for these coverage scripts. The UI now
+ * lives inside Weft, at `src/ui/…`, `src/ui/tests/…`, `src/ui/fixtures/…`,
+ * `scripts/ui-browser/…`, and `scripts/ui-coverage/…`. {@link uiLayoutPath}
+ * translates a Weft path into that layout, so every area keeps the name, and
+ * every recorded floor and order keeps the meaning, it was recorded with.
+ * Anything it does not translate is not UI: the engine files UI tests reach
+ * through `@lostgradient/weft` are gated by the engine's own 100% gate.
  *
  * @module
  */
@@ -31,9 +44,43 @@ import {
 import { DARWIN_BASELINE_COVERAGE_TEST_ORDER } from './coverage-test-order-darwin.ts';
 import { LINUX_BASELINE_COVERAGE_TEST_ORDER } from './coverage-test-order.ts';
 
-const REPO_ROOT = join(import.meta.dir, '..');
-const COVERAGE_TEST_ROOTS = ['scripts', 'src', 'tests'] as const;
+/** Weft's package root, which every path below is relative to. */
+const PACKAGE_ROOT = join(import.meta.dir, '..', '..');
+/**
+ * Where the UI's LCOV report goes, relative to the package root: inside the engine gate's own
+ * `coverage/`, which `turbo.json` caches, but in a directory of its own so neither gate reads or
+ * removes the other's report.
+ */
+export const UI_COVERAGE_DIRECTORY = 'coverage/ui';
+const COVERAGE_TEST_ROOTS = ['scripts/ui-browser', 'scripts/ui-coverage', 'src/ui'] as const;
+/**
+ * Test files the coverage run leaves out: the Playwright lane, which `bun test`
+ * never runs, and the fixtures' own suite, which the run did not include
+ * when the floors were recorded.
+ */
+const EXCLUDED_COVERAGE_TEST_PREFIXES = ['scripts/ui-browser/tests/e2e/', 'src/ui/fixtures/'];
 const BUN_TEST_FILE_PATTERN = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]s|[jt]sx)$/;
+
+/**
+ * Where a Weft file sits in the UI layout (see the module comment), or
+ * `undefined` for a file that is not part of the UI. Longer prefixes come
+ * first, so `src/ui/tests/` wins over `src/ui/`.
+ */
+const UI_LAYOUT_PREFIXES: ReadonlyArray<readonly [weftPrefix: string, uiPrefix: string]> = [
+  ['src/ui/tests/', 'tests/'],
+  ['src/ui/fixtures/', 'fixtures/'],
+  ['src/ui/', 'src/'],
+  ['scripts/ui-browser/', 'scripts/browser/'],
+  ['scripts/ui-coverage/', 'scripts/'],
+];
+
+export function uiLayoutPath(file: string): string | undefined {
+  for (const [weftPrefix, uiPrefix] of UI_LAYOUT_PREFIXES) {
+    if (file.startsWith(weftPrefix)) return `${uiPrefix}${file.slice(weftPrefix.length)}`;
+  }
+  return undefined;
+}
+
 function baselineCoverageTestRank(platform: NodeJS.Platform): ReadonlyMap<string, number> {
   const order =
     platform === 'darwin'
@@ -49,15 +96,16 @@ function compareCoverageTestFiles(
   right: string,
   rank: ReadonlyMap<string, number>,
 ): number {
-  const leftRank = rank.get(left);
-  const rightRank = rank.get(right);
+  // The recorded orders are in the UI layout; every selected path translates.
+  const leftRank = rank.get(uiLayoutPath(left) ?? left);
+  const rightRank = rank.get(uiLayoutPath(right) ?? right);
   if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank;
   if (leftRank !== undefined) return -1;
   if (rightRank !== undefined) return 1;
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-/** Keep repository tests in the versioned baseline order, then append new files lexically. */
+/** Keep the UI's tests in the versioned baseline order, then append new files lexically. */
 export function selectCoverageTestFiles(
   paths: Iterable<string>,
   platform: NodeJS.Platform = process.platform,
@@ -66,8 +114,8 @@ export function selectCoverageTestFiles(
   return [...paths]
     .filter(
       (path) =>
-        /^(?:scripts|src|tests)\//.test(path) &&
-        !path.startsWith('tests/e2e/') &&
+        COVERAGE_TEST_ROOTS.some((root) => path.startsWith(`${root}/`)) &&
+        !EXCLUDED_COVERAGE_TEST_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
         BUN_TEST_FILE_PATTERN.test(path),
     )
     .toSorted((left, right) => compareCoverageTestFiles(left, right, rank));
@@ -83,7 +131,7 @@ export function coverageTestArguments(
 
 /** Discover every coverage test explicitly so filesystem enumeration cannot reorder the suite. */
 export function discoverCoverageTestFiles(
-  repositoryRoot = REPO_ROOT,
+  repositoryRoot = PACKAGE_ROOT,
   platform: NodeJS.Platform = process.platform,
 ): string[] {
   const testGlob = new Bun.Glob('**/*.{cjs,mjs,js,jsx,cts,mts,ts,tsx}');
@@ -183,8 +231,9 @@ export function parseLcov(content: string): FileCoverage[] {
 }
 
 /**
- * Bucket a repo-relative file path into a coverage "area" for the summary
- * table. Generic by directory depth instead of a hardcoded surface list, so
+ * Bucket a UI-layout file path (see {@link uiLayoutPath}) into a coverage
+ * "area" for the summary table. Generic by directory depth instead of a
+ * hardcoded surface list, so
  * a new `src/routes/<domain>` a track adds shows up automatically: direct
  * children of `src/` (`src/app`, `src/lib`, …), one level deeper for
  * `src/routes/<domain>`, and the top-level directory name (`fixtures`,
@@ -213,16 +262,19 @@ function addTotals(totals: AreaCoverage, record: FileCoverage): AreaCoverage {
 }
 
 /**
- * Whether an LCOV record's path stays inside this package. Coverage runs in
- * the monorepo can attribute hits to workspace siblings (`../weft/…`) or
- * absolute paths; those files are gated by their own package, not here.
+ * The UI's records, renamed into the UI layout (see {@link uiLayoutPath}).
+ * The run executes from Weft's root, so the engine files UI tests reach
+ * through `@lostgradient/weft`, Weft's own test support, the copied Svelte
+ * plugin, and other workspaces' source all appear in the same report; those
+ * are gated by their own packages, not here, and are dropped.
  */
-export function isPackageLocalFile(record: FileCoverage): boolean {
-  return (
-    !record.file.startsWith('..') &&
-    !record.file.startsWith('/') &&
-    !record.file.split('/').includes('node_modules')
-  );
+export function uiCoverageRecords(records: readonly FileCoverage[]): FileCoverage[] {
+  const kept: FileCoverage[] = [];
+  for (const record of records) {
+    const file = uiLayoutPath(record.file);
+    if (file !== undefined) kept.push({ ...record, file });
+  }
+  return kept;
 }
 
 /** Sum per-file records into per-area totals (see {@link areaForFile}). */
@@ -355,7 +407,7 @@ export function resolveBaselineForPlatform(
 } {
   if (platform === null) {
     console.log(
-      `\nNo coverage baseline vocabulary for platform "${process.platform}" — measurement ran clean but is not gated here. Record a baseline in scripts/coverage-baseline.ts to gate this platform.`,
+      `\nNo coverage baseline vocabulary for platform "${process.platform}" — measurement ran clean but is not gated here. Record a baseline in scripts/ui-coverage/coverage-baseline.ts to gate this platform.`,
     );
     return { baseline: null, platform: process.platform };
   }
@@ -375,7 +427,7 @@ export function resolveBaselineForPlatform(
       `\nNo ${platform} baseline recorded yet — bootstrap mode: measurement ran clean and is NOT gated this run.`,
     );
     console.log(
-      `Record it by pasting this into scripts/coverage-baseline.ts as the ${platform} entry:\n`,
+      `Record it by pasting this into scripts/ui-coverage/coverage-baseline.ts as the ${platform} entry:\n`,
     );
     console.log(JSON.stringify(bootstrap, null, 2));
     return { baseline: null, platform };

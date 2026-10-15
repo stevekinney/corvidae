@@ -13,7 +13,7 @@ const expectedImportedSelectors = [
 ];
 
 test('source styles compile without discarded imports or other CSS warnings', async () => {
-  const filename = fileURLToPath(new URL('../../../src/styles/index.css', import.meta.url));
+  const filename = fileURLToPath(new URL('../../../src/ui/styles/index.css', import.meta.url));
   const outputDirectory = await mkdtemp(`${tmpdir()}/weft-ui-css-`);
   try {
     const result = await Bun.build({

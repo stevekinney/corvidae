@@ -22,7 +22,7 @@ import {
   ScriptedFetch,
 } from './workers-route-test-support.test-support.ts';
 
-import { deployment, routeHappyPaths, worker } from './index-actions-test-support.ts';
+import { deployment, routeHappyPaths, worker } from './index-actions.test-support.ts';
 
 let scripted: ScriptedFetch | undefined;
 

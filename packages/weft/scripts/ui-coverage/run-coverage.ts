@@ -1,10 +1,14 @@
 import { $ } from 'bun';
 import { join } from 'node:path';
 
-import { coverageTestArguments, discoverCoverageTestFiles } from './check-coverage.ts';
+import {
+  coverageTestArguments,
+  discoverCoverageTestFiles,
+  UI_COVERAGE_DIRECTORY,
+} from './check-coverage.ts';
 
-const repositoryRoot = join(import.meta.dir, '..');
-const testFiles = discoverCoverageTestFiles(repositoryRoot);
+const packageRoot = join(import.meta.dir, '..', '..');
+const testFiles = discoverCoverageTestFiles(packageRoot);
 const testArguments = coverageTestArguments(testFiles);
 
 if (testFiles.length === 0) {
@@ -32,9 +36,14 @@ if (testFiles.length === 0) {
 // workflow-tail tests failed, and isolated LCOV still cannot be trusted until
 // oven-sh/bun#40386 is fixed. The shared-process run remains both the correct
 // measurement mode and the stable integration-test mode.
+//
+// `--config=./bunfig.ui.toml` selects the UI's preload and ignores in place of
+// the engine's `bunfig.toml`, exactly as the UI half of `test` does, and the
+// report goes to `coverage/ui/` so it never mixes with the engine gate's
+// `coverage/`.
 console.log(`Running ${testFiles.length} coverage test files in the versioned baseline order.`);
 const run =
-  await $`TZ=UTC bun test --conditions browser --conditions svelte --coverage --coverage-reporter=lcov ${testArguments}`
-    .cwd(repositoryRoot)
+  await $`TZ=UTC bun --config=./bunfig.ui.toml test --conditions browser --conditions svelte --coverage --coverage-reporter=lcov --coverage-dir=${UI_COVERAGE_DIRECTORY} ${testArguments}`
+    .cwd(packageRoot)
     .nothrow();
 process.exit(run.exitCode);

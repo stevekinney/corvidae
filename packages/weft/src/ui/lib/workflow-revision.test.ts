@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
 
-import { throwingRejectionOf } from '@lostgradient/testing';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   classifyRevisionAgainstActive,
   EAGER_REVISION_HEDGE,

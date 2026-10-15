@@ -423,7 +423,7 @@ const outcome9 = await outcomeOf(async () => {
     ).toThrow('no entry');
     expect(
       await throwingRejectionOf(
-        recordSourceDigest({ ...options, workspace: '@lostgradient/weft-ui' }),
+        recordSourceDigest({ ...options, workspace: '@lostgradient/testing' }),
       ),
     ).toThrow('not "publish-as"');
     const map = options.packageMap!;

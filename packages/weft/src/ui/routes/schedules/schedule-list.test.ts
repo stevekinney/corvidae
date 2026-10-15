@@ -1,4 +1,4 @@
-import { requireElement } from '../../../tests/dom-test-support.ts';
+import { requireElement } from '../../tests/dom.test-support.ts';
 
 /**
  * Component tests for `<ScheduleList>` against a REAL in-process weft server

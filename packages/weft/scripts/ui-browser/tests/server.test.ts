@@ -1,6 +1,6 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, spyOn, test } from 'bun:test';
 import { watch } from 'node:fs';
-import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,8 +112,8 @@ test('buildWatchRoots includes the real Markdown package source root', () => {
   const browserDirectory = dirname(fileURLToPath(new URL('../server.ts', import.meta.url)));
   const roots = buildWatchRoots(browserDirectory);
 
-  expect(roots).toContain(resolve(browserDirectory, '../../../../packages/markdown/src'));
-  expect(roots).not.toContain(resolve(browserDirectory, '../../../markdown/src'));
+  expect(roots).toContain(resolve(browserDirectory, '../../../markdown/src'));
+  expect(roots).not.toContain(resolve(browserDirectory, '../../../../components/markdown/src'));
 });
 
 test('authorizedHeaders preserves caller credentials and supplies the dev credential only when absent', () => {
@@ -515,6 +515,92 @@ test('browser entrypoint watches survive repeated atomic saves', async () => {
     expect(await emitted.promise).toContain(marker);
     observer.close();
   }
+});
+
+test('an edit under a watched source root rebuilds the browser assets', async () => {
+  // `buildWatchRoots` resolves its roots from the host directory, so a host directory two levels
+  // below a scratch root watches that root's `src/`, as the real host watches Weft's.
+  const root = await temporaryOutputDirectory();
+  const directory = join(root, 'scripts', 'ui-browser');
+  const sourceRoot = join(root, 'src');
+  const outputDirectory = join(directory, 'build');
+  await mkdir(directory, { recursive: true });
+  await mkdir(sourceRoot, { recursive: true });
+  await writeFile(join(directory, 'index.html'), '<script type="module" src="./main.ts"></script>');
+  await writeFile(join(directory, 'main.ts'), 'document.title = "Watched";');
+  expect(buildWatchRoots(directory)).toEqual([sourceRoot]);
+  const host = await startBrowserHost({ directory, outputDirectory, port: 0 });
+  cleanupTasks.push(() => closeHost(host));
+
+  const metafile = join(outputDirectory, 'metafile.json');
+  const startupMetafile = await stat(metafile);
+  const startupBuild = startupMetafile.mtimeMs;
+  const rebuilt = Promise.withResolvers<void>();
+  const observer = watch(outputDirectory, (_event, name) => {
+    // Module provenance is written only after Bun has emitted every asset. The startup build's
+    // own event can arrive late, so only a newer metafile counts as the rebuild.
+    if (name !== 'metafile.json') return;
+    void stat(metafile).then((current) => {
+      if (current.mtimeMs > startupBuild) rebuilt.resolve();
+    }, rebuilt.reject);
+  });
+  cleanupTasks.push(() => observer.close());
+  // Native directory events can miss a first save on macOS, so the edit repeats until it lands.
+  let edits = 0;
+  const editor = setInterval(() => {
+    edits += 1;
+    void writeFile(join(sourceRoot, 'module.ts'), `export const edit = ${edits};\n`);
+  }, 150);
+  cleanupTasks.push(() => clearInterval(editor));
+  await rebuilt.promise;
+  clearInterval(editor);
+  expect(edits).toBeGreaterThan(0);
+});
+
+test('a failed debounced rebuild is reported instead of escaping as an unhandled rejection', async () => {
+  const failure = new Error('Browser compilation failed');
+  const reported: unknown[][] = [];
+  const consoleError = spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+    reported.push(parts);
+  });
+  cleanupTasks.push(() => consoleError.mockRestore());
+  const state = createBrowserHostState({
+    buildAssets: async () => {
+      throw failure;
+    },
+  });
+  cleanupTasks.push(() => closeBrowserHostState(state));
+
+  scheduleBuild(state, true);
+  for (let attempt = 0; attempt < 50 && reported.length === 0; attempt += 1) await Bun.sleep(20);
+
+  expect(reported).toEqual([['Browser rebuild failed', failure]]);
+  expect(state.build).toEqual({ status: 'failed', error: failure });
+});
+
+test('browser host closes the client WebSocket with 1011 when the upstream connection fails', async () => {
+  const outputDirectory = await temporaryOutputDirectory();
+  // An origin nothing listens on: bind a port, then release it before the host dials it.
+  const released = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() });
+  const upstream = released.url.origin;
+  await released.stop(true);
+  const host = await startBrowserHost({
+    buildOnStart: false,
+    outputDirectory,
+    port: 0,
+    upstream,
+    watch: false,
+  });
+  cleanupTasks.push(() => closeHost(host));
+
+  const client = new WebSocket(new URL('/api/v1/events/ws', host.url).toString());
+  cleanupTasks.push(() => client.close());
+  const closed = await new Promise<CloseEvent>((resolve) =>
+    client.addEventListener('close', resolve, { once: true }),
+  );
+
+  expect(closed.code).toBe(1011);
+  expect(closed.reason).toBe('Upstream WebSocket error');
 });
 
 // The child process is the behavior under test (it must exit on its own after a startup failure),

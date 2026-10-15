@@ -7,7 +7,7 @@
    * (no ergonomic `HttpClient` method exists for it), which is JSON-RPC-only
    * transport (see `discovery-client.ts`'s module doc for the same
    * observation about a different surface) — correct, sanctioned usage per
-   * PROJECT-BRIEF, and exercisable end-to-end against `bun run dev:server`
+   * PROJECT-BRIEF, and exercisable end-to-end against `bun run dev:ui-server`
    * as of `@lostgradient/weft@0.12.0` (`scripts/dev-server.ts`'s plain
    * `serve()` now routes `/jsonrpc`).
    */

@@ -21,7 +21,7 @@ import { HttpClient, HttpClientError } from '@lostgradient/weft';
 import { render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { installFetchImplementation } from '../../../lib/live-source/fetch-test-support.ts';
+import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';
 import WorkersCardTestHarness from './workers-card-test-harness.test-harness.svelte';
 
 let restoreFetch = (): void => {};

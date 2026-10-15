@@ -28,7 +28,7 @@ import {
   queue,
   routeHappyPaths,
   worker,
-} from './index-actions-test-support.ts';
+} from './index-actions.test-support.ts';
 
 let scripted: ScriptedFetch | undefined;
 

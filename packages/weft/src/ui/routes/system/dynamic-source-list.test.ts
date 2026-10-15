@@ -1,4 +1,4 @@
-import { requireElement } from '../../../tests/dom-test-support.ts';
+import { requireElement } from '../../tests/dom.test-support.ts';
 
 /**
  * Component tests for the selectable `weft.catalog.sources.list` surface inside

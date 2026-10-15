@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Engine, getWorkflowRevisionDiagnostics } from '@lostgradient/weft';
 
-import { throwingRejectionOf } from '@lostgradient/testing';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   DYNAMIC_SOURCE_FAILING_REVISION,
   DYNAMIC_SOURCE_LOADABLE_REVISION,

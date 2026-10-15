@@ -48,7 +48,7 @@
  */
 import { Engine, serve } from '@lostgradient/weft';
 
-import { workflows } from '../../../fixtures/workflows.ts';
+import { workflows } from '../../fixtures/workflows.ts';
 import { AUTHORIZATION_SCOPES } from '../scopes.svelte.ts';
 
 async function createTestEngine() {

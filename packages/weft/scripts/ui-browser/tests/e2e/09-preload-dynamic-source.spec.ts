@@ -25,7 +25,7 @@ import {
   DYNAMIC_SOURCE_FAILING_REVISION,
   DYNAMIC_SOURCE_LOADABLE_REVISION,
   DYNAMIC_SOURCE_WORKFLOW_NAME,
-} from '../../../../fixtures/dynamic-sources.ts';
+} from '../../../../src/ui/fixtures/dynamic-sources.ts';
 import { E2E_API_KEY } from './e2e-constants.ts';
 
 const PANEL_NAME = 'Dynamic workflow sources';

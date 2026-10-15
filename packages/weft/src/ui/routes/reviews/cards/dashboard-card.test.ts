@@ -2,12 +2,21 @@
  * Component tests for the Reviews dashboard card (plan §9.5: "Dashboard
  * card … pending count + nearest deadline").
  */
-import { render } from '@testing-library/svelte';
+import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
 import { HttpClient, type PendingReviewEntry } from '@lostgradient/weft';
 
+import { router } from '../../../lib/router.svelte.ts';
 import DashboardCardHarness from './dashboard-card-test-harness.test-harness.svelte';
+
+/** Gives happy-dom's `about:blank` window a real origin, so `pushState` takes effect, at `path`. */
+function landAt(path: string): void {
+  if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+  window.happyDOM.setURL('http://localhost/');
+  router.navigate(path, { replace: true });
+}
 
 function pendingEntry(reviewId: string, createdAt: number, timeout: number): PendingReviewEntry {
   return {
@@ -81,5 +90,20 @@ describe('Reviews dashboard card', () => {
     });
 
     expect(container.querySelector('a')?.getAttribute('href')).toBe('/reviews');
+  });
+
+  test('a plain click routes to /reviews in place; a modified click is left to the browser', async () => {
+    landAt('/');
+    const { container } = render(DashboardCardHarness, {
+      props: { client: clientReturning([]) },
+    });
+    const link = container.querySelector('a');
+    if (link === null) throw new Error('Expected the card to render its link');
+
+    expect(await fireEvent.click(link, { button: 0, metaKey: true })).toBe(true);
+    expect(router.pathname).toBe('/');
+
+    expect(await fireEvent.click(link, { button: 0 })).toBe(false);
+    expect(router.pathname).toBe('/reviews');
   });
 });

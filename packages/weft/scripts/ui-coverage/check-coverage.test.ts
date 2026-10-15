@@ -4,11 +4,11 @@ import {
   aggregateByArea,
   areaForFile,
   findRegressions,
-  isPackageLocalFile,
   overallTotals,
   percentage,
   renderAreaTable,
   resolveBaselineForPlatform,
+  uiCoverageRecords,
   type FileCoverage,
 } from './check-coverage.ts';
 import {
@@ -41,16 +41,38 @@ describe('areaForFile', () => {
   });
 });
 
-describe('isPackageLocalFile', () => {
-  it('keeps files inside the package', () => {
-    expect(isPackageLocalFile(createCoverageRecord('src/lib/client.ts'))).toBe(true);
-    expect(isPackageLocalFile(createCoverageRecord('tests/setup.ts'))).toBe(true);
+describe('uiCoverageRecords', () => {
+  it('keeps the UI’s files, renamed into the layout the floors were recorded in', () => {
+    expect(
+      uiCoverageRecords([
+        createCoverageRecord('src/ui/lib/client.ts'),
+        createCoverageRecord('src/ui/index.ts'),
+        createCoverageRecord('src/ui/tests/setup.ts'),
+        createCoverageRecord('src/ui/fixtures/workflows.ts'),
+        createCoverageRecord('scripts/ui-browser/server.ts'),
+        createCoverageRecord('scripts/ui-coverage/check-coverage.ts'),
+      ]).map((record) => record.file),
+    ).toEqual([
+      'src/lib/client.ts',
+      'src/index.ts',
+      'tests/setup.ts',
+      'fixtures/workflows.ts',
+      'scripts/browser/server.ts',
+      'scripts/check-coverage.ts',
+    ]);
   });
 
-  it('drops workspace-sibling, absolute, and node_modules records', () => {
-    expect(isPackageLocalFile(createCoverageRecord('../weft/src/index.ts'))).toBe(false);
-    expect(isPackageLocalFile(createCoverageRecord('/tmp/outside.ts'))).toBe(false);
-    expect(isPackageLocalFile(createCoverageRecord('node_modules/pkg/index.ts'))).toBe(false);
+  it('drops engine, test-support, sibling-workspace, absolute, and node_modules records', () => {
+    expect(
+      uiCoverageRecords([
+        createCoverageRecord('src/index.ts'),
+        createCoverageRecord('src/testing/promise-outcome.test-support.ts'),
+        createCoverageRecord('scripts/lib/svelte-plugin.ts'),
+        createCoverageRecord('../../components/cinder/src/index.ts'),
+        createCoverageRecord('/tmp/outside.ts'),
+        createCoverageRecord('node_modules/pkg/index.ts'),
+      ]),
+    ).toEqual([]);
   });
 });
 
@@ -216,9 +238,11 @@ describe('renderAreaTable', () => {
 });
 
 describe('resolveBaselineForPlatform', () => {
+  // Two areas besides OVERALL, so bootstrap mode has more than one entry to sort.
   const areas = new Map<string, AreaCoverage>([
-    ['OVERALL', { linesFound: 10, linesHit: 8, functionsFound: 2, functionsHit: 2 }],
+    ['OVERALL', { linesFound: 14, linesHit: 11, functionsFound: 3, functionsHit: 3 }],
     ['src/lib', { linesFound: 10, linesHit: 8, functionsFound: 2, functionsHit: 2 }],
+    ['src/app', { linesFound: 4, linesHit: 3, functionsFound: 1, functionsHit: 1 }],
   ]);
   const recorded: CoverageBaseline = {
     measuredAt: '2026-08-10T00:00:00.000Z',

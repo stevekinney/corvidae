@@ -1,4 +1,7 @@
-/** Darwin coverage test order, kept separate from the Linux order for readable maintenance. */
+/**
+ * Darwin coverage test order, kept separate from the Linux order for readable maintenance. Paths
+ * are in the UI layout, as in `coverage-test-order.ts`.
+ */
 
 export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   'tests/component-harness.test.ts',

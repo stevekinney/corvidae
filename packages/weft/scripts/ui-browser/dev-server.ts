@@ -1,7 +1,7 @@
 /**
  * Dev harness server (plan §2, T0.3, PROJECT-BRIEF "Dev harness"). Boots a
  * seeded local Weft server on port 7233 that the Bun browser host targets.
- * Run directly with `bun run dev:server`.
+ * Run directly with `bun run dev:ui-server`.
  *
  * **It starts Weft through `dashboard()`, so port 7233 also serves the
  * console.** `dashboard()` is `serve()` plus the console's page routes and
@@ -85,11 +85,11 @@
  * `GET /api/v1/workflows` for a non-empty result instead of trusting
  * `/v1/health` alone.
  */
-import { sveltePlugin } from '@lostgradient/testing';
 import { AUTHORIZATION_SCOPES, dashboard, Engine } from '@lostgradient/weft';
 import { existsSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { sveltePlugin } from '../lib/svelte-plugin.ts';
 import { DEV_API_KEY } from './dev-credentials.ts';
 
 import {
@@ -97,9 +97,9 @@ import {
   DYNAMIC_SOURCE_LOADABLE_REVISION,
   DYNAMIC_SOURCE_WORKFLOW_NAME,
   seedDynamicSources,
-} from '../../fixtures/dynamic-sources.ts';
-import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
-import { seed, workflows } from '../../fixtures/workflows.ts';
+} from '../../src/ui/fixtures/dynamic-sources.ts';
+import { seedWorkflowRevisions } from '../../src/ui/fixtures/workflow-revisions.ts';
+import { seed, workflows } from '../../src/ui/fixtures/workflows.ts';
 
 const PORT = 7233;
 const DASHBOARD_DIRECTORY = join(import.meta.dir, 'build', 'dashboard');

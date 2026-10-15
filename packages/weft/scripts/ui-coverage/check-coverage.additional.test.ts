@@ -11,99 +11,114 @@ import {
 } from './check-coverage.ts';
 
 describe('selectCoverageTestFiles', () => {
-  it('keeps only repository test files and returns unknown files in lexical order', () => {
+  it('keeps only the UI’s test files and returns unknown files in lexical order', () => {
     expect(
       selectCoverageTestFiles([
-        'src/zeta.test.ts',
+        'src/ui/zeta.test.ts',
         'README.md',
-        'tests/smoke.test.ts',
-        'tests/browser.spec.ts',
-        'src/unit_test.tsx',
-        'scripts/check_spec.js',
-        'tests/e2e/browser.spec.ts',
-        'src/not-a-test.ts',
-        'scripts/coverage.test.ts',
+        'src/ui/tests/smoke.test.ts',
+        'src/ui/tests/browser.spec.ts',
+        'src/ui/unit_test.tsx',
+        'scripts/ui-browser/check_spec.js',
+        'scripts/ui-browser/tests/e2e/browser.spec.ts',
+        'src/ui/fixtures/dynamic-sources.test.ts',
+        'src/ui/not-a-test.ts',
+        'scripts/ui-coverage/coverage.test.ts',
+        'src/core/engine/engine.test.ts',
+        'scripts/check-coverage.test.ts',
         'node_modules/dependency.test.ts',
-        'src/alpha.test.ts',
+        'src/ui/alpha.test.ts',
       ]),
     ).toEqual([
-      'scripts/check_spec.js',
-      'scripts/coverage.test.ts',
-      'src/alpha.test.ts',
-      'src/unit_test.tsx',
-      'src/zeta.test.ts',
-      'tests/browser.spec.ts',
-      'tests/smoke.test.ts',
+      'scripts/ui-browser/check_spec.js',
+      'scripts/ui-coverage/coverage.test.ts',
+      'src/ui/alpha.test.ts',
+      'src/ui/tests/browser.spec.ts',
+      'src/ui/tests/smoke.test.ts',
+      'src/ui/unit_test.tsx',
+      'src/ui/zeta.test.ts',
     ]);
   });
 
   it('preserves the explicit order that produced the recorded coverage baseline', () => {
     expect(
       selectCoverageTestFiles([
-        'scripts/check-coverage.test.ts',
-        'tests/tanstack-query-smoke.test.ts',
-        'tests/component-harness.test.ts',
+        'scripts/ui-coverage/check-coverage.test.ts',
+        'src/ui/tests/tanstack-query-smoke.test.ts',
+        'src/ui/tests/component-harness.test.ts',
       ]),
     ).toEqual([
-      'tests/component-harness.test.ts',
-      'tests/tanstack-query-smoke.test.ts',
-      'scripts/check-coverage.test.ts',
+      'src/ui/tests/component-harness.test.ts',
+      'src/ui/tests/tanstack-query-smoke.test.ts',
+      'scripts/ui-coverage/check-coverage.test.ts',
     ]);
   });
 
   it('uses the recorded order for each platform independently', () => {
-    const files = ['src/app/fault-boundary.test.ts', 'src/lib/attribute-filters.test.ts'];
+    const files = ['src/ui/app/fault-boundary.test.ts', 'src/ui/lib/attribute-filters.test.ts'];
 
     expect(selectCoverageTestFiles(files, 'linux')).toEqual([
-      'src/lib/attribute-filters.test.ts',
-      'src/app/fault-boundary.test.ts',
+      'src/ui/lib/attribute-filters.test.ts',
+      'src/ui/app/fault-boundary.test.ts',
     ]);
     expect(selectCoverageTestFiles(files, 'darwin')).toEqual([
-      'src/app/fault-boundary.test.ts',
-      'src/lib/attribute-filters.test.ts',
+      'src/ui/app/fault-boundary.test.ts',
+      'src/ui/lib/attribute-filters.test.ts',
     ]);
   });
 
   it('passes exact relative paths so Bun executes files in the selected order', () => {
     expect(
       coverageTestArguments([
-        'tests/smoke.test.ts',
-        'src/alpha.test.ts',
-        'scripts/coverage.test.ts',
+        'src/ui/tests/smoke.test.ts',
+        'src/ui/alpha.test.ts',
+        'scripts/ui-coverage/coverage.test.ts',
       ]),
-    ).toEqual(['./scripts/coverage.test.ts', './src/alpha.test.ts', './tests/smoke.test.ts']);
+    ).toEqual([
+      './scripts/ui-coverage/coverage.test.ts',
+      './src/ui/alpha.test.ts',
+      './src/ui/tests/smoke.test.ts',
+    ]);
   });
 
   it('discovers every Bun-supported pattern and excludes configured e2e tests', async () => {
     const root = await mkdtemp(join(tmpdir(), 'coverage-discovery-'));
     try {
       await Promise.all(
-        ['scripts', 'src', 'tests/e2e'].map((path) => mkdir(join(root, path), { recursive: true })),
+        [
+          'scripts/ui-coverage',
+          'scripts/ui-browser/tests/e2e',
+          'src/ui/tests',
+          'src/ui/fixtures',
+          'src/core',
+        ].map((path) => mkdir(join(root, path), { recursive: true })),
       );
       await Promise.all(
         [
-          'scripts/A.test.mts',
-          'scripts/a.test.ts',
-          'scripts/module.test.cjs',
-          'src/b_test.tsx',
-          'src/b_test.cts',
-          'src/c.spec.js',
-          'src/module.spec.mjs',
-          'tests/d_spec.jsx',
-          'tests/not-a-test.ts',
-          'tests/e2e/browser.spec.ts',
+          'scripts/ui-coverage/A.test.mts',
+          'scripts/ui-coverage/a.test.ts',
+          'scripts/ui-coverage/module.test.cjs',
+          'src/ui/b_test.tsx',
+          'src/ui/b_test.cts',
+          'src/ui/c.spec.js',
+          'src/ui/module.spec.mjs',
+          'src/ui/tests/d_spec.jsx',
+          'src/ui/tests/not-a-test.ts',
+          'src/ui/fixtures/fixture.test.ts',
+          'src/core/engine.test.ts',
+          'scripts/ui-browser/tests/e2e/browser.spec.ts',
         ].map((path) => writeFile(join(root, path), '')),
       );
 
       expect(discoverCoverageTestFiles(root, 'win32')).toEqual([
-        'scripts/A.test.mts',
-        'scripts/a.test.ts',
-        'scripts/module.test.cjs',
-        'src/b_test.cts',
-        'src/b_test.tsx',
-        'src/c.spec.js',
-        'src/module.spec.mjs',
-        'tests/d_spec.jsx',
+        'scripts/ui-coverage/A.test.mts',
+        'scripts/ui-coverage/a.test.ts',
+        'scripts/ui-coverage/module.test.cjs',
+        'src/ui/b_test.cts',
+        'src/ui/b_test.tsx',
+        'src/ui/c.spec.js',
+        'src/ui/module.spec.mjs',
+        'src/ui/tests/d_spec.jsx',
       ]);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -114,13 +129,13 @@ describe('selectCoverageTestFiles', () => {
     const files = discoverCoverageTestFiles();
 
     expect(files.slice(0, 3)).toEqual([
-      'tests/component-harness.test.ts',
-      'tests/tanstack-query-smoke.test.ts',
-      'scripts/check-coverage.test.ts',
+      'src/ui/tests/component-harness.test.ts',
+      'src/ui/tests/tanstack-query-smoke.test.ts',
+      'scripts/ui-coverage/check-coverage.test.ts',
     ]);
-    expect(files).toContain('scripts/check-coverage.test.ts');
+    expect(files).toContain('scripts/ui-coverage/check-coverage.test.ts');
     expect(new Set(files).size).toBe(files.length);
-    expect(files.every((file) => !file.startsWith('tests/e2e/'))).toBeTrue();
+    expect(files.every((file) => !file.startsWith('scripts/ui-browser/tests/e2e/'))).toBeTrue();
   });
 });
 describe('parseLcov', () => {

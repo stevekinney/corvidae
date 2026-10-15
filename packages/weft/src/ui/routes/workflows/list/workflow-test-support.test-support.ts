@@ -15,7 +15,7 @@
  */
 import { HttpClient } from '@lostgradient/weft';
 
-import { installFetchImplementation } from '../../../lib/live-source/fetch-test-support.ts';
+import { installFetchImplementation } from '../../../lib/live-source/fetch.test-support.ts';
 
 export interface FetchCall {
   readonly url: string;
