@@ -246,3 +246,36 @@ describe('turbo cache inputs for the wrapped test tasks', () => {
     expect(unhashed).toEqual([]);
   });
 });
+
+describe('the on-demand check measures before it enforces', () => {
+  const root = join(import.meta.dir, '..');
+
+  test('check:test-durations first forces every task that writes a report, then enforces', async () => {
+    const { scripts } = (await Bun.file(join(root, 'package.json')).json()) as {
+      scripts: Record<string, string>;
+    };
+    const check = scripts['check:test-durations'] ?? '';
+    expect(check).toStartWith('bun run measure:test-durations && ');
+    const measure = scripts['measure:test-durations'] ?? '';
+    expect(measure).toContain('--force');
+    // Every root script that writes a JUnit report is a turbo task the measurement must run:
+    // `test:self` and `test:browser-fixtures` write the root reports, and the package `test`
+    // tasks write the rest.
+    const reportingRootTasks = Object.entries(scripts)
+      .filter(([, command]) => command.includes('bun-test-junit.ts --report-name='))
+      .map(([name]) => name);
+    expect(reportingRootTasks.toSorted()).toEqual(['test:browser-fixtures', 'test:self']);
+    for (const task of [...reportingRootTasks, 'test']) {
+      expect(measure, task).toMatch(new RegExp(`\\b${task}\\b(?!:)`));
+    }
+  });
+
+  test('validate reports without forcing a second measurement', async () => {
+    const { scripts } = (await Bun.file(join(root, 'package.json')).json()) as {
+      scripts: Record<string, string>;
+    };
+    expect(scripts['validate']).toContain('bun run report:test-durations');
+    expect(scripts['validate']).not.toContain('measure:test-durations');
+    expect(scripts['report:test-durations']).not.toContain('--force');
+  });
+});
