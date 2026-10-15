@@ -1,4 +1,4 @@
-import type { BatchOperation } from '../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { assertScopedBulkWorkflowFilter } from '../bulk-workflow-filter.ts';
 import { decode, encode } from '../codec.ts';
@@ -23,7 +23,12 @@ import {
   commitSelfWorkflowStateOperations,
   runSerializedWorkflowStateWrite,
 } from './storage-io.ts';
-import { captureOrReadTerminalFence, type TerminalFence } from './termination/terminal-fence.ts';
+import {
+  bytesEqual,
+  captureOrReadTerminalFence,
+  sameRunCondition,
+  type TerminalFence,
+} from './termination/terminal-fence.ts';
 import {
   decodeWorkflowState,
   isTerminalWorkflowStatus,
@@ -149,13 +154,53 @@ export function buildTerminalWorkflowIndexOperations(
   return operations;
 }
 
-/** Whether the status guard or the caller's `skipCommitIf` refuses this update. */
-function updateIsRefused(state: WorkflowState, options: WorkflowStateUpdateOptions): boolean {
+/**
+ * Whether this update must not be written: the record now belongs to another run than the one the
+ * first attempt decided on, the status guard refuses it, or the caller's `skipCommitIf` does.
+ */
+function updateIsRefused(
+  state: WorkflowState,
+  options: WorkflowStateUpdateOptions,
+  decided: { workflowExecutionToken: string | undefined } | undefined,
+): boolean {
+  if (decided !== undefined && state.workflowExecutionToken !== decided.workflowExecutionToken) {
+    return true;
+  }
   if (options.allowedStatuses && !options.allowedStatuses.includes(state.status)) return true;
   return options.skipCommitIf?.(state) === true;
 }
 
-/** Apply a serialized workflow-state update and return the previous state metadata. */
+/** Only a record that changed since it was loaded is a lost decision; any other failure is real. */
+async function rethrowUnlessDecisionLost(
+  internals: EngineInternals,
+  workflowId: string,
+  loadedBytes: Uint8Array,
+  attempt: number,
+  error: unknown,
+): Promise<void> {
+  const current = await internals.storage.get(KEYS.workflow(workflowId));
+  if (attempt + 1 >= MAX_STATE_UPDATE_ATTEMPTS || bytesEqual(current, loadedBytes)) throw error;
+}
+
+/** What the first attempt of a state update decided, kept for any re-decision after a lost commit. */
+type StateUpdateDecision = {
+  /** The run the caller meant: a reload that finds another generation is a replacement. */
+  workflowExecutionToken: string | undefined;
+  /** Captured once, before the first commit, so a retry never reads a replacement's identity. */
+  fence: TerminalFence;
+};
+
+/** Attempts a state update makes when a concurrent change to the record beats its commit. */
+const MAX_STATE_UPDATE_ATTEMPTS = 3;
+
+/**
+ * Apply a serialized workflow-state update and return the previous state metadata.
+ *
+ * The commit is conditioned on the exact `KEYS.workflow(id)` bytes the decision was made from and
+ * on the run's generation. If either changed, the update reloads and decides again: a run that
+ * has meanwhile completed, been replaced or turned terminal makes it a no-op, which is what stops
+ * a remote cancel from overwriting a finished run or touching its replacement.
+ */
 export async function updateWorkflowState(
   internals: EngineInternals,
   workflowId: string,
@@ -163,46 +208,53 @@ export async function updateWorkflowState(
   category: WorkflowStateTransitionCategory,
   options: WorkflowStateUpdateOptions = {},
 ): Promise<WorkflowStateUpdateResult | null> {
-  return await runSerializedWorkflowStateWrite(internals, workflowId, async () => {
-    const bytes = await internals.storage.get(KEYS.workflow(workflowId));
-    if (!bytes) {
-      return null;
-    }
+  return await runSerializedWorkflowStateWrite(internals, workflowId, () =>
+    attemptWorkflowStateUpdate(internals, workflowId, updates, category, options, undefined, 0),
+  );
+}
 
-    const state = decodeWorkflowState(bytes);
-    if (updateIsRefused(state, options)) {
-      return null;
-    }
+async function attemptWorkflowStateUpdate(
+  internals: EngineInternals,
+  workflowId: string,
+  updates: Partial<WorkflowState>,
+  category: WorkflowStateTransitionCategory,
+  options: WorkflowStateUpdateOptions,
+  decided: StateUpdateDecision | undefined,
+  attempt: number,
+): Promise<WorkflowStateUpdateResult | null> {
+  const bytes = await internals.storage.get(KEYS.workflow(workflowId));
+  if (!bytes) {
+    return null;
+  }
 
-    const updatedAt = internals.options.getNow();
-    const updated = {
-      ...state,
-      ...updates,
-      updatedAt,
-    };
-    const additionalOperations = options.buildAdditionalOperations?.(state, updatedAt) ?? [];
+  const state = decodeWorkflowState(bytes);
+  if (updateIsRefused(state, options, decided)) {
+    return null;
+  }
 
-    // `updateWorkflowState` applies an engine-generator-owned workflow STATUS
-    // transition, always fenced — a deposed engine cannot write terminal
-    // state over a successor's run. WHICH fence depends on `category`: a
-    // SELF-transition (failWorkflow) fences on this engine's own claim; an
-    // EXTERNAL terminal transition (terminateWorkflow: cancel/timeout)
-    // rotates the claim epoch instead (ADR 0002). Operator tag/attribute
-    // mutations do NOT use this helper; they batch directly.
-    const captured = captureOrReadTerminalFence(
-      internals,
-      workflowId,
-      state.workflowExecutionToken,
-    );
-    // Only a run this engine does not hold costs a read, and it is issued before the commit so a
-    // replacement cannot yet exist; a held run's fence is already in hand.
-    const fence = captured instanceof Promise ? await captured : captured;
-    const commit =
-      category === 'self'
-        ? commitSelfWorkflowStateOperations
-        : commitExternalTerminalWorkflowStateOperations;
-    const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
-    if (visibilityMaintenance !== undefined) await visibilityMaintenance;
+  const updatedAt = internals.options.getNow();
+  const updated = {
+    ...state,
+    ...updates,
+    updatedAt,
+  };
+  const additionalOperations = options.buildAdditionalOperations?.(state, updatedAt) ?? [];
+
+  // `updateWorkflowState` applies an engine-generator-owned workflow STATUS
+  // transition, always fenced — a deposed engine cannot write terminal
+  // state over a successor's run. WHICH fence depends on `category`: a
+  // SELF-transition (failWorkflow) fences on this engine's own claim; an
+  // EXTERNAL terminal transition (terminateWorkflow: cancel/timeout)
+  // rotates the claim epoch instead (ADR 0002). Operator tag/attribute
+  // mutations do NOT use this helper; they batch directly.
+  const fence = decided?.fence ?? (await readFenceBeforeCommit(internals, workflowId, state));
+  const commit =
+    category === 'self'
+      ? commitSelfWorkflowStateOperations
+      : commitExternalTerminalWorkflowStateOperations;
+  const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+  if (visibilityMaintenance !== undefined) await visibilityMaintenance;
+  try {
     await commit(
       internals,
       state,
@@ -214,15 +266,54 @@ export async function updateWorkflowState(
       ],
       {
         includePendingAtomicSideEffects: isTerminalWorkflowStatus(updated.status),
+        extraConditions: decisionConditions(workflowId, bytes, fence),
       },
     );
+  } catch (error) {
+    await rethrowUnlessDecisionLost(internals, workflowId, bytes, attempt, error);
+    const keep = { workflowExecutionToken: state.workflowExecutionToken, fence };
+    return attemptWorkflowStateUpdate(
+      internals,
+      workflowId,
+      updates,
+      category,
+      options,
+      keep,
+      attempt + 1,
+    );
+  }
 
-    return {
-      previousState: state,
-      updatedAt,
-      fence,
-    };
-  });
+  return {
+    previousState: state,
+    updatedAt,
+    fence,
+  };
+}
+
+/**
+ * The fence for the first attempt. Only a run this engine does not hold costs a read, and it is
+ * issued before the commit so a replacement cannot yet exist; a held run's fence is already in hand.
+ */
+async function readFenceBeforeCommit(
+  internals: EngineInternals,
+  workflowId: string,
+  state: WorkflowState,
+): Promise<TerminalFence> {
+  const captured = captureOrReadTerminalFence(internals, workflowId, state.workflowExecutionToken);
+  return captured instanceof Promise ? await captured : captured;
+}
+
+/** The commit preconditions that tie a decision to the record and the run it was made from. */
+function decisionConditions(
+  workflowId: string,
+  loadedBytes: Uint8Array,
+  fence: TerminalFence,
+): ConditionalBatchCondition[] {
+  const conditions: ConditionalBatchCondition[] = [
+    { key: KEYS.workflow(workflowId), expectedValue: loadedBytes },
+  ];
+  if (fence.identity !== undefined) conditions.push(sameRunCondition(workflowId, fence.identity));
+  return conditions;
 }
 
 /** Add or remove tags for a single workflow under the serialized state-write lock. */

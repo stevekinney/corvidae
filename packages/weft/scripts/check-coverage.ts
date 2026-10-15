@@ -1161,7 +1161,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining attribute-tag branches reject decoded value shapes excluded by search-attribute boundary validation.',
         functions: 1,
-        lines: new Set([391, 392, 394]),
+        lines: new Set([482, 483, 485]),
         requireUncoveredLines: true,
       },
     ],

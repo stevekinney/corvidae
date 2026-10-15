@@ -227,4 +227,23 @@ describe('workflow concurrency slot release', () => {
     };
     expect(slot.holders).toEqual([]);
   });
+
+  it('treats a release as done when a concurrent terminalizer of the same run already freed its slot', async () => {
+    await using engine = new TestEngine({ startTime: 1_000 });
+    engine.register(
+      workflow({ name: 'limited-idempotent', concurrency: { max: 1 } }).execute(waitForRelease),
+    );
+    const run = await engine.start('limited-idempotent', { value: 'first' });
+    const internals = getInternals(engine);
+    const marker = (await internals.storage.get(KEYS.workflowConcurrencyHolder(run.id)))!;
+    const fence = { identity: { generation: null, holderMarker: marker } };
+
+    // The first terminalizer releases the slot and drops the marker in one batch.
+    await releaseWorkflowConcurrencySlotForRun(internals, run.id, fence);
+    expect(await internals.storage.get(KEYS.workflowConcurrencyHolder(run.id))).toBeNull();
+
+    // The second one captured the same marker before that; it finds nothing left to release.
+    await releaseWorkflowConcurrencySlotForRun(internals, run.id, fence);
+    expect(await internals.storage.get(KEYS.workflowConcurrencyHolder(run.id))).toBeNull();
+  });
 });

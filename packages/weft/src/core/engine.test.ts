@@ -1812,9 +1812,7 @@ describe('Engine', () => {
     const originalBatch = storage.batch.bind(storage);
     let holdCancelledStateWrite = false;
 
-    storage.batch = async (operations) => {
-      await originalBatch(operations);
-
+    const holdAfterCancelledStateWrite = async (operations: BatchOperation[]): Promise<void> => {
       if (!holdCancelledStateWrite) {
         return;
       }
@@ -1831,6 +1829,17 @@ describe('Engine', () => {
 
       cancelledStatePersisted.resolve();
       await releaseCancelledStateWrite.promise;
+    };
+    storage.batch = async (operations) => {
+      await originalBatch(operations);
+      await holdAfterCancelledStateWrite(operations);
+    };
+    // The cancel commit is conditioned on the state it decided from, so it takes this path.
+    const originalConditionalBatch = storage.conditionalBatch.bind(storage);
+    storage.conditionalBatch = async (conditions, operations) => {
+      const applied = await originalConditionalBatch(conditions, operations);
+      if (applied) await holdAfterCancelledStateWrite(operations);
+      return applied;
     };
 
     engine.register(

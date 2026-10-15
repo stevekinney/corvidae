@@ -341,7 +341,12 @@ async function settleAfterConflict(
   // later state), never this run's own. Read together, a marker fetched just before the
   // replacement landed would look like the replacement's and the old partition would be skipped.
   const generationNow = await internals.storage.get(KEYS.workflowGeneration(workflowId));
-  if (bytesEqual(generationNow, identity.generation)) return false;
+  if (bytesEqual(generationNow, identity.generation)) {
+    // Still this run. If its marker is already gone, a concurrent terminalizer of the same run
+    // (a completion racing a remote cancel) released the slot in one batch with that delete, so
+    // the release is idempotent and done. Otherwise only the slot version moved: retry.
+    return (await internals.storage.get(holderKey)) === null;
+  }
   const markerNow = await internals.storage.get(holderKey);
   if (isSamePartitionMarker(markerNow, marker)) return true;
   const conditions = [slotVersion, { key: holderKey, expectedValue: markerNow }];

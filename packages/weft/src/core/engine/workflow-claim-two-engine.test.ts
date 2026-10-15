@@ -2423,6 +2423,72 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     }
   });
 
+  it('a remote cancel that loaded the running state does not overwrite a run that completed and was replaced before its commit', async () => {
+    const id = `teardown-durable-remotecancel-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    const writesWorkflowState = (operations: BatchOperation[]) =>
+      operations.some(
+        (operation) => operation.type === 'put' && operation.key === KEYS.workflow(id),
+      );
+    await using engineA = await createEngine(storage);
+    await using engineB = await createEngine(gateFirstWrite(storage, gate, writesWorkflowState));
+    try {
+      const old = await engineA.start(TYPE, 'P1:OLD', { id, searchAttributes: { tag: 'old' } });
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+      // The canceller loads the running state and freezes just before it commits.
+      const cancelled = engineB.cancel(id);
+      await gate.reached.promise;
+
+      // Meanwhile the run completes and a start-new replaces it.
+      await engineA.signal(id, 'go');
+      expect(await old.result()).toBe('P1:OLD');
+      await waitForCondition(
+        async () => {
+          const holders = await slotHolders(storage, 'P1');
+          return holders.length === 0;
+        },
+        { label: 'old run teardown finished' },
+      );
+      const replacement = await engineA.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        searchAttributes: { tag: 'new' },
+      });
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+      gate.release.resolve();
+      await cancelled;
+      await Bun.sleep(50);
+
+      // The cancel meant the old run; the replacement is untouched and still running.
+      const state = await engineA.get(id);
+      expect(state?.status).toBe('running');
+      await expectReplacementIntact(storage, engineA, id, replacement, 'P1');
+    } finally {
+      gate.release.resolve();
+    }
+  });
+
+  it('a completion racing a remote cancel of the same run both settle and release the slot once', async () => {
+    const id = `teardown-durable-racing-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    await using engineA = await createEngine(storage);
+    await using engineB = await createEngine(storage);
+    const old = await engineA.start(TYPE, 'P1:OLD', { id });
+    void old.result().catch(() => undefined);
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+    const outcomes = await Promise.allSettled([engineA.signal(id, 'go'), engineB.cancel(id)]);
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['fulfilled', 'fulfilled']);
+    const state = await engineA.get(id);
+    expect(state?.status === 'completed' || state?.status === 'cancelled').toBe(true);
+    expect(await slotHolders(storage, 'P1')).toEqual([]);
+    expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
+  });
+
   it('a replacement that commits mid-batch makes the fenced attribute write fail its condition', async () => {
     const id = `teardown-durable-midbatch-${nextInvocation()}`;
     const storage = new MemoryStorage();
