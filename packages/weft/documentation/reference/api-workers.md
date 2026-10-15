@@ -790,6 +790,18 @@ curl -sS 'http://127.0.0.1:7233/api/v1/tasks/diagnostics?buildId=b47&limit=10' \
 
 The JSON-RPC operation name is `weft.tasks.diagnostics`.
 
+### `GET /api/v1/tasks/detail/:operationId/deliveries`
+
+The transport-level answer every `taskResult` submission for one operation received, oldest first (COR-1366). Each entry is a `taskResultAck` disposition (`applied`, `duplicate`, `dead-lettered`) or a hard rejection with its `rejectionCode` and redacted `reason`. Requires `system:read`. The server keeps the 32 most recent entries per operation, and `droppedCount` reports older ones. Answers `NotFound` when the operation has no ledger record. The [remote task recovery guide](../guides/remote-task-recovery.md#result-delivery-history) has the full entry shape and its `task:result-delivery` live event.
+
+The JSON-RPC operation name is `weft.tasks.deliveries`.
+
+### `GET /api/v1/tasks/detail/:operationId/dead-letter`
+
+A dead-lettered attempt's retained result value, not only its digest (COR-1366). Requires `system:admin`, the scope that may clear the dead letter. Accepts an optional `maxBytes` query parameter (default `65536`, max `1048576`). A larger value is reported as `{ kind: 'omitted', serializedBytes, maxBytes }` and is never truncated. The raw attempt token, task input, and headers are never returned. Answers `NotFound` unless the task is dead-lettered. The [remote task recovery guide](../guides/remote-task-recovery.md#dead-lettered-result-values) explains the access model.
+
+The JSON-RPC operation name is `weft.tasks.deadletters.get`.
+
 ### `GET /api/v1/task-queues`
 
 Returns per-queue health. The queue set is the union of three sources:

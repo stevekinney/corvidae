@@ -1627,13 +1627,21 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // +3 below it. Re-derived from a fresh coverage/lcov.info, which reports exactly the same 25
       // missed lines and one missed function: 164-167 -> 165-168, 260-268 -> 261-269,
       // 291 -> 292, 492-498 -> 496-502, 700/701/704/705 -> 704/705/708/709.
+      //
+      // Realigned again for COR-1366 (task result delivery history), from a fresh
+      // coverage/lcov.info on the rebased tree. The same five branches remain; two grew because
+      // they now record a delivery entry. The oversized-result persistence-failure branch also
+      // records a `commit-rejected` delivery before logging (165-168 -> 224-232), and the
+      // revision-mismatch branch now goes through the shared `rejectTaskResult` helper that
+      // sends the protocolError and records the rejection (261-269 -> 331-340). The rest only
+      // shifted: 292 -> 363, 496-502 -> 569-575, 704/705/708/709 -> 777/778/781/782.
       {
         reason:
-          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (165-168, 292), a revision-mismatch rejection unreachable without fabricating a non-resend (261-269), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (496-502), and the closed WorkerToServerMessage union default branch (704, 705, 708, 709).",
+          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (224-232, 363), a revision-mismatch rejection unreachable without fabricating a non-resend (331-340), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (569-575), and the closed WorkerToServerMessage union default branch (777, 778, 781, 782).",
         functions: 1,
         lines: new Set([
-          165, 166, 167, 168, 261, 262, 263, 264, 265, 266, 267, 268, 269, 292, 496, 497, 498, 499,
-          500, 501, 502, 704, 705, 708, 709,
+          224, 225, 226, 227, 228, 229, 230, 231, 232, 331, 332, 333, 334, 335, 336, 337, 338, 339,
+          340, 363, 569, 570, 571, 572, 573, 574, 575, 777, 778, 781, 782,
         ]),
         requireUncoveredLines: true,
       },
