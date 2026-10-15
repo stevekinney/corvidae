@@ -20,7 +20,7 @@ The [interface patterns guide](./documentation/interface-guide.md) collects the 
 
 Import components, utilities, types, and metadata from this one entry point. Compound components retain their namespace API, such as `Tabs.List`, `Tabs.Trigger`, and `Tabs.Panel`. The application bundler handles the source graph and CSS side effects.
 
-[Chat](../chat/README.md), [Editor](../editor/README.md), and [Markdown](../../packages/markdown/README.md) own their respective product APIs in separate private workspaces. Syntax highlighting dependencies used by Cinder's `CodeBlock` are declared directly by Cinder.
+[Editor](../editor/README.md) and [Markdown](../../packages/markdown/README.md) own their respective product APIs in separate workspaces. Syntax highlighting dependencies used by Cinder's `CodeBlock` are declared directly by Cinder.
 
 ## Component metadata
 
