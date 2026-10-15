@@ -60,6 +60,18 @@
   }
 
   /*
+   * Except with sticky rows. As a window-scrolled list's active header pins on
+   * leaving the rendered window, the page's anchoring pulls the window back a row,
+   * so a keyboard step that had just landed is undone, and nothing re-issues the
+   * press. Measured in Chromium: ten ArrowDown presses advanced nine rows. This
+   * combination gives up page anchoring for layout shifts above the list instead,
+   * as a `dynamicSize` list already does.
+   */
+  .cinder-virtual-list[data-cinder-window-scroll='true'][data-cinder-sticky-rows='true'] {
+    overflow-anchor: none;
+  }
+
+  /*
    * Dynamic sizing anchors the viewport itself, in either mode: when a measured
    * row above the fold turns out to differ from its estimate, the component adds
    * that delta to the scroll offset before paint. A browser anchoring natively
