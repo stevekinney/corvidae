@@ -17,6 +17,7 @@ import { serializeCheckpoint } from '../checkpoint/serialization.ts';
 import { encode } from '../codec.ts';
 import type { Checkpoint, WorkflowState } from '../types.ts';
 import { retryFailedAll } from './bulk-operations.ts';
+import { HANDLE_CLAIM_EPOCH, WorkflowHandle } from './handles.ts';
 import { WorkflowClaimRegistry } from './workflow-claim-registry.ts';
 
 function createFailedState(workflowId: string): WorkflowState {
@@ -46,13 +47,18 @@ function createCheckpoint(workflowId: string): Checkpoint {
   };
 }
 
-function createInternals(storage: MemoryStorage, registry: WorkflowClaimRegistry | null) {
+function createInternals(
+  storage: MemoryStorage,
+  registry: WorkflowClaimRegistry | null,
+  handleCache = new Map(),
+) {
   return {
     deposed: false,
     engine: {
       resume: mock(async () => {}),
       start: mock(async () => ({ id: 'started' })),
     },
+    handleCache,
     leaseManager: null,
     options: { getNow: () => 2_000, ownershipMode: 'workflow-lease' },
     registrations: new Map([['retryable', { handler: async function* () {}, version: '1' }]]),
@@ -81,12 +87,20 @@ describe('bulk-operations.ts: retryFailedAll folds acquire() under workflow-leas
       claimTtlMs: 60_000,
       claimRenewIntervalMs: 5_000,
     });
-    const internals = createInternals(storage, registry);
+    // The run's cached handle, created before the retry acquired a claim, follows the new epoch.
+    const cachedHandle = new WorkflowHandle(workflowId, {} as never);
+    const internals = createInternals(
+      storage,
+      registry,
+      new Map([[workflowId, { ref: new WeakRef(cachedHandle), unregisterToken: {} }]]),
+    );
+    expect(cachedHandle[HANDLE_CLAIM_EPOCH]).toBeNull();
 
     const result = await retryFailedAll(internals, { status: 'failed' });
 
     expect(result).toEqual({ retried: 1, failed: 0, errors: [] });
     expect(registry.currentEpoch(workflowId)).toBe(1);
+    expect(cachedHandle[HANDLE_CLAIM_EPOCH]).toBe(1);
     expect(
       (internals as { engine: { resume: (id: string) => Promise<void> } }).engine.resume,
     ).toHaveBeenCalledWith(workflowId);
