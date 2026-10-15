@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { BrowserSocket, TerminalTransportState } from './transport-types.ts';
+import type { TerminalTransportState } from './transport-types.ts';
 import { TerminalWebSocketClient } from './websocket-client.ts';
 
 /**
@@ -86,7 +86,7 @@ const scenario = await outcomeOf(async () => {
       createSocket: (address) =>
         new WebSocket(address, {
           headers: { Origin: ORIGIN, Cookie: COOKIE },
-        } as never) as unknown as BrowserSocket,
+        } as never),
     });
     await client.connect();
     // Wait until the child is in raw mode; in cooked mode a long line would never reach it.
@@ -136,7 +136,8 @@ const scenario = await outcomeOf(async () => {
       if (!accepted) await settled(client, 'writable');
     }
     expect(accepted).toBe(true);
-    expect((await client.stop()).outcome).toBe('complete');
+    const stopped = await client.stop();
+    expect(stopped.outcome).toBe('complete');
   } finally {
     await terminal.close();
     await server.stop(true);
