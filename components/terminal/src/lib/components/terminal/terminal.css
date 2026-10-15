@@ -31,6 +31,7 @@
   }
 
   .cinder-terminal__viewport {
+    position: relative;
     flex: 1;
     min-block-size: 0;
     /* No padding here: this is the element the fit addon measures, and it subtracts only the
@@ -52,7 +53,14 @@
     overflow: auto;
   }
 
-  .cinder-terminal__viewport:focus-within {
+  /* The ring is an overlay, not the viewport's own shadow: the engine's scrollable element fills
+     the viewport, and an inset shadow paints under it, where it would show only at the edges the
+     engine does not cover. */
+  .cinder-terminal__viewport:focus-within::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
     outline: var(--cinder-ring-width) solid transparent;
     outline-offset: calc(-1 * var(--cinder-ring-width));
     box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
@@ -60,6 +68,7 @@
 
   .cinder-terminal__actions {
     display: flex;
+    flex-wrap: wrap;
     padding: var(--cinder-space-2) var(--cinder-space-3);
     gap: var(--cinder-space-2);
   }
@@ -117,7 +126,7 @@
   }
 
   @media (forced-colors: active) {
-    .cinder-terminal__viewport:focus-within {
+    .cinder-terminal__viewport:focus-within::after {
       outline-color: Highlight;
       box-shadow: none;
     }
@@ -129,4 +138,11 @@
       color: CanvasText;
     }
   }
+}
+
+/* The engine's stylesheet gives its scrollable viewport an opaque black background and no layer, so
+   a rule inside a layer cannot replace it. That viewport covers the engine element's padding, the
+   reader's inset, so without this the inset shows as a black frame around the themed screen. */
+.cinder-terminal__viewport .xterm .xterm-viewport {
+  background-color: var(--cinder-surface-inset);
 }

@@ -528,6 +528,7 @@
         "@lostgradient/chat": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/editor": "workspace:*",
+        "@lostgradient/terminal": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "conversationalist": "workspace:*",

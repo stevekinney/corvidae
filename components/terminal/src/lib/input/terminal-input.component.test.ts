@@ -362,6 +362,18 @@ describe('the Interrupt button', () => {
     expect(seen).toEqual(['Terminal key capture on']);
   });
 
+  test('a pointer press on either control does not take focus from the terminal', async () => {
+    // Safari does not focus a clicked button, so the press itself moved focus to the page and
+    // ended capture (COR-474). Cancelling the press keeps focus; the click still activates.
+    const controller = wiredController();
+    const { harness } = await mountReady({ title: 'Shell', state: 'writable', controller });
+    for (const label of ['Capture terminal keys', 'Interrupt']) {
+      const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+      button(label, harness.target).dispatchEvent(press);
+      expect(press.defaultPrevented, label).toBe(true);
+    }
+  });
+
   test('focus leaving it for the page releases capture', async () => {
     const controller = wiredController();
     const { harness } = await mountReady({ title: 'Shell', state: 'writable', controller });

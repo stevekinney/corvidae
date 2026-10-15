@@ -49,19 +49,43 @@ export function watchElementSize(element: Element, onChange: () => void): Unwatc
   return () => observer.disconnect();
 }
 
+/** The set of font faces and where each one is in loading, as one comparable string. */
+function fontSignature(fonts: FontFaceSet): string {
+  return Array.from(
+    fonts,
+    (face) => `${face.family}:${face.style}:${face.weight}:${face.status}`,
+  ).join('|');
+}
+
 /** Calls `onChange` when web fonts finish loading, which changes the measured cell size. */
 export function watchFontLoading(onChange: () => void): Unwatch {
   const fonts = typeof document === 'undefined' ? undefined : document.fonts;
   if (fonts === undefined) return () => {};
   let disposed = false;
+  // `undefined` until the first notification, which is unconditional: the engine may have
+  // measured before a face that was already loading finished.
+  let notified: string | undefined;
   const notify = (): void => {
-    if (!disposed) onChange();
+    if (disposed) return;
+    const signature = fontSignature(fonts);
+    // Measuring again can itself make the browser start and finish loading, so a signal that
+    // finds the same faces in the same states as the last one has nothing new to measure.
+    if (signature === notified) return;
+    notified = signature;
+    onChange();
+  };
+  // WebKit does not always raise `loadingdone` for a face the page's own text pulled in, so each
+  // time loading starts the settled promise is awaited as well.
+  const notifyWhenSettled = (): void => {
+    void fonts.ready.then(notify);
   };
   fonts.addEventListener('loadingdone', notify);
+  fonts.addEventListener('loading', notifyWhenSettled);
   void fonts.ready.then(notify);
   return () => {
     disposed = true;
     fonts.removeEventListener('loadingdone', notify);
+    fonts.removeEventListener('loading', notifyWhenSettled);
   };
 }
 

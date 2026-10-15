@@ -287,6 +287,13 @@
     };
   }
 
+  // Safari does not focus a button when it is clicked, so the click would take focus from the
+  // terminal to the page and end capture. Holding the press keeps focus where it is; the click
+  // still activates the button.
+  function keepFocus(event: MouseEvent): void {
+    event.preventDefault();
+  }
+
   function toggleCapture(): void {
     if (captured) input?.release();
     else input?.capture();
@@ -334,6 +341,7 @@
           aria-pressed={captured}
           aria-describedby={mouseActive ? mouseIndicatorId : undefined}
           onclick={toggleCapture}
+          onmousedown={keepFocus}
           onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
         />
         {#if mouseActive}
@@ -344,6 +352,7 @@
           label="Interrupt"
           size="sm"
           onclick={() => input?.interrupt()}
+          onmousedown={keepFocus}
           onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
         />
       </div>

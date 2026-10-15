@@ -113,7 +113,11 @@ export function routeKey(event: KeyEventLike, context: KeyRouteContext): KeyDeci
 
   // 3. Authorized terminal input. A view that takes none leaves Tab to the page and lets the
   //    engine scroll; the engine and the sender both refuse to send anything from it.
+  const holdsTab = context.writable && context.captured;
   const isTab = event.key === 'Tab' && !event.ctrlKey && !event.altKey && !event.metaKey;
-  if (isTab && !(context.writable && context.captured)) return LEAVE_TO_BROWSER;
+  if (isTab && !holdsTab) return LEAVE_TO_BROWSER;
+  // Safari on a Mac moves focus through buttons and links only with Option held, so without
+  // capture Option+Tab is the page's too; on other platforms it is reserved above already.
+  if (event.key === 'Tab' && event.altKey && !holdsTab) return LEAVE_TO_BROWSER;
   return TO_ENGINE;
 }
