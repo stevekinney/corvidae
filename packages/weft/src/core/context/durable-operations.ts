@@ -4,6 +4,7 @@ import type { Duration } from '../types.ts';
 import type { Context } from './index.ts';
 import { getInternals, yieldOperation, type ContextInternals } from './internals.ts';
 import type { ContextOperationRequest } from './operation-request.ts';
+import { dropSleepFireAt, readOrInitSleepFireAt } from './sleep-deadline.ts';
 import type { OffloadReference, StreamReference, StreamSink } from './types.ts';
 import { captureCallerStack } from './validation.ts';
 import { resolveWorkflowVersionPatch } from './version-patching.ts';
@@ -57,57 +58,13 @@ export function prepareSleepOperation(
   };
 }
 
-const SLEEP_DEADLINE_LOCAL_PREFIX = '__weftSleepDeadline:';
-
-/**
- * Read the absolute deadline of the sleep at `step`, writing it on the first
- * evaluation. The anchor lands in the checkpoint committed at the sleep's
- * yield, so a replay that reaches the still-pending sleep (a claim takeover or
- * `recoverAll` before the deadline) re-parks on the SAME deadline. Deriving it
- * again from the resumed checkpoint's `createdAt` would move it later by the
- * time already elapsed on every early replay, so a wake-up cadence shorter than
- * the sleep would keep it from ever firing.
- */
-function readOrInitSleepFireAt(
-  internals: ContextInternals,
-  step: number,
-  milliseconds: number,
-): number {
-  // Consume the reference time even when the anchor exists: it belongs to the
-  // first uncached time operation after resume, and this sleep is that
-  // operation. Leaving it set would hand a stale reference to the next sleep.
-  const referenceTime = internals.sleepReferenceTime ?? internals.getNow();
-  internals.sleepReferenceTime = undefined;
-
-  const localKey = `${SLEEP_DEADLINE_LOCAL_PREFIX}${step}`;
-  const existing = internals.checkpointLocals[localKey];
-  if (typeof existing === 'number' && Number.isFinite(existing)) {
-    return existing;
-  }
-  if (existing !== undefined) {
-    throw new Error(
-      `Invalid checkpointed sleep deadline ${JSON.stringify(existing)} for step ${step}`,
-    );
-  }
-
-  const scheduledFireAt = referenceTime + milliseconds;
-  // Reassign rather than mutate in place: `checkpointLocals` is frozen between operations.
-  internals.checkpointLocals = { ...internals.checkpointLocals, [localKey]: scheduledFireAt };
-  return scheduledFireAt;
-}
-
 export function* completePreparedSleepOperation(
   context: Context,
   prepared: Exclude<PreparedSleepOperation, { cached: true }>,
 ): Generator<ContextOperationRequest, void, unknown> {
   yield prepared.request;
   context.accumulatedResults.set(prepared.step, undefined);
-  // The step's cached result now answers every replay, so the deadline anchor is
-  // dead weight; drop it so a recurring sleep does not grow every checkpoint.
-  const internals = getInternals(context);
-  const { [`${SLEEP_DEADLINE_LOCAL_PREFIX}${prepared.step}`]: _completed, ...remainingLocals } =
-    internals.checkpointLocals;
-  internals.checkpointLocals = remainingLocals;
+  dropSleepFireAt(getInternals(context), prepared.step);
 }
 
 export function* sleep(
