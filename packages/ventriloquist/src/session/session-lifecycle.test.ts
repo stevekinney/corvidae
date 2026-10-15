@@ -2,9 +2,10 @@ import { describe, expect, test } from 'bun:test';
 
 import { createDeferred } from './fixtures/deferred.ts';
 import { createScriptedSubscription } from './fixtures/scripted-sources.ts';
-import type { CloseCause } from './session-types.ts';
+import type { CloseCause, SessionAttachment, SessionEvent } from './session-types.ts';
 import {
   createHarness,
+  expectAttached,
   expectNoOutputAfterClosed,
   flush,
   startAndAttach,
@@ -433,5 +434,121 @@ describe('repeated stop and dispose', () => {
       cleanup: { kind: 'finished', outcome: 'complete' },
       connection: { kind: 'detached' },
     });
+  });
+});
+
+describe('the natural exit is the first cause', () => {
+  const REENTRANT_CLOSES: readonly ('stop' | 'dispose' | 'detach')[] = [
+    'stop',
+    'dispose',
+    'detach',
+  ];
+
+  test.each([...REENTRANT_CLOSES])(
+    'a processExit listener that calls %s hurries the drain but does not replace the cause',
+    async (way) => {
+      const harness = createHarness();
+      const holder: { attachment?: SessionAttachment } = {};
+      const causesSeen: (CloseCause | undefined)[] = [];
+      const attachment = expectAttached(
+        harness.session.attach({
+          requestedMode: 'interactive',
+          grant: 'interactive',
+          listener: (event: SessionEvent) => {
+            harness.recorder.listener(event);
+            if (event.type !== 'processExit') return;
+            if (way === 'stop') void harness.session.stop();
+            else if (way === 'dispose') void harness.session.dispose();
+            else void holder.attachment?.detach();
+          },
+        }),
+      );
+      holder.attachment = attachment;
+      void harness.session.start();
+      await flush();
+      harness.stream.push(utf8('first'));
+      await flush();
+      expect(harness.session.reportProcessExit(0, null)).toBe(true);
+      const summary = await harness.session.closed;
+      causesSeen.push(summary.cause);
+      expect(causesSeen).toEqual(['process-exit']);
+      // Output produced before the exit is still delivered, in order, ahead of the exit itself.
+      expect(harness.recorder.types.slice(0, 3)).toEqual([
+        'output',
+        'processExit',
+        'attachmentRevoked',
+      ]);
+      expect(harness.recorder.ofType('output').map((event) => event.bytes)).toEqual([
+        utf8('first'),
+      ]);
+      expect(summary.process).toEqual({ kind: 'exited', exitCode: 0, signal: null });
+      expectNoOutputAfterClosed(harness.recorder.events);
+    },
+  );
+});
+
+describe('the final operation result of a natural exit', () => {
+  const rejectingResults = (harness: ReturnType<typeof createHarness>) => (event: SessionEvent) => {
+    harness.recorder.listener(event);
+    return event.type === 'operationResult'
+      ? Promise.reject(new Error('listener failed'))
+      : undefined;
+  };
+
+  test('is emitted before deliveries settle, so a rejecting listener upgrades the cause to callback-failed', async () => {
+    const harness = createHarness({ backend: { write: () => new Promise(() => undefined) } });
+    const attachment = expectAttached(
+      harness.session.attach({
+        requestedMode: 'interactive',
+        grant: 'interactive',
+        listener: rejectingResults(harness),
+      }),
+    );
+    void harness.session.start();
+    await flush();
+    attachment.write(utf8('a'));
+    await flush();
+    harness.session.reportProcessExit(0, null);
+    harness.stream.end();
+    await flush();
+    const summary = await harness.session.closed;
+    expect(harness.recorder.ofType('operationResult')).toEqual([
+      expect.objectContaining({ disposition: 'unknown', reason: 'closed-before-acknowledgement' }),
+    ]);
+    expect(summary.cause).toBe('callback-failed');
+    // A listener that failed is never called again, so it is not told the session closed.
+    expect(harness.recorder.types.at(-1)).toBe('operationResult');
+  });
+
+  test('is reported exactly once even when the write settles while deliveries are still pending', async () => {
+    const write = createDeferred<void>();
+    const delivery = createDeferred<void>();
+    const harness = createHarness({ backend: { write: () => write.promise } });
+    const attachment = expectAttached(
+      harness.session.attach({
+        requestedMode: 'interactive',
+        grant: 'interactive',
+        listener: (event) => {
+          harness.recorder.listener(event);
+          return event.type === 'operationResult' ? delivery.promise : undefined;
+        },
+      }),
+    );
+    void harness.session.start();
+    await flush();
+    attachment.write(utf8('a'));
+    await flush();
+    harness.session.reportProcessExit(0, null);
+    harness.stream.end();
+    await flush();
+    // Cleanup has finished and the result is out, but its delivery is still pending.
+    expect(harness.recorder.ofType('operationResult')).toHaveLength(1);
+    expect(harness.session.snapshot.closed).toBe(false);
+    write.resolve();
+    await flush();
+    delivery.resolve();
+    const summary = await harness.session.closed;
+    expect(harness.recorder.ofType('operationResult')).toHaveLength(1);
+    expect(summary.cause).toBe('process-exit');
   });
 });

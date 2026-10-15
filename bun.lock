@@ -54,6 +54,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@axe-core/playwright": "catalog:",
         "@lostgradient/typescript": "workspace:*",
         "@playwright/test": "catalog:",
         "@testing-library/svelte": "catalog:",

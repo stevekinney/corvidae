@@ -86,6 +86,7 @@ async function allocateFromConcurrentProcesses() {
   `;
   const children = Array.from({ length: 4 }, () =>
     Bun.spawn([process.execPath, '-e', childSource], {
+      timeout: 120_000,
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',

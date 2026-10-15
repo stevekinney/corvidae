@@ -133,6 +133,55 @@ const ROWS: Row[] = [
     close: 1000,
   },
   {
+    name: 'terminate from a read-only client',
+    cite: '"Output-only sources ... advertise no input, resize, or kill capability" (a read-only attachment advertises `kill: false`, so the terminate is not a stop); "View disposal only unbinds the view; controller disposal closes its attachment" (the attachment ends as a detach and is told so, never dropped); "Stop revokes authority first ... and reports complete, incomplete, or unknown"',
+    run: async () => {
+      const scenario = await connected({}, 'read-only');
+      scenario.transport.send(scenario.transport.client.terminate());
+      return finished(scenario);
+    },
+    frames: ['capabilities', 'cleanup-result'],
+    close: 1000,
+  },
+  {
+    name: 'a cancellation while the process exit is held',
+    cite: '"Exit: the host emits PTY EOF or source completion, then the distinct process-exit result when known, revokes the generation, and emits cleanup-result." and "Stop ... cancels queued but unsubmitted operations with explicit results": a cancellation never submitted anything, so it neither suppresses the exit nor changes the normal close',
+    run: async () => {
+      const scenario = await connected();
+      scenario.transport.send(scenario.transport.client.input(utf8('queued')));
+      scenario.harness.session.reportProcessExit(0, null);
+      await flush();
+      scenario.harness.stream.end();
+      return finished(scenario);
+    },
+    frames: [
+      'capabilities',
+      'operation-ack',
+      'process-exit',
+      'operation-failure',
+      'cleanup-result',
+    ],
+    close: 1000,
+  },
+  {
+    name: 'a submitted write fails while the process exit is held',
+    cite: '"backend-failed | server, submitted operation | operation failure; generation revoked | 1011 | cancel unsent operations; cleanup" and "A failed connection is not a successful process exit": the failure is the terminal status, so the held exit is not reported',
+    run: async () => {
+      const write = createDeferred<void>();
+      const scenario = await connected({ backend: { write: () => write.promise } });
+      scenario.transport.send(scenario.transport.client.input(utf8('a')));
+      await flush();
+      scenario.harness.session.reportProcessExit(0, null);
+      await flush();
+      write.reject(new Error('write failed'));
+      await flush();
+      scenario.harness.stream.end();
+      return finished(scenario);
+    },
+    frames: ['capabilities', 'operation-ack', 'operation-failure', 'cleanup-result'],
+    close: 1011,
+  },
+  {
     name: 'host stop',
     cite: STOP_CITE,
     run: async () => {
@@ -430,7 +479,7 @@ function wireKinds(transport: FixtureTransport): string[] {
 
 describe('how every connection ends', () => {
   test('the table covers every close cause the connection can reach', () => {
-    expect(ROWS.length).toBeGreaterThanOrEqual(24);
+    expect(ROWS.length).toBeGreaterThanOrEqual(27);
   });
 
   test('the fixture socket drops what is sent after it closes, and records it', async () => {

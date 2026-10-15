@@ -88,7 +88,7 @@ async function withFixture(
   }
 }
 
-describe('shellWord', () => {
+describe('shellWord', async () => {
   /** What bash hands the command for each word, which is the only oracle that matters. */
   function throughBash(words: readonly string[]): string[] {
     const line = `printf '%s\\n' ${words.map(shellWord).join(' ')}`;
@@ -110,10 +110,13 @@ describe('shellWord', () => {
     );
   });
 
-  test('spaces, quotes, operators and the empty string reach the command intact', () => {
+  // Bash is a real process, so the scenario runs once at module scope, off the per-test clock.
+  const awkwardWordsOutcome = await outcomeOf(() => {
     const words = ["it's", 'a b', 'x; rm -rf y', '$HOME', '"quoted"', ''];
     expect(throughBash(words)).toEqual(words);
   });
+  test('spaces, quotes, operators and the empty string reach the command intact', () =>
+    rethrow(awkwardWordsOutcome));
 });
 
 describe('readLockedVersion', () => {

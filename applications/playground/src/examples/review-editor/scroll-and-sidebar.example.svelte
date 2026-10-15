@@ -18,7 +18,7 @@
   // real diff, just to make those tabs reachable so tests can switch away
   // from (and back to) the editor view, which is what unmounts and remounts
   // the ProseMirror view the scroll/sidebar behavior above depends on.
-  const original = `# Deep Anchor Playground
+  const original = `## Deep Anchor Playground
 
 Intro paragraph explaining the scenario for automated scroll and sidebar regression tests against ReviewEditor's imperative and sidebar interactions.
 
@@ -56,7 +56,7 @@ Closing paragraph after both anchors, just to round out the document.
   // createDocFromMarkdown + proseMirrorPositionToTextOffset, the same
   // utilities review-editor-regressions.test.ts uses to verify the shipped
   // examples — not hand-computed.
-  let value = $state(`# Deep Anchor Playground
+  let value = $state(`## Deep Anchor Playground
 
 Intro paragraph explaining the scenario for automated scroll and sidebar regression tests against ReviewEditor's imperative and sidebar interactions.
 

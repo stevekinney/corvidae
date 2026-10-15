@@ -144,7 +144,10 @@ async function listVersionedFixtureSource() {
         await Bun.write(join(directory, workspace, path), '');
       }
     }
-    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], { cwd: directory });
+    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], {
+      timeout: 120_000,
+      cwd: directory,
+    });
     const listed = Bun.spawnSync(
       [
         'git',
@@ -156,7 +159,7 @@ async function listVersionedFixtureSource() {
         '--others',
         '--exclude-standard',
       ],
-      { cwd: directory },
+      { timeout: 120_000, cwd: directory },
     );
     return { initialized, listed };
   } finally {

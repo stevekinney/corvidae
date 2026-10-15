@@ -16,7 +16,7 @@ async function scanExcludesFixture(directory: string) {
   const text = (value: string) => new TextEncoder().encode(value);
   const withNul = new Uint8Array([0x61, 0x00, 0x62, 0x00]);
   const git = (...command: string[]) => {
-    const result = Bun.spawnSync(['git', ...command], { cwd: directory });
+    const result = Bun.spawnSync(['git', ...command], { timeout: 120_000, cwd: directory });
     if (result.exitCode !== 0) {
       throw new Error(`git ${command.join(' ')} failed: ${result.stderr.toString()}`);
     }

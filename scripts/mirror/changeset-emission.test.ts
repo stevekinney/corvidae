@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { rejectionOf } from '../promise-outcome.test-support.ts';
 import {
   assertImmutable,
@@ -15,7 +16,7 @@ import { loadTargetOwnedPolicy } from './target-owned.ts';
 
 const cleanup: string[] = [];
 
-afterEach(async () => {
+afterAll(async () => {
   for (const directory of cleanup.splice(0)) await rm(directory, { recursive: true, force: true });
 });
 
@@ -86,8 +87,8 @@ function emittedPath(adding: string, name: string): string {
 const text = (contents: string | Uint8Array | undefined): string =>
   typeof contents === 'string' ? contents : new TextDecoder().decode(contents);
 
-describe('changeset emission', () => {
-  test('(a) emits a fresh changeset to its own target only, under the adding commit', async () => {
+describe('changeset emission', async () => {
+  const emitsFreshChangesetItsOwnTargetOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const adding = await commit(root, 'Add a changeset');
@@ -99,8 +100,10 @@ describe('changeset emission', () => {
     expect(await emit(root, clone, start, 'cinder')).toEqual({});
     expect(await emit(root, clone, start, 'agent-bureau')).toEqual({});
   });
+  test('(a) emits a fresh changeset to its own target only, under the adding commit', () =>
+    rethrow(emitsFreshChangesetItsOwnTargetOutcome));
 
-  test('(a) writes the bytes of the corvidae file, including CRLF line endings', async () => {
+  const writesBytesCorvidaeFileIncludingCrlfOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     const crlf = weftChangeset.replaceAll('\n', '\r\n');
     await write(root, '.changeset/crlf.md', crlf);
@@ -108,15 +111,19 @@ describe('changeset emission', () => {
     const files = await emit(root, await target(start), start);
     expect(text(files[emittedPath(adding, 'crlf')])).toBe(crlf);
   });
+  test('(a) writes the bytes of the corvidae file, including CRLF line endings', () =>
+    rethrow(writesBytesCorvidaeFileIncludingCrlfOutcome));
 
-  test('(b) does not emit a file already present at the trailer SHA', async () => {
+  const doesNotEmitFileAlreadyPresentOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const synced = await commit(root, 'Add a changeset');
     expect(await emit(root, await target(synced), synced)).toEqual({});
   });
+  test('(b) does not emit a file already present at the trailer SHA', () =>
+    rethrow(doesNotEmitFileAlreadyPresentOutcome));
 
-  test('(d) does not emit a file added and deleted inside the range', async () => {
+  const doesNotEmitFileAddedDeletedOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     await commit(root, 'Add a changeset');
@@ -124,8 +131,10 @@ describe('changeset emission', () => {
     await commit(root, 'Delete the changeset');
     expect(await emit(root, await target(start), start)).toEqual({});
   });
+  test('(d) does not emit a file added and deleted inside the range', () =>
+    rethrow(doesNotEmitFileAddedDeletedOutcome));
 
-  test('deleting a synced changeset in a commit that adds nothing is allowed', async () => {
+  const deletingSyncedChangesetCommitAddsNothingOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/old-name.md', weftChangeset);
     const synced = await commit(root, 'Add a changeset');
@@ -137,8 +146,10 @@ describe('changeset emission', () => {
       emittedPath(later, 'later'),
     ]);
   });
+  test('deleting a synced changeset in a commit that adds nothing is allowed', () =>
+    rethrow(deletingSyncedChangesetCommitAddsNothingOutcome));
 
-  test('(f) the same trailer gives identical output on a repeat run', async () => {
+  const sameTrailerGivesIdenticalOutputRepeatOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     await write(root, '.changeset/fix-b.md', changeset('@lostgradient/weft', 'Another.'));
@@ -146,8 +157,10 @@ describe('changeset emission', () => {
     const clone = await target(start);
     expect(await emit(root, clone, start)).toEqual(await emit(root, clone, start));
   });
+  test('(f) the same trailer gives identical output on a repeat run', () =>
+    rethrow(sameTrailerGivesIdenticalOutputRepeatOutcome));
 
-  test('(g) does not re-emit a path the base branch added and then consumed', async () => {
+  const doesNotReEmitPathBaseOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const adding = await commit(root, 'Add a changeset');
@@ -162,8 +175,10 @@ describe('changeset emission', () => {
     expect(await emit(root, clone, start, 'weft', (line) => logged.push(line))).toEqual({});
     expect(logged.join('\n')).toContain(path);
   });
+  test('(g) does not re-emit a path the base branch added and then consumed', () =>
+    rethrow(doesNotReEmitPathBaseOutcome));
 
-  test('(g) a copy that exists only on another target branch does not cause a skip', async () => {
+  const copyExistsOnlyAnotherTargetBranchOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const adding = await commit(root, 'Add a changeset');
@@ -175,8 +190,10 @@ describe('changeset emission', () => {
     await git(clone, 'checkout', '--quiet', 'main');
     expect(Object.keys(await emit(root, clone, start))).toEqual([path]);
   });
+  test('(g) a copy that exists only on another target branch does not cause a skip', () =>
+    rethrow(copyExistsOnlyAnotherTargetBranchOutcome));
 
-  test('(g2) two pending files with identical text are both emitted', async () => {
+  const twoPendingFilesIdenticalTextBothOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/one.md', weftChangeset);
     await write(root, '.changeset/two.md', weftChangeset);
@@ -187,8 +204,10 @@ describe('changeset emission', () => {
       emittedPath(adding, 'two'),
     ]);
   });
+  test('(g2) two pending files with identical text are both emitted', () =>
+    rethrow(twoPendingFilesIdenticalTextBothOutcome));
 
-  test('(g) a merge that brought in a side branch adding and deleting the path still skips it', async () => {
+  const mergeBroughtSideBranchAddingDeletingOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const adding = await commit(root, 'Add a changeset');
@@ -205,8 +224,10 @@ describe('changeset emission', () => {
     await git(clone, 'merge', '--quiet', '--no-ff', '--message', 'Merge side', 'side');
     expect(await emit(root, clone, start)).toEqual({});
   });
+  test('(g) a merge that brought in a side branch adding and deleting the path still skips it', () =>
+    rethrow(mergeBroughtSideBranchAddingDeletingOutcome));
 
-  test('(h) a target-authored changeset is neither flagged foreign nor reached by the plan', async () => {
+  const targetAuthoredChangesetNeitherFlaggedForeignOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const adding = await commit(root, 'Add a changeset');
@@ -223,8 +244,10 @@ describe('changeset emission', () => {
     };
     expect(await findForeignCommits(clone, ownership)).toEqual([]);
   });
+  test('(h) a target-authored changeset is neither flagged foreign nor reached by the plan', () =>
+    rethrow(targetAuthoredChangesetNeitherFlaggedForeignOutcome));
 
-  test('(i) the target deleting a consumed changeset is not a foreign commit', async () => {
+  const targetDeletingConsumedChangesetNotForeignOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const adding = await commit(root, 'Add a changeset');
@@ -248,8 +271,10 @@ describe('changeset emission', () => {
       expect(await findForeignCommits(clone, ownership)).toEqual([]);
     }
   });
+  test('(i) the target deleting a consumed changeset is not a foreign commit', () =>
+    rethrow(targetDeletingConsumedChangesetNotForeignOutcome));
 
-  test('(j) a target without a changesets configuration throws', async () => {
+  const targetWithoutChangesetsConfigurationThrowsOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     await commit(root, 'Add a changeset');
@@ -260,8 +285,10 @@ describe('changeset emission', () => {
     expect(error).toBeInstanceOf(ChangesetEmissionError);
     expect((error as Error).message).toContain('config.json');
   });
+  test('(j) a target without a changesets configuration throws', () =>
+    rethrow(targetWithoutChangesetsConfigurationThrowsOutcome));
 
-  test('(k) a trailer SHA absent from corvidae throws', async () => {
+  const trailerShaAbsentFromCorvidaeThrowsOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     await commit(root, 'Add a changeset');
@@ -270,8 +297,10 @@ describe('changeset emission', () => {
     expect(error).toBeInstanceOf(ChangesetEmissionError);
     expect((error as Error).message).toContain(missing);
   });
+  test('(k) a trailer SHA absent from corvidae throws', () =>
+    rethrow(trailerShaAbsentFromCorvidaeThrowsOutcome));
 
-  test('(k) a trailer SHA that is not an ancestor of HEAD throws', async () => {
+  const trailerShaNotAncestorHeadThrowsOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await git(root, 'checkout', '--quiet', '-b', 'side');
     await write(root, 'side.txt', 'side\n');
@@ -282,15 +311,19 @@ describe('changeset emission', () => {
     const error = await rejectionOf(emit(root, await target(start), side));
     expect(error).toBeInstanceOf(ChangesetEmissionError);
   });
+  test('(k) a trailer SHA that is not an ancestor of HEAD throws', () =>
+    rethrow(trailerShaNotAncestorHeadThrowsOutcome));
 
-  test('a target with no provenance gets nothing on its first sync', async () => {
+  const targetNoProvenanceGetsNothingItsOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     await commit(root, 'Add a changeset');
     expect(await emit(root, await target('unused'), null)).toEqual({});
   });
+  test('a target with no provenance gets nothing on its first sync', () =>
+    rethrow(targetNoProvenanceGetsNothingItsOutcome));
 
-  test('an invalid pending changeset throws instead of being skipped', async () => {
+  const invalidPendingChangesetThrowsInsteadBeingOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/bad.md', '---\n"@lostgradient/weft": none\n---\n\nText.\n');
     await commit(root, 'Add a bad changeset');
@@ -298,8 +331,10 @@ describe('changeset emission', () => {
     expect(error).toBeInstanceOf(ChangesetError);
     expect((error as Error).message).toContain('.changeset/bad.md');
   });
+  test('an invalid pending changeset throws instead of being skipped', () =>
+    rethrow(invalidPendingChangesetThrowsInsteadBeingOutcome));
 
-  test('(l) with no pending changesets no target receives a .changeset path', async () => {
+  const noPendingChangesetsNoTargetReceivesOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, 'README.md', 'unrelated\n');
     await commit(root, 'Unrelated change');
@@ -307,16 +342,20 @@ describe('changeset emission', () => {
       expect(await emit(root, await target(start), start, mirror)).toEqual({});
     }
   });
+  test('(l) with no pending changesets no target receives a .changeset path', () =>
+    rethrow(noPendingChangesetsNoTargetReceivesOutcome));
 
-  test('(l) a checkout with no changesets needs neither git history nor a resolvable trailer', async () => {
+  const checkoutNoChangesetsNeedsNeitherGitOutcome = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'changeset-plain-'));
     cleanup.push(root);
     await write(root, '.changeset/README.md', '# Release intent\n');
     const clone = await target('unused');
     expect(await emit(root, clone, 'corvidae-label')).toEqual({});
   });
+  test('(l) a checkout with no changesets needs neither git history nor a resolvable trailer', () =>
+    rethrow(checkoutNoChangesetsNeedsNeitherGitOutcome));
 
-  test('(c) an edit after the add throws for every target', async () => {
+  const editAfterAddThrowsEveryTargetOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const synced = await commit(root, 'Add a changeset');
@@ -331,8 +370,10 @@ describe('changeset emission', () => {
       );
     }
   });
+  test('(c) an edit after the add throws for every target', () =>
+    rethrow(editAfterAddThrowsEveryTargetOutcome));
 
-  test('a retarget is an edit and throws', async () => {
+  const retargetEditThrowsOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/note.md', weftChangeset);
     const synced = await commit(root, 'Add a weft changeset');
@@ -344,8 +385,9 @@ describe('changeset emission', () => {
       );
     }
   });
+  test('a retarget is an edit and throws', () => rethrow(retargetEditThrowsOutcome));
 
-  test('(e) a rename git detects throws, whether or not the file had synced', async () => {
+  const renameGitDetectsThrowsWhetherNotOutcome = await outcomeOf(async () => {
     for (const synchronized of [true, false]) {
       const { root, start } = await corvidae();
       await write(root, '.changeset/old-name.md', weftChangeset);
@@ -358,8 +400,10 @@ describe('changeset emission', () => {
       expect((error as Error).message).toContain('.changeset/new-name.md');
     }
   });
+  test('(e) a rename git detects throws, whether or not the file had synced', () =>
+    rethrow(renameGitDetectsThrowsWhetherNotOutcome));
 
-  test('a delete and re-add of the same name throws', async () => {
+  const deleteReAddSameNameThrowsOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const first = await commit(root, 'Add a changeset');
@@ -377,8 +421,10 @@ describe('changeset emission', () => {
       expect((error as Error).message).toContain('.changeset/fix-a.md');
     }
   });
+  test('a delete and re-add of the same name throws', () =>
+    rethrow(deleteReAddSameNameThrowsOutcome));
 
-  test('a squash that folds several edits into one commit passes and emits once', async () => {
+  const squashFoldsSeveralEditsIntoOneOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await git(root, 'checkout', '--quiet', '-b', 'feature');
     await write(root, '.changeset/fix-a.md', weftChangeset);
@@ -393,8 +439,10 @@ describe('changeset emission', () => {
     const files = await emit(root, await target(start), start);
     expect(Object.keys(files)).toEqual([emittedPath(squashed, 'fix-a')]);
   });
+  test('a squash that folds several edits into one commit passes and emits once', () =>
+    rethrow(squashFoldsSeveralEditsIntoOneOutcome));
 
-  test('a delete and an add of a similar changeset in one commit throws, so the remedy is two pull requests', async () => {
+  const deleteAddSimilarChangesetOneCommitOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     const body =
       'Line one of a longer explanation.\nLine two keeps going.\nLine three too.\nLine four ends it.';
@@ -411,8 +459,10 @@ describe('changeset emission', () => {
     expect(error).toBeInstanceOf(ChangesetEmissionError);
     expect((error as Error).message).toContain('.changeset/new-name.md');
   });
+  test('a delete and an add of a similar changeset in one commit throws, so the remedy is two pull requests', () =>
+    rethrow(deleteAddSimilarChangesetOneCommitOutcome));
 
-  test('the same replacement as two later commits passes and emits the new file', async () => {
+  const sameReplacementTwoLaterCommitsPassesOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     const body =
       'Line one of a longer explanation.\nLine two keeps going.\nLine three too.\nLine four ends it.';
@@ -429,8 +479,10 @@ describe('changeset emission', () => {
     const files = await emit(root, await target(synced), synced);
     expect(Object.keys(files)).toEqual([emittedPath(added, 'new-name')]);
   });
+  test('the same replacement as two later commits passes and emits the new file', () =>
+    rethrow(sameReplacementTwoLaterCommitsPassesOutcome));
 
-  test('a delete and an add of completely different changesets in one commit throws', async () => {
+  const deleteAddCompletelyDifferentChangesetsOneOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(
       root,
@@ -450,8 +502,10 @@ describe('changeset emission', () => {
     expect((error as Error).message).toContain('.changeset/old-name.md');
     expect((error as Error).message).toContain('.changeset/new-name.md');
   });
+  test('a delete and an add of completely different changesets in one commit throws', () =>
+    rethrow(deleteAddCompletelyDifferentChangesetsOneOutcome));
 
-  test('a merge commit whose first-parent diff deletes one changeset and adds another throws', async () => {
+  const mergeCommitWhoseFirstParentDiffOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/old-name.md', weftChangeset);
     const synced = await commit(root, 'Add a changeset');
@@ -472,8 +526,10 @@ describe('changeset emission', () => {
     expect(error).toBeInstanceOf(ChangesetEmissionError);
     expect((error as Error).message).toContain('.changeset/new-name.md');
   });
+  test('a merge commit whose first-parent diff deletes one changeset and adds another throws', () =>
+    rethrow(mergeCommitWhoseFirstParentDiffOutcome));
 
-  test('two similar changesets added in different pull requests do not block each other', async () => {
+  const twoSimilarChangesetsAddedDifferentPullOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/one.md', changeset('@lostgradient/weft', 'Fix the first thing.'));
     await commit(root, 'Add one');
@@ -487,8 +543,10 @@ describe('changeset emission', () => {
     expect(Object.keys(files)).toHaveLength(2);
     expect(Object.keys(files)).toContain(emittedPath(second, 'two'));
   });
+  test('two similar changesets added in different pull requests do not block each other', () =>
+    rethrow(twoSimilarChangesetsAddedDifferentPullOutcome));
 
-  test('a past same-commit replacement stops blocking once its added file is deleted', async () => {
+  const pastSameCommitReplacementStopsBlockingOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/old-name.md', changeset('@lostgradient/weft', 'Alpha beta.'));
     await commit(root, 'Add a changeset');
@@ -510,8 +568,10 @@ describe('changeset emission', () => {
     const files = await emit(root, await target(start), start);
     expect(Object.keys(files)).toEqual([emittedPath(fresh, 'fresh')]);
   });
+  test('a past same-commit replacement stops blocking once its added file is deleted', () =>
+    rethrow(pastSameCommitReplacementStopsBlockingOutcome));
 
-  test('a past rename stops blocking once its destination is deleted, and blocks while it exists', async () => {
+  const pastRenameStopsBlockingOnceItsOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await write(root, '.changeset/old-name.md', weftChangeset);
     await commit(root, 'Add a changeset');
@@ -527,8 +587,10 @@ describe('changeset emission', () => {
     const files = await emit(root, await target(start), start);
     expect(Object.keys(files)).toEqual([emittedPath(fresh, 'fresh')]);
   });
+  test('a past rename stops blocking once its destination is deleted, and blocks while it exists', () =>
+    rethrow(pastRenameStopsBlockingOnceItsOutcome));
 
-  test('a merge commit that itself edits an existing changeset throws', async () => {
+  const mergeCommitItselfEditsExistingChangesetOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     await write(root, '.changeset/fix-a.md', weftChangeset);
     const synced = await commit(root, 'Add a changeset');
@@ -551,8 +613,10 @@ describe('changeset emission', () => {
     expect(error).toBeInstanceOf(ChangesetEmissionError);
     expect((error as Error).message).toContain('.changeset/fix-a.md');
   });
+  test('a merge commit that itself edits an existing changeset throws', () =>
+    rethrow(mergeCommitItselfEditsExistingChangesetOutcome));
 
-  test('a side branch that adds a changeset and is merged counts once and passes', async () => {
+  const sideBranchAddsChangesetMergedCountsOutcome = await outcomeOf(async () => {
     const { root, start } = await corvidae();
     await git(root, 'checkout', '--quiet', '-b', 'side');
     await write(root, '.changeset/fix-a.md', weftChangeset);
@@ -566,8 +630,10 @@ describe('changeset emission', () => {
     const files = await emit(root, await target(start), start);
     expect(Object.keys(files)).toEqual([emittedPath(sideAdd, 'fix-a')]);
   });
+  test('a side branch that adds a changeset and is merged counts once and passes', () =>
+    rethrow(sideBranchAddsChangesetMergedCountsOutcome));
 
-  test('changeset paths are literal: names that only collide as patterns do not cross-match', async () => {
+  const changesetPathsLiteralNamesOnlyCollideOutcome = await outcomeOf(async () => {
     const { root } = await corvidae();
     // Written directly: the validator would refuse the bracketed name.
     await write(root, '.changeset/fix[1].md', weftChangeset);
@@ -576,8 +642,10 @@ describe('changeset emission', () => {
     await commit(root, 'Add the plain name');
     await assertImmutable(root, ['.changeset/fix[1].md', '.changeset/fix1.md']);
   });
+  test('changeset paths are literal: names that only collide as patterns do not cross-match', () =>
+    rethrow(changesetPathsLiteralNamesOnlyCollideOutcome));
 
-  describe('a package moving between mirrors', () => {
+  describe('a package moving between mirrors', async () => {
     const definitionsPath = 'scripts/mirror/target-definitions.ts';
     const packageMapPath = 'scripts/mirror/package-map.json';
 
@@ -616,7 +684,7 @@ describe('changeset emission', () => {
       return { root, base: await commit(root, 'Mapping') };
     }
 
-    test('a package moved while a changeset names it throws for every target, as in the double-release scenario', async () => {
+    const packageMovedWhileChangesetNamesThrowsOutcome = await outcomeOf(async () => {
       const { root, base } = await mapped({ cinder: [weft], weft: [] });
       // Z lands after weft's trailer and before cinder's trailer.
       await write(root, '.changeset/z.md', weftChangeset);
@@ -639,8 +707,10 @@ describe('changeset emission', () => {
         );
       }
     });
+    test('a package moved while a changeset names it throws for every target, as in the double-release scenario', () =>
+      rethrow(packageMovedWhileChangesetNamesThrowsOutcome));
 
-    test('a round trip A to B to A throws for both mirrors, whatever each trailer saw', async () => {
+    const roundTripBThrowsBothMirrorsOutcome = await outcomeOf(async () => {
       const { root, base } = await mapped({ cinder: [weft], weft: [] });
       await write(root, '.changeset/z.md', weftChangeset);
       const cinderTrailer = await commit(root, 'Add Z');
@@ -659,8 +729,10 @@ describe('changeset emission', () => {
         expect((error as Error).message).toContain('.changeset/z.md');
       }
     });
+    test('a round trip A to B to A throws for both mirrors, whatever each trailer saw', () =>
+      rethrow(roundTripBThrowsBothMirrorsOutcome));
 
-    test('a changeset added and deleted inside the range around a move passes', async () => {
+    const changesetAddedDeletedInsideRangeAroundOutcome = await outcomeOf(async () => {
       const { root, base } = await mapped({ cinder: [weft], weft: [] });
       await write(root, '.changeset/z.md', weftChangeset);
       await commit(root, 'Add Z');
@@ -672,8 +744,10 @@ describe('changeset emission', () => {
       await commit(root, 'Move back');
       expect(await emit(root, await target(base), base, 'cinder')).toEqual({});
     });
+    test('a changeset added and deleted inside the range around a move passes', () =>
+      rethrow(changesetAddedDeletedInsideRangeAroundOutcome));
 
-    test('deleting the changesets and then moving the package, in later commits, passes', async () => {
+    const deletingChangesetsThenMovingPackageLaterOutcome = await outcomeOf(async () => {
       const { root, base } = await mapped({ cinder: [weft], weft: [] });
       await write(root, '.changeset/z.md', weftChangeset);
       await commit(root, 'Add Z');
@@ -685,8 +759,10 @@ describe('changeset emission', () => {
         expect(await emit(root, await target(base), base, mirror)).toEqual({});
       }
     });
+    test('deleting the changesets and then moving the package, in later commits, passes', () =>
+      rethrow(deletingChangesetsThenMovingPackageLaterOutcome));
 
-    test('removing a package from one mirror and adding it to another, in two commits, throws', async () => {
+    const removingPackageFromOneMirrorAddingOutcome = await outcomeOf(async () => {
       const { root, base } = await mapped({ cinder: [weft], weft: [] });
       await write(root, definitionsPath, definitions({ cinder: [], weft: [] }));
       await commit(root, 'Remove it from cinder');
@@ -698,8 +774,10 @@ describe('changeset emission', () => {
       expect(error).toBeInstanceOf(ChangesetEmissionError);
       expect((error as Error).message).toContain('unowned');
     });
+    test('removing a package from one mirror and adding it to another, in two commits, throws', () =>
+      rethrow(removingPackageFromOneMirrorAddingOutcome));
 
-    test('an ambiguous owner with a changeset naming the package throws', async () => {
+    const ambiguousOwnerChangesetNamingPackageThrowsOutcome = await outcomeOf(async () => {
       const { root, base } = await mapped({ cinder: [weft], weft: [] });
       await write(root, definitionsPath, definitions({ cinder: [weft], weft: [weft] }));
       await commit(root, 'List it in two mirrors');
@@ -709,8 +787,10 @@ describe('changeset emission', () => {
       expect(error).toBeInstanceOf(ChangesetEmissionError);
       expect((error as Error).message).toContain('ambiguous');
     });
+    test('an ambiguous owner with a changeset naming the package throws', () =>
+      rethrow(ambiguousOwnerChangesetNamingPackageThrowsOutcome));
 
-    test('a round trip of a package no changeset names passes', async () => {
+    const roundTripPackageNoChangesetNamesOutcome = await outcomeOf(async () => {
       const { root } = await mapped({ weft: [weft], cinder: [chat] });
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
@@ -720,8 +800,10 @@ describe('changeset emission', () => {
       await commit(root, 'Move chat back');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
+    test('a round trip of a package no changeset names passes', () =>
+      rethrow(roundTripPackageNoChangesetNamesOutcome));
 
-    test("a move discarded by a merge on a side branch is not a move in main's first-parent history", async () => {
+    const moveDiscardedByMergeSideBranchOutcome = await outcomeOf(async () => {
       const { root } = await mapped({ weft: [weft], cinder: [chat] });
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
@@ -736,8 +818,10 @@ describe('changeset emission', () => {
       await git(root, 'commit', '--quiet', '--message', 'Merge side, keeping weft where it was');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
+    test("a move discarded by a merge on a side branch is not a move in main's first-parent history", () =>
+      rethrow(moveDiscardedByMergeSideBranchOutcome));
 
-    test('a package that starts publication cannot carry a changeset until a sync has passed it', async () => {
+    const packageStartsPublicationCannotCarryChangesetOutcome = await outcomeOf(async () => {
       const { root, base } = await mapped({ cinder: [chat], weft: [] }, [chat]);
       await write(root, definitionsPath, definitions({ cinder: [chat], weft: [weft] }));
       await write(root, packageMapPath, map([chat, weft]));
@@ -751,8 +835,10 @@ describe('changeset emission', () => {
         'after moving a package between mirrors, or starting or stopping its publication, sync every affected mirror once before adding changesets that name it; delete existing ones first',
       );
     });
+    test('a package that starts publication cannot carry a changeset until a sync has passed it', () =>
+      rethrow(packageStartsPublicationCannotCarryChangesetOutcome));
 
-    test('a package that stops publication throws while a changeset names it', async () => {
+    const packageStopsPublicationThrowsWhileChangesetOutcome = await outcomeOf(async () => {
       const { root, base } = await mapped({ weft: [weft] }, [weft]);
       await write(root, '.changeset/z.md', weftChangeset);
       await commit(root, 'Add Z');
@@ -762,8 +848,10 @@ describe('changeset emission', () => {
         ChangesetEmissionError,
       );
     });
+    test('a package that stops publication throws while a changeset names it', () =>
+      rethrow(packageStopsPublicationThrowsWhileChangesetOutcome));
 
-    test('after one sync has passed a new package, a changeset naming it is accepted', async () => {
+    const afterOneSyncHasPassedNewOutcome = await outcomeOf(async () => {
       const { root } = await mapped({ weft: [weft] }, [weft]);
       await write(root, definitionsPath, definitions({ weft: [weft], cinder: [chat] }));
       await write(root, packageMapPath, map([weft, chat]));
@@ -773,8 +861,10 @@ describe('changeset emission', () => {
       const files = await emit(root, await target(trailer), trailer, 'cinder');
       expect(Object.keys(files)).toEqual([emittedPath(adding, 'z')]);
     });
+    test('after one sync has passed a new package, a changeset naming it is accepted', () =>
+      rethrow(afterOneSyncHasPassedNewOutcome));
 
-    test('adding a new publish-as workspace with changesets present passes', async () => {
+    const addingNewPublishWorkspaceChangesetsPresentOutcome = await outcomeOf(async () => {
       const { root } = await mapped({ weft: [weft] }, [weft]);
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
@@ -783,8 +873,10 @@ describe('changeset emission', () => {
       await commit(root, 'Add a workspace');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
+    test('adding a new publish-as workspace with changesets present passes', () =>
+      rethrow(addingNewPublishWorkspaceChangesetsPresentOutcome));
 
-    test('removing a workspace and recording a snapshot are not moves', async () => {
+    const removingWorkspaceRecordingSnapshotNotMovesOutcome = await outcomeOf(async () => {
       const { root } = await mapped({ weft: [weft], cinder: [chat] });
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
@@ -793,8 +885,10 @@ describe('changeset emission', () => {
       await commit(root, 'Remove a workspace and record a snapshot');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
+    test('removing a workspace and recording a snapshot are not moves', () =>
+      rethrow(removingWorkspaceRecordingSnapshotNotMovesOutcome));
 
-    test('a move of a package that no changeset names passes', async () => {
+    const movePackageNoChangesetNamesPassesOutcome = await outcomeOf(async () => {
       const { root } = await mapped({ weft: [weft], cinder: [chat] });
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
@@ -802,8 +896,10 @@ describe('changeset emission', () => {
       await commit(root, 'Move chat');
       expect(await emit(root, await target(synced), synced)).toEqual({});
     });
+    test('a move of a package that no changeset names passes', () =>
+      rethrow(movePackageNoChangesetNamesPassesOutcome));
 
-    test('a trailer mapping that cannot be resolved fails closed', async () => {
+    const trailerMappingCannotBeResolvedFailsOutcome = await outcomeOf(async () => {
       const { root } = await mapped({ weft: [weft] }, [weft]);
       await write(root, '.changeset/z.md', weftChangeset);
       const synced = await commit(root, 'Add Z');
@@ -816,5 +912,7 @@ describe('changeset emission', () => {
       );
       expect(synced).not.toBe(broken);
     });
+    test('a trailer mapping that cannot be resolved fails closed', () =>
+      rethrow(trailerMappingCannotBeResolvedFailsOutcome));
   });
 });
