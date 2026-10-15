@@ -1,6 +1,6 @@
 # Engine-Independent Operation Handler
 
-Status: **proposed, pending owner approval.** Nothing in this document is decided until the owner approves it. It records the options for each decision COR-1298 asks for, the tradeoffs found in the code at `96de0bdc`, and a recommendation. The implementation lands in COR-1299 (the Weft handler and the typed host context) and COR-1300 (`createBureauHandler`), and neither should start from this document until it is approved.
+Status: **accepted** (owner approval, 2026-10-15). It records the options for each decision COR-1298 asks for, the tradeoffs found in the code at `96de0bdc`, and a recommendation. The implementation lands in COR-1299 (the Weft handler and the typed host context) and COR-1300 (`createBureauHandler`), which build on these decisions.
 
 This document fixes how Bureau is exposed over HTTP by reusing Weft's transport plumbing and operation catalog without a Weft `Engine`, and where protocol adapters (A2A, AG-UI, Bureau MCP) mount. The settled architecture it builds on: Weft's transport plumbing and native operation catalog are shared; protocol adapters are not catalog operations; Bureau is exposed by `createBureauHandler(bureau, options): (request: Request) => Promise<Response>`.
 
