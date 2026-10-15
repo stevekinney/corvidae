@@ -247,7 +247,7 @@ export async function releaseWorkflowConcurrencySlotForRun(
   fence: TerminalFence,
 ): Promise<void> {
   const holderKey = KEYS.workflowConcurrencyHolder(workflowId);
-  const identity = fence.identity ?? (await fence.pending);
+  const identity = fence.identity;
   if (identity === undefined) return;
   const capturedMarker = identity.holderMarker;
   if (capturedMarker === null) return;

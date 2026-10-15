@@ -15,62 +15,34 @@ import type { EngineInternals } from '../internals.ts';
  * it skips its fenced durable writes and warns, and the persisted terminal-cleanup timer still
  * sweeps the run's scratch state.
  */
-export type TerminalFence = {
-  /** The identity as it stands now: read at use, so a read that settles later is still seen. */
-  readonly identity: RunIdentity | undefined;
-  /** The adoption read still in flight, awaited only by a teardown that finds `identity` unset. */
-  readonly pending?: Promise<RunIdentity | undefined> | undefined;
-};
+export type TerminalFence = { readonly identity: RunIdentity | undefined };
 
 /**
- * Capture the fence for a terminal commit of the run identified by `workflowExecutionToken`,
- * from the attempt this engine holds for it. An engine that does not hold that run (a cancel
- * issued from another engine, an attempt of another generation) has no identity to fence on.
- */
-export function captureTerminalFence(
-  internals: EngineInternals,
-  workflowId: string,
-  workflowExecutionToken: string | undefined,
-): TerminalFence {
-  const attempt = currentExecutionAttempt(internals, workflowId);
-  if (attempt === undefined || attempt.workflowExecutionToken !== workflowExecutionToken) {
-    return { identity: undefined };
-  }
-  return {
-    get identity() {
-      return attempt.identity;
-    },
-    pending: attempt.pendingIdentity,
-  };
-}
-
-/**
- * The fence for a terminal commit, reading the run's identity first when this engine holds no
- * attempt for it (a cancel or timeout of a run another engine drives). The read happens before
- * the commit is issued, so it cannot observe a replacement: none can exist until the run's
- * terminal commit lands. A fence whose engine does hold the run costs no read and no await.
+ * The fence for a terminal commit of the run identified by `workflowExecutionToken`, settled
+ * before the commit is issued so it is always the pre-commit identity.
+ *
+ * - This engine holds the run and already knows its identity: returned synchronously, with no
+ *   read and no await (the common case, and the whole completion hot path).
+ * - It holds the run but the adoption read is still in flight (a resumed run that terminates
+ *   at once): the caller awaits that read before it issues the commit.
+ * - It holds no attempt for the run (a cancel or timeout of a run another engine drives): the
+ *   identity is read now, before the commit, so it cannot observe a replacement, which cannot
+ *   exist until the run's terminal commit lands.
+ * - It holds the run but never learned its identity: no identity, and the teardown fails closed.
  */
 export function captureOrReadTerminalFence(
   internals: EngineInternals,
   workflowId: string,
   workflowExecutionToken: string | undefined,
 ): TerminalFence | Promise<TerminalFence> {
-  const fence = captureTerminalFence(internals, workflowId, workflowExecutionToken);
-  if (fence.identity !== undefined || fence.pending !== undefined) return fence;
   const attempt = currentExecutionAttempt(internals, workflowId);
-  if (attempt !== undefined && attempt.workflowExecutionToken === workflowExecutionToken) {
-    return fence;
+  if (attempt === undefined || attempt.workflowExecutionToken !== workflowExecutionToken) {
+    return readRunIdentity(internals, workflowId).then((identity) => ({ identity }));
   }
-  return readRunIdentity(internals, workflowId).then((identity) => ({ identity }));
-}
-
-async function readRunIdentity(
-  internals: EngineInternals,
-  workflowId: string,
-): Promise<RunIdentity> {
-  const generation = await internals.storage.get(KEYS.workflowGeneration(workflowId));
-  const holderMarker = await internals.storage.get(KEYS.workflowConcurrencyHolder(workflowId));
-  return { generation, holderMarker };
+  if (attempt.identity !== undefined || attempt.pendingIdentity === undefined) {
+    return { identity: attempt.identity };
+  }
+  return attempt.pendingIdentity.then(() => ({ identity: attempt.identity }));
 }
 
 /** Report that a terminal teardown had no run identity to fence on and skipped its fenced writes. */
@@ -85,6 +57,16 @@ export function warnUnknownRunIdentity(
     new Error('The run identity is unknown, so its fenced durable teardown was skipped.'),
     workflowId,
   );
+}
+
+/** Read a run's generation, then its holder marker, as they stand now. */
+export async function readRunIdentity(
+  internals: EngineInternals,
+  workflowId: string,
+): Promise<RunIdentity> {
+  const generation = await internals.storage.get(KEYS.workflowGeneration(workflowId));
+  const holderMarker = await internals.storage.get(KEYS.workflowConcurrencyHolder(workflowId));
+  return { generation, holderMarker };
 }
 
 /** Whether `current` is byte-identical to `expected`; `null` means the key is absent. */
@@ -120,7 +102,7 @@ export async function commitFencedTeardownBatch(
 ): Promise<boolean> {
   if (isSuperseded()) return false;
   if (internals.storage.capabilities().conditionalBatch) {
-    const identity = fence.identity ?? (await fence.pending);
+    const identity = fence.identity;
     if (identity === undefined) return false;
     return storageConditionalBatch(
       internals.storage,
@@ -165,4 +147,28 @@ export function fencedTeardownCommit(
 ): (operations: BatchOperation[]) => Promise<boolean> {
   return (operations) =>
     commitFencedTeardownBatch(internals, workflowId, fence, operations, isSuperseded);
+}
+
+/**
+ * Cancel the durable timers `timerIds` of the run `fence` describes, fenced on its generation so a
+ * timer a same-id replacement scheduled under the same id is never removed, including by another
+ * engine. Without `conditionalBatch` the cancel keeps the same-engine `isSuperseded` guard. A
+ * missing identity cancels nothing. The cancels are fire-and-forget, as before.
+ */
+export function cancelRunTimers(
+  internals: EngineInternals,
+  workflowId: string,
+  fence: TerminalFence,
+  isSuperseded: () => boolean,
+  timerIds: string[],
+  swallowPromiseRejection: (promise: Promise<unknown> | undefined) => Promise<void>,
+): void {
+  const identity = fence.identity;
+  if (identity === undefined || isSuperseded()) return;
+  const conditions = internals.storage.capabilities().conditionalBatch
+    ? [sameRunCondition(workflowId, identity)]
+    : undefined;
+  for (const timerId of timerIds) {
+    void swallowPromiseRejection(internals.scheduler.cancel(timerId, workflowId, conditions));
+  }
 }

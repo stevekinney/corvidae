@@ -2,11 +2,15 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS, type BatchOperation } from '../../../storage/interface.ts';
 import { MemoryStorage } from '../../../storage/memory.ts';
-import { beginExecutionAttempt, recordExecutionAttemptIdentity } from '../execution-attempts.ts';
+import {
+  beginExecutionAttempt,
+  captureExecutionAttemptIdentity,
+  recordExecutionAttemptIdentity,
+} from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
 import {
   bytesEqual,
-  captureTerminalFence,
+  captureOrReadTerminalFence,
   commitFencedTeardownBatch,
   warnUnknownRunIdentity,
   type TerminalFence,
@@ -75,23 +79,39 @@ describe('bytesEqual', () => {
   });
 });
 
-describe('captureTerminalFence', () => {
+describe('captureOrReadTerminalFence', () => {
   const identity = { generation: new Uint8Array([3]), holderMarker: null };
 
-  it('takes the identity of the attempt that launched the committing run', () => {
+  it("returns a held run's known identity synchronously", () => {
     const internals = { storage: new MemoryStorage() } as unknown as EngineInternals;
     beginExecutionAttempt(internals, 'w', 'token-a');
     recordExecutionAttemptIdentity(internals, 'w', 'token-a', identity);
-    expect(captureTerminalFence(internals, 'w', 'token-a').identity).toBe(identity);
+    const fence = captureOrReadTerminalFence(internals, 'w', 'token-a');
+    expect(fence).not.toBeInstanceOf(Promise);
+    expect(fence).toEqual({ identity });
   });
 
-  it('has no identity for another generation, an unknown run, or an attempt that never learned it', () => {
-    const internals = { storage: new MemoryStorage() } as unknown as EngineInternals;
-    expect(captureTerminalFence(internals, 'w', 'token-a').identity).toBeUndefined();
+  it('waits for an adoption read that is still in flight, then uses its pre-commit value', async () => {
+    const storage = new MemoryStorage();
+    await storage.put(KEYS.workflowGeneration('w'), new Uint8Array([5]));
+    const internals = { storage } as unknown as EngineInternals;
     beginExecutionAttempt(internals, 'w', 'token-a');
-    expect(captureTerminalFence(internals, 'w', 'token-a').identity).toBeUndefined();
-    recordExecutionAttemptIdentity(internals, 'w', 'token-a', identity);
-    expect(captureTerminalFence(internals, 'w', 'token-b').identity).toBeUndefined();
+    captureExecutionAttemptIdentity(internals, 'w');
+    const fence = captureOrReadTerminalFence(internals, 'w', 'token-a');
+    expect(fence).toBeInstanceOf(Promise);
+    const settled = await fence;
+    expect(settled.identity?.generation).toEqual(new Uint8Array([5]));
+  });
+
+  it('reads the identity for a run another engine holds, and has none for an unlearned attempt', async () => {
+    const storage = new MemoryStorage();
+    await storage.put(KEYS.workflowGeneration('w'), new Uint8Array([7]));
+    const internals = { storage } as unknown as EngineInternals;
+    const remote = await captureOrReadTerminalFence(internals, 'w', 'token-a');
+    expect(remote.identity?.generation).toEqual(new Uint8Array([7]));
+
+    beginExecutionAttempt(internals, 'v', 'token-b');
+    expect(captureOrReadTerminalFence(internals, 'v', 'token-b')).toEqual({ identity: undefined });
   });
 });
 

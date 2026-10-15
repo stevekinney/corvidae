@@ -27,6 +27,7 @@ import { describe, expect, it } from 'bun:test';
 import { GENERATION_KEYS } from '../../storage/generation-keys.ts';
 import {
   KEYS,
+  encodeStorageKeyComponent,
   type BatchOperation,
   type ConditionalBatchCondition,
 } from '../../storage/interface.ts';
@@ -37,6 +38,7 @@ import { decode, encode } from '../codec.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION } from '../types/checkpoint.ts';
 import { purgeWorkflow } from './bulk-operations-purge.ts';
+import { TERMINAL_CLEANUP_DELAY_MS } from './bulk-operations.ts';
 import { decodeGeneration } from './generation-codec.ts';
 import {
   ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING,
@@ -2058,6 +2060,102 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await expectReplacementIntact(storage, engineB, id, replacement, 'P2');
     } finally {
       generationHold.release.resolve();
+      gate.release.resolve();
+    }
+  });
+
+  it('cross-engine: the old run teardown does not cancel the deadline timer of a replacement', async () => {
+    const id = `teardown-durable-deadline-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    await using engineA = await createEngine(
+      gateFirstWrite(storage, gate, deletes(KEYS.workflowConcurrencyHolder(id))),
+    );
+    await using engineB = await createEngine(storage);
+    try {
+      const old = await engineA.start(TYPE, 'P1:OLD', { id, executionTimeout: '1h' });
+      void old.result().catch(() => undefined);
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      const oldDone = engineA.cancel(id);
+      await gate.reached.promise;
+      const replacement = await engineB.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        executionTimeout: '1h',
+        searchAttributes: { tag: 'new' },
+      });
+      await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      expect(await storage.get(`timer-idx:deadline:${id}`)).not.toBeNull();
+
+      gate.release.resolve();
+      await oldDone;
+      await Bun.sleep(50);
+
+      // The old engine's id-keyed cancel must not delete the replacement's execution deadline.
+      expect(await storage.get(`timer-idx:deadline:${id}`)).not.toBeNull();
+      await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
+    } finally {
+      gate.release.resolve();
+    }
+  });
+
+  it('the deferred terminal cleanup of an old run does not sweep the scratch keys of a replacement that lands mid-cleanup', async () => {
+    const id = `teardown-durable-deferred-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    await using engineA = await createEngine(
+      gateFirstWrite(storage, gate, (operations) =>
+        operations.some(
+          (operation) =>
+            operation.type === 'delete' &&
+            (operation.key === KEYS.workflowHeaders(id) ||
+              operation.key === `sig:${encodeStorageKeyComponent(id)}:`),
+        ),
+      ),
+    );
+    await using engineB = await createEngine(storage);
+    try {
+      const old = await engineA.start(TYPE, 'P1:OLD', { id });
+      await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      await engineA.signal(id, 'go');
+      await old.result();
+      await waitForCondition(
+        async () => {
+          const holders = await slotHolders(storage, 'P1');
+          return holders.length === 0;
+        },
+        {
+          label: 'old run teardown finished',
+        },
+      );
+
+      // Fire the old run's persisted terminal-cleanup timer and freeze it at its first sweep write.
+      const ticking = getInternals(engineA).scheduler.tick(
+        Date.now() + TERMINAL_CLEANUP_DELAY_MS + 60_000,
+      );
+      await gate.reached.promise;
+      const replacement = await engineB.start(TYPE, 'P1:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        searchAttributes: { tag: 'new' },
+      });
+      await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      await engineB.signal(id, 'buffered', 'kept');
+      const scratchKeys = async (): Promise<string[]> => {
+        const keys: string[] = [];
+        for await (const [key] of storage.scan('sig:')) keys.push(key);
+        return keys;
+      };
+      const before = await scratchKeys();
+      expect(before.length).toBeGreaterThan(0);
+
+      gate.release.resolve();
+      await ticking;
+      await Bun.sleep(50);
+
+      expect(await scratchKeys()).toEqual(before);
+      await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
+    } finally {
       gate.release.resolve();
     }
   });

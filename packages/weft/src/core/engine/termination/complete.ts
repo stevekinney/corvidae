@@ -8,7 +8,6 @@ import {
   WorkflowTimedOutEvent,
 } from '../../events.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../../scheduler.ts';
-import { buildIndexOperations } from '../../search-attributes.ts';
 import { WorkflowTimeoutError } from '../../timeouts.ts';
 import type {
   FailureCategory,
@@ -51,7 +50,12 @@ import {
   type TerminationCallbacks,
 } from './cleanup.ts';
 import {
-  captureTerminalFence,
+  appendSearchAttributeOperations,
+  buildCompletedWorkflowState,
+} from './completion-operations.ts';
+import {
+  cancelRunTimers,
+  captureOrReadTerminalFence,
   fencedTeardownCommit,
   warnUnknownRunIdentity,
 } from './terminal-fence.ts';
@@ -204,7 +208,6 @@ export async function terminateWorkflow(
     const { previousState, updatedAt, fence } = terminationResult;
     await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
     warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
-    warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
 
     const elapsed = updatedAt - getWorkflowExecutionStartedAt(previousState);
     // Fenced on this run's committed state: the id's attribute record is the replacement's once one lands.
@@ -212,16 +215,16 @@ export async function terminateWorkflow(
     await cleanupAttributeIndex(internals, workflowId, attributes, fenced);
     await writeRetainedTerminalSearchAttributes(workflowId, retainedAttributes, fenced);
     // A same-id `start-new` replacement owns the deadline / delayed-start timer keys.
-    if (!isSuperseded()) {
-      void callbacks.swallowPromiseRejection(
-        internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
-      );
-      if (previousState.status === 'pending') {
-        void callbacks.swallowPromiseRejection(
-          internals.scheduler.cancel(`delayed-start:${workflowId}`, workflowId),
-        );
-      }
-    }
+    const timerIds = [`deadline:${workflowId}`];
+    if (previousState.status === 'pending') timerIds.push(`delayed-start:${workflowId}`);
+    cancelRunTimers(
+      internals,
+      workflowId,
+      fence,
+      isSuperseded,
+      timerIds,
+      callbacks.swallowPromiseRejection,
+    );
 
     const resolver = isSuperseded() ? undefined : internals.resultResolvers.get(workflowId);
     const terminalError = buildTerminalError(workflowId, status, elapsed, reason);
@@ -276,40 +279,6 @@ function buildTerminalEvent(
     : new WorkflowCancelledEvent(workflowId);
 }
 
-function buildCompletedWorkflowState(
-  state: WorkflowState,
-  result: unknown,
-  now: number,
-  terminalCleanupToken: string | undefined,
-): WorkflowState {
-  return {
-    ...state,
-    status: 'completed' as const,
-    result,
-    updatedAt: now,
-    ...(terminalCleanupToken !== undefined ? { terminalCleanupToken } : {}),
-  };
-}
-
-function appendSearchAttributeOperations(
-  operations: BatchOperation[],
-  workflowId: string,
-  currentAttributes: Record<string, SearchAttributeValue> | undefined,
-): void {
-  if (currentAttributes === undefined || Object.keys(currentAttributes).length === 0) return;
-  const retainedAttributes = buildRetainedTerminalSearchAttributes(currentAttributes);
-  operations.push(...buildIndexOperations(workflowId, currentAttributes, retainedAttributes));
-  if (Object.keys(retainedAttributes).length > 0) {
-    operations.push({
-      type: 'put',
-      key: KEYS.attribute(workflowId),
-      value: encode(retainedAttributes),
-    });
-  } else {
-    operations.push({ type: 'delete', key: KEYS.attribute(workflowId) });
-  }
-}
-
 function buildBaseCompletionOperations(
   internals: EngineInternals,
   workflowId: string,
@@ -335,16 +304,13 @@ function notifyCompletionWaiters(
   duration: number,
   callbacks: TerminationCallbacks,
   superseded: boolean,
+  cancelDeadline: () => void,
 ): void {
   // Cancel deadline timer - fire-and-forget since the workflow is already
   // terminal and a stale timer firing will see the terminal state and no-op.
-  // A superseded run must not cancel: the cancel deletes the durable deadline
-  // timer keys by id, which now belong to the replacement.
-  if (!superseded) {
-    void callbacks.swallowPromiseRejection(
-      internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
-    );
-  }
+  // Fenced on the run's generation: a same-id replacement's deadline timer
+  // lives under the same id and must survive.
+  cancelDeadline();
 
   // Drop in-memory state immediately so the hot path releases engine memory
   // before result delivery. Durable scratch cleanup is handled by the
@@ -490,7 +456,13 @@ export async function completeWorkflow(
       if (!state || state.status !== 'running') {
         return null;
       }
-      const fence = captureTerminalFence(internals, workflowId, state.workflowExecutionToken);
+      const captured = captureOrReadTerminalFence(
+        internals,
+        workflowId,
+        state.workflowExecutionToken,
+      );
+      // Settled before the commit; awaited only when the adoption read is still in flight.
+      const fence = captured instanceof Promise ? await captured : captured;
 
       const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
       if (visibilityMaintenance !== undefined) await visibilityMaintenance;
@@ -566,6 +538,15 @@ export async function completeWorkflow(
     completionMetadata.duration,
     callbacks,
     superseded,
+    () =>
+      cancelRunTimers(
+        internals,
+        workflowId,
+        fence,
+        isSuperseded,
+        [`deadline:${workflowId}`],
+        callbacks.swallowPromiseRejection,
+      ),
   );
 }
 
@@ -651,11 +632,15 @@ export async function failWorkflow(
 
   // A superseded run touches neither the attribute record nor the deadline timer.
   await cleanupAttributeIndex(internals, workflowId, attributes, fenced);
-  if (!isSuperseded()) {
-    void callbacks.swallowPromiseRejection(
-      internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
-    );
-  }
+  const deadline = [`deadline:${workflowId}`];
+  cancelRunTimers(
+    internals,
+    workflowId,
+    fence,
+    isSuperseded,
+    deadline,
+    callbacks.swallowPromiseRejection,
+  );
 
   // Keep engine-managed terminal attributes queryable after the cleanup above.
   await writeRetainedTerminalSearchAttributes(workflowId, retainedAttributes, fenced);

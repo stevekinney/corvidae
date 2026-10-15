@@ -140,7 +140,7 @@ describe('COR-1384: run identity captured on the execution attempt', () => {
     expect(generationReads).toBe(readsBefore);
   });
 
-  it('a resumed run that finishes before its adoption read settles still releases its slot', async () => {
+  it('a resumed run that finishes before its adoption read settles waits for it, then releases its slot', async () => {
     const id = nextId('pending');
     const storage = new MemoryStorage();
     await strandParkedRun(storage, id);
@@ -164,18 +164,13 @@ describe('COR-1384: run identity captured on the execution attempt', () => {
     });
     await using engine = await createEngine(delayed);
     await engine.recoverAll();
-    // The adoption read is still in flight; the run completes first.
+    // The adoption read is still in flight when the run reaches its end.
     await engine.signal(id, 'go');
-    await waitForCondition(
-      async () => {
-        const state = await engine.get(id);
-        return state?.status === 'completed';
-      },
-      {
-        label: 'run completed before the read settled',
-      },
-    );
-    expect(attemptIdentity(engine, id)).toBeUndefined();
+    await Bun.sleep(50);
+    // The terminal commit does not proceed on an unsettled identity, so nothing is written yet.
+    const midway = await engine.get(id);
+    expect(midway?.status).toBe('running');
+    expect(await slotHolders(storage)).toEqual([id]);
 
     delaying = false;
     release.resolve();
