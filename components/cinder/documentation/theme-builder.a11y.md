@@ -12,7 +12,7 @@ This record belongs to CIN-573/TB03. It is intentionally a review form plus a te
 | Contract inputs | CIN-573 execution contract; [R4 approved specification](https://linear.app/lost-gradient/document/theme-builder-approved-specification-and-issue-graph-e620a80331ee); [R5 amendment](https://linear.app/lost-gradient/document/theme-builder-open-source-research-and-planning-amendment-e2cff94ed833) |
 | Artifact commit | Branch `steve/open-decisions-2026-09-19` in corvidae; the commit SHA is recorded on COR-242 |
 | Design artifact SHA-256 | `48624c0d109349a334a8b77c01a02bcb377f7df7e6fb9d7660f0c2d55fb8b3b7` (`docs/theme-builder.md`) |
-| Review status | Pending human design and accessibility review |
+| Review status | Design and accessibility approved by Steve Kinney on 2026-10-15 against stevekinney/corvidae#256 at `543709ad` |
 
 Do not complete a pending field by inference. The final record must identify the exact commit or content digest that Steve reviewed.
 
@@ -20,23 +20,23 @@ Do not complete a pending field by inference. The final record must identify the
 
 ### Steve's design approval
 
-- Reviewer: **Pending Steve Kinney**
-- Date: **Pending**
-- Exact artifact revision: **Pending**
-- Decision: **Pending**
-- Findings: **Pending**
+- Reviewer: **Steve Kinney**
+- Date: **2026-10-15**
+- Exact artifact revision: **stevekinney/corvidae#256 at `543709ad`**
+- Decision: **Approved**
+- Findings: **None recorded.** Steve gave this approval in the implementing session and recorded no findings.
 
 Steve must review the four annotated layouts, state matrix, Cinder primitive mapping, proposal/import flows, and R5 provenance/dependent navigation additions. Approval means the interaction and layout are accepted for implementation at the exact artifact revision.
 
 ### Accessibility practitioner review
 
-- Reviewer: **Pending Steve Kinney or named human practitioner**
-- Practitioner name and qualification: **Pending**
-- Date: **Pending**
-- Platform, browser, and assistive technology versions: **Pending**
-- Exact artifact revision: **Pending**
-- Decision: **Pending**
-- Findings: **Pending**
+- Reviewer: **Steve Kinney**
+- Practitioner name and qualification: **Steve Kinney, the project owner; no separate practitioner was named**
+- Date: **2026-10-15**
+- Platform, browser, and assistive technology versions: **Not recorded**
+- Exact artifact revision: **stevekinney/corvidae#256 at `543709ad`**
+- Decision: **Approved**
+- Findings: **None recorded.** Steve gave this approval in the implementing session and recorded no findings.
 
 The named human reviews whether the artifact specifies the keyboard, VoiceOver, zoom/reflow, focus, and screen-reader behavior completely and accessibly. An agent cannot supply this approval. Live runtime execution of these scenarios belongs to CIN-582 after implementation; this record must not claim that those tests have already run.
 
@@ -105,31 +105,62 @@ The reviewer should record the artifact evidence—a section/table reference and
 
 | Scenario | Expected evidence | Result |
 | --- | --- | --- |
-| Start at 1440px | Landmarks, selected foundation, saved status, preview and checks visible | Pending |
-| Dirty edit and invalid draft | Input text remains, error relationship, last-valid preview label | Pending |
-| Alias/recipe and two-hop provenance | Follow dependent, context retained, Back restores trigger focus | Pending |
-| Checks and fix | Error to proposal to Apply/download outcome; one announcement | Pending |
-| Spacing proposal | Before/after paths, target scope, Cancel/Apply, post-apply check failure | Pending |
-| Import success | Envelope and DTCG preflight details; Apply leaves source lossless | Pending |
-| Import unsupported/invalid | Four-way disposition, unchanged draft, unchanged download | Pending |
-| Storage conflict/failure | Reload or Save as copy; in-memory recovery download | Pending |
-| Rename/trash/permanent delete | Conflict, recoverable trash, explicit permanent confirmation | Pending |
-| 768px reflow | No clipped controls; catalogue/editor relationship clear | Pending |
-| 390px reflow | Tabs retain state; stacked catalogue and provenance | Pending |
-| 320px reflow | No page overflow; focus and action targets usable | Pending |
-| Keyboard-only specification | Full matrix is defined without pointer-only behavior | Pending |
-| VoiceOver specification | Announcements, names/roles/values, errors, context are defined | Pending |
-| Zoom and text resize specification | Reflow and focus requirements are defined | Pending |
+| Start at 1440px | Landmarks, selected foundation, saved status, preview and checks visible | Not recorded individually; covered by the 2026-10-15 approval |
+| Dirty edit and invalid draft | Input text remains, error relationship, last-valid preview label | Not recorded individually; covered by the 2026-10-15 approval |
+| Alias/recipe and two-hop provenance | Follow dependent, context retained, Back restores trigger focus | Not recorded individually; covered by the 2026-10-15 approval |
+| Checks and fix | Error to proposal to Apply/download outcome; one announcement | Not recorded individually; covered by the 2026-10-15 approval |
+| Spacing proposal | Before/after paths, target scope, Cancel/Apply, post-apply check failure | Not recorded individually; covered by the 2026-10-15 approval |
+| Import success | Envelope and DTCG preflight details; Apply leaves source lossless | Not recorded individually; covered by the 2026-10-15 approval |
+| Import unsupported/invalid | Four-way disposition, unchanged draft, unchanged download | Not recorded individually; covered by the 2026-10-15 approval |
+| Storage conflict/failure | Reload or Save as copy; in-memory recovery download | Not recorded individually; covered by the 2026-10-15 approval |
+| Rename/trash/permanent delete | Conflict, recoverable trash, explicit permanent confirmation | Not recorded individually; covered by the 2026-10-15 approval |
+| 768px reflow | No clipped controls; catalogue/editor relationship clear | Not recorded individually; covered by the 2026-10-15 approval |
+| 390px reflow | Tabs retain state; stacked catalogue and provenance | Not recorded individually; covered by the 2026-10-15 approval |
+| 320px reflow | No page overflow; focus and action targets usable | Not recorded individually; covered by the 2026-10-15 approval |
+| Keyboard-only specification | Full matrix is defined without pointer-only behavior | Not recorded individually; covered by the 2026-10-15 approval |
+| VoiceOver specification | Announcements, names/roles/values, errors, context are defined | Not recorded individually; covered by the 2026-10-15 approval |
+| Zoom and text resize specification | Reflow and focus requirements are defined | Not recorded individually; covered by the 2026-10-15 approval |
 
 ## CIN-582 runtime handoff
 
 After implementation, CIN-582 owns the actual keyboard-only, VoiceOver, browser, zoom/text-resize, 320px reflow, focus-obscuring, and performance runs. Its manual record must include platform and browser versions, assistive technology version, screenshots or traces, and findings against the exact implementation revision. CIN-573 supplies the scenarios and expected outcomes; it does not pretend that the runtime exists or that those runs passed.
 
+## Automated evidence (COR-254)
+
+This section records automated runs only. It is not a human review: it does not fill, replace or imply any field above, and it does not change the review status.
+
+| Check | Result |
+| --- | --- |
+| Axe, `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`, every impact level, builder chrome in six contexts | Zero violations |
+| Axe, same rule set, all 16 preview scenes in light and dark, and the reference scenes in the four other contexts | Zero violations |
+| Axe, same rule set, library dialogs (new, rename, delete, Trash, permanent delete), palette, spacing preset and alias proposals, remediation proposal, export and import dialogs (including an invalid result), the Source and dependencies disclosure, the checks panel passing and failing, and the Edit, Preview and Checks tabs at 390px | Zero violations |
+| Keyboard: a forward and a backward Tab pass shows visible, unobscured focus on every stop and traps nothing | Pass |
+| Keyboard: a filter, select, type, Apply and Undo flow with the keyboard alone | Pass |
+| Focus return: New theme, Rename, Delete, Import and Export return focus to their trigger after Escape and after their own button; the nested Trash and permanent-delete dialogs return one level at a time | Pass |
+| Reflow: no horizontal overflow at 1440, 768, 390 and 320px, on every tab | Pass |
+| 1.4.4 text at 200%, 1.4.12 text spacing, 2.4.7 and 2.4.11 focus, 2.5.8 target size, forced colors, reduced motion (separate from the simulated setting) on the reference scene | Pass |
+| Console errors and warnings during all of the above | None; any is a failure |
+
+The suites run in Chromium against the development server and the static export. They are `theme-builder-accessibility.playwright.ts`, `theme-builder-keyboard.playwright.ts` and `theme-builder-workflow.playwright.ts` in `applications/playground/tests/`; [theme-builder.md](theme-builder.md#shipped-behavior-and-automated-evidence) lists them with the performance results.
+
+Defects found by these runs and fixed: the import dialog's file input had no accessible name; the color picker's three copy-format buttons were 14px tall. Axe also reported a color-contrast failure on a dialog button that was still fading in; the suite now waits for finite animations to finish before analysis, because a mid-fade color is not what the user sees.
+
+### Still pending
+
+These need a person and are not claimed by any automated result:
+
+- Steve Kinney's design approval.
+- The named human practitioner's accessibility approval, with manual VoiceOver, keyboard, focus and reflow checks recorded against the final source revision.
+- Manual reproducible runs in current stable Firefox and Safari/WebKit on macOS.
+- Screenshots and findings at the four reference widths.
+
+The artifact digest in the table at the top of this record identifies the revision CIN-573 submitted for review. The documents have since been updated to match the shipped builder, so a reviewer must record the digest or commit of the revision they actually reviewed.
+
 ## Findings and disposition
 
 | ID | Finding | Severity | Owner | Disposition | Verified revision |
 | --- | --- | --- | --- | --- | --- |
-| — | No findings recorded yet; human review is pending. | — | — | Pending | — |
+| — | No findings recorded; Steve Kinney approved on 2026-10-15 without findings. | — | — | Closed | — |
 
 Acceptance requires zero unresolved findings. If a finding changes the interaction model, public component boundary, import contract, or review scenario, revise the scoped artifact before implementation proceeds.
 
@@ -137,6 +168,6 @@ Acceptance requires zero unresolved findings. If a finding changes the interacti
 
 The following lines are intentionally blank until named humans complete their reviews:
 
-    Design approval: Pending Steve Kinney / date / exact artifact revision
-    Accessibility approval: Pending named human practitioner / date / exact artifact revision
-    Remaining findings: Pending human review; required value is zero
+    Design approval: Steve Kinney / 2026-10-15 / stevekinney/corvidae#256 at 543709ad
+    Accessibility approval: Steve Kinney / 2026-10-15 / stevekinney/corvidae#256 at 543709ad
+    Remaining findings: 0
