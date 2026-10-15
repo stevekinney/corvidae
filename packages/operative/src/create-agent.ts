@@ -799,6 +799,9 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       // already uses for the same concept), and `withTraceContext` forwards
       // unchanged.
       agentName: context?.agentName ?? resolvedName,
+      // COR-1302 — a pre-assigned run id becomes this run's own id, so a
+      // deferred handle wrapping this run reports the id the run does.
+      ...(context?.runId !== undefined ? { runId: context.runId } : {}),
       ...(context?.signal ? { signal: context.signal } : {}),
       ...(context?.traceContext !== undefined ? { parentContext: context.traceContext } : {}),
       ...(context?.withTraceContext ? { withTraceContext: context.withTraceContext } : {}),

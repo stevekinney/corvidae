@@ -55,6 +55,16 @@ export interface CatalogDispatcherDependencies {
    */
   readonly onDurableRunAborted: (runId: string, reason: string) => void;
   /**
+   * COR-1302 — called with the `ActiveRun` behind a `bureau.run()` dispatch
+   * the moment it exists, on both the durable and the direct branch, so
+   * Bureau can register it on its run store and `getRun`/`abortRun` accept
+   * the handle's `id`. Child runs and goal attempts are not passed: each is
+   * owned and controlled through its own surface (`children`, `goals`). A
+   * hand-written catalog agent with no definition resolver builds its run
+   * inside its own `run()`, so there is no `ActiveRun` to pass for it.
+   */
+  readonly registerCatalogRun?: ((activeRun: ActiveRun) => void) | undefined;
+  /**
    * COR-1367 — the deprecated `BureauOptions.guardrails`, handed down to each
    * catalog agent as its inherited policy. See {@link catalogRunGuardrailsContext}.
    */
@@ -185,6 +195,12 @@ export class GoalAttemptTombstonedError extends Error {
   }
 }
 
+/** COR-1302 — an unsettled `bureau.run()` handle; see `findCatalogRun`. */
+export interface DispatchedCatalogRun {
+  readonly handle: AgentRun<unknown, boolean>;
+  readonly agentName: string;
+}
+
 export interface GoalAttemptRun {
   readonly run: AgentRun<unknown, boolean>;
   readonly durablyStarted: Promise<void>;
@@ -203,6 +219,7 @@ export function createCatalogDispatcher({
   validateBureauRunOptions,
   onDurableRunAborted,
   guardrails,
+  registerCatalogRun,
 }: CatalogDispatcherDependencies): {
   runAgent: (
     name: string,
@@ -214,7 +231,32 @@ export function createCatalogDispatcher({
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   startChildRun: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
   startGoalAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
+  findCatalogRun: (id: string) => DispatchedCatalogRun | undefined;
 } {
+  /**
+   * COR-1302 — every unsettled `bureau.run()` handle, by its `id`, from the
+   * moment `runAgent` returns it until its `result()` settles. Bureau reads it
+   * through `findCatalogRun` while a run is not on its run store, so `getRun`
+   * and `abortRun` accept the id before the dispatch has built the run (and
+   * for a catalog run that never builds one). Only `runAgent` adds to it:
+   * child runs and goal attempts stay reachable only through their own
+   * surfaces.
+   */
+  const dispatchedCatalogRuns = new Map<string, DispatchedCatalogRun>();
+
+  function indexCatalogRun(
+    handle: AgentRun<unknown, boolean>,
+    agentName: string,
+  ): AgentRun<unknown, boolean> {
+    dispatchedCatalogRuns.set(handle.id, { handle, agentName });
+    detachBestEffortPromise(
+      handle.result().finally(() => {
+        dispatchedCatalogRuns.delete(handle.id);
+      }),
+    );
+    return handle;
+  }
+
   /**
    * The goal attempt each attribution entry this dispatcher made for one stands
    * for. Keyed by the entry itself, so it lives and dies with it and an entry
@@ -281,6 +323,11 @@ export function createCatalogDispatcher({
       throw createBureauError('Durable runtime unavailable', 'CONFLICT');
     }
     const runId = runIdOverride ?? runtimeServices.identifiers.next('agent-run');
+    // COR-1302 — the handle returned below exists before the durable run does,
+    // so it takes this id now: `createDeferredAgentRun` reports it as the
+    // handle's `id` and liveness `snapshot().id`, and the resolved run adopts
+    // it, so the handle, the workflow, and its event history share one id.
+    context.runId = runId;
     if (runIdOverride !== undefined) {
       const held = runAttribution.get(runId);
       // An attribution already under this id is another run's, unless it is this
@@ -463,11 +510,12 @@ export function createCatalogDispatcher({
               `Agent "${name}" cannot resolve its run options durably, so it cannot run a goal attempt: ${error.message}`,
             );
           }
-          // AB-241: this fallback abandons `runId` entirely — the agent's
-          // own `run()` mints (or is given) a DIFFERENT run identity, so
-          // an attribution entry recorded above under `runId` would
-          // otherwise be a permanent phantom, keyed to a run that never
-          // existed.
+          // AB-241: this fallback abandons the durable run behind `runId` —
+          // the agent's own `run()` drives an in-memory run instead (under
+          // the same id, through `context.runId`, COR-1302), which nothing
+          // durable records, so an attribution entry recorded above under
+          // `runId` would otherwise be a permanent phantom, keyed to a
+          // durable run that never existed.
           releaseAttribution();
           return agent;
         }
@@ -570,6 +618,17 @@ export function createCatalogDispatcher({
         principal !== undefined ? { owner: principal } : undefined,
       );
       dispatchedActiveRun = activeRun;
+      // COR-1302 — only `runAgent` dispatches without an id override, so this
+      // registers exactly the `bureau.run()` runs: a child or a goal attempt
+      // always arrives with the id its owner recorded. Not registered when a
+      // cancellation is pending: the handle was aborted or disposed while this
+      // dispatch was still resolving, which settled its `result()` at once, so
+      // this run exists only to carry that cancellation's durable cleanup and
+      // must not make `getRun(run.id)` report a live run after its handle
+      // already settled.
+      if (runIdOverride === undefined && !cancellationRequested) {
+        registerCatalogRun?.(activeRun);
+      }
       if (cancellationRequested) {
         if (cancellationRequested.dispose) {
           activeRun[Symbol.dispose]();
@@ -777,8 +836,15 @@ export function createCatalogDispatcher({
 
     const hasResolver = hasDefinitionResolver(agent);
     if (runtime.durable && hasResolver) {
-      return runDurableCatalogAgent(name, input, runOptions, context, principal, agent);
+      return indexCatalogRun(
+        runDurableCatalogAgent(name, input, runOptions, context, principal, agent),
+        name,
+      );
     }
+    // COR-1302 — the direct branch's handle is returned before the agent's
+    // own run exists too, so it takes its id from this bureau's runtime now,
+    // as the durable branch does.
+    context.runId = runtimeServices.identifiers.next('agent-run');
 
     // Review round 2 (Codex): a hand-written catalog RunnableAgent is a
     // valid entry, and one whose run() throws synchronously during per-run
@@ -793,13 +859,25 @@ export function createCatalogDispatcher({
     // microtask later than before — compatible with the contract, which
     // promises a synchronous RETURN of the handle, not synchronous START of
     // the agent's own work.
-    return trackCatalogRun(
-      createDeferredAgentRun(
-        () => resolveInvariantComposedAgent(name, input, context, principal, agent, hasResolver),
-        input,
-        context,
-        name,
+    return indexCatalogRun(
+      trackCatalogRun(
+        createDeferredAgentRun(
+          () =>
+            resolveInvariantComposedAgent(
+              name,
+              input,
+              context,
+              principal,
+              agent,
+              hasResolver,
+              registerCatalogRun,
+            ),
+          input,
+          context,
+          name,
+        ),
       ),
+      name,
     );
   }
 
@@ -851,6 +929,10 @@ export function createCatalogDispatcher({
         start.childRunId,
       );
     }
+    // COR-1302 — the handle takes the id Bureau's topology recorded for this
+    // child, which the durable branch above passes as its workflow id, so a
+    // process-local child's handle carries the same id `children` reports.
+    context.runId = start.childRunId;
     return trackCatalogRun(
       createDeferredAgentRun(
         () =>
@@ -947,6 +1029,8 @@ export function createCatalogDispatcher({
     principal: string | undefined,
     agent: AnyRunnableAgent,
     hasResolver: boolean,
+    /** COR-1302 — receives the run this dispatch builds; see `registerCatalogRun`. */
+    onActiveRun?: (activeRun: ActiveRun) => void,
   ): Promise<RunnableAgent<unknown, boolean>> {
     // An agent exposing no `OPERATIVE_RESOLVE_RUN_OPTIONS` builds its
     // `RunOptions` entirely inside `run()`, so there is no bag to merge a tier
@@ -1024,21 +1108,25 @@ export function createCatalogDispatcher({
       // it the same way, so a hand-written agent whose runtime witness
       // disagrees with its own schema cannot mint a mismatched handle.
       hasOutput,
-      run: () =>
-        createAgentRun<unknown, boolean>(
-          createActiveRun(
-            merged,
-            undefined,
-            // `createActiveRun` derives `LivenessSnapshot.owner` from this
-            // argument alone, never from `RunOptions.principal`. `agent.run()`
-            // supplies it internally today, so omitting it here would silently
-            // report `owner: undefined` on every principal-carrying run.
-            principal !== undefined ? { owner: principal } : undefined,
-          ),
-          { hasOutput },
-        ),
+      run: () => {
+        const activeRun = createActiveRun(
+          merged,
+          undefined,
+          // `createActiveRun` derives `LivenessSnapshot.owner` from this
+          // argument alone, never from `RunOptions.principal`. `agent.run()`
+          // supplies it internally today, so omitting it here would silently
+          // report `owner: undefined` on every principal-carrying run.
+          principal !== undefined ? { owner: principal } : undefined,
+        );
+        onActiveRun?.(activeRun);
+        return createAgentRun<unknown, boolean>(activeRun, { hasOutput });
+      },
     };
   }
 
-  return { runAgent, planChildRun, startChildRun, startGoalAttemptRun };
+  function findCatalogRun(id: string): DispatchedCatalogRun | undefined {
+    return dispatchedCatalogRuns.get(id);
+  }
+
+  return { runAgent, planChildRun, startChildRun, startGoalAttemptRun, findCatalogRun };
 }

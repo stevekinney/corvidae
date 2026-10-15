@@ -259,6 +259,15 @@ export function createStore(options: StoreOptions = {}): Store {
     emitter.dispatch(new RunRemovedEvent(id));
     deregister(id);
     runs.delete(id);
+    // The store-wide log drops the removed run's actions with its record, so
+    // a long-lived store that registers and removes runs (Bureau releases each
+    // settled `bureau.run()` run this way, COR-1302) does not keep every
+    // removed run's event payloads for its whole life.
+    let kept = 0;
+    for (const action of actions) {
+      if (action.runId !== id) actions[kept++] = action;
+    }
+    actions.length = kept;
   }
 
   function deregister(id: string): void {
