@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 
 import {
+  clearPageArtifacts,
+  evictPageArtifacts,
   findArtifactForFamily,
+  pageArtifactByPath,
+  publishPageArtifacts,
   publishShellArtifacts,
   resetShellArtifacts,
   shellArtifactByPath,
+  stableEntryModule,
 } from './build-artifacts-shared.ts';
 
 /** What one shell build publishes: its entry and the content-hashed chunks it imports. */
@@ -162,5 +167,49 @@ describe('publishShellArtifacts', () => {
       // `a`, the build that first published it, has been dropped.
       expect(findArtifactForFamily('shell', oldShared)).toBeDefined();
     });
+  });
+});
+
+describe('stableEntryModule', () => {
+  it.each([
+    ['page', 'page-button-abcd1234.js', 'import "/page-bundle/page-button-abcd1234.js";\n'],
+    ['shell', 'shell-shell-abcd1234.js', 'import "/shell-bundle/shell-shell-abcd1234.js";\n'],
+    [
+      'scenario',
+      'bundle-button-primary-abcd1234.js',
+      'import "/page-bundle/bundle-button-primary-abcd1234.js";\n',
+    ],
+  ] as const)('serves the %s family entry as one import of %s', (family, entryPath, expected) => {
+    expect(stableEntryModule(family, entryPath)).toBe(expected);
+  });
+});
+
+describe('page artifact ownership across a shared batch', () => {
+  beforeEach(() => clearPageArtifacts());
+
+  // A shared page graph publishes one chunk under several pages. Invalidating one page must not
+  // evict a chunk another page still imports.
+  it('keeps a shared chunk while any page that imports it is still published', () => {
+    publishPageArtifacts(
+      'button',
+      new Map([
+        ['page-button-a1.js', 'import "/page-bundle/chunk-shared.js";'],
+        ['chunk-shared.js', 'shared'],
+      ]),
+    );
+    publishPageArtifacts(
+      'badge',
+      new Map([
+        ['page-badge-b1.js', 'import "/page-bundle/chunk-shared.js";'],
+        ['chunk-shared.js', 'shared'],
+      ]),
+    );
+
+    evictPageArtifacts('button');
+    expect(pageArtifactByPath.has('page-button-a1.js')).toBe(false);
+    expect(pageArtifactByPath.has('chunk-shared.js')).toBe(true);
+
+    evictPageArtifacts('badge');
+    expect(pageArtifactByPath.has('chunk-shared.js')).toBe(false);
   });
 });

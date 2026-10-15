@@ -44,6 +44,24 @@ export interface PullRequestRecord {
   headSha: string;
 }
 
+/** An open pull request, with only what supersession reads. */
+export interface OpenPullRequestRecord {
+  number: number;
+  htmlUrl: string;
+  /** The login of the account that opened it; the mirror App's is `lost-gradient-mirror-sync[bot]`. */
+  author: string;
+  headRef: string;
+  headSha: string;
+  baseRef: string;
+}
+
+export interface CreateIssueCommentInput {
+  fullName: string;
+  /** A pull request is an issue to GitHub's comment API. */
+  issueNumber: number;
+  body: string;
+}
+
 export interface CheckRunRecord {
   name: string;
   /** `queued`, `in_progress` or `completed`. */
@@ -96,6 +114,13 @@ export interface GitHubApi {
   createRepository(input: CreateRepositoryInput): Promise<RepositoryRecord>;
   createPullRequest(input: CreatePullRequestInput): Promise<PullRequestRecord>;
   dispatchWorkflow?: (input: DispatchWorkflowInput) => Promise<void>;
+  /** Every open pull request in a repository, across pages. */
+  listOpenPullRequests(fullName: string): Promise<readonly OpenPullRequestRecord[]>;
+  /** The full message of one commit in a repository, from the API rather than a clone. */
+  getCommitMessage(fullName: string, sha: string): Promise<string>;
+  createIssueComment(input: CreateIssueCommentInput): Promise<void>;
+  /** Close a pull request without merging it. */
+  closePullRequest(fullName: string, pullRequestNumber: number): Promise<void>;
   readCheckRuns(fullName: string, ref: string): Promise<readonly CheckRunRecord[]>;
   /** Every Actions workflow run whose head is exactly `headSha`, whatever its state. */
   readWorkflowRuns(fullName: string, headSha: string): Promise<readonly WorkflowRunRecord[]>;
@@ -281,6 +306,65 @@ export function createGitHubApi({
         htmlUrl: record.html_url ?? '',
         headSha: record.head?.sha ?? '',
       };
+    },
+
+    async listOpenPullRequests(fullName: string): Promise<readonly OpenPullRequestRecord[]> {
+      const token = await installationToken();
+      const collected: OpenPullRequestRecord[] = [];
+      // A bound rather than `while (true)`: ten thousand open pull requests is not a state this
+      // pipeline can reach, and a runaway loop against the API would be worse than a clear stop.
+      for (let page = 1; page <= 100; page += 1) {
+        const response = await request(
+          `/repos/${fullName}/pulls?state=open&per_page=100&page=${page}`,
+          { token },
+        );
+        assertStatus(response, 200, `Listing open pull requests in ${fullName}`);
+        const records = (response.body ?? []) as {
+          number?: number;
+          html_url?: string;
+          user?: { login?: string } | null;
+          head?: { ref?: string; sha?: string };
+          base?: { ref?: string };
+        }[];
+        for (const record of records) {
+          collected.push({
+            number: record.number ?? 0,
+            htmlUrl: record.html_url ?? '',
+            author: record.user?.login ?? '',
+            headRef: record.head?.ref ?? '',
+            headSha: record.head?.sha ?? '',
+            baseRef: record.base?.ref ?? '',
+          });
+        }
+        if (records.length < 100) break;
+      }
+      return collected;
+    },
+
+    async getCommitMessage(fullName: string, sha: string): Promise<string> {
+      const response = await request(`/repos/${fullName}/commits/${sha}`, {
+        token: await installationToken(),
+      });
+      assertStatus(response, 200, `Reading commit ${sha} in ${fullName}`);
+      return (response.body as { commit?: { message?: string } }).commit?.message ?? '';
+    },
+
+    async createIssueComment({ fullName, issueNumber, body }: CreateIssueCommentInput) {
+      const response = await request(`/repos/${fullName}/issues/${issueNumber}/comments`, {
+        method: 'POST',
+        token: await installationToken(),
+        body: { body },
+      });
+      assertStatus(response, 201, `Commenting on ${fullName}#${issueNumber}`);
+    },
+
+    async closePullRequest(fullName: string, pullRequestNumber: number): Promise<void> {
+      const response = await request(`/repos/${fullName}/pulls/${pullRequestNumber}`, {
+        method: 'PATCH',
+        token: await installationToken(),
+        body: { state: 'closed' },
+      });
+      assertStatus(response, 200, `Closing ${fullName}#${pullRequestNumber}`);
     },
 
     async dispatchWorkflow({

@@ -75,9 +75,15 @@ export type JWTConfig = {
 /**
  * Mutual TLS configuration passed through to `Bun.serve`'s `tls` option.
  *
- * When present in an {@link AuthConfig}, the server requires every client to
- * present a valid certificate signed by the configured CA.  Requests that reach
- * the application handler are already authenticated at the transport layer.
+ * When present in an {@link AuthConfig}, `serve()` builds a TLS listener that
+ * requests a client certificate signed by the configured CA. Bun's fetch
+ * handler cannot see the peer certificate, so the authenticator reports
+ * `method: 'mtls'` only on positive evidence that one was verified: either
+ * `verifyClientCertificate` returns `true`, or `serve()` itself built a
+ * listener that refuses unverified clients (`rejectUnauthorized` left `true`).
+ * With `rejectUnauthorized: false`, or when TLS terminates outside `serve()`,
+ * certificate-less requests are rejected unless `verifyClientCertificate`
+ * confirms a verified certificate.
  *
  * @example
  * ```ts
@@ -100,8 +106,20 @@ export type MTLSConfig = {
   cert: string;
   /** PEM-encoded server private key. */
   key: string;
-  /** Reject connections without a valid client certificate (default: true). */
+  /**
+   * Reject connections without a valid client certificate (default: true).
+   * Setting `false` stops the listener from vouching for client certificates,
+   * so mTLS admits a request only when `verifyClientCertificate` returns `true`.
+   */
   rejectUnauthorized?: boolean;
+  /**
+   * Host-supplied evidence that the request arrived with a verified client
+   * certificate — for example, by checking the verification header a
+   * TLS-terminating proxy sets. When present, its answer alone decides mTLS
+   * admission; a throw counts as unverified. Required for mTLS to admit anyone
+   * when `rejectUnauthorized` is `false` or TLS terminates outside `serve()`.
+   */
+  verifyClientCertificate?: (request: Request) => boolean | Promise<boolean>;
 };
 
 /**
@@ -144,7 +162,10 @@ export type AuthConfig = {
    * `AuthenticatedPrincipal`. When configured, the resolver is
    * authoritative for the entire API-key space:
    *   - returns a principal → admitted with that principal entirely
-   *     (scopes authoritative; `defaultApiKeyScopes` IGNORED).
+   *     (scopes authoritative; `defaultApiKeyScopes` IGNORED). Its scopes
+   *     are still narrowed to the handler's vocabulary: built-in scopes and
+   *     the package scopes listed in `additionalScopes`. Any other scope is
+   *     dropped, as it would be from a JWT claim.
    *   - returns `null` → key rejected; static `apiKeys` is NOT
    *     consulted as a fallback.
    *   - throws → treated as `null` (rejected); server log records the
@@ -156,7 +177,9 @@ export type AuthConfig = {
   /**
    * Scopes granted to principals admitted via static `apiKeys`. Ignored
    * when `resolveApiKeyPrincipal` is configured (the resolver's scopes
-   * are authoritative for keys it admits). Defaults to `[]`.
+   * are authoritative for keys it admits). Defaults to `[]`. A package
+   * scope is granted only when the handler lists it in `additionalScopes`;
+   * an unlisted one is dropped, as it would be from a JWT claim.
    */
   defaultApiKeyScopes?: ReadonlyArray<AuthorizationScope>;
   /**
@@ -212,7 +235,9 @@ export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public';
  *     authenticator (resolver admission, or static API-key admission
  *     with `defaultApiKeyScopes`). Downstream pipeline code uses this
  *     verbatim; when absent, `authContextToPrincipal` reconstructs a
- *     minimal principal from `method` + `claims`.
+ *     minimal principal from `method` + `claims`. That reconstruction
+ *     keeps only built-in scopes, so a host that registers package
+ *     scopes must forward the authenticator's `principal`.
  */
 export type AuthContext = {
   method: AuthMethod;

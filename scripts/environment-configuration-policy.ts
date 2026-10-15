@@ -16,7 +16,6 @@ export const environmentBoundaries = [
   {
     kind: 'runtime',
     paths: new Set([
-      'applications/desktop/src/bun/chat/environment-configuration.ts',
       'applications/playground/src/environment-configuration.ts',
       'packages/operative/src/environment-configuration.ts',
       'packages/skills/src/environment-configuration.ts',
@@ -28,11 +27,13 @@ export const environmentBoundaries = [
   {
     kind: 'script',
     paths: new Set([
-      'applications/desktop/scripts/environment-configuration.ts',
+      'applications/playground/scripts/environment-configuration.ts',
       'components/cinder/scripts/environment-configuration.ts',
       'components/weft-ui/scripts/browser/environment-configuration.ts',
       'scripts/browser-fixtures/environment-configuration.ts',
+      'scripts/environment-configuration.ts',
       'scripts/mirror/environment-configuration.ts',
+      'packages/bureau/src/test/signal-shutdown/environment-configuration.ts',
       'packages/weft/examples/environment-configuration.ts',
       'packages/weft/src/cli/__fixtures__/environment-configuration.ts',
       'packages/weft/scripts/benchmarks/environment-configuration.ts',

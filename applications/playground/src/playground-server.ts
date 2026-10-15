@@ -85,9 +85,10 @@ import {
   setManifestCache,
   setManifestPromise,
 } from './manifest-cache.ts';
-import { buildPageBundle } from './page-bundle.ts';
+import { buildPageBundle, prebuildPageBundlesInBatches } from './page-bundle.ts';
 import { PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
 import { createHttpServerOnAvailablePort, resolvePreferredPort } from './port-scanner.ts';
+import { wrapReadmeTables } from './readme-tables.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 import {
   DEPICT_THEME_VARIABLES,
@@ -718,7 +719,9 @@ async function renderLandingReadmeHtml(): Promise<string> {
       'Landing README rendering stripped unsafe content. Update src/landing.md to remove raw HTML, unsafe URLs, or other sanitizer-blocked content.',
     );
   }
-  return omitLandingReadmeTitle(rewriteRepositoryRelativeReadmeLinks(rendered.html));
+  return wrapReadmeTables(
+    omitLandingReadmeTitle(rewriteRepositoryRelativeReadmeLinks(rendered.html)),
+  );
 }
 
 /**
@@ -1131,7 +1134,6 @@ export type PlaygroundServer = {
  * happen, without slowing down the common case (a save that only needs a
  * cheap cache invalidation, handled entirely by `invalidateCachesForChange`).
  */
-const EAGER_PREBUILD_CONCURRENCY = 6;
 const EAGER_PREBUILD_GARBAGE_COLLECTION_INTERVAL = 24;
 
 /** Reclaim completed compiler graphs before they accumulate into a long-tail stall. */
@@ -1258,15 +1260,9 @@ async function eagerPrebuildAll(): Promise<{
   // bundle target. Passing the set avoids N redundant glob scans during the
   // eager pre-build.
   const knownComponents = new Set(components);
-  const pagePromise = mapWithConcurrencyLimitInBatches(
-    components,
-    EAGER_PREBUILD_CONCURRENCY,
-    EAGER_PREBUILD_GARBAGE_COLLECTION_INTERVAL,
-    async (name) => {
-      return buildPageBundle(name, knownComponents);
-    },
-    releaseIncrementalPrebuildMemory,
-  );
+  // Shared multi-entry graphs of PAGE_BUNDLE_BATCH_SIZE pages, with a forced collection
+  // between batches, replace one build per page (CIN-588).
+  const pagePromise = prebuildPageBundlesInBatches(components, knownComponents);
   const [shellCode, pageResults] = await Promise.all([shellPromise, pagePromise]);
 
   let succeeded = 0;

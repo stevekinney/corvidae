@@ -39,17 +39,22 @@
  * `globalThis` before `@testing-library/svelte` loads.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { join } from 'node:path';
+
 import { createRawSnippet } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
+  canBareMount,
   createLivePreviewMount,
   LIVE_MOUNT_CONTAINER_ID,
   type MountErrorRecord,
+  PREVIEW_READY_ATTRIBUTE,
   toMountProps,
 } from './component-page-live-preview.ts';
 import type { PlaygroundControl } from './component-page-playground.ts';
 import { previewRecipeFor } from './component-page-preview-recipes.ts';
+import { CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 
 setupHappyDom();
 
@@ -94,6 +99,8 @@ describe('toMountProps', () => {
     ['pin-input', { id: 'playground-pin-input', label: 'Verification code' }],
     ['progress', { ariaLabel: 'Task progress' }],
     ['rating', { id: 'playground-rating', label: 'Rating' }],
+    ['search-field', { 'aria-label': 'Search components' }],
+    ['tag-input', { 'aria-label': 'Tags' }],
   ])('supplies an accessible preview baseline for %s', (componentName, expectedProps) => {
     expect(toMountProps([], {}, [], previewRecipeFor(componentName))).toMatchObject(expectedProps);
   });
@@ -478,6 +485,59 @@ describe('component-page live preview (#405)', () => {
     element.remove();
   });
 
+  test('marks the container ready only while a live mount succeeded', () => {
+    const Throwing = function ThrowingComponent() {
+      throw new Error('boom');
+    };
+    const mountErrors: MountErrorRecord = {};
+    const element = document.createElement('div');
+    element.id = LIVE_MOUNT_CONTAINER_ID;
+    document.body.append(element);
+    const factory = createLivePreviewMount({ mountErrors });
+
+    const teardownOk = factory(LiveProbe, { label: 'Save' })(element);
+    expect(element.hasAttribute(PREVIEW_READY_ATTRIBUTE)).toBe(true);
+    teardownOk();
+    expect(element.hasAttribute(PREVIEW_READY_ATTRIBUTE)).toBe(false);
+
+    const teardownFailed = factory(Throwing, { label: 'Save' })(element);
+    expect(element.hasAttribute(PREVIEW_READY_ATTRIBUTE)).toBe(false);
+    teardownFailed();
+
+    factory(undefined, {})(element);
+    expect(element.hasAttribute(PREVIEW_READY_ATTRIBUTE)).toBe(false);
+
+    element.remove();
+  });
+
+  test("mounts the bare component beneath the playground's curated highlighter", async () => {
+    // The Playground tab of the CodeBlock page mounts CodeBlock itself with
+    // the reader's props and no highlighter: only the context the mount root
+    // publishes can highlight it.
+    const { CodeBlock } = await import('@lostgradient/cinder');
+    const { waitFor } = await import('@testing-library/svelte');
+    const mountErrors: MountErrorRecord = {};
+    const element = document.createElement('div');
+    element.id = LIVE_MOUNT_CONTAINER_ID;
+    document.body.append(element);
+
+    const factory = createLivePreviewMount({ mountErrors });
+    const teardown = factory(CodeBlock, { code: 'SELECT 1;', language: 'sql' })(element);
+    expect(mountErrors[LIVE_MOUNT_CONTAINER_ID]).toBeUndefined();
+    await waitFor(
+      () => {
+        expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')).not.toBeNull();
+      },
+      { timeout: 30_000 },
+    );
+    expect(element.querySelector('.cinder-code-block__highlighted pre.shiki')?.textContent).toBe(
+      'SELECT 1;',
+    );
+    teardown();
+
+    element.remove();
+  }, 60_000);
+
   test('passes the eager props object straight through to mount (invariant 7)', () => {
     // The props are passed by value at the call site — assert the exact object the
     // caller snapshots reaches the mounted component, with no late re-read.
@@ -491,6 +551,99 @@ describe('component-page live preview (#405)', () => {
     expect(element.querySelector('.live-probe')?.textContent).toContain('Indigo');
     teardown();
 
+    element.remove();
+  });
+});
+
+describe('canBareMount', () => {
+  test.each([
+    ['button', undefined, true],
+    ['accordion', true, false],
+    ['tab', undefined, false],
+    ['grid-list-item', undefined, false],
+    ['side-navigation-item', undefined, false],
+    ['statistic', undefined, true],
+    ['navigation-item', true, true],
+    ['locale-provider', undefined, true],
+  ] as const)('decides whether %s mounts bare', (kebabName, isCompound, expected) => {
+    expect(canBareMount(kebabName, isCompound, previewRecipeFor(kebabName))).toBe(expected);
+  });
+
+  test('gives LocaleProvider and NavigationItem recipe children, so their stage mounts content', () => {
+    // Both rendered no mounted preview: LocaleProvider reserved a frame nothing filled, and
+    // NavigationItem (compound only by its required snippet, with no example) had no stage.
+    expect(previewRecipeFor('locale-provider')?.childrenHtml).toBeDefined();
+    expect(previewRecipeFor('locale-provider')?.prefersFeaturedExample).toBeUndefined();
+    expect(canBareMount('navigation-item', true)).toBe(false);
+    expect(previewRecipeFor('navigation-item')?.childrenHtml).toBe('Projects');
+  });
+
+  test('mounts Label bare through its recipe, which supplies the required children', () => {
+    // The manifest marks Label compound only because its required `children` is a snippet, so
+    // with no recipe and no authored example its Playground had no preview at all.
+    expect(canBareMount('label', true)).toBe(false);
+    expect(canBareMount('label', true, previewRecipeFor('label'))).toBe(true);
+    expect(previewRecipeFor('label')?.childrenHtml).toBe('Email address');
+  });
+});
+
+/**
+ * The accessible name a form control would get: `aria-label`, then `aria-labelledby`, then a
+ * `<label for>` or an enclosing `<label>`. Enough of the accessible-name algorithm for the
+ * controls the Playground mounts bare.
+ */
+function accessibleName(control: Element): string {
+  const ariaLabel = control.getAttribute('aria-label');
+  if (ariaLabel) return ariaLabel;
+  const labelledBy = control.getAttribute('aria-labelledby');
+  if (labelledBy) {
+    return labelledBy
+      .split(/\s+/)
+      .map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+      .join(' ')
+      .trim();
+  }
+  const id = control.getAttribute('id');
+  const forLabel = id === null ? null : document.querySelector(`label[for="${id}"]`);
+  return (forLabel ?? control.closest('label'))?.textContent?.trim() ?? '';
+}
+
+describe('live preview accessible names', () => {
+  test.each([
+    ['checkbox', 'Accept the terms'],
+    ['color-field', 'Brand color'],
+    ['combobox', 'Assignee'],
+    ['file-upload', 'Attachments'],
+    ['input', 'Email address'],
+    ['number-input', 'Quantity'],
+    ['search-field', 'Search components'],
+    ['select', 'Priority'],
+    ['tag-input', 'Tags'],
+    ['textarea', 'Description'],
+    ['time-field', 'Start time'],
+  ] as const)('labels the %s control the Playground mounts', async (kebabName, name) => {
+    // The component file rather than the package root, so the test compiles one component graph.
+    const module: { default: unknown } = await import(
+      join(CINDER_COMPONENT_SOURCE.componentsRoot, kebabName, `${kebabName}.svelte`)
+    );
+    const mountErrors: MountErrorRecord = {};
+    const element = document.createElement('div');
+    element.id = LIVE_MOUNT_CONTAINER_ID;
+    document.body.append(element);
+
+    // The page seeds a required `id` control as `<name>-example` (and Select's options); the
+    // recipe supplies the name.
+    const teardown = createLivePreviewMount({ mountErrors })(module.default, {
+      id: `${kebabName}-example`,
+      ...(kebabName === 'select' ? { options: [{ value: 'one', label: 'Label one' }] } : {}),
+      ...toMountProps([], {}, [], previewRecipeFor(kebabName)),
+    })(element);
+
+    expect(mountErrors[LIVE_MOUNT_CONTAINER_ID]).toBeUndefined();
+    const control = element.querySelector('input, select, textarea');
+    expect(control).not.toBeNull();
+    expect(accessibleName(control!)).toContain(name);
+    teardown();
     element.remove();
   });
 });

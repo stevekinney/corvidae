@@ -42,21 +42,16 @@ import {
   readEffects,
   REMEMBERED_ANSWER,
 } from './test/process-crash-work-integrity-fixtures';
+import {
+  expectScenarioPassed,
+  type ScenarioScope,
+  settleScenario,
+  waitForBureauState,
+} from './test/hoisted-scenario';
 import type { Bureau } from './types';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
-
-async function pollUntil(
-  check: () => boolean | Promise<boolean>,
-  attempts = 1000,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await check()) return true;
-    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, 5));
-  }
-  return check();
-}
 
 interface Scenario {
   readonly backend: Backend;
@@ -72,10 +67,20 @@ interface Scenario {
 
 async function withScenario(
   backend: Backend,
+  scope: ScenarioScope,
   body: (scenario: Scenario) => Promise<void>,
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `corvidae-work-integrity-${backend}-`));
   const closers: Array<() => unknown> = [];
+  // A hung scenario never reaches the cleanup below, so the same closers run from here.
+  scope.onHang(async () => {
+    for (const closer of closers.toReversed()) {
+      await Promise.resolve()
+        .then(closer)
+        .catch(() => {});
+    }
+    rmSync(directory, { recursive: true, force: true });
+  });
   let bodyError: { error: unknown } | undefined;
   try {
     await body({
@@ -129,8 +134,9 @@ async function spawnChild(
       scenario.markerPath,
       ...(variant === undefined ? [] : [variant]),
     ],
-    { stdout: 'pipe', stderr: 'pipe' },
+    { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
   );
+  scenario.onCleanup(() => child.kill());
   await child.exited;
   const stderr = await new Response(child.stderr).text();
   return { signalCode: child.signalCode, exitCode: child.exitCode, stderr };
@@ -184,195 +190,267 @@ function requireAuditTrail(bureau: Bureau) {
 }
 
 async function recoveredRunCompleted(bureau: Bureau, runId: string): Promise<boolean> {
-  const completed = await pollUntil(() => bureau.getRun(runId)?.status === 'completed');
+  await waitForBureauState([bureau], () => bureau.getRun(runId)?.status === 'completed', {
+    runIds: [runId],
+  });
   await bureau.waitForRecovery?.();
-  return completed;
+  return true;
 }
 
-describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s', (backend) => {
-  async function recoverCharge(scenario: Scenario, wrap: boolean) {
-    const marker = await crash<{ runId: string }>(
+async function recoverCharge(backend: Backend, scenario: Scenario, wrap: boolean) {
+  const marker = await crash<{ runId: string }>(
+    scenario,
+    'charge-then-crash',
+    wrap ? undefined : 'unwrapped',
+  );
+  const idempotency = await openIdempotencyCache(scenario.directory);
+  const closeIdempotency = scenario.onCleanup(() => idempotency.close());
+  const stepZeroCalls: number[] = [];
+  const generate: GenerateFunction = async ({ step }) => {
+    if (step > 0) return { content: 'charged', toolCalls: [] };
+    stepZeroCalls.push(step);
+    return { content: 'charging', toolCalls: chargeToolCalls };
+  };
+  const bureau = await createHarnessBureau({
+    backend,
+    storagePath: scenario.storagePath,
+    generate,
+    toolbox: createChargeToolbox(scenario.directory, async () => 'ok', {
+      cache: idempotency.cache,
+      wrap,
+    }),
+  });
+  const shutdown = scenario.onCleanup(() => bureau.shutdown());
+  return { marker, bureau, shutdown, closeIdempotency, stepZeroCalls };
+}
+
+async function idempotentChargeScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  await withScenario(backend, scope, async (scenario) => {
+    const { marker, bureau, shutdown, closeIdempotency, stepZeroCalls } = await recoverCharge(
+      backend,
       scenario,
-      'charge-then-crash',
-      wrap ? undefined : 'unwrapped',
+      true,
     );
-    const idempotency = await openIdempotencyCache(scenario.directory);
-    const closeIdempotency = scenario.onCleanup(() => idempotency.close());
+    expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
+    // Premise: step 0 never committed, so it replayed.
+    expect(stepZeroCalls).toHaveLength(1);
+
+    expect(readEffects(scenario.directory)).toEqual([`charged ${CHARGE_ORDER_ID}`]);
+    const settled = await requireAuditTrail(bureau).query({
+      runId: marker.runId,
+      type: 'tool.settled',
+    });
+    const charges = settled.filter(
+      (record) => (record.detail as { toolName?: string } | undefined)?.toolName === 'charge',
+    );
+    expect(charges.length).toBeGreaterThan(0);
+    // Every settled record, including the replayed (deduplicated) one, carries the result.
+    for (const record of charges) {
+      expect((record.detail as { result?: unknown }).result).toBe(`charged:${CHARGE_ORDER_ID}`);
+    }
+
+    await expectShutdownReleased(shutdown);
+    await closeIdempotency();
+    await expectVerifyClean(scenario);
+
+    // A fresh cache over the same sidecar file sees a completed entry, not an orphaned marker.
+    const fresh = await openIdempotencyCache(scenario.directory);
+    scenario.onCleanup(() => fresh.close());
+    expect(await chargeStatus(fresh.store, fresh.cache)).toBe('completed');
+  });
+}
+
+async function controlChargeScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  await withScenario(backend, scope, async (scenario) => {
+    const { marker, bureau, shutdown, stepZeroCalls } = await recoverCharge(
+      backend,
+      scenario,
+      false,
+    );
+    expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
+    expect(stepZeroCalls).toHaveLength(1);
+    expect(readEffects(scenario.directory)).toEqual([
+      `charged ${CHARGE_ORDER_ID}`,
+      `charged ${CHARGE_ORDER_ID}`,
+    ]);
+    await expectShutdownReleased(shutdown);
+  });
+}
+
+async function governedMemoryScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  await withScenario(backend, scope, async (scenario) => {
+    const marker = await crash<{ runId: string; sessionId: string }>(
+      scenario,
+      'memory-write-then-crash',
+    );
+    const governed = await openGovernedMemory(scenario.directory);
+    const closeGoverned = scenario.onCleanup(() => governed.close());
     const stepZeroCalls: number[] = [];
-    const generate: GenerateFunction = async ({ step }) => {
-      if (step > 0) return { content: 'charged', toolCalls: [] };
-      stepZeroCalls.push(step);
-      return { content: 'charging', toolCalls: chargeToolCalls };
+    const bureau = await createHarnessBureau({
+      backend,
+      storagePath: scenario.storagePath,
+      generate: async ({ step }) => {
+        if (step === 0) stepZeroCalls.push(step);
+        return { content: REMEMBERED_ANSWER, toolCalls: [] };
+      },
+      toolbox: createToolbox([createNextTool()]),
+      memory: governed.memory,
+    });
+    const shutdown = scenario.onCleanup(() => bureau.shutdown());
+
+    expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
+    expect(stepZeroCalls).toHaveLength(1);
+
+    const records = await governed.memory.list(inspector, { collection: marker.sessionId });
+    expect(records).toHaveLength(1);
+    expect(records[0]?.metadata['dedupeKey']).toBe(`${marker.runId}:0`);
+
+    await expectShutdownReleased(shutdown);
+    closeGoverned();
+    await expectVerifyClean(scenario);
+  });
+}
+
+async function abortSiblingScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
+  await withScenario(backend, scope, async (scenario) => {
+    const marker = await crash<{ xRunId: string; yRunId: string }>(scenario, 'two-parked-runs');
+    const generateObservers = new Set<() => void>();
+    const deferreds = new Map<string, PromiseWithResolvers<{ content: string; toolCalls: [] }>>();
+    const calls: Array<{ message: string; step: number }> = [];
+    const generate: GenerateFunction = async (context) => {
+      const message = firstUserMessage(context);
+      calls.push({ message, step: context.step });
+      for (const observer of generateObservers) observer();
+      if (context.step === 0) return { content: 'step 0', toolCalls: [] };
+      const deferred = Promise.withResolvers<{ content: string; toolCalls: [] }>();
+      deferreds.set(message, deferred);
+      context.signal?.addEventListener('abort', () => deferred.reject(context.signal?.reason), {
+        once: true,
+      });
+      return deferred.promise;
     };
     const bureau = await createHarnessBureau({
       backend,
       storagePath: scenario.storagePath,
       generate,
-      toolbox: createChargeToolbox(scenario.directory, async () => 'ok', {
-        cache: idempotency.cache,
-        wrap,
-      }),
+      toolbox: createToolbox([createNextTool()]),
     });
     const shutdown = scenario.onCleanup(() => bureau.shutdown());
-    return { marker, bureau, shutdown, closeIdempotency, stepZeroCalls };
-  }
+    await bureau.waitForRecovery?.();
 
-  it('does not repeat an idempotent tool effect when a crashed step replays', async () => {
-    await withScenario(backend, async (scenario) => {
-      const { marker, bureau, shutdown, closeIdempotency, stepZeroCalls } = await recoverCharge(
-        scenario,
-        true,
-      );
-      expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
-      // Premise: step 0 never committed, so it replayed.
-      expect(stepZeroCalls).toHaveLength(1);
-
-      expect(readEffects(scenario.directory)).toEqual([`charged ${CHARGE_ORDER_ID}`]);
-      const settled = await requireAuditTrail(bureau).query({
-        runId: marker.runId,
-        type: 'tool.settled',
-      });
-      const charges = settled.filter(
-        (record) => (record.detail as { toolName?: string } | undefined)?.toolName === 'charge',
-      );
-      expect(charges.length).toBeGreaterThan(0);
-      // Every settled record, including the replayed (deduplicated) one, carries the result.
-      for (const record of charges) {
-        expect((record.detail as { result?: unknown }).result).toBe(`charged:${CHARGE_ORDER_ID}`);
-      }
-
-      await expectShutdownReleased(shutdown);
-      await closeIdempotency();
-      await expectVerifyClean(scenario);
-
-      // A fresh cache over the same sidecar file sees a completed entry, not an orphaned marker.
-      const fresh = await openIdempotencyCache(scenario.directory);
-      scenario.onCleanup(() => fresh.close());
-      expect(await chargeStatus(fresh.store, fresh.cache)).toBe('completed');
-    });
-  }, 120_000);
-
-  it('control: without idempotency the same crash repeats the tool effect', async () => {
-    await withScenario(backend, async (scenario) => {
-      const { marker, bureau, shutdown, stepZeroCalls } = await recoverCharge(scenario, false);
-      expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
-      expect(stepZeroCalls).toHaveLength(1);
-      expect(readEffects(scenario.directory)).toEqual([
-        `charged ${CHARGE_ORDER_ID}`,
-        `charged ${CHARGE_ORDER_ID}`,
-      ]);
-      await expectShutdownReleased(shutdown);
-    });
-  }, 120_000);
-
-  it('does not repeat a governed-memory write when a crashed step replays', async () => {
-    await withScenario(backend, async (scenario) => {
-      const marker = await crash<{ runId: string; sessionId: string }>(
-        scenario,
-        'memory-write-then-crash',
-      );
-      const governed = await openGovernedMemory(scenario.directory);
-      const closeGoverned = scenario.onCleanup(() => governed.close());
-      const stepZeroCalls: number[] = [];
-      const bureau = await createHarnessBureau({
-        backend,
-        storagePath: scenario.storagePath,
-        generate: async ({ step }) => {
-          if (step === 0) stepZeroCalls.push(step);
-          return { content: REMEMBERED_ANSWER, toolCalls: [] };
+    await waitForBureauState(
+      [bureau],
+      () =>
+        bureau.getRun(marker.xRunId)?.status === 'running' &&
+        bureau.getRun(marker.yRunId)?.status === 'running' &&
+        deferreds.has('crash harness run X') &&
+        deferreds.has('crash harness run Y'),
+      {
+        runIds: [marker.xRunId, marker.yRunId],
+        // A pending `generate` emits no frame while it is held, so its call is the announcement.
+        onChange: (notify) => {
+          generateObservers.add(notify);
+          return () => generateObservers.delete(notify);
         },
-        toolbox: createToolbox([createNextTool()]),
-        memory: governed.memory,
-      });
-      const shutdown = scenario.onCleanup(() => bureau.shutdown());
+      },
+    );
+    expect(calls.every((call) => call.step >= 1)).toBe(true);
+    const callsBeforeAbort = calls.length;
+    const xMessage = 'crash harness run X';
+    const xCallsBeforeAbort = calls.filter((call) => call.message === xMessage).length;
 
-      expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
-      expect(stepZeroCalls).toHaveLength(1);
-
-      const records = await governed.memory.list(inspector, { collection: marker.sessionId });
-      expect(records).toHaveLength(1);
-      expect(records[0]?.metadata['dedupeKey']).toBe(`${marker.runId}:0`);
-
-      await expectShutdownReleased(shutdown);
-      closeGoverned();
-      await expectVerifyClean(scenario);
+    expect(bureau.abortRun(marker.xRunId).status).toBe('aborting');
+    await waitForBureauState([bureau], () => bureau.getRun(marker.xRunId)?.status === 'aborted', {
+      runIds: [marker.xRunId],
     });
-  }, 120_000);
-
-  it('aborting one recovered run leaves its sibling running', async () => {
-    await withScenario(backend, async (scenario) => {
-      const marker = await crash<{ xRunId: string; yRunId: string }>(scenario, 'two-parked-runs');
-      const deferreds = new Map<string, PromiseWithResolvers<{ content: string; toolCalls: [] }>>();
-      const calls: Array<{ message: string; step: number }> = [];
-      const generate: GenerateFunction = async (context) => {
-        const message = firstUserMessage(context);
-        calls.push({ message, step: context.step });
-        if (context.step === 0) return { content: 'step 0', toolCalls: [] };
-        const deferred = Promise.withResolvers<{ content: string; toolCalls: [] }>();
-        deferreds.set(message, deferred);
-        context.signal?.addEventListener('abort', () => deferred.reject(context.signal?.reason), {
-          once: true,
-        });
-        return deferred.promise;
-      };
-      const bureau = await createHarnessBureau({
-        backend,
-        storagePath: scenario.storagePath,
-        generate,
-        toolbox: createToolbox([createNextTool()]),
-      });
-      const shutdown = scenario.onCleanup(() => bureau.shutdown());
-      await bureau.waitForRecovery?.();
-
-      const both = await pollUntil(
-        () =>
-          bureau.getRun(marker.xRunId)?.status === 'running' &&
-          bureau.getRun(marker.yRunId)?.status === 'running' &&
-          deferreds.has('crash harness run X') &&
-          deferreds.has('crash harness run Y'),
-      );
-      expect(both).toBe(true);
-      expect(calls.every((call) => call.step >= 1)).toBe(true);
-      const callsBeforeAbort = calls.length;
-      const xMessage = 'crash harness run X';
-      const xCallsBeforeAbort = calls.filter((call) => call.message === xMessage).length;
-
-      expect(bureau.abortRun(marker.xRunId).status).toBe('aborting');
-      expect(await pollUntil(() => bureau.getRun(marker.xRunId)?.status === 'aborted')).toBe(true);
-      const durableX = await bureau.getDurableRun(marker.xRunId);
-      expect(durableX?.status).not.toBe('running');
-      expect(durableX?.status).not.toBe('completed');
-      expect(await pollUntil(() => bureau.listAbortingRuns().length === 0)).toBe(true);
-
-      const xEvents = await bureau.eventHistory({ kind: 'run', id: marker.xRunId });
-      if ('outcome' in xEvents) throw new Error(`expected a page, got ${JSON.stringify(xEvents)}`);
-      const xKinds = xEvents.events.map((event) => event.kind);
-      expect(xKinds.filter((kind) => kind === 'run.aborted')).toHaveLength(1);
-      expect(xKinds).not.toContain('run.completed');
-
-      // Y is untouched, and nothing re-entered generate for X.
-      expect(bureau.getRun(marker.yRunId)?.status).toBe('running');
-      expect(calls).toHaveLength(callsBeforeAbort);
-
-      deferreds.get('crash harness run Y')?.resolve({ content: 'Y done', toolCalls: [] });
-      expect(await pollUntil(() => bureau.getRun(marker.yRunId)?.status === 'completed')).toBe(
-        true,
-      );
-      const yEvents = await bureau.eventHistory({ kind: 'run', id: marker.yRunId });
-      if ('outcome' in yEvents) throw new Error(`expected a page, got ${JSON.stringify(yEvents)}`);
-      const yKinds = yEvents.events.map((event) => event.kind);
-      expect(yKinds.filter((kind) => kind === 'run.completed')).toHaveLength(1);
-      expect(yKinds).not.toContain('run.aborted');
-
-      expect(await bureau.cancelDurableRun(marker.xRunId)).toEqual({ status: 'already-terminal' });
-      expect(await bureau.cancelDurableRun('process-crash-unknown-run')).toEqual({
-        status: 'not-found',
-      });
-
-      // Still true after Y finished: nothing re-entered generate for X.
-      expect(calls.filter((call) => call.message === xMessage)).toHaveLength(xCallsBeforeAbort);
-      await expectShutdownReleased(shutdown);
-      await expectVerifyClean(scenario);
+    const durableX = await bureau.getDurableRun(marker.xRunId);
+    expect(durableX?.status).not.toBe('running');
+    expect(durableX?.status).not.toBe('completed');
+    await waitForBureauState([bureau], () => bureau.listAbortingRuns().length === 0, {
+      runIds: [marker.xRunId],
     });
-  }, 120_000);
+
+    const xEvents = await bureau.eventHistory({ kind: 'run', id: marker.xRunId });
+    if ('outcome' in xEvents) throw new Error(`expected a page, got ${JSON.stringify(xEvents)}`);
+    const xKinds = xEvents.events.map((event) => event.kind);
+    expect(xKinds.filter((kind) => kind === 'run.aborted')).toHaveLength(1);
+    expect(xKinds).not.toContain('run.completed');
+
+    // Y is untouched, and nothing re-entered generate for X.
+    expect(bureau.getRun(marker.yRunId)?.status).toBe('running');
+    expect(calls).toHaveLength(callsBeforeAbort);
+
+    deferreds.get('crash harness run Y')?.resolve({ content: 'Y done', toolCalls: [] });
+    await waitForBureauState([bureau], () => bureau.getRun(marker.yRunId)?.status === 'completed', {
+      runIds: [marker.yRunId],
+    });
+    const yEvents = await bureau.eventHistory({ kind: 'run', id: marker.yRunId });
+    if ('outcome' in yEvents) throw new Error(`expected a page, got ${JSON.stringify(yEvents)}`);
+    const yKinds = yEvents.events.map((event) => event.kind);
+    expect(yKinds.filter((kind) => kind === 'run.completed')).toHaveLength(1);
+    expect(yKinds).not.toContain('run.aborted');
+
+    expect(await bureau.cancelDurableRun(marker.xRunId)).toEqual({ status: 'already-terminal' });
+    expect(await bureau.cancelDurableRun('process-crash-unknown-run')).toEqual({
+      status: 'not-found',
+    });
+
+    // Still true after Y finished: nothing re-entered generate for X.
+    expect(calls.filter((call) => call.message === xMessage)).toHaveLength(xCallsBeforeAbort);
+    await expectShutdownReleased(shutdown);
+    await expectVerifyClean(scenario);
+  });
+}
+
+/**
+ * Every scenario boots real processes (the SIGKILLed child and, afterwards, a fresh verifying
+ * process over the shut-down store), and the verifying process can only run once recovery has
+ * finished. So each scenario runs whole, once, at module scope to stay off the per-test clock (see
+ * `test/hoisted-scenario.ts`); a scenario's own assertions run there too, and a failure is captured
+ * and rethrown by the test that names it.
+ */
+// The hang guard is the per-test timeout these tests carried before they were hoisted. It only
+// stops a genuine hang; every wait for a state change is by event (`waitForBureauState`).
+const HANG_GUARD_MILLISECONDS = 120_000;
+async function settleBackend(backend: Backend) {
+  return {
+    idempotent: await settleScenario(
+      (scope) => idempotentChargeScenario(backend, scope),
+      HANG_GUARD_MILLISECONDS,
+    ),
+    control: await settleScenario(
+      (scope) => controlChargeScenario(backend, scope),
+      HANG_GUARD_MILLISECONDS,
+    ),
+    governedMemory: await settleScenario(
+      (scope) => governedMemoryScenario(backend, scope),
+      HANG_GUARD_MILLISECONDS,
+    ),
+    abortSibling: await settleScenario(
+      (scope) => abortSiblingScenario(backend, scope),
+      HANG_GUARD_MILLISECONDS,
+    ),
+  };
+}
+const outcomes = {
+  sqlite: await settleBackend('sqlite'),
+  lmdb: await settleBackend('lmdb'),
+};
+
+describe.each(['sqlite', 'lmdb'] as const)('process crash work integrity over %s', (backend) => {
+  it('does not repeat an idempotent tool effect when a crashed step replays', () => {
+    expectScenarioPassed(outcomes[backend].idempotent);
+  });
+
+  it('control: without idempotency the same crash repeats the tool effect', () => {
+    expectScenarioPassed(outcomes[backend].control);
+  });
+
+  it('does not repeat a governed-memory write when a crashed step replays', () => {
+    expectScenarioPassed(outcomes[backend].governedMemory);
+  });
+
+  it('aborting one recovered run leaves its sibling running', () => {
+    expectScenarioPassed(outcomes[backend].abortSibling);
+  });
 });

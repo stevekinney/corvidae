@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
 import { CINDER_COMPONENT_SOURCE } from '../src/component-sources.ts';
+import { assetUrlsFromHtml, initialRoutePayload } from './initial-route-payload.ts';
 import { fingerprintStaticAssets } from './static-asset-fingerprints.ts';
 import {
   assertDocumentationMetadata,
@@ -13,8 +14,6 @@ import {
   assertExactlyOneH1,
   assertSafeOutputDirectory,
   assertSitemapMatchesRoutes,
-  assetUrlsFromHtml,
-  initialRoutePayload,
   type OutputDirectoryBoundaries,
   requireProductionBaseUrl,
   runStaticExport,
@@ -356,7 +355,7 @@ describe('static export', () => {
   test('writes the root landing shell instead of a redirect', async () => {
     const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-'));
     try {
-      const rendered = await runStaticExport({
+      const { files: rendered } = await runStaticExport({
         outputDirectory,
         sidebarComponents: ['button'],
         allComponents: [],
@@ -396,10 +395,33 @@ describe('static export', () => {
     }
   }, 90_000);
 
+  // CIN-588 preservation: a route the export cannot resolve fails the whole export (the
+  // `static-export.ts` entry turns that rejection into a nonzero exit), so a missing page can never
+  // deploy as a partial site. A missing asset fails through the same non-2xx path.
+  test('rejects the export when a documentation route does not resolve', async () => {
+    const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-unresolved-'));
+    try {
+      let message = '';
+      try {
+        await runStaticExport({
+          outputDirectory,
+          sidebarComponents: ['button'],
+          allComponents: ['not-a-component'],
+        });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain('/page/not-a-component');
+      expect(message).toContain('HTTP 404');
+    } finally {
+      await rm(outputDirectory, { recursive: true, force: true });
+    }
+  }, 90_000);
+
   test('materializes extracted Chat routes, bundles, documentation, and styles', async () => {
     const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-chat-'));
     try {
-      const rendered = await runStaticExport({
+      const { files: rendered } = await runStaticExport({
         outputDirectory,
         sidebarComponents: ['chat'],
         allComponents: ['chat', 'chat-composer-popover', 'chat-conversation-header'],
@@ -430,6 +452,27 @@ describe('static export', () => {
       );
 
       expect(pageHtml).toMatch(/\/assets\/[a-f0-9]{64}\/page-bundle\/chat\.js/);
+      // Every stable page entry is one import of its hashed entry, and each page's top-level code
+      // exists in exactly one exported file; a second copy would hydrate the page twice.
+      const stableEntry = await readFingerprintedAsset('/page-bundle/chat.js');
+      expect(stableEntry).toMatch(
+        /^import "\/assets\/[a-f0-9]{64}\/page-bundle\/page-chat-[a-z0-9]+\.js";\n$/,
+      );
+      const stableEntries = [...rendered].filter((url) =>
+        /\/page-bundle\/(?!page-|chunk-|bundle-)[a-z0-9-]+\.js$/.test(url),
+      );
+      const entryCopies: string[] = [];
+      for (const url of rendered) {
+        if (!url.endsWith('.js')) continue;
+        const code = await readFile(join(outputDirectory, url.slice(1)), 'utf8');
+        // A string literal, not an identifier, so minification cannot rename it away.
+        if (code.includes('data-playground-controls-hydrated')) entryCopies.push(url);
+      }
+      expect(stableEntries.length).toBeGreaterThan(0);
+      expect(entryCopies).toHaveLength(stableEntries.length);
+      expect(entryCopies.every((url) => /\/page-bundle\/page-[a-z0-9-]+\.js$/.test(url))).toBe(
+        true,
+      );
       expect(pageHtml).toMatch(/\/assets\/[a-f0-9]{64}\/package-components\/chat\/chat\/chat\.css/);
       expect(pageHtml).toContain('id="cinder-documentation"');
       expect(pageHtml).toContain('\\u003cp');
@@ -484,7 +527,7 @@ describe('static export', () => {
   test('materializes shell routes for navigable family children', async () => {
     const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-family-'));
     try {
-      const rendered = await runStaticExport({
+      const { files: rendered } = await runStaticExport({
         outputDirectory,
         sidebarComponents: ['chat'],
         allComponents: [],
@@ -667,3 +710,15 @@ test('clears a legacy /c/ tree left by a previous export', async () => {
     await rm(outputDirectory, { recursive: true, force: true });
   }
 }, 120_000);
+
+test('the build pins the time zone and locale its server renders format dates in', async () => {
+  // Server-rendered examples format dates with the default `Intl` time zone and locale, so a build
+  // that inherited them would export different bytes on each machine (CIN-591).
+  const manifest = (await Bun.file(join(import.meta.dirname, '..', 'package.json')).json()) as {
+    scripts: Record<string, string>;
+  };
+  const assignments = manifest.scripts['build']?.split(' bun ')[0]?.split(' ') ?? [];
+
+  expect(assignments).toContain('TZ=UTC');
+  expect(assignments).toContain('LANG=en_US.UTF-8');
+});

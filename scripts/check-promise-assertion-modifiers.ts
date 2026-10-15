@@ -37,7 +37,7 @@ import ts from 'typescript';
 const root = join(import.meta.dir, '..');
 const SCANNED_DIRECTORIES = ['applications', 'components', 'packages', 'internal', 'scripts'];
 // Installed dependencies and generated output, mirroring `.gitignore`. Dot
-// directories (`.svelte-kit`, `.turbo`, `.hutch`) are skipped wholesale.
+// directories (`.svelte-kit`, `.turbo`) are skipped wholesale.
 const SKIPPED_DIRECTORIES = new Set([
   'node_modules',
   'build',

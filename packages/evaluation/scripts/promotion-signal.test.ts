@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
@@ -47,6 +47,7 @@ const RECORD_KEY_PREFIX = 'evaluation-history/records/';
 
 function gitIn(cwd: string, ...args: string[]): string {
   return Bun.spawnSync(['git', ...args], {
+    timeout: 120_000,
     cwd,
     env: {
       ...process.env,
@@ -60,7 +61,9 @@ function gitIn(cwd: string, ...args: string[]): string {
     .trim();
 }
 
+// Every `git` process this file needs runs at module scope, so none boots inside a test's budget.
 const HEAD = gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD');
+const HEAD_PACKAGE_TREE = gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation');
 
 let directory: string;
 let storePath: string;
@@ -93,6 +96,7 @@ interface Report {
 
 async function spawnScript(script: string, args: readonly string[]): Promise<CommandResult> {
   const child = Bun.spawn([process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, script, ...args], {
+    timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -102,6 +106,19 @@ async function spawnScript(script: string, args: readonly string[]): Promise<Com
     child.exited,
   ]);
   return { exitCode, stdout, stderr };
+}
+
+/**
+ * The checked-out repository as the command would read it, read once at module scope instead of on
+ * each call: `HEAD` is checked out and its package tree is `HEAD_PACKAGE_TREE`.
+ */
+function checkedOut(changes: PromotionSignalCommandOptions = {}): PromotionSignalCommandOptions {
+  return {
+    currentRevision: () => HEAD,
+    packageSourceRevision: (name, revision) =>
+      name === '@lostgradient/evaluation' && revision === HEAD ? HEAD_PACKAGE_TREE : undefined,
+    ...changes,
+  };
 }
 
 /** The repository as a test pins it: `REVISION` checked out, at `ISSUED_AT`. */
@@ -239,6 +256,8 @@ async function expectRefusalsAppendNothing(
 async function committedGateRun(): Promise<string> {
   let stdout = '';
   const exitCode = await runReleaseGateCommand(['--gate', FIXTURE_GATE_ID, '--store', storePath], {
+    sourceRevision: HEAD,
+    revisionDistance: () => undefined,
     output: { stdout: { write: (text: string) => (stdout += text) }, stderr: { write: () => 0 } },
   });
   expect(exitCode).toBe(0);
@@ -251,7 +270,7 @@ function expectIssuedSignal(report: Report, gateDecisionRecordId: string): void 
   expect(report.signal).toMatchObject({
     package: {
       name: '@lostgradient/evaluation',
-      sourceRevision: gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation'),
+      sourceRevision: HEAD_PACKAGE_TREE,
     },
     model: { provider: 'anthropic', model: 'claude-sonnet-4-6', effort: 'medium' },
     promptVersion: 'fixture-judge-prompt-1',
@@ -263,6 +282,29 @@ function expectIssuedSignal(report: Report, gateDecisionRecordId: string): void 
   });
 }
 
+// The real process is the behavior under test (script wiring, stdout, stderr and exit code), so it
+// runs once here at module scope to stay off the per-test clock. The gate run and the verification
+// are in process, in a directory the hooks above replace for each test.
+const spawnedIssue = await (async () => {
+  directory = await mkdtemp(join(tmpdir(), 'promotion-signal-command-spawn-'));
+  storePath = join(directory, 'history.sqlite');
+  try {
+    const gateDecisionRecordId = await committedGateRun();
+    const issued = await spawnScript('promotion-signal', [
+      'issue',
+      '--gate',
+      FIXTURE_GATE_ID,
+      '--store',
+      storePath,
+    ]);
+    const signalId = (JSON.parse(issued.stdout) as Report).signal?.signalId;
+    const verified = await runInProcess(['verify', signalId ?? '', '--store', storePath], {});
+    return { gateDecisionRecordId, issued, verified };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
 /**
  * The one test that boots a real `bun` process: it proves the
  * `promotion-signal` script is wired to the entry point and that stdout,
@@ -272,36 +314,41 @@ function expectIssuedSignal(report: Report, gateDecisionRecordId: string): void 
  * the per-test budget.
  */
 describe('promotion-signal (spawned bun process)', () => {
-  test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', async () => {
-    const gateDecisionRecordId = await committedGateRun();
-
-    const issued = await spawnScript('promotion-signal', [
-      'issue',
-      '--gate',
-      FIXTURE_GATE_ID,
-      '--store',
-      storePath,
-    ]);
+  test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', () => {
+    const { gateDecisionRecordId, issued, verified } = spawnedIssue;
 
     const report = expectReport(issued, 0, 'issued');
     expectIssuedSignal(report, gateDecisionRecordId);
     expect(issued.stderr).toContain(`Issued promotion signal "${report.signal!.signalId}"`);
 
-    const verified = await runInProcess(
-      ['verify', report.signal!.signalId, '--store', storePath],
-      {},
-    );
     expect(expectReport(verified, 0, 'valid').signal).toEqual(report.signal);
   });
 });
 
+// This scenario exists to prove the command reads the checked-out repository when nothing is
+// injected, so its whole run happens here at module scope to stay off the per-test clock. It
+// borrows the shared directory and store variables, which the hooks above replace before each test.
+const defaultIssue = await (async () => {
+  directory = await mkdtemp(join(tmpdir(), 'promotion-signal-command-default-'));
+  storePath = join(directory, 'history.sqlite');
+  try {
+    const decision = await decide(fixtureGateFile(), { sourceRevision: HEAD });
+    return await runInProcess(['issue', decision.id, '--store', storePath], {
+      now: () => Date.parse(ISSUED_AT),
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
 describe('runPromotionSignalCommand', () => {
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue --gate fixture-regression exits 0 with one JSON document after the committed gate passes, and verify exits 0', async () => {
     const gateDecisionRecordId = await committedGateRun();
 
     const issued = await runInProcess(
       ['issue', '--gate', FIXTURE_GATE_ID, '--store', storePath],
-      {},
+      checkedOut(),
     );
 
     const report = expectReport(issued, 0, 'issued');
@@ -310,44 +357,41 @@ describe('runPromotionSignalCommand', () => {
 
     const verified = await runInProcess(
       ['verify', report.signal!.signalId, '--store', storePath],
-      {},
+      checkedOut(),
     );
     expect(expectReport(verified, 0, 'valid').signal).toEqual(report.signal);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('refuses a failing decision with 3 and another revision with 5 on the real clock, appending nothing', async () => {
     // The real clock, as a person's run reads it: the decisions are dated on it too.
     await expectRefusalsAppendNothing(
-      (args) => runInProcess(args, {}),
+      (args) => runInProcess(args, checkedOut()),
       () => Date.now(),
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('refuses a failing decision with 3 and another revision with 5 however long after `DECIDED_AT` it runs', async () => {
     // A run on the real clock with decisions dated at `DECIDED_AT` began
     // failing a day later, so this one pins `now` instead.
     const longAfter = Date.parse(DECIDED_AT) + 5 * 365 * 24 * 60 * 60 * 1000;
     await expectRefusalsAppendNothing(
-      (args) => runInProcess(args, { now: () => longAfter }),
+      (args) => runInProcess(args, checkedOut({ now: () => longAfter })),
       () => longAfter,
     );
   });
 
-  test('issues against the checked-out repository by default', async () => {
-    const decision = await decide(fixtureGateFile(), { sourceRevision: HEAD });
-
-    const result = await runInProcess(['issue', decision.id, '--store', storePath], {
-      now: () => Date.parse(ISSUED_AT),
-    });
-
-    expect(expectReport(result, 0, 'issued').signal).toMatchObject({
+  test('issues against the checked-out repository by default', () => {
+    expect(expectReport(defaultIssue, 0, 'issued').signal).toMatchObject({
       package: {
-        sourceRevision: gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation'),
+        sourceRevision: HEAD_PACKAGE_TREE,
       },
       sourceRevision: HEAD,
     });
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue on a failing or an expired decision exits 3 and appends nothing', async () => {
     const failing = await decide(fixtureGateFile('regressing'));
     const passing = await decide();
@@ -373,6 +417,7 @@ describe('runPromotionSignalCommand', () => {
     expect(await records()).toEqual(before);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue on a passing decision whose recorded revision is not the injected current one exits 5 and appends nothing', async () => {
     const decision = await decide();
     const before = await records();
@@ -392,6 +437,7 @@ describe('runPromotionSignalCommand', () => {
     expect(await records()).toEqual(before);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each<[string, PromotionSignalCommandOptions]>([
     ['package.sourceRevision', pinned({ packageSourceRevision: () => 'f'.repeat(40) })],
     [
@@ -444,6 +490,7 @@ describe('runPromotionSignalCommand', () => {
     expect(result.stderr).toContain(`  ${field}: bound `);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('verify exits 3 for a signal past its expiry', async () => {
     const decision = await decide();
     const { signal } = expectReport(
@@ -466,6 +513,7 @@ describe('runPromotionSignalCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issuing twice from one decision gives two signals and leaves the first record unchanged', async () => {
     const decision = await decide();
     const first = expectReport(
@@ -486,6 +534,7 @@ describe('runPromotionSignalCommand', () => {
     expect(before?.record).toMatchObject({ signal: { digest: first.signal!.digest } });
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue --gate issues from the newest decision of the gate, and exits 3 for a gate never run', async () => {
     await decide();
     const newest = await decide(fixtureGateFile(), {
@@ -505,6 +554,7 @@ describe('runPromotionSignalCommand', () => {
     });
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('names the issuing principal: the current user unless --actor names someone', async () => {
     const decision = await decide();
     const byDefault = await runInProcess(['issue', decision.id, '--store', storePath]);
@@ -520,6 +570,7 @@ describe('runPromotionSignalCommand', () => {
     expect(expectReport(named, 0, 'issued').signal?.actor).toBe('agent-7');
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('uses the id source it is given', async () => {
     const decision = await decide();
     const result = await runInProcess(
@@ -529,6 +580,7 @@ describe('runPromotionSignalCommand', () => {
     expect(expectReport(result, 0, 'issued').signal?.signalId).toBe(`${decision.id}.promoted`);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('reports the problem when current values cannot be resolved, or no signal exists', async () => {
     const decision = await decide();
     const unresolvable = await runInProcess(
@@ -546,6 +598,7 @@ describe('runPromotionSignalCommand', () => {
     });
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('issue from a store that does not exist exits 3 without creating it', async () => {
     const absent = join(directory, 'absent.sqlite');
     const result = await runInProcess(['issue', '--gate', FIXTURE_GATE_ID, '--store', absent]);
@@ -553,6 +606,7 @@ describe('runPromotionSignalCommand', () => {
     expect(existsSync(absent)).toBe(false);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each<[string, string[]]>([
     ['no command', []],
     ['an unknown command', ['promote', 'x']],
@@ -571,6 +625,7 @@ describe('runPromotionSignalCommand', () => {
     expect(existsSync(storePath)).toBe(false);
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('exits 65 when a record it reads is corrupt', async () => {
     const decision = await decide();
     const { signal } = expectReport(
@@ -593,6 +648,7 @@ describe('runPromotionSignalCommand', () => {
     }
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('propagates a failure that is neither a usage error nor corruption', async () => {
     expect(
       await throwingRejectionOf(runInProcess(['verify', 'signal-1', '--store', directory])),
@@ -600,41 +656,63 @@ describe('runPromotionSignalCommand', () => {
   });
 });
 
+// These tests drive `git` itself (the function under test spawns it), so the repository, its two
+// commits and every revision lookup run once here at module scope to stay off the per-test clock.
+const gitScenarioDirectory = await mkdtemp(join(tmpdir(), 'promotion-signal-git-'));
+const gitScenarioRepository = join(gitScenarioDirectory, 'repository');
+const gitScenarioNotARepository = join(gitScenarioDirectory, 'not-a-repository');
+const checkedOutPackageTree = await gitPackageSourceRevision('@lostgradient/evaluation', HEAD);
+const gitScenario = await (async () => {
+  const repository = gitScenarioRepository;
+  await mkdir(join(repository, 'packages', 'alpha'), { recursive: true });
+  await mkdir(join(repository, 'packages', 'broken'), { recursive: true });
+  await mkdir(gitScenarioNotARepository, { recursive: true });
+  await writeFile(
+    join(repository, 'package.json'),
+    JSON.stringify({ name: 'root', workspaces: [7, 'packages/*'] }),
+  );
+  await writeFile(join(repository, 'packages', 'alpha', 'package.json'), '{"name":"alpha"}');
+  await writeFile(join(repository, 'packages', 'broken', 'package.json'), '{ not json');
+  gitIn(repository, 'init', '--quiet');
+  const beforeFirstCommit = await gitPackageSourceRevision('alpha', 'HEAD', repository);
+  gitIn(repository, 'add', '.');
+  gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'first');
+  const first = gitIn(repository, 'rev-parse', 'HEAD');
+  await writeFile(join(repository, 'packages', 'alpha', 'index.ts'), 'export {};\n');
+  gitIn(repository, 'add', '.');
+  gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'second');
+
+  return {
+    beforeFirstCommit,
+    tree: await gitPackageSourceRevision('alpha', first, repository),
+    expectedTree: gitIn(repository, 'rev-parse', `${first}:packages/alpha`),
+    atHead: await gitPackageSourceRevision('alpha', 'HEAD', repository),
+    missingWorkspace: await gitPackageSourceRevision('missing', 'HEAD', repository),
+    unknownRevision: await gitPackageSourceRevision('alpha', OTHER_REVISION, repository),
+    notARepository: await gitPackageSourceRevision('alpha', 'HEAD', gitScenarioNotARepository),
+  };
+})();
+
+afterAll(async () => {
+  await rm(gitScenarioDirectory, { recursive: true, force: true });
+});
+
 describe('gitPackageSourceRevision', () => {
   test('is the git tree of the named workspace at a revision of the checked-out repository', async () => {
-    expect(await gitPackageSourceRevision('@lostgradient/evaluation', HEAD)).toBe(
-      gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation'),
-    );
+    expect(checkedOutPackageTree).toBe(HEAD_PACKAGE_TREE);
     expect(
       await workspaceDirectory('@lostgradient/evaluation', resolve(PACKAGE_DIRECTORY, '..', '..')),
     ).toBe('packages/evaluation');
   });
 
   test('finds workspaces by name, and is undefined for anything it cannot resolve', async () => {
-    const repository = join(directory, 'repository');
-    await mkdir(join(repository, 'packages', 'alpha'), { recursive: true });
-    await mkdir(join(repository, 'packages', 'broken'), { recursive: true });
-    await writeFile(
-      join(repository, 'package.json'),
-      JSON.stringify({ name: 'root', workspaces: [7, 'packages/*'] }),
-    );
-    await writeFile(join(repository, 'packages', 'alpha', 'package.json'), '{"name":"alpha"}');
-    await writeFile(join(repository, 'packages', 'broken', 'package.json'), '{ not json');
-    gitIn(repository, 'init', '--quiet');
-    expect(await gitPackageSourceRevision('alpha', 'HEAD', repository)).toBeUndefined();
-    gitIn(repository, 'add', '.');
-    gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'first');
-    const first = gitIn(repository, 'rev-parse', 'HEAD');
-    await writeFile(join(repository, 'packages', 'alpha', 'index.ts'), 'export {};\n');
-    gitIn(repository, 'add', '.');
-    gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'second');
-
-    const tree = await gitPackageSourceRevision('alpha', first, repository);
-    expect(tree).toBe(gitIn(repository, 'rev-parse', `${first}:packages/alpha`));
-    expect(await gitPackageSourceRevision('alpha', 'HEAD', repository)).not.toBe(tree);
-    expect(await gitPackageSourceRevision('missing', 'HEAD', repository)).toBeUndefined();
-    expect(await gitPackageSourceRevision('alpha', OTHER_REVISION, repository)).toBeUndefined();
-    expect(await gitPackageSourceRevision('alpha', 'HEAD', directory)).toBeUndefined();
+    const repository = gitScenarioRepository;
+    expect(gitScenario.beforeFirstCommit).toBeUndefined();
+    expect(gitScenario.tree).toBe(gitScenario.expectedTree);
+    expect(gitScenario.atHead).not.toBe(gitScenario.tree);
+    expect(gitScenario.missingWorkspace).toBeUndefined();
+    expect(gitScenario.unknownRevision).toBeUndefined();
+    expect(gitScenario.notARepository).toBeUndefined();
 
     await rm(join(repository, 'package.json'));
     expect(await workspaceDirectory('alpha', repository)).toBeUndefined();

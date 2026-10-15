@@ -1,6 +1,9 @@
 import type { BuildArtifact } from 'bun';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
-import { curatedShikiAdapterPlugin } from './curated-shiki-adapter-plugin.ts';
+import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { playgroundSveltePlugin } from './playground-svelte-plugin.ts';
 
 /**
@@ -42,6 +45,14 @@ export const PUBLIC_PATH_BY_FAMILY: Record<ArtifactFamily, string> = {
 };
 
 /**
+ * Barrel packages whose root re-exports a playground build follows only as far
+ * as the names it imports. Shared by the client families below and the SSR
+ * renderer's server builds, so neither side walks Cinder's full Shiki registry
+ * unless a page imports it (only `<Chat>` does).
+ */
+export const PLAYGROUND_IMPORT_OPTIMIZATION = ['@lostgradient/cinder'];
+
+/**
  * Shared Bun.build options used by every family.
  *
  * Each compile site supplies its own `publicPath` so that dynamic-import URLs
@@ -55,11 +66,42 @@ export const PUBLIC_PATH_BY_FAMILY: Record<ArtifactFamily, string> = {
  * peer-chunk imports get the subdirectory stripped from their URL, so the
  * naming template stays flat.
  */
+/**
+ * Where the generated entry modules of the shipped bundle families (page and shell) are written.
+ * The directory must be fixed: Bun derives output hashes and module comments from module paths
+ * relative to the working directory, and a random directory here made every export's bundle
+ * names differ (CIN-591). The entries cannot be handed to `Bun.build` in memory instead (its
+ * `files` option), because an in-memory module's hash depends on its absolute path. The directory
+ * sits two levels below the Playground root, so an entry's `../../src/…` imports resolve.
+ */
+export const GENERATED_ENTRY_DIRECTORY = join(PLAYGROUND_TEMP_ROOT, 'entries');
+
+/**
+ * Write generated entry modules, each atomically (a uniquely named temporary file renamed into
+ * place), so a concurrent build of the same page reads one whole version or the other. They are
+ * never removed by a build, since another build may still be reading them; `clean` removes the
+ * Playground's `.tmp` directory.
+ */
+export async function writeGeneratedEntries(
+  files: Readonly<Record<string, string>>,
+): Promise<void> {
+  await mkdir(GENERATED_ENTRY_DIRECTORY, { recursive: true });
+  for (const [path, source] of Object.entries(files)) {
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    await writeFile(temporary, source);
+    await rename(temporary, path);
+  }
+}
+
 export const SHARED_BUILD_OPTIONS = {
-  plugins: [
-    playgroundSveltePlugin({ generate: 'client', injectCss: true }),
-    curatedShikiAdapterPlugin(),
-  ],
+  plugins: [playgroundSveltePlugin({ generate: 'client', injectCss: true })],
+  // Follow only the `@lostgradient/cinder` root exports a page actually
+  // imports. Without it, every page bundle walks every module the root
+  // re-exports, including `fullShikiHighlighter`'s `shiki/langs` and
+  // `shiki/themes` lookup tables: 249 grammar imports resolved per build even
+  // though tree-shaking emits none of them, which is the walk that took the
+  // eager pre-build to 18 GB resident (CIN-523). See `PLAYGROUND_IMPORT_OPTIMIZATION`.
+  optimizeImports: PLAYGROUND_IMPORT_OPTIMIZATION,
   target: 'browser',
   format: 'esm',
   // The workspace component packages (`@lostgradient/cinder`, `chat`, `editor`)
@@ -360,6 +402,20 @@ export function findArtifactForFamily(family: ArtifactFamily, path: string): str
  */
 export function artifactRelativePath(path: string): string {
   return path.replace(/^\.[\\/]/, '').replaceAll('\\', '/');
+}
+
+/**
+ * The module served at a family's stable entry URL (`/page-bundle/<name>.js`,
+ * `/shell-bundle/shell.js`): a single side-effect import of the hashed entry.
+ *
+ * It must never be a copy of the entry's code. With `splitting`, Bun hoists
+ * shared exports into the entry, so peer chunks import the HASHED entry URL. A
+ * byte copy at the stable URL is a second module record with the same top-level
+ * code, which ran `hydrate()` twice per page and produced a `hydration_mismatch`
+ * on every component page and the landing page.
+ */
+export function stableEntryModule(family: ArtifactFamily, entryPath: string): string {
+  return `import ${JSON.stringify(`${PUBLIC_PATH_BY_FAMILY[family]}${entryPath}`)};\n`;
 }
 
 /**

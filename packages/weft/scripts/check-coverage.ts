@@ -27,6 +27,27 @@ type CoverageAllowance = {
   requireUncoveredLines?: boolean;
 };
 
+/**
+ * The `workflow-event-feed.ts` lines Bun leaves uncovered on a given host. Linux on x64 misses
+ * line 398 (the returned `subscribe` reference); macOS and linux/arm64 (the Dev Container on
+ * Apple silicon, COR-1379) cover it, and the allowance's `requireUncoveredLines` would fail
+ * them if it still named the line.
+ */
+export function workflowEventFeedUncoveredLines(platform: string, architecture: string): number[] {
+  return platform === 'darwin' || architecture === 'arm64' ? [] : [398];
+}
+
+/**
+ * What `scripts/benchmarks/memory-footprint.ts` leaves uncovered on a given platform: nothing on
+ * macOS, and its macOS-only `proc_pid_rusage` FFI path everywhere else.
+ */
+export function memoryFootprintUncoveredOutsideDarwin(
+  platform: string,
+): Pick<CoverageAllowance, 'functions' | 'lines'> {
+  if (platform === 'darwin') return { lines: new Set() };
+  return { functions: 3, lines: new Set([36, 37, 38, 39, 40, 41, 45, 46, 47, 54, 79]) };
+}
+
 type DocumentedCoverageAllowance = CoverageAllowance & { reason: string };
 
 type CoverageAllowanceEntry = readonly [path: string, allowance: DocumentedCoverageAllowance];
@@ -207,20 +228,16 @@ const BASE_COVERAGE_ALLOWANCES = buildAllowanceLayer('BASE_COVERAGE_ALLOWANCES',
     'scripts/generate-operation-client.ts',
     {
       reason:
-        'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report; the exhaustive renderer guard is unreachable by construction. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), then shifted with the generated CatalogOperations docblock (COR-1280): the uncovered CLI entrypoint lines are now 325-337. The exhaustive-renderer-guard miss the original 373/376 covered is not reproduced in corvidae’s copy (no gap remains there).',
+        'Bun reports one function miss in this file. The CLI body is `runGenerateOperationClientCommand`, which the tests run in process (COR-1459), so its lines are covered and no line allowance remains; the one-line `import.meta.main` entry is reported as hit.',
       functions: 1,
-      lines: new Set([325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337]),
-      requireUncoveredLines: true,
     },
   ],
   [
     'scripts/check-implementation-file-sizes.ts',
     {
       reason:
-        'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), then shifted two lines by COR-1281’s registry rationale and back 18 lines when COR-1273 removed two completed classifications: the child-process CLI body now falls at lines 470-471.',
+        'Bun reports one function miss in this file with every line hit. The CLI body is `runCli`, which the tests run in process, and the one-line `import.meta.main` entry is reported as hit, so no line allowance remains.',
       functions: 1,
-      lines: new Set([470, 471]),
-      requireUncoveredLines: true,
     },
   ],
   [
@@ -418,7 +435,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'Bun leaves the generator loop closing line cold after the final retry and catch paths settle, despite direct retry-state coverage.',
-        lines: new Set([451]),
+        lines: new Set([459]),
         requireUncoveredLines: true,
       },
     ],
@@ -572,25 +589,6 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'scripts/check-lint-disables.ts',
-      {
-        reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report.',
-        functions: 9,
-        lines: new Set([
-          66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87,
-          88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
-          111, 112, 113, 114, 115, 116, 120, 121, 122, 123, 124, 133, 134, 135, 136, 137, 138, 139,
-          143, 144, 145, 146, 147, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163,
-          164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 177, 178, 179, 180, 181, 182, 183, 184,
-          185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202,
-          203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 217, 218, 219, 220, 221, 222, 223,
-          227, 228, 229, 230, 231, 232, 233, 234, 239, 240,
-        ]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'scripts/benchmarks/workflow-starts-runner.ts',
       {
         reason:
@@ -693,7 +691,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Bun maps the returned subscribe reference and no-op dispose body inconsistently across platforms even though both are exercised by the feed tests.',
-        lines: new Set(process.platform === 'darwin' ? [] : [398]),
+        lines: new Set(workflowEventFeedUncoveredLines(process.platform, process.arch)),
         requireUncoveredLines: true,
       },
     ],
@@ -854,37 +852,6 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'scripts/check-revision-keyed-lookups.ts',
-      // New script (WFT-19). Its own test file drives every code path
-      // (`parseArguments`/`printUsage`'s `--help`/`--root`/unknown-argument
-      // branches, `scanViolations()`'s comment-stripping and allowlist
-      // exclusion, `runEnforcement()`'s pass/fail reporting, and the
-      // `import.meta.main` CLI entry) exclusively via `Bun.spawnSync(['bun',
-      // 'run', scriptPath, ...])` — the same child-process pattern
-      // `check-lint-disables.test.ts` already uses for its own script, so
-      // none of those hits attribute back to this parent Bun LCOV report.
-      // `functions: 7` (of 8 total, 1 hit): Bun's LCOV omits per-function
-      // FN:/FNDA: detail for this file — confirmed via the raw aggregate,
-      // FNF:8/FNH:1 — the same omission already documented for
-      // `pre-commit.ts` below.
-      {
-        reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Re-derived from a fresh coverage/lcov.info (WFT-19 review round 3) after the declarationSites rewrite shifted every line below parseArguments() again.',
-        functions: 7,
-        lines: createMergedLineSet(
-          createLineSet(146, 159),
-          createLineSet(163, 182),
-          createLineSet(227, 231),
-          createLineSet(236, 240),
-          createLineSet(244, 270),
-          createLineSet(274, 296),
-          createLineSet(300, 301),
-          createLineSet(306, 307),
-        ),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/cli/api-arguments.ts',
       {
         reason:
@@ -928,15 +895,6 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
         reason:
           'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report.',
         functions: 5,
-      },
-    ],
-    [
-      'src/cli/serve-registrations.ts',
-      {
-        reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
-        lines: new Set([40, 41, 42, 43]),
-        requireUncoveredLines: true,
       },
     ],
     [
@@ -1076,7 +1034,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Exhaustive default for an unknown AuthContext method is unreachable through the authenticator surface, which only ever produces one of the declared AuthMethod values.',
-        lines: new Set([45, 46, 47, 48]),
+        lines: new Set([48, 49, 50, 51]),
         requireUncoveredLines: true,
       },
     ],
@@ -1147,32 +1105,21 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
   'AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS',
   [
     [
-      'scripts/lib/workflow-visibility-backfill.ts',
+      'src/conformance/run-conformance.ts',
       {
         reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file.',
-        lines: new Set([
-          67, 153, 154, 155, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231,
-        ]),
+          'The shared conformance check sequence (COR-1365 moved it here from `src/cli/conformance.ts`, which carried this allowance at lines 91/158/239). Only the three defensive dispatch/cancel/shutdown failure throws remain uncovered: a sandbox server that refuses a dispatch, refuses to record a cancellation it was just handed, or loses the worker it just registered is not something any conformance fixture can produce.',
+        lines: new Set([131, 220, 301]),
         requireUncoveredLines: true,
       },
     ],
     [
-      'src/cli/conformance.ts',
+      'src/conformance/harness.ts',
       {
         reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered. Realigned a third time (still COR-235) after adding the `waitForReassignmentPastFirstAttempt` import shifted the graceful-shutdown throw from line 216 to 217. Realigned a fourth time after `createRegisterCheck` (unit-tested directly, so fully covered) was added above the dispatch helper, moving the same three throws from 63/136/217 to 91/158/239.',
-        lines: new Set([91, 158, 239]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/cli/conformance-harness.ts',
-      {
-        reason:
-          "Process lifecycle and observation primitives extracted from `conformance.ts` (COR-235, to keep that file under the line-count ceiling). Same rationale as that file previously carried: `waitForCondition`'s catch clause is never exercised because no predicate in the passing conformance fixtures throws, and the disconnected-worker/registry-empty throws in `waitForRegisteredWorker`/`waitForReplacementWorker`/`waitForWorkerHeartbeat` are defensive failure paths no passing conformance run reaches.",
+          "Process lifecycle and observation primitives for the shared conformance check sequence (moved from `src/cli/conformance-harness.ts` by COR-1365; its import block grew by six lines, so every line below shifted by six). `waitForCondition`'s catch clause is never exercised because no predicate in the passing conformance fixtures throws, and the disconnected-worker/registry-empty throws in `waitForRegisteredWorker`/`waitForReplacementWorker`/`waitForWorkerHeartbeat` are defensive failure paths no passing conformance run reaches.",
         functions: 1,
-        lines: new Set([45, 99, 121, 134, 144, 161]),
+        lines: new Set([51, 105, 127, 140, 150, 167]),
         requireUncoveredLines: true,
       },
     ],
@@ -1235,7 +1182,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining attribute-tag branches reject decoded value shapes excluded by search-attribute boundary validation.',
         functions: 1,
-        lines: new Set([365, 366, 368]),
+        lines: new Set([279, 280, 282]),
         requireUncoveredLines: true,
       },
     ],
@@ -1451,10 +1398,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining concurrency branches cover lease-loss and simultaneous-settlement interleavings whose public outcomes are tested without deterministic line attribution.',
         functions: 1,
-        lines: new Set([
-          57, 58, 59, 60, 61, 62, 63, 64, 65, 67, 68, 69, 70, 110, 111, 112, 131, 138, 139, 206,
-          207,
-        ]),
+        lines: new Set([125, 126, 127, 153, 154]),
         requireUncoveredLines: true,
       },
     ],
@@ -1473,15 +1417,6 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
         reason:
           'The remaining HTTP lines are socket-close, stream-cancel, and response-write failure exits exercised through transport teardown without stable line attribution.',
         lines: new Set([115, 116, 117, 118, 119, 120, 121, 122, 204, 205, 230, 379, 423]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
-      'src/server/authentication/index.ts',
-      {
-        reason:
-          'The residual authentication line guards an authentication provider result outside the declared provider contract.',
-        lines: new Set([158]),
         requireUncoveredLines: true,
       },
     ],
@@ -1689,13 +1624,21 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // +3 below it. Re-derived from a fresh coverage/lcov.info, which reports exactly the same 25
       // missed lines and one missed function: 164-167 -> 165-168, 260-268 -> 261-269,
       // 291 -> 292, 492-498 -> 496-502, 700/701/704/705 -> 704/705/708/709.
+      //
+      // Realigned again for COR-1366 (task result delivery history), from a fresh
+      // coverage/lcov.info on the rebased tree. The same five branches remain; two grew because
+      // they now record a delivery entry. The oversized-result persistence-failure branch also
+      // records a `commit-rejected` delivery before logging (165-168 -> 224-232), and the
+      // revision-mismatch branch now goes through the shared `rejectTaskResult` helper that
+      // sends the protocolError and records the rejection (261-269 -> 331-340). The rest only
+      // shifted: 292 -> 363, 496-502 -> 569-575, 704/705/708/709 -> 777/778/781/782.
       {
         reason:
-          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (165-168, 292), a revision-mismatch rejection unreachable without fabricating a non-resend (261-269), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (496-502), and the closed WorkerToServerMessage union default branch (704, 705, 708, 709).",
+          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (224-232, 363), a revision-mismatch rejection unreachable without fabricating a non-resend (331-340), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (569-575), and the closed WorkerToServerMessage union default branch (777, 778, 781, 782).",
         functions: 1,
         lines: new Set([
-          165, 166, 167, 168, 261, 262, 263, 264, 265, 266, 267, 268, 269, 292, 496, 497, 498, 499,
-          500, 501, 502, 704, 705, 708, 709,
+          224, 225, 226, 227, 228, 229, 230, 231, 232, 331, 332, 333, 334, 335, 336, 337, 338, 339,
+          340, 363, 569, 570, 571, 572, 573, 574, 575, 777, 778, 781, 782,
         ]),
         requireUncoveredLines: true,
       },
@@ -1753,6 +1696,16 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
  * the reverse.
  */
 export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERAGE_ALLOWANCES', [
+  [
+    'src/cli-main.ts',
+    {
+      reason:
+        'The `if (import.meta.main)` entry point only binds `runCliMain` to the real process: its stdout, stderr and exit, and the shutdown signals for a `serve` run. It runs when the `weft` binary is executed, a separate process whose hits are never attributed to the parent LCOV report. `runCliMain` itself, including the serve path and its shutdown, is covered in process by src/cli/cli-direct-*.test.ts, which stopped spawning the binary inside the per-test budget. Four of the eight function misses are the entry block’s stdout, stderr and exit callbacks and its signal handler. Three are the best-effort `.catch` callbacks in `listenOrRollBack`’s rollback, which run only if `server.stop()`, `engine.shutdown()` or the storage disposer themselves fail while releasing a failed start. The last is Bun’s function-undercount artifact: with those removed the file still reports one miss with every line hit.',
+      functions: 8,
+      lines: new Set([199, 200, 201, 202, 203, 204, 205, 206]),
+      requireUncoveredLines: true,
+    },
+  ],
   [
     'src/hello-world-example.test-support.ts',
     {
@@ -1813,8 +1766,8 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
     'scripts/lib/workflow-visibility-backfill.test-support.ts',
     {
       reason:
-        "NoConditionalBatchStorage.get()/put()/delete()/batch() are four one-statement async methods (`return null;`/`return undefined;` ×3) on consecutive lines — batch()'s in particular is byte-identical to put()'s and delete()'s. Directly verified with standalone tests (each calling exactly one of these methods alone, logging the result via console.log immediately before asserting it) that every one of them demonstrably executes and resolves correctly when called. Despite that, this file's function-level tally (FNH/FNF) is short by 2 in the authoritative full-suite run — batch()'s own two interior lines (168-169) are the only LINES ever reported at zero (allowed below), but re-running the same isolated single-method verification in different file combinations shows the SPECIFIC additional line/function that reads as zero shifts (in one combination delete()'s own `return undefined;` line reads zero despite a console.log proving that exact call executed; in the authoritative full-suite run it does not, and some other still-unidentified construct accounts for the second gap instead). That instability — the same underlying LINES and FUNCTIONS read as covered or not depending on what else shares the Bun test process — means the specific second function cannot be pinned down the way batch() was; only that workflow-visibility-backfill.test-support.test.ts (COR-1283) calls get/put/delete/batch/scan/capabilities directly, every one of them is proven by direct console.log verification to execute and return correctly, and the file's LINES are 100% covered once 168-169 are allowed (102 total, 100 otherwise-hit) with no line left unaccounted for. functions: 2 covers both the confirmed batch() gap and this second, situationally-shifting one from the same class of trivial near-identical single-statement methods.",
-      lines: new Set([168, 169]),
+        "NoConditionalBatchStorage.get()/put()/delete()/batch() are four one-statement async methods (`return null;`/`return undefined;` ×3) on consecutive lines — batch()'s in particular is byte-identical to put()'s and delete()'s. Directly verified with standalone tests (each calling exactly one of these methods alone, logging the result via console.log immediately before asserting it) that every one of them demonstrably executes and resolves correctly when called. Despite that, this file's function-level tally (FNH/FNF) is short by 2 in the authoritative full-suite run — batch()'s own two interior lines (175-176) are the only LINES ever reported at zero (allowed below), but re-running the same isolated single-method verification in different file combinations shows the SPECIFIC additional line/function that reads as zero shifts (in one combination delete()'s own `return undefined;` line reads zero despite a console.log proving that exact call executed; in the authoritative full-suite run it does not, and some other still-unidentified construct accounts for the second gap instead). That instability — the same underlying LINES and FUNCTIONS read as covered or not depending on what else shares the Bun test process — means the specific second function cannot be pinned down the way batch() was; only that workflow-visibility-backfill.test-support.test.ts (COR-1283) calls get/put/delete/batch/scan/capabilities directly, every one of them is proven by direct console.log verification to execute and return correctly, and the file's LINES are 100% covered once 175-176 are allowed (107 total, 105 otherwise-hit) with no line left unaccounted for. functions: 2 covers both the confirmed batch() gap and this second, situationally-shifting one from the same class of trivial near-identical single-statement methods.",
+      lines: new Set([175, 176]),
       requireUncoveredLines: true,
       functions: 2,
     },
@@ -1841,6 +1794,15 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
       reason:
         "Every identifiable function in this file — echoWorkflow's generator (closed by get-task-diagnostics.test-support.test.ts, COR-1283), createEngine, ThrowingScanStorage's async-iterator chain, queuedFixture/leasedFixture/terminalFixture/deadLetteredFixture, putLedgerRecord, runDiagnostics (including its `now: () => 10_000` callback, confirmed via `options.now?.()` at get-task-diagnostics.ts:196), and diagnosticsValue — is called by the existing test suite (get-task-diagnostics.test.ts, get-task-diagnostics-filters.test.ts, and the new test-support test), matching this file's 100% line coverage (LF/LH 152/152). Directly re-verified with standalone console.log-instrumented calls that ThrowingScanStorage's scan actually throws through runDiagnostics and that the `now` callback's result flows into a successful diagnostics response, ruling out the two most structurally likely trivial-closure candidates. Bun's LCOV FNF for this file (16) still exceeds every function this elimination could identify by source inspection (12), the same kind of undercount already documented elsewhere in this registry as a known Bun LCOV limitation (see pre-commit.ts and check-revision-keyed-lookups.ts below: \"Bun's LCOV omits per-function FN:/FNDA: detail\") — unlike the two allowances directly above this one, no single function could be pinned down as the specific one FNH doesn't count, only that one residual gap remains after exhausting every identifiable call site.",
       functions: 1,
+    },
+  ],
+  [
+    'scripts/benchmarks/memory-footprint.ts',
+    {
+      reason:
+        'The `proc_pid_rusage` FFI path (opening libSystem, caching the symbol, calling it, and the darwin branch of readMemoryFootprint) exists only on macOS, where memory-footprint.test.ts covers it. On Linux there is no libSystem to open, so those lines and three functions cannot run; COR-1379 found the gap in the linux/arm64 Dev Container.',
+      ...memoryFootprintUncoveredOutsideDarwin(process.platform),
+      requireUncoveredLines: true,
     },
   ],
 ]);

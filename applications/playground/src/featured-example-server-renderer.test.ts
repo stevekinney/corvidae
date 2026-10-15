@@ -1,3 +1,4 @@
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
 import {
@@ -7,6 +8,7 @@ import {
   setFeaturedExampleRenderer,
   type RenderedFeaturedExample,
 } from './featured-example-server-renderer.ts';
+import { incrementRebuildGeneration } from './rebuild-generation.ts';
 
 /*
  * Every real render spawns a `bun` process that cold-compiles the example's Svelte graph: about a
@@ -33,6 +35,52 @@ function rendered(componentName: string, scenario: string): RenderedFeaturedExam
   const result = renderedByScenario.get(`${componentName}/${scenario}`);
   if (result === undefined) throw new Error(`${componentName}/${scenario} was not rendered`);
   return result;
+}
+
+// This scenario ends by asking the real renderer again, which answers from its memo of the renders
+// above; it runs here at module scope, off the per-test clock, so no test body reaches a spawn.
+const substituteRendererScenario = await outcomeOf(async () => {
+  const calls: string[] = [];
+  setFeaturedExampleRenderer(async (componentName, scenario, mountIdPrefix) => {
+    calls.push(`${componentName}/${scenario}:${mountIdPrefix}`);
+    return { body: '<p>substitute</p>', head: '' };
+  });
+  try {
+    // No such example exists, so only the substitute can answer without throwing.
+    expect(await renderFeaturedExample('no-such-component', 'none', 'overview-mount-none')).toEqual(
+      {
+        body: '<p>substitute</p>',
+        head: '',
+      },
+    );
+    expect(calls).toEqual(['no-such-component/none:overview-mount-none']);
+  } finally {
+    setFeaturedExampleRenderer(null);
+  }
+  // The memoized real render answers again; the substitute is no longer consulted.
+  expect(await renderFeaturedExample('banner', 'basic', 'overview-mount-basic')).toBe(
+    rendered('banner', 'basic'),
+  );
+  expect(calls).toHaveLength(1);
+});
+
+/*
+ * The static export publishes each featured example's server render, so two renders of one
+ * example must be byte-identical: a build-time clock reading or a random id makes the export
+ * differ between any two builds (CIN-591). Each example renders twice in fresh processes, with the
+ * rebuild generation bumped between them so the second is not answered from the first's memo.
+ */
+const DETERMINISM_SCENARIOS = [
+  ['relative-time', 'basic'],
+  ['chat-navigation-rail', 'basic'],
+  ['chat-sub-session', 'basic'],
+] as const;
+const repeatedRenders = new Map<string, [RenderedFeaturedExample, RenderedFeaturedExample]>();
+for (const [componentName, scenario] of DETERMINISM_SCENARIOS) {
+  const first = await renderFeaturedExample(componentName, scenario, `overview-mount-${scenario}`);
+  incrementRebuildGeneration();
+  const second = await renderFeaturedExample(componentName, scenario, `overview-mount-${scenario}`);
+  repeatedRenders.set(`${componentName}/${scenario}`, [first, second]);
 }
 
 describe('featured example server renderer', () => {
@@ -63,30 +111,8 @@ describe('featured example server renderer', () => {
     expect(workerSource).not.toContain('JSON.stringify(examplePath)');
   });
 
-  test('delegates to a substitute renderer without spawning, and spawns again once it is cleared', async () => {
-    const calls: string[] = [];
-    setFeaturedExampleRenderer(async (componentName, scenario, mountIdPrefix) => {
-      calls.push(`${componentName}/${scenario}:${mountIdPrefix}`);
-      return { body: '<p>substitute</p>', head: '' };
-    });
-    try {
-      // No such example exists, so only the substitute can answer without throwing.
-      expect(
-        await renderFeaturedExample('no-such-component', 'none', 'overview-mount-none'),
-      ).toEqual({
-        body: '<p>substitute</p>',
-        head: '',
-      });
-      expect(calls).toEqual(['no-such-component/none:overview-mount-none']);
-    } finally {
-      setFeaturedExampleRenderer(null);
-    }
-    // The memoized real render answers again; the substitute is no longer consulted.
-    expect(await renderFeaturedExample('banner', 'basic', 'overview-mount-basic')).toBe(
-      rendered('banner', 'basic'),
-    );
-    expect(calls).toHaveLength(1);
-  });
+  test('delegates to a substitute renderer without spawning, and spawns again once it is cleared', () =>
+    rethrow(substituteRendererScenario));
 
   test('renders the featured scenario with the same mount prefix used by client hydration', () => {
     const banner = rendered('banner', 'basic');
@@ -123,6 +149,19 @@ describe('featured example server renderer', () => {
       const scopedClasses = new Set(editor.body.match(/\bsvelte-[a-z0-9]+\b/g) ?? []);
       expect(scopedClasses.size).toBeGreaterThan(0);
       for (const scopedClass of scopedClasses) expect(editor.head).toContain(`.${scopedClass}`);
+    },
+  );
+});
+
+describe('featured example determinism', () => {
+  test.each(DETERMINISM_SCENARIOS)(
+    '%s/%s renders the same markup every time',
+    (componentName, scenario) => {
+      const [first, second] = repeatedRenders.get(`${componentName}/${scenario}`)!;
+      // A stable render must still render: the export rejects a blank overview preview.
+      expect(first.body.trim()).not.toBe('');
+      expect(second.body).toBe(first.body);
+      expect(second.head).toBe(first.head);
     },
   );
 });

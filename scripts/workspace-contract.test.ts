@@ -8,7 +8,7 @@ import ts from 'typescript';
 import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
-const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui'];
+const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui', 'terminal'];
 const libraries = [
   'bureau',
   'operative',
@@ -28,7 +28,8 @@ const libraries = [
   'editor',
   'markdown',
   'testing',
-  'telephone',
+  'terminal',
+  'ventriloquist',
 ];
 
 /**
@@ -63,9 +64,9 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/skills',
   '@lostgradient/testing',
   '@lostgradient/typescript',
-  '@lostgradient/desktop',
   '@lostgradient/playground',
-  '@lostgradient/telephone',
+  '@lostgradient/terminal',
+  '@lostgradient/ventriloquist',
   'armorer',
   'conversationalist',
 ]);
@@ -119,26 +120,91 @@ async function workspaceManifests(): Promise<Map<string, Manifest>> {
   return manifests;
 }
 
+/**
+ * Lists the untracked files git would version in a fixture with every workspace layout and a
+ * personal excludes file. `git init` and `git ls-files` run here at module scope, off Bun's
+ * five-second per-test clock; the test below asserts on the settled results.
+ */
+async function listVersionedFixtureSource() {
+  const directory = await mkdtemp(join(tmpdir(), 'corvidae-source-ignores-'));
+  try {
+    await Bun.write(join(directory, '.gitignore'), Bun.file(join(root, '.gitignore')));
+    const personalIgnore = join(directory, 'personal-ignore');
+    await Bun.write(personalIgnore, 'Icon?\n');
+    for (const workspace of ['applications/example', 'components/example', 'packages/example']) {
+      for (const path of [
+        'src/components/icons/index.ts',
+        'src/components/icons/index.test.ts',
+        'src/components/icons/.env.local',
+        'src/components/icons/private.pem',
+        'src/node_modules/dependency/index.ts',
+        'build/index.js',
+        'coverage/index.html',
+      ]) {
+        await Bun.write(join(directory, workspace, path), '');
+      }
+    }
+    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], {
+      timeout: 120_000,
+      cwd: directory,
+    });
+    const listed = Bun.spawnSync(
+      [
+        'git',
+        '-c',
+        'core.ignoreCase=true',
+        '-c',
+        `core.excludesFile=${personalIgnore}`,
+        'ls-files',
+        '--others',
+        '--exclude-standard',
+      ],
+      { timeout: 120_000, cwd: directory },
+    );
+    return { initialized, listed };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+const versionedFixtureSource = await listVersionedFixtureSource();
+
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
-    const validationStages = scripts['validate']?.split(' && ');
+    // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
+    // instead of rejoining the queue at every stage. Its stages find the lock held by their parent
+    // and reuse it rather than queueing behind it.
+    const validationChain = scripts['validate']?.match(
+      /^bun scripts\/run-exclusively\.ts '([^']+)'$/,
+    );
+    const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
       'bun run lint',
       'bun run typecheck',
       'bun run test',
+      // COR-1499: slow correctness tests run serially after the fast phase, then the duration report
+      // (warnings only) reads the fast phase's reports.
+      'bun run test:slow',
+      'bun run report:test-durations',
       'bun run coverage',
       'bun run build',
       'bun run format:check',
       'bun run audit',
     ]);
+    // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
+    // agent sessions stop oversubscribing it and timing out unrelated tests.
+    for (const stage of ['lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
+      expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
+    }
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
-    expect(scripts['test']).toBe('turbo run test:self test test:browser-fixtures --concurrency=1');
+    expect(scripts['test']).toBe(
+      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures --concurrency=1'",
+    );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
     expect(scripts['test:self']).toBe(
-      'bun test ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
+      'bun scripts/bun-test-junit.ts --report-name=self ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
     );
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
@@ -202,12 +268,15 @@ describe('internal workspace architecture', () => {
         // The playground isolates build-driving test files in fresh Bun processes, so its `test`
         // script names the runner, and the runner is what must spawn `bun test`.
         expect(scripts['test'], directory).toBe('bun scripts/run-tests.ts');
+        expect(scripts['test:slow'], directory).toBe('bun scripts/run-tests.ts --slow');
         expect(
           await Bun.file(join(root, directory, 'scripts/run-tests.ts')).text(),
           directory,
         ).toContain("['bun', 'test',");
       } else {
-        expect(scripts['test'], directory).toMatch(/\bbun test\b/);
+        // Fast-lane tests run through the JUnit wrapper, which spawns `bun test`, so the duration
+        // ratchet sees every workspace (COR-1499). A direct `bun test` would drop one silently.
+        expect(scripts['test'], directory).toMatch(/\bbun-test-junit\.ts\b/);
       }
       expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
 
@@ -225,9 +294,6 @@ describe('internal workspace architecture', () => {
     }
     manifests.set('root', await readManifest('.'));
     for (const [name, manifest] of manifests) {
-      // The desktop application builds its renderer with Vite, which is how
-      // Electrobun 2.x builds views; every other workspace stays Vite-free.
-      if (name === '@lostgradient/desktop') continue;
       const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
       expect(dependencies['vite'], name).toBeUndefined();
       expect(dependencies['@sveltejs/vite-plugin-svelte'], name).toBeUndefined();
@@ -282,59 +348,25 @@ describe('internal workspace architecture', () => {
     expect(Object.keys(lock.workspaces).toSorted()).toEqual(expectedPaths.toSorted());
   });
 
-  test('workspace source stays versioned despite personal ignore patterns', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'corvidae-source-ignores-'));
-    try {
-      await Bun.write(join(directory, '.gitignore'), Bun.file(join(root, '.gitignore')));
-      const personalIgnore = join(directory, 'personal-ignore');
-      await Bun.write(personalIgnore, 'Icon?\n');
-      for (const workspace of ['applications/example', 'components/example', 'packages/example']) {
-        for (const path of [
-          'src/components/icons/index.ts',
-          'src/components/icons/index.test.ts',
-          'src/components/icons/.env.local',
-          'src/components/icons/private.pem',
-          'src/node_modules/dependency/index.ts',
-          'build/index.js',
-          'coverage/index.html',
-        ]) {
-          await Bun.write(join(directory, workspace, path), '');
-        }
-      }
-      const initialized = Bun.spawnSync(['git', 'init', '--quiet'], { cwd: directory });
-      expect(initialized.exitCode, initialized.stderr.toString()).toBe(0);
-      const listed = Bun.spawnSync(
-        [
-          'git',
-          '-c',
-          'core.ignoreCase=true',
-          '-c',
-          `core.excludesFile=${personalIgnore}`,
-          'ls-files',
-          '--others',
-          '--exclude-standard',
-        ],
-        { cwd: directory },
+  test('workspace source stays versioned despite personal ignore patterns', () => {
+    const { initialized, listed } = versionedFixtureSource;
+    expect(initialized.exitCode, initialized.stderr.toString()).toBe(0);
+    expect(listed.exitCode, listed.stderr.toString()).toBe(0);
+    const workspaceFiles = listed.stdout
+      .toString()
+      .trim()
+      .split('\n')
+      .filter((path) =>
+        ['applications/', 'components/', 'packages/'].some((prefix) => path.startsWith(prefix)),
       );
-      expect(listed.exitCode, listed.stderr.toString()).toBe(0);
-      const workspaceFiles = listed.stdout
-        .toString()
-        .trim()
-        .split('\n')
-        .filter((path) =>
-          ['applications/', 'components/', 'packages/'].some((prefix) => path.startsWith(prefix)),
-        );
-      expect(workspaceFiles).toEqual([
-        'applications/example/src/components/icons/index.test.ts',
-        'applications/example/src/components/icons/index.ts',
-        'components/example/src/components/icons/index.test.ts',
-        'components/example/src/components/icons/index.ts',
-        'packages/example/src/components/icons/index.test.ts',
-        'packages/example/src/components/icons/index.ts',
-      ]);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
+    expect(workspaceFiles).toEqual([
+      'applications/example/src/components/icons/index.test.ts',
+      'applications/example/src/components/icons/index.ts',
+      'components/example/src/components/icons/index.test.ts',
+      'components/example/src/components/icons/index.ts',
+      'packages/example/src/components/icons/index.test.ts',
+      'packages/example/src/components/icons/index.ts',
+    ]);
   });
 
   test('project skills have one canonical owner for both providers', async () => {
@@ -483,15 +515,6 @@ describe('internal workspace architecture', () => {
     expect(testWatcher?.command).toContain('turbo watch test');
     expect(testWatcher?.command).not.toContain('--experimental-write-cache');
     expect(testWatcher?.isBackground).toBe(true);
-    const application = await readManifest('applications/desktop');
-    // Electrobun owns the desktop build; Vite only builds the renderer, and
-    // both are gated on the devkit projection that `prepare:devkit` performs.
-    expect(application.scripts?.['prepare:devkit']).toBe(
-      'HUTCH_NO_UPDATE_CHECK=1 electrobun prepare',
-    );
-    expect(application.scripts?.['build:renderer']).toContain('vite build');
-    expect(application.scripts?.['build']).toContain('electrobun build');
-    expect(application.scripts?.['dev']).toContain('electrobun dev');
   });
 
   test('installation does not enable Git hooks or publishing', async () => {

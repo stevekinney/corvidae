@@ -878,6 +878,7 @@
   <MarkdownEditorPlaceholderRegions
     {id}
     instructionsVisible={placeholders.instructionsVisible}
+    statusVisible={placeholders.resolved.completion !== undefined}
     statusMessage={placeholders.statusMessage}
     diagnostics={placeholders.diagnostics}
   />

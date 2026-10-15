@@ -2,7 +2,7 @@ import type { HumanReviewOptions, HumanReviewResult } from '../review/index.ts';
 import { parseDuration } from '../scheduler.ts';
 import type { Duration } from '../types.ts';
 import type { Context } from './index.ts';
-import { getInternals, type ContextInternals } from './internals.ts';
+import { getInternals, yieldOperation, type ContextInternals } from './internals.ts';
 import type { ContextOperationRequest } from './operation-request.ts';
 import type { OffloadReference, StreamReference, StreamSink } from './types.ts';
 import { captureCallerStack } from './validation.ts';
@@ -139,18 +139,24 @@ export function* waitForSignal<T = unknown>(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'wait-signal',
     operationId,
     signalName: name,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as T;
 }
 
 const CONDITION_DEADLINE_LOCAL_PREFIX = '__weftConditionDeadline:';
+
+function consumeSleepReferenceTime(internals: ContextInternals): number {
+  const referenceTime = internals.sleepReferenceTime ?? internals.getNow();
+  internals.sleepReferenceTime = undefined;
+  return referenceTime;
+}
 
 /**
  * Read the absolute deadline anchor for a `ctx.waitUntil` step, writing it on the
@@ -166,7 +172,16 @@ export function readOrInitConditionDeadline(
   step: number,
   timeout: Duration | undefined,
 ): number | undefined {
-  if (timeout === undefined) return undefined;
+  // Consume the resume reference time on every path that returns. An uncached
+  // `waitUntil` is the first time operation after resume whether or not it has a
+  // timeout or an existing anchor; leaving the reference set would hand the stale
+  // checkpoint time to the next uncached `ctx.sleep`, which would then fire early.
+  // A path that throws leaves it set, so a workflow that catches the error and
+  // then sleeps still schedules from the checkpoint time.
+  if (timeout === undefined) {
+    consumeSleepReferenceTime(internals);
+    return undefined;
+  }
 
   const localKey = `${CONDITION_DEADLINE_LOCAL_PREFIX}${step}`;
   const existing = internals.checkpointLocals[localKey];
@@ -174,6 +189,7 @@ export function readOrInitConditionDeadline(
   // 0 reference time); an `existing > 0` guard would treat that as unset and
   // re-anchor on every replay, resetting the wall-clock budget.
   if (typeof existing === 'number' && Number.isFinite(existing)) {
+    consumeSleepReferenceTime(internals);
     return existing;
   }
   // A present-but-non-finite anchor is corrupt persisted data. Fail loudly rather
@@ -186,9 +202,7 @@ export function readOrInitConditionDeadline(
   }
 
   const milliseconds = parseDuration(timeout);
-  const referenceTime = internals.sleepReferenceTime ?? internals.getNow();
-  internals.sleepReferenceTime = undefined;
-  const deadline = referenceTime + milliseconds;
+  const deadline = consumeSleepReferenceTime(internals) + milliseconds;
   // Reassign rather than mutate in place: `checkpointLocals` is frozen between
   // operations (the activity-retry-state precedent), so an in-place write throws.
   internals.checkpointLocals = { ...internals.checkpointLocals, [localKey]: deadline };
@@ -239,14 +253,14 @@ export function* waitUntil(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'wait-condition',
     operationId,
     step,
     predicate,
     ...(deadline !== undefined && { deadline }),
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as boolean | void;
@@ -290,7 +304,7 @@ export function* getVersion(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'get-version' as const,
     operationId,
     changeId,
@@ -298,7 +312,7 @@ export function* getVersion(
     maxSupported,
     version: resolution.version,
     callerStack,
-  };
+  });
 
   return result as number;
 }
@@ -327,12 +341,12 @@ export function* waitForUpdate(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'wait-update',
     operationId,
     updateName: name,
     callerStack,
-  };
+  });
 
   const envelope = result as { payload: unknown; respond: (result: unknown) => void };
   context.accumulatedResults.set(step, { payload: envelope.payload });
@@ -358,12 +372,12 @@ export function* review(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'wait-review' as const,
     operationId,
     reviewOptions: options,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as HumanReviewResult;
@@ -389,13 +403,13 @@ export function* offload<T>(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'offload' as const,
     operationId,
     key,
     fn,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as OffloadReference;
@@ -421,13 +435,13 @@ export function* stream(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'stream' as const,
     operationId,
     key,
     fn,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as StreamReference;
@@ -452,12 +466,12 @@ export function* load<T>(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  const result = yield {
+  const result = yield* yieldOperation(internals, {
     type: 'load' as const,
     operationId,
     reference,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, result);
   return result as T;
@@ -481,13 +495,13 @@ export function* archive(
 
   const operationId = crypto.randomUUID();
   const callerStack = captureCallerStack();
-  yield {
+  yield* yieldOperation(internals, {
     type: 'archive' as const,
     operationId,
     key,
     data,
     callerStack,
-  };
+  });
 
   context.accumulatedResults.set(step, undefined);
 }

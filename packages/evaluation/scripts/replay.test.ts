@@ -21,6 +21,13 @@ import { runReleaseGateCommand } from './release-gate';
 import { runReplayCommand } from './replay';
 
 const PACKAGE_DIRECTORY = join(import.meta.dir, '..');
+// The revision is incidental to a replay, so it is read once here and injected into the gate run.
+const HEAD = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
+  timeout: 120_000,
+  cwd: PACKAGE_DIRECTORY,
+})
+  .stdout.toString()
+  .trim();
 
 let directory: string;
 let storePath: string;
@@ -42,6 +49,7 @@ interface CommandResult {
 
 async function spawnScript(script: string, args: readonly string[]): Promise<CommandResult> {
   const child = Bun.spawn([process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, script, ...args], {
+    timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -69,6 +77,8 @@ async function gateRun(
     ['--gate', FIXTURE_GATE_ID, '--gates-dir', gates, '--store', storePath],
     {
       loadEvaluator,
+      sourceRevision: HEAD,
+      revisionDistance: () => undefined,
       output: { stdout: { write: (text: string) => (stdout += text) }, stderr: { write: () => 0 } },
     },
   );
@@ -106,6 +116,27 @@ async function runInProcess(
   return { exitCode, stdout, stderr };
 }
 
+// The real process is the behavior under test (script wiring, stdout, stderr and exit code), so it
+// runs once here at module scope to stay off the per-test clock. The gate run it replays is set up
+// in process, in a directory the hooks below replace for each test.
+const spawnedReplay = await (async () => {
+  directory = await mkdtemp(join(tmpdir(), 'replay-command-spawn-'));
+  storePath = join(directory, 'history.sqlite');
+  try {
+    const recordId = await gateRun();
+    const result = await spawnScript('replay', [
+      '--gate',
+      FIXTURE_GATE_ID,
+      '--latest',
+      '--store',
+      storePath,
+    ]);
+    return { recordId, result };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+})();
+
 /**
  * The one test that boots a real `bun` process: it proves the `replay` script
  * is wired to the entry point and that stdout, stderr and the process exit code
@@ -114,15 +145,7 @@ async function runInProcess(
  */
 describe('replay (spawned bun process)', () => {
   test('replay --gate fixture-regression --latest exits 0 after a gate run', async () => {
-    const recordId = await gateRun();
-
-    const result = await spawnScript('replay', [
-      '--gate',
-      FIXTURE_GATE_ID,
-      '--latest',
-      '--store',
-      storePath,
-    ]);
+    const { recordId, result } = spawnedReplay;
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
@@ -138,6 +161,7 @@ describe('replay (spawned bun process)', () => {
 });
 
 describe('runReplayCommand', () => {
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('calls no GenerateFunction and runs no agent while it replays', async () => {
     const recordId = await gateRun();
     let generateCalls = 0;
@@ -170,6 +194,7 @@ describe('runReplayCommand', () => {
     expect(agentRuns).toBe(0);
   });
 
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('replays a record by id and describes a mismatch on stderr', async () => {
     const recordId = await gateRun(fixtureGateFile('regressing'));
     const matched = await runInProcess([recordId, '--store', storePath]);
@@ -191,6 +216,7 @@ describe('runReplayCommand', () => {
     expect(mismatched.stderr).toContain('first mismatching field "decision"');
   });
 
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('exits 4 for a decision its recorded evidence contradicts, naming the field', async () => {
     const recordId = await gateRun(fixtureGateFile('regressing'));
     const tamperedId = `${recordId}-tampered`;
@@ -212,6 +238,7 @@ describe('runReplayCommand', () => {
     );
   });
 
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('exits 3 when the recorded evaluator module can no longer be resolved', async () => {
     // The module never exists on disk: the gate run builds it from the passing
     // fixture, so replay's own import of the recorded path fails as a deleted
@@ -229,6 +256,7 @@ describe('runReplayCommand', () => {
     expect(result.stderr).toContain('cannot be resolved');
   });
 
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('exits 64 for an unknown record and 65 for a corrupt one', async () => {
     const recordId = await gateRun();
     const unknown = await runInProcess(['never-recorded', '--store', storePath]);

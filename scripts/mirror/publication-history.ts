@@ -4,7 +4,9 @@ import { runCommand, type CommandRunner } from './packaging.ts';
 import { canonicalManifest, objectRecord, readGitJson } from './registry-manifest.ts';
 import { collectDigestedFiles, type DigestScope, type DigestedFile } from './source-digest.ts';
 import { isSafeVersionConstant } from './source.ts';
+import type { ForeignCommitOwnership } from './sync.ts';
 import { findTargetOwner, loadTargetOwnedPolicy } from './target-owned.ts';
+import { transformReaches } from './transform-reach.ts';
 
 export async function requireGit(
   directory: string,
@@ -33,7 +35,26 @@ async function isAncestor(
   return result.exitCode === 0;
 }
 
-/** Validate provenance before importing executable historical policy. */
+/**
+ * Validate provenance before importing executable historical policy, then require every target
+ * commit between the merged sync and the release's `gitHead` to change only paths that were the
+ * target's own.
+ *
+ * A changed path is accepted when it is a `package.json` whose changed keys are all release keys,
+ * the declared version constant changed only to the manifest's version, a pending changeset, or
+ * target-owned under the historical `target-owned.json`. COR-1192 and the owner's ruling of
+ * 2026-10-15 add the sync guard's own rule (`blockingDeltaChanges` in `sync.ts`): a path is also
+ * the target's own when it is a declared build input, or lies outside everything the sync writes,
+ * prunes or retires, such as release tooling the transform neither emits nor prunes. Reach comes
+ * from the transform the HISTORICAL source plans for this target (`foreignCommitOwnership`,
+ * imported from `sourceRoot`), so the decision uses the transform that sync actually ran.
+ *
+ * The guard's one further exception is deliberately not mirrored: it accepts an emitted file
+ * modified to exactly the bytes the trusted source emits now, because the source already carries
+ * that change. Here the trusted source is the historical checkout at the sync's `Corvidae-Commit`,
+ * which cannot carry a later target edit, so such an edit would be published bytes the recorded
+ * source does not produce. Every emitted or pruned path therefore stays refused.
+ */
 export async function verifyHistoricalCheckout(options: {
   targetRoot: string;
   gitHead: string;
@@ -135,6 +156,18 @@ export async function verifyHistoricalCheckout(options: {
     'funding',
     'maintainers',
   ]);
+  let ownership: Promise<ForeignCommitOwnership> | undefined;
+  // Loaded on first need: most histories are explained by the cheaper rules above.
+  const historicalOwnership = (): Promise<ForeignCommitOwnership> => {
+    ownership ??= loadHistoricalOwnership({
+      sourceRoot,
+      target,
+      targetRoot,
+      mirrored,
+      sourceCommit,
+    });
+    return ownership;
+  };
   const commits = await requireGit(
     targetRoot,
     ['rev-list', '--reverse', '--ancestry-path', `${lineageStart}..${gitHead}`],
@@ -183,13 +216,60 @@ export async function verifyHistoricalCheckout(options: {
           ))
         ) {
           continue;
+        } else if (isPendingChangesetPath(path)) {
+          // COR-1433: a sync delivers corvidae's changesets and a Version Packages commit consumes
+          // them. Neither touches source, and the history policy cannot name the paths because
+          // it is whatever the historical checkout carried.
+          continue;
         } else if (!findTargetOwner(policy, path, target)) {
+          const { targetOwnedFiles, transform } = await historicalOwnership();
+          if (targetOwnedFiles?.has(path) || !transformReaches(transform, path)) continue;
           throw new Error(`Intervening commit ${commit} changes non-target-owned path ${path}`);
         }
       }
     }
   }
   return sourceCommit;
+}
+
+/**
+ * What the historical sync would write, prune or retire for this target, computed by the
+ * historical source's own `foreignCommitOwnership` against the target clone.
+ */
+async function loadHistoricalOwnership(options: {
+  sourceRoot: string;
+  target: string;
+  targetRoot: string;
+  mirrored: string;
+  sourceCommit: string;
+}): Promise<ForeignCommitOwnership> {
+  const path = join(options.sourceRoot, 'scripts/mirror/sync.ts');
+  let module: { foreignCommitOwnership?: unknown };
+  try {
+    module = (await import(pathToFileURL(path).href)) as { foreignCommitOwnership?: unknown };
+  } catch (error) {
+    throw new Error(`Historical transform could not be loaded from ${path}`, { cause: error });
+  }
+  if (typeof module.foreignCommitOwnership !== 'function')
+    throw new Error(`Historical transform ${path} does not export foreignCommitOwnership`);
+  return (
+    module.foreignCommitOwnership as (options: {
+      corvidaeRoot: string;
+      target: string;
+      clone: string;
+      provenance: { commit: string; trailerSha: string };
+    }) => Promise<ForeignCommitOwnership>
+  )({
+    corvidaeRoot: options.sourceRoot,
+    target: options.target,
+    clone: options.targetRoot,
+    provenance: { commit: options.mirrored, trailerSha: options.sourceCommit },
+  });
+}
+
+/** A target-root `.changeset/<name>.md` other than the README. */
+function isPendingChangesetPath(path: string): boolean {
+  return /^\.changeset\/[^/]+\.md$/.test(path) && path !== '.changeset/README.md';
 }
 
 export async function isManifestVersionOnlyChange(

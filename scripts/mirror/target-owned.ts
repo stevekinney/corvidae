@@ -93,6 +93,8 @@ const policySchema = z.object({
     /** Manifest keys the transform supplies only where the target carries none of its own. */
     manifestDefaults: z.array(keyEntrySchema).min(1),
     dependencies: z.object({ policy: z.string().min(1) }),
+    /** COR-1468: how the peer pair composes, by name, between corvidae, the target and the surface. */
+    peerDependencies: z.object({ policy: z.string().min(1) }),
     typeScriptTargetOwnedPolicy: z.string().min(1),
     /** Keys in an emitted `tsconfig*.json` read back out of the target's own. */
     typeScriptTargetOwned: z.array(keyEntrySchema).min(1),
@@ -615,7 +617,21 @@ function readOption(argv: readonly string[], name: string): string {
   return value;
 }
 
-export async function runGuard(argv: readonly string[]): Promise<number> {
+/** Where the command line writes; tests pass collectors so the command runs in process. */
+export type CommandWriters = {
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+};
+
+const processWriters: CommandWriters = {
+  stdout: (text) => void process.stdout.write(text),
+  stderr: (text) => void process.stderr.write(text),
+};
+
+export async function runGuard(
+  argv: readonly string[],
+  writers: CommandWriters = processWriters,
+): Promise<number> {
   try {
     const policy = await loadTargetOwnedPolicy();
     const target = readOption(argv, 'target');
@@ -629,10 +645,10 @@ export async function runGuard(argv: readonly string[]): Promise<number> {
         Object.entries(plan).map(([path, contents]) => [path, decodePlanContents(contents)]),
       ),
     });
-    process.stdout.write(`Wrote ${written.length} file(s) to ${directory}\n`);
+    writers.stdout(`Wrote ${written.length} file(s) to ${directory}\n`);
     return 0;
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    writers.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
   }
 }

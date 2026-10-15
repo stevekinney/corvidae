@@ -61,7 +61,6 @@ import {
   activeSkillsFromStepMetadata,
   applyCache,
   CATALOG_RUN_RECOVERY_KEY_PREFIX,
-  compositionReadyGuardResult,
   createMemoryPersistHook,
   createRoutingStrategy,
   createRunMemoryAuthority,
@@ -1973,22 +1972,6 @@ describe('createRuntimeComposition durable execution', () => {
       runtime.durable?.engine[Symbol.dispose]?.();
       storage[Symbol.dispose]();
     }
-  });
-
-  it('reports the not-ready guard result directly (pure, no composition needed)', () => {
-    // AB-260: `resolveRunServices`'s composition-not-ready branch defends a
-    // TDZ race during `createRuntimeComposition`'s own construction — a
-    // window nothing outside this module can observe once construction
-    // returns (there is no public way to hold a `RuntimeComposition` handle
-    // while `compositionReady` is still `false`). Extracted as a pure
-    // function so the guard's exact return shape is proven here directly,
-    // rather than through a private mutation seam that could force the
-    // transient state after the fact.
-    expect(compositionReadyGuardResult(false, 'run-not-ready')).toEqual({
-      status: 'unavailable',
-      reason: 'run run-not-ready: composition not ready',
-    });
-    expect(compositionReadyGuardResult(true, 'run-ready')).toBeUndefined();
   });
 
   it('exposes a resolver guard for the no-session-store state', async () => {
@@ -5259,6 +5242,58 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
       runtime.durable?.engine[Symbol.dispose]?.();
     }
   });
+
+  // COR-1367 — a recovered catalog run resumes under the same guardrail
+  // composition its fresh dispatch used: an agent that resolves its own
+  // guardrails gets no Bureau guardrail invariant on top, and any other agent
+  // still gets Bureau's.
+  it.each([
+    [true, []],
+    [false, ['bureau:guardrails-prepare-step', 'bureau:guardrails-validate-response']],
+    [undefined, ['bureau:guardrails-prepare-step', 'bureau:guardrails-validate-response']],
+  ] as const)(
+    'registers Bureau guardrails on a recovered catalog run only when the agent does not resolve its own (agentResolvesGuardrails: %p)',
+    async (agentResolvesGuardrails, expected) => {
+      const runtime = await createRuntimeComposition({
+        storage: { type: 'memory' },
+        durableExecution: true,
+      });
+
+      try {
+        runtime.setCatalogAgentRunOptionsResolver(async () => ({
+          status: 'resolved',
+          options: fakeRunOptions(),
+          definitionRevision: 1,
+          ...(agentResolvesGuardrails === undefined ? {} : { agentResolvesGuardrails }),
+        }));
+        await runtime.persistCatalogRunRecoveryRecord('catalog-run-guardrails', {
+          agentName: 'echo',
+          definitionRevision: 1,
+          input: 'hello',
+        });
+
+        const result = await runtime.resolveRunServices({
+          workflowId: 'catalog-run-guardrails',
+          workflowType: 'agentRun',
+          input: {
+            runId: 'catalog-run-guardrails',
+            sessionId: 'catalog-run-guardrails',
+            agentName: 'echo',
+          },
+        });
+
+        if (result.status !== 'available') throw new Error(`unexpected ${result.status}`);
+        const ids = (
+          (result.services as DurableRunDeps).options.hooks?.describePlan().entries ?? []
+        )
+          .map((entry) => entry.id)
+          .filter((id) => id.includes('guardrails'));
+        expect(ids).toEqual([...expected]);
+      } finally {
+        runtime.durable?.engine[Symbol.dispose]?.();
+      }
+    },
+  );
 
   describe('classifyCatalogRecoveredRun (AB-241 review finding)', () => {
     it('consumes the cache resolveRunServices already populated, without a second storage read', async () => {

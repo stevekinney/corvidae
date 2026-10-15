@@ -8,7 +8,6 @@ import {
   WorkflowTimedOutEvent,
 } from '../../events.ts';
 import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../../scheduler.ts';
-import { buildIndexOperations } from '../../search-attributes.ts';
 import { WorkflowTimeoutError } from '../../timeouts.ts';
 import type {
   FailureCategory,
@@ -21,25 +20,30 @@ import {
   buildRetainedTerminalSearchAttributes,
   buildTerminalWorkflowIndexOperations,
   cleanupAttributeIndex,
-  updateWorkflowState,
   writeRetainedTerminalSearchAttributes,
 } from '../attributes-tags.ts';
 import { TERMINAL_CLEANUP_DELAY_MS } from '../bulk-operations.ts';
 import { takeCancelHandlers, type CancelHandler } from '../cancel-handlers.ts';
 import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-side-effects.ts';
+import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
 import { staleFailureGuard, type FailureOrigin } from '../execution-attempts.ts';
 import { getWorkflowExecutionStartedAt } from '../handles.ts';
 import { dropQueuedInlineWorkflowStart } from '../inline-launch-queue.ts';
 import type { EngineInternals } from '../internals.ts';
 import { EMPTY_STORAGE_VALUE } from '../lifecycle.ts';
+import { recordResultCommitter } from '../result-committer.ts';
 import {
   createTeardownTimerId,
   createTerminalCleanupTimerId,
   summarizeTimelineValue,
   type TeardownClaim,
 } from '../state-utilities.ts';
-import { releaseWorkflowConcurrencySlot } from '../workflow-concurrency.ts';
-import { buildWorkflowVisibilityIndexTransition } from '../workflow-indexes.ts';
+import { releaseWorkflowConcurrencySlotForRun } from '../workflow-concurrency.ts';
+import { updateWorkflowState } from '../workflow-state-update.ts';
+import {
+  refreshWorkflowVisibilityMaintenance,
+  visibilityIndexOperations,
+} from '../workflow-visibility-maintenance.ts';
 import {
   cleanupTerminalWorkflowImmediately,
   cleanupTerminalWorkflowSynchronously,
@@ -47,6 +51,25 @@ import {
   FORCIBLY_TERMINABLE_STATUSES,
   type TerminationCallbacks,
 } from './cleanup.ts';
+import {
+  appendSearchAttributeOperations,
+  buildCompletedWorkflowState,
+  terminalCommitterStamp,
+} from './completion-operations.ts';
+import {
+  captureTerminatedRun,
+  settleTerminatedRunAfterRefusal,
+} from './settle-refused-terminal.ts';
+import {
+  captureCurrentClaimEpoch,
+  releaseWorkflowClaimAfterTerminalSettlement,
+} from './terminal-claim-release.ts';
+import {
+  cancelRunTimers,
+  captureOrReadTerminalFence,
+  fencedTeardownCommit,
+  warnUnknownRunIdentity,
+} from './terminal-fence.ts';
 
 async function runCancelHandlers(
   handlers: CancelHandler[],
@@ -96,6 +119,7 @@ export async function terminateWorkflow(
   callbacks: TerminationCallbacks,
   reason?: TerminationReason,
 ): Promise<void> {
+  const terminatedRun = captureTerminatedRun(internals, workflowId);
   internals.terminalizingWorkflows.add(workflowId);
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.strategy.cancelWorkflow(workflowId);
@@ -138,6 +162,7 @@ export async function terminateWorkflow(
         status,
         ...(reason !== undefined ? { terminationReason: reason } : {}),
         ...(terminalCleanupToken !== undefined ? { terminalCleanupToken } : {}),
+        ...terminalCommitterStamp(internals),
       },
       // Cancel/timeout are EXTERNAL terminal transitions (ADR 0002): any engine
       // may commit them against a workflow it does not own, so this rotates the
@@ -184,56 +209,57 @@ export async function terminateWorkflow(
       },
     );
     if (!terminationResult) {
+      await settleTerminatedRunAfterRefusal(internals, workflowId, callbacks, terminatedRun);
       return;
     }
-    // Captured synchronously, immediately after the commit resolved — see
-    // `releaseWorkflowClaimAfterTerminalSettlement`'s doc.
+    // Captured synchronously after the commit — see `releaseWorkflowClaimAfterTerminalSettlement`.
     const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
     const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
     // Run teardown handlers only after the state transition succeeds — this
     // prevents handlers from firing when the workflow was already terminal.
     await runCancellationHandlersForStatus(internals, workflowId, status, callbacks);
-    await releaseWorkflowConcurrencySlot(internals, workflowId);
+    const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
+    const { previousState, updatedAt, fence } = terminationResult;
+    await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
+    warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
 
-    const { previousState, updatedAt } = terminationResult;
     const elapsed = updatedAt - getWorkflowExecutionStartedAt(previousState);
-    await cleanupAttributeIndex(internals, workflowId, attributes);
-    await writeRetainedTerminalSearchAttributes(internals, workflowId, retainedAttributes);
-    // A same-id `start-new` replacement owns the durable deadline / delayed-start
-    // timer keys and the in-memory state once it lands; see `isSupersededBySameIdRun`.
-    if (!isSupersededBySameIdRun(internals, workflowId, executionToken)) {
-      void callbacks.swallowPromiseRejection(
-        internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
-      );
-      if (previousState.status === 'pending') {
-        void callbacks.swallowPromiseRejection(
-          internals.scheduler.cancel(`delayed-start:${workflowId}`, workflowId),
-        );
-      }
-    }
+    // Fenced on this run's committed state: the id's attribute record is the replacement's once one lands.
+    const fenced = fencedTeardownCommit(internals, workflowId, fence, isSuperseded);
+    await cleanupAttributeIndex(internals, workflowId, attributes, fenced);
+    await writeRetainedTerminalSearchAttributes(workflowId, retainedAttributes, fenced);
+    // A same-id `start-new` replacement owns the deadline / delayed-start timer keys.
+    const timerIds = [`deadline:${workflowId}`];
+    if (previousState.status === 'pending') timerIds.push(`delayed-start:${workflowId}`);
+    cancelRunTimers(
+      internals,
+      workflowId,
+      fence,
+      isSuperseded,
+      timerIds,
+      callbacks.swallowPromiseRejection,
+    );
 
-    const resolver = isSupersededBySameIdRun(internals, workflowId, executionToken)
-      ? undefined
-      : internals.resultResolvers.get(workflowId);
+    const resolver = isSuperseded() ? undefined : internals.resultResolvers.get(workflowId);
     const terminalError = buildTerminalError(workflowId, status, elapsed, reason);
     await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
-    const superseded = isSupersededBySameIdRun(internals, workflowId, executionToken);
+    const superseded = isSuperseded();
 
     try {
       if (!superseded) {
-        await cleanupTerminalWorkflowSynchronously(internals, workflowId, true, callbacks);
+        await cleanupTerminalWorkflowSynchronously(internals, workflowId, true, callbacks, fenced);
       }
 
       const event = buildTerminalEvent(workflowId, status, elapsed, reason);
       callbacks.dispatchEvent(event);
       if (!superseded) callbacks.forwardEventToHandle(workflowId, event);
 
-      if (resolver) resolver.reject(terminalError);
+      if (resolver) settleRejected(internals, resolver, terminalError);
       // Scheduled queue handoff is best-effort cleanup and must not block
       // terminal delivery or handle settlement.
       void finalizeScheduledWorkflowTerminal(internals, workflowId, callbacks);
     } catch (cleanupError) {
-      if (resolver) resolver.reject(terminalError);
+      if (resolver) settleRejected(internals, resolver, terminalError);
       throw cleanupError;
     } finally {
       if (!superseded) internals.resultResolvers.delete(workflowId);
@@ -267,38 +293,24 @@ function buildTerminalEvent(
     : new WorkflowCancelledEvent(workflowId);
 }
 
-function buildCompletedWorkflowState(
-  state: WorkflowState,
+/** Settle `waiter` with a result this engine committed, recording that first. */
+function settleResolved(
+  internals: EngineInternals,
+  waiter: WorkflowResultWaiter,
   result: unknown,
-  now: number,
-  terminalCleanupToken: string | undefined,
-): WorkflowState {
-  return {
-    ...state,
-    status: 'completed' as const,
-    result,
-    updatedAt: now,
-    ...(terminalCleanupToken !== undefined ? { terminalCleanupToken } : {}),
-  };
+): void {
+  recordResultCommitter(waiter, internals.workflowClaimRegistry?.engineId);
+  waiter.resolve(result);
 }
 
-function appendSearchAttributeOperations(
-  operations: BatchOperation[],
-  workflowId: string,
-  currentAttributes: Record<string, SearchAttributeValue> | undefined,
+/** Settle `waiter` as rejected by an outcome this engine committed, recording that first. */
+function settleRejected(
+  internals: EngineInternals,
+  waiter: WorkflowResultWaiter,
+  error: unknown,
 ): void {
-  if (currentAttributes === undefined || Object.keys(currentAttributes).length === 0) return;
-  const retainedAttributes = buildRetainedTerminalSearchAttributes(currentAttributes);
-  operations.push(...buildIndexOperations(workflowId, currentAttributes, retainedAttributes));
-  if (Object.keys(retainedAttributes).length > 0) {
-    operations.push({
-      type: 'put',
-      key: KEYS.attribute(workflowId),
-      value: encode(retainedAttributes),
-    });
-  } else {
-    operations.push({ type: 'delete', key: KEYS.attribute(workflowId) });
-  }
+  recordResultCommitter(waiter, internals.workflowClaimRegistry?.engineId);
+  waiter.reject(error);
 }
 
 function buildBaseCompletionOperations(
@@ -307,15 +319,10 @@ function buildBaseCompletionOperations(
   previousState: WorkflowState,
   updatedState: WorkflowState,
 ): BatchOperation[] {
-  const visibilityIndexOperations = buildWorkflowVisibilityIndexTransition(
-    workflowId,
-    previousState,
-    updatedState,
-  ).batchOps;
   const operations: BatchOperation[] = [
     ...buildTerminalWorkflowIndexOperations(previousState, updatedState),
     { type: 'put', key: KEYS.workflow(workflowId), value: encode(updatedState) },
-    ...visibilityIndexOperations,
+    ...visibilityIndexOperations(internals, previousState, updatedState),
   ];
   const pendingTimelineOperation = buildPendingTimelineOperation(internals, workflowId);
   if (pendingTimelineOperation) {
@@ -331,16 +338,13 @@ function notifyCompletionWaiters(
   duration: number,
   callbacks: TerminationCallbacks,
   superseded: boolean,
+  cancelDeadline: () => void,
 ): void {
   // Cancel deadline timer - fire-and-forget since the workflow is already
   // terminal and a stale timer firing will see the terminal state and no-op.
-  // A superseded run must not cancel: the cancel deletes the durable deadline
-  // timer keys by id, which now belong to the replacement.
-  if (!superseded) {
-    void callbacks.swallowPromiseRejection(
-      internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
-    );
-  }
+  // Fenced on the run's generation: a same-id replacement's deadline timer
+  // lives under the same id and must survive.
+  cancelDeadline();
 
   // Drop in-memory state immediately so the hot path releases engine memory
   // before result delivery. Durable scratch cleanup is handled by the
@@ -363,12 +367,12 @@ function notifyCompletionWaiters(
 
     callbacks.broadcast({ type: 'workflow:completed', workflowId });
 
-    if (resolver) resolver.resolve(result);
+    if (resolver) settleResolved(internals, resolver, result);
     // Scheduled queue handoff is best-effort cleanup and must not block
     // terminal delivery or handle settlement.
     void finalizeScheduledWorkflowTerminal(internals, workflowId, callbacks);
   } catch (completionError) {
-    if (resolver) resolver.resolve(result);
+    if (resolver) settleResolved(internals, resolver, result);
     throw completionError;
   } finally {
     if (!superseded) internals.resultResolvers.delete(workflowId);
@@ -396,83 +400,6 @@ function isSupersededBySameIdRun(
   return current.workflowExecutionToken !== capturedToken;
 }
 
-/**
- * Release this engine's `workflow-lease` claim (if any) once a terminal
- * transition has durably committed. Without this, `completeWorkflow`,
- * `failWorkflow`, and `terminateWorkflow` (cancel/timeout) leave a terminated
- * workflow's claim registry entry in place — the recurring renewal pass
- * (`workflow-claim-renewal-task.ts`) keeps renewing it, and the held set only
- * shrinks via retention, purge, or engine disposal, unboundedly inflating
- * active claims and renewal writes on a long-lived engine with lengthy or
- * disabled retention.
- *
- * Must run AFTER the terminal commit resolved (never before): a `'self'`-
- * fenced write (completeWorkflow/failWorkflow) still needs this engine's
- * claim to land, and even an `'external-terminal'`-fenced write
- * (terminateWorkflow) needs the ordering fixed relative to the state
- * transition it accompanies. Best-effort, matching
- * `WorkflowClaimRegistry.releaseAll()`'s own posture: a lost CAS or a storage
- * error here just leaves the claim for TTL/grace expiry — strictly no worse
- * than today's behavior, and never worth failing an already-committed
- * terminal transition over. A harmless no-op when this engine holds no claim
- * for `workflowId` (an `'external-terminal'` writer that never actually
- * owned the workflow, or `ownership: 'none'`/`'lease'`, where
- * `workflowClaimRegistry` is `null`).
- *
- * Called BEFORE this engine's own in-process result-waiter settlement
- * (`notifyCompletionWaiters`'s `resolver.resolve()`, or this file's own
- * `resolver.reject()` calls), not after: resolving/rejecting a `Promise` a
- * second time is a documented no-op, so releasing first and then settling is
- * safe even if a concurrent cross-engine result poll
- * (`handle-result.ts`'s `deferToLocalTerminalDeliveryIfPending`) observes "no
- * local epoch" and settles the SAME shared waiter itself first — both paths
- * derive the identical result from the same durably-committed terminal
- * state. Releasing AFTER, by contrast, would let an external caller that
- * merely awaited `handle.result()` observe completion before the claim
- * release it might depend on (e.g. a subsequent reclaim-scan assertion in a
- * test) has actually happened, since `resolve()`/`reject()` only schedules
- * the awaiting `.then()` as a later microtask — it proves nothing about
- * synchronous code still running after it in this same function.
- *
- * `capturedEpoch` MUST be read synchronously (no intervening `await`)
- * immediately after the terminal write commits — never re-read fresh at the
- * top of this function. Every call site already awaits at least one thing
- * (`releaseWorkflowConcurrencySlot`, or this file's own cleanup/notify calls)
- * between the commit and this call; `onTerminalConflict: 'start-new'` can
- * replace the workflow and install a NEW registry entry for the same id
- * during that exact gap. Releasing unconditionally would then delete the
- * REPLACEMENT's holder and stop its renewal instead of the generation that
- * actually completed — the release is therefore conditioned on the registry
- * still tracking the exact epoch this call captured, mirroring
- * `confirmStillRunningOrReleaseFreshClaim`'s same generation-safety pattern
- * in `workflow-claim-reclaim-target.ts`.
- */
-function captureCurrentClaimEpoch(internals: EngineInternals, workflowId: string): number | null {
-  return internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
-}
-
-async function releaseWorkflowClaimAfterTerminalSettlement(
-  internals: EngineInternals,
-  workflowId: string,
-  capturedEpoch: number | null,
-): Promise<void> {
-  const registry = internals.workflowClaimRegistry;
-  if (registry === null || capturedEpoch === null) return;
-  if (registry.currentEpoch(workflowId) !== capturedEpoch) return;
-  try {
-    // `expectedEpoch` closes the same window this function's own pre-check
-    // narrows but cannot fully close on its own (WFT-134 review round 2,
-    // issue B): a replacement can still land between the check above and
-    // this call. `release()` re-verifies internally after its own
-    // in-flight-renewal await, so passing the captured epoch here is strictly
-    // more conservative than the bare call — it can only additionally no-op,
-    // never additionally release.
-    await registry.release(workflowId, capturedEpoch);
-  } catch {
-    // Best-effort — see this function's doc.
-  }
-}
-
 export async function completeWorkflow(
   internals: EngineInternals,
   workflowId: string,
@@ -486,7 +413,16 @@ export async function completeWorkflow(
       if (!state || state.status !== 'running') {
         return null;
       }
+      const captured = captureOrReadTerminalFence(
+        internals,
+        workflowId,
+        state.workflowExecutionToken,
+      );
+      // Settled before the commit; awaited only when the adoption read is still in flight.
+      const fence = captured instanceof Promise ? await captured : captured;
 
+      const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
+      if (visibilityMaintenance !== undefined) await visibilityMaintenance;
       const now = normalizeStorageTimestamp(
         internals.options.getNow(),
         'Workflow completion timestamp',
@@ -498,7 +434,13 @@ export async function completeWorkflow(
 
       // Batch the completion state write with attribute index cleanup into a
       // single storage transaction to reduce round-trips on the hot path.
-      const updatedState = buildCompletedWorkflowState(state, result, now, terminalCleanupToken);
+      const updatedState = buildCompletedWorkflowState(
+        internals,
+        state,
+        result,
+        now,
+        terminalCleanupToken,
+      );
       const completionOperations = buildBaseCompletionOperations(
         internals,
         workflowId,
@@ -541,22 +483,17 @@ export async function completeWorkflow(
       // must not be re-read after the awaits below.
       const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
       const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
-      return { duration, claimEpoch, executionToken };
+      return { duration, claimEpoch, executionToken, fence };
     },
   );
   if (!completionMetadata) return;
+  const { claimEpoch, executionToken, fence } = completionMetadata;
+  const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
 
-  await releaseWorkflowConcurrencySlot(internals, workflowId);
-  await releaseWorkflowClaimAfterTerminalSettlement(
-    internals,
-    workflowId,
-    completionMetadata.claimEpoch,
-  );
-  const superseded = isSupersededBySameIdRun(
-    internals,
-    workflowId,
-    completionMetadata.executionToken,
-  );
+  await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
+  warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
+  await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
+  const superseded = isSuperseded();
   notifyCompletionWaiters(
     internals,
     workflowId,
@@ -564,6 +501,15 @@ export async function completeWorkflow(
     completionMetadata.duration,
     callbacks,
     superseded,
+    () =>
+      cancelRunTimers(
+        internals,
+        workflowId,
+        fence,
+        isSuperseded,
+        [`deadline:${workflowId}`],
+        callbacks.swallowPromiseRejection,
+      ),
   );
 }
 
@@ -599,6 +545,7 @@ export async function failWorkflow(
   if (terminalCleanupToken !== undefined) {
     stateUpdate.terminalCleanupToken = terminalCleanupToken;
   }
+  Object.assign(stateUpdate, terminalCommitterStamp(internals));
   const failureResult = await updateWorkflowState(
     internals,
     workflowId,
@@ -641,43 +588,45 @@ export async function failWorkflow(
   // `releaseWorkflowClaimAfterTerminalSettlement`'s doc.
   const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
   const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
+  const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
+  const fence = failureResult.fence;
+  await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
+  warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
+  const fenced = fencedTeardownCommit(internals, workflowId, fence, isSuperseded);
 
-  await releaseWorkflowConcurrencySlot(internals, workflowId);
+  // A superseded run touches neither the attribute record nor the deadline timer.
+  await cleanupAttributeIndex(internals, workflowId, attributes, fenced);
+  const deadline = [`deadline:${workflowId}`];
+  cancelRunTimers(
+    internals,
+    workflowId,
+    fence,
+    isSuperseded,
+    deadline,
+    callbacks.swallowPromiseRejection,
+  );
 
-  // Clean up user-set attribute indexes; fire-and-forget the deadline
-  // timer cancel since the workflow is terminal. A superseded run must not
-  // cancel: the durable deadline timer keys now belong to the replacement.
-  await cleanupAttributeIndex(internals, workflowId, attributes);
-  if (!isSupersededBySameIdRun(internals, workflowId, executionToken)) {
-    void callbacks.swallowPromiseRejection(
-      internals.scheduler.cancel(`deadline:${workflowId}`, workflowId),
-    );
-  }
+  // Keep engine-managed terminal attributes queryable after the cleanup above.
+  await writeRetainedTerminalSearchAttributes(workflowId, retainedAttributes, fenced);
 
-  // Re-write engine-managed terminal attributes so they remain queryable
-  // after the user-defined search attributes have been removed.
-  await writeRetainedTerminalSearchAttributes(internals, workflowId, retainedAttributes);
-
-  const resolver = isSupersededBySameIdRun(internals, workflowId, executionToken)
-    ? undefined
-    : internals.resultResolvers.get(workflowId);
+  const resolver = isSuperseded() ? undefined : internals.resultResolvers.get(workflowId);
   await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
-  const superseded = isSupersededBySameIdRun(internals, workflowId, executionToken);
+  const superseded = isSuperseded();
   try {
     if (!superseded) {
-      await cleanupTerminalWorkflowSynchronously(internals, workflowId, false, callbacks);
+      await cleanupTerminalWorkflowSynchronously(internals, workflowId, false, callbacks, fenced);
     }
 
     const event = new WorkflowFailedEvent(workflowId, error);
     callbacks.dispatchEvent(event);
     if (!superseded) callbacks.forwardEventToHandle(workflowId, event);
 
-    if (resolver) resolver.reject(error);
+    if (resolver) settleRejected(internals, resolver, error);
     // Scheduled queue handoff is best-effort cleanup and must not block
     // terminal delivery or handle settlement.
     void finalizeScheduledWorkflowTerminal(internals, workflowId, callbacks);
   } catch (cleanupError) {
-    if (resolver) resolver.reject(error);
+    if (resolver) settleRejected(internals, resolver, error);
     throw cleanupError;
   } finally {
     if (!superseded) internals.resultResolvers.delete(workflowId);

@@ -201,10 +201,10 @@ describe('KEYS insertion order', () => {
       'workflowVisibilityCreated',
       'workflowVisibilityUpdated',
       'workflowVisibilityDeadline',
-      'workflowVisibilityManifest',
       'workflowVisibilityMetaVersion',
       'workflowVisibilityMetaBuiltAt',
       'workflowVisibilityMetaCursor',
+      'workflowVisibilityMetaBuilding',
     ]);
   });
 });
@@ -360,10 +360,10 @@ describe('WEFT_RESERVED_KEY_PREFIXES', () => {
       KEYS.workflowVisibilityCreated(1, 'workflow-id'),
       KEYS.workflowVisibilityUpdated(1, 'workflow-id'),
       KEYS.workflowVisibilityDeadline(1, 'workflow-id'),
-      KEYS.workflowVisibilityManifest('workflow-id'),
       KEYS.workflowVisibilityMetaVersion(),
       KEYS.workflowVisibilityMetaBuiltAt(),
       KEYS.workflowVisibilityMetaCursor(),
+      KEYS.workflowVisibilityMetaBuilding(),
       KEYS.leaseEpoch(),
       KEYS.leaseHolder(),
       KEYS.workflowOwnerEpoch('workflow-id'),
@@ -1020,12 +1020,10 @@ describe('KEYS', () => {
     expect(KEYS.workflowVisibilityDeadline(5_000, workflowId)).toBe(
       `wf-idx-deadline:0000000000005000:${encodedWorkflowId}`,
     );
-    expect(KEYS.workflowVisibilityManifest(workflowId)).toBe(
-      `wf-idx-manifest:${encodedWorkflowId}`,
-    );
     expect(KEYS.workflowVisibilityMetaVersion()).toBe('wf-idx-meta:version');
     expect(KEYS.workflowVisibilityMetaBuiltAt()).toBe('wf-idx-meta:built-at');
     expect(KEYS.workflowVisibilityMetaCursor()).toBe('wf-idx-meta:cursor');
+    expect(KEYS.workflowVisibilityMetaBuilding()).toBe('wf-idx-meta:building');
   });
 
   it('encodes both dimensions of the schedule-run reverse index', () => {

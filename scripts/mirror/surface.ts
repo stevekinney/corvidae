@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { discoverComponents } from '../../components/cinder/scripts/lib/discover-components.ts';
+import { planChangesetEmission } from './changeset-emission.ts';
 import {
   checkDeclarationAgreement,
   describeDeclarationFinding,
@@ -9,9 +10,11 @@ import {
 import { serializeJson } from './json-formatting.ts';
 import {
   ManifestTransformError,
+  overlayDeclaredPeers,
   planManifests,
   publicNameFor,
   readExistingManifest,
+  writePeerPair,
   type ManifestPlan,
   type PlanOptions,
 } from './manifests.ts';
@@ -226,8 +229,15 @@ function readExports(existing: JsonObject | undefined): SurfaceExportsMap | unde
  *
  * `build.scripts` merge rather than replace for the same reason: a build script is the transform's
  * because it produces the artifact, and every other script in the block is the target's.
+ *
+ * The peer pair is the one default that merges (COR-1468, `target-owned.json`'s
+ * `insideFiles.peerDependencies`). Where the target has no `peerDependencies`, the peers already on
+ * `manifest` are corvidae's own declarations — `composeManifest` passed them through — so the
+ * vendored entry is the base and they win over it name by name. Where the target has the key,
+ * `composeManifest` already merged them into the target's pair, and both halves pass through
+ * unchanged: a vendored `peerDependenciesMeta` is never supplied beside a target's own peers.
  */
-function applySurfaceToManifest(
+export function applySurfaceToManifest(
   manifest: JsonObject,
   entry: PackageSurfaceEntry,
   exports: SurfaceExportsMap,
@@ -235,7 +245,16 @@ function applySurfaceToManifest(
   existing: JsonObject | undefined,
 ): void {
   const supplies = (key: string): boolean => existing === undefined || !(key in existing);
+  const suppliesPeers = supplies('peerDependencies');
+  // Read before the vendored fields below can overwrite the meta half.
+  const declared = suppliesPeers
+    ? {
+        peerDependencies: manifest['peerDependencies'],
+        peerDependenciesMeta: manifest['peerDependenciesMeta'],
+      }
+    : {};
   for (const [key, value] of Object.entries(entry.manifestFields)) {
+    if (key === 'peerDependenciesMeta' && !suppliesPeers) continue;
     if (supplies(key)) manifest[key] = value;
   }
   manifest['exports'] = exports;
@@ -244,11 +263,35 @@ function applySurfaceToManifest(
     ? (manifest['scripts'] as Record<string, string>)
     : {};
   manifest['scripts'] = { ...scripts, ...entry.build.scripts };
-  if (entry.peerDependencies && supplies('peerDependencies')) {
-    manifest['peerDependencies'] = { ...entry.peerDependencies };
+  if (suppliesPeers) {
+    const peers = overlayDeclaredPeers(
+      {
+        peerDependencies: entry.peerDependencies,
+        // Chosen rather than read back off `manifest`: where neither the target nor the entry has
+        // a meta block, what is left there is corvidae's own, and its entries for names corvidae
+        // does not declare as peers must not survive as the base.
+        peerDependenciesMeta: supplies('peerDependenciesMeta')
+          ? entry.manifestFields['peerDependenciesMeta']
+          : manifest['peerDependenciesMeta'],
+      },
+      declared,
+    );
+    if (peers !== undefined) writePeerPair(manifest, peers);
+    else if (entry.peerDependencies) manifest['peerDependencies'] = { ...entry.peerDependencies };
   }
   if (entry.sideEffects !== undefined) manifest['sideEffects'] = entry.sideEffects;
   if (entry.bin !== undefined) manifest['bin'] = entry.bin;
+}
+
+export interface SurfacePlanOptions extends PlanOptions {
+  /**
+   * The corvidae commit the target's newest mirror commit records (`null` when the mirror has
+   * never written there). `sync.ts` reads it once per run and passes the same value to every plan
+   * it builds, so changeset emission is placed against one trailer SHA. Left `undefined`, no
+   * changeset is emitted: a plan with no clone, such as the committed plans, has nothing to
+   * deliver into.
+   */
+  trailerSha?: string | null | undefined;
 }
 
 /**
@@ -258,7 +301,7 @@ function applySurfaceToManifest(
  * Enforcement is the caller's, so a sync can report every problem in one pass instead of stopping
  * at the first package. `assertPublishable` is the one call that turns the findings into a failure.
  */
-export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
+export async function planSurface(options: SurfacePlanOptions): Promise<SurfacePlan> {
   const manifestPlan = await planManifests(options);
   const surface = await loadPackageSurface();
   const baseline = await loadRegistryBaseline();
@@ -397,10 +440,19 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
   for (const entry of privateWorkspaces) {
     entry.emitsTypeScript = source.typeScriptWorkspaces.includes(entry.workspace);
   }
+  // Pending corvidae changesets for this target, delivered as new files under `.changeset/`. No
+  // path joins `source.ownedPrefixes`, so the sync never deletes anything the target holds there.
+  const changesets = await planChangesetEmission({
+    corvidaeRoot: options.corvidaeRoot,
+    target: options.target,
+    targetDirectory: options.targetDirectory,
+    trailerSha: options.trailerSha,
+  });
   assertSingleOwner([
     { owner: 'manifests', paths: Object.keys(files) },
     { owner: 'typescript-configuration', paths: Object.keys(typescript.files) },
     { owner: 'source', paths: Object.keys(source.files) },
+    { owner: 'changesets', paths: Object.keys(changesets) },
   ]);
 
   // COR-1286: the one transform-emitted verification workflow. It is not manifest, TypeScript-
@@ -426,6 +478,7 @@ export async function planSurface(options: PlanOptions): Promise<SurfacePlan> {
     ...files,
     ...typescript.files,
     ...source.files,
+    ...changesets,
     // `target-owned.json`'s narrowed `.github/**` enumeration never claims this path, by
     // construction: every entry there names a specific release-adjacent filename, and
     // `.github/workflows/mirror-verify.yaml` is not one of them.

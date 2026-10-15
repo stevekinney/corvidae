@@ -9,6 +9,7 @@ import {
   getModelPricing,
   type ModelPricing,
 } from '../src/cost-estimation.ts';
+import { ANTHROPIC_LIMITS } from '../src/providers/model-catalog-data.ts';
 
 describe('estimateCost', () => {
   it('computes correct cost for a known Anthropic model', () => {
@@ -163,6 +164,46 @@ describe('estimateCost', () => {
   });
 });
 
+describe('estimateCost: Claude Haiku 5.5 long-prompt tier', () => {
+  // Anthropic's pricing page: $0.10 / $0.50 per MTok up to 100,000 prompt tokens, and
+  // $0.50 / $2.50 (cache writes $0.625, cache reads $0.05) beyond.
+  it('prices a request at or below 100,000 input tokens at the base tier', () => {
+    const estimate = estimateCost(
+      { prompt: 100_000, completion: 1_000_000, total: 1_100_000 },
+      'claude-haiku-5-5',
+    );
+    expect(estimate.promptCost).toBeCloseTo(0.01, 10);
+    expect(estimate.completionCost).toBeCloseTo(0.5, 10);
+  });
+
+  it('prices every category at the long-prompt tier once input exceeds 100,000 tokens', () => {
+    const estimate = estimateCost(
+      {
+        prompt: 1,
+        completion: 1_000_000,
+        total: 1_100_001,
+        cacheReadTokens: 50_000,
+        cacheCreationTokens: 50_000,
+      },
+      'claude-haiku-5-5',
+    );
+    expect(estimate.promptCost).toBeCloseTo(0.5 / 1_000_000, 12);
+    expect(estimate.completionCost).toBeCloseTo(2.5, 10);
+    expect(estimate.cacheReadCost).toBeCloseTo(0.05 * 0.05, 10);
+    expect(estimate.cacheWriteCost).toBeCloseTo(0.05 * 0.625, 10);
+  });
+
+  it('keeps the base tier for an aggregate estimate, where input totals are not request sizes', () => {
+    const estimate = estimateCost(
+      { prompt: 500_000, completion: 0, total: 500_000 },
+      'claude-haiku-5-5',
+      undefined,
+      'aggregate',
+    );
+    expect(estimate.promptCost).toBeCloseTo(0.05, 10);
+  });
+});
+
 describe('getModelPricing', () => {
   it('returns pricing for a known model', () => {
     const pricing = getModelPricing('gpt-4o');
@@ -199,13 +240,61 @@ describe('defaultPricingTable', () => {
     expect(Object.isFrozen(defaultPricingTable)).toBe(true);
   });
 
-  it('gives every Claude model both cache-write and cache-read pricing', () => {
+  it('gives every Claude model 5-minute cache writes at 1.25x and its published cache-read rate', () => {
+    // Anthropic's pricing page: cache hits cost 0.025x input on Fable 5.1 / Mythos 5.1, 0.05x on
+    // Opus 5.5 / Sonnet 5.5, and 0.1x on every other model.
+    const readMultipliers: Record<string, number> = {
+      'claude-fable-5-1': 0.025,
+      'claude-mythos-5-1': 0.025,
+      'claude-opus-5-5': 0.05,
+      'claude-sonnet-5-5': 0.05,
+    };
     for (const [model, pricing] of Object.entries(defaultPricingTable)) {
       if (!model.startsWith('claude-')) continue;
       expect(pricing.cacheWriteCostPerMillionTokens).toBe(
         pricing.promptCostPerMillionTokens * 1.25,
       );
-      expect(pricing.cacheReadCostPerMillionTokens).toBe(pricing.promptCostPerMillionTokens * 0.1);
+      expect(pricing.cacheReadCostPerMillionTokens).toBeCloseTo(
+        pricing.promptCostPerMillionTokens * (readMultipliers[model] ?? 0.1),
+        10,
+      );
+    }
+  });
+
+  it('prices every Claude model in the Anthropic model catalog', () => {
+    // A model Operative can resolve but not price makes the cost budget monitor throw on the
+    // first step and leaves every cost estimate empty.
+    for (const model of Object.keys(ANTHROPIC_LIMITS)) {
+      expect({ model, priced: defaultPricingTable[model] !== undefined }).toEqual({
+        model,
+        priced: true,
+      });
+    }
+  });
+
+  it('prices the current Claude models at Anthropic list prices', () => {
+    const listPrices: Record<string, [input: number, output: number, cacheRead: number]> = {
+      'claude-fable-5-1': [10, 50, 0.25],
+      'claude-mythos-5-1': [10, 50, 0.25],
+      'claude-fable-5': [10, 50, 1],
+      'claude-mythos-5': [10, 50, 1],
+      'claude-opus-5-5': [4, 20, 0.2],
+      'claude-opus-5': [5, 25, 0.5],
+      'claude-opus-4-8': [5, 25, 0.5],
+      'claude-opus-4-7': [5, 25, 0.5],
+      'claude-opus-4-6': [5, 25, 0.5],
+      'claude-opus-4-5': [5, 25, 0.5],
+      'claude-sonnet-5-5': [2, 10, 0.1],
+      'claude-sonnet-5': [2, 10, 0.2],
+      'claude-sonnet-4-6': [3, 15, 0.3],
+      'claude-haiku-5-5': [0.1, 0.5, 0.01],
+      'claude-haiku-4-5': [1, 5, 0.1],
+    };
+    for (const [model, [input, output, cacheRead]] of Object.entries(listPrices)) {
+      const pricing = assertDefined(defaultPricingTable[model]);
+      expect(pricing.promptCostPerMillionTokens).toBe(input);
+      expect(pricing.completionCostPerMillionTokens).toBe(output);
+      expect(pricing.cacheReadCostPerMillionTokens).toBeCloseTo(cacheRead, 10);
     }
   });
 

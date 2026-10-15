@@ -1,5 +1,5 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { HISTORY_CIRCUIT_BREAKER_REASON } from '@lostgradient/weft';
+import { HISTORY_CIRCUIT_BREAKER_REASON, type WorkflowClaimHandle } from '@lostgradient/weft';
 import { Conversation } from 'conversationalist';
 
 import type { ActiveRun } from '../create-run';
@@ -47,6 +47,7 @@ export async function readRunStateFromCheckpoint(
 
     const runState = createRunState();
     runState.totalUsage = { ...checkpoint.cursor.totalUsage };
+    runState.cost = checkpoint.cursor.cost ? { ...checkpoint.cursor.cost } : undefined;
     runState.lastContent = checkpoint.cursor.lastContent;
     runState.schemaAttempts = checkpoint.cursor.schemaAttempts;
     runState.steps = checkpoint.steps.map((record, index) => ({
@@ -229,6 +230,31 @@ export function reconstructSchemaValidation(
  */
 export function emptyRunState(): RunState {
   return createRunState();
+}
+
+/**
+ * COR-1390: whether `handle`'s run settled with a terminal outcome another
+ * engine committed under `workflow-lease`, so the outcome `handle.result()`
+ * reports (which Weft reads from the store whoever committed it) is the other
+ * engine's to publish. The caller then stays write-free, exactly as for a lost
+ * checkpoint race, so the run's terminal events, session status, and audit
+ * records are written once. The answer comes from the terminal commit itself,
+ * so it is exact for a completed, failed, cancelled, or timed-out outcome alike.
+ * It belongs to the run `handle` drives, so a later run reusing `runId` (a
+ * scheduler `start-new` restart) cannot change it, and it reads no storage. An
+ * outcome with no recorded committer, or a check that throws, keeps the caller
+ * publishing: suppressing the only publisher would leave the run looking
+ * `running`.
+ */
+export function lostRunToAnotherEngine(
+  context: DurableActiveRunContext,
+  handle: WorkflowClaimHandle,
+): boolean {
+  try {
+    return context.engine.lostWorkflowClaim(handle);
+  } catch {
+    return false;
+  }
 }
 
 /**

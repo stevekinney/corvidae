@@ -1,19 +1,21 @@
-import { randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  GENERATED_ENTRY_DIRECTORY,
   PUBLIC_PATH_BY_FAMILY,
   SHARED_BUILD_OPTIONS,
+  artifactRelativePath,
   collectBuildArtifacts,
+  collectCoordinatedGarbage,
   coordinatedBuild,
   pageArtifactByPath,
   pageBuildPromiseByKey,
   publishPageArtifacts,
+  stableEntryModule,
+  writeGeneratedEntries,
 } from './build-artifacts-shared.ts';
 import { componentExportNameFor } from './component-sources.ts';
 import { discoverComponentDefinition, discoverComponents, discoverExamples } from './discover.ts';
-import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 /**
@@ -49,10 +51,11 @@ export function bareComponentShimSource(importPath: string, exportName: string):
  * `component-page.svelte` loads each example only when its preview is attached
  * and the bare component only after the reader opens Playground.
  */
-export async function compilePageBundleArtifacts(
+async function addPageEntry(
   componentName: string,
-  knownComponents?: ReadonlySet<string>,
-): Promise<{ entryPath: string; entryCode: string; artifacts: Map<string, string> } | null> {
+  knownComponents: ReadonlySet<string> | undefined,
+  files: Record<string, string>,
+): Promise<string | null> {
   // Validate that this is an actual component before building. A bundle for a
   // bogus name still compiles (empty scenario list + the no-examples fallback)
   // and would 200, hiding typos behind a "No examples found" UI.
@@ -75,10 +78,9 @@ export async function compilePageBundleArtifacts(
   // which renders a "No examples found" fallback.
 
   const entryBasename = `page-${componentName}`;
-  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
-  const entryTempPath = join(entryTempDir, `${entryBasename}.ts`);
+  const entryPath = join(GENERATED_ENTRY_DIRECTORY, `${entryBasename}.ts`);
   const bareComponentShimBasename = `${entryBasename}-bare-component.ts`;
-  const bareComponentShimPath = join(entryTempDir, bareComponentShimBasename);
+  const bareComponentShimPath = join(GENERATED_ENTRY_DIRECTORY, bareComponentShimBasename);
 
   const scenarioLoaders = scenarios
     .map(
@@ -88,19 +90,43 @@ export async function compilePageBundleArtifacts(
     .join('\n');
 
   const entrySource = `import { NAV_FILTER_STORAGE_KEY } from '../../src/component-page-theme.ts';
+import { installProgressiveNavigation } from '../../src/shell-app/progressive-navigation.ts';
 import { persistScrollPosition } from '../../src/shell-app/sidebar-scroll.ts';
 
 const scenarioLoaders: Record<string, () => Promise<unknown>> = {
 ${scenarioLoaders}
 };
 
-(window as unknown as Record<string, unknown>)['__CINDER_SCENARIO_LOADERS__'] = scenarioLoaders;
+// The page contract. \`boot()\` takes over whatever \`#app\` the document holds and is idempotent;
+// \`unmount()\` releases the Svelte instance and every listener \`boot()\` added, so the same
+// evaluated module can serve a document swapped in later. The module still boots once when it is
+// first evaluated. \`installProgressiveNavigation()\` is a no-op after the first page installs it.
+type PageRun = { ready: Promise<void>; unmount: () => Promise<void> };
+let activeRun: PageRun | undefined;
+const page = { boot, unmount };
+
+function unmount(): Promise<void> {
+  const run = activeRun;
+  activeRun = undefined;
+  return run === undefined ? Promise.resolve() : run.unmount();
+}
+
+function boot(): Promise<void> {
+  if (activeRun !== undefined) return activeRun.ready;
+  (window as unknown as Record<string, unknown>)['__CINDER_PAGE__'] = page;
+  (window as unknown as Record<string, unknown>)['__CINDER_SCENARIO_LOADERS__'] = scenarioLoaders;
 const target = document.getElementById('app');
 if (target === null) {
   throw new Error('[cinder playground] #app target not found');
 }
+const listeners = new AbortController();
+// Set by unmount(): hydration that is still loading its modules then mounts nothing, and unmount
+// never waits on it.
+let disposed = false;
+let instance: Record<string, unknown> | undefined;
 const sidebarNavigation = document.querySelector<HTMLElement>('nav.dx-nav');
-if (sidebarNavigation !== null) persistScrollPosition(sidebarNavigation);
+const releaseSidebarScroll =
+  sidebarNavigation === null ? undefined : persistScrollPosition(sidebarNavigation);
 
 // Keep the bare component implementation behind the Playground tab. The page
 // resolves the imported namespace by \`documentation.component.exportName\`,
@@ -171,8 +197,9 @@ function hydratePage(): Promise<void> {
   if (pageHydration !== undefined) return pageHydration;
 
   const hydration = Promise.all([import('svelte'), import('../../src/component-page.svelte')]).then(async ([svelte, { default: ComponentPage }]) => {
+    if (disposed) return;
     if (shouldHydrate) {
-      svelte.hydrate(ComponentPage, { target, props });
+      instance = svelte.hydrate(ComponentPage, { target, props });
       markPageControlsHydrated();
       if (overviewPreviewReady !== undefined) await overviewPreviewReady;
       pageHydrated = true;
@@ -192,7 +219,7 @@ function hydratePage(): Promise<void> {
     // Clearing is safe in every mount case: snapshot and preview surfaces are
     // served with an empty \`#app\` anyway, so there is nothing to discard.
     target.replaceChildren();
-    svelte.mount(ComponentPage, { target, props });
+    instance = svelte.mount(ComponentPage, { target, props });
     markPageControlsHydrated();
     pageHydrated = true;
   });
@@ -206,7 +233,11 @@ function hydratePage(): Promise<void> {
 function hydrateAfter(event: Event, replay: () => void): void {
   event.preventDefault();
   void hydratePage()
-    .then(replay)
+    .then(() => {
+      // The page was swapped out while it hydrated: its replays belong to nothing.
+      if (disposed) return;
+      replay();
+    })
     .catch((error) => console.error('[cinder playground] failed to hydrate page:', error));
 }
 
@@ -267,7 +298,7 @@ document.addEventListener(
       if (hydratedButton instanceof HTMLButtonElement) hydratedButton.click();
     });
   },
-  { capture: true },
+  { capture: true, signal: listeners.signal },
 );
 
 document.addEventListener(
@@ -299,7 +330,7 @@ document.addEventListener(
       ),
     );
   },
-  { capture: true },
+  { capture: true, signal: listeners.signal },
 );
 
 document.addEventListener(
@@ -314,7 +345,7 @@ document.addEventListener(
       if (hydratedAnchor instanceof HTMLAnchorElement) hydratedAnchor.click();
     });
   },
-  { capture: true },
+  { capture: true, signal: listeners.signal },
 );
 
 document.addEventListener(
@@ -365,7 +396,7 @@ document.addEventListener(
       }
     });
   },
-  { capture: true },
+  { capture: true, signal: listeners.signal },
 );
 
 // The exported document is complete before this runs. Hydrate immediately so
@@ -374,41 +405,187 @@ document.addEventListener(
 void hydratePage().catch((error) =>
   console.error('[cinder playground] failed to hydrate page:', error),
 );
+
+const ready = hydratePage();
+const run: PageRun = {
+  ready,
+  unmount: async () => {
+    disposed = true;
+    listeners.abort();
+    if (instance !== undefined) {
+      const svelte = await import('svelte');
+      await svelte.unmount(instance);
+      instance = undefined;
+    }
+    if (typeof releaseSidebarScroll === 'function') releaseSidebarScroll();
+    target.removeAttribute('data-playground-controls-hydrated');
+    delete (window as unknown as Record<string, unknown>)['__CINDER_SCENARIO_LOADERS__'];
+  },
+};
+activeRun = run;
+void ready.catch(() => {
+  // A run that failed to hydrate still owns its listeners and sidebar attachment: release them,
+  // then forget the run so a later boot() can try again.
+  if (activeRun === run) {
+    activeRun = undefined;
+    void run.unmount();
+  }
+});
+return ready;
+}
+
+installProgressiveNavigation();
+void boot().catch(() => undefined);
 `;
 
-  try {
-    await Bun.write(
-      bareComponentShimPath,
-      bareComponentShimSource(
-        componentDefinition.importPath,
-        componentExportNameFor(componentDefinition.source, componentName),
-      ),
-    );
-    await Bun.write(entryTempPath, entrySource);
+  files[bareComponentShimPath] = bareComponentShimSource(
+    componentDefinition.importPath,
+    componentExportNameFor(componentDefinition.source, componentName),
+  );
+  files[entryPath] = entrySource;
+  return entryPath;
+}
 
-    const result = await coordinatedBuild(() =>
-      Bun.build({
-        entrypoints: [entryTempPath],
-        publicPath: PUBLIC_PATH_BY_FAMILY.page,
-        ...SHARED_BUILD_OPTIONS,
-      }),
-    );
+type CompiledPageBundle = { entryPath: string; entryCode: string; artifacts: Map<string, string> };
 
-    if (!result.success) {
-      console.error(`[playground] page bundle failed for ${componentName}:`, result.logs);
-      return null;
-    }
+/**
+ * Compile one page's bundle on its own: the lazy-build path for a page the eager prebuild did not
+ * cover, or one an invalidation evicted. Pure with respect to the module-level caches.
+ */
+export async function compilePageBundleArtifacts(
+  componentName: string,
+  knownComponents?: ReadonlySet<string>,
+): Promise<CompiledPageBundle | null> {
+  const files: Record<string, string> = {};
+  const entryPath = await addPageEntry(componentName, knownComponents, files);
+  if (entryPath === null) return null;
+  await writeGeneratedEntries(files);
 
-    const entry = await collectBuildArtifacts(result.outputs);
-    if (entry === null) {
-      console.error(`[playground] page bundle for ${componentName} produced no entry chunk`);
-      return null;
-    }
+  const result = await coordinatedBuild(() =>
+    Bun.build({
+      entrypoints: [entryPath],
+      publicPath: PUBLIC_PATH_BY_FAMILY.page,
+      ...SHARED_BUILD_OPTIONS,
+    }),
+  );
 
-    return entry;
-  } finally {
-    rmSync(entryTempDir, { recursive: true, force: true });
+  if (!result.success) {
+    console.error(`[playground] page bundle failed for ${componentName}:`, result.logs);
+    return null;
   }
+
+  const entry = await collectBuildArtifacts(result.outputs);
+  if (entry === null) {
+    console.error(`[playground] page bundle for ${componentName} produced no entry chunk`);
+    return null;
+  }
+
+  return entry;
+}
+
+/** Page entries per shared `Bun.build` in the eager prebuild and the static export. */
+export const PAGE_BUNDLE_BATCH_SIZE = 24;
+
+/** The component an emitted page entry belongs to, or undefined when it is not one of `names`. */
+export function pageEntryComponent(
+  artifactPath: string,
+  names: ReadonlySet<string>,
+): string | undefined {
+  const match = /^page-(.+)-[A-Za-z0-9]+\.js$/u.exec(artifactPath);
+  return match !== null && names.has(match[1]!) ? match[1] : undefined;
+}
+
+/**
+ * Compile several pages' bundles in one multi-entry `Bun.build`, so modules the pages share are
+ * parsed and emitted once. Each page keeps its own hashed entry; every shared chunk the build
+ * emitted is published with each page, under the existing per-page owners.
+ */
+export async function compilePageBundleBatch(
+  componentNames: readonly string[],
+  knownComponents?: ReadonlySet<string>,
+): Promise<Map<string, CompiledPageBundle>> {
+  const compiled = new Map<string, CompiledPageBundle>();
+  const files: Record<string, string> = {};
+  const entrypoints: string[] = [];
+  for (const name of componentNames) {
+    const entryPath = await addPageEntry(name, knownComponents, files);
+    if (entryPath !== null) entrypoints.push(entryPath);
+  }
+  if (entrypoints.length === 0) return compiled;
+  await writeGeneratedEntries(files);
+  const result = await coordinatedBuild(() =>
+    Bun.build({
+      entrypoints,
+      publicPath: PUBLIC_PATH_BY_FAMILY.page,
+      ...SHARED_BUILD_OPTIONS,
+    }),
+  );
+  if (!result.success) {
+    console.error('[playground] shared page bundle build failed:', result.logs);
+    return compiled;
+  }
+  const names = new Set(componentNames);
+  const shared = new Map<string, string>();
+  const entries: { name: string; path: string; code: string }[] = [];
+  for (const output of result.outputs) {
+    const path = artifactRelativePath(output.path);
+    const code = await output.text();
+    const name = output.kind === 'entry-point' ? pageEntryComponent(path, names) : undefined;
+    if (name === undefined) shared.set(path, code);
+    else entries.push({ name, path, code });
+  }
+  for (const entry of entries) {
+    compiled.set(entry.name, {
+      entryPath: entry.path,
+      entryCode: entry.code,
+      artifacts: new Map([[entry.path, entry.code], ...shared]),
+    });
+  }
+  return compiled;
+}
+
+/**
+ * Prebuild many pages as shared graphs of `batchSize` entries each, collecting garbage between
+ * batches so one batch's compiler graph is released before the next starts. Publishes each page
+ * under the same generation check as the lazy path, and returns one result per name, in order.
+ */
+export async function prebuildPageBundlesInBatches(
+  componentNames: readonly string[],
+  knownComponents?: ReadonlySet<string>,
+  batchSize: number = PAGE_BUNDLE_BATCH_SIZE,
+  collectGarbage: (force: boolean) => void = collectCoordinatedGarbage,
+): Promise<PromiseSettledResult<string | null>[]> {
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new RangeError(`batchSize must be a positive integer; received ${batchSize}`);
+  }
+  const results: PromiseSettledResult<string | null>[] = [];
+  for (let offset = 0; offset < componentNames.length; offset += batchSize) {
+    if (offset > 0) collectGarbage(true);
+    const batch = componentNames.slice(offset, offset + batchSize);
+    const generationAtStart = getRebuildGeneration();
+    try {
+      const compiled = await compilePageBundleBatch(batch, knownComponents);
+      for (const name of batch) {
+        const entry = compiled.get(name);
+        if (entry === undefined) {
+          results.push({ status: 'fulfilled', value: null });
+          continue;
+        }
+        publishPageArtifacts(name, entry.artifacts);
+        if (generationAtStart === getRebuildGeneration())
+          pageEntryByName.set(name, entry.entryPath);
+        results.push({ status: 'fulfilled', value: stableEntryModule('page', entry.entryPath) });
+      }
+    } catch (error) {
+      results.push(
+        ...batch.map((): PromiseSettledResult<string | null> => ({
+          status: 'rejected',
+          reason: error,
+        })),
+      );
+    }
+  }
+  return results;
 }
 
 /**
@@ -431,9 +608,8 @@ export async function buildPageBundle(
   knownComponents?: ReadonlySet<string>,
 ): Promise<string | null> {
   const cachedEntryPath = pageEntryByName.get(componentName);
-  if (cachedEntryPath) {
-    const cached = pageArtifactByPath.get(cachedEntryPath);
-    if (cached !== undefined) return cached;
+  if (cachedEntryPath && pageArtifactByPath.has(cachedEntryPath)) {
+    return stableEntryModule('page', cachedEntryPath);
   }
 
   const existing = pageBuildPromiseByKey.get(componentName);
@@ -457,7 +633,7 @@ export async function buildPageBundle(
     if (generationAtStart === getRebuildGeneration()) {
       pageEntryByName.set(componentName, entry.entryPath);
     }
-    return entry.entryCode;
+    return stableEntryModule('page', entry.entryPath);
   })();
 
   pageBuildPromiseByKey.set(componentName, buildPromise);

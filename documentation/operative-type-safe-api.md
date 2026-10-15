@@ -145,7 +145,7 @@ The control contract above says how started work is owned. This section defines 
 
 ### The unowned-background-work rule
 
-An exported API breaks the rule when it starts long-lived or fire-and-forget asynchronous work and its stop or dispose path does not await what is already in flight. In `applications/`, the same test applies to every entrypoint or server-lifecycle path, meaning any file reachable from the application's documented process-startup entrypoint (for `@lostgradient/desktop`, `applications/desktop/src/bun/index.ts`), not just the top-level file.
+An exported API breaks the rule when it starts long-lived or fire-and-forget asynchronous work and its stop or dispose path does not await what is already in flight. In `applications/`, the same test applies to every entrypoint or server-lifecycle path, meaning any file reachable from the application's documented process-startup entrypoint, not just the top-level file.
 
 An exported API that starts such work and has no stop or dispose path at all also breaks the rule. It is a row in the table, and its execution mode is annotated `(no dispose path)`. No current row carries that annotation.
 
@@ -160,13 +160,12 @@ Stopping a timer is not awaiting the work the timer already started. A stop path
 
 ### Sweep coverage
 
-Every workspace was swept. These workspaces have no non-conformant path: `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/markdown`, `@lostgradient/memory`, `@lostgradient/telephone`, `@lostgradient/testing`, `@lostgradient/tool-protocol`, `@lostgradient/chat`, and `@lostgradient/cinder`. Every other workspace appears in the table below.
+Every workspace was swept. These workspaces have no non-conformant path: `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/markdown`, `@lostgradient/memory`, `@lostgradient/testing`, `@lostgradient/tool-protocol`, `@lostgradient/chat`, and `@lostgradient/cinder`. Every other workspace appears in the table below.
 
 ### Inventory
 
 | Ownership | Execution mode | Durability | File | Line |
 | --- | --- | --- | --- | --- |
-| `@lostgradient/desktop` | `fire-and-forget-call` | ephemeral | `applications/desktop/src/bun/chat/chat-runs.ts` | 108 |
 | `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3283 |
 | `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3337 |
 | `@lostgradient/bureau` | `fire-and-forget-call` | durable | `packages/bureau/src/create-bureau.ts` | 3403 |

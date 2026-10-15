@@ -1,0 +1,12 @@
+{
+  "lines": 1,
+  "functions": 1,
+  "svelte": {
+    "lines": 1,
+    "functions": 1
+  },
+  "svelteMeasuredOn": {
+    "platform": "darwin",
+    "architecture": "arm64"
+  }
+}

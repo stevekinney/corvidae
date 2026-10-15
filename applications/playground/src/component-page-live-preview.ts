@@ -19,6 +19,7 @@
 import type { Snippet } from 'svelte';
 import { mount, unmount } from 'svelte';
 
+import CodeHighlighterRoot from './code-highlighter-root.svelte';
 import type {
   PlaygroundControl,
   PlaygroundSeed,
@@ -26,7 +27,7 @@ import type {
 } from './component-page-playground.ts';
 import type { PreviewRecipe } from './component-page-preview-recipes.ts';
 import { toMountErrorDetail, type MountErrorDetail } from './example-error.ts';
-import { CONTEXT_REQUIRED_PARTS } from './shell-app/compound-families.ts';
+import { CONTEXT_REQUIRED_PARTS, LIST_ITEM_PARTS } from './shell-app/compound-families.ts';
 
 /**
  * Translate the flat playground control values into the props object handed to
@@ -184,12 +185,24 @@ function readProperty(value: unknown, key: string): unknown {
  * or misleading for most of them, and the root's own page already shows the real
  * composition.
  *
+ * A third: a list-item PART (see {@link LIST_ITEM_PARTS}) mounts without throwing,
+ * but its `<li>` root is invalid outside the parent's list.
+ *
  * Deliberately NOT gated on compound-family membership as a whole: most family
  * members read context through the optional `tryGet*` accessors and bare-mount
  * fine today.
+ *
+ * A recipe with `mountsBare` overrides `isCompound`, for a component the manifest
+ * marks compound only because its required `children` is a snippet the recipe
+ * supplies (see {@link PreviewRecipe.mountsBare}).
  */
-export function canBareMount(kebabName: string, isCompound: boolean | undefined): boolean {
-  return isCompound !== true && !CONTEXT_REQUIRED_PARTS.has(kebabName);
+export function canBareMount(
+  kebabName: string,
+  isCompound: boolean | undefined,
+  recipe?: PreviewRecipe,
+): boolean {
+  if (CONTEXT_REQUIRED_PARTS.has(kebabName) || LIST_ITEM_PARTS.has(kebabName)) return false;
+  return isCompound !== true || recipe?.mountsBare === true;
 }
 
 /**
@@ -265,28 +278,38 @@ export type LivePreviewMountOptions = {
  *   mountable the attachment clears any stale error and renders nothing, letting
  *   the caller's template fall back to the featured example.
  */
+/** Set on a preview container once its component mounted without throwing. */
+export const PREVIEW_READY_ATTRIBUTE = 'data-example-preview-ready';
+
 export function createLivePreviewMount(
   options: LivePreviewMountOptions,
 ): (component: unknown, props: Record<string, unknown>) => (element: HTMLElement) => () => void {
   const { mountErrors } = options;
   return (component: unknown, props: Record<string, unknown>) => (element: HTMLElement) => {
     const mountKey = element.id;
+    element.removeAttribute(PREVIEW_READY_ATTRIBUTE);
     if (!isMountableComponent(component)) {
       mountErrors[mountKey] = undefined;
       return () => {};
     }
     let app: ReturnType<typeof mount> | undefined;
     try {
-      app = mount(component, {
+      // Mounted beneath the playground's code-highlighter root: this is a
+      // separate root, so it inherits no context from the page around it.
+      app = mount(CodeHighlighterRoot, {
         target: element,
-        props,
+        props: { component, componentProps: props },
       });
       mountErrors[mountKey] = undefined;
+      // The same positive signal the featured-example mount sets, so a browser check can tell a
+      // mounted live preview from an empty frame or a swallowed construction error.
+      element.setAttribute(PREVIEW_READY_ATTRIBUTE, '');
     } catch (error) {
       console.error('[cinder playground] failed to mount live preview:', error);
       mountErrors[mountKey] = toMountErrorDetail(error);
     }
     return () => {
+      element.removeAttribute(PREVIEW_READY_ATTRIBUTE);
       if (app === undefined) return;
       try {
         // `unmount` returns a Promise (outro animations); the teardown is

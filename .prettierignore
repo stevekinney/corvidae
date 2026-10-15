@@ -5,6 +5,7 @@ dist/
 artifacts/
 .hutch/
 .cottontail-tmp/
+.main-bundle/
 .svelte-kit/
 coverage/
 .turbo/
@@ -29,3 +30,5 @@ applications/playground/src/.tmp-*/
 components/editor/src/lib/export/__fixtures__/diff-review/
 .env
 .env.*
+# CIN-588 raw measurement output, kept byte-for-byte as the harness wrote it (comparison-*.json is compare's text output).
+applications/playground/docs/decisions/cin-588-results/

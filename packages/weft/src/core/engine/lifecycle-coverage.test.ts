@@ -774,7 +774,7 @@ describe('engine lifecycle coverage helpers', () => {
   it('builds start batches with headers, additional operations, and timers', () => {
     const workflowId = 'workflow-start-batch';
     const operations = buildStartBatchOperations(
-      {} as never,
+      { options: {} } as never,
       workflowId,
       createWorkflowState(workflowId, { tags: ['batch'] }),
       createCheckpoint(workflowId),
@@ -798,7 +798,7 @@ describe('engine lifecycle coverage helpers', () => {
   it('prepends restart purge deletes ahead of the create puts', () => {
     const workflowId = 'workflow-start-batch-purge';
     const operations = buildStartBatchOperations(
-      {} as never,
+      { options: {} } as never,
       workflowId,
       createWorkflowState(workflowId),
       createCheckpoint(workflowId),
@@ -854,11 +854,11 @@ describe('engine lifecycle coverage helpers', () => {
       updatedAt: 20_000,
     });
     const purgeDeleteOperations = await collectWorkflowPurgeDeleteOperations(
-      { storage } as never,
+      { storage, options: {} } as never,
       priorState,
     );
     const restartOperations = buildStartBatchOperations(
-      {} as never,
+      { options: {} } as never,
       workflowId,
       createWorkflowState(workflowId),
       createCheckpoint(workflowId),
@@ -998,7 +998,7 @@ describe('engine lifecycle coverage helpers', () => {
     };
 
     const operations = buildForkBatchOperations(
-      {} as never,
+      { options: {} } as never,
       'workflow-fork',
       forkedState,
       forkCheckpoint,
@@ -1061,6 +1061,7 @@ describe('engine lifecycle coverage helpers', () => {
     const startWorkflowStrategy = mock(() => {});
     const dispatchEvent = mock(() => {});
     const internals = {
+      storage: new MemoryStorage(),
       checkpoints: new Map<string, Checkpoint>(),
       inlineStrategy: null,
       registrations: new Map(),
@@ -1118,6 +1119,7 @@ describe('engine lifecycle coverage helpers', () => {
     const adoptWorkflow = mock(() => {});
     const continueWorkflow = mock(() => {});
     const internals = {
+      storage: new MemoryStorage(),
       checkpoints: new Map<string, Checkpoint>(),
       composedWorkflowInterceptor: undefined,
       inlineStrategy: { adoptWorkflow, continueWorkflow },
@@ -1165,6 +1167,7 @@ describe('engine lifecycle coverage helpers', () => {
   it('launchWorkflowFromCheckpoint rejects inconsistent inline launch state', () => {
     let inlineStrategyReads = 0;
     const internals = {
+      storage: new MemoryStorage(),
       checkpoints: new Map<string, Checkpoint>(),
       get inlineStrategy() {
         inlineStrategyReads++;

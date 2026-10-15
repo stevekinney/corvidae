@@ -22,6 +22,17 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
     },
     "test": {
+      "outputs": ["test-output/junit/**"],
+      "dependsOn": ["transit"],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+      ]
+    },
+    "test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV"]
@@ -48,53 +59,20 @@
     "@lostgradient/playground#build": {
       "dependsOn": ["transit"],
       "outputs": ["build/**"],
-      "env": ["NODE_ENV"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/mirror/package-map.json"]
-    },
-    "@lostgradient/desktop#prepare:devkit": {
-      "dependsOn": ["transit"],
-      "outputs": [".hutch/**"]
-    },
-    "@lostgradient/desktop#lint": {
-      "dependsOn": ["prepare:devkit", "transit"],
-      "outputs": []
-    },
-    "@lostgradient/desktop#typecheck": {
-      "dependsOn": ["prepare:devkit", "transit"],
-      "outputs": []
-    },
-    "@lostgradient/desktop#test": {
-      "dependsOn": ["prepare:devkit", "transit"],
-      "outputs": []
-    },
-    "@lostgradient/desktop#build:renderer": {
-      "dependsOn": ["prepare:devkit", "transit"],
-      "outputs": ["dist/**"]
-    },
-    "@lostgradient/desktop#build": {
-      "dependsOn": ["typecheck", "build:renderer", "transit"],
-      "outputs": ["build/**", "artifacts/**"]
-    },
-    "@lostgradient/desktop#dev": {
-      "persistent": true,
-      "cache": false,
-      "passThroughEnv": ["NODE_ENV", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"]
-    },
-    "@lostgradient/desktop#dev:renderer": {
-      "persistent": true,
-      "cache": false
     },
     "//#test:self": {
       "dependsOn": ["//#preflight"],
       "env": ["CODEX_CI", "NODE_ENV"],
-      "outputs": []
+      "outputs": ["test-output/junit/self.xml"]
     },
     "//#test:browser-fixtures": {
       "dependsOn": ["//#preflight", "@lostgradient/browser-fixtures#transit"],
       "env": ["CODEX_CI", "TMPDIR"],
       "outputs": [
         "scripts/browser-fixtures/.playwright/manifest.json",
-        "scripts/browser-fixtures/.playwright/fixture-modules.ts"
+        "scripts/browser-fixtures/.playwright/fixture-modules.ts",
+        "test-output/junit/browser-fixtures.xml"
       ]
     },
     "//#dev:browser-fixtures": {
@@ -114,7 +92,26 @@
       "cache": false,
       "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]
     },
+    "@lostgradient/bureau#test": {
+      "dependsOn": ["transit"],
+      "outputs": ["test-output/junit/**"],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/documentation/runtime-contracts.md"
+      ]
+    },
     "@lostgradient/weft#test": {
+      "outputs": ["test-output/junit/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+      ],
       "dependsOn": ["transit"],
       "env": [
         "CODEX_CI",
@@ -160,6 +157,56 @@
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"]
     },
+    "@lostgradient/terminal#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"],
+      "env": ["CODEX_CI", "NODE_ENV"]
+    },
+    "@lostgradient/ventriloquist#lint": {
+      "outputs": [],
+      "dependsOn": ["transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
+        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+      ]
+    },
+    "@lostgradient/ventriloquist#typecheck": {
+      "outputs": [],
+      "dependsOn": ["transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/typecheck-contracts.ts",
+        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
+        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+      ]
+    },
+    "@lostgradient/ventriloquist#test": {
+      "outputs": ["test-results/**", "test-output/junit/**"],
+      "dependsOn": ["transit"],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
+        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+      ]
+    },
+    "@lostgradient/ventriloquist#test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**", "test-results/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
+        "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+      ]
+    },
     "@lostgradient/cinder#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
@@ -168,19 +215,21 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/applications/desktop/src/**",
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
       ]
     },
     "@lostgradient/cinder#test": {
+      "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/applications/desktop/src/**",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
+        "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
       ]
     }
   },

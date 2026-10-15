@@ -43,6 +43,11 @@ import { METRICS } from '../observability/metrics.ts';
 import type { Storage as WeftStorage } from '../storage/interface.ts';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../testing/module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { WorkerManifest } from '../worker/manifest/index.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
@@ -421,6 +426,29 @@ function makeLeasedLedgerRecord(overrides: Partial<RemoteTaskLeased> = {}): Remo
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+// The FIFO scenario below runs the native `mkfifo` binary, so it runs here at module scope, off
+// Bun's five-second per-test clock; its test rethrows the outcome.
+
+const scenario1 = await outcomeOf(async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'weft-dashboard-assets-'));
+  const fifoPath = join(directory, 'asset.fifo');
+  try {
+    try {
+      execFileSync('mkfifo', [fifoPath], { timeout: SCENARIO_HANG_GUARD_MILLISECONDS });
+    } catch (error) {
+      const errorCode =
+        typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+      if (errorCode === 'ENOENT' || errorCode === 'EACCES' || errorCode === 'EPERM') return;
+      throw error;
+    }
+    const assets = resolveDashboardAssets({ prefix: '/assets', directory }, DASHBOARD_PAGE_ROUTES);
+    const route = createDashboardAssetRoute(assets);
+    expect(route.GET!(new Request('http://weft.test/assets/asset.fifo')).status).toBe(404);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 describe('serve', () => {
   let engine: Engine;
@@ -1365,28 +1393,7 @@ describe('serve', () => {
     }
   });
 
-  it('rejects non-regular dashboard assets without blocking on a FIFO', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'weft-dashboard-assets-'));
-    const fifoPath = join(directory, 'asset.fifo');
-    try {
-      try {
-        execFileSync('mkfifo', [fifoPath]);
-      } catch (error) {
-        const errorCode =
-          typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
-        if (errorCode === 'ENOENT' || errorCode === 'EACCES' || errorCode === 'EPERM') return;
-        throw error;
-      }
-      const assets = resolveDashboardAssets(
-        { prefix: '/assets', directory },
-        DASHBOARD_PAGE_ROUTES,
-      );
-      const route = createDashboardAssetRoute(assets);
-      expect(route.GET!(new Request('http://weft.test/assets/asset.fifo')).status).toBe(404);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
+  it('rejects non-regular dashboard assets without blocking on a FIFO', () => rethrow(scenario1));
 
   it('closes dashboard asset descriptors for successful, rejected, and cancelled requests', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'weft-dashboard-assets-'));
@@ -4120,6 +4127,40 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
       context.workflowEventFeed.dispose();
       context.fleetEventFeed.dispose();
     }
+  });
+
+  it('admits mTLS from the serve() authenticator only when its own listener enforces client certificates', async () => {
+    const admissionFor = async (rejectUnauthorized: boolean | undefined) => {
+      engine = createEngine();
+      const { serverOptions, serverMetricsCollector } = resolveNetworkConfig({
+        engine,
+        port: 0,
+        publicOrigin: 'https://localhost',
+        auth: {
+          mtls: {
+            ca: 'ca-pem',
+            cert: 'cert-pem',
+            key: 'key-pem',
+            ...(rejectUnauthorized === undefined ? {} : { rejectUnauthorized }),
+          },
+        },
+      });
+      const context = buildServerContext(serverOptions, serverMetricsCollector);
+      try {
+        const authenticate = await context.authenticatorPromise;
+        return await authenticate?.(new Request('https://localhost/v1/workflows'));
+      } finally {
+        context.workflowEventFeed.dispose();
+        context.fleetEventFeed.dispose();
+        engine[Symbol.dispose]();
+      }
+    };
+
+    expect(await admissionFor(undefined)).toEqual({ authenticated: true, method: 'mtls' });
+    expect(await admissionFor(false)).toEqual({
+      authenticated: false,
+      error: 'No valid credentials provided',
+    });
   });
 
   it('serves unauthenticated workflow event SSE when server auth is disabled', async () => {

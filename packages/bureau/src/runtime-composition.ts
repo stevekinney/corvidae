@@ -41,6 +41,7 @@ import {
   createCheckpointStore,
   createComplexityStrategy,
   createCostAwareStrategy,
+  createDefaultGuardrailsPreset,
   createFalloverGenerate,
   createGeminiProvider,
   createGeminiProviderStream,
@@ -48,9 +49,6 @@ import {
   createIdentityHook,
   createOpenAIProvider,
   createOpenAIProviderStream,
-  createOutputPIIValidator,
-  createPolicyEnforcementHook,
-  createPromptInjectionDetector,
   createRequestHumanInputTool,
   createRoutingGenerate,
   createRunEngine,
@@ -60,7 +58,6 @@ import {
   createSessionStore,
   createStepBasedStrategy,
   DEFAULT_MAXIMUM_STEPS,
-  DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD,
   isAgentRunWorkflowInput,
   isScheduledAgentRunInput,
   reservedIdentifierReason,
@@ -70,9 +67,9 @@ import {
   SCHEDULER_ORIGIN_TAG,
   SCHEDULER_RUN_ID_PREFIX,
   ScheduleSkippedEvent,
+  withActiveSkillToolPolicy,
   withCache,
   withEnhancedStreaming,
-  withMinimumTripwireConfidence,
   WorkflowVersionMismatchEvent,
 } from '@lostgradient/operative';
 import {
@@ -86,7 +83,6 @@ import {
   type SkillActivationRecord,
   type SkillCatalogRevision,
   type SkillEventMap,
-  type SkillGuardrailOptions,
   type ToolPolicy,
 } from '@lostgradient/skills';
 import {
@@ -96,6 +92,7 @@ import {
   deserializeCheckpoint,
   encode,
   KEYS,
+  type RecoverAllOptions,
   resolveStorage,
   type Storage,
   storageConditionalBatch,
@@ -123,6 +120,7 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 
+import { createSkillGuardrailOptions } from './agent-skills';
 import {
   type GoalAttemptFence,
   type GoalAttemptTarget,
@@ -445,46 +443,6 @@ export function createSchedulerServiceRequestContext(
   } satisfies ToolRequestContext;
 }
 
-/**
- * COR-1228 — makes an active skill's `allowed-tools` actually narrow the tool
- * set the model sees.
- *
- * Two halves of a designed mechanism existed and were never connected:
- * `SkillSession.getActiveToolPolicy()` produced the merged policy and had no
- * consumer, and `@lostgradient/operative`'s `createPolicyEnforcementHook` consumes
- * exactly that shape through its `getActiveSkillToolPolicy` option and had no
- * consumer either. This wires them together.
- *
- * Deliberately a FILTER, not a per-call gate. `armorer`'s own
- * `PermissionGate` documentation draws the line: "a filter removes a tool from
- * the array before the model ever sees it exists. A gate runs per call against
- * the actual arguments the model chose." `ToolPolicy` is named there as the
- * filter, so implementing it as one is faithful to the contract rather than
- * inventing a stronger promise than the type makes. The per-call gate remains
- * `createHeadlessPermissionPolicyHooks`, a complementary layer — the two
- * compose, and this adds no second narrowing path.
- *
- * The policy is read live on each `tools()` call rather than captured, because
- * the active skill set changes during a run as the model activates and
- * deactivates skills. A proxy is used rather than rebuilding the toolbox so the
- * emitter, approval wiring, and request context all survive untouched.
- */
-function withActiveSkillToolPolicy(
-  toolbox: AnyToolbox,
-  getActiveSkillToolPolicy: () => ToolPolicy | undefined,
-): AnyToolbox {
-  const filterTools = createPolicyEnforcementHook({ getActiveSkillToolPolicy });
-
-  return new Proxy(toolbox, {
-    get(target, property, receiver) {
-      if (property === 'tools') {
-        return () => filterTools([...target.tools()]);
-      }
-      return Reflect.get(target, property, receiver) as unknown;
-    },
-  });
-}
-
 function withDefaultToolboxRequestContext(
   toolbox: AnyToolbox,
   requestContext: ToolRequestContext | undefined,
@@ -580,31 +538,6 @@ function raceRequestAuthorityValidation(
     if (onAbort) signal?.removeEventListener('abort', onAbort);
     if (timer !== undefined) clearTimeoutFunction(timer);
   });
-}
-
-/**
- * AB-40 — the enabled-by-default guardrail preset. Wired whenever
- * `BureauOptions.guardrails` is omitted (`undefined`): a prompt-injection
- * input detector (gated at `confidence >= DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD`
- * — see {@link withMinimumTripwireConfidence}) and an output PII validator,
- * both in `mode: 'tripwire'` — a trip hard-halts the run (`finishReason:
- * 'tripwire'`) rather than substituting a blocked/redacted response. Pass
- * `guardrails: false` to opt out entirely, or a `GuardrailsOptions` to
- * replace this preset.
- */
-function defaultGuardrailsPreset(): GuardrailsOptions {
-  return {
-    mode: 'tripwire',
-    input: {
-      detectors: [
-        withMinimumTripwireConfidence(
-          createPromptInjectionDetector(),
-          DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD,
-        ),
-      ],
-    },
-    output: { validators: [createOutputPIIValidator()] },
-  };
 }
 
 /**
@@ -949,7 +882,17 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
  * than reaching into the catalog directly.
  */
 export type CatalogAgentRunOptionsResolution =
-  | { status: 'resolved'; options: RunOptions; definitionRevision: number }
+  | {
+      status: 'resolved';
+      options: RunOptions;
+      definitionRevision: number;
+      /**
+       * COR-1367 — the agent resolved its own guardrails (`resolvesOwnGuardrails`),
+       * so recovery registers no Bureau guardrail invariant on top, exactly as
+       * the run's fresh dispatch did not.
+       */
+      agentResolvesGuardrails?: boolean;
+    }
   | { status: 'missing-agent' }
   /**
    * The named agent exists in the catalog but does not (or no longer)
@@ -1306,32 +1249,20 @@ export type RuntimeCompositionDependencies = {
    * goal attempts unfenced and has no goals to overtake them.
    */
   goalAttemptFence?: GoalAttemptFence;
+  /**
+   * COR-1510 — the engine's recovery hook, installed when the engine is created. The engine
+   * reclaims and resumes runs whose claim has lapsed on its own interval, which can be before
+   * `createBureau` calls `recoverAll()` with its hook; a run resumed that way must reach the same
+   * hook before its first step, or the bureau never sees that step. `createBureau` supplies a
+   * late-bound one that waits until its recovery has started.
+   */
+  onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'];
 };
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
   resolveProviderGenerate,
   createSessionStore,
 };
-
-/**
- * AB-260 — the `resolveRunServices` composition-readiness guard, extracted
- * as a pure function so it is directly unit-testable without the retired
- * `RuntimeCompositionTestingSeams.setCompositionReady` mutation backdoor:
- * `resolveRunServices` itself always calls this with `compositionReady`
- * already `true` (nothing outside this module can observe the transient
- * `false` window during construction — see `createRuntimeComposition`'s own
- * comment on the gate), so the branch this guards is proven correct here,
- * directly, rather than by reproducing the real-but-effectively-untriggerable
- * race a private setter used to force.
- */
-export function compositionReadyGuardResult(
-  ready: boolean,
-  workflowId: string,
-): { status: 'unavailable'; reason: string } | undefined {
-  return ready
-    ? undefined
-    : { status: 'unavailable', reason: `run ${workflowId}: composition not ready` };
-}
 
 function messagesAreEqual(
   left: ConversationHistory['messages'][string],
@@ -1837,7 +1768,20 @@ export interface RuntimeComposition {
    * {@link RuntimeComposition.createRunRuntime}. Merged as the first tier so
    * Bureau's policy still applies to those runs.
    */
-  createBureauInvariantHooks(goalAttempt?: GoalAttemptTarget): HookRegistry<OperativeHookMap>;
+  createBureauInvariantHooks(
+    goalAttempt?: GoalAttemptTarget,
+    options?: BureauInvariantOptions,
+  ): HookRegistry<OperativeHookMap>;
+}
+
+/** COR-1367 — per-dispatch options for {@link RuntimeComposition.createBureauInvariantHooks}. */
+export interface BureauInvariantOptions {
+  /**
+   * The dispatched agent resolves its own guardrails from its declaration and
+   * its inherited policy (`resolvesOwnGuardrails`), so Bureau registers no
+   * guardrail invariant of its own for the run.
+   */
+  agentResolvesGuardrails?: boolean;
 }
 
 /**
@@ -1982,6 +1926,26 @@ export async function createRuntimeComposition(
   options: RuntimeCompositionOptions,
   suppliedDependencies: Partial<RuntimeCompositionDependencies> = {},
 ): Promise<RuntimeComposition> {
+  // COR-1509: the durable engine starts reclaiming and resuming runs with a lapsed claim as soon
+  // as it exists, on its own interval and independent of `recover`, which is before this
+  // composition finishes. `resolveRunServices` therefore waits on this gate rather than answering
+  // "not ready": a run that reaches the resolver early must be held, not durably failed.
+  const readiness = Promise.withResolvers<void>();
+  // A failed composition rejects the gate; the resolver handles that, and nothing else needs to.
+  readiness.promise.catch(() => {});
+  try {
+    return await buildRuntimeComposition(options, suppliedDependencies, readiness);
+  } catch (error) {
+    readiness.reject(error);
+    throw error;
+  }
+}
+
+async function buildRuntimeComposition(
+  options: RuntimeCompositionOptions,
+  suppliedDependencies: Partial<RuntimeCompositionDependencies>,
+  readiness: PromiseWithResolvers<void>,
+): Promise<RuntimeComposition> {
   const dependencies: RuntimeCompositionDependencies = {
     ...defaultRuntimeCompositionDependencies,
     ...suppliedDependencies,
@@ -1998,13 +1962,13 @@ export async function createRuntimeComposition(
   // before `RuntimeServices` existed.
   const runtimeServices: RuntimeServices = options.runtime ?? createDefaultRuntimeServices();
 
-  // Gate the resolver until the whole composition is assembled. In automatic
-  // mode `createRunEngine` starts its scheduler before later consts (`sessionStore`,
-  // the `createRunRuntime` closure deps) are initialized, so a persisted schedule
-  // could fire `resolveRunServices` mid-build and hit a not-yet-initialized binding.
-  // This flag lets the resolver bail out cleanly until composition is ready. Manual
-  // mode has no background poller, but shares the same gate for consistency.
-  let compositionReady = false;
+  // The resolver waits on `readiness` until the whole composition is assembled. In automatic mode
+  // `createRunEngine` starts its scheduler and claim-reclaim interval before later consts
+  // (`sessionStore`, the `createRunRuntime` closure deps) are initialized, so a persisted schedule
+  // or a lapsed claim can reach `resolveRunServices` mid-build and would hit a not-yet-initialized
+  // binding. Manual mode has no background poller, but shares the same gate for consistency.
+  // Only so the resolver can say, once, that it had to wait; the gate itself is `readiness`.
+  let compositionOpen = false;
   let requestAuthorityValidator = options.requestAuthorityValidator;
   // AB-240: wired by `createBureau` once its agent catalog exists (this
   // function's own contract deliberately excludes `agents` — see
@@ -2154,6 +2118,9 @@ export async function createRuntimeComposition(
       backgroundTasks: options.durableBackgroundTasks ?? 'automatic',
       startScheduler: options.durableBackgroundTasks !== 'manual',
       resolveWorkflowServices: resolveRunServices,
+      ...(dependencies.onRecoveredWorkflow === undefined
+        ? {}
+        : { onRecoveredWorkflow: dependencies.onRecoveredWorkflow }),
       ...(dependencies.goalWorkflow === undefined
         ? {}
         : { goalWorkflow: dependencies.goalWorkflow }),
@@ -2453,7 +2420,7 @@ export async function createRuntimeComposition(
    */
   function resolveGuardrailsConfiguration(): GuardrailsOptions | undefined {
     const resolved =
-      options.guardrails === undefined ? defaultGuardrailsPreset() : options.guardrails;
+      options.guardrails === undefined ? createDefaultGuardrailsPreset() : options.guardrails;
     return resolved === false ? undefined : resolved;
   }
 
@@ -2489,6 +2456,7 @@ export async function createRuntimeComposition(
    */
   function createBureauInvariantHooks(
     goalAttempt?: GoalAttemptTarget,
+    invariantOptions?: BureauInvariantOptions,
   ): HookRegistry<OperativeHookMap> {
     const invariants = new HookRegistry<OperativeHookMap>({ source: BUREAU_HOOK_TIER });
     // First, so no other `prepareStep` handler (the guardrail scan included)
@@ -2502,7 +2470,14 @@ export async function createRuntimeComposition(
     if (options.identity) {
       registerIdentityInvariant(invariants, options.identity);
     }
-    const guardrailsConfig = resolveGuardrailsConfiguration();
+    // COR-1367 — an agent that resolves its own guardrails was handed this
+    // bureau's policy through `inheritedGuardrails` (see
+    // `catalogRunGuardrailsContext`) and applies it in its own tier, so
+    // registering it here as well would run the same policy twice.
+    const guardrailsConfig =
+      invariantOptions?.agentResolvesGuardrails === true
+        ? undefined
+        : resolveGuardrailsConfiguration();
     if (guardrailsConfig) {
       registerGuardrailInvariants(invariants, createGuardrails(guardrailsConfig));
     }
@@ -2653,30 +2628,13 @@ export async function createRuntimeComposition(
     // context. `GuardrailHooks.taint`'s own doc comment names skill resources
     // as one of the retrieval surfaces that cannot reach the model through
     // `prepareStep`/`validateResponse` and so must scan directly and fold its
-    // detections back into the session-wide taint state. The taint wiring below
-    // mirrors `create-guardrails.ts`'s own input-guardrail wiring, including its
-    // confidence threshold check.
-    const skillGuardrail: SkillGuardrailOptions | undefined =
-      guardrails && guardrailsConfig?.input
-        ? {
-            detectors: guardrailsConfig.input.detectors,
-            ...(guardrailsConfig.input.action !== undefined
-              ? { action: guardrailsConfig.input.action === 'warn' ? 'warn' : 'block' }
-              : {}),
-            getSessionTainted: () => guardrails.taint.isTainted(),
-            onTriggered: (event) => {
-              if (event.confidence >= (guardrailsConfig.taint?.taintThreshold ?? 0.8)) {
-                guardrails.taint.taint({
-                  reason: event.detail ?? `Detection by ${event.detector}`,
-                  detector: event.detector,
-                  confidence: event.confidence,
-                  step: 0,
-                  provenance: event.provenance,
-                });
-              }
-              guardrailsConfig.input?.onTriggered?.(event);
-            },
-          }
+    // detections back into the session-wide taint state. The wiring is
+    // `createSkillGuardrailOptions` from `./agent-skills`, which
+    // `createAgentSkills` uses for per-agent skills too (COR-1367), so the
+    // two paths cannot drift.
+    const skillGuardrail =
+      guardrails && guardrailsConfig
+        ? createSkillGuardrailOptions(guardrailsConfig, guardrails)
         : undefined;
 
     let skillRecovery: Promise<unknown> | undefined;
@@ -3361,6 +3319,7 @@ export async function createRuntimeComposition(
             attemptIndex: record.goalAttempt.attemptIndex,
             runId,
           },
+      { agentResolvesGuardrails: resolution.agentResolvesGuardrails === true },
     );
     return {
       status: 'available',
@@ -3694,13 +3653,28 @@ export async function createRuntimeComposition(
   async function resolveRunServices(
     info: WorkflowServicesResolverInfo,
   ): Promise<WorkflowServicesResolution> {
-    // The scheduler poller is armed at engine construction, before this closure's
-    // later dependencies (sessionStore, createRunRuntime deps) are initialized. If
-    // a persisted schedule fires a tick mid-construction, bail out cleanly — the
-    // fire fails terminally and the next tick (once ready) succeeds. (Accessing a
+    // The engine's background tasks are armed at engine construction, before this closure's later
+    // dependencies (sessionStore, createRunRuntime deps) are initialized. A tick or a reclaim that
+    // reaches this resolver mid-construction waits for the composition instead of being answered
+    // "unavailable", which the engine would turn into a terminal failure of the run. (Reading a
     // not-yet-initialized `const` below would otherwise throw a TDZ error.)
-    const notReady = compositionReadyGuardResult(compositionReady, info.workflowId);
-    if (notReady) return notReady;
+    if (!compositionOpen) {
+      diagnose({
+        level: 'warn',
+        scope: 'recovery',
+        message:
+          `[bureau] Run "${info.workflowId}" reached recovery before the bureau finished ` +
+          `composing; holding it until composition completes.`,
+      });
+    }
+    try {
+      await readiness.promise;
+    } catch {
+      return {
+        status: 'unavailable',
+        reason: `run ${info.workflowId}: composition failed`,
+      };
+    }
     if (!sessionStore) {
       return { status: 'unavailable', reason: 'no session store configured' };
     }
@@ -3912,7 +3886,8 @@ export async function createRuntimeComposition(
 
   // Every closure dependency the resolver reads is now initialized; open the gate
   // so scheduler-poller ticks (and the bureau's subsequent `recoverAll()`) resolve.
-  compositionReady = true;
+  compositionOpen = true;
+  readiness.resolve();
 
   const composition: RuntimeComposition = {
     kv,

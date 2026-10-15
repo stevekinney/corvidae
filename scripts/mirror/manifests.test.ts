@@ -2,6 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
 import {
@@ -11,6 +16,7 @@ import {
   ManifestTransformError,
   planManifests,
   publicNameFor,
+  runManifestTransform,
   stageTarget,
   type ManifestPlan,
 } from './manifests.ts';
@@ -67,8 +73,8 @@ const conversationalistRecordedVersion = recordedVersion('conversationalist');
  * while the dependency edges are pared down to the ones each assertion needs.
  */
 const workspaces: Record<string, Record<string, unknown>> = {
-  'applications/desktop': {
-    name: '@lostgradient/desktop',
+  'applications/playground': {
+    name: '@lostgradient/playground',
     private: true,
     dependencies: {
       '@lostgradient/cinder': 'workspace:*',
@@ -385,6 +391,7 @@ describe('name mapping', () => {
     expect(await throwingRejectionOf(plan)).toThrow(/@lostgradient\/phantom/);
   });
 
+  // spawn-free: planManifests refuses the unmapped workspace before stageTarget reaches runInstall's `bun install`.
   test('the command line transform exits non-zero on an unmapped workspace', async () => {
     await withTree(
       corvidaeFixture({
@@ -393,23 +400,12 @@ describe('name mapping', () => {
       async (root) => {
         const directory = await mkdtemp(join(tmpdir(), 'corvidae-unmapped-'));
         try {
-          const transform = Bun.spawn(
-            [
-              'bun',
-              new URL('./manifests.ts', import.meta.url).pathname,
-              '--corvidae-root',
-              root,
-              '--target',
-              'cinder',
-              '--directory',
-              directory,
-            ],
-            { stdout: 'pipe', stderr: 'pipe' },
+          const stderrChunks: string[] = [];
+          const exitCode = await runManifestTransform(
+            ['--corvidae-root', root, '--target', 'cinder', '--directory', directory],
+            { stdout: () => undefined, stderr: (text) => stderrChunks.push(text) },
           );
-          const [stderr, exitCode] = await Promise.all([
-            new Response(transform.stderr).text(),
-            transform.exited,
-          ]);
+          const stderr = stderrChunks.join('');
           expect(exitCode).not.toBe(0);
           expect(stderr).toContain('@lostgradient/phantom');
           expect(await Bun.file(join(directory, 'package.json')).exists()).toBe(false);
@@ -516,7 +512,7 @@ describe('workspace and catalog resolution', () => {
 
   test('every edge into weft routes through the one root catalog entry', async () => {
     const plan = await planFor('cinder');
-    // `applications/desktop` is absent deliberately: `package-map.json` excludes it, so nothing
+    // `applications/playground` is absent deliberately: `package-map.json` excludes it, so nothing
     // is emitted for it at all. The test below is what holds that. `packages/operative` is absent
     // for a different reason as of COR-1287 — it ships from the agent-bureau target now, and the
     // test below covers the same edge there, where no catalog exists to route it through.
@@ -555,7 +551,7 @@ describe('workspace and catalog resolution', () => {
           packageMap: await packageMapWithCurrentDigests(root),
         });
         expect(parse(plan, 'packages/weft/package.json')['dependencies']).toEqual({
-          '@lostgradient/cinder': '^0.27.0',
+          '@lostgradient/cinder': '^0.27.1',
         });
       },
     );
@@ -743,6 +739,132 @@ describe('composition against a manifest the target already carries', () => {
     expect(manifest['peerDependencies']).toEqual(target.peerDependencies);
     expect(manifest['peerDependenciesMeta']).toEqual(target.peerDependenciesMeta);
     expect(manifest['engines']).toEqual(target.engines);
+  });
+
+  /**
+   * COR-1468. A peer corvidae declares is a fact about corvidae's source — Weft's A2A subpath
+   * imports `@a2a-js/sdk` and must not install it for every consumer — so it reaches the target
+   * through the sync itself. Before this, the target's `peerDependencies` and
+   * `peerDependenciesMeta` were kept exactly as they were and the declaration was dropped, leaving
+   * a hand edit after the sync that `publication-history.ts` would reject.
+   */
+  describe('peers corvidae declares', () => {
+    const existing = {
+      name: '@lostgradient/weft',
+      version: '0.25.0',
+      peerDependencies: { 'better-sqlite3': '^12.8.0', pg: '^8.11.0' },
+      peerDependenciesMeta: {
+        'better-sqlite3': { optional: true },
+        pg: { optional: true },
+      },
+    };
+
+    async function composePeers(
+      emitted: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+      const { manifest } = composeManifest({
+        policy: await loadTargetOwnedPolicy(),
+        target: 'weft',
+        emitted: { name: '@lostgradient/weft', version: '0.0.0', ...emitted },
+        existing: structuredClone(existing),
+        mirrorPackages: new Set(['@lostgradient/weft']),
+      });
+      return manifest;
+    }
+
+    test('a declared optional peer joins the target’s own peers, which keep their values', async () => {
+      const manifest = await composePeers({
+        peerDependencies: { '@a2a-js/sdk': '^0.3.4' },
+        peerDependenciesMeta: { '@a2a-js/sdk': { optional: true } },
+      });
+      expect(manifest['peerDependencies']).toEqual({
+        '@a2a-js/sdk': '^0.3.4',
+        'better-sqlite3': '^12.8.0',
+        pg: '^8.11.0',
+      });
+      expect(manifest['peerDependenciesMeta']).toEqual({
+        '@a2a-js/sdk': { optional: true },
+        'better-sqlite3': { optional: true },
+        pg: { optional: true },
+      });
+      // Both targets sort their manifests, so an added peer lands in order rather than appended.
+      expect(Object.keys(manifest['peerDependencies'] as object)).toEqual([
+        '@a2a-js/sdk',
+        'better-sqlite3',
+        'pg',
+      ]);
+    });
+
+    test('corvidae’s range and meta entry win over the target’s for a name both declare', async () => {
+      const manifest = await composePeers({
+        peerDependencies: { pg: '^9.0.0' },
+        // Corvidae declares `pg` as a required peer: its absence from the meta block is the
+        // declaration, so the target's `optional` entry for it cannot survive alongside.
+        peerDependenciesMeta: {},
+      });
+      expect(manifest['peerDependencies']).toEqual({ 'better-sqlite3': '^12.8.0', pg: '^9.0.0' });
+      expect(manifest['peerDependenciesMeta']).toEqual({ 'better-sqlite3': { optional: true } });
+    });
+
+    test('a meta entry for a name corvidae does not declare as a peer is not carried', async () => {
+      const manifest = await composePeers({
+        peerDependencies: { '@a2a-js/sdk': '^0.3.4' },
+        peerDependenciesMeta: { '@a2a-js/sdk': { optional: true }, stray: { optional: true } },
+      });
+      expect(manifest['peerDependenciesMeta']).not.toHaveProperty('stray');
+    });
+
+    test('a target with no peers of its own receives corvidae’s pair', async () => {
+      const { manifest } = composeManifest({
+        policy: await loadTargetOwnedPolicy(),
+        target: 'weft',
+        emitted: {
+          name: '@lostgradient/weft',
+          version: '0.0.0',
+          peerDependencies: { '@a2a-js/sdk': '^0.3.4' },
+          peerDependenciesMeta: { '@a2a-js/sdk': { optional: true } },
+        },
+        existing: { name: '@lostgradient/weft', version: '0.25.0' },
+        mirrorPackages: new Set(['@lostgradient/weft']),
+      });
+      expect(manifest['peerDependencies']).toEqual({ '@a2a-js/sdk': '^0.3.4' });
+      expect(manifest['peerDependenciesMeta']).toEqual({ '@a2a-js/sdk': { optional: true } });
+    });
+
+    test('a workspace that declares no peers leaves the target’s pair exactly as it was', async () => {
+      const manifest = await composePeers({});
+      expect(manifest['peerDependencies']).toEqual(existing.peerDependencies);
+      expect(manifest['peerDependenciesMeta']).toEqual(existing.peerDependenciesMeta);
+    });
+
+    test('a renamed internal peer keeps its meta entry under its public name', async () => {
+      await withTree(
+        corvidaeFixture({
+          'components/cinder/package.json': {
+            ...workspaces['components/cinder'],
+            peerDependencies: { '@lostgradient/markdown': 'workspace:*' },
+            peerDependenciesMeta: { '@lostgradient/markdown': { optional: true } },
+          },
+        }),
+        async (root) => {
+          const packageMap = await packageMapWithCurrentDigests(root);
+          const markdown = packageMap.workspaces['@lostgradient/markdown'];
+          if (markdown?.disposition !== 'publish-as') {
+            throw new Error('@lostgradient/markdown must be publish-as in the real map');
+          }
+          packageMap.workspaces['@lostgradient/markdown'] = {
+            ...markdown,
+            name: 'renamed-markdown',
+          };
+          const plan = await planManifests({ corvidaeRoot: root, target: 'cinder', packageMap });
+          const cinder = parse(plan, 'packages/components/package.json');
+          expect(cinder['peerDependencies']).toEqual({ 'renamed-markdown': 'workspace:*' });
+          expect(cinder['peerDependenciesMeta']).toEqual({
+            'renamed-markdown': { optional: true },
+          });
+        },
+      );
+    });
   });
 
   test('a dependency the target declares nowhere is added, in corvidae’s block, and reported', async () => {
@@ -1081,36 +1203,36 @@ describe('COR-1229: seeding a released package the target clone does not yet car
 });
 
 /**
- * `@lostgradient/desktop` was the one deferred workspace until the repository owner excluded it
- * from the mirror outright (2026-09-21). Exclusion is decided in `package-map.json` before the
- * layout is ever consulted, so the plan carries no deferred entry and the cinder sync no longer
- * refuses on its account — while the layout entry keeps its `deferred` disposition, so lifting
- * the exclusion would bring the refusal back until the placement is actually ruled on.
+ * `@lostgradient/playground` is excluded from the mirror outright. Exclusion is decided in
+ * `package-map.json` before the layout is ever consulted, so the plan carries no deferred entry
+ * and the cinder sync does not refuse on its account — while the layout entry keeps its
+ * `deferred` disposition, so lifting the exclusion would bring the refusal back until the
+ * placement is actually ruled on.
  */
-describe('the excluded desktop application', () => {
-  test('is emitted nowhere and no longer holds the cinder sync', async () => {
+describe('the excluded playground application', () => {
+  test('is emitted nowhere and does not hold the cinder sync', async () => {
     const plan = await planFor('cinder');
     expect(plan.deferred).toEqual([]);
     expect(
-      Object.keys(plan.files).filter((path) => path.includes('desktop')),
+      Object.keys(plan.files).filter((path) => path.startsWith('applications/')),
       'nothing is emitted for an excluded workspace',
     ).toEqual([]);
     expect(() => assertNothingDeferred(plan)).not.toThrow();
-    const layout = await layoutFor('@lostgradient/desktop');
+    const layout = await layoutFor('@lostgradient/playground');
     expect(layout.disposition).toBe('deferred');
   });
 
   test('a deferred workspace that is not excluded still refuses the sync by name', async () => {
-    const layout = await layoutFor('@lostgradient/desktop');
+    const layout = await layoutFor('@lostgradient/playground');
     if (layout.disposition !== 'deferred') throw new Error('the fixture entry must stay deferred');
-    const plan = { deferred: [{ workspace: '@lostgradient/desktop', layout }] };
+    const plan = { deferred: [{ workspace: '@lostgradient/playground', layout }] };
     expect(() => assertNothingDeferred(plan)).toThrow(DeferredWorkspaceError);
     try {
       assertNothingDeferred(plan);
     } catch (error) {
-      expect((error as Error).message).toContain('@lostgradient/desktop');
-      expect((error as Error).message).toContain('applications/desktop');
-      expect((error as Error).message).toContain('COR-1221');
+      expect((error as Error).message).toContain('@lostgradient/playground');
+      expect((error as Error).message).toContain('applications/playground');
+      expect((error as Error).message).toContain('COR-1201');
     }
   });
 
@@ -1140,12 +1262,20 @@ describe('the plan never touches a target-owned path', () => {
       expect(() =>
         assertWritablePaths({ policy, target, paths: Object.keys(plan.files) }),
       ).not.toThrow();
-      expect(Object.keys(plan.files).some((path) => path.startsWith('.changeset/'))).toBe(false);
+      // COR-1433: the only `.changeset/` paths a plan may carry are emitted corvidae changesets.
+      const changesetPaths = Object.keys(plan.files).filter((path) =>
+        path.startsWith('.changeset/'),
+      );
+      expect(
+        changesetPaths.filter(
+          (path) => !/^\.changeset\/corvidae-[0-9a-f]{12}-[^/]+\.md$/.test(path),
+        ),
+      ).toEqual([]);
     }
   });
 });
 
-describe('lockfile generation', () => {
+describe('lockfile generation', async () => {
   /**
    * Deliberately free of external dependencies so the staging install resolves entirely from the
    * staged tree: the test proves the transform produces an installable graph without reaching a
@@ -1162,7 +1292,8 @@ describe('lockfile generation', () => {
     },
   };
 
-  test('a staged tree installs and its lockfile is frozen-install clean', async () => {
+  // A real `bun install` of the staged tree is the behavior; it runs at module scope, off the per-test clock.
+  const outcome1 = await outcomeOf(async () => {
     await withTree(offline, async (root) => {
       const directory = await mkdtemp(join(tmpdir(), 'corvidae-staged-'));
       try {
@@ -1171,6 +1302,7 @@ describe('lockfile generation', () => {
         expect(await Bun.file(join(directory, 'bun.lock')).exists()).toBe(true);
 
         const frozen = Bun.spawn(['bun', 'install', '--frozen-lockfile', '--ignore-scripts'], {
+          timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
           cwd: directory,
           stdout: 'pipe',
           stderr: 'pipe',
@@ -1180,7 +1312,8 @@ describe('lockfile generation', () => {
         await rm(directory, { recursive: true, force: true });
       }
     });
-  }, 60_000);
+  });
+  test('a staged tree installs and its lockfile is frozen-install clean', () => rethrow(outcome1));
 });
 
 test('plans publication inputs only for dependencies that cross into the selected target', async () => {

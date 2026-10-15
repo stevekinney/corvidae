@@ -320,6 +320,107 @@ describe('snapshot format version 2', () => {
     expect(Conversation.from(snapshot).current).toEqual(conversation.current);
   });
 
+  it('rejects a malformed message table entry, even when re-signed', () => {
+    const snapshot = editedConversation().snapshot();
+    const cases: Array<[string, (entry: Record<string, unknown>) => void]> = [
+      ['an unknown role', (entry) => Reflect.set(entry, 'role', 'narrator')],
+      ['a non-integer position', (entry) => Reflect.set(entry, 'position', 'first')],
+      ['an unknown field', (entry) => Reflect.set(entry, 'surprise', true)],
+      ['a legacy shape', (entry) => Reflect.set(entry, 'role', 'tool-use')],
+    ];
+
+    for (const [, mutate] of cases) {
+      const mutated = structuredClone(snapshot);
+      mutate(mutated.messages[0] as unknown as Record<string, unknown>);
+      resign(mutated);
+      expect(() => decodeSnapshot(mutated)).toThrow('invalid message table entry 0');
+      expect(() => Conversation.from(mutated)).toThrow('invalid message table entry 0');
+    }
+  });
+
+  it('rejects a malformed node header, even when re-signed', () => {
+    const snapshot = editedConversation().snapshot();
+    const cases: Array<[string, (header: Record<string, unknown>) => void]> = [
+      ['an unknown status', (header) => Reflect.set(header, 'status', 'paused')],
+      ['a null title', (header) => Reflect.set(header, 'title', null)],
+      ['a zero schema version', (header) => Reflect.set(header, 'schemaVersion', 0)],
+      ['an unknown field', (header) => Reflect.set(header, 'surprise', true)],
+      ['a non-object metadata', (header) => Reflect.set(header, 'metadata', [])],
+      [
+        'a non-JSON metadata value',
+        (header) => Reflect.set(header, 'metadata', { at: new Date() }),
+      ],
+      ['a numeric timestamp', (header) => Reflect.set(header, 'updatedAt', 0)],
+    ];
+
+    for (const [, mutate] of cases) {
+      for (const position of [0, 1]) {
+        const mutated = structuredClone(snapshot);
+        mutate(mutated.nodes[position]!.conversation);
+        resign(mutated);
+        const id = mutated.nodes[position]!.id;
+        expect(() => decodeSnapshot(mutated)).toThrow(`invalid conversation for ${id}`);
+      }
+    }
+  });
+
+  it('copies node header metadata rather than freezing the snapshot it restores from', () => {
+    const conversation = new Conversation(
+      createConversationHistory({ metadata: { tags: ['a'], nested: { depth: 1 } } }),
+    );
+    conversation.appendUserMessage('Hello.');
+    const snapshot = structuredClone(conversation.snapshot());
+
+    const restored = Conversation.from(snapshot);
+
+    expect(restored.current.metadata).toEqual({ tags: ['a'], nested: { depth: 1 } });
+    expect(Object.isFrozen(snapshot.nodes[0]!.conversation.metadata)).toBe(false);
+    expect(Object.isFrozen(snapshot.nodes[0]!.conversation.metadata['tags'])).toBe(false);
+  });
+
+  it('rejects a tool result without its call, even when re-signed', () => {
+    const conversation = new Conversation(createConversationHistory());
+    conversation.appendUserMessage('Look it up.');
+    conversation.appendToolCall({ id: 'lookup', name: 'lookup', arguments: {} });
+    conversation.appendToolResult({ callId: 'lookup', outcome: 'success', content: 'found' });
+    const snapshot = structuredClone(conversation.snapshot());
+    const result = snapshot.messages.find((message) => message.role === 'tool-result')!;
+    // On its own the entry is still a well-formed message: only the
+    // conversation around it shows that no call has this id.
+    Reflect.set(result.toolResult!, 'callId', 'missing-call');
+    resign(snapshot);
+
+    expect(() => decodeSnapshot(snapshot)).toThrow('non-existent tool-call: missing-call');
+    expect(() => Conversation.from(snapshot)).toThrow('non-existent tool-call: missing-call');
+    expect(() => currentConversationFromSnapshot(snapshot)).toThrow(
+      'non-existent tool-call: missing-call',
+    );
+  });
+
+  it('rejects a second result for one tool call, even when re-signed', () => {
+    const conversation = new Conversation(createConversationHistory());
+    conversation.appendToolCall({ id: 'lookup', name: 'lookup', arguments: {} });
+    conversation.appendToolResult({ callId: 'lookup', outcome: 'success', content: 'found' });
+    const snapshot = structuredClone(conversation.snapshot());
+    const result = snapshot.messages.find((message) => message.role === 'tool-result')!;
+    const last = snapshot.nodes.at(-1)!;
+    // Every entry parses and every result follows its call, so only the
+    // per-node integrity check sees the duplicate answer.
+    Reflect.set(snapshot, 'messages', [
+      ...snapshot.messages,
+      {
+        ...result,
+        id: 'duplicate-result',
+        position: last.retainedMessageCount + last.appendedMessageIds.length,
+      },
+    ]);
+    Reflect.set(last, 'appendedMessageIds', [...last.appendedMessageIds, 'duplicate-result']);
+    Reflect.set(last.messageReferences, 'duplicate-result', snapshot.messages.length - 1);
+    resign(snapshot);
+
+    expect(() => decodeSnapshot(snapshot)).toThrow('conversation integrity check failed');
+  });
+
   it('rejects a node listed before its parent, even when re-signed', () => {
     const snapshot = structuredClone(editedConversation().snapshot());
     const nodes = [...snapshot.nodes];

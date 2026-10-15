@@ -51,6 +51,17 @@ async function withVersionRelease(
       join(source, 'scripts/mirror/source.ts'),
       "export const versionConstants = {'@lostgradient/weft': 'src/version.ts'};\n",
     );
+    // The historical transform: it emits and prunes `packages/weft/src`, and reads one build input.
+    await Bun.write(
+      join(source, 'scripts/mirror/sync.ts'),
+      `export async function foreignCommitOwnership() {
+  return {
+    targetOwnedFiles: new Set(['packages/weft/build-input.json']),
+    transform: { files: new Set(['packages/weft/package.json']), prefixes: ['packages/weft/src'] },
+  };
+}
+`,
+    );
     await Bun.write(
       join(source, 'scripts/mirror/target-owned.json'),
       await Bun.file(new URL('./target-owned.json', import.meta.url)).text(),
@@ -240,4 +251,101 @@ test('accepts a squash merge whose parent and tree match the App sync commit', a
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('accepts an intervening commit that adds, edits or deletes a pending changeset', async () => {
+  await withVersionRelease(
+    async ({ source, target, sourceCommit, mirrorCommit, releaseCommit }) => {
+      const options = {
+        sourceRoot: source,
+        targetRoot: target,
+        target: 'weft',
+        workspace: '@lostgradient/weft',
+        targetDirectory: 'packages/weft',
+        mirrorCommit,
+        gitHead: releaseCommit,
+      };
+      const changesetPath = '.changeset/corvidae-0123456789ab-x.md';
+
+      // A sync pull request that delivered the changeset, and the Version Packages commit that
+      // consumed it: the shape of the history a recorded publication must walk across (COR-1433).
+      await Bun.write(
+        join(target, changesetPath),
+        '---\n"@lostgradient/weft": patch\n---\n\nFix.\n',
+      );
+      const added = await commit(target, 'Deliver a changeset');
+      expect(await verifyHistoricalCheckout({ ...options, gitHead: added })).toBe(sourceCommit);
+
+      await requireGit(target, ['rm', '--quiet', changesetPath]);
+      const deleted = await commit(target, 'Version Packages');
+      expect(await verifyHistoricalCheckout({ ...options, gitHead: deleted })).toBe(sourceCommit);
+
+      // A correction made in the target is an edit of a delivered changeset, and is accepted too.
+      await Bun.write(
+        join(target, changesetPath),
+        '---\n"@lostgradient/weft": patch\n---\n\nFix.\n',
+      );
+      await commit(target, 'Deliver the changeset again');
+      await Bun.write(
+        join(target, changesetPath),
+        '---\n"@lostgradient/weft": major\n---\n\nFix.\n',
+      );
+      const edited = await commit(target, 'Correct a delivered changeset');
+      expect(await verifyHistoricalCheckout({ ...options, gitHead: edited })).toBe(sourceCommit);
+    },
+  );
+});
+
+test('still refuses an intervening commit that edits a source file', async () => {
+  await withVersionRelease(async ({ source, target, mirrorCommit }) => {
+    await Bun.write(join(target, 'packages/weft/src/index.ts'), 'export const edited = true;\n');
+    await Bun.write(
+      join(target, '.changeset/corvidae-0123456789ab-x.md'),
+      '---\n"@lostgradient/weft": patch\n---\n\nFix.\n',
+    );
+    const mixed = await commit(target, 'Edit source beside a changeset');
+    expect(
+      await throwingRejectionOf(
+        verifyHistoricalCheckout({
+          sourceRoot: source,
+          targetRoot: target,
+          target: 'weft',
+          workspace: '@lostgradient/weft',
+          targetDirectory: 'packages/weft',
+          mirrorCommit,
+          gitHead: mixed,
+        }),
+      ),
+    ).toThrow('packages/weft/src/index.ts');
+  });
+});
+
+test('accepts an intervening commit that edits a path outside the historical transform reach', async () => {
+  await withVersionRelease(async ({ source, target, sourceCommit, mirrorCommit }) => {
+    const options = {
+      sourceRoot: source,
+      targetRoot: target,
+      target: 'weft',
+      workspace: '@lostgradient/weft',
+      targetDirectory: 'packages/weft',
+      mirrorCommit,
+    };
+    // COR-1192, owner ruling 2026-10-15: release tooling the transform neither emits nor prunes.
+    await Bun.write(join(target, 'packages/weft/scripts/unlisted-release-tool.ts'), 'export {};\n');
+    await Bun.write(join(target, 'packages/weft/scripts/unlisted-release-tool.test.ts'), '\n');
+    const tooling = await commit(target, 'Edit release scripts');
+    expect(await verifyHistoricalCheckout({ ...options, gitHead: tooling })).toBe(sourceCommit);
+
+    // A declared build input is the target's own although no enumeration names it.
+    await Bun.write(join(target, 'packages/weft/build-input.json'), '{}\n');
+    const input = await commit(target, 'Edit a build input');
+    expect(await verifyHistoricalCheckout({ ...options, gitHead: input })).toBe(sourceCommit);
+
+    // A pruned tree stays refused even when the edit equals what the source emits.
+    await Bun.write(join(target, 'packages/weft/src/nested/deep.ts'), 'export {};\n');
+    const pruned = await commit(target, 'Edit inside a pruned tree');
+    expect(
+      await throwingRejectionOf(verifyHistoricalCheckout({ ...options, gitHead: pruned })),
+    ).toThrow('packages/weft/src/nested/deep.ts');
+  });
 });

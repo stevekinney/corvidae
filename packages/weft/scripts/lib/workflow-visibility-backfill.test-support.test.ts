@@ -35,6 +35,21 @@ describe('RacingStorage — pass-through delegation to its inner storage', () =>
     expect(await inner.get('key-1')).toBeNull();
   });
 
+  it('delegates scan and batch to the inner storage', async () => {
+    const inner = new MemoryStorage();
+    const racing = new RacingStorage(inner, new Set());
+
+    await racing.batch([
+      { type: 'put', key: 'key-a', value: new TextEncoder().encode('a') },
+      { type: 'put', key: 'key-b', value: new TextEncoder().encode('b') },
+    ]);
+    const scanned: string[] = [];
+    for await (const [key] of racing.scan('key-')) scanned.push(key);
+
+    expect(scanned).toEqual(['key-a', 'key-b']);
+    expect(await inner.get('key-b')).toEqual(new TextEncoder().encode('b'));
+  });
+
   it('disposes the inner storage', () => {
     let disposed = false;
     class TrackingDisposeStorage extends MemoryStorage {
