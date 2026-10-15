@@ -62,6 +62,15 @@ describe('judgeDurations', () => {
   test('does not call an entry stale when its workspace produced no report', () => {
     expect(judgeDurations([], [slow.key], new Set()).stale).toEqual([]);
   });
+
+  test('calls an entry stale when its workspace no longer exists, but not when it exists without a report', () => {
+    const existing = new Set(['w']);
+    expect(judgeDurations([], [slow.key], new Set(), existing).stale).toEqual([]);
+    const gone = judgeDurations([], ['renamed :: f.test.ts :: c :: t'], new Set(), existing);
+    expect(gone.stale).toEqual([
+      { key: 'renamed :: f.test.ts :: c :: t', reason: 'its workspace no longer exists' },
+    ]);
+  });
 });
 
 describe('laneProblems', () => {

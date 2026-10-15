@@ -117,11 +117,13 @@ export interface DurationFindings {
 /**
  * Judge measured tests against the allowlist. `coveredWorkspaces` limits the stale check to the
  * workspaces whose reports were read, so an entry is never called gone for a report that is absent.
+ * `existingWorkspaces`, when given, makes an entry for a workspace that is no longer there stale.
  */
 export function judgeDurations(
   measured: readonly MeasuredTest[],
   allowlist: readonly string[],
   coveredWorkspaces: ReadonlySet<string>,
+  existingWorkspaces?: ReadonlySet<string>,
 ): DurationFindings {
   const allowed = new Set(allowlist);
   const byKey = new Map(measured.map((test) => [test.key, test.milliseconds]));
@@ -131,6 +133,12 @@ export function judgeDurations(
   const stale: DurationFindings['stale'] = [];
   for (const key of allowlist) {
     const workspace = key.split(' :: ')[0]!;
+    // A workspace that was deleted or renamed can never report again, so its entries are stale.
+    // One that exists but produced no report is left alone: its tests were not measured.
+    if (existingWorkspaces !== undefined && !existingWorkspaces.has(workspace)) {
+      stale.push({ key, reason: 'its workspace no longer exists' });
+      continue;
+    }
     if (!coveredWorkspaces.has(workspace)) continue;
     const milliseconds = byKey.get(key);
     if (milliseconds === undefined) {
@@ -227,12 +235,19 @@ export function budgetFailures(
 interface Collected {
   measured: MeasuredTest[];
   coveredWorkspaces: Set<string>;
+  existingWorkspaces: Set<string>;
   problems: string[];
 }
 
 function collect(): Collected {
-  const collected: Collected = { measured: [], coveredWorkspaces: new Set(), problems: [] };
+  const collected: Collected = {
+    measured: [],
+    coveredWorkspaces: new Set(),
+    existingWorkspaces: new Set(),
+    problems: [],
+  };
   for (const workspace of walkWorkspaces()) {
+    collected.existingWorkspaces.add(workspace);
     const directory = workspace === '.' ? root : join(root, workspace);
     const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
       scripts?: Record<string, string>;
@@ -324,7 +339,12 @@ function main(): number {
     return 0;
   }
 
-  const findings = judgeDurations(collected.measured, allowlist, collected.coveredWorkspaces);
+  const findings = judgeDurations(
+    collected.measured,
+    allowlist,
+    collected.coveredWorkspaces,
+    collected.existingWorkspaces,
+  );
 
   if (mode === '--shrink') {
     const staleKeys = new Set(findings.stale.map(({ key }) => key));
