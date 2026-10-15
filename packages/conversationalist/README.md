@@ -870,14 +870,14 @@ conversation = appendMessages(conversation, input); // plugins run; a local id i
 
 const artifact = toA2AArtifact({ artifactId: 'summary', content: 'Revenue grew.' });
 const resolved = resolveA2AArtifactReference(
-  { kind: 'a2a-reference', agentCardUrl, artifactId: 'summary' },
-  { agentCardUrl, artifacts: [artifact] },
+  { kind: 'a2a-reference', agentCardUrl, taskId, artifactId: 'summary' },
+  { agentCardUrl, taskId, artifacts: [artifact] },
 );
 ```
 
 `text` content maps to a `text` part, and images and documents map to `raw` (inline) or `url` parts. An A2A `data` part comes back as a document holding `JSON.stringify(data)`, typed with the part's media type or `application/json`. On the way out, an inline document becomes a `data` part only when its bytes are exactly what `JSON.stringify` produces for the value they parse to, so no file is rewritten; pretty-printed JSON, or JSON with integers beyond double precision, stays a `raw` part byte for byte. Reasoning, provider server-tool, and container content, and roles other than `user` and `assistant`, throw an `A2AMappingError` whose `kind` names the part kind or role.
 
-`fromA2AMessage` returns the A2A `messageId` as `messageId`, never as `id`: `appendMessages` treats an input with an `id` as an already-built message and skips conversation plugins, and a remote agent should not choose local message ids. `resolveA2AArtifactReference` expects a catalog of one agent's artifacts for one task, because the proto makes an `artifactId` unique only within a task; an id that appears twice throws an `A2AMappingError`.
+`fromA2AMessage` returns the A2A `messageId` as `messageId`, never as `id`: `appendMessages` treats an input with an `id` as an already-built message and skips conversation plugins, and a remote agent should not choose local message ids. An `a2a-reference` source carries the peer's `taskId` as well as its `agentCardUrl` and `artifactId`, because the proto makes an `artifactId` unique only within a task. `resolveA2AArtifactReference` takes a catalog of one agent's artifacts for one task and resolves a reference only when both the agent and the task match, so artifacts with the same id in two tasks never resolve to each other; an id that appears twice in one catalog, or a reference the catalog does not hold, throws an `A2AMappingError`.
 
 Conversationalist content has fewer fields than an A2A part, so these mappings normalize instead of round-tripping exactly: a text part's media type, and part metadata other than text `citations` and image alternative `text`, are not carried; a data part declaring exactly `application/json` comes back without it; a file part without a media type comes back as an `application/octet-stream` document, so an image with no `mimeType` and a non-data URL returns as a document; an unnamed `image/*` document returns as image content; and a `raw` file whose bytes are already compact JSON returns as a `data` part carrying the same bytes. A file or data part without a filename becomes a document named `document`, because a document name must be non-empty, and that name maps back to no filename; a part whose filename is exactly `document` therefore returns unnamed.
 

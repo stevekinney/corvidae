@@ -9,22 +9,28 @@ export type A2AReferenceSource = Extract<ContentSource, { kind: 'a2a-reference' 
 
 /**
  * A pointer to one A2A `Artifact`: the agent that produced it, identified by
- * its agent card URL, and the artifact's `artifactId`. The proto defines no
- * reference message, so this pairs the agent identity with the proto field.
+ * its agent card URL, the task it was produced for, and the artifact's
+ * `artifactId`. The proto makes an `artifactId` unique only within a task, so
+ * the task is part of the reference. The proto defines no reference message,
+ * so this pairs the agent identity with the proto's `Task.id` and
+ * `Artifact.artifact_id` fields.
  */
 export interface A2AArtifactReference {
   agentCardUrl: string;
+  taskId: string;
   artifactId: A2AArtifact['artifactId'];
 }
 
 /**
  * Artifacts one A2A agent produced for a single task, used to resolve
- * references to them. The proto makes an `artifactId` unique only within a
- * task, so a catalog must not mix tasks; a catalog holding the same
- * `artifactId` twice cannot resolve that id.
+ * references to them. A reference resolves against a catalog only when both
+ * its `agentCardUrl` and its `taskId` match. Within the task an `artifactId`
+ * is unique, so a catalog holding the same `artifactId` twice is malformed and
+ * cannot resolve that id.
  */
 export interface A2AArtifactCatalog {
   agentCardUrl: string;
+  taskId: string;
   artifacts: ReadonlyArray<A2AArtifact>;
 }
 

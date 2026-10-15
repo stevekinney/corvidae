@@ -245,7 +245,7 @@ export type ContentSource =
   | { kind: 'upload'; uploadId: string } // prior to becoming a ManagedAsset
   | { kind: 'provider-file'; provider: string; providerFileId: string }
   | { kind: 'mcp-resource'; serverId: string; uri: string }
-  | { kind: 'a2a-reference'; agentCardUrl: string; artifactId: string }
+  | { kind: 'a2a-reference'; agentCardUrl: string; taskId: string; artifactId: string } // an A2A artifactId is unique only within its task
   | { kind: 'managed-asset'; assetId: string; revision?: number };
 
 export type MediaLimitScope = 'per-part' | 'aggregate';

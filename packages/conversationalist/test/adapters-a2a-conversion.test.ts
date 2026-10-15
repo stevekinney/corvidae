@@ -560,43 +560,77 @@ describe('A2A artifacts', () => {
 });
 
 describe('a2a-reference content source', () => {
+  const agentCardUrl = 'https://agents.example.com/.well-known/agent-card.json';
   const source: ContentSource = {
     kind: 'a2a-reference',
-    agentCardUrl: 'https://agents.example.com/.well-known/agent-card.json',
+    agentCardUrl,
+    taskId: 'task-1',
     artifactId: 'artifact-9',
   };
 
-  it('round-trips through an A2A artifact reference', () => {
+  it('round-trips through an A2A artifact reference, preserving agent, task, and artifact', () => {
     const reference = toA2AArtifactReference(source);
 
-    expect(reference).toEqual({
-      agentCardUrl: 'https://agents.example.com/.well-known/agent-card.json',
-      artifactId: 'artifact-9',
-    });
+    expect(reference).toEqual({ agentCardUrl, taskId: 'task-1', artifactId: 'artifact-9' });
     expect(fromA2AArtifactReference(reference)).toEqual(source);
   });
 
   it('resolves to the referenced artifact and references it back', () => {
     const artifact: A2AArtifact = { artifactId: 'artifact-9', parts: [{ text: 'Result' }] };
     const catalog = {
-      agentCardUrl: 'https://agents.example.com/.well-known/agent-card.json',
+      agentCardUrl,
+      taskId: 'task-1',
       artifacts: [{ artifactId: 'artifact-8', parts: [{ text: 'Other' }] }, artifact],
     };
 
     const resolved = resolveA2AArtifactReference(source, catalog);
     expect(resolved).toBe(artifact);
-    const referenced = referenceA2AArtifact(catalog.agentCardUrl, resolved);
+    const referenced = referenceA2AArtifact(catalog, resolved);
     expect(referenced).toEqual(source);
     expect(resolveA2AArtifactReference(referenced, catalog)).toBe(artifact);
+  });
+
+  it('resolves references to same-named artifacts of two tasks to distinct artifacts', () => {
+    const fromFirstTask: A2AArtifact = {
+      artifactId: 'result',
+      name: 'result',
+      parts: [{ text: 'First task result' }],
+    };
+    const fromSecondTask: A2AArtifact = {
+      artifactId: 'result',
+      name: 'result',
+      parts: [{ text: 'Second task result' }],
+    };
+    const firstCatalog = { agentCardUrl, taskId: 'task-a', artifacts: [fromFirstTask] };
+    const secondCatalog = { agentCardUrl, taskId: 'task-b', artifacts: [fromSecondTask] };
+    const firstReference = referenceA2AArtifact(firstCatalog, fromFirstTask);
+    const secondReference = referenceA2AArtifact(secondCatalog, fromSecondTask);
+
+    expect(firstReference).not.toEqual(secondReference);
+    const firstResolved = resolveA2AArtifactReference(firstReference, firstCatalog);
+    const secondResolved = resolveA2AArtifactReference(secondReference, secondCatalog);
+    expect(firstResolved).toBe(fromFirstTask);
+    expect(secondResolved).toBe(fromSecondTask);
+    expect(firstResolved).not.toBe(secondResolved);
+
+    const crossed = captureMappingError(() =>
+      resolveA2AArtifactReference(firstReference, secondCatalog),
+    );
+    expect(crossed.code).toBe('error:not-found');
+    expect(crossed.kind).toBe('a2a-reference');
+    expect(
+      captureMappingError(() => resolveA2AArtifactReference(secondReference, firstCatalog)).code,
+    ).toBe('error:not-found');
   });
 
   it('rejects resolution against a catalog holding the artifact id more than once', () => {
     const error = captureMappingError(() =>
       resolveA2AArtifactReference(source, {
-        agentCardUrl: 'https://agents.example.com/.well-known/agent-card.json',
+        agentCardUrl,
+        taskId: 'task-1',
         artifacts: [
-          { artifactId: 'artifact-9', parts: [{ text: 'From task one' }] },
-          { artifactId: 'artifact-9', parts: [{ text: 'From task two' }] },
+          { artifactId: 'artifact-9', parts: [{ text: 'First copy' }] },
+          { artifactId: 'artifact-9', parts: [{ text: 'Second copy' }] },
         ],
       }),
     );
@@ -609,16 +643,14 @@ describe('a2a-reference content source', () => {
     const otherAgent = captureMappingError(() =>
       resolveA2AArtifactReference(source, {
         agentCardUrl: 'https://other.example.com/.well-known/agent-card.json',
+        taskId: 'task-1',
         artifacts: [{ artifactId: 'artifact-9', parts: [{ text: 'Result' }] }],
       }),
     );
     expect(otherAgent.code).toBe('error:not-found');
 
     const missing = captureMappingError(() =>
-      resolveA2AArtifactReference(source, {
-        agentCardUrl: 'https://agents.example.com/.well-known/agent-card.json',
-        artifacts: [],
-      }),
+      resolveA2AArtifactReference(source, { agentCardUrl, taskId: 'task-1', artifacts: [] }),
     );
     expect(missing.code).toBe('error:not-found');
     expect(missing.kind).toBe('a2a-reference');
