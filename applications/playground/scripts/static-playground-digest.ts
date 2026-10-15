@@ -31,9 +31,14 @@ function compareCodeUnits(left: string, right: string): number {
 }
 
 /** Hash every file under `directory`, keyed by its POSIX path relative to it, sorted by path. */
-export async function createDigestManifest(directory: string): Promise<DigestManifestEntry[]> {
+export async function createDigestManifest(
+  directory: string,
+  signal?: AbortSignal,
+): Promise<DigestManifestEntry[]> {
   const entries: DigestManifestEntry[] = [];
   for (const file of await filesUnder(directory)) {
+    // Stop between files once the caller gives up, rather than hash a whole build it will not use.
+    signal?.throwIfAborted();
     entries.push({
       path: relative(directory, file).split(sep).join('/'),
       sha256: createHash('sha256')

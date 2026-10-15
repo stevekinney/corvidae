@@ -32,6 +32,7 @@ import type {
   FiredFault,
 } from '@lostgradient/operative';
 
+import type { AssetWorkKind, AssetWorkSnapshot } from '../assets/types';
 import type { AuditRecord } from '../audit-trail';
 import { encodeKey } from '../audit-trail';
 import type { SubmitSchedulerTaskResponse } from '../types';
@@ -53,7 +54,15 @@ export type {
  * scheduler task.
  */
 export type BureauFaultOperation =
-  FaultOperation | 'webhook-delivery' | 'audit-write' | 'scheduler-task';
+  | FaultOperation
+  | 'webhook-delivery'
+  | 'audit-write'
+  | 'scheduler-task'
+  // COR-794: every managed-asset started-work kind, addressed by its work id.
+  | `asset:${AssetWorkKind}`;
+
+/** The selector operations a {@link BureauFaultSelectorResolutionError} can name. */
+type SelectorOperation = 'webhook-delivery' | 'audit-write' | 'scheduler-task' | 'asset-work';
 
 /** Mirrors operative's `FaultPlanEntry` with the widened {@link BureauFaultOperation}. */
 export interface BureauFaultPlanEntry {
@@ -69,14 +78,10 @@ export type BureauFaultPlan = readonly BureauFaultPlanEntry[];
 
 /** Raised by a selector when a target identifier resolves to zero or more than one candidate. */
 export class BureauFaultSelectorResolutionError extends Error {
-  readonly operation: 'webhook-delivery' | 'audit-write' | 'scheduler-task';
+  readonly operation: SelectorOperation;
   readonly matchCount: number;
 
-  constructor(
-    operation: 'webhook-delivery' | 'audit-write' | 'scheduler-task',
-    targetDescription: string,
-    matchCount: number,
-  ) {
+  constructor(operation: SelectorOperation, targetDescription: string, matchCount: number) {
     super(
       `Bureau fault selector for "${operation}" must resolve to exactly one resource for ` +
         `${targetDescription}, found ${matchCount}.`,
@@ -96,7 +101,7 @@ export class BureauFaultSelectorResolutionError extends Error {
  * satisfies `isMatch`.
  */
 function resolveExactlyOne<TCandidate>(
-  operation: 'webhook-delivery' | 'audit-write' | 'scheduler-task',
+  operation: SelectorOperation,
   targetDescription: string,
   candidates: readonly TCandidate[],
   isMatch: (candidate: TCandidate) => boolean,
@@ -180,5 +185,25 @@ export function selectSchedulerTaskFaultTarget(
     `task id "${taskId}"`,
     tasks,
     (task) => task.taskId === taskId,
+  );
+}
+
+/**
+ * Resolves an asset fault target (COR-794) to exactly one
+ * {@link AssetWorkSnapshot} by its started-work id, as listed by
+ * `AssetService.activeWork()` — the same public surface
+ * `assertBureauQuiescent` reads. Throws
+ * {@link BureauFaultSelectorResolutionError} when `active` contains zero or
+ * more than one snapshot with that id.
+ */
+export function selectAssetWorkFaultTarget(
+  active: readonly AssetWorkSnapshot[],
+  workId: string,
+): AssetWorkSnapshot {
+  return resolveExactlyOne(
+    'asset-work',
+    `work id "${workId}"`,
+    active,
+    (work) => work.id === workId,
   );
 }

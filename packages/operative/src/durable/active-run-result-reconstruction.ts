@@ -1,5 +1,5 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { HISTORY_CIRCUIT_BREAKER_REASON } from '@lostgradient/weft';
+import { HISTORY_CIRCUIT_BREAKER_REASON, type WorkflowClaimHandle } from '@lostgradient/weft';
 import { Conversation } from 'conversationalist';
 
 import type { ActiveRun } from '../create-run';
@@ -233,23 +233,25 @@ export function emptyRunState(): RunState {
 }
 
 /**
- * COR-1390: whether another engine took this run's `workflow-lease` claim from
- * this one, so the completed outcome `handle.result()` reports (which Weft
- * reads from the store whoever committed it) is the other engine's to publish.
- * The caller then stays write-free, exactly as for a lost checkpoint race, so
- * the run's terminal events, session status, and audit records are written
- * once. Asked only of a completed outcome: completion is committed under the
- * committing engine's own claim, while a cancel or timeout rotates the claim
- * whoever commits it, so a rotation proves nothing about who drove the run. A
- * failed claim read keeps the caller publishing: it proves no loss, and
- * suppressing the only publisher would leave the run looking `running`.
+ * COR-1390: whether `handle`'s run settled with a terminal outcome another
+ * engine committed under `workflow-lease`, so the outcome `handle.result()`
+ * reports (which Weft reads from the store whoever committed it) is the other
+ * engine's to publish. The caller then stays write-free, exactly as for a lost
+ * checkpoint race, so the run's terminal events, session status, and audit
+ * records are written once. The answer comes from the terminal commit itself,
+ * so it is exact for a completed, failed, cancelled, or timed-out outcome alike.
+ * It belongs to the run `handle` drives, so a later run reusing `runId` (a
+ * scheduler `start-new` restart) cannot change it, and it reads no storage. An
+ * outcome with no recorded committer, or a check that throws, keeps the caller
+ * publishing: suppressing the only publisher would leave the run looking
+ * `running`.
  */
-export async function lostRunToAnotherEngine(
+export function lostRunToAnotherEngine(
   context: DurableActiveRunContext,
-  runId: string,
-): Promise<boolean> {
+  handle: WorkflowClaimHandle,
+): boolean {
   try {
-    return await context.engine.lostWorkflowClaim(runId);
+    return context.engine.lostWorkflowClaim(handle);
   } catch {
     return false;
   }
