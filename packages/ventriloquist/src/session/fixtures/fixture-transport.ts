@@ -14,6 +14,11 @@ export type FixtureTransportOptions = {
   /** The session identifier the client addresses; defaults to the session's own. */
   readonly sessionId?: string;
   readonly maxFrameBytes?: number;
+  /**
+   * Called once for each frame the host puts on the wire, after it joined `outbox`. It is how a
+   * test learns that a frame arrived without polling; delivery to the client still waits for `pump`.
+   */
+  readonly onFrame?: () => void;
 };
 
 export type WireEvent =
@@ -70,6 +75,7 @@ export function createFixtureTransport(options: FixtureTransportOptions): Fixtur
       if (broken) throw new Error('the socket is broken');
       wire.push({ type: 'frame', frame });
       outbox.push(frame);
+      options.onFrame?.();
     },
     close: (code: number): void => {
       closed = true;
