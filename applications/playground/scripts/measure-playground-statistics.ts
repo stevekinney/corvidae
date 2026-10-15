@@ -163,3 +163,25 @@ export function growthReport(series: Record<string, number[]>): GrowthReport {
     ]),
   );
 }
+
+/** What the server's artifact owners retain after one edit settles. */
+export type RetainedArtifacts = { totalArtifacts: number; totalArtifactBytes: number };
+
+/**
+ * After repeated edits of one example, retained artifact entries and bytes must match the first
+ * settled edit exactly: each edit's superseded generation is released, so nothing accumulates.
+ * Returns one problem per edit that differs; an empty list means retention stayed bounded.
+ */
+export function retainedArtifactProblems(edits: readonly RetainedArtifacts[]): string[] {
+  if (edits.length < 2) throw new RangeError('Bounded retention needs at least two settled edits.');
+  const [first] = edits as [RetainedArtifacts, ...RetainedArtifacts[]];
+  return edits.flatMap((edit, index) =>
+    index === 0 ||
+    (edit.totalArtifacts === first.totalArtifacts &&
+      edit.totalArtifactBytes === first.totalArtifactBytes)
+      ? []
+      : [
+          `Edit ${index + 1} retained ${edit.totalArtifacts} artifacts and ${edit.totalArtifactBytes} bytes; the first settled edit retained ${first.totalArtifacts} and ${first.totalArtifactBytes}.`,
+        ],
+  );
+}

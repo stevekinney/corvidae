@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import {
   PUBLIC_PATH_BY_FAMILY,
   SHARED_BUILD_OPTIONS,
+  artifactRelativePath,
   collectBuildArtifacts,
+  collectCoordinatedGarbage,
   coordinatedBuild,
   pageArtifactByPath,
   pageBuildPromiseByKey,
@@ -50,10 +52,11 @@ export function bareComponentShimSource(importPath: string, exportName: string):
  * `component-page.svelte` loads each example only when its preview is attached
  * and the bare component only after the reader opens Playground.
  */
-export async function compilePageBundleArtifacts(
+async function writePageEntry(
   componentName: string,
-  knownComponents?: ReadonlySet<string>,
-): Promise<{ entryPath: string; entryCode: string; artifacts: Map<string, string> } | null> {
+  knownComponents: ReadonlySet<string> | undefined,
+  entryTempDir: string,
+): Promise<string | null> {
   // Validate that this is an actual component before building. A bundle for a
   // bogus name still compiles (empty scenario list + the no-examples fallback)
   // and would 200, hiding typos behind a "No examples found" UI.
@@ -76,7 +79,6 @@ export async function compilePageBundleArtifacts(
   // which renders a "No examples found" fallback.
 
   const entryBasename = `page-${componentName}`;
-  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
   const entryTempPath = join(entryTempDir, `${entryBasename}.ts`);
   const bareComponentShimBasename = `${entryBasename}-bare-component.ts`;
   const bareComponentShimPath = join(entryTempDir, bareComponentShimBasename);
@@ -437,15 +439,31 @@ installProgressiveNavigation();
 void boot().catch(() => undefined);
 `;
 
+  await Bun.write(
+    bareComponentShimPath,
+    bareComponentShimSource(
+      componentDefinition.importPath,
+      componentExportNameFor(componentDefinition.source, componentName),
+    ),
+  );
+  await Bun.write(entryTempPath, entrySource);
+  return entryTempPath;
+}
+
+type CompiledPageBundle = { entryPath: string; entryCode: string; artifacts: Map<string, string> };
+
+/**
+ * Compile one page's bundle on its own: the lazy-build path for a page the eager prebuild did not
+ * cover, or one an invalidation evicted. Pure with respect to the module-level caches.
+ */
+export async function compilePageBundleArtifacts(
+  componentName: string,
+  knownComponents?: ReadonlySet<string>,
+): Promise<CompiledPageBundle | null> {
+  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
   try {
-    await Bun.write(
-      bareComponentShimPath,
-      bareComponentShimSource(
-        componentDefinition.importPath,
-        componentExportNameFor(componentDefinition.source, componentName),
-      ),
-    );
-    await Bun.write(entryTempPath, entrySource);
+    const entryTempPath = await writePageEntry(componentName, knownComponents, entryTempDir);
+    if (entryTempPath === null) return null;
 
     const result = await coordinatedBuild(() =>
       Bun.build({
@@ -470,6 +488,110 @@ void boot().catch(() => undefined);
   } finally {
     rmSync(entryTempDir, { recursive: true, force: true });
   }
+}
+
+/** Page entries per shared `Bun.build` in the eager prebuild and the static export. */
+export const PAGE_BUNDLE_BATCH_SIZE = 24;
+
+/** The component an emitted page entry belongs to, or undefined when it is not one of `names`. */
+export function pageEntryComponent(
+  artifactPath: string,
+  names: ReadonlySet<string>,
+): string | undefined {
+  const match = /^page-(.+)-[A-Za-z0-9]+\.js$/u.exec(artifactPath);
+  return match !== null && names.has(match[1]!) ? match[1] : undefined;
+}
+
+/**
+ * Compile several pages' bundles in one multi-entry `Bun.build`, so modules the pages share are
+ * parsed and emitted once. Each page keeps its own hashed entry; every shared chunk the build
+ * emitted is published with each page, under the existing per-page owners.
+ */
+export async function compilePageBundleBatch(
+  componentNames: readonly string[],
+  knownComponents?: ReadonlySet<string>,
+): Promise<Map<string, CompiledPageBundle>> {
+  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
+  const compiled = new Map<string, CompiledPageBundle>();
+  try {
+    const entrypoints: string[] = [];
+    for (const name of componentNames) {
+      const entryTempPath = await writePageEntry(name, knownComponents, entryTempDir);
+      if (entryTempPath !== null) entrypoints.push(entryTempPath);
+    }
+    if (entrypoints.length === 0) return compiled;
+    const result = await coordinatedBuild(() =>
+      Bun.build({ entrypoints, publicPath: PUBLIC_PATH_BY_FAMILY.page, ...SHARED_BUILD_OPTIONS }),
+    );
+    if (!result.success) {
+      console.error('[playground] shared page bundle build failed:', result.logs);
+      return compiled;
+    }
+    const names = new Set(componentNames);
+    const shared = new Map<string, string>();
+    const entries: { name: string; path: string; code: string }[] = [];
+    for (const output of result.outputs) {
+      const path = artifactRelativePath(output.path);
+      const code = await output.text();
+      const name = output.kind === 'entry-point' ? pageEntryComponent(path, names) : undefined;
+      if (name === undefined) shared.set(path, code);
+      else entries.push({ name, path, code });
+    }
+    for (const entry of entries) {
+      compiled.set(entry.name, {
+        entryPath: entry.path,
+        entryCode: entry.code,
+        artifacts: new Map([[entry.path, entry.code], ...shared]),
+      });
+    }
+    return compiled;
+  } finally {
+    rmSync(entryTempDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Prebuild many pages as shared graphs of `batchSize` entries each, collecting garbage between
+ * batches so one batch's compiler graph is released before the next starts. Publishes each page
+ * under the same generation check as the lazy path, and returns one result per name, in order.
+ */
+export async function prebuildPageBundlesInBatches(
+  componentNames: readonly string[],
+  knownComponents?: ReadonlySet<string>,
+  batchSize: number = PAGE_BUNDLE_BATCH_SIZE,
+  collectGarbage: (force: boolean) => void = collectCoordinatedGarbage,
+): Promise<PromiseSettledResult<string | null>[]> {
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new RangeError(`batchSize must be a positive integer; received ${batchSize}`);
+  }
+  const results: PromiseSettledResult<string | null>[] = [];
+  for (let offset = 0; offset < componentNames.length; offset += batchSize) {
+    if (offset > 0) collectGarbage(true);
+    const batch = componentNames.slice(offset, offset + batchSize);
+    const generationAtStart = getRebuildGeneration();
+    try {
+      const compiled = await compilePageBundleBatch(batch, knownComponents);
+      for (const name of batch) {
+        const entry = compiled.get(name);
+        if (entry === undefined) {
+          results.push({ status: 'fulfilled', value: null });
+          continue;
+        }
+        publishPageArtifacts(name, entry.artifacts);
+        if (generationAtStart === getRebuildGeneration())
+          pageEntryByName.set(name, entry.entryPath);
+        results.push({ status: 'fulfilled', value: stableEntryModule('page', entry.entryPath) });
+      }
+    } catch (error) {
+      results.push(
+        ...batch.map((): PromiseSettledResult<string | null> => ({
+          status: 'rejected',
+          reason: error,
+        })),
+      );
+    }
+  }
+  return results;
 }
 
 /**

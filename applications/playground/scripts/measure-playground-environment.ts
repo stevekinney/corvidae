@@ -70,6 +70,37 @@ export function captureHostLoad(): HostLoad {
   };
 }
 
+/**
+ * Forced on every measured child, so the parent's environment cannot change what is measured.
+ * Every variable the Playground's configuration reader registers is listed: the harness removes
+ * them all (undefined), then sets the ones a phase needs explicitly (the export's base URL, the
+ * server's port and port file). `NODE_ENV` selects development or production Svelte compilation
+ * (`playground-svelte-plugin.ts`); removing it is how `bun run build` runs from a clean shell.
+ * `CINDER_TEST_COMPONENTS` is set empty, the server's every-component default, so an inherited value
+ * cannot narrow the eager prebuild. A test fails if the reader registers a variable missing here.
+ */
+export const NORMALIZED_CHILD_ENVIRONMENT: Readonly<Record<string, string | undefined>> = {
+  CINDER_TEST_COMPONENTS: '',
+  NODE_ENV: undefined,
+  PLAYGROUND_BASE_URL: undefined,
+  PLAYGROUND_LIFECYCLE_REQUIRE_REAPED: undefined,
+  PLAYGROUND_PORT_FILE: undefined,
+  PLAYGROUND_STATIC_BASE_URL: undefined,
+  PLAYGROUND_STATIC_CASES: undefined,
+  PLAYGROUND_STATIC_RESULTS: undefined,
+  PLAYGROUND_STATIC_SCRATCH: undefined,
+  PLAYGROUND_STATIC_SCREENSHOTS: undefined,
+  PORT: undefined,
+  VERCEL_GIT_COMMIT_SHA: undefined,
+};
+
+/** The normalized environment as a result file records it: null means removed. */
+export function recordedChildEnvironment(): Record<string, string | null> {
+  return Object.fromEntries(
+    Object.entries(NORMALIZED_CHILD_ENVIRONMENT).map(([name, value]) => [name, value ?? null]),
+  );
+}
+
 /** Whether the one-minute load is above `factor` times the logical processor count. */
 export function loadExceedsLimit(load: HostLoad, factor: number): boolean {
   return load.loadAverages.oneMinute > factor * load.logicalProcessors;
@@ -77,7 +108,8 @@ export function loadExceedsLimit(load: HostLoad, factor: number): boolean {
 
 export type LoadWait = {
   /** The one-minute load average a sample may start under: factor x logical processors. */
-  thresholdOneMinute: number;
+  /** The one-minute load a sample was held below, or null when the gate only records. */
+  thresholdOneMinute: number | null;
   waitedMilliseconds: number;
   checks: number;
   loadAtStart: HostLoad;
@@ -96,10 +128,15 @@ export type LoadWaitOptions = {
  * There is no deadline: a sample is never recorded into extreme load, and the wait is recorded.
  */
 export async function waitForSettledLoad(
-  factor: number,
+  factor: number | undefined,
   options: LoadWaitOptions = {},
 ): Promise<LoadWait> {
   const capture = options.capture ?? captureHostLoad;
+  // Record-only by default: host load never blocks a measurement. The load, logical processors,
+  // and memory pressure are recorded with the sample instead (CIN-588).
+  if (factor === undefined) {
+    return { thresholdOneMinute: null, waitedMilliseconds: 0, checks: 1, loadAtStart: capture() };
+  }
   const sleep = options.sleep ?? ((milliseconds: number) => Bun.sleep(milliseconds));
   const now = options.now ?? (() => performance.now());
   const intervalMilliseconds = options.intervalMilliseconds ?? 30_000;
@@ -147,8 +184,17 @@ export type SourceState = {
 };
 
 /** Hash the path and contents of every untracked, non-ignored file in sorted order. */
-export function untrackedContentSha256(repositoryRoot: string): string | null {
-  const paths = git(repositoryRoot, ['ls-files', '--others', '--exclude-standard', '-z'])
+export function untrackedContentSha256(
+  repositoryRoot: string,
+  excludedPaths: readonly string[] = [],
+): string | null {
+  const paths = git(repositoryRoot, [
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '-z',
+    ...pathspec(excludedPaths),
+  ])
     .split('\0')
     .filter((path) => path !== '')
     .toSorted();
@@ -173,13 +219,35 @@ export function partitionPorcelainStatus(porcelain: string): {
   };
 }
 
-export function captureSourceState(repositoryRoot: string): SourceState {
-  const diff = git(repositoryRoot, ['diff', 'HEAD']);
+/**
+ * A pathspec for the whole repository minus `excludedPaths` (repository-relative), so a run's own
+ * results never become part of the source it measured.
+ */
+function pathspec(excludedPaths: readonly string[]): string[] {
+  return ['--', '.', ...excludedPaths.map((path) => `:(exclude)${path}`)];
+}
+
+/**
+ * Fingerprint the working tree: HEAD, tracked changes, and untracked content, all without
+ * `excludedPaths` (repository-relative) — the run's own output and the directory it writes.
+ */
+export function captureSourceState(
+  repositoryRoot: string,
+  excludedPaths: readonly string[] = [],
+): SourceState {
+  const diff = git(repositoryRoot, ['diff', 'HEAD', ...pathspec(excludedPaths)]);
   return {
     sourceSha: git(repositoryRoot, ['rev-parse', 'HEAD']).trim(),
-    ...partitionPorcelainStatus(git(repositoryRoot, ['status', '--porcelain'])),
+    ...partitionPorcelainStatus(
+      git(repositoryRoot, [
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+        ...pathspec(excludedPaths),
+      ]),
+    ),
     workingTreeDiffSha256: diff === '' ? null : createHash('sha256').update(diff).digest('hex'),
-    untrackedSha256: untrackedContentSha256(repositoryRoot),
+    untrackedSha256: untrackedContentSha256(repositoryRoot, excludedPaths),
   };
 }
 
@@ -210,17 +278,18 @@ export type PinnedEnvironment = SourceState & {
   playgroundEnvironment: Record<string, string | undefined>;
   /**
    * The variables `measure-playground.ts` forces on every measured child, with null meaning removed.
-   * Absent from results recorded before children were normalized.
+   * Required from schema version 2 on.
    */
-  childEnvironment?: Record<string, string | null>;
+  childEnvironment: Record<string, string | null>;
 };
 
 export function capturePinnedEnvironment(
   repositoryRoot: string,
   playgroundRoot: string,
+  excludedPaths: readonly string[] = [],
 ): PinnedEnvironment {
   return {
-    ...captureSourceState(repositoryRoot),
+    ...captureSourceState(repositoryRoot, excludedPaths),
     lockfileSha256: createHash('sha256')
       .update(readFileSync(join(repositoryRoot, 'bun.lock')))
       .digest('hex'),
@@ -239,5 +308,6 @@ export function capturePinnedEnvironment(
     totalMemoryBytes: totalmem(),
     containerMemoryLimit: containerMemoryLimit(),
     playgroundEnvironment: { ...readEnvironmentConfiguration() },
+    childEnvironment: recordedChildEnvironment(),
   };
 }

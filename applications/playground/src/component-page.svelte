@@ -849,9 +849,13 @@
         previewRecipe,
       ),
   );
-  const hasFocusablePreview = $derived(
-    overviewExample !== undefined || (canGenerateFromProps && canMountBare),
-  );
+  /**
+   * Whether this page's stage will hold a live preview generated from props. It reads only the
+   * manifest and the preview recipe, so the server and the client agree on it before the bare
+   * module loads.
+   */
+  const livePreviewPossible = $derived(canGenerateFromProps && canMountBare);
+  const hasFocusablePreview = $derived(overviewExample !== undefined || livePreviewPossible);
 
   const bareComponent = $derived(
     documentation === null || !canMountBare || previewRecipe?.prefersFeaturedExample === true
@@ -1347,12 +1351,19 @@
                         : 'Shows the featured example.'}
                     </p>
                   </div>
-                {:else if !snapshotMode && composesInto !== undefined}
-                  <!-- Compound PARTS have no live mount (they throw without
-                 their provider) and ship no examples of their own, so
-                 every other branch leaves them a permanently empty
+                {:else if !snapshotMode && composesInto !== undefined && !livePreviewPossible}
+                  <!-- Compound PARTS that cannot mount alone (they throw
+                 without their provider) ship no examples of their own,
+                 so every other branch leaves them a permanently empty
                  frame. Point at the root instead: that page documents
-                 the composition this component exists for. -->
+                 the composition this component exists for.
+
+                 A part that CAN mount alone (DropdownSeparator,
+                 DropdownGroup, …) takes the reserved stage below
+                 instead. Gating only on `composesInto` showed it this
+                 guidance first and swapped in the live preview when the
+                 lazily imported module resolved, so the stage changed
+                 under anything that had already read it. -->
                   <div class="dx-stage" data-stage-composed>
                     <div class="dx-stage__bar">
                       <span class="dx-stage__dot" aria-hidden="true"></span>
@@ -1369,7 +1380,7 @@
                       </p>
                     </div>
                   </div>
-                {:else if !snapshotMode && canGenerateFromProps && canMountBare}
+                {:else if !snapshotMode && livePreviewPossible}
                   <!-- Reserve the stage for components with NO examples (label,
                  statistic, …). Without this branch the server renders
                  nothing here, and hydration then INSERTS the whole live

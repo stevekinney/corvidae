@@ -28,7 +28,7 @@
  */
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { PLAYGROUND_ROOT, REPOSITORY_ROOT } from '../src/playground-paths.ts';
@@ -36,6 +36,7 @@ import {
   captureHostLoad,
   capturePinnedEnvironment,
   captureSourceState,
+  NORMALIZED_CHILD_ENVIRONMENT,
   waitForSettledLoad,
   type HostLoad,
   type LoadWait,
@@ -51,6 +52,7 @@ import {
 import { startTreeSampler, type TreeSampleSeries } from './measure-playground-process-tree.ts';
 import {
   comparabilityProblems,
+  memoryPressureFlags,
   observationsFromResults,
   RESULT_SCHEMA,
   runFailures,
@@ -79,8 +81,18 @@ export type Phase = (typeof PHASES)[number];
 const PRODUCTION_BASE_URL = 'https://cinder.website';
 /** The Playwright configuration's fixed port; `test:browser` refuses to run if it is taken. */
 const PLAYWRIGHT_PORT = 5597;
-/** The Playwright configuration's existing web-server readiness limit, reused unchanged. */
-const SERVER_READY_DEADLINE_MILLISECONDS = 300_000;
+/**
+ * How long a server-readiness sample may take before it is censored as a miss. It is a measurement
+ * censor, not a test gate: on a contended host readiness exceeded the old 300 s cutoff at a load
+ * near 60, against 102-124 s on a quiet host (CIN-585). Owner-approved on 2026-10-15 (CIN-588);
+ * the production gate and test timeouts are unchanged.
+ */
+export const SERVER_READY_DEADLINE_MILLISECONDS = 900_000;
+
+/** Whether a readiness wait has run past the cutoff, so the sample is recorded as a miss. */
+export function readinessWaitExceeded(elapsedMilliseconds: number): boolean {
+  return elapsedMilliseconds > SERVER_READY_DEADLINE_MILLISECONDS;
+}
 const READY_POLL_INTERVAL_MILLISECONDS = 100;
 
 export type RunOptions = {
@@ -93,7 +105,8 @@ export type RunOptions = {
   playwrightPairs: number;
   cycles: number;
   serverPort: number;
-  maximumLoadFactor: number;
+  /** Opt-in only: hold each sample while the one-minute load exceeds this times the processors. */
+  maximumLoadFactor?: number;
 };
 
 export type CompareOptions = {
@@ -102,6 +115,20 @@ export type CompareOptions = {
   candidate: string;
   output: string | undefined;
 };
+
+/**
+ * Repository-relative paths a run writes: the directory holding its `--output` file and its work
+ * directory. Both are left out of the source fingerprint, so results can live in the repository.
+ */
+export function outputExclusions(
+  output: string,
+  workDirectory: string,
+  repositoryRoot: string = REPOSITORY_ROOT,
+): string[] {
+  return [dirname(output), workDirectory]
+    .map((path) => relative(repositoryRoot, path))
+    .filter((path) => path !== '' && !path.startsWith('..') && !isAbsolute(path));
+}
 
 function positiveNumber(name: string, value: string): number {
   const parsed = Number(value);
@@ -134,7 +161,7 @@ export function parseCommandLine(
       'playwright-pairs': { type: 'string', default: '1' },
       cycles: { type: 'string', default: '5' },
       'server-port': { type: 'string', default: '5610' },
-      'maximum-load-factor': { type: 'string', default: '3' },
+      'maximum-load-factor': { type: 'string' },
       baseline: { type: 'string' },
       candidate: { type: 'string' },
     },
@@ -179,7 +206,11 @@ export function parseCommandLine(
     playwrightPairs: positiveInteger('playwright-pairs', values['playwright-pairs']),
     cycles: positiveInteger('cycles', values.cycles),
     serverPort: positiveInteger('server-port', values['server-port']),
-    maximumLoadFactor: positiveNumber('maximum-load-factor', values['maximum-load-factor']),
+    ...(values['maximum-load-factor'] === undefined
+      ? {}
+      : {
+          maximumLoadFactor: positiveNumber('maximum-load-factor', values['maximum-load-factor']),
+        }),
   };
 }
 
@@ -213,25 +244,6 @@ type OwnedChild = {
   finish: () => Promise<ChildMeasurement>;
   kill: (signal: NodeJS.Signals) => void;
 };
-
-/**
- * Forced on every measured child, so the parent's environment cannot change what is measured.
- * `NODE_ENV` selects development or production Svelte compilation (`playground-svelte-plugin.ts`)
- * and is removed, which is how `bun run build` runs from a clean shell. An inherited
- * `CINDER_TEST_COMPONENTS` would narrow the server's eager prebuild; empty is its every-component
- * default.
- */
-export const NORMALIZED_CHILD_ENVIRONMENT: Readonly<Record<string, string | undefined>> = {
-  NODE_ENV: undefined,
-  CINDER_TEST_COMPONENTS: '',
-};
-
-/** The normalized environment as a result file records it: null means removed. */
-export function recordedChildEnvironment(): Record<string, string | null> {
-  return Object.fromEntries(
-    Object.entries(NORMALIZED_CHILD_ENVIRONMENT).map(([name, value]) => [name, value ?? null]),
-  );
-}
 
 /** Spawn a child, drain both pipes into its log, and observe its process tree every 100 ms. */
 function spawnOwnedChild(
@@ -316,7 +328,10 @@ function sampleHeader(context: SampleContext): {
     loadWait: context.loadWait,
     temperature: context.temperature,
     hostLoadBefore: captureHostLoad(),
-    source: captureSourceState(REPOSITORY_ROOT),
+    source: captureSourceState(
+      REPOSITORY_ROOT,
+      outputExclusions(context.options.output, context.options.workDirectory),
+    ),
   };
 }
 
@@ -390,7 +405,7 @@ async function measureServerReady(context: SampleContext): Promise<ServerReadySa
     const port = await readPort(portFile);
     if (port !== null && (await isReady(port)))
       spawnToReadyMilliseconds = performance.now() - startedAt;
-    else if (performance.now() - startedAt > SERVER_READY_DEADLINE_MILLISECONDS) break;
+    else if (readinessWaitExceeded(performance.now() - startedAt)) break;
     else if (!isAlive(child.pid)) exitedEarly = true;
     else await Bun.sleep(READY_POLL_INTERVAL_MILLISECONDS);
   }
@@ -535,29 +550,64 @@ export const DEFINITIONS: Record<string, string> = {
   treePeakResidentBytes:
     'Largest sum of ps rss (KiB x 1024) across the child and its descendants, sampled every 100 ms by one observer for baseline and candidate.',
   spawnToReadyMilliseconds:
-    'Spawn of bun src/playground-server.ts to the first GET /ready answering 200 "ready", polled every 100 ms.',
+    'Spawn of bun src/playground-server.ts to the first GET /ready answering 200 "ready", polled every 100 ms. A sample still not ready after 900 s (owner-approved 2026-10-15; 300 s before CIN-588) is recorded as a miss.',
   jsHeap:
     'Chromium JS heap through CDP Runtime.getHeapUsage after HeapProfiler.collectGarbage; never summed with RSS.',
   hostLoad:
     'uptime load averages and os.availableParallelism() captured before and after every sample.',
+  loadGate:
+    'Record-only by default: every sample records the load averages, logical processors, and memory pressure without waiting. --maximum-load-factor opts into holding each sample while the 1-minute load exceeds that factor times the logical processors.',
+  memoryPressure:
+    'The process-tree observer reads kern.memorystatus_vm_pressure_level (1 normal, 2 warning, 4 critical) on every 100 ms tick. A sample whose maximum is above normal, or which has no reading, is flagged; a flagged run exits nonzero, and compare refuses a primary memory observation from a flagged sample.',
 };
+
+/** Run the install prerequisite, then capture the environment it may have changed. */
+export async function prerequisitesThenEnvironment<Environment>(
+  runPrerequisites: () => Promise<void>,
+  captureEnvironment: () => Environment,
+): Promise<Environment> {
+  await runPrerequisites();
+  return captureEnvironment();
+}
 
 async function run(options: RunOptions): Promise<MeasurementResults> {
   await mkdir(options.workDirectory, { recursive: true });
   const startedAt = new Date().toISOString();
   const has = (phase: Phase): boolean => options.phases.includes(phase);
+  const exclusions = outputExclusions(options.output, options.workDirectory);
+  const prerequisites: MeasurementResults['prerequisites'] = [];
+  // The install can change what is installed, so versions are read after it, not before.
+  const environment = await prerequisitesThenEnvironment(
+    async () => {
+      if (!has('prerequisites')) return;
+      const loadWait = await settledLoad(options, 'prerequisites');
+      process.stdout.write('[measure-playground] prerequisites\n');
+      const hostLoadBefore = captureHostLoad();
+      const source = captureSourceState(REPOSITORY_ROOT, exclusions);
+      const child = await spawnOwnedChild(['bun', 'install', '--frozen-lockfile'], {
+        cwd: REPOSITORY_ROOT,
+        logPath: join(options.workDirectory, 'prerequisites.log'),
+      }).finish();
+      prerequisites.push({
+        pair: 1,
+        loadWait,
+        hostLoadBefore,
+        hostLoadAfter: captureHostLoad(),
+        source,
+        child,
+      });
+    },
+    () => capturePinnedEnvironment(REPOSITORY_ROOT, PLAYGROUND_ROOT, exclusions),
+  );
   const results: MeasurementResults = {
     schema: RESULT_SCHEMA,
     label: options.label,
     startedAt,
     finishedAt: startedAt,
-    environment: {
-      ...capturePinnedEnvironment(REPOSITORY_ROOT, PLAYGROUND_ROOT),
-      childEnvironment: recordedChildEnvironment(),
-    },
+    environment,
     routeInventory: [],
     definitions: DEFINITIONS,
-    prerequisites: [],
+    prerequisites,
     staticExport: [],
     serverReady: [],
     playwright: [],
@@ -567,25 +617,7 @@ async function run(options: RunOptions): Promise<MeasurementResults> {
     results.finishedAt = new Date().toISOString();
     await writeJson(options.output, results);
   };
-  if (has('prerequisites')) {
-    const loadWait = await settledLoad(options, 'prerequisites');
-    process.stdout.write('[measure-playground] prerequisites\n');
-    const hostLoadBefore = captureHostLoad();
-    const source = captureSourceState(REPOSITORY_ROOT);
-    const child = await spawnOwnedChild(['bun', 'install', '--frozen-lockfile'], {
-      cwd: REPOSITORY_ROOT,
-      logPath: join(options.workDirectory, 'prerequisites.log'),
-    }).finish();
-    results.prerequisites.push({
-      pair: 1,
-      loadWait,
-      hostLoadBefore,
-      hostLoadAfter: captureHostLoad(),
-      source,
-      child,
-    });
-    await checkpoint();
-  }
+  if (prerequisites.length > 0) await checkpoint();
   if (has('static-export')) {
     await measurePairs(
       options,
@@ -665,7 +697,12 @@ async function main(): Promise<boolean> {
   const results = await run(options);
   await writeJson(options.output, results);
   // Probe children are measured children too, so their survivors count (survivingPidFailures).
-  const failures = [...runFailures(results), ...survivingPidFailures(results)];
+  // A flagged memory observation invalidates the run for selection, so it fails like a survivor.
+  const failures = [
+    ...runFailures(results),
+    ...survivingPidFailures(results),
+    ...memoryPressureFlags(results),
+  ];
   const warnings = treeReadWarnings(results);
   if (warnings.length > 0) {
     process.stderr.write(

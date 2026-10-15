@@ -13,7 +13,16 @@ export const STATIC_VIEWPORTS = [
   { width: 390, height: 844 },
 ] as const;
 
-export type StaticCaseView = 'documentation' | 'playground' | 'page';
+export type StaticCaseView = 'documentation' | 'playground' | 'page' | 'navigation';
+
+/**
+ * The spec's one interaction case, which is not a route check: a component-to-component click on
+ * the static export swaps the page in place. It is in the case list, under the test's own title,
+ * so it is counted with the route cases and runs in exactly one shard.
+ */
+export const IN_PLACE_NAVIGATION_CASE_ID =
+  'a component-to-component click swaps the page in place on the static export';
+const IN_PLACE_NAVIGATION_ROUTES = ['/page/button', '/page/chat'] as const;
 
 export type StaticCase = {
   id: string;
@@ -49,6 +58,17 @@ export function createCaseList(routes: readonly string[]): StaticCase[] {
         cases.push({ id: caseId(route, view, width), route, view, width, height });
       }
     }
+  }
+  const routeSet = new Set(routes);
+  if (IN_PLACE_NAVIGATION_ROUTES.every((route) => routeSet.has(route))) {
+    const [{ width, height }] = STATIC_VIEWPORTS;
+    cases.push({
+      id: IN_PLACE_NAVIGATION_CASE_ID,
+      route: IN_PLACE_NAVIGATION_ROUTES[0],
+      view: 'navigation',
+      width,
+      height,
+    });
   }
   return cases.toSorted((left, right) => compareCodeUnits(left.id, right.id));
 }

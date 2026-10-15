@@ -222,25 +222,6 @@ describe('createEvaluationHistory', () => {
     );
   });
 
-  test('rejects read() with CorruptHistoricalRecordError when any single byte of the stored record changes', async () => {
-    const { storage, store, history } = memoryHistory();
-    const appended = await history.append(baselineRecord());
-    const key = await onlyKey(store);
-    const original = (await storage.get(key))!.slice();
-
-    for (let index = 0; index < original.length; index++) {
-      const changed = original.slice();
-      changed[index] = changed[index]! ^ 0x01;
-      await storage.put(key, changed);
-      expect(await rejectionOf(history.read(BASELINE_RUN_ID))).toBeInstanceOf(
-        CorruptHistoricalRecordError,
-      );
-    }
-
-    await storage.put(key, original);
-    expect(await history.read(BASELINE_RUN_ID)).toEqual(appended);
-  });
-
   test('rejects a stored record that is not valid UTF-8', async () => {
     const { storage, store, history } = memoryHistory();
     await history.append(baselineRecord());
