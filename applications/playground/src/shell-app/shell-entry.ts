@@ -89,6 +89,8 @@ function attachLandingPage(): ShellRun {
       import('./shell-initial-data.ts'),
       import('./shell.svelte'),
     ]).then(([svelte, initialDataModule, shellModule]) => {
+      // The page was swapped out while these modules loaded: there is no root to hydrate.
+      if (teardown.signal.aborted) return undefined;
       const target = document.getElementById('shell-root');
       if (target === null) throw new Error('[cinder playground] #shell-root target not found');
 

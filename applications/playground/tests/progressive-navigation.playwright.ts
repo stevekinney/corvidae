@@ -376,6 +376,101 @@ test.describe('in-page navigation', () => {
     expect(live.filter((entry) => entry.signalled)).toEqual([]);
   });
 
+  test('a stalled stylesheet does not block a later click and leaves nothing behind', async ({
+    page,
+  }) => {
+    const buttonLinks = await renderedHeadResources(page, '/page/button');
+    const alertLinks = await renderedHeadResources(page, '/page/alert');
+    const chatLinks = await renderedHeadResources(page, '/page/chat');
+    const chatOnly = chatLinks
+      .filter((href) => !buttonLinks.includes(href) && !alertLinks.includes(href))
+      .map((href) => new URL(href, 'http://localhost').pathname);
+    expect(chatOnly.length).toBeGreaterThan(0);
+
+    await page.goto('/page/button');
+    await hydratedHeading(page, 'Button');
+    await markDocument(page);
+    const held: Route[] = [];
+    await page.route('**/*.css', async (route: Route) => {
+      if (chatOnly.includes(new URL(route.request().url()).pathname)) held.push(route);
+      else await route.continue();
+    });
+
+    await sidebarLink(page, 'chat').click();
+    await expect.poll(() => held.length).toBeGreaterThan(0);
+    await sidebarLink(page, 'alert').click();
+
+    await expect(page).toHaveURL(/\/page\/alert$/);
+    await hydratedHeading(page, 'Alert');
+    const hrefs = await liveStylesheetHrefs(page);
+    for (const href of chatOnly) expect(hrefs).not.toContain(href);
+    expect(await documentSurvived(page)).toBe(true);
+    for (const route of held) await route.abort().catch(() => undefined);
+  });
+
+  test('a landing hydration still loading when the page is left does nothing later', async ({
+    page,
+  }) => {
+    const problems: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') problems.push(message.text());
+    });
+    page.on('pageerror', (error) => problems.push(error.message));
+    await page.goto('/');
+    await expect(page.locator('#shell-root h1')).toHaveCount(1);
+    await markDocument(page);
+
+    // Hold every shell chunk the toggle's hydration asks for.
+    const held: Route[] = [];
+    await page.route('**/shell-bundle/**', async (route: Route) => {
+      held.push(route);
+    });
+    await page.locator('button[aria-label^="Preview theme:"]').click();
+    await expect.poll(() => held.length).toBeGreaterThan(0);
+
+    await page.unroute('**/shell-bundle/**');
+    await page.locator('nav.dx-nav a[href="/page/alert"]').click();
+    await hydratedHeading(page, 'Alert');
+    for (const route of held) await route.continue().catch(() => undefined);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+
+    expect(problems).toEqual([]);
+    expect(await page.locator('#shell-root').count()).toBe(0);
+    await expect(page.locator('#app h1')).toHaveCount(1);
+    expect(await documentSurvived(page)).toBe(true);
+  });
+
+  test('an entry this module did not make gets its own scroll memory', async ({ page }) => {
+    await page.goto('/page/button');
+    await hydratedHeading(page, 'Button');
+    await page.evaluate(() => window.scrollTo(0, 400));
+    const buttonScroll = await page.evaluate(() => window.scrollY);
+    expect(buttonScroll).toBeGreaterThan(0);
+
+    await sidebarLink(page, 'alert').click();
+    await hydratedHeading(page, 'Alert');
+    // Something else rewrote the entry's state, as a foreign pushState would.
+    await page.evaluate(() => history.replaceState(null, '', location.href));
+
+    await page.goBack();
+    await hydratedHeading(page, 'Button');
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(buttonScroll);
+    await page.goForward();
+    await hydratedHeading(page, 'Alert');
+    await page.evaluate(() => window.scrollTo(0, 120));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(120);
+
+    await page.goBack();
+    await hydratedHeading(page, 'Button');
+    // Alert's offset must not have been written over the button entry's.
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(buttonScroll);
+  });
+
   test('the home link swaps to the landing page and back', async ({ page }) => {
     await page.goto('/page/button');
     await hydratedHeading(page, 'Button');

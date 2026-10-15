@@ -109,14 +109,24 @@ function readGlobalIslands(root: Document): Map<string, unknown> {
   return islands;
 }
 
-function waitForStylesheet(link: HTMLLinkElement): Promise<void> {
+function waitForStylesheet(link: HTMLLinkElement, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    link.addEventListener('load', () => resolve(), { once: true });
-    link.addEventListener(
-      'error',
-      () => reject(new Error(`[cinder playground] stylesheet failed to load: ${link.href}`)),
-      { once: true },
-    );
+    const settle = (finish: () => void): void => {
+      link.removeEventListener('load', onLoad);
+      link.removeEventListener('error', onError);
+      signal.removeEventListener('abort', onAbort);
+      finish();
+    };
+    const onLoad = (): void => settle(resolve);
+    const onError = (): void =>
+      settle(() =>
+        reject(new Error(`[cinder playground] stylesheet failed to load: ${link.href}`)),
+      );
+    const onAbort = (): void => settle(() => reject(new SupersededNavigationError()));
+    link.addEventListener('load', onLoad);
+    link.addEventListener('error', onError);
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort);
   });
 }
 
@@ -133,7 +143,7 @@ function managedHeadElements(): Map<string, Element> {
  * Add the target's missing stylesheets and styles to the head and wait for the links to load.
  * Nothing is removed here.
  */
-async function addTargetHead(target: Document, base: string): Promise<void> {
+async function addTargetHead(target: Document, base: string, signal: AbortSignal): Promise<void> {
   const current = managedHeadElements();
   const targetElements = new Map<string, Element>();
   for (const element of target.head.children) {
@@ -142,12 +152,20 @@ async function addTargetHead(target: Document, base: string): Promise<void> {
   }
   const { add } = planHeadReconciliation([...current.keys()], [...targetElements.keys()]);
   const loading: Promise<void>[] = [];
+  const appended: Element[] = [];
   for (const key of add) {
     const imported = document.importNode(targetElements.get(key)!, true);
     document.head.append(imported);
-    if (imported instanceof HTMLLinkElement) loading.push(waitForStylesheet(imported));
+    appended.push(imported);
+    if (imported instanceof HTMLLinkElement) loading.push(waitForStylesheet(imported, signal));
   }
-  await Promise.all(loading);
+  try {
+    await Promise.all(loading);
+  } catch (error) {
+    // Whatever this call added belongs to a navigation that will not finish.
+    for (const element of appended) element.remove();
+    throw error;
+  }
 }
 
 /** Remove the managed resources the target does not use, and replace the page metadata. */
@@ -359,7 +377,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       });
       await previous;
       assertCurrent(ticket);
-      await addTargetHead(loaded.document, loaded.url.href);
+      await addTargetHead(loaded.document, loaded.url.href, ticket.signal);
       assertCurrent(ticket);
       // From here the navigation owns the page and runs to the end.
       ownsPage = true;
@@ -380,8 +398,14 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       currentEntryId = state.id;
       return;
     }
-    currentEntryId = crypto.randomUUID();
-    history.replaceState({ cinderNavigation: true, id: currentEntryId } satisfies EntryState, '');
+    currentEntryId = tagCurrentEntry();
+  }
+
+  /** Give the history entry on screen an id of its own and return it. */
+  function tagCurrentEntry(): string {
+    const id = crypto.randomUUID();
+    history.replaceState({ cinderNavigation: true, id } satisfies EntryState, '');
+    return id;
   }
 
   const navigation: ProgressiveNavigation = {
@@ -451,7 +475,9 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       window.location.assign(destination.href);
       return;
     }
-    void visit(destination, { kind: 'pop', entryId: state?.id ?? null });
+    // An entry this module did not make has no id yet. Give it one now, or the page that
+    // replaces the current one would keep this page's id and share its scroll memory.
+    void visit(destination, { kind: 'pop', entryId: state?.id ?? tagCurrentEntry() });
   });
 
   scope['__CINDER_NAVIGATION__'] = navigation;
