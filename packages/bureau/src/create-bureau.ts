@@ -3111,7 +3111,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * dispatch branches, so `dispose()` can abort a catalog run still in
    * flight the same way it already aborts bureau-owned `ActiveRun`s.
    * Untracked on terminal settlement so a long-lived bureau does not retain
-   * one entry per historical run forever.
+   * one entry per historical run forever. The `store` entry such a run now
+   * also has (COR-1302, `registerCatalogRun`) is deliberately retained the
+   * way a `createRun` run's is, until `deleteRun`.
    *
    * This does NOT also untrack `runAttribution` (review finding
    * PRRT_kwDORvupsc6gUhzr): a settled catalog run's attribution must
@@ -9712,9 +9714,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * COR-1302: registers the `ActiveRun` behind a `bureau.run()` dispatch on
-   * `store`, so `getRun(run.id)`, `abortRun(run.id)`, `getRunReport`, and
+   * `store`, so `getRun(run.id)`, `abortRun(run.id)`, and
    * `subscribeRunSnapshot` resolve the handle's id on both the direct and the
-   * durable branch. The run keeps everything else a catalog run had: no
+   * durable branch. (`getRunReport` resolves it too, but only as a partial
+   * report: the terminal report cache is filled by `createRunFromRequest`.) The run keeps everything else a catalog run had: no
    * bureau session (its session id reads `''`), no `activeRuns` entry
    * (`catalogRuns` still drives its shutdown), and no listing (see
    * `catalogRunIds`). Like a `createRun` run it stays on `store` once it
