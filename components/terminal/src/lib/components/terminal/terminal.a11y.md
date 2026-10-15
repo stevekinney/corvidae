@@ -36,7 +36,7 @@ Until the engine mounts, the viewport is `inert` and the message says `Loading t
 
 ## Keyboard and focus
 
-Arriving output, a state change, and mounting never move focus. The engine's input surface is an ordinary tab stop, so Tab enters and leaves it. A visible focus ring surrounds the viewport while focus is inside it, and under forced colors the ring uses the system `Highlight` color. Sending input, safe paste, and the `Capture terminal keys` interaction belong to the input layer; this component only renders the control.
+Arriving output, a state change, and mounting never move focus. The engine's input surface is an ordinary tab stop, so Tab enters and leaves it. A visible focus ring surrounds the viewport while focus is inside it, and under forced colors the ring uses the system `Highlight` color. Sending input, safe paste, and the `Capture terminal keys` interaction belong to the input layer; this component only renders the control. Mouse reporting is off by default; when the host turns on `mouseReporting`, the pointer reports to the program only while the `Capture terminal keys` button is pressed, and otherwise the pointer selects text. While it reports, a `Mouse reporting on` badge is shown in the control group and referenced by the capture button's `aria-describedby`; it is plain text, not a live region. The program turning reporting on or off is announced once each in the polite status region; capture or the view changing it adds no second announcement. A paste while the program has bracketed paste on is always reviewed, and the review states whether a pasted terminator ends the protected paste early.
 
 ## Motion and color
 
