@@ -375,13 +375,27 @@ describe('exit, stop and the final result', () => {
     expect(summary.cause).toBe('attachment-stop');
   });
 
-  test('a read-only client cannot stop the session by sending terminate', async () => {
+  // "Output-only sources ... advertise no input, resize, or kill capability", so a terminate from
+  // an attachment without `kill` is never a stop. It is answered as the attachment ending, never dropped.
+  test('a read-only client cannot stop the session by sending terminate: it is detached, and told so', async () => {
     const { harness, transport } = await wire({}, { grant: 'read-only' });
-    transport.connection.receive(forged({ kind: 'terminate' }, 1));
+    transport.send(transport.client.terminate());
     await flush();
-    expect(harness.session.snapshot.closed).toBe(false);
-    expect(harness.session.snapshot.connection).toEqual({ kind: 'attached', generation: 1 });
-    expect(harness.backend?.calls).toEqual([{ call: 'start' }]);
+    const summary = await harness.session.closed;
+    expect(summary.cause).toBe('disconnect');
+    expect(transport.pump().map((message) => message.kind)).toEqual(['cleanup-result']);
+    expect(transport.closeCodes).toEqual([1000]);
+    expect(transport.failures).toEqual([]);
+  });
+
+  test('a terminate on an output-only attachment is answered with the cleanup result', async () => {
+    const { harness, transport } = await wire({ backend: false });
+    transport.send(transport.client.terminate());
+    await flush();
+    const summary = await harness.session.closed;
+    expect(summary.cause).toBe('disconnect');
+    expect(transport.pump().map((message) => message.kind)).toEqual(['cleanup-result']);
+    expect(transport.closeCodes).toEqual([1000]);
   });
 
   test('a malformed frame revokes the generation and cleans up, closing once with the protocol code', async () => {
@@ -525,7 +539,8 @@ describe('trailing output after the process exit', () => {
     await flush();
     expect(harness.session.snapshot.connection.kind).toBe('revoked');
     const summary = await harness.session.closed;
-    expect(summary.cause).toBe('protocol-failure');
+    // The exit is the first cause, so the refusal it provokes hurries the close without replacing it.
+    expect(summary.cause).toBe('process-exit');
     expect(transport.closeCodes).toEqual([1002]);
   });
 });
@@ -584,6 +599,145 @@ describe('liveness', () => {
     transport.connection.receive('not a frame');
     harness.clock.advance(20_000);
     expect(harness.session.snapshot.connection.kind).toBe('revoked');
+  });
+});
+
+describe('a cancellation while the process exit is held', () => {
+  // "Exit: the host emits PTY EOF or source completion, then the distinct process-exit result when
+  // known, revokes the generation, and emits cleanup-result." A cancellation is not a submitted failure.
+  test('does not suppress the exit: the client receives process-exit and the transport closes normally', async () => {
+    const { harness, transport } = await wire();
+    transport.send(transport.client.input(utf8('queued')));
+    // The exit cancels the queued operation before the source has reached end of file.
+    harness.session.reportProcessExit(0, null);
+    await flush();
+    expect(transport.closeCodes).toEqual([]);
+    harness.stream.end();
+    await flush();
+    transport.pump();
+    expect(transport.closeCodes).toEqual([1000]);
+    expect(transport.received.map((message) => message.kind)).toEqual([
+      'capabilities',
+      'operation-ack',
+      'process-exit',
+      'operation-failure',
+      'cleanup-result',
+    ]);
+    expect(transport.failures).toEqual([]);
+    const summary = await harness.session.closed;
+    expect(summary.cause).toBe('process-exit');
+  });
+
+  test('a cancellation with no exit held is still reported at once', async () => {
+    const gate = createDeferred<void>();
+    const { harness, transport } = await wire({ backend: { write: () => gate.promise } });
+    transport.send(transport.client.input(utf8('a')));
+    await flush();
+    transport.send(transport.client.input(utf8('b')));
+    void harness.session.stop();
+    await flush();
+    expect(transport.pump().map((message) => message.kind)).toEqual([
+      'operation-ack',
+      'operation-ack',
+      'operation-failure',
+      'operation-failure',
+      'cleanup-result',
+    ]);
+    gate.resolve();
+  });
+});
+
+describe('a submitted write that fails while the process exit is held', () => {
+  // "backend-failed | server, submitted operation | operation failure; generation revoked | 1011" and
+  // "A failed connection is not a successful process exit": the held exit is dropped, never sent to be refused.
+  test('reports the failure and the cleanup result without calling the dropped exit a protocol violation', async () => {
+    const write = createDeferred<void>();
+    const harness = createHarness({ backend: { write: () => write.promise } });
+    let violations = 0;
+    const attach = harness.session.attach.bind(harness.session);
+    harness.session.attach = (request) => {
+      const result = attach(request);
+      if (!result.accepted) return result;
+      const original = result.attachment.protocolViolation;
+      return {
+        ...result,
+        attachment: {
+          ...result.attachment,
+          protocolViolation: () => {
+            violations += 1;
+            return original();
+          },
+        },
+      };
+    };
+    const transport = createFixtureTransport({ session: harness.session });
+    void harness.session.start();
+    await flush();
+    transport.connect();
+    transport.send(transport.client.input(utf8('a')));
+    await flush();
+    harness.session.reportProcessExit(0, null);
+    write.reject(new Error('write failed'));
+    await flush();
+    harness.stream.end();
+    await flush();
+    transport.pump();
+    expect(transport.received.map((message) => message.kind)).toEqual([
+      'capabilities',
+      'operation-ack',
+      'operation-failure',
+      'cleanup-result',
+    ]);
+    expect(transport.failures).toEqual([]);
+    expect(transport.closeCodes).toEqual([1011]);
+    expect(violations).toBe(0);
+  });
+});
+
+describe('transport liveness', () => {
+  test('a quiet read-only attachment stays attached while the transport reports itself alive', async () => {
+    const { harness, transport } = await wire({}, { grant: 'read-only' });
+    for (let tick = 0; tick < 4; tick += 1) {
+      harness.clock.advance(20_000);
+      expect(transport.connection.noteTransportAlive()).toBe(true);
+    }
+    expect(harness.session.snapshot.connection).toEqual({ kind: 'attached', generation: 1 });
+    expect(harness.session.snapshot.closed).toBe(false);
+  });
+
+  test('a quiet output-only attachment stays attached while the transport reports itself alive', async () => {
+    const { harness, transport } = await wire({ backend: false });
+    for (let tick = 0; tick < 4; tick += 1) {
+      harness.clock.advance(20_000);
+      expect(transport.connection.noteTransportAlive()).toBe(true);
+    }
+    expect(harness.session.snapshot.connection).toEqual({ kind: 'attached', generation: 1 });
+  });
+
+  test('a dead transport still expires, and a late report revives nothing', async () => {
+    const { harness, transport } = await wire({}, { grant: 'read-only' });
+    harness.clock.advance(30_000);
+    expect(transport.connection.noteTransportAlive()).toBe(false);
+    await flush();
+    const summary = await harness.session.closed;
+    expect(summary.cause).toBe('liveness-expired');
+    expect(transport.closeCodes).toEqual([1000]);
+  });
+
+  test('a report before any attachment exists is ignored', () => {
+    const harness = createHarness();
+    const transport = createFixtureTransport({ session: harness.session });
+    expect(transport.connection.noteTransportAlive()).toBe(false);
+  });
+
+  test('a transport report grants no authority', async () => {
+    const { harness, transport } = await wire({}, { grant: 'read-only' });
+    transport.connection.noteTransportAlive();
+    transport.connection.receive(forged({ kind: 'input', payload: utf8('x') }, 1));
+    await flush();
+    expect(harness.backend?.calls).toEqual([{ call: 'start' }]);
+    expect(harness.session.snapshot.connection).toEqual({ kind: 'attached', generation: 1 });
+    expect(transport.wire.filter((event) => event.type === 'frame')).toHaveLength(2);
   });
 });
 

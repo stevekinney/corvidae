@@ -1,3 +1,4 @@
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -27,6 +28,27 @@ function manualSignals(
     },
   };
 }
+
+/** The pull runs a real `sleep`, so its body runs at module scope, off the per-test clock. */
+const signalStopsThePull = await outcomeOf(async () => {
+  const signals = manualSignals();
+  // A pull that would otherwise outlast the test's own timeout.
+  const pull = runInterruptibly(['sleep', '60'], 120_000, signals);
+  setTimeout(() => signals.fire('SIGINT'), 100);
+
+  const status = await pull;
+
+  expect(status).not.toBe(0);
+  expect(pullExitStatus(status, signals.received())).toBe(130);
+});
+
+const earlySignalSkipsThePull = await outcomeOf(async () => {
+  const signals = manualSignals('SIGTERM');
+
+  const status = await runInterruptibly(['sleep', '60'], 120_000, signals);
+
+  expect(pullExitStatus(status, signals.received())).toBe(143);
+});
 
 describe('Linux lifecycle recipe', () => {
   it('runs every mode when nothing interrupts it', async () => {
@@ -78,25 +100,11 @@ describe('Linux lifecycle recipe', () => {
 });
 
 describe('the preliminary image pull', () => {
-  it('stops the pull when a signal arrives and exits 128 + signal', async () => {
-    const signals = manualSignals();
-    // A pull that would otherwise outlast the test's own timeout.
-    const pull = runInterruptibly(['sleep', '60'], 120_000, signals);
-    setTimeout(() => signals.fire('SIGINT'), 100);
+  it('stops the pull when a signal arrives and exits 128 + signal', () =>
+    rethrow(signalStopsThePull));
 
-    const status = await pull;
-
-    expect(status).not.toBe(0);
-    expect(pullExitStatus(status, signals.received())).toBe(130);
-  });
-
-  it('does not start the pull once a signal has already arrived', async () => {
-    const signals = manualSignals('SIGTERM');
-
-    const status = await runInterruptibly(['sleep', '60'], 120_000, signals);
-
-    expect(pullExitStatus(status, signals.received())).toBe(143);
-  });
+  it('does not start the pull once a signal has already arrived', () =>
+    rethrow(earlySignalSkipsThePull));
 
   it('continues after a clean pull and fails a failed one', () => {
     expect(pullExitStatus(0, undefined)).toBeUndefined();
