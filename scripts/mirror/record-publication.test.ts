@@ -91,6 +91,11 @@ async function withPublication(
       join(historical, 'scripts/mirror/source.ts'),
       `export const sourceTree = 'src'; export const versionConstants = {}; export const additionalSourceRoots = ${historicalExtra ? `{"${workspace}":[{"paths":["runtime.wasm"]}]}` : '{}'}; export const isSourceFile = (name: string) => name.endsWith('.ts');`,
     );
+    // The historical transform emits and prunes the package's source tree (COR-1192 reach).
+    await Bun.write(
+      join(historical, 'scripts/mirror/sync.ts'),
+      `export async function foreignCommitOwnership() { return { transform: { files: new Set(), prefixes: ['${targetConfiguration.targetDirectory}/src'] } }; }\n`,
+    );
     // Markdown's committed surface is built by a pack script no fixture carries, so the fixture
     // lends it the single-entry tsdown surface; `sync.test.ts`'s header says why.
     const surface = await Bun.file(join(sourceRoot, 'scripts/mirror/package-surface.json')).json();

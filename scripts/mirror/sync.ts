@@ -40,6 +40,7 @@ import {
   writeTransformOutput,
   type TargetOwnedPolicy,
 } from './target-owned.ts';
+import { transformReaches, type TransformReach } from './transform-reach.ts';
 import { buildVerifySteps, createLocalVerifyEnvironment, specifiersFor } from './verify-steps.ts';
 
 /**
@@ -482,20 +483,6 @@ export interface ForeignCommitOwnership {
 export interface EmittedFile {
   contents: string | Uint8Array;
   executable: boolean;
-}
-
-/** The paths a sync can overwrite or delete: its emitted files and the prefixes it prunes or retires. */
-export interface TransformReach {
-  files: ReadonlySet<string>;
-  prefixes: readonly string[];
-}
-
-/** Whether a sync would write or delete this target-relative path. */
-function transformReaches(reach: TransformReach, path: string): boolean {
-  return (
-    reach.files.has(path) ||
-    reach.prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
-  );
 }
 
 /** A path a commit changed that the per-commit rules do not accept, with the manifest keys at fault. */

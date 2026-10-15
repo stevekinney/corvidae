@@ -200,6 +200,41 @@
       "targets": ["weft"]
     },
     {
+      "glob": "packages/weft/scripts/publish-if-missing.ts",
+      "reason": "Weft's Changesets release scripts and their tests, added by COR-1431 when Weft moved to Changesets on push to main: release.yaml runs publish-if-missing.ts through `release:publish`, `changeset:version` runs write-version-constant.ts, and the Version Packages job runs version-pull-request-body.ts; verify-release-version.test.ts covers the script owned above. Corvidae has no source for any of them, the transform neither emits nor prunes them, and they are enumerated file by file for the same reason as the COR-1286 release scripts.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "packages/weft/scripts/publish-if-missing.test.ts",
+      "reason": "Weft's Changesets release scripts and their tests, added by COR-1431 when Weft moved to Changesets on push to main: release.yaml runs publish-if-missing.ts through `release:publish`, `changeset:version` runs write-version-constant.ts, and the Version Packages job runs version-pull-request-body.ts; verify-release-version.test.ts covers the script owned above. Corvidae has no source for any of them, the transform neither emits nor prunes them, and they are enumerated file by file for the same reason as the COR-1286 release scripts.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "packages/weft/scripts/verify-release-version.test.ts",
+      "reason": "Weft's Changesets release scripts and their tests, added by COR-1431 when Weft moved to Changesets on push to main: release.yaml runs publish-if-missing.ts through `release:publish`, `changeset:version` runs write-version-constant.ts, and the Version Packages job runs version-pull-request-body.ts; verify-release-version.test.ts covers the script owned above. Corvidae has no source for any of them, the transform neither emits nor prunes them, and they are enumerated file by file for the same reason as the COR-1286 release scripts.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "packages/weft/scripts/version-pull-request-body.ts",
+      "reason": "Weft's Changesets release scripts and their tests, added by COR-1431 when Weft moved to Changesets on push to main: release.yaml runs publish-if-missing.ts through `release:publish`, `changeset:version` runs write-version-constant.ts, and the Version Packages job runs version-pull-request-body.ts; verify-release-version.test.ts covers the script owned above. Corvidae has no source for any of them, the transform neither emits nor prunes them, and they are enumerated file by file for the same reason as the COR-1286 release scripts.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "packages/weft/scripts/version-pull-request-body.test.ts",
+      "reason": "Weft's Changesets release scripts and their tests, added by COR-1431 when Weft moved to Changesets on push to main: release.yaml runs publish-if-missing.ts through `release:publish`, `changeset:version` runs write-version-constant.ts, and the Version Packages job runs version-pull-request-body.ts; verify-release-version.test.ts covers the script owned above. Corvidae has no source for any of them, the transform neither emits nor prunes them, and they are enumerated file by file for the same reason as the COR-1286 release scripts.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "packages/weft/scripts/write-version-constant.ts",
+      "reason": "Weft's Changesets release scripts and their tests, added by COR-1431 when Weft moved to Changesets on push to main: release.yaml runs publish-if-missing.ts through `release:publish`, `changeset:version` runs write-version-constant.ts, and the Version Packages job runs version-pull-request-body.ts; verify-release-version.test.ts covers the script owned above. Corvidae has no source for any of them, the transform neither emits nor prunes them, and they are enumerated file by file for the same reason as the COR-1286 release scripts.",
+      "targets": ["weft"]
+    },
+    {
+      "glob": "packages/weft/scripts/write-version-constant.test.ts",
+      "reason": "Weft's Changesets release scripts and their tests, added by COR-1431 when Weft moved to Changesets on push to main: release.yaml runs publish-if-missing.ts through `release:publish`, `changeset:version` runs write-version-constant.ts, and the Version Packages job runs version-pull-request-body.ts; verify-release-version.test.ts covers the script owned above. Corvidae has no source for any of them, the transform neither emits nor prunes them, and they are enumerated file by file for the same reason as the COR-1286 release scripts.",
+      "targets": ["weft"]
+    },
+    {
       "glob": "packages/weft/scripts/verify-tree-shaking.ts",
       "reason": "Weft's release and packaging scripts, kept by COR-1286's cleanup: pr-title.yaml calls pr-title.ts; release.yaml calls verify-release-version.ts and prepack, which runs verify-tree-shaking.ts, verify-portability.ts and validate-package-consumers.ts. COR-1192: the transform neither emits nor prunes them (build.ts and build-guards.ts are declared build inputs and owned that way), so a hand edit to one is the target's own, not a foreign commit; enumerated file by file because the directory also receives emitted generator files.",
       "targets": ["weft"]

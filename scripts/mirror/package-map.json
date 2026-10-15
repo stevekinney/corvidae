@@ -11,12 +11,12 @@
       "name": "@lostgradient/weft",
       "basis": "settled",
       "reason": "Already published under this name. Ships standalone from stevekinney/weft.",
-      "lastPublishedVersion": "0.27.17",
+      "lastPublishedVersion": "0.28.0",
       "publishedSnapshot": {
         "schemaVersion": 1,
-        "version": "0.27.17",
-        "gitHead": "8472c3fe955e92eed8a5a09a05364c70d138a576",
-        "corvidaeCommit": "30058577208c64dc82a9c8c69fdf20c4ef7fb7a4",
+        "version": "0.28.0",
+        "gitHead": "aff7eb387661b16bb98640eb4916084e340cdeda",
+        "corvidaeCommit": "6c00d7c84461eab57e749edc579a6167cbf98eb9",
         "source": {
           "algorithm": "sha256-files-v1",
           "paths": [
@@ -53,6 +53,7 @@
             "src/cli/__fixtures__/validation/order-processing/src/workflows/sweep-stale.ts",
             "src/cli/api-arguments.ts",
             "src/cli/api.ts",
+            "src/cli/cli-main.test-support.ts",
             "src/cli/codegen-arguments.ts",
             "src/cli/codegen-emit-dedup.ts",
             "src/cli/codegen-emit-registry.ts",
@@ -281,6 +282,7 @@
             "src/core/engine/checkpoint-reads.ts",
             "src/core/engine/checkpoint-replay.ts",
             "src/core/engine/checkpoint-side-effects.ts",
+            "src/core/engine/child-outcome-poll.ts",
             "src/core/engine/child-workflow-cancellation.ts",
             "src/core/engine/child-workflow.ts",
             "src/core/engine/completed-review-storage.ts",
@@ -309,6 +311,7 @@
             "src/core/engine/finalizer-status.ts",
             "src/core/engine/fork-source-replaced-error.ts",
             "src/core/engine/generation-codec.ts",
+            "src/core/engine/generator-owned-result.ts",
             "src/core/engine/guards.ts",
             "src/core/engine/handle-iteration.ts",
             "src/core/engine/handle-result.ts",
@@ -391,6 +394,7 @@
             "src/core/engine/registration.ts",
             "src/core/engine/registry-agnostic-engine.test-d.ts",
             "src/core/engine/remote-activity-broker.ts",
+            "src/core/engine/result-committer.ts",
             "src/core/engine/retained-recovery-record-count.ts",
             "src/core/engine/retention-scan.ts",
             "src/core/engine/retention.ts",
@@ -439,6 +443,7 @@
             "src/core/engine/termination/finalizer.ts",
             "src/core/engine/termination/state-commit-callbacks.ts",
             "src/core/engine/termination/suspend.ts",
+            "src/core/engine/termination/terminal-claim-release.ts",
             "src/core/engine/time-operation-callbacks.ts",
             "src/core/engine/timeline-coordinator-constants.ts",
             "src/core/engine/timeline-coordinator-detail.ts",
@@ -1097,6 +1102,7 @@
             "src/testing/fake-timers.test-support.ts",
             "src/testing/index.ts",
             "src/testing/mocks.ts",
+            "src/testing/module-scope-scenario.test-support.ts",
             "src/testing/promise-outcome.test-support.ts",
             "src/testing/real-timer-leak-guard.test-support.ts",
             "src/testing/replay-scenarios.test-support.ts",
@@ -1177,7 +1183,7 @@
             "src/workers/workflow-runner.ts",
             "src/workers/workflow-worker-entry.ts"
           ],
-          "digest": "5e4f331fd6913bc0f5a9076027a97ffea6f5a80d8bde6ef854fba3f16d8cc196"
+          "digest": "b90abc8dcfb4d1b9bd3bd5a0c5c695b326171159a5b5d44029d7f043ce9379b9"
         },
         "publicationInputContract": {
           "algorithm": "sha256-json-v1",
@@ -1185,7 +1191,7 @@
         },
         "registryManifestContract": {
           "algorithm": "sha256-json-v1",
-          "digest": "56a02328fa166942ebe2f8e8774deea936c86a032e28390fad07deee25df9106"
+          "digest": "10529b439ab01f8e83e6106d7d001025b4076a78cbd3ea01d49851875fa75884"
         },
         "registryPayloadContract": {
           "algorithm": "sha256-package-payload-v1",
@@ -2943,6 +2949,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/child-outcome-poll.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/child-outcome-poll.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/child-workflow-cancellation.d.ts",
               "executable": false
             },
@@ -3156,6 +3170,14 @@
             },
             {
               "path": "package/dist/core/engine/generation-codec.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/generator-owned-result.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/generator-owned-result.js",
               "executable": false
             },
             {
@@ -3791,6 +3813,14 @@
               "executable": false
             },
             {
+              "path": "package/dist/core/engine/result-committer.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/result-committer.js",
+              "executable": false
+            },
+            {
               "path": "package/dist/core/engine/retained-recovery-record-count.d.ts",
               "executable": false
             },
@@ -4156,6 +4186,14 @@
             },
             {
               "path": "package/dist/core/engine/termination/suspend.js",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/terminal-claim-release.d.ts",
+              "executable": false
+            },
+            {
+              "path": "package/dist/core/engine/termination/terminal-claim-release.js",
               "executable": false
             },
             {
@@ -9215,7 +9253,7 @@
               "executable": false
             }
           ],
-          "digest": "0d36b0785e85bb33b99fb69e18dfda3a9e3cccae995dc92b99c0920f768fa3fd"
+          "digest": "f00df7f2b7986e0176c5c99daccc70d6cca114d3327b0ffd5f42806fadb1cef3"
         }
       }
     },
