@@ -30,7 +30,9 @@ let problems: string[] = [];
 let exportedSource = '';
 
 test.beforeAll(async ({ browser }, testInfo) => {
-  context = await browser.newContext({ baseURL: testInfo.project.use.baseURL });
+  const baseURL = testInfo.project.use.baseURL;
+  if (baseURL === undefined) throw new Error('The project declares no baseURL.');
+  context = await browser.newContext({ baseURL });
   page = await context.newPage();
   problems = trackConsoleProblems(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -95,7 +97,8 @@ async function downloadText(
   const pending = page.waitForEvent('download');
   await dialog.getByRole('button', { name }).click();
   const file = await pending;
-  return { filename: file.suggestedFilename(), text: await readFile((await file.path())!, 'utf8') };
+  const saved = await file.path();
+  return { filename: file.suggestedFilename(), text: await readFile(saved, 'utf8') };
 }
 
 async function sourceEnvelope(): Promise<Record<string, any>> {
@@ -242,7 +245,8 @@ test('8. blocks the normal CSS export while errors remain, but never the source'
   const dialog = await openExport();
   await expect(dialog.getByTestId('export-css-blocked')).toBeVisible();
   await expect(dialog.getByTestId('export-source')).toContainText('Cinder Theme v1');
-  exportedSource = (await downloadText(dialog, /^Download .*\.cinder-theme\.json$/)).text;
+  const downloaded = await downloadText(dialog, /^Download .*\.cinder-theme\.json$/);
+  exportedSource = downloaded.text;
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });

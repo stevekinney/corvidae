@@ -12,6 +12,10 @@ type WorkerScope = {
 };
 
 const scope = globalThis as unknown as WorkerScope;
-const handle = createEvaluationHandler((response) => scope.postMessage(response));
+// A dedicated worker has no target origin; this is not Window.postMessage.
+const handle = createEvaluationHandler((response) =>
+  // oxlint-disable-next-line unicorn/require-post-message-target-origin
+  scope.postMessage(response),
+);
 
 scope.addEventListener('message', (event) => handle(event.data));

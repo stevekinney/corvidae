@@ -47,7 +47,7 @@ export function warmedTests(hooks: { before?: () => void; after?: () => void } =
   return {
     scenario(name: string, body: Scenario): void {
       bodies.push(body);
-      bunTest(name, body as () => Promise<void>);
+      bunTest(name, body);
     },
     async warmScenarios(): Promise<void> {
       for (const body of bodies) {

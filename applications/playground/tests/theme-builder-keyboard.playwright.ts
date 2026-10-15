@@ -135,7 +135,8 @@ test('a keyboard-only edit: filter, select, type, Apply, Undo', async ({ page })
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('7');
   await tabTo(page, 'text=Apply');
-  expect((await focusState(page))?.indicator).toBe(true);
+  const applyFocus = await focusState(page);
+  expect(applyFocus?.indicator).toBe(true);
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('draft-value')).toHaveText('7rem');
   await expect(page.getByTestId('save-state')).toHaveText('Saved locally');

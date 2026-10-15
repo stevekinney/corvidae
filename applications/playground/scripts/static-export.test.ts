@@ -441,7 +441,7 @@ describe('static export', () => {
       // The builder starts its evaluation workers by URL, so no import names the worker file:
       // it is exported by name, and the builder bundle carries its fingerprinted URL.
       const workerUrl = [...rendered].find((url) =>
-        /\/theme-builder-bundle\/theme-runtime-worker\.js$/.test(url),
+        url.endsWith('/theme-builder-bundle/theme-runtime-worker.js'),
       );
       if (workerUrl === undefined) throw new Error('the evaluation worker was not exported');
       expect(workerUrl).toMatch(/^\/assets\/[a-f0-9]{64}\//);

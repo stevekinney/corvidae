@@ -100,14 +100,17 @@ export function createWorkerEvaluator(createWorker: () => EvaluationWorker): The
         }
         const firstSend = !sentBases.has(base);
         sentBases.add(base);
-        worker.postMessage({
+        const request: EvaluationRequest = {
           id,
           baseId,
           ...(firstSend ? { base } : {}),
           source: rest,
           revision,
           context,
-        });
+        };
+        // A dedicated worker has no target origin; this is not Window.postMessage.
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin
+        worker.postMessage(request);
       });
       forEnvelope.set(key, evaluation);
       // A failed evaluation is not remembered, so asking again retries on a fresh worker.
