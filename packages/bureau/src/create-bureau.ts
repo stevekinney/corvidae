@@ -2160,9 +2160,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     try {
       const current = await runtime.sessionStore?.load(sessionId);
       if (current?.incarnation !== poller.incarnation) {
-        // Deleted, or recreated, by another process: nothing can resume
-        // this gate's paused runs any more, so release them.
+        // Deleted, or recreated, by another process. This process's runs of
+        // it settle as a local deletion settles them: a run not paused is
+        // aborted, and a paused one is released, since nothing can resume
+        // it any more. Both finish without recreating the session: their
+        // terminal saves are fenced to its incarnation.
         if (steeringPollers.get(sessionId) === poller) stopSessionSteeringPoll(sessionId);
+        for (const runId of poller.runIds) {
+          if (!poller.gate.forRun(runId).getDesiredState().paused) abortRun(runId);
+        }
         poller.gate.settleForDeletion(runtimeServices.clock.nowISO());
         return;
       }
@@ -2322,6 +2328,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const cursor = await enqueueSteering(sessionId, () =>
         catchUpSteering(kv, sessionId, session.incarnation),
       );
+      // Ended in the log a moment before its workflow's terminal state was
+      // committed (the process died in between): it has nothing left to
+      // steer, and resumes without a gate rather than failing.
+      if (cursor.history.runs.get(runId) === 'ended') return undefined;
       if (cursor.history.runs.get(runId) !== 'promoted') {
         // A run `createRun` started durably is tagged with its session
         // incarnation and promoted in its log before its workflow starts.
