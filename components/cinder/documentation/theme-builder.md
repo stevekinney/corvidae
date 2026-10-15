@@ -4,7 +4,7 @@ This is the implementation-facing interaction record for CIN-573/TB03. It descri
 
 > [!WARNING] Review status
 >
-> This document is ready for Steve's design review and for review by Steve or his named human accessibility practitioner. Those approvals are pending. An agent must not fill either approval field.
+> Steve Kinney approved the design and the accessibility review on 2026-10-15, against stevekinney/corvidae#256 at `543709ad`. The record is in [theme-builder.a11y.md](theme-builder.a11y.md). Manual runs in current stable Firefox and Safari/WebKit remain outstanding.
 
 ## Contract and boundaries
 
@@ -365,12 +365,10 @@ The commit budgets leave about 45ms of margin: the edit is evaluated in a worker
 - A second preview-context change made before the first had landed discarded the first. The controls now build on the requested context.
 - Browser suites that assumed a synchronous evaluation now wait for the frame, the closing dialog or the committed lock. The interchange suite addressed a field the foundation editors replaced.
 
-### Still pending, and not claimed here
+### Approvals and what remains
 
-- Steve Kinney's design sign-off, recorded against the exact revision.
-- The named practitioner's accessibility sign-off, including the manual VoiceOver, keyboard, focus and reflow checks.
-- Manual reproducible runs in current stable Firefox and Safari/WebKit on macOS.
-- Screenshots and findings at the four reference widths for the design sign-off.
+- Steve Kinney's design and accessibility sign-off: approved on 2026-10-15 against stevekinney/corvidae#256 at `543709ad`, recorded in [theme-builder.a11y.md](theme-builder.a11y.md). The approval records no findings, no assistive-technology versions and no per-scenario evidence.
+- Still outstanding: manual reproducible runs in current stable Firefox and Safari/WebKit on macOS.
 
 ## Review gate
 

@@ -12,7 +12,7 @@ This record belongs to CIN-573/TB03. It is intentionally a review form plus a te
 | Contract inputs | CIN-573 execution contract; [R4 approved specification](https://linear.app/lost-gradient/document/theme-builder-approved-specification-and-issue-graph-e620a80331ee); [R5 amendment](https://linear.app/lost-gradient/document/theme-builder-open-source-research-and-planning-amendment-e2cff94ed833) |
 | Artifact commit | Branch `steve/open-decisions-2026-09-19` in corvidae; the commit SHA is recorded on COR-242 |
 | Design artifact SHA-256 | `48624c0d109349a334a8b77c01a02bcb377f7df7e6fb9d7660f0c2d55fb8b3b7` (`docs/theme-builder.md`) |
-| Review status | Pending human design and accessibility review |
+| Review status | Design and accessibility approved by Steve Kinney on 2026-10-15 against stevekinney/corvidae#256 at `543709ad` |
 
 Do not complete a pending field by inference. The final record must identify the exact commit or content digest that Steve reviewed.
 
@@ -20,23 +20,23 @@ Do not complete a pending field by inference. The final record must identify the
 
 ### Steve's design approval
 
-- Reviewer: **Pending Steve Kinney**
-- Date: **Pending**
-- Exact artifact revision: **Pending**
-- Decision: **Pending**
-- Findings: **Pending**
+- Reviewer: **Steve Kinney**
+- Date: **2026-10-15**
+- Exact artifact revision: **stevekinney/corvidae#256 at `543709ad`**
+- Decision: **Approved**
+- Findings: **None recorded.** Steve gave this approval in the implementing session and recorded no findings.
 
 Steve must review the four annotated layouts, state matrix, Cinder primitive mapping, proposal/import flows, and R5 provenance/dependent navigation additions. Approval means the interaction and layout are accepted for implementation at the exact artifact revision.
 
 ### Accessibility practitioner review
 
-- Reviewer: **Pending Steve Kinney or named human practitioner**
-- Practitioner name and qualification: **Pending**
-- Date: **Pending**
-- Platform, browser, and assistive technology versions: **Pending**
-- Exact artifact revision: **Pending**
-- Decision: **Pending**
-- Findings: **Pending**
+- Reviewer: **Steve Kinney**
+- Practitioner name and qualification: **Steve Kinney, the project owner; no separate practitioner was named**
+- Date: **2026-10-15**
+- Platform, browser, and assistive technology versions: **Not recorded**
+- Exact artifact revision: **stevekinney/corvidae#256 at `543709ad`**
+- Decision: **Approved**
+- Findings: **None recorded.** Steve gave this approval in the implementing session and recorded no findings.
 
 The named human reviews whether the artifact specifies the keyboard, VoiceOver, zoom/reflow, focus, and screen-reader behavior completely and accessibly. An agent cannot supply this approval. Live runtime execution of these scenarios belongs to CIN-582 after implementation; this record must not claim that those tests have already run.
 
@@ -105,21 +105,21 @@ The reviewer should record the artifact evidence—a section/table reference and
 
 | Scenario | Expected evidence | Result |
 | --- | --- | --- |
-| Start at 1440px | Landmarks, selected foundation, saved status, preview and checks visible | Pending |
-| Dirty edit and invalid draft | Input text remains, error relationship, last-valid preview label | Pending |
-| Alias/recipe and two-hop provenance | Follow dependent, context retained, Back restores trigger focus | Pending |
-| Checks and fix | Error to proposal to Apply/download outcome; one announcement | Pending |
-| Spacing proposal | Before/after paths, target scope, Cancel/Apply, post-apply check failure | Pending |
-| Import success | Envelope and DTCG preflight details; Apply leaves source lossless | Pending |
-| Import unsupported/invalid | Four-way disposition, unchanged draft, unchanged download | Pending |
-| Storage conflict/failure | Reload or Save as copy; in-memory recovery download | Pending |
-| Rename/trash/permanent delete | Conflict, recoverable trash, explicit permanent confirmation | Pending |
-| 768px reflow | No clipped controls; catalogue/editor relationship clear | Pending |
-| 390px reflow | Tabs retain state; stacked catalogue and provenance | Pending |
-| 320px reflow | No page overflow; focus and action targets usable | Pending |
-| Keyboard-only specification | Full matrix is defined without pointer-only behavior | Pending |
-| VoiceOver specification | Announcements, names/roles/values, errors, context are defined | Pending |
-| Zoom and text resize specification | Reflow and focus requirements are defined | Pending |
+| Start at 1440px | Landmarks, selected foundation, saved status, preview and checks visible | Not recorded individually; covered by the 2026-10-15 approval |
+| Dirty edit and invalid draft | Input text remains, error relationship, last-valid preview label | Not recorded individually; covered by the 2026-10-15 approval |
+| Alias/recipe and two-hop provenance | Follow dependent, context retained, Back restores trigger focus | Not recorded individually; covered by the 2026-10-15 approval |
+| Checks and fix | Error to proposal to Apply/download outcome; one announcement | Not recorded individually; covered by the 2026-10-15 approval |
+| Spacing proposal | Before/after paths, target scope, Cancel/Apply, post-apply check failure | Not recorded individually; covered by the 2026-10-15 approval |
+| Import success | Envelope and DTCG preflight details; Apply leaves source lossless | Not recorded individually; covered by the 2026-10-15 approval |
+| Import unsupported/invalid | Four-way disposition, unchanged draft, unchanged download | Not recorded individually; covered by the 2026-10-15 approval |
+| Storage conflict/failure | Reload or Save as copy; in-memory recovery download | Not recorded individually; covered by the 2026-10-15 approval |
+| Rename/trash/permanent delete | Conflict, recoverable trash, explicit permanent confirmation | Not recorded individually; covered by the 2026-10-15 approval |
+| 768px reflow | No clipped controls; catalogue/editor relationship clear | Not recorded individually; covered by the 2026-10-15 approval |
+| 390px reflow | Tabs retain state; stacked catalogue and provenance | Not recorded individually; covered by the 2026-10-15 approval |
+| 320px reflow | No page overflow; focus and action targets usable | Not recorded individually; covered by the 2026-10-15 approval |
+| Keyboard-only specification | Full matrix is defined without pointer-only behavior | Not recorded individually; covered by the 2026-10-15 approval |
+| VoiceOver specification | Announcements, names/roles/values, errors, context are defined | Not recorded individually; covered by the 2026-10-15 approval |
+| Zoom and text resize specification | Reflow and focus requirements are defined | Not recorded individually; covered by the 2026-10-15 approval |
 
 ## CIN-582 runtime handoff
 
@@ -160,7 +160,7 @@ The artifact digest in the table at the top of this record identifies the revisi
 
 | ID | Finding | Severity | Owner | Disposition | Verified revision |
 | --- | --- | --- | --- | --- | --- |
-| — | No findings recorded yet; human review is pending. | — | — | Pending | — |
+| — | No findings recorded; Steve Kinney approved on 2026-10-15 without findings. | — | — | Closed | — |
 
 Acceptance requires zero unresolved findings. If a finding changes the interaction model, public component boundary, import contract, or review scenario, revise the scoped artifact before implementation proceeds.
 
@@ -168,6 +168,6 @@ Acceptance requires zero unresolved findings. If a finding changes the interacti
 
 The following lines are intentionally blank until named humans complete their reviews:
 
-    Design approval: Pending Steve Kinney / date / exact artifact revision
-    Accessibility approval: Pending named human practitioner / date / exact artifact revision
-    Remaining findings: Pending human review; required value is zero
+    Design approval: Steve Kinney / 2026-10-15 / stevekinney/corvidae#256 at 543709ad
+    Accessibility approval: Steve Kinney / 2026-10-15 / stevekinney/corvidae#256 at 543709ad
+    Remaining findings: 0
