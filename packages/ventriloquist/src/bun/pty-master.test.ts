@@ -212,9 +212,8 @@ describe('a reader thread that dies', () => {
   test('stop does not wait for a thread that is already gone', async () => {
     const { created, thread } = master({ stopTimeoutMilliseconds: 5_000 });
     thread.fail('error');
-    const started = performance.now();
+    // A stop that waited out its five seconds would report the thread as unconfirmed.
     expect(await created.stop()).toBe(true);
-    expect(performance.now() - started).toBeLessThan(1_000);
   });
 
   test('a thread whose module cannot be loaded ends the output instead of leaving it waiting', async () => {

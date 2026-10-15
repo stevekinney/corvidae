@@ -10,7 +10,7 @@
  * file (which Bun's default discovery skips) or a `.test.ts` under a
  * `scripts/benchmarks/` directory, run by the owning package's
  * `test:benchmarks`. This guard enforces that rule for every default-suite
- * `*.test.ts`.
+ * `*.test.ts` and `*.test-support.ts`.
  *
  * Definitions, all syntactic and file-local:
  *
@@ -54,8 +54,12 @@
  *   - a duration stored in an object property or an array element
  *     (`result.elapsed`, `samples[0]`, `detail.durationMilliseconds`), a
  *     parameter, a destructured binding or a `for` binding;
- *   - a duration compared through `toBeCloseTo`, `assert(...)`, or a boolean
- *     such as `expect(elapsed <= budget).toBe(true)`;
+ *   - a duration compared through `toBeCloseTo`, or a boolean built somewhere other than
+ *     an operand of `check(...)`, `assert(...)` or `expect(...)`. A relational comparison of a
+ *     duration inside those calls (`check('fast', elapsed < 4000)`,
+ *     `expect(elapsed <= budget).toBe(true)`) is reported, and so are the `*.test-support.ts`
+ *     files that cases are written in; the condition of a loop or an `if` is not, because a
+ *     polling deadline is a hang guard;
  *   - a bound that lives outside the file, or a clock read inside a helper in
  *     another file;
  *   - env-gated timing assertions in files under a `scripts/benchmarks/`
@@ -304,6 +308,39 @@ function matcherFor(
   return { name: access.name.text, negated, call };
 }
 
+const ASSERTING_CALLEES = new Set(['check', 'assert', 'expect']);
+
+/**
+ * Whether `node` is an operand of an assertion-like call (`check(...)`, `assert(...)`,
+ * `expect(...)`), found by climbing out through operators and parentheses. A condition of a loop or
+ * an `if` is not one: a polling loop's deadline is a hang guard, not a claim about speed.
+ */
+function isAsserted(node: ts.Node): boolean {
+  for (let current = node; current.parent !== undefined; current = current.parent) {
+    const parent = current.parent;
+    if (ts.isCallExpression(parent) && parent.arguments.includes(current as ts.Expression)) {
+      const name = dottedName(parent.expression);
+      return name !== null && ASSERTING_CALLEES.has(name.split('.').at(-1) as string);
+    }
+    if (
+      ts.isBlock(parent) ||
+      ts.isSourceFile(parent) ||
+      ts.isFunctionLike(parent) ||
+      ts.isIterationStatement(parent, false) ||
+      ts.isIfStatement(parent)
+    ) {
+      return false;
+    }
+  }
+  return false;
+}
+
+const RELATIONAL_UPPER = new Set([ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken]);
+const RELATIONAL_LOWER = new Set([
+  ts.SyntaxKind.GreaterThanToken,
+  ts.SyntaxKind.GreaterThanEqualsToken,
+]);
+
 export function findWallClockAssertionViolations(
   sourceFile: ts.SourceFile,
 ): WallClockAssertionViolation[] {
@@ -311,6 +348,26 @@ export function findWallClockAssertionViolations(
   const taint = propagate(collectBindings(sourceFile));
 
   walk(sourceFile, (node) => {
+    // `check('fast', elapsed < 4000)` and `expect(elapsed < 10).toBe(true)` hide the bound in a boolean.
+    if (ts.isBinaryExpression(node)) {
+      const kind = node.operatorToken.kind;
+      const duration = RELATIONAL_UPPER.has(kind)
+        ? node.left
+        : RELATIONAL_LOWER.has(kind)
+          ? node.right
+          : undefined;
+      const bound = duration === node.left ? node.right : node.left;
+      if (duration !== undefined && isDuration(duration, taint) && isAsserted(node)) {
+        void bound;
+        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        violations.push({
+          line: line + 1,
+          matcher: node.operatorToken.getText(sourceFile),
+          text: node.getText(sourceFile),
+        });
+      }
+      return;
+    }
     if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) return;
     if (node.expression.text !== 'expect') return;
     const matcher = matcherFor(node);
@@ -351,7 +408,10 @@ export function collectTestFiles(directory: string, paths: string[]): void {
       // Wall-clock targets belong under a package's `scripts/benchmarks/`.
       if (entry.name === 'benchmarks' && basename(directory) === 'scripts') continue;
       collectTestFiles(path, paths);
-    } else if (entry.isFile() && entry.name.endsWith('.test.ts')) {
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith('.test.ts') || entry.name.endsWith('.test-support.ts'))
+    ) {
       paths.push(path);
     }
   }

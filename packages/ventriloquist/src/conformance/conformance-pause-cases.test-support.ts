@@ -276,9 +276,10 @@ const stopWhilePaused: CaseDefinition = {
     await waitUntilGone(leader);
     return [
       holds,
+      // How long it took is evidence, never a pass condition: a busy host would fail it.
       check(
         `stop was honored while paused (${Math.round(elapsed)} ms)`,
-        summary.cause === 'attachment-stop' && elapsed < 4000,
+        summary.cause === 'attachment-stop',
       ),
       check('cleanup was complete', cleanup.outcome === 'complete'),
       check('the paused producer is gone', !isAlive(leader)),
