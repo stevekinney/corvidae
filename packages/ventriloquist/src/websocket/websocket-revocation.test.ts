@@ -1,11 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createDeferred } from '../session/fixtures/deferred.ts';
+import { SessionSlot } from '../session/session-slot.ts';
 import type { Authorization } from './websocket-types.ts';
 import {
   LAUNCH,
   SECOND_SESSION_IDENTIFIER,
   SESSION_COOKIE,
+  SESSION_IDENTIFIER,
   connect,
   scriptedProcess,
   startHarness,
@@ -110,6 +112,41 @@ describe('expiry of the principal', () => {
 });
 
 describe('revocation by the host', () => {
+  test('revokeSession matches the subject as well as the session, so a shared identity revokes only the named one', async () => {
+    const processes = [scriptedProcess(), scriptedProcess()];
+    let next = 0;
+    const slots = new Map<string, SessionSlot>();
+    const harness = startHarness({
+      authentication: (request) => ({
+        ok: true,
+        subject: request.headers.get('cookie') === SESSION_COOKIE ? 'user-1' : 'user-2',
+        expiresInMilliseconds: 3_600_000,
+      }),
+      createProcess: () => (processes[next++] as ReturnType<typeof scriptedProcess>).hosted,
+      server: {
+        slotFor: (subject) => {
+          const slot = slots.get(subject) ?? new SessionSlot();
+          slots.set(subject, slot);
+          return slot;
+        },
+      },
+    });
+    try {
+      const first = connect(harness);
+      const second = connect(harness, { cookie: 'sid=other' });
+      await first.handshake();
+      await second.handshake();
+      expect(await harness.terminal.revokeSession('user-2', SESSION_IDENTIFIER)).toBe(true);
+      await second.closed;
+      expect(processes[1]?.cleanups).toBe(1);
+      expect(first.socket.readyState).toBe(WebSocket.OPEN);
+      expect(processes[0]?.cleanups).toBe(0);
+      expect(await harness.terminal.revokeSession('user-3', SESSION_IDENTIFIER)).toBe(false);
+    } finally {
+      await harness.stop();
+    }
+  });
+
   test('revokeSubject freezes every attachment of that subject and reports how many', async () => {
     const harness = startHarness({
       authentication: (request) => ({
@@ -140,8 +177,8 @@ describe('revocation by the host', () => {
     try {
       const client = connect(harness);
       const { sessionId } = await client.handshake();
-      expect(await harness.terminal.revokeSession(SECOND_SESSION_IDENTIFIER)).toBe(false);
-      expect(await harness.terminal.revokeSession(sessionId)).toBe(true);
+      expect(await harness.terminal.revokeSession('user-1', SECOND_SESSION_IDENTIFIER)).toBe(false);
+      expect(await harness.terminal.revokeSession('user-1', sessionId)).toBe(true);
       const awaited32 = await harness.session().closed;
       expect(awaited32.cause).toBe('authorization-revoked');
       await client.closed;

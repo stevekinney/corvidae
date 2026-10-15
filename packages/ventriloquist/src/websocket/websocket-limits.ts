@@ -12,6 +12,7 @@ export const WEBSOCKET_LIMIT_RANGES = Object.freeze({
   maximumBufferedBytes: { default: MEBIBYTE, minimum: 64 * 1024, maximum: 16 * MEBIBYTE },
   handshakeDeadlineMilliseconds: { default: 10_000, minimum: 250, maximum: 60_000 },
   pingIntervalMilliseconds: { default: 10_000, minimum: 100, maximum: 120_000 },
+  authenticateDeadlineMilliseconds: { default: 5_000, minimum: 250, maximum: 60_000 },
   maximumConnections: { default: 64, minimum: 1, maximum: 4_096 },
 } as const);
 
@@ -22,6 +23,7 @@ export type ResolvedWebSocketLimits = {
   readonly maximumBufferedBytes: number;
   readonly handshakeDeadlineMilliseconds: number;
   readonly pingIntervalMilliseconds: number;
+  readonly authenticateDeadlineMilliseconds: number;
   readonly maximumConnections: number;
   readonly budgets: SessionBudgets;
 };
@@ -65,6 +67,10 @@ export function resolveWebSocketLimits(
       limits.handshakeDeadlineMilliseconds,
     ),
     pingIntervalMilliseconds: within('pingIntervalMilliseconds', limits.pingIntervalMilliseconds),
+    authenticateDeadlineMilliseconds: within(
+      'authenticateDeadlineMilliseconds',
+      limits.authenticateDeadlineMilliseconds,
+    ),
     maximumConnections: within('maximumConnections', limits.maximumConnections),
     budgets,
   };

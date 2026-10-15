@@ -53,6 +53,7 @@ const EXPECTED_CELL_IDS = [
   'websocket-liveness',
   'websocket-transport-security',
   'websocket-trusted-proxy',
+  'websocket-empty-input-probe',
 ] as const;
 
 type CellId = (typeof EXPECTED_CELL_IDS)[number];
@@ -775,9 +776,14 @@ const transportSecurity: Variant[] = [
   {
     label: 'the development switch on a listener beyond loopback',
     run: () =>
-      observe({ hostname: '0.0.0.0' }, async (harness) => {
-        const status = await upgradeStatus(harness, { origin: ORIGIN, cookie: SESSION_COOKIE });
-        return [check('refused with 403', status === 403)];
+      observe({}, () => {
+        let refusedToBuild = false;
+        try {
+          startHarness({ hostname: '0.0.0.0' });
+        } catch {
+          refusedToBuild = true;
+        }
+        return Promise.resolve([check('no server is built for a wildcard bind', refusedToBuild)]);
       }),
   },
   {
@@ -872,6 +878,56 @@ const trustedProxy: Variant[] = [
   },
 ];
 
+const emptyInputProbe: Variant[] = [
+  {
+    label: 'a full operation FIFO refuses an empty input, and room accepts and acknowledges it',
+    run: () =>
+      observe({ server: { budgets: { operationQueueLimit: 2 } } }, async (harness) => {
+        const client = connect(harness);
+        await client.handshake();
+        harness.process.stallWrites();
+        for (const text of ['a', 'b', 'c']) {
+          const from = client.messages.length;
+          client.sendResult(client.endpoint.input(text));
+          await client.waitFor((message) => message.kind === 'operation-ack', from);
+        }
+        client.sendResult(client.endpoint.input(new Uint8Array(0)));
+        const refused = await client.waitForKind('operation-failure');
+        harness.process.releaseWrites();
+        await harness.process.writes(3);
+        const from = client.messages.length;
+        client.sendResult(client.endpoint.input(new Uint8Array(0)));
+        const ack = await client.waitFor((message) => message.kind === 'operation-ack', from);
+        return [
+          check('refused as fifo-full while full', refused.code === 'fifo-full'),
+          check('accepted and acknowledged once there is room', ack.kind === 'operation-ack'),
+          check('the attachment stayed live', client.socket.readyState === WebSocket.OPEN),
+        ];
+      }),
+  },
+  {
+    label: 'an empty input carries no bytes, so it is accepted when only the byte budget is full',
+    run: () =>
+      observe({}, async (harness) => {
+        const client = connect(harness);
+        await client.handshake();
+        harness.process.stallWrites();
+        const from = client.messages.length;
+        client.sendResult(client.endpoint.input('x'.repeat(64 * 1024)));
+        await client.waitFor((message) => message.kind === 'operation-ack', from);
+        client.sendResult(client.endpoint.input('y'));
+        const refused = await client.waitForKind('operation-failure');
+        const next = client.messages.length;
+        client.sendResult(client.endpoint.input(new Uint8Array(0)));
+        const ack = await client.waitFor((message) => message.kind === 'operation-ack', next);
+        return [
+          check('a byte is refused as fifo-full', refused.code === 'fifo-full'),
+          check('an empty input is still acknowledged', ack.kind === 'operation-ack'),
+        ];
+      }),
+  },
+];
+
 const MATRIX: Record<CellId, readonly Variant[]> = {
   'websocket-close-during-handshake': handshakeClose,
   'websocket-close-during-input': [
@@ -894,6 +950,7 @@ const MATRIX: Record<CellId, readonly Variant[]> = {
   'websocket-liveness': liveness,
   'websocket-transport-security': transportSecurity,
   'websocket-trusted-proxy': trustedProxy,
+  'websocket-empty-input-probe': emptyInputProbe,
 };
 
 async function buildCell(id: CellId): Promise<EvidenceCell> {

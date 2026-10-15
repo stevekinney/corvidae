@@ -2,7 +2,7 @@ import { isIP } from 'node:net';
 import { systemClock } from '../session/session-clock.ts';
 import { createOriginPolicy } from './origin-policy.ts';
 import { TerminalConnection, type TerminalSocket } from './terminal-connection.ts';
-import { decideTransport, normalizeAddress } from './transport-policy.ts';
+import { decideTransport, isLoopbackListener, normalizeAddress } from './transport-policy.ts';
 import { resolveWebSocketLimits } from './websocket-limits.ts';
 import type {
   Authentication,
@@ -15,7 +15,6 @@ import type {
 export type UpgradeServer = {
   upgrade(request: Request, options: { readonly data: SocketData }): boolean;
   requestIP(request: Request): { readonly address: string } | null;
-  readonly hostname: string | undefined;
 };
 
 /** A WebSocket as Bun hands it to a handler: the surface a connection drives, plus its binary mode. */
@@ -51,8 +50,11 @@ export type TerminalWebSocketServer = {
   handleClose(socket: ServerSocket, code: number, reason: string): Promise<void>;
   /** Revoke every attachment of `subject`: input freezes and cleanup starts. Returns how many. */
   revokeSubject(subject: string): Promise<number>;
-  /** Revoke the attachment of one session. Returns whether one was live. */
-  revokeSession(sessionId: string): Promise<boolean>;
+  /**
+   * Revoke the attachment of one subject's session. A session identity is chosen by the client and
+   * only unique within a subject's slot, so both must match. Returns whether one was live.
+   */
+  revokeSession(subject: string, sessionId: string): Promise<boolean>;
   /** Sockets that are open and not yet finished. */
   readonly connectionCount: number;
   /** Revoke everything and wait for each connection to finish. The listener is the caller's to stop. */
@@ -66,25 +68,8 @@ const DENIAL_STATUS: Readonly<Record<DenialReason, number>> = {
   unavailable: 503,
 };
 
-/** Query parameter names that look like credentials. A request carrying one is refused unread. */
-const CREDENTIAL_PARAMETERS = new Set([
-  'token',
-  'access_token',
-  'id_token',
-  'auth',
-  'authorization',
-  'password',
-  'passwd',
-  'secret',
-  'key',
-  'api_key',
-  'apikey',
-  'credential',
-  'credentials',
-  'cookie',
-  'session_token',
-  'sessiontoken',
-]);
+/** The only query parameter the upgrade URL may carry. Anything else is refused, never read. */
+const ALLOWED_PARAMETERS: ReadonlySet<string> = new Set(['profile']);
 
 const PROFILE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -101,16 +86,20 @@ function refuse(status: number, error: string, headers: Record<string, string> =
 }
 
 /**
- * The profile identifier the upgrade URL names, or why the URL cannot be used. A credential in the
- * query string is refused rather than read: credentials travel in the host's HttpOnly cookie.
+ * The profile identifier the upgrade URL names, or why the URL cannot be used. The URL may carry
+ * exactly one parameter, `profile`; any other key is refused rather than read, because credentials
+ * travel in the host's HttpOnly cookie and a denylist of credential names would always be one short.
  */
 function readProfile(request: Request): { profileId: string } | { error: string } {
   const { searchParams } = new URL(request.url);
   for (const name of searchParams.keys()) {
-    if (CREDENTIAL_PARAMETERS.has(name.toLowerCase())) return { error: 'credential-in-url' };
+    if (!ALLOWED_PARAMETERS.has(name)) return { error: 'unexpected-parameter' };
   }
-  const profileId = searchParams.get('profile');
-  if (profileId === null || !PROFILE_PATTERN.test(profileId)) return { error: 'invalid-profile' };
+  const profiles = searchParams.getAll('profile');
+  const profileId = profiles[0];
+  if (profiles.length !== 1 || profileId === undefined || !PROFILE_PATTERN.test(profileId)) {
+    return { error: 'invalid-profile' };
+  }
   return { profileId };
 }
 
@@ -146,6 +135,11 @@ export function createTerminalWebSocketServer(
   if (typeof options.slotFor !== 'function') {
     throw new TypeError('slotFor is required: the host decides which SessionSlot holds a subject');
   }
+  if (options.allowInsecureLoopback === true && !isLoopbackListener(options.boundHostname)) {
+    throw new RangeError(
+      'allowInsecureLoopback requires boundHostname to be the loopback hostname given to Bun.serve (127.0.0.1, ::1 or localhost)',
+    );
+  }
   const trustedProxies = new Set<string>();
   for (const entry of options.trustedProxies ?? []) {
     if (isIP(entry) === 0) {
@@ -166,14 +160,26 @@ export function createTerminalWebSocketServer(
   let upgrading = 0;
 
   async function authenticate(request: Request): Promise<Authentication> {
+    const unavailable: Authentication = { ok: false, denial: 'unavailable' };
+    let cancelDeadline = (): void => undefined;
+    // A host that never answers must not hold the upgrade, or its slot in the connection cap, forever.
+    const deadline = new Promise<Authentication>((resolve) => {
+      cancelDeadline = clock.schedule(
+        () => resolve(unavailable),
+        limits.authenticateDeadlineMilliseconds,
+      );
+    });
     try {
-      const result = await options.host.authenticate(request);
-      if (result.ok) {
-        return validAuthentication(result) ? result : { ok: false, denial: 'unavailable' };
-      }
+      const result = await Promise.race([
+        Promise.resolve(options.host.authenticate(request)),
+        deadline,
+      ]);
+      if (result.ok) return validAuthentication(result) ? result : unavailable;
       return result;
     } catch {
-      return { ok: false, denial: 'unavailable' };
+      return unavailable;
+    } finally {
+      cancelDeadline();
     }
   }
 
@@ -186,7 +192,7 @@ export function createTerminalWebSocketServer(
     }
     const transport = decideTransport({
       protocol: new URL(request.url).protocol,
-      listenerHostname: server.hostname,
+      listenerHostname: options.boundHostname,
       peerAddress: server.requestIP(request)?.address,
       allowInsecureLoopback: options.allowInsecureLoopback === true,
       trustedProxies,
@@ -263,8 +269,10 @@ export function createTerminalWebSocketServer(
       await Promise.all(affected.map((connection) => connection.revoke()));
       return affected.length;
     },
-    async revokeSession(sessionId) {
-      const found = [...connections].find((connection) => connection.sessionId === sessionId);
+    async revokeSession(subject, sessionId) {
+      const found = [...connections].find(
+        (connection) => connection.subject === subject && connection.sessionId === sessionId,
+      );
       if (found === undefined) return false;
       await found.revoke();
       return true;

@@ -1,9 +1,5 @@
 const LOOPBACK_NAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/** Parameter names that suggest a credential. The server refuses them too; here they never get that far. */
-const CREDENTIAL_PARAMETER =
-  /token|secret|password|passwd|auth|credential|cookie|api[-_]?key|^key$/i;
-
 /**
  * Check the address before a socket is made from it. The address may name where to connect and
  * which profile to run, and nothing that grants access: credentials travel in the host's HttpOnly
@@ -22,10 +18,15 @@ export function validateSocketUrl(address: string, allowInsecureLoopback: boolea
   if (parsed.username !== '' || parsed.password !== '') {
     throw new TypeError('url must not carry credentials; the host sets an HttpOnly cookie');
   }
+  // An allowlist, not a denylist: a list of credential names is always one short. The address
+  // names the profile and nothing else, and the server refuses any other key as well.
   for (const name of parsed.searchParams.keys()) {
-    if (CREDENTIAL_PARAMETER.test(name)) {
-      throw new TypeError(`url must not carry a credential parameter (${name})`);
+    if (name !== 'profile') {
+      throw new TypeError('url may carry only the profile parameter');
     }
+  }
+  if (parsed.searchParams.getAll('profile').length !== 1) {
+    throw new TypeError('url must carry exactly one profile parameter');
   }
   if (parsed.protocol === 'ws:') {
     const loopback =

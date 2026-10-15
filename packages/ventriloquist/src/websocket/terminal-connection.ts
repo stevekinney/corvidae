@@ -47,6 +47,7 @@ const OPEN = 1;
  * attachment the moment it opened. A longer lifetime is waited out in steps of at most this much.
  */
 export const MAXIMUM_TIMER_MILLISECONDS = 2_147_483_647;
+const MALFORMED_FRAME = 1002;
 const POLICY_VIOLATION = 1008;
 const INTERNAL_ERROR = 1011;
 const TRY_AGAIN_LATER = 1013;
@@ -108,6 +109,7 @@ export class TerminalConnection {
   #session: Session | undefined;
   #connection: SessionConnection | undefined;
   #queue: Promise<void> = Promise.resolve();
+  #received = 0;
   #cancelHandshake: CancelTimer | undefined;
   #cancelExpiry: CancelTimer | undefined;
   #cancelPing: CancelTimer | undefined;
@@ -148,6 +150,14 @@ export class TerminalConnection {
 
   /** Handle one frame from the client, after every earlier one has been handled. */
   receive(frame: Uint8Array | string): Promise<void> {
+    // Nothing may follow the hello until the attachment exists: the client must wait for the
+    // capabilities. A queue of frames behind a slow host decision would be unbounded, so a second
+    // frame before then is a protocol violation and the connection closes.
+    this.#received += 1;
+    if (this.#connection === undefined && this.#received > 1) {
+      this.#terminate(MALFORMED_FRAME);
+      return Promise.resolve();
+    }
     this.#queue = this.#queue.then(() => this.#handle(frame)).catch(() => this.#fail());
     return this.#queue;
   }
@@ -161,7 +171,11 @@ export class TerminalConnection {
   async transportClosed(): Promise<void> {
     this.#phase = 'closed';
     this.#stopTimers();
-    await this.#release();
+    // The connection leaves the registry whether or not the release succeeded.
+    await this.#release().then(
+      () => undefined,
+      () => undefined,
+    );
     this.#onFinished(this);
   }
 
@@ -327,7 +341,9 @@ export class TerminalConnection {
     const wasClosed = this.#phase === 'closed';
     this.#phase = 'closed';
     if (!wasClosed) this.#closeSocket(code);
-    void this.#release().then(() => this.#finish());
+    void this.#release()
+      .catch(() => undefined)
+      .then(() => this.#finish());
   }
 
   /** A failure inside the handler is never left half-open. */

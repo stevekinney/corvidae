@@ -113,6 +113,7 @@ function startLoopback(window = 256): Loopback {
     createProcess: () => hosted,
     allowedOrigins: [ORIGIN],
     allowInsecureLoopback: true,
+    boundHostname: '127.0.0.1',
     slotFor: () => slot,
     clock,
     limits: { maxQueuedOperations: window },

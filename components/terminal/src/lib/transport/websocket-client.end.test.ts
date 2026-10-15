@@ -198,6 +198,40 @@ describe('stop', () => {
   });
 });
 
+describe('a stop the host never answers', () => {
+  test('resolves unknown once the deadline passes, and closes the socket', async () => {
+    const subject = rig({ stopTimeoutMilliseconds: 5_000 });
+    await subject.attach();
+    const stopping = subject.client.stop();
+    subject.clock.advance(4_999);
+    expect(subject.socket().closes).toEqual([]);
+    subject.clock.advance(1);
+    expect(await stopping).toEqual({ outcome: 'unknown', source: 'local' });
+    expect(subject.socket().closes).toEqual([1000]);
+    expect(subject.client.state).toBe('disconnected');
+    expect(subject.clock.pendingTimers).toBe(0);
+  });
+
+  test('a prompt answer cancels the deadline', async () => {
+    const subject = rig({ stopTimeoutMilliseconds: 5_000 });
+    await subject.attach();
+    const stopping = subject.client.stop();
+    subject.serve(subject.host.cleanupResult('complete'));
+    expect(await stopping).toEqual({ outcome: 'complete', source: 'host' });
+    expect(subject.clock.pendingTimers).toBe(0);
+  });
+
+  test('defaults to ten seconds', async () => {
+    const subject = rig();
+    await subject.attach();
+    const stopping = subject.client.stop();
+    subject.clock.advance(9_999);
+    expect(subject.socket().closes).toEqual([]);
+    subject.clock.advance(1);
+    expect(await stopping).toMatchObject({ outcome: 'unknown' });
+  });
+});
+
 describe('rendererFailed', () => {
   test('asks the host to stop, so input is revoked and cleanup runs; it does not reset or switch', async () => {
     const subject = rig();

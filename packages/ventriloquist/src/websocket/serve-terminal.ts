@@ -5,7 +5,10 @@ import type { SocketData, TerminalWebSocketServerOptions } from './websocket-typ
 export type ServeTerminalOptions = Omit<TerminalWebSocketServerOptions, 'createProcess'> &
   Partial<Pick<TerminalWebSocketServerOptions, 'createProcess'>> & {
     readonly port?: number;
-    /** Bind to a specific interface. Required for the loopback development switch to apply. */
+    /**
+     * Bind to a specific interface. Required with `allowInsecureLoopback`, and then it must be
+     * `127.0.0.1` (or any 127.x address), `::1` or `localhost`; anything else throws.
+     */
     readonly hostname?: string;
     readonly tls?: Bun.TLSOptions;
     /** The only path that upgrades; everything else is a 404. Defaults to `/terminal`. */
@@ -27,6 +30,9 @@ export function serveTerminalWebSocket(options: ServeTerminalOptions): ServedTer
   const terminal = createTerminalWebSocketServer({
     ...options,
     createProcess: options.createProcess ?? createBunProcessFactory(),
+    // `Bun.serve({ port })` listens on every interface but reports `localhost`, so the hostname that
+    // is bound, not the one reported, is what the development switch is judged by.
+    ...(options.hostname === undefined ? {} : { boundHostname: options.hostname }),
   });
   const server = Bun.serve<SocketData>({
     port: options.port ?? 0,

@@ -576,11 +576,8 @@ describe('the upgrade over a real listener', () => {
   });
 
   test('the development switch does not apply to a listener bound beyond loopback', async () => {
-    await withHarness({ hostname: '0.0.0.0' }, async (harness) => {
-      // Reached over 127.0.0.1, the peer is loopback, but the listener is not.
-      const client = connect(harness);
-      expect(await client.refused()).toBe(true);
-    });
+    // Reached over 127.0.0.1 the peer would be loopback, but the listener is not: no server is built.
+    expect(() => startHarness({ hostname: '0.0.0.0' })).toThrow(/loopback/);
   });
 
   test('the Origin header of an allowed origin is compared canonically', async () => {

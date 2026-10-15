@@ -32,6 +32,9 @@ const POLICY_VIOLATION = 1008;
 const INTERNAL_ERROR = 1011;
 const DEFAULT_CONNECT_TIMEOUT_MILLISECONDS = 15_000;
 const DEFAULT_PENDING_OUTPUT_BYTES = 1024 * 1024;
+const DEFAULT_PROBE_INITIAL_MILLISECONDS = 250;
+const DEFAULT_PROBE_MAXIMUM_MILLISECONDS = 8_000;
+const DEFAULT_STOP_TIMEOUT_MILLISECONDS = 10_000;
 
 /** Why `connect()` did not produce capabilities. The state names the same thing for a view. */
 export class TerminalConnectError extends Error {
@@ -101,6 +104,9 @@ export class TerminalWebSocketClient {
   readonly #schedule: Schedule;
   readonly #connectTimeout: number;
   readonly #maximumPendingOutputBytes: number;
+  readonly #probeInitial: number;
+  readonly #probeMaximum: number;
+  readonly #stopTimeout: number;
   readonly #release: OutputReleaseQueue;
   readonly #stateListeners = new Set<(state: TerminalTransportState) => void>();
   readonly #eventListeners = new Set<(event: TerminalTransportEvent) => void>();
@@ -121,6 +127,10 @@ export class TerminalWebSocketClient {
   #cleanup: CleanupResult | undefined;
   #connecting: { resolve(value: Capabilities): void; reject(error: Error): void } | undefined;
   #cancelConnectTimer: (() => void) | undefined;
+  #cancelProbe: (() => void) | undefined;
+  #cancelStopTimer: (() => void) | undefined;
+  #probeDelay: number;
+  readonly #probeSequences = new Set<number>();
 
   constructor(options: TerminalWebSocketClientOptions) {
     this.#url = validateSocketUrl(options.url, options.allowInsecureLoopback === true);
@@ -135,6 +145,10 @@ export class TerminalWebSocketClient {
       options.connectTimeoutMilliseconds ?? DEFAULT_CONNECT_TIMEOUT_MILLISECONDS;
     this.#maximumPendingOutputBytes =
       options.maximumPendingOutputBytes ?? DEFAULT_PENDING_OUTPUT_BYTES;
+    this.#probeInitial = options.probeInitialMilliseconds ?? DEFAULT_PROBE_INITIAL_MILLISECONDS;
+    this.#probeMaximum = options.probeMaximumMilliseconds ?? DEFAULT_PROBE_MAXIMUM_MILLISECONDS;
+    this.#stopTimeout = options.stopTimeoutMilliseconds ?? DEFAULT_STOP_TIMEOUT_MILLISECONDS;
+    this.#probeDelay = this.#probeInitial;
     this.#release = new OutputReleaseQueue((bytes) => this.#acknowledgeOutput(bytes));
     const authorityRevoked = (): boolean => this.authorityRevoked;
     const terms = (): AttachmentTerms | undefined => this.terms;
@@ -269,6 +283,8 @@ export class TerminalWebSocketClient {
     }
     return new Promise((resolve) => {
       this.#stopWaiters.push(resolve);
+      // A host that never answers must not leave the caller waiting: the deadline concludes it.
+      this.#cancelStopTimer = this.#schedule(() => this.close(), this.#stopTimeout);
       this.#transmit(sent.value.frame);
     });
   }
@@ -397,7 +413,11 @@ export class TerminalWebSocketClient {
   }
 
   #onAcknowledgement(sequence: number): void {
+    const wasProbe = this.#probeSequences.has(sequence);
     this.#settle(sequence, { status: 'accepted', sequence });
+    // The wait starts over only when something a user sent was accepted. A probe being accepted can
+    // be followed at once by a refusal of real input, and that flapping must keep backing off.
+    if (!wasProbe) this.#probeDelay = this.#probeInitial;
     // An acknowledgement is the only thing that frees the window, so it is the only way back.
     if (this.#state === 'backpressured') this.#setState('writable');
     this.#emit({ type: 'operation-ack', sequence });
@@ -419,6 +439,7 @@ export class TerminalWebSocketClient {
 
   #onCleanupResult(outcome: 'complete' | 'incomplete' | 'unknown'): void {
     this.#cleanup = { outcome, source: 'host' };
+    this.#cancelStopTimer?.();
     // Incomplete and unknown cleanup quarantine the slot; a complete one just means the attachment ended.
     this.#end(outcome === 'complete' ? 'disconnected' : 'cleanup-incomplete');
     for (const waiter of this.#stopWaiters.splice(0)) waiter(this.#cleanup);
@@ -474,6 +495,50 @@ export class TerminalWebSocketClient {
     this.#transmit(sent.value.frame);
   }
 
+  /**
+   * The host sends nothing when its queue drains, so after a refusal with nothing in flight no
+   * acknowledgement would ever arrive to lift the pause. The client asks instead: an empty input is
+   * a capacity probe, accepted into the host's FIFO exactly when there is room, and carrying no
+   * byte for the process. It is sent on a backoff that doubles from the first delay to a cap, only
+   * while paused and idle, and its acknowledgement returns the state to `writable`. A refusal keeps
+   * the pause and waits longer. Nothing a user typed is ever sent by a probe.
+   */
+  #armProbe(): void {
+    this.#cancelProbe = this.#schedule(() => this.#probe(), this.#probeDelay);
+  }
+
+  #stopProbing(): void {
+    this.#cancelProbe?.();
+    this.#cancelProbe = undefined;
+  }
+
+  #probe(): void {
+    if (this.#ended || this.#state !== 'backpressured') return;
+    // Operations in flight will be answered, and an acknowledgement is what ends the pause.
+    if (this.#pendingOperations.size > 0) {
+      this.#armProbe();
+      return;
+    }
+    const built = this.#endpoint.input(new Uint8Array(0));
+    if (!built.ok) {
+      // Only a stopped client cannot send, and then there is nothing left to wait for.
+      if (built.failure.code === 'fifo-full') this.#backOff();
+      return;
+    }
+    this.#probeSequences.add(built.value.sequence);
+    this.#pendingOperations.set(built.value.sequence, (result) => {
+      this.#probeSequences.delete(built.value.sequence);
+      if (result.status === 'failed') this.#backOff();
+    });
+    this.#transmit(built.value.frame);
+  }
+
+  #backOff(): void {
+    if (this.#state !== 'backpressured') return;
+    this.#probeDelay = Math.min(this.#probeDelay * 2, this.#probeMaximum);
+    this.#armProbe();
+  }
+
   #settle(sequence: number, result: OperationResult): void {
     const settle = this.#pendingOperations.get(sequence);
     this.#pendingOperations.delete(sequence);
@@ -490,6 +555,8 @@ export class TerminalWebSocketClient {
     if (next === this.#state) return;
     const previous = this.#state;
     this.#state = next;
+    if (next === 'backpressured') this.#armProbe();
+    else if (previous === 'backpressured') this.#stopProbing();
     for (const listener of this.#stateListeners) this.#guard(() => listener(next));
     this.#emit({ type: 'state', state: next, previous });
   }
@@ -511,6 +578,8 @@ export class TerminalWebSocketClient {
   #endTransport(cause: 'closed' | 'error' | 'send-failed' | 'local', closeCode?: number): void {
     if (this.#ended) return;
     this.#ended = true;
+    this.#cancelProbe?.();
+    this.#cancelStopTimer?.();
     // The peer closed it already: there is nothing to close from this side.
     if (cause === 'closed') this.#socketClosed = true;
     // A client that never connected has no attachment to end and nothing to report.

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createDeferred } from '../session/fixtures/deferred.ts';
+import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { SessionSlot } from '../session/session-slot.ts';
 import { createTerminalWebSocketServer, type UpgradeServer } from './websocket-server.ts';
 import type { Authentication, TerminalWebSocketServerOptions } from './websocket-types.ts';
@@ -12,13 +13,10 @@ type FakeServer = UpgradeServer & {
   readonly upgrades: { readonly request: Request; readonly data: unknown }[];
 };
 
-function fakeServer(
-  facts: { hostname?: string | undefined; peer?: string | undefined; upgrade?: boolean } = {},
-): FakeServer {
+function fakeServer(facts: { peer?: string | undefined; upgrade?: boolean } = {}): FakeServer {
   const upgrades: FakeServer['upgrades'] = [];
   return {
     upgrades,
-    hostname: 'hostname' in facts ? facts.hostname : '127.0.0.1',
     requestIP: () => {
       const address = 'peer' in facts ? facts.peer : '127.0.0.1';
       return address === undefined ? null : { address };
@@ -40,6 +38,7 @@ function build(overrides: Partial<TerminalWebSocketServerOptions> = {}) {
     createProcess: () => process.hosted,
     allowedOrigins: [ORIGIN],
     allowInsecureLoopback: true,
+    boundHostname: '127.0.0.1',
     slotFor: () => new SessionSlot(),
     ...overrides,
   });
@@ -177,7 +176,7 @@ describe('handleUpgrade admission', () => {
     });
 
     test('https is admitted without the switch', async () => {
-      const server = fakeServer({ hostname: '0.0.0.0', peer: '203.0.113.9' });
+      const server = fakeServer({ peer: '203.0.113.9' });
       const response = await build({ allowInsecureLoopback: false }).handleUpgrade(
         upgradeRequest({ url: 'https://terminal.example/terminal?profile=shell' }),
         server,
@@ -186,10 +185,8 @@ describe('handleUpgrade admission', () => {
     });
 
     test.each([
-      ['a wildcard listener', { hostname: '0.0.0.0' }],
       ['a remote peer', { peer: '203.0.113.9' }],
       ['an unreadable peer', { peer: undefined }],
-      ['a listener with no hostname', { hostname: undefined }],
     ])('the development switch does not apply to %s', async (_name, facts) => {
       const server = fakeServer(facts);
       const response = await build().handleUpgrade(upgradeRequest(), server);
@@ -207,19 +204,37 @@ describe('handleUpgrade admission', () => {
   });
 
   describe('the URL', () => {
-    test.each(['token', 'access_token', 'Authorization', 'API_KEY', 'password', 'secret'])(
-      'a %s query parameter is refused unread',
-      async (name) => {
-        const server = fakeServer();
-        const response = await build().handleUpgrade(
-          upgradeRequest({ url: `http://127.0.0.1/terminal?profile=shell&${name}=hunter2` }),
-          server,
-        );
-        expect(response?.status).toBe(400);
-        expect(await body(response)).toEqual({ error: 'credential-in-url' });
-        expect(server.upgrades).toEqual([]);
-      },
-    );
+    test.each([
+      'token',
+      'access_token',
+      'Authorization',
+      'API_KEY',
+      'password',
+      'secret',
+      'sid',
+      'jwt',
+      'session',
+      'ticket',
+      'Profile',
+      'anything',
+    ])('a %s query parameter is refused: only profile is allowed', async (name) => {
+      const server = fakeServer();
+      const response = await build().handleUpgrade(
+        upgradeRequest({ url: `http://127.0.0.1/terminal?profile=shell&${name}=hunter2` }),
+        server,
+      );
+      expect(response?.status).toBe(400);
+      expect(await body(response)).toEqual({ error: 'unexpected-parameter' });
+      expect(server.upgrades).toEqual([]);
+    });
+
+    test('a repeated profile is refused', async () => {
+      const response = await build().handleUpgrade(
+        upgradeRequest({ url: 'http://127.0.0.1/terminal?profile=shell&profile=other' }),
+        fakeServer(),
+      );
+      expect(response?.status).toBe(400);
+    });
 
     test.each([
       ['missing', 'http://127.0.0.1/terminal'],
@@ -347,5 +362,65 @@ describe('handleUpgrade admission', () => {
 describe('slotFor is a required host decision', () => {
   test('a server built without it throws, and says what to supply', () => {
     expect(() => build({ slotFor: undefined as never })).toThrow(/slotFor/);
+  });
+});
+
+describe('the authenticate deadline', () => {
+  test('a callback that never answers is unavailable once the deadline passes, and frees its slot', async () => {
+    const clock = new ManualClock();
+    const never = new Promise<Authentication>(() => undefined);
+    const terminal = build({
+      clock,
+      limits: { maximumConnections: 1 },
+      host: {
+        authenticate: () => never,
+        authorize: () => ({ allowed: false, denial: 'forbidden' }),
+      },
+    });
+    const hung = terminal.handleUpgrade(upgradeRequest(), fakeServer());
+    const queued = await terminal.handleUpgrade(upgradeRequest(), fakeServer());
+    expect(queued?.status).toBe(503);
+    clock.advance(4_999);
+    clock.advance(1);
+    const response = await hung;
+    expect(response?.status).toBe(503);
+    expect(await body(response)).toEqual({ error: 'unavailable' });
+    expect(clock.pendingTimers).toBe(0);
+  });
+
+  test('an answer before the deadline cancels it', async () => {
+    const clock = new ManualClock();
+    const terminal = build({ clock });
+    expect(await terminal.handleUpgrade(upgradeRequest(), fakeServer())).toBeUndefined();
+    expect(clock.pendingTimers).toBe(0);
+  });
+});
+
+describe('the development switch and the bound hostname', () => {
+  const options = (boundHostname?: string) => ({
+    boundHostname: boundHostname as string,
+    allowInsecureLoopback: true,
+  });
+
+  test.each([undefined, '0.0.0.0', '::', '192.168.1.5', 'example.com'])(
+    'refuses to build with the switch and a bound hostname of %j',
+    (hostname) => {
+      expect(() => build(options(hostname))).toThrow(/loopback/);
+    },
+  );
+
+  test.each(['127.0.0.1', '127.8.8.8', '::1', 'localhost'])('accepts %s', (hostname) => {
+    expect(() => build(options(hostname))).not.toThrow();
+  });
+
+  test('without the switch a bound hostname is not needed', () => {
+    expect(() => build({ allowInsecureLoopback: false })).not.toThrow();
+  });
+
+  test('the listener-reported hostname is not trusted: a lying server cannot widen the switch', async () => {
+    // The host bound to loopback; whatever the server object says changes nothing.
+    const server = fakeServer({ peer: '203.0.113.9' });
+    const response = await build().handleUpgrade(upgradeRequest(), server);
+    expect(response?.status).toBe(403);
   });
 });

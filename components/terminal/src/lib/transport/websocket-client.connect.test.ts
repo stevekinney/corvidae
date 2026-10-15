@@ -115,11 +115,11 @@ describe('connect', () => {
     expect(
       () =>
         new TerminalWebSocketClient({
-          url: 'wss://terminal.example/terminal?token=hunter2',
+          url: 'wss://terminal.example/terminal?profile=shell&token=hunter2',
           sessionId: SESSION_IDENTIFIER,
           ticket: TICKET,
         }),
-    ).toThrow('credential');
+    ).toThrow('only the profile parameter');
   });
 
   test('allows a plain ws: address to loopback only with the switch', () => {

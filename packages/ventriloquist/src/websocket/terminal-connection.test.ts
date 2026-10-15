@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { HostedProcess } from '../bun/process-types.ts';
 import { ClientEndpoint } from '../protocol/client-endpoint.ts';
 import type { ServerMessage } from '../protocol/messages.ts';
+import { createDeferred } from '../session/fixtures/deferred.ts';
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { SessionSlot } from '../session/session-slot.ts';
 import {
@@ -13,6 +14,7 @@ import {
   type TerminalSocket,
 } from './terminal-connection.ts';
 import { resolveWebSocketLimits } from './websocket-limits.ts';
+import type { Authorization } from './websocket-types.ts';
 import {
   LAUNCH,
   SESSION_IDENTIFIER,
@@ -440,6 +442,91 @@ describe('failures inside the connection', () => {
     expect(subject.socket.closes).toEqual([1011]);
     const awaited24 = await subject.slot.current?.closed;
     expect(awaited24?.cause).toBe('host-dispose');
+  });
+});
+
+describe('frames before the attachment exists', () => {
+  test('a frame that arrives while the hello is still being authorized is a protocol violation, never queued', async () => {
+    const decision = createDeferred<Authorization>();
+    const subject = rig({ authorize: () => decision.promise });
+    subject.connection.open();
+    const hello = subject.client.hello();
+    if (!hello.ok) throw new Error('no hello');
+    const pending = subject.connection.receive(hello.value);
+    await Bun.sleep(0);
+    await subject.connection.receive('x'.repeat(100));
+    expect(subject.socket.closes).toEqual([1002]);
+    decision.resolve({ allowed: true, grant: 'interactive', launch: LAUNCH });
+    await pending;
+    expect(subject.slot.current).toBeUndefined();
+    expect(subject.process.cleanups).toBe(0);
+  });
+
+  test('a second frame arriving in the same turn as the hello is the same violation', async () => {
+    const subject = rig();
+    subject.connection.open();
+    const hello = subject.client.hello();
+    if (!hello.ok) throw new Error('no hello');
+    const first = subject.connection.receive(hello.value);
+    const second = subject.connection.receive('{}');
+    await Promise.all([first, second]);
+    expect(subject.socket.closes).toContain(1002);
+    expect(subject.slot.current).toBeUndefined();
+  });
+});
+
+describe('release failures', () => {
+  test('a release that rejects still finishes the connection, so it leaves the registry', async () => {
+    // The session is built, then the connection is refused for a depth mismatch; its dispose rejects.
+    const subject = rig({
+      slotFor: () =>
+        ({
+          create: (options: Parameters<SessionSlot['create']>[0]) => {
+            const admission = real.create(options);
+            if (admission.accepted) {
+              admission.session.dispose = () => Promise.reject(new Error('dispose failed'));
+            }
+            return admission;
+          },
+        }) as unknown as SessionSlot,
+    });
+    const real = subject.slot;
+    const limits = resolveWebSocketLimits({}, { operationQueueLimit: 1 });
+    const finished: TerminalConnection[] = [];
+    const connection = new TerminalConnection(
+      subject.socket,
+      {
+        host: {
+          authenticate: () => ({ ok: false, denial: 'unauthenticated' }),
+          authorize: () => ({ allowed: true, grant: 'interactive', launch: LAUNCH }),
+        },
+        createProcess: () => subject.process.hosted,
+        clock: subject.clock,
+        limits: { ...limits, budgets: { ...limits.budgets, operationQueueLimit: 300 } },
+        slotFor: () =>
+          ({
+            create: (options: Parameters<SessionSlot['create']>[0]) => {
+              const admission = real.create(options);
+              if (admission.accepted) {
+                admission.session.dispose = () => Promise.reject(new Error('dispose failed'));
+              }
+              return admission;
+            },
+          }) as unknown as SessionSlot,
+      },
+      (done) => finished.push(done),
+    );
+    connection.open();
+    const hello = subject.client.hello();
+    if (!hello.ok) throw new Error('no hello');
+    await connection.receive(hello.value);
+    await Bun.sleep(0);
+    expect(subject.socket.closes).toEqual([1011]);
+    expect(finished).toContain(connection);
+    // The socket closing afterwards releases again, through the same rejecting dispose, and still finishes.
+    finished.length = 0;
+    await connection.transportClosed();
+    expect(finished).toContain(connection);
   });
 });
 

@@ -128,14 +128,162 @@ describe('a host that refuses with fifo-full', () => {
     expect(subject.client.state).toBe('writable');
   });
 
-  test('with nothing else in flight the host sends nothing that frees it, so the state holds', async () => {
+  test('with nothing in flight the client probes with an empty input, and its acknowledgement frees the state', async () => {
     const subject = await windowOf(8);
     const sending = subject.client.sendInput('a');
     subject.fromClient();
     subject.serve(subject.host.failOperation(1, 'fifo-full', 'input-overflow'));
     await sending;
     expect(subject.client.state).toBe('backpressured');
-    expect(subject.client.input.input(new TextEncoder().encode('b')).ok).toBe(false);
+    // Nothing is sent until the first backoff elapses.
+    subject.clock.advance(249);
+    expect(subject.fromClient()).toEqual([]);
+    subject.clock.advance(1);
+    const [probe] = subject.fromClient();
+    expect(probe).toMatchObject({ kind: 'input', sequence: 2 });
+    expect((probe as { payload: Uint8Array }).payload.length).toBe(0);
+    subject.serve(subject.host.acknowledgeOperation(2));
+    expect(subject.client.state).toBe('writable');
+    expect(subject.clock.pendingTimers).toBe(0);
+    expect(subject.client.input.input(new TextEncoder().encode('b')).ok).toBe(true);
+  });
+
+  test('a probe the host refuses again keeps the state and backs off, doubling to a cap', async () => {
+    const subject = await windowOf(64);
+    const sending = subject.client.sendInput('a');
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(1, 'fifo-full', 'input-overflow'));
+    await sending;
+    const delays: number[] = [];
+    let sequence = 2;
+    let elapsed = 0;
+    // 250, 500, 1000, 2000, 4000, 8000, 8000: the cap holds.
+    for (const expected of [250, 500, 1_000, 2_000, 4_000, 8_000, 8_000]) {
+      subject.clock.advance(expected - 1);
+      expect(subject.fromClient()).toEqual([]);
+      subject.clock.advance(1);
+      expect(subject.fromClient()).toMatchObject([{ kind: 'input', sequence }]);
+      delays.push(expected);
+      elapsed += expected;
+      subject.serve(subject.host.failOperation(sequence, 'fifo-full', 'input-overflow'));
+      expect(subject.client.state).toBe('backpressured');
+      sequence += 1;
+    }
+    expect(delays).toHaveLength(7);
+    expect(elapsed).toBe(23_750);
+    // A later acknowledgement still returns it, and the backoff starts over for the next pause.
+    subject.clock.advance(8_000);
+    subject.fromClient();
+    subject.serve(subject.host.acknowledgeOperation(sequence));
+    expect(subject.client.state).toBe('writable');
+    expect(subject.clock.pendingTimers).toBe(0);
+  });
+
+  test('the backoff keeps growing across a probe recovery and starts over only when real input is accepted', async () => {
+    const subject = await windowOf(64);
+    const refuse = async (sequence: number) => {
+      const sending = subject.client.sendInput('a');
+      subject.fromClient();
+      subject.serve(subject.host.failOperation(sequence, 'fifo-full', 'input-overflow'));
+      await sending;
+    };
+    await refuse(1);
+    subject.clock.advance(250);
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(2, 'fifo-full', 'input-overflow'));
+    // The second probe is acknowledged, so the state recovers; the delay it had reached is kept.
+    subject.clock.advance(500);
+    subject.fromClient();
+    subject.serve(subject.host.acknowledgeOperation(3));
+    expect(subject.client.state).toBe('writable');
+    await refuse(4);
+    subject.clock.advance(499);
+    expect(subject.fromClient()).toEqual([]);
+    subject.clock.advance(1);
+    const [probe] = subject.fromClient();
+    expect(probe).toMatchObject({ kind: 'input', sequence: 5 });
+    subject.serve(subject.host.acknowledgeOperation(5));
+    // Real input accepted: the next pause starts from the first delay again.
+    const accepted = subject.client.sendInput('b');
+    subject.fromClient();
+    subject.serve(subject.host.acknowledgeOperation(6));
+    await accepted;
+    await refuse(7);
+    subject.clock.advance(249);
+    expect(subject.fromClient()).toEqual([]);
+    subject.clock.advance(1);
+    expect(subject.fromClient()).toMatchObject([{ kind: 'input', sequence: 8 }]);
+  });
+
+  test('does not probe while an operation is in flight, because its answer will arrive', async () => {
+    const subject = await windowOf(2);
+    void subject.client.sendInput('a');
+    void subject.client.sendInput('b');
+    subject.client.input.input(new TextEncoder().encode('c'));
+    expect(subject.client.state).toBe('backpressured');
+    subject.fromClient();
+    subject.clock.advance(250);
+    subject.clock.advance(250);
+    expect(subject.fromClient()).toEqual([]);
+    subject.serve(subject.host.acknowledgeOperation(1));
+    expect(subject.client.state).toBe('writable');
+    expect(subject.clock.pendingTimers).toBe(0);
+  });
+
+  test('stops probing when the transport ends, or the client closes or stops', async () => {
+    for (const end of ['drop', 'close', 'stop'] as const) {
+      const subject = await windowOf(8);
+      const sending = subject.client.sendInput('a');
+      subject.fromClient();
+      subject.serve(subject.host.failOperation(1, 'fifo-full', 'input-overflow'));
+      await sending;
+      expect(subject.clock.pendingTimers).toBe(1);
+      if (end === 'drop') subject.socket().drop(1006);
+      else if (end === 'close') subject.client.close();
+      else void subject.client.stop();
+      subject.clock.advance(60_000);
+      const sent = subject.fromClient().filter((message) => message.kind === 'input');
+      expect(sent).toEqual([]);
+    }
+  });
+
+  test('a probe the client may no longer send is dropped without rearming', async () => {
+    const subject = await windowOf(8);
+    const sending = subject.client.sendInput('a');
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(1, 'fifo-full', 'input-overflow'));
+    await sending;
+    void subject.client.stop();
+    subject.clock.advance(250);
+    expect(subject.fromClient().filter((message) => message.kind === 'input')).toEqual([]);
+    subject.clock.advance(60_000);
+    expect(subject.client.state).toBe('disconnected');
+  });
+
+  test('a probe that fails for another reason is also retried, on the backoff', async () => {
+    const subject = await windowOf(8);
+    const sending = subject.client.sendInput('a');
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(1, 'fifo-full', 'input-overflow'));
+    await sending;
+    subject.clock.advance(250);
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(2, 'read-only', 'no'));
+    expect(subject.client.state).toBe('backpressured');
+    subject.clock.advance(500);
+    expect(subject.fromClient()).toMatchObject([{ kind: 'input', sequence: 3 }]);
+  });
+
+  test('a probe the socket cannot send ends the transport and is unknown', async () => {
+    const subject = await windowOf(8);
+    const sending = subject.client.sendInput('a');
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(1, 'fifo-full', 'input-overflow'));
+    await sending;
+    subject.socket().sendThrows = true;
+    subject.clock.advance(250);
+    expect(subject.client.state).toBe('disconnected');
+    expect(subject.client.deliveryUnknown).toEqual([2]);
   });
 
   test('a refusal that arrives while not writable changes nothing', async () => {

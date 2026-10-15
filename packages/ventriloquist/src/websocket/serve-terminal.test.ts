@@ -74,3 +74,31 @@ describe('serveTerminalWebSocket', () => {
     }
   });
 });
+
+describe('serveTerminalWebSocket and the development switch', () => {
+  const base = { host, allowedOrigins: [ORIGIN], slotFor: () => new SessionSlot() };
+
+  // spawn-free: the server is refused at construction, so no listener or process is ever made
+  test.each([undefined, '0.0.0.0', '::', '192.168.1.5', 'example.com'])(
+    'refuses the switch with a hostname of %j, because Bun listens on every interface without one',
+    (hostname) => {
+      expect(() =>
+        serveTerminalWebSocket({
+          ...base,
+          allowInsecureLoopback: true,
+          ...(hostname === undefined ? {} : { hostname }),
+        }),
+      ).toThrow(/loopback/);
+    },
+  );
+
+  // spawn-free: the default Bun process factory is built but never called, since no hello arrives
+  test('accepts an explicit loopback hostname', async () => {
+    const served = serveTerminalWebSocket({
+      ...base,
+      allowInsecureLoopback: true,
+      hostname: '127.0.0.1',
+    });
+    await served.server.stop(true);
+  });
+});

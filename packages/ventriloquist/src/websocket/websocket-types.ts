@@ -100,6 +100,12 @@ export type TerminalWebSocketServerOptions = {
    */
   readonly allowInsecureLoopback?: boolean;
   /**
+   * The hostname the host passed to `Bun.serve`. Required, and must be a loopback address or
+   * `localhost`, when `allowInsecureLoopback` is set. The server's own `hostname` is never trusted
+   * for this: `Bun.serve({ port })` listens on every interface yet reports `localhost`.
+   */
+  readonly boundHostname?: string;
+  /**
    * Which `SessionSlot` holds a subject's session. Required, with no default: how many sessions a
    * principal may have, how long a slot is kept, and when a quarantined one is cleared are the
    * host's decisions, and a package default would grow without bound.
@@ -128,6 +134,8 @@ export type WebSocketLimits = {
   readonly handshakeDeadlineMilliseconds?: number;
   /** How often the host pings an attached client. Defaults to 10 s, a third of the liveness deadline. */
   readonly pingIntervalMilliseconds?: number;
+  /** How long the host's `authenticate` may take before the upgrade is refused as unavailable. Defaults to 5 s. */
+  readonly authenticateDeadlineMilliseconds?: number;
   /** Sockets that may be open or upgrading at once. Defaults to 64. */
   readonly maximumConnections?: number;
 };

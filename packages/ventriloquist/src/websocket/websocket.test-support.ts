@@ -209,6 +209,7 @@ export function startHarness(options: HarnessOptions = {}): Harness {
     createProcess: options.createProcess ?? (() => process.hosted),
     allowedOrigins: [ORIGIN],
     allowInsecureLoopback: options.allowInsecureLoopback ?? true,
+    boundHostname: options.hostname ?? '127.0.0.1',
     slotFor: () => slot,
     clock,
     ...options.server,

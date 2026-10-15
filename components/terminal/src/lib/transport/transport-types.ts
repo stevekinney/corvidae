@@ -122,6 +122,12 @@ export type TerminalWebSocketClientOptions = {
   readonly schedule?: Schedule;
   /** How long the handshake may take before the attempt fails. Defaults to 15 seconds. */
   readonly connectTimeoutMilliseconds?: number;
+  /** The first wait before a capacity probe while backpressured, doubling each refusal. Defaults to 250 ms. */
+  readonly probeInitialMilliseconds?: number;
+  /** The longest wait between capacity probes. Defaults to 8 seconds. */
+  readonly probeMaximumMilliseconds?: number;
+  /** How long `stop()` waits for the host's cleanup report before resolving `unknown`. Defaults to 10 seconds. */
+  readonly stopTimeoutMilliseconds?: number;
   /** Output held while nothing is subscribed. Defaults to 1 MiB, the host's own output budget. */
   readonly maximumPendingOutputBytes?: number;
 };
