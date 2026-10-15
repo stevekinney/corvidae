@@ -72,5 +72,9 @@ test('registers runtime and script boundaries separately', () => {
   expect(boundaryKind('components/weft-ui/scripts/browser/environment-configuration.ts')).toBe(
     'script',
   );
+  expect(boundaryKind('scripts/environment-configuration.ts')).toBe('script');
+  expect(
+    boundaryKind('packages/bureau/src/test/signal-shutdown/environment-configuration.ts'),
+  ).toBe('script');
   expect(boundaryKind('packages/example/src/environment-configuration.ts')).toBeUndefined();
 });

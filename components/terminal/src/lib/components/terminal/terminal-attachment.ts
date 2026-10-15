@@ -1,5 +1,6 @@
 import {
   INITIAL_GEOMETRY,
+  type ClearScope,
   type EngineSettings,
   type RendererEngine,
   type RendererEngineFactory,
@@ -61,7 +62,26 @@ export type AttachmentOptions = {
   /** The renderer failed closed. Called at most once, after the engine was disposed. */
   onFailure: (failure: TerminalRendererFailure) => void;
   onTitle: (title: string) => void;
+  /**
+   * Bind the session's input path to the mounted engine. Called once, right after the engine is
+   * mounted and before its output is subscribed. The binding is refreshed with every settings
+   * refresh and disposed first on release, while the engine is still alive, so nothing it listens
+   * to outlives the engine or the session it was made for.
+   */
+  bindEngine?: (engine: RendererEngine) => EngineBinding;
   scheduleFit?: FitScheduler;
+  /**
+   * The retained content changed: output was parsed, a clear or reset was applied, or a resize
+   * reflowed the rows. It carries nothing from the content, and it runs inside the same guard as
+   * the engine's other callbacks, so a throwing handler fails closed like any renderer failure.
+   */
+  onContentChange?: () => void;
+};
+
+/** What binding input to the engine hands back. */
+export type EngineBinding = {
+  refresh(): void;
+  dispose(): void;
 };
 
 export type TerminalAttachment = {
@@ -75,6 +95,19 @@ export type TerminalAttachment = {
   readonly following: boolean;
   /** A bounded projection of the active retained buffer, or `undefined` with no live engine. */
   readProjection(maximumBytes?: number): TerminalProjection | undefined;
+  /**
+   * Clear the local buffer, in order behind the output already received. Sends nothing to the
+   * process and never restarts it. Returns `false`, doing nothing, with no live engine; `done`
+   * runs once the clear has been applied.
+   */
+  clear(scope: ClearScope, done?: () => void): boolean;
+  /**
+   * Select a search match in the terminal, leaving the scroll position and focus alone. `false`
+   * when there is no live engine or the match cannot be placed exactly.
+   */
+  selectMatch(match: { start: number; end: number; text: string }, maximumBytes: number): boolean;
+  /** Drop the selection a search made. */
+  clearMatchSelection(): void;
   /** Release the engine, listeners, observers, scheduled work, and the output subscription. */
   dispose(): void;
 };
@@ -108,38 +141,78 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
   let failed = false;
   let ready = false;
   let engine: RendererEngine | undefined;
+  let binding: EngineBinding | undefined;
   let fit: FitCoordinator | undefined;
   let unsubscribe: (() => void) | undefined;
   let unwatchers: Unwatch[] = [];
   let reducedMotion: MediaQueryWatch | undefined;
   let resolver: ReturnType<typeof createElementColorResolver> | undefined;
+  let appliedFont: ReturnType<typeof readFont> = {};
 
+  /**
+   * Releases every resource. A step that throws (the controller's unsubscribe is host code) never
+   * skips the steps after it: each runs, and the first error is rethrown once all of them have.
+   */
   function release(): void {
-    unsubscribe?.();
+    const errors: unknown[] = [];
+    function step(action: () => void): void {
+      try {
+        action();
+      } catch (cause) {
+        errors.push(cause);
+      }
+    }
+    const bound = binding;
+    binding = undefined;
+    const handle = unsubscribe;
     unsubscribe = undefined;
-    for (const unwatch of unwatchers) unwatch();
+    const pending = unwatchers;
     unwatchers = [];
-    reducedMotion?.dispose();
+    const media = reducedMotion;
     reducedMotion = undefined;
-    fit?.dispose();
+    const coordinator = fit;
     fit = undefined;
-    resolver?.dispose();
+    const colors = resolver;
     resolver = undefined;
-    engine?.dispose();
+    const released = engine;
     engine = undefined;
     ready = false;
+    step(() => bound?.dispose());
+    step(() => handle?.());
+    for (const unwatch of pending) step(unwatch);
+    step(() => media?.dispose());
+    step(() => coordinator?.dispose());
+    step(() => colors?.dispose());
+    step(() => released?.dispose());
+    if (errors.length > 0) throw errors[0];
   }
 
   function fail(phase: TerminalRendererFailurePhase, cause: unknown): void {
     if (disposed || failed) return;
     failed = true;
-    release();
+    let cleanupError: { cause: unknown } | undefined;
+    try {
+      release();
+    } catch (error) {
+      // Cleanup finished what it could. The failure is still reported below; the cleanup error
+      // is then rethrown so it stays loud instead of replacing the failure it accompanied.
+      cleanupError = { cause: error };
+    }
     const failure: TerminalRendererFailure = { phase, message: describeCause(cause) };
+    let reportError: { cause: unknown } | undefined;
     try {
       options.onFailure(failure);
-    } finally {
-      options.controller?.rendererFailed(failure);
+    } catch (error) {
+      reportError = { cause: error };
     }
+    try {
+      options.controller?.rendererFailed(failure);
+    } catch (error) {
+      // The host handler's error is the louder of the two, but the controller was still told.
+      reportError ??= { cause: error };
+    }
+    const loud = reportError ?? cleanupError;
+    if (loud !== undefined) throw loud.cause;
   }
 
   function guarded(phase: TerminalRendererFailurePhase, action: () => void): void {
@@ -148,6 +221,13 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
     } catch (cause) {
       fail(phase, cause);
     }
+  }
+
+  /** Host handlers run inside the guard: a throwing one fails closed, it never escapes the engine. */
+  function guardedLinkActivation(
+    activate: ((url: string) => void) | undefined,
+  ): ((url: string) => void) | undefined {
+    return activate === undefined ? undefined : (url) => guarded('render', () => activate(url));
   }
 
   function engineSettings(): EngineSettings {
@@ -178,8 +258,15 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
   function refresh(): void {
     guarded('render', () => {
       if (engine === undefined) return;
-      engine.update(engineSettings());
-      engine.setLinkActivation(options.readSettings().activateLink);
+      const font = readFont(options.host);
+      engine.update({ ...engineSettings(), ...font });
+      // A new family or size changes the cell, so the cell is measured again before the fit.
+      const fontChanged =
+        font.fontFamily !== appliedFont.fontFamily || font.fontSize !== appliedFont.fontSize;
+      appliedFont = font;
+      if (fontChanged) engine.remeasure();
+      engine.setLinkActivation(guardedLinkActivation(options.readSettings().activateLink));
+      binding?.refresh();
       requestFit();
     });
   }
@@ -197,7 +284,9 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
         live.write(chunk, () => {
           if (acknowledged) return;
           acknowledged = true;
-          parsed();
+          // The engine calls this when its write completes, long after the guard around `write`
+          // returned, so the host's callback gets a guard of its own.
+          guarded('parse', parsed);
         }),
       );
     });
@@ -209,16 +298,22 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
     const settings = options.readSettings();
     reducedMotion = watchMediaQuery('(prefers-reduced-motion: reduce)', refresh);
     resolver = createElementColorResolver(options.host);
+    appliedFont = readFont(options.host);
     const created = createEngine({
       ...engineSettings(),
-      ...readFont(options.host),
+      ...appliedFont,
       geometry: validateGeometry(settings.ownerGeometry) ?? INITIAL_GEOMETRY,
       // The engine calls this from inside its parser, so a throwing host handler fails closed.
       onTitle: (title) => guarded('parse', () => options.onTitle(title)),
     });
     engine = created;
     created.mount(options.host);
-    created.setLinkActivation(settings.activateLink);
+    created.setLinkActivation(guardedLinkActivation(settings.activateLink));
+    binding = options.bindEngine?.(created);
+    if (options.onContentChange !== undefined) {
+      const notify = options.onContentChange;
+      created.onChange(() => guarded('render', notify));
+    }
     fit = createFitCoordinator({
       ...(options.scheduleFit === undefined ? {} : { schedule: options.scheduleFit }),
       measure: () => {
@@ -283,6 +378,24 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
       return engine?.following ?? true;
     },
     readProjection: (maximumBytes) => engine?.readProjection(maximumBytes),
+    selectMatch(match, maximumBytes) {
+      let selected = false;
+      guarded('render', () => {
+        selected = engine?.selectMatch(match, maximumBytes) ?? false;
+      });
+      return selected;
+    },
+    clearMatchSelection() {
+      guarded('render', () => engine?.clearMatchSelection());
+    },
+    clear(scope, done) {
+      if (engine === undefined) return false;
+      const live = engine;
+      guarded('render', () =>
+        live.clear(scope, done === undefined ? undefined : () => guarded('render', done)),
+      );
+      return true;
+    },
     dispose() {
       disposed = true;
       release();

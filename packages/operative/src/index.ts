@@ -67,6 +67,15 @@ export type {
   UnsignedDelegationGrant,
 } from './delegation-grant';
 
+export {
+  AGENT_POLICY_HOOK_SOURCE,
+  AGENT_POLICY_PINNED_LAST_PRIORITY,
+  OPERATIVE_RESOLVES_GUARDRAILS,
+  resolveAgentGuardrails,
+  resolvesOwnGuardrails,
+  withActiveSkillToolPolicy,
+} from './agent-policy';
+export type { AgentSkills, AgentSkillsRun, GuardrailsDeclaration } from './agent-policy';
 export * from './cost-budget-monitor';
 export * from './cost-estimation';
 export * from './create-agent';

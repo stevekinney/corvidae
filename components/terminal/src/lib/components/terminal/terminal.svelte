@@ -22,9 +22,25 @@
 </script>
 
 <script lang="ts">
-  import { Button, TerminalFrame } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Button,
+    Modal,
+    TerminalFrame,
+    Textarea,
+    VisuallyHidden,
+    useAnnouncer,
+  } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
+  import { detectInputPlatform } from '../../input/input-platform.ts';
+  import type { InputSettings } from '../../input/input-types.ts';
+  import { createInspection } from '../../inspection/inspection-controller.ts';
+  import type { InspectionSource } from '../../inspection/inspection-types.ts';
+  import InspectionPanel from '../../inspection/inspection-panel.svelte';
+  import { resolvePasteLimit, type PasteReview } from '../../input/paste-review.ts';
+  import { createRefusalAnnouncer } from '../../input/refusal-announcement.ts';
+  import { createTerminalInput, type TerminalInput } from '../../input/terminal-input.ts';
   import { createTerminalAttachment, type AttachmentSettings } from './terminal-attachment.ts';
   import { engineLoader } from './terminal-engine-loader.ts';
   import { acceptsInput, isErrorState, mountsEngine, ownsGrid } from './terminal-state.ts';
@@ -48,20 +64,47 @@
     announceOutput = false,
     onLinkActivate,
     onTitleChange,
+    maximumPasteBytes,
+    mouseReporting = false,
+    onInputRefused,
+    onInspectionEvent,
     class: customClassName,
     ...rest
   }: TerminalProps = $props();
 
+  // Key capture and the paste review belong to the input binding that is live now. They are shown
+  // here and held there; a session or engine change disposes the binding, which ends both.
+  let input = $state.raw<TerminalInput>();
+  let captured = $state(false);
+  let mouseActive = $state(false);
+  let reviewOpen = $state(false);
+  let displayedReview = $state.raw<PasteReview>();
+  const announcer = useAnnouncer();
+  const refusalAnnouncer = createRefusalAnnouncer(announcer.announce);
+  const reviewId = $props.id();
+  const captureControlId = `${reviewId}-capture`;
+  const interruptControlId = `${reviewId}-interrupt`;
+  const mouseIndicatorId = `${reviewId}-mouse`;
+
   // A failure the renderer found itself. It outranks the state the host passed in: the engine is
   // gone, so no other state can be shown truthfully, and nothing is silently reset or replaced.
   // The failure is remembered with the controller it happened to: that controller was revoked by
-  // the failure, so the failure ends when the host supplies another one, and never before.
+  // the failure, so the failure ends when the host supplies another defined one, and never before.
   let failed = $state.raw<{ failure: TerminalRendererFailure; controller: typeof controller }>();
   let ready = $state(false);
 
-  const failure = $derived(
-    failed !== undefined && failed.controller === controller ? failed.failure : undefined,
+  // A failure tied to a controller outlives that controller being cleared: nothing was replaced,
+  // so the host has not recovered. Only a different, defined controller ends it.
+  const replaced = $derived(
+    failed !== undefined && controller !== undefined && controller !== failed.controller,
   );
+  const failure = $derived(failed !== undefined && !replaced ? failed.failure : undefined);
+
+  // Forget the failure for good once it was replaced, so bringing the old controller back later
+  // cannot revive it.
+  $effect(() => {
+    if (replaced) failed = undefined;
+  });
   const effectiveState: TerminalState = $derived(
     failure === undefined ? sessionState : 'engine-load-failed',
   );
@@ -87,7 +130,7 @@
     // transition into the state) and the chip stays visible but quiet.
     announceStatus: false,
     ...(error === undefined ? {} : { error }),
-    ...(onRecoveryRequest === undefined ? {} : { onReloadRequest: onRecoveryRequest }),
+    ...(onRecoveryRequest === undefined ? {} : { onReloadRequest: retry }),
   });
 
   function readSettings(): AttachmentSettings {
@@ -101,6 +144,33 @@
     };
   }
 
+  function readInputSettings(): InputSettings {
+    return {
+      writable: acceptsInput(effectiveState),
+      mouseReporting,
+      maximumPasteBytes: resolvePasteLimit(maximumPasteBytes),
+      platform: detectInputPlatform(),
+    };
+  }
+
+  // Inspection reads the retained output of the engine that is mounted now. Its generation names
+  // that attachment: a new controller or engine is a new generation, so nothing captured earlier is
+  // ever refreshed from, or activated against, a later session.
+  let inspectionSource = $state.raw<InspectionSource>();
+  let nextGeneration = 0;
+  let frameBody = $state.raw<HTMLElement>();
+  const inspection = createInspection({
+    readSource: () => inspectionSource,
+    readActivateLink: () => onLinkActivate,
+    readOnEvent: () => onInspectionEvent,
+    announce: (text) => announcer.announce(text),
+  });
+  $effect(() => {
+    void inspectionSource;
+    inspection.sourceChanged();
+  });
+  $effect(() => inspection.dispose);
+
   // The live attachment, for pushing settings that change without remounting the engine. A plain
   // variable: nothing renders from it.
   let live: ReturnType<typeof createTerminalAttachment> | undefined;
@@ -109,9 +179,17 @@
     // Track every setting the engine mirrors; the attachment re-reads them itself. The class and
     // inline style are styling inputs too: they can change the tokens the engine colors resolve to.
     readSettings();
+    // The input settings too: a host turning mouse reporting off ends it at once.
+    readInputSettings();
     void customClassName;
     void rest.style;
     live?.refresh();
+  });
+
+  // A refusal announced before the state changed is news again if it recurs after it.
+  $effect(() => {
+    void effectiveState;
+    refusalAnnouncer.reset();
   });
 
   // These states say the process is gone, so no output will finish a held unicode prefix. The
@@ -138,12 +216,21 @@
         readSettings,
         onReady: () => {
           ready = true;
+          inspectionSource = {
+            generation: (nextGeneration += 1),
+            readProjection: (maximumBytes) => attachment.readProjection(maximumBytes),
+            clear: (scope, done) => attachment.clear(scope, done),
+            selectMatch: (match, maximumBytes) => attachment.selectMatch(match, maximumBytes),
+            clearMatchSelection: () => attachment.clearMatchSelection(),
+          };
         },
+        onContentChange: () => inspection.contentChanged(),
         onGeometry: (geometry) => onGeometryChange?.(geometry),
         onFailure: (next) => {
           failed = { failure: next, controller: borrowed };
         },
         onTitle: (next) => onTitleChange?.(next),
+        bindEngine: (engine) => bindInput(engine, host, borrowed),
       }),
     );
     live = attachment;
@@ -151,21 +238,78 @@
       attachment.dispose();
       if (live === attachment) live = undefined;
       ready = false;
+      inspectionSource = undefined;
     };
+  }
+
+  /**
+   * Binds the session's input to the mounted engine. The binding is made for this controller and
+   * this engine only: when either is replaced the attachment disposes it, and nothing it was
+   * listening to can send to the session that replaced it.
+   */
+  function bindInput(
+    engine: Parameters<typeof createTerminalInput>[0]['engine'],
+    host: HTMLElement,
+    borrowed: typeof controller,
+  ) {
+    const binding = createTerminalInput({
+      engine,
+      host,
+      controller: borrowed?.input,
+      readSettings: readInputSettings,
+      // Not `instanceof Element`: the focus target may belong to another realm.
+      isTerminalControl: (node) =>
+        'id' in node && (node.id === captureControlId || node.id === interruptControlId),
+      onMouseReportingChange: (active, announce) => {
+        mouseActive = active;
+        if (announce) announcer.announce(active ? 'Mouse reporting on' : 'Mouse reporting off');
+      },
+      onCaptureChange: (next) => {
+        captured = next;
+        announcer.announce(next ? 'Terminal key capture on' : 'Terminal key capture off');
+      },
+      onReview: (next) => {
+        if (next !== undefined) displayedReview = next;
+        reviewOpen = next !== undefined;
+      },
+      onRefused: (refusal) => {
+        refusalAnnouncer.refused(refusal);
+        onInputRefused?.(refusal);
+      },
+    });
+    input = binding;
+    return {
+      refresh: binding.refresh,
+      dispose() {
+        binding.dispose();
+        if (input === binding) input = undefined;
+      },
+    };
+  }
+
+  function toggleCapture(): void {
+    if (captured) input?.release();
+    else input?.capture();
   }
 
   // Recovery is the host's: a renderer failure revoked the controller and cleaned it up, so
   // remounting against it would revive a dead session. The host answers by supplying a new
   // controller or session. The one exception is a failure with no controller, where nothing was
-  // revoked, so the engine can be loaded again once the host has been told.
+  // revoked, so the engine can be loaded again once the host has been told. That holds for both
+  // recovery controls: this component's Retry and the frame's Reload both come through here.
   function retry(): void {
     onRecoveryRequest?.();
-    if (failed !== undefined && failed.controller === undefined) failed = undefined;
+    if (failed !== undefined && controller === undefined) failed = undefined;
   }
 </script>
 
 <TerminalFrame {...frameProps}>
-  <div class="cinder-terminal__body" data-state={effectiveState}>
+  <div
+    class="cinder-terminal__body"
+    data-state={effectiveState}
+    tabindex="-1"
+    bind:this={frameBody}
+  >
     <p class="cinder-terminal__message" role="status" aria-atomic="true">{message}</p>
     {#if showEngine}
       <div
@@ -183,8 +327,83 @@
       </div>
     {:else if effectiveState === 'writable'}
       <div class="cinder-terminal__actions">
-        <Button label="Capture terminal keys" size="sm" />
+        <Button
+          id={captureControlId}
+          label="Capture terminal keys"
+          size="sm"
+          aria-pressed={captured}
+          aria-describedby={mouseActive ? mouseIndicatorId : undefined}
+          onclick={toggleCapture}
+          onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
+        />
+        {#if mouseActive}
+          <Badge id={mouseIndicatorId} variant="info" size="sm">Mouse reporting on</Badge>
+        {/if}
+        <Button
+          id={interruptControlId}
+          label="Interrupt"
+          size="sm"
+          onclick={() => input?.interrupt()}
+          onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
+        />
       </div>
     {/if}
+    <InspectionPanel {inspection} toolbarVisible={showEngine} restoreTarget={() => frameBody} />
+    <VisuallyHidden as="div" aria-live="polite" aria-atomic="true">
+      {announcer.message}
+    </VisuallyHidden>
   </div>
 </TerminalFrame>
+
+<Modal
+  bind:open={reviewOpen}
+  title={displayedReview?.kind === 'rejected' ? 'Paste is too large' : 'Review paste'}
+  onDismiss={() => input?.cancelPaste()}
+  onExitComplete={() => {
+    // The pasted text may be a secret; it is not kept once the review has gone.
+    displayedReview = undefined;
+    // The dialog took focus and with it key capture; the terminal gets both back.
+    input?.resumeCapture();
+  }}
+>
+  {#if displayedReview?.kind === 'confirm'}
+    <p class="cinder-terminal__review-summary">
+      {`${displayedReview.lines} ${displayedReview.lines === 1 ? 'line' : 'lines'}, ${displayedReview.bytes} of ${displayedReview.maximumBytes} bytes.`}
+    </p>
+    {#if displayedReview.endsWithNewline}
+      <p>Ends with a newline, so the last line runs as soon as it is pasted.</p>
+    {/if}
+    {#if displayedReview.controlCount > 0}
+      <p>
+        {`Contains ${displayedReview.controlCount} control ${displayedReview.controlCount === 1 ? 'character' : 'characters'}.`}
+      </p>
+    {/if}
+    {#if displayedReview.containsPasteTerminator}
+      <p>
+        {displayedReview.bracketedPaste
+          ? 'Contains the bracketed paste terminator, which ends a protected paste early.'
+          : 'Contains the bracketed paste terminator. Bracketed paste is off, so it is sent as typed.'}
+      </p>
+    {/if}
+    <Textarea
+      id={`${reviewId}-preview`}
+      label="Paste preview, with line breaks and control characters shown"
+      value={displayedReview.visibleText}
+      readonly
+      rows={8}
+      variant="code"
+    />
+  {:else if displayedReview?.kind === 'rejected'}
+    <p>
+      {`This paste is ${displayedReview.bytes} bytes and the limit is ${displayedReview.maximumBytes} bytes. Nothing was sent.`}
+    </p>
+  {/if}
+  {#snippet footer()}
+    {#if displayedReview?.kind === 'confirm'}
+      <Button variant="secondary" autofocus onclick={() => input?.cancelPaste()}>Cancel</Button>
+      <Button variant="primary" onclick={() => input?.acceptPaste()}>Paste</Button>
+    {:else}
+      <Button variant="secondary" autofocus onclick={() => input?.cancelPaste()}>Close</Button>
+    {/if}
+  {/snippet}
+</Modal>

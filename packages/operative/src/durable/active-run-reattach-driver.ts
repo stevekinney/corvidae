@@ -41,6 +41,13 @@ export async function driveReattachedRun(
     if (error instanceof UnsupportedRunResultVersionError) {
       throw error;
     }
+    // Another engine that reclaimed this run committed the terminal outcome this
+    // rejection reports, and its own driver publishes it: stay write-free here,
+    // exactly as on the success path below.
+    if (lostRunToAnotherEngine(context, handle)) {
+      reachability.unreachable = true;
+      return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
+    }
     // An ADAPTER-INITIATED abort (bureau.abortRun → engine.cancel) that ACTUALLY
     // terminalized this run is a real terminal: fire `run.aborted` so the gateway
     // listener persists `aborted`, rather than leaving the session looking
@@ -129,7 +136,7 @@ export async function driveReattachedRun(
   // COR-1390: `handle.result()` also settles when another engine reclaimed
   // this run after this one recovered it and finished it there; that engine
   // publishes the terminal lifecycle, so this one stays write-free.
-  if (await lostRunToAnotherEngine(context, runId)) {
+  if (lostRunToAnotherEngine(context, handle)) {
     reachability.unreachable = true;
     return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
   }

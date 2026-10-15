@@ -97,6 +97,13 @@ export type CaseResult = {
   screenshot: string | null;
 };
 
+/**
+ * Where a static-server death interrupted the run: before it reported its port (`startup`), during
+ * the HTTP preflight (`first-request`), after the first browser case started but before any case
+ * completed (`hydration`), or after at least one case completed (`mid-run`).
+ */
+export type FailurePhase = 'startup' | 'first-request' | 'hydration' | 'mid-run';
+
 export type GateReport = {
   version: 1;
   exitCode: number;
@@ -117,6 +124,10 @@ export type GateReport = {
   passedCount: number;
   failedCases: CaseResult[];
   missingCases: string[];
+  /** Set only when the static server died; names where the run was. */
+  failurePhase: FailurePhase | null;
+  /** Cases that had started but not completed when the static server died. */
+  inFlightCases: string[];
   manifestPath: string | null;
 };
 
@@ -139,15 +150,35 @@ function describeExit(subprocess: OwnedChild['subprocess']): string {
     : `signal ${subprocess.signalCode}`;
 }
 
-/** Parse the reporter's JSON lines; a missing file is an empty list. */
-export async function readCaseResults(path: string): Promise<CaseResult[]> {
+/** A case-start line the reporter writes before the case's result line. */
+export type CaseBegin = { caseId: string; event: 'begin' };
+
+/**
+ * Parse the reporter's JSON lines into the cases that started and the results of those that
+ * completed; a missing file is an empty list of each.
+ */
+export async function readCaseProgress(
+  path: string,
+): Promise<{ started: string[]; results: CaseResult[] }> {
   const file = Bun.file(path);
-  if (!(await file.exists())) return [];
+  if (!(await file.exists())) return { started: [], results: [] };
   const text = await file.text();
-  return text
+  const lines = text
     .split('\n')
     .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line) as CaseResult);
+    .map((line) => JSON.parse(line) as CaseResult | CaseBegin);
+  const isBegin = (line: CaseResult | CaseBegin): line is CaseBegin =>
+    'event' in line && line.event === 'begin';
+  return {
+    started: lines.filter(isBegin).map((line) => line.caseId),
+    results: lines.filter((line): line is CaseResult => !isBegin(line)),
+  };
+}
+
+/** The results of the cases that completed. */
+export async function readCaseResults(path: string): Promise<CaseResult[]> {
+  const progress = await readCaseProgress(path);
+  return progress.results;
 }
 
 /** Every expected case must have exactly one result, and a passing run must pass all of them. */
@@ -159,12 +190,23 @@ export function summarizeCaseResults(
   for (const result of results)
     byId.set(result.caseId, [...(byId.get(result.caseId) ?? []), result]);
   const missing = cases.filter((testCase) => byId.get(testCase.id)?.length !== 1).map((c) => c.id);
+  const expected = new Set(cases.map((testCase) => testCase.id));
+  // A result for a test the case list does not name means the list and the spec have drifted
+  // apart; it is a failure, and it never counts toward the passed total.
+  const unexpected = results
+    .filter((result) => !expected.has(result.caseId))
+    .map((result) => ({
+      ...result,
+      status: 'unexpected',
+      errors: ['the case list does not name this test'],
+    }));
   // A browser diagnostic that arrives after a case's last assertion (before its fixtures tear
   // down) never fails the case in Playwright, so a passed result that carries one is a failure.
-  const failed = results.filter(
+  const listed = results.filter((result) => expected.has(result.caseId));
+  const failed = listed.filter(
     (result) => result.status !== 'passed' || result.diagnostics.length > 0,
   );
-  return { passed: results.length - failed.length, failed, missing };
+  return { passed: listed.length - failed.length, failed: [...failed, ...unexpected], missing };
 }
 
 async function readExportReport(path: string): Promise<ExportReport> {
@@ -179,7 +221,11 @@ async function readExportReport(path: string): Promise<ExportReport> {
   }
 }
 
-async function waitForPort(portFile: string, server: OwnedChild): Promise<number> {
+async function waitForPort(
+  portFile: string,
+  server: OwnedChild,
+  report: GateReport,
+): Promise<number> {
   const deadline = performance.now() + SERVER_READY_DEADLINE_MILLISECONDS;
   while (performance.now() < deadline) {
     if (server.subprocess.exitCode !== null || server.subprocess.signalCode !== null) break;
@@ -190,12 +236,20 @@ async function waitForPort(portFile: string, server: OwnedChild): Promise<number
     }
     await Bun.sleep(50);
   }
+  if (server.subprocess.exitCode === null && server.subprocess.signalCode === null) {
+    throw new GateFailure('[static-playground] static server did not report a port');
+  }
+  report.failurePhase = 'startup';
   throw new GateFailure(
-    server.subprocess.exitCode === null && server.subprocess.signalCode === null
-      ? '[static-playground] static server did not report a port'
-      : `[static-playground] static server exited before it was ready with ${describeExit(server.subprocess)}`,
+    `[static-playground] static server exited before it was ready with ${describeExit(server.subprocess)} (phase: startup)`,
   );
 }
+
+/** What the runner is doing, which decides the phase a static-server death is reported under. */
+type Stage =
+  | { name: 'startup' }
+  | { name: 'preflight' }
+  | { name: 'browser-cases'; cases: readonly StaticCase[]; resultsPath: string };
 
 type RunState = {
   options: GateOptions;
@@ -203,21 +257,90 @@ type RunState = {
   runDirectory: string;
   report: GateReport;
   interrupted: Promise<never>;
+  stage: Stage;
 };
 
-/** Await `work`, but give up as soon as the runner is signaled or the static server dies. */
-async function guarded<T>(state: RunState, server: OwnedChild | null, work: Promise<T>) {
+/**
+ * How long aborted work may take to settle after a server death before the runner reports anyway.
+ * Aborted preflight requests settle at once; this only bounds a step that ignores the signal.
+ */
+const ABORTED_WORK_MILLISECONDS = 5_000;
+
+/**
+ * Record where a static-server death interrupted the run and return its diagnosis. During the
+ * browser cases it keeps every completed result, so the report still counts what passed and names
+ * what failed, and it names the cases that had started without completing.
+ */
+async function diagnoseServerDeath(state: RunState, server: OwnedChild): Promise<string> {
+  const { report, stage } = state;
+  let phase: FailurePhase = stage.name === 'browser-cases' ? 'hydration' : 'first-request';
+  if (stage.name === 'browser-cases') {
+    const progress = await readCaseProgress(stage.resultsPath);
+    const summary = summarizeCaseResults(stage.cases, progress.results);
+    const completed = new Set(progress.results.map((result) => result.caseId));
+    const inFlight = [...new Set(progress.started)].filter((caseId) => !completed.has(caseId));
+    Object.assign(report, {
+      passedCount: summary.passed,
+      failedCases: summary.failed,
+      missingCases: summary.missing,
+      inFlightCases: inFlight,
+    });
+    if (progress.results.length > 0) phase = 'mid-run';
+  }
+  report.failurePhase = phase;
+  const inFlight =
+    report.inFlightCases.length === 0 ? '' : `; in flight: ${report.inFlightCases.join(', ')}`;
+  return `[static-playground] static server exited unexpectedly with ${describeExit(server.subprocess)} (phase: ${phase}${inFlight})`;
+}
+
+/**
+ * Await `work`, but give up as soon as the runner is signaled or the static server dies. On a
+ * server death, `abort` cancels the work and the runner waits (bounded) for it to settle, so
+ * nothing it started outlives the report and the report's duration covers it.
+ */
+async function serverDeathOf(
+  state: RunState,
+  server: OwnedChild,
+  settled: Promise<number>,
+  abort: AbortController | undefined,
+): Promise<never> {
+  // The watcher retires once the guarded work settles or the runner is interrupted: after either,
+  // the server only exits because the runner stops it at teardown, and that is not a death.
+  const retired = Promise.race([settled, state.interrupted.catch(() => undefined)]).then(
+    () => 'retired' as const,
+  );
+  const ended = await Promise.race([
+    server.subprocess.exited.then(() => 'exited' as const),
+    retired,
+  ]);
+  if (ended === 'retired') return new Promise<never>(() => {});
+  if (abort !== undefined) {
+    abort.abort(new Error('the static server died'));
+    await exitedWithin({ exited: settled }, ABORTED_WORK_MILLISECONDS);
+  }
+  throw new GateFailure(await diagnoseServerDeath(state, server));
+}
+
+async function guarded<T>(
+  state: RunState,
+  server: OwnedChild | null,
+  work: Promise<T>,
+  abort?: AbortController,
+) {
+  const settled = work.then(
+    () => 0,
+    () => 0,
+  );
   const serverDeath =
-    server === null
-      ? new Promise<never>(() => {})
-      : server.subprocess.exited.then(() => {
-          throw new GateFailure(
-            `[static-playground] static server exited unexpectedly with ${describeExit(server.subprocess)}`,
-          );
-        });
+    server === null ? new Promise<never>(() => {}) : serverDeathOf(state, server, settled, abort);
   // The race observes a later rejection; this keeps one that lands after `work` from going unhandled.
   serverDeath.catch(() => undefined);
-  return Promise.race([work, state.interrupted, serverDeath]);
+  // An aborted `work` rejects first; the server death, not the abort, is what failed the run.
+  const outcome = work.catch(async (error: unknown) => {
+    if (abort?.signal.aborted === true) return serverDeath;
+    throw error;
+  });
+  return Promise.race([outcome, state.interrupted, serverDeath]);
 }
 
 async function startServer(state: RunState): Promise<{ server: OwnedChild; origin: string }> {
@@ -230,7 +353,7 @@ async function startServer(state: RunState): Promise<{ server: OwnedChild; origi
     cwd: PLAYGROUND_ROOT,
     env: childEnvironment(state.runDirectory, {}),
   });
-  const port = await guarded(state, null, waitForPort(portFile, server));
+  const port = await guarded(state, null, waitForPort(portFile, server, state.report));
   return { server, origin: `http://127.0.0.1:${port}` };
 }
 
@@ -263,6 +386,8 @@ async function preflight(state: RunState, server: OwnedChild, origin: string) {
     peakResidentSetBytes: exportReport.peakResidentSetBytes,
     routeCount: exportReport.routes.length,
   });
+  state.stage = { name: 'preflight' };
+  const abort = new AbortController();
   const result = await guarded(
     state,
     server,
@@ -273,7 +398,9 @@ async function preflight(state: RunState, server: OwnedChild, origin: string) {
       configuration: await loadStaticHostConfiguration(),
       allowSourceMismatch: state.options.allowSourceMismatch,
       secretEntries: readSecretEnvironmentEntries(),
+      signal: abort.signal,
     }),
+    abort,
   );
   const manifestPath = join(state.options.output, 'manifest.sha256');
   await Bun.write(manifestPath, serializeDigestManifest(result.manifest));
@@ -300,6 +427,7 @@ async function runBrowserCases(
   const casesPath = join(state.runDirectory, 'cases.json');
   const resultsPath = join(state.runDirectory, 'results.jsonl');
   await Bun.write(casesPath, JSON.stringify(cases));
+  state.stage = { name: 'browser-cases', cases, resultsPath };
   process.stdout.write(
     `[static-playground] running ${cases.length} of ${allCases.length} cases (shard ${state.options.shard.index}/${state.options.shard.count}, ${state.options.workers} workers)\n`,
   );
@@ -369,6 +497,8 @@ function emptyReport(options: GateOptions): GateReport {
     passedCount: 0,
     failedCases: [],
     missingCases: [],
+    failurePhase: null,
+    inFlightCases: [],
     manifestPath: null,
   };
 }
@@ -433,6 +563,7 @@ export async function runStaticPlaygroundGate(options: GateOptions): Promise<num
     runDirectory,
     report,
     interrupted: interruption.promise,
+    stage: { name: 'startup' },
   };
   let status: number;
   try {

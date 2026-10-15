@@ -1,6 +1,9 @@
 import type { TerminalFrameStatus } from '@lostgradient/cinder';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import type { InputRefusal, TerminalInputController } from '../../input/input-types.ts';
+import type { InspectionEvent } from '../../inspection/inspection-types.ts';
+
 /**
  * The interaction states the terminal surface renders, as specified in
  * `documentation/terminal/experience.md`. The renderer owns the display of every state; which
@@ -90,6 +93,11 @@ export type TerminalRendererController = {
    * runs cleanup; the renderer never switches engines, resets silently, or replays input.
    */
   rendererFailed(failure: TerminalRendererFailure): void;
+  /**
+   * Where input goes. Absent, the terminal is a viewer: it sends nothing, whatever its state says.
+   * Replacing the controller ends the old session's input for good; nothing is sent to it again.
+   */
+  readonly input?: TerminalInputController;
 };
 
 export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'title'> & {
@@ -122,12 +130,38 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
   /** Mirror engine output into a bounded screen-reader live region. @default false */
   announceOutput?: boolean;
   /**
+   * Report the mouse to the program while a mode it set asks for it, but only while key capture is
+   * on and the view is writable. Otherwise pointer reports are dropped and the pointer selects
+   * text (Shift-drag, or Option-drag on a Mac). The mode the program set is never changed.
+   * @default false
+   */
+  mouseReporting?: boolean;
+  /**
    * Called with a visible HTTPS address the reader deliberately activated. Links are disabled
    * unless this is set; hidden OSC 8 destinations, paths, and other schemes are never offered.
    */
   onLinkActivate?: (url: string) => void;
   /** Called with the terminal title the program set, as bounded plain text. */
   onTitleChange?: (title: string) => void;
+  /**
+   * The most paste text, in UTF-8 bytes, that is offered for review. A larger paste is refused
+   * whole and nothing is sent. An integer from 1 to 262144; anything else uses the default.
+   * @default 65536
+   */
+  maximumPasteBytes?: number;
+  /**
+   * Called when input, or part of it, did not reach the wire. Input is never queued, retried, or
+   * replayed, so this is the machine-readable record of what was dropped and why; the reader is
+   * also told through the status region, except for typing into a read-only view.
+   */
+  onInputRefused?: (refusal: InputRefusal) => void;
+  /**
+   * Called with a typed metric when the reader searches, steps through matches, clears, opens or
+   * refreshes the accessible output, exports, or activates a listed link. An event holds counts,
+   * booleans and fixed words only: never output, a query, a keystroke, an argument, an environment
+   * value or a credential. A handler that throws changes nothing about the session.
+   */
+  onInspectionEvent?: (event: InspectionEvent) => void;
   /** Additional class merged with the component's root class. */
   class?: string;
 };

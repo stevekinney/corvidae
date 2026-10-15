@@ -12,13 +12,38 @@
     getMessages,
   } from '@lostgradient/chat';
 
+  // Number messages in order and give the transcript a fixed time, rather than random ids and
+  // the clock, so every render of this example, including the static export's, is identical.
+  let messageCount = 0;
+  const environment = {
+    randomId: () => `message-${(messageCount += 1)}`,
+    now: () => '2026-01-15T09:30:00.000Z',
+  };
+
   let conversation = createConversation({ id: 'navigation-example' });
-  conversation = appendUserMessage(conversation, 'Summarize the launch plan.');
-  conversation = appendAssistantMessage(conversation, 'The launch has three phases.');
-  conversation = appendUserMessage(conversation, 'What is the riskiest phase?');
+  conversation = appendUserMessage(
+    conversation,
+    'Summarize the launch plan.',
+    undefined,
+    environment,
+  );
+  conversation = appendAssistantMessage(
+    conversation,
+    'The launch has three phases.',
+    undefined,
+    environment,
+  );
+  conversation = appendUserMessage(
+    conversation,
+    'What is the riskiest phase?',
+    undefined,
+    environment,
+  );
   conversation = appendAssistantMessage(
     conversation,
     'The staged rollout needs the closest watch.',
+    undefined,
+    environment,
   );
   const messages = getMessages(conversation);
   let viewport: HTMLDivElement;

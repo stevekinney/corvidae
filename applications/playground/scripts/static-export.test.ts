@@ -395,6 +395,29 @@ describe('static export', () => {
     }
   }, 90_000);
 
+  // CIN-588 preservation: a route the export cannot resolve fails the whole export (the
+  // `static-export.ts` entry turns that rejection into a nonzero exit), so a missing page can never
+  // deploy as a partial site. A missing asset fails through the same non-2xx path.
+  test('rejects the export when a documentation route does not resolve', async () => {
+    const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-unresolved-'));
+    try {
+      let message = '';
+      try {
+        await runStaticExport({
+          outputDirectory,
+          sidebarComponents: ['button'],
+          allComponents: ['not-a-component'],
+        });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toContain('/page/not-a-component');
+      expect(message).toContain('HTTP 404');
+    } finally {
+      await rm(outputDirectory, { recursive: true, force: true });
+    }
+  }, 90_000);
+
   test('materializes extracted Chat routes, bundles, documentation, and styles', async () => {
     const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-chat-'));
     try {
@@ -687,3 +710,15 @@ test('clears a legacy /c/ tree left by a previous export', async () => {
     await rm(outputDirectory, { recursive: true, force: true });
   }
 }, 120_000);
+
+test('the build pins the time zone and locale its server renders format dates in', async () => {
+  // Server-rendered examples format dates with the default `Intl` time zone and locale, so a build
+  // that inherited them would export different bytes on each machine (CIN-591).
+  const manifest = (await Bun.file(join(import.meta.dirname, '..', 'package.json')).json()) as {
+    scripts: Record<string, string>;
+  };
+  const assignments = manifest.scripts['build']?.split(' bun ')[0]?.split(' ') ?? [];
+
+  expect(assignments).toContain('TZ=UTC');
+  expect(assignments).toContain('LANG=en_US.UTF-8');
+});

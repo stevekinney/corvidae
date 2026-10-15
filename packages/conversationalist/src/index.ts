@@ -1,3 +1,18 @@
+export {
+  A2AMappingError,
+  fromA2AArtifact,
+  fromA2AArtifactReference,
+  fromA2AMessage,
+  fromA2APart,
+  referenceA2AArtifact,
+  resolveA2AArtifactReference,
+  toA2AArtifact,
+  toA2AArtifactReference,
+  toA2AMessage,
+  toA2APart,
+  toA2AParts,
+} from './adapters/a2a';
+export type * from './adapters/a2a/types';
 export { anthropicConversationAdapter } from './adapters/anthropic';
 export { appendAnthropicMessages, fromAnthropicMessages } from './adapters/anthropic/inbound';
 export { toAnthropicMessages } from './adapters/anthropic/outbound';

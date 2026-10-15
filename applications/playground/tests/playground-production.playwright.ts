@@ -12,7 +12,10 @@ import { join } from 'node:path';
 import { AxeBuilder } from '@axe-core/playwright';
 import { test as base, expect, type Page } from '@playwright/test';
 
-import type { StaticCase } from '../scripts/static-playground-cases.ts';
+import {
+  IN_PLACE_NAVIGATION_CASE_ID,
+  type StaticCase,
+} from '../scripts/static-playground-cases.ts';
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
 import { COMPOUND_COMPONENT_PARENTS } from '../src/shell-app/compound-families.ts';
 
@@ -104,16 +107,19 @@ async function expectMountedPlayground(page: Page, route: string): Promise<void>
   const name = route.split('/').at(-1) ?? '';
   const parent = COMPOUND_COMPONENT_PARENTS[name];
   const ready = panel.locator('.dx-stage__canvas > .example-preview[data-example-preview-ready]');
-  if (parent === undefined || (await panel.locator('[data-stage-composed]').count()) === 0) {
+  const composed = panel.locator('[data-stage-composed]');
+  // Wait for a settled stage before choosing which one to check, so the choice never reads a
+  // frame the page is about to replace.
+  await expect(ready.first().or(composed), `${route} settled stage`).toBeAttached();
+  if (parent === undefined || (await composed.count()) === 0) {
     await expect(ready.first(), `${route} mounted preview`).toBeAttached();
   } else {
-    const composed = panel.locator('[data-stage-composed]');
     await expect(composed.locator(`a[href="/page/${parent}"]`)).toBeVisible();
   }
   await expect(panel.getByText(/failed to render/)).toHaveCount(0);
 }
 
-for (const testCase of cases) {
+for (const testCase of cases.filter((candidate) => candidate.view !== 'navigation')) {
   test(testCase.id, async ({ page, diagnostics }) => {
     await page.setViewportSize({ width: testCase.width, height: testCase.height });
     const response = await page.goto(testCase.route, { waitUntil: 'load' });
@@ -135,5 +141,32 @@ for (const testCase of cases) {
     await expectNoHorizontalOverflow(page, testCase);
     await expectAccessible(page, testCase.id);
     expect(diagnostics, `${testCase.id} browser diagnostics`).toEqual([]);
+  });
+}
+
+// Registered only in the shard whose case list holds it, under the case's own id.
+const inPlaceNavigationCase = cases.find(
+  (candidate) => candidate.id === IN_PLACE_NAVIGATION_CASE_ID,
+);
+if (inPlaceNavigationCase !== undefined) {
+  test(inPlaceNavigationCase.id, async ({ page, diagnostics }) => {
+    await page.goto('/page/button', { waitUntil: 'load' });
+    await expect(page.locator('[data-component-page][data-page-hydrated]')).toBeAttached();
+    await page.evaluate(() => {
+      (window as unknown as Record<string, unknown>)['__productionNavigationMarker'] = 'alive';
+    });
+
+    await page.locator('nav.dx-nav a[href="/page/chat"]').click();
+
+    await expect(page).toHaveURL(/\/page\/chat$/);
+    await expect(page.locator('#app h1').first()).toHaveText('Chat');
+    await expect(page.locator('[data-component-page][data-page-hydrated]')).toBeAttached();
+    // A fallback to a full load would have discarded the window and its marker.
+    expect(
+      await page.evaluate(
+        () => (window as unknown as Record<string, unknown>)['__productionNavigationMarker'],
+      ),
+    ).toBe('alive');
+    expect(diagnostics, 'browser diagnostics').toEqual([]);
   });
 }

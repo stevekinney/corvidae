@@ -17,7 +17,12 @@ import {
   summarizeCaseResults,
 } from './check-static-playground.ts';
 import { parseExportReport } from './export-report.ts';
-import { createCaseList, parseShard, selectShard } from './static-playground-cases.ts';
+import {
+  createCaseList,
+  IN_PLACE_NAVIGATION_CASE_ID,
+  parseShard,
+  selectShard,
+} from './static-playground-cases.ts';
 import { runPreflight } from './static-playground-preflight.ts';
 import { exitedWithin, interruptRunner } from './static-playground-processes.ts';
 import { loadStaticHostConfiguration, startStaticServer } from './static-playground-server.ts';
@@ -97,6 +102,10 @@ const goodFixturePassesWithoutCredentials = await outcomeOf(async () => {
   expect(report.servedDigest).toBe(report.buildDigest);
   expect(report.caseCount).toBe(6);
   expect(report.passedCount).toBe(6);
+  // Stopping our own server at teardown is not a server death.
+  expect(report.failurePhase).toBeNull();
+  expect(report.inFlightCases).toEqual([]);
+  expect(report.diagnosis).toBeNull();
   expect(report.peakResidentSetBytes).toBe(104_857_600);
   expect(report.exportDurationMilliseconds).toBe(1250);
 });
@@ -476,6 +485,71 @@ describe('preflight inventory and source checks', () => {
     [{ ...clean, routes: ['/'] }, '2 route HTML files are served; the report lists 1'],
   ])('fails %j', async (changes, failure) => {
     expect(await preflightWith(changes)).toContain(failure);
+  });
+});
+
+describe('case counts (the in-place navigation case)', () => {
+  // 211 documentation routes and `/`, as the exported site has: 211 x 2 views x 2 widths plus 2
+  // landing cases is 846 route cases, and the in-place navigation case makes 847.
+  const routes = [
+    '/',
+    '/page/button',
+    '/page/chat',
+    ...Array.from({ length: 209 }, (_unused, index) => `/page/component-${index}`),
+  ];
+  const result = (caseId: string, status = 'passed'): CaseResult => ({
+    caseId,
+    status,
+    errors: status === 'passed' ? [] : ['expect(locator).toBeVisible() failed'],
+    diagnostics: [],
+    screenshot: null,
+  });
+
+  it('lists the in-place navigation case once, so the whole list counts every test the spec runs', () => {
+    const cases = createCaseList(routes);
+
+    expect(cases).toHaveLength(847);
+    expect(cases.filter((testCase) => testCase.id === IN_PLACE_NAVIGATION_CASE_ID)).toHaveLength(1);
+  });
+
+  it('places the in-place navigation case in exactly one shard', () => {
+    const cases = createCaseList(routes);
+    const holders = [1, 2, 3, 4, 5, 6, 7, 8].filter((index) =>
+      selectShard(cases, { index, count: 8 }).some(
+        (testCase) => testCase.id === IN_PLACE_NAVIGATION_CASE_ID,
+      ),
+    );
+
+    expect(holders).toHaveLength(1);
+  });
+
+  it('counts 847 cases with one failure listed and 846 passed', () => {
+    const cases = createCaseList(routes);
+    const failing = '/page/component-7 playground 1440px';
+    const results = cases.map((testCase) =>
+      result(testCase.id, testCase.id === failing ? 'failed' : 'passed'),
+    );
+
+    const summary = summarizeCaseResults(cases, results);
+    expect(cases).toHaveLength(847);
+    expect(summary.passed).toBe(846);
+    expect(summary.failed.map((failure) => failure.caseId)).toEqual([failing]);
+    expect(summary.missing).toEqual([]);
+  });
+
+  it('never counts a result outside the case list as a pass, and fails it instead', () => {
+    const cases = createCaseList(['/']);
+    const stray = result('a test the case list does not name');
+
+    const summary = summarizeCaseResults(cases, [
+      result('/ page 1440px'),
+      result('/ page 390px'),
+      stray,
+    ]);
+    expect(summary.passed).toBe(2);
+    expect(summary.failed).toEqual([
+      { ...stray, status: 'unexpected', errors: ['the case list does not name this test'] },
+    ]);
   });
 });
 
