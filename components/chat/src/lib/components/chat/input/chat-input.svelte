@@ -1172,6 +1172,19 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
+  /* The send button is a solid accent fill: gap, then ring (COR-1498). The
+     tinted stop state keeps the tight ring. */
+  .chat-input-send:not([data-stop]):focus-visible {
+    box-shadow: var(--_cinder-focus-ring-filled-shadow);
+  }
+
+  @media (forced-colors: active) {
+    .chat-input-send:not([data-stop]):focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 3px;
+    }
+  }
+
   /* Stop button variant - danger-tinted to signal urgency during streaming */
   .chat-input-send[data-stop] {
     background: var(--cinder-status-danger-background);

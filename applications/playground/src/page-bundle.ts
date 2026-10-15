@@ -89,19 +89,43 @@ export async function compilePageBundleArtifacts(
     .join('\n');
 
   const entrySource = `import { NAV_FILTER_STORAGE_KEY } from '../../src/component-page-theme.ts';
+import { installProgressiveNavigation } from '../../src/shell-app/progressive-navigation.ts';
 import { persistScrollPosition } from '../../src/shell-app/sidebar-scroll.ts';
 
 const scenarioLoaders: Record<string, () => Promise<unknown>> = {
 ${scenarioLoaders}
 };
 
-(window as unknown as Record<string, unknown>)['__CINDER_SCENARIO_LOADERS__'] = scenarioLoaders;
+// The page contract. \`boot()\` takes over whatever \`#app\` the document holds and is idempotent;
+// \`unmount()\` releases the Svelte instance and every listener \`boot()\` added, so the same
+// evaluated module can serve a document swapped in later. The module still boots once when it is
+// first evaluated. \`installProgressiveNavigation()\` is a no-op after the first page installs it.
+type PageRun = { ready: Promise<void>; unmount: () => Promise<void> };
+let activeRun: PageRun | undefined;
+const page = { boot, unmount };
+
+function unmount(): Promise<void> {
+  const run = activeRun;
+  activeRun = undefined;
+  return run === undefined ? Promise.resolve() : run.unmount();
+}
+
+function boot(): Promise<void> {
+  if (activeRun !== undefined) return activeRun.ready;
+  (window as unknown as Record<string, unknown>)['__CINDER_PAGE__'] = page;
+  (window as unknown as Record<string, unknown>)['__CINDER_SCENARIO_LOADERS__'] = scenarioLoaders;
 const target = document.getElementById('app');
 if (target === null) {
   throw new Error('[cinder playground] #app target not found');
 }
+const listeners = new AbortController();
+// Set by unmount(): hydration that is still loading its modules then mounts nothing, and unmount
+// never waits on it.
+let disposed = false;
+let instance: Record<string, unknown> | undefined;
 const sidebarNavigation = document.querySelector<HTMLElement>('nav.dx-nav');
-if (sidebarNavigation !== null) persistScrollPosition(sidebarNavigation);
+const releaseSidebarScroll =
+  sidebarNavigation === null ? undefined : persistScrollPosition(sidebarNavigation);
 
 // Keep the bare component implementation behind the Playground tab. The page
 // resolves the imported namespace by \`documentation.component.exportName\`,
@@ -172,8 +196,9 @@ function hydratePage(): Promise<void> {
   if (pageHydration !== undefined) return pageHydration;
 
   const hydration = Promise.all([import('svelte'), import('../../src/component-page.svelte')]).then(async ([svelte, { default: ComponentPage }]) => {
+    if (disposed) return;
     if (shouldHydrate) {
-      svelte.hydrate(ComponentPage, { target, props });
+      instance = svelte.hydrate(ComponentPage, { target, props });
       markPageControlsHydrated();
       if (overviewPreviewReady !== undefined) await overviewPreviewReady;
       pageHydrated = true;
@@ -193,7 +218,7 @@ function hydratePage(): Promise<void> {
     // Clearing is safe in every mount case: snapshot and preview surfaces are
     // served with an empty \`#app\` anyway, so there is nothing to discard.
     target.replaceChildren();
-    svelte.mount(ComponentPage, { target, props });
+    instance = svelte.mount(ComponentPage, { target, props });
     markPageControlsHydrated();
     pageHydrated = true;
   });
@@ -207,7 +232,11 @@ function hydratePage(): Promise<void> {
 function hydrateAfter(event: Event, replay: () => void): void {
   event.preventDefault();
   void hydratePage()
-    .then(replay)
+    .then(() => {
+      // The page was swapped out while it hydrated: its replays belong to nothing.
+      if (disposed) return;
+      replay();
+    })
     .catch((error) => console.error('[cinder playground] failed to hydrate page:', error));
 }
 
@@ -268,7 +297,7 @@ document.addEventListener(
       if (hydratedButton instanceof HTMLButtonElement) hydratedButton.click();
     });
   },
-  { capture: true },
+  { capture: true, signal: listeners.signal },
 );
 
 document.addEventListener(
@@ -300,7 +329,7 @@ document.addEventListener(
       ),
     );
   },
-  { capture: true },
+  { capture: true, signal: listeners.signal },
 );
 
 document.addEventListener(
@@ -315,7 +344,7 @@ document.addEventListener(
       if (hydratedAnchor instanceof HTMLAnchorElement) hydratedAnchor.click();
     });
   },
-  { capture: true },
+  { capture: true, signal: listeners.signal },
 );
 
 document.addEventListener(
@@ -366,7 +395,7 @@ document.addEventListener(
       }
     });
   },
-  { capture: true },
+  { capture: true, signal: listeners.signal },
 );
 
 // The exported document is complete before this runs. Hydrate immediately so
@@ -375,6 +404,37 @@ document.addEventListener(
 void hydratePage().catch((error) =>
   console.error('[cinder playground] failed to hydrate page:', error),
 );
+
+const ready = hydratePage();
+const run: PageRun = {
+  ready,
+  unmount: async () => {
+    disposed = true;
+    listeners.abort();
+    if (instance !== undefined) {
+      const svelte = await import('svelte');
+      await svelte.unmount(instance);
+      instance = undefined;
+    }
+    if (typeof releaseSidebarScroll === 'function') releaseSidebarScroll();
+    target.removeAttribute('data-playground-controls-hydrated');
+    delete (window as unknown as Record<string, unknown>)['__CINDER_SCENARIO_LOADERS__'];
+  },
+};
+activeRun = run;
+void ready.catch(() => {
+  // A run that failed to hydrate still owns its listeners and sidebar attachment: release them,
+  // then forget the run so a later boot() can try again.
+  if (activeRun === run) {
+    activeRun = undefined;
+    void run.unmount();
+  }
+});
+return ready;
+}
+
+installProgressiveNavigation();
+void boot().catch(() => undefined);
 `;
 
   try {

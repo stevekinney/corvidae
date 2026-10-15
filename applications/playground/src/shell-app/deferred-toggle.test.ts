@@ -8,7 +8,11 @@ async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-function setup(options: { hydrate: () => Promise<void>; alreadyHydrated?: boolean }) {
+function setup(options: {
+  hydrate: () => Promise<void>;
+  alreadyHydrated?: boolean;
+  signal?: AbortSignal;
+}) {
   const toggle = document.createElement('button');
   // One entry per click event the button receives: whether the bootstrap listener
   // cancelled it. The recording listener is attached last, so it observes the outcome.
@@ -24,6 +28,7 @@ function setup(options: { hydrate: () => Promise<void>; alreadyHydrated?: boolea
     },
     isHydrated: () => hydrated,
     onError: (error) => errors.push(error),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   toggle.addEventListener('click', (event) => clicks.push(event.defaultPrevented));
   return { toggle, clicks, errors, hydrationCalls: () => hydrationCalls };
@@ -105,5 +110,25 @@ describe('attachDeferredToggle', () => {
         onError: () => {},
       }),
     ).not.toThrow();
+  });
+
+  it('does not replay the click when the page was swapped out while the shell hydrated', async () => {
+    const controller = new AbortController();
+    let finish!: () => void;
+    const { toggle, clicks } = setup({
+      hydrate: () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+      signal: controller.signal,
+    });
+
+    toggle.click();
+    controller.abort();
+    finish();
+    await settle();
+
+    // Only the original click: a replay would click again and start another attempt, forever.
+    expect(clicks).toEqual([true]);
   });
 });

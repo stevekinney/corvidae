@@ -120,7 +120,6 @@ describe('Chat focus-ring recipes', () => {
     ],
     ['chat search navigation', styles.searchBar, '.chat-search-nav-button:focus-visible'],
     ['chat jump button', styles.jumpControls, '.chat-jump-button:focus-visible'],
-    ['chat new indicator', styles.jumpControls, '.chat-new-indicator:focus-visible'],
     ['chat send button', styles.input, '.chat-input-send:focus-visible'],
     ['chat message row', styles.message, '.chat-message:focus-visible'],
     ['chat message expand', styles.message, '.chat-message-expand:focus-visible'],
@@ -140,6 +139,31 @@ describe('Chat focus-ring recipes', () => {
     const fallback = findRules(styles.message, selector).find((rule) => isUnderForcedColors(rule));
     expect(declarationValue(fallback!, 'outline')).toBe('var(--cinder-ring-width) solid Highlight');
     expect(declarationValue(fallback!, 'outline-offset')).toBe('1px');
+  });
+
+  // Updated for COR-1498: the new-message indicator and the send button are solid
+  // accent fills, so their focus ring is the filled formula: a page-coloured gap,
+  // then the standard ring. The indicator moved out of the outer-recipe list above.
+  const FILLED_BOX_SHADOW = 'var(--_cinder-focus-ring-filled-shadow)';
+
+  test('chat new indicator paints the filled ring (gap, then ring) with its elevation', () => {
+    const base = findRules(styles.jumpControls, '.chat-new-indicator:focus-visible').find(
+      (rule) => !isUnderForcedColors(rule),
+    );
+    expect(declarationValue(base!, 'outline')).toBe(TRANSPARENT_OUTLINE);
+    expect(declarationValue(base!, 'box-shadow')).toContain(FILLED_BOX_SHADOW);
+    expect(declarationValue(base!, 'box-shadow')).toContain('var(--cinder-shadow-lg)');
+    const fallback = findRules(styles.jumpControls, '.chat-new-indicator:focus-visible').find(
+      (rule) => isUnderForcedColors(rule),
+    );
+    expect(declarationValue(fallback!, 'outline')).not.toContain('transparent');
+  });
+
+  test('the filled send button paints the filled ring; the tinted stop state does not', () => {
+    const filled = findRules(styles.input, '.chat-input-send:not([data-stop]):focus-visible').find(
+      (rule) => !isUnderForcedColors(rule),
+    );
+    expect(declarationValue(filled!, 'box-shadow')).toBe(FILLED_BOX_SHADOW);
   });
 
   test('stop state does not override the shared send-button focus ring', () => {

@@ -37,6 +37,8 @@ import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'no
 import { constants } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
+import { rootScriptEnvironment } from './environment-configuration';
+
 export const ownerFileName = 'owner.json';
 
 /** Names the held lock's token in the environment of the command that runs under it. */
@@ -431,7 +433,7 @@ async function terminateProcessGroup(processGroup: number): Promise<void> {
 export async function runExclusively(options: RunExclusivelyOptions): Promise<number> {
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
   let lock: HeldHostLock | undefined;
-  const environment = options.environment ?? process.env;
+  const environment = options.environment ?? rootScriptEnvironment();
   try {
     const lockDirectory = await options.lockDirectory;
     // A parent run that already holds the lock exported its token; a stage it started reuses the
@@ -491,7 +493,12 @@ async function runInProcessGroup(
     detached: true,
     ...(token === undefined
       ? {}
-      : { env: { ...(options.environment ?? process.env), [heldLockTokenVariable]: token } }),
+      : {
+          env: {
+            ...(options.environment ?? rootScriptEnvironment()),
+            [heldLockTokenVariable]: token,
+          },
+        }),
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {

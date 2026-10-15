@@ -88,4 +88,57 @@ describe('page bundle hydration policy', () => {
     expect(source).toContain(".replace(svelteHydrationMarker, '')");
     expect(source).not.toContain('__CINDER_OVERVIEW_EXAMPLE_HTML__');
   });
+
+  test('exposes an idempotent boot and an unmount that release everything boot added', async () => {
+    const source = await Bun.file(new URL('./page-bundle.ts', import.meta.url)).text();
+
+    // The contract the navigator relies on: one registered page object with boot and unmount.
+    expect(source).toContain('const page = { boot, unmount };');
+    expect(source).toContain("['__CINDER_PAGE__'] = page");
+    // boot() is idempotent: a second call returns the run that is already active.
+    expect(source).toContain('if (activeRun !== undefined) return activeRun.ready;');
+    // Every document listener boot adds shares one AbortController, and unmount aborts it.
+    const documentListeners = source.match(/document\.addEventListener\(/g) ?? [];
+    const signalledOptions = source.match(/\{ capture: true, signal: listeners\.signal \}/g) ?? [];
+    expect(documentListeners.length).toBeGreaterThan(0);
+    expect(signalledOptions).toHaveLength(documentListeners.length);
+    expect(source).toContain('listeners.abort();');
+    // unmount releases the Svelte instance that hydrate or mount returned.
+    expect(source).toContain('instance = svelte.hydrate(ComponentPage');
+    expect(source).toContain('instance = svelte.mount(ComponentPage');
+    expect(source).toContain('await svelte.unmount(instance)');
+    expect(source).toContain(
+      "delete (window as unknown as Record<string, unknown>)['__CINDER_SCENARIO_LOADERS__']",
+    );
+  });
+
+  test('boots once when the module is evaluated and installs navigation once', async () => {
+    const source = await Bun.file(new URL('./page-bundle.ts', import.meta.url)).text();
+
+    expect(source.match(/\nvoid boot\(\)\.catch/g) ?? []).toHaveLength(1);
+    expect(source.match(/\ninstallProgressiveNavigation\(\);/g) ?? []).toHaveLength(1);
+    expect(source).toContain(
+      "import { installProgressiveNavigation } from '../../src/shell-app/progressive-navigation.ts';",
+    );
+  });
+
+  test('unmount never waits on a hydration that is still loading its modules', async () => {
+    const source = await Bun.file(new URL('./page-bundle.ts', import.meta.url)).text();
+    const unmountStart = source.indexOf('unmount: async () => {');
+    const unmountBody = source.slice(unmountStart, source.indexOf('\n  },', unmountStart));
+
+    expect(source).toContain('let disposed = false;');
+    expect(source).toContain('if (disposed) return;');
+    expect(unmountBody).toContain('disposed = true;');
+    expect(unmountBody).not.toContain('await ready');
+  });
+
+  test('does not replay an early interaction once the page was disposed', async () => {
+    const source = await Bun.file(new URL('./page-bundle.ts', import.meta.url)).text();
+    const hydrateAfter = source.indexOf('function hydrateAfter(');
+    const body = source.slice(hydrateAfter, source.indexOf('\n}\n', hydrateAfter));
+
+    expect(body).toContain('if (disposed) return;');
+    expect(body.indexOf('if (disposed) return;')).toBeLessThan(body.indexOf('replay();'));
+  });
 });
