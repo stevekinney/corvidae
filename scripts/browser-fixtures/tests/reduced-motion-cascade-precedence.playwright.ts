@@ -11,7 +11,7 @@ import { buildTokensBaseCss } from '../../../components/cinder/scripts/tokens/cs
 import type {
   ResolverDocument,
   TokenDocument,
-} from '../../../components/cinder/scripts/tokens/types.ts';
+} from '../../../components/cinder/src/tokens/runtime/types.ts';
 
 const TEST_PROPERTY = '--test-reduced-motion-duration';
 

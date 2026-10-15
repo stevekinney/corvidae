@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { type CorpusEntry } from './corpus.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { findBareColorComponents } from '../../src/tokens/runtime/value-color.ts';
+import { serializeEntryValue } from '../../src/tokens/runtime/value-entry.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
 import { tokensBaseCssPath } from './generator-configuration.ts';
 import { colorEntry } from './generator-test-support.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
-import { findBareColorComponents } from './value-color.ts';
-import { serializeEntryValue } from './value-entry.ts';
 
 type RegistryEntry = { cssProperty: string; category?: string };
 

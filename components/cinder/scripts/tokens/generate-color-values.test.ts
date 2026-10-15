@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import { serializeEntryValue } from '../../src/tokens/runtime/value-entry.ts';
 import { colorEntry } from './generator-test-support.ts';
-import { serializeEntryValue } from './value-entry.ts';
 function recipeEntry(cssRecipe: string): CorpusEntry {
   return colorEntry({ path: 'polarity.ink', cssProperty: '--cinder-polarity-ink', cssRecipe });
 }

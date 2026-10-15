@@ -261,7 +261,10 @@ describe('CinderKnowledge', () => {
     expect(guidance).not.toContain('tree-shaken');
     expect(isRecord(packageManifest)).toBe(true);
     if (!isRecord(packageManifest)) throw new Error('Expected package.json to be an object');
-    expect(packageManifest['exports']).toEqual({ '.': './src/index.ts' });
+    expect(packageManifest['exports']).toEqual({
+      '.': './src/index.ts',
+      './tokens/runtime': './src/tokens/runtime/index.ts',
+    });
     expect(rootEntry).toContain("import './styles/index.css';");
     expect(rootEntry).toContain(
       "export { default as Button } from './components/button/index.ts';",

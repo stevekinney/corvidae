@@ -9,7 +9,7 @@
  *
  * `sessionStorage` access is wrapped in try/catch — it throws in private
  * browsing, restricted content-script contexts, and when storage is disabled —
- * exactly mirroring the resilience pattern in `preview-store.svelte.ts`.
+ * the same resilience pattern as the persisted theme in `component-page-theme.ts`.
  */
 
 import type { Attachment } from 'svelte/attachments';

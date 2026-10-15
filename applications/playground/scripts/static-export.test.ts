@@ -53,6 +53,36 @@ test('content-addresses static assets and rewrites HTML, JS, and CSS references'
   }
 });
 
+test('rewrites a relative stylesheet import to the importee, not to a doubled asset path', async () => {
+  const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-assets-relative-'));
+  try {
+    await mkdir(join(outputDirectory, 'styles', 'components'), { recursive: true });
+    await mkdir(join(outputDirectory, 'components', 'button'), { recursive: true });
+    await writeFile(
+      join(outputDirectory, 'styles', 'components', 'button.css'),
+      "@import '../../components/button/button.css';",
+    );
+    await writeFile(
+      join(outputDirectory, 'components', 'button', 'button.css'),
+      '.cinder-button { color: canvas; }',
+    );
+
+    const { fingerprintedUrlBySourceUrl } = await fingerprintStaticAssets(outputDirectory);
+    const importer = fingerprintedUrlBySourceUrl.get('/styles/components/button.css')!;
+    const importee = fingerprintedUrlBySourceUrl.get('/components/button/button.css')!;
+    const rewritten = await readFile(join(outputDirectory, importer.slice(1)), 'utf8');
+    const specifier = /@import\s+'([^']+)'/.exec(rewritten)?.[1];
+
+    // The import resolves, from the stylesheet's new URL, to a file that exists.
+    expect(specifier).toBeDefined();
+    const resolved = new URL(specifier!, `https://static.local${importer}`).pathname;
+    expect(resolved).toBe(importee);
+    expect(existsSync(join(outputDirectory, resolved.slice(1)))).toBe(true);
+  } finally {
+    await rm(outputDirectory, { recursive: true, force: true });
+  }
+});
+
 test('changes every immutable asset URL when its static asset set changes', async () => {
   const firstOutput = await mkdtemp(join(tmpdir(), 'cinder-static-assets-first-'));
   const secondOutput = await mkdtemp(join(tmpdir(), 'cinder-static-assets-second-'));
@@ -390,6 +420,46 @@ describe('static export', () => {
       expect([...rendered].some((url) => url.endsWith('/playground-styles/landing.css'))).toBe(
         true,
       );
+
+      // The theme builder: an indexable workbench and a noindex preview frame, each a clean
+      // directory URL, with the sitemap listing only the workbench.
+      const builderHtml = await readFile(
+        join(outputDirectory, 'theme-builder', 'index.html'),
+        'utf8',
+      );
+      const previewHtml = await readFile(
+        join(outputDirectory, 'theme-builder', 'preview', 'index.html'),
+        'utf8',
+      );
+      expect(builderHtml).toContain(
+        '<link rel="canonical" href="https://playground.local/theme-builder" />',
+      );
+      expect(builderHtml).toMatch(
+        /\/assets\/[a-f0-9]{64}\/theme-builder-bundle\/theme-builder\.js/,
+      );
+      // The builder starts its evaluation workers by URL, so no import names the worker file:
+      // it is exported by name, and the builder bundle carries its fingerprinted URL.
+      const workerUrl = [...rendered].find((url) =>
+        url.endsWith('/theme-builder-bundle/theme-runtime-worker.js'),
+      );
+      if (workerUrl === undefined) throw new Error('the evaluation worker was not exported');
+      expect(workerUrl).toMatch(/^\/assets\/[a-f0-9]{64}\//);
+      const builderGraph = await Promise.all(
+        [...rendered]
+          .filter((url) => url.includes('/theme-builder-bundle/'))
+          .map((url) => readFile(join(outputDirectory, url.slice(1)), 'utf8')),
+      );
+      expect(builderGraph.some((code) => code.includes(workerUrl))).toBe(true);
+      expect(previewHtml).toContain('<meta name="robots" content="noindex, nofollow" />');
+      expect(previewHtml).not.toContain('rel="canonical"');
+      expect(previewHtml).toMatch(
+        /\/assets\/[a-f0-9]{64}\/theme-builder-bundle\/theme-preview\.js/,
+      );
+      const sitemap = await readFile(join(outputDirectory, 'sitemap.xml'), 'utf8');
+      expect(sitemap).toContain('<loc>https://playground.local/theme-builder</loc>');
+      expect(sitemap).not.toContain('/theme-builder/preview');
+      // The documentation landing page loads none of the builder's bundles.
+      expect(indexHtml).not.toContain('theme-builder-bundle');
     } finally {
       await rm(outputDirectory, { recursive: true, force: true });
     }

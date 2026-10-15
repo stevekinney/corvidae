@@ -23,7 +23,7 @@ const TEXT_EXTENSIONS = new Set(['', '.css', '.html', '.js', '.json', '.mjs', '.
 // Bump this whenever rewriteReferences changes. The final emitted bytes include
 // rewritten URLs, so this version makes a transformation-only change produce a
 // fresh immutable URL even when source assets are unchanged.
-const REWRITE_TRANSFORMATION_VERSION = '1';
+const REWRITE_TRANSFORMATION_VERSION = '2';
 
 export type StaticAssetFingerprintResult = {
   /** Maps an exported mutable path to the content-addressed URL that replaces it. */
@@ -82,13 +82,19 @@ function rewriteReferences(
   sourceUrl: string,
   fingerprintedUrlBySourceUrl: ReadonlyMap<string, string>,
 ): string {
+  // A stylesheet's references are resolved against the stylesheet, never matched as text: a
+  // relative import such as `../../components/x.css` ends in the absolute URL
+  // `/components/x.css`, so a textual replacement would splice the fingerprint into the middle
+  // of the relative path and the browser would resolve it to a doubled `/assets/<hash>/assets/…`
+  // URL that does not exist.
+  if (extname(sourceUrl).toLowerCase() === '.css') {
+    return rewriteCssReferences(contents, sourceUrl, fingerprintedUrlBySourceUrl);
+  }
   let rewritten = contents;
   for (const [source, fingerprinted] of fingerprintedUrlBySourceUrl) {
     rewritten = rewritten.replaceAll(source, fingerprinted);
   }
-  return extname(sourceUrl).toLowerCase() === '.css'
-    ? rewriteCssReferences(rewritten, sourceUrl, fingerprintedUrlBySourceUrl)
-    : rewritten;
+  return rewritten;
 }
 
 /**

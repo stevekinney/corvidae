@@ -1,4 +1,4 @@
-import type { CorpusEntry } from './corpus.ts';
+import type { CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
 
 export async function readCommitted(
   paths: Iterable<string>,

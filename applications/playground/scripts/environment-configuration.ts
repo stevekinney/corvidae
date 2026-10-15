@@ -22,3 +22,22 @@ export function ignoreStepEnvironment(): IgnoreStepEnvironment {
     commitSha: process.env['VERCEL_GIT_COMMIT_SHA'],
   };
 }
+
+/** The playground's browser-test settings, read by `playwright.config.ts`. */
+export type BrowserTestEnvironment = {
+  readonly browserPort: string | undefined;
+  readonly browserStaticPort: string | undefined;
+  /** `PLAYGROUND_BROWSER_STATIC=1` adds the exported-site project. */
+  readonly browserStatic: boolean;
+  /** `PLAYGROUND_BROWSER_REUSE=1` reuses a server already running on the port. */
+  readonly browserReuse: boolean;
+};
+
+export function browserTestEnvironment(): BrowserTestEnvironment {
+  return {
+    browserPort: process.env['PLAYGROUND_BROWSER_PORT'],
+    browserStaticPort: process.env['PLAYGROUND_BROWSER_STATIC_PORT'],
+    browserStatic: process.env['PLAYGROUND_BROWSER_STATIC'] === '1',
+    browserReuse: process.env['PLAYGROUND_BROWSER_REUSE'] === '1',
+  };
+}

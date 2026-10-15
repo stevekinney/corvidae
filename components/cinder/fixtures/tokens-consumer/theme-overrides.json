@@ -1,0 +1,51 @@
+{
+  "name": "Consumer proof",
+  "overrides": {
+    "shared": {
+      "radius": {
+        "medium": { "$type": "dimension", "$value": { "value": 5, "unit": "px" } },
+        "small": {
+          "$type": "dimension",
+          "$value": "{radius.medium}",
+          "$description": "Follows medium."
+        }
+      },
+      "stroke": {
+        "$type": "strokeStyle",
+        "$description": "COR-245: the group carries the type and its members inherit it.",
+        "dashed": { "$value": "dashed" },
+        "dotted": { "$value": "dotted", "$extensions": { "com.example.editor": { "kept": true } } }
+      },
+      "brand": {
+        "$type": "color",
+        "main": { "$value": { "colorSpace": "srgb", "components": [0.1, 0.3, 0.7] } }
+      }
+    },
+    "light": {
+      "text": {
+        "muted": {
+          "$type": "color",
+          "$value": { "colorSpace": "oklch", "components": [0.4, 0.04, 250] }
+        }
+      }
+    },
+    "dark": {
+      "radius": { "large": { "$type": "dimension", "$value": { "value": 14, "unit": "px" } } },
+      "text": {
+        "muted": {
+          "$type": "color",
+          "$value": { "colorSpace": "oklch", "components": [0.8, 0.04, 250] }
+        }
+      }
+    },
+    "reduced": {
+      "motion": { "fast": { "$type": "duration", "$value": { "value": 10, "unit": "ms" } } }
+    },
+    "forcedReduced": {
+      "motion": { "fast": { "$type": "duration", "$value": { "value": 0, "unit": "ms" } } }
+    }
+  },
+  "cssOverrides": {
+    "carousel.slide-size": { "dark/default": "80%", "light/reduced": "90%" }
+  }
+}

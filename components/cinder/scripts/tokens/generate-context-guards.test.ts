@@ -1,14 +1,14 @@
 import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
-import { buildTokensBaseCss } from './css-generator.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
 import {
   assertOverrideScopeConsistency,
   assertUniqueOverrideCssProperties,
-} from './css-support.ts';
+} from '../../src/tokens/runtime/css-support.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { buildTokensBaseCss } from './css-generator.ts';
 import { buildGeneratedOutputs } from './generate.ts';
 import { tokensBaseCssPath } from './generator-configuration.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
 const entry = (value: unknown): CorpusEntry => ({
   path: 'test.token',
   value,
