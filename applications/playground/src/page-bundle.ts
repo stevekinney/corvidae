@@ -12,6 +12,7 @@ import {
   pageBuildPromiseByKey,
   publishPageArtifacts,
   stableEntryModule,
+  writeGeneratedEntries,
 } from './build-artifacts-shared.ts';
 import { componentExportNameFor } from './component-sources.ts';
 import { discoverComponentDefinition, discoverComponents, discoverExamples } from './discover.ts';
@@ -458,11 +459,11 @@ export async function compilePageBundleArtifacts(
   const files: Record<string, string> = {};
   const entryPath = await addPageEntry(componentName, knownComponents, files);
   if (entryPath === null) return null;
+  await writeGeneratedEntries(files);
 
   const result = await coordinatedBuild(() =>
     Bun.build({
       entrypoints: [entryPath],
-      files,
       publicPath: PUBLIC_PATH_BY_FAMILY.page,
       ...SHARED_BUILD_OPTIONS,
     }),
@@ -511,10 +512,10 @@ export async function compilePageBundleBatch(
     if (entryPath !== null) entrypoints.push(entryPath);
   }
   if (entrypoints.length === 0) return compiled;
+  await writeGeneratedEntries(files);
   const result = await coordinatedBuild(() =>
     Bun.build({
       entrypoints,
-      files,
       publicPath: PUBLIC_PATH_BY_FAMILY.page,
       ...SHARED_BUILD_OPTIONS,
     }),

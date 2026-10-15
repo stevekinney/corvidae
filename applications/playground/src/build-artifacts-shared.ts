@@ -1,4 +1,6 @@
 import type { BuildArtifact } from 'bun';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { curatedShikiAdapterPlugin } from './curated-shiki-adapter-plugin.ts';
@@ -58,14 +60,31 @@ export const PUBLIC_PATH_BY_FAMILY: Record<ArtifactFamily, string> = {
  * naming template stays flat.
  */
 /**
- * Where the generated entry modules of the shipped bundle families (page and shell) are named.
- * They are handed to `Bun.build` in memory through its `files` option and never written, so
- * concurrent builds cannot collide and nothing needs cleaning up. The path must still be fixed:
- * Bun derives output hashes and module comments from module paths relative to the working
- * directory, and a random directory here made every export's bundle names differ (CIN-591). It
+ * Where the generated entry modules of the shipped bundle families (page and shell) are written.
+ * The directory must be fixed: Bun derives output hashes and module comments from module paths
+ * relative to the working directory, and a random directory here made every export's bundle
+ * names differ (CIN-591). The entries cannot be handed to `Bun.build` in memory instead (its
+ * `files` option), because an in-memory module's hash depends on its absolute path. The directory
  * sits two levels below the Playground root, so an entry's `../../src/…` imports resolve.
  */
 export const GENERATED_ENTRY_DIRECTORY = join(PLAYGROUND_TEMP_ROOT, 'entries');
+
+/**
+ * Write generated entry modules, each atomically (a uniquely named temporary file renamed into
+ * place), so a concurrent build of the same page reads one whole version or the other. They are
+ * never removed by a build, since another build may still be reading them; `clean` removes the
+ * Playground's `.tmp` directory.
+ */
+export async function writeGeneratedEntries(
+  files: Readonly<Record<string, string>>,
+): Promise<void> {
+  await mkdir(GENERATED_ENTRY_DIRECTORY, { recursive: true });
+  for (const [path, source] of Object.entries(files)) {
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    await writeFile(temporary, source);
+    await rename(temporary, path);
+  }
+}
 
 export const SHARED_BUILD_OPTIONS = {
   plugins: [

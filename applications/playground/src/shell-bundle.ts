@@ -9,6 +9,7 @@ import {
   publishShellArtifacts,
   shellArtifactByPath,
   stableEntryModule,
+  writeGeneratedEntries,
 } from './build-artifacts-shared.ts';
 import { getRebuildGeneration, isShellStale, setShellStale } from './rebuild-generation.ts';
 
@@ -62,10 +63,11 @@ export async function compileShellBundleArtifacts(): Promise<{
   // names; a bare side-effect import preserves the module's evaluation.
   const shim = `import '../../src/shell-app/shell-entry.ts';\n`;
 
+  await writeGeneratedEntries({ [entryPath]: shim });
+
   const result = await coordinatedBuild(() =>
     Bun.build({
       entrypoints: [entryPath],
-      files: { [entryPath]: shim },
       publicPath: PUBLIC_PATH_BY_FAMILY.shell,
       ...SHARED_BUILD_OPTIONS,
     }),
