@@ -1,0 +1,25 @@
+{
+  "component": "terminal",
+  "import": "@lostgradient/terminal",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Render a session",
+      "description": "Mount a terminal for a session controller and size the process to the grid the engine measured.",
+      "featured": true,
+      "code": "<script lang=\"ts\">\n  import {\n    Terminal,\n    type TerminalGeometry,\n    type TerminalRendererController,\n    type TerminalState,\n  } from '@lostgradient/terminal';\n\n  // The session controller owns the process and the transport. The terminal only borrows it.\n  const { controller }: { controller: TerminalRendererController } = $props();\n\n  let state = $state<TerminalState>('connecting');\n\n  function handleGeometryChange(geometry: TerminalGeometry): void {\n    // Create or resize the process with the grid the engine measured, never an estimate.\n    console.info(geometry.columns, geometry.rows);\n    state = 'writable';\n  }\n</script>\n\n<div style=\"height: 24rem;\">\n  <Terminal\n    title=\"Build shell\"\n    {state}\n    {controller}\n    onGeometryChange={handleGeometryChange}\n  />\n</div>\n"
+    },
+    {
+      "id": "read-only-owner-grid",
+      "title": "Watch a session you do not own",
+      "description": "A read-only view keeps the owner's grid, scrolls locally, and never reports geometry.",
+      "code": "<script lang=\"ts\">\n  import { Terminal, type TerminalRendererController } from '@lostgradient/terminal';\n\n  const { controller }: { controller: TerminalRendererController } = $props();\n</script>\n\n<div style=\"height: 24rem;\">\n  <Terminal\n    title=\"Deploy log\"\n    state=\"read-only\"\n    {controller}\n    ownerGeometry={{ columns: 132, rows: 43 }}\n    ariaLabel=\"Deploy log\"\n  />\n</div>\n"
+    },
+    {
+      "id": "links-and-titles",
+      "title": "Opt in to links and show the program title",
+      "description": "Visible HTTPS text becomes a link only when the host handles activation; titles arrive as bounded plain text.",
+      "code": "<script lang=\"ts\">\n  import { Terminal, type TerminalRendererController } from '@lostgradient/terminal';\n\n  const { controller }: { controller: TerminalRendererController } = $props();\n\n  let programTitle = $state('');\n\n  function openLink(url: string): void {\n    window.open(url, '_blank', 'noopener,noreferrer');\n  }\n</script>\n\n<p>{programTitle}</p>\n<div style=\"height: 24rem;\">\n  <Terminal\n    title=\"Shell\"\n    state=\"writable\"\n    {controller}\n    onLinkActivate={openLink}\n    onTitleChange={(title) => (programTitle = title)}\n  />\n</div>\n"
+    }
+  ]
+}

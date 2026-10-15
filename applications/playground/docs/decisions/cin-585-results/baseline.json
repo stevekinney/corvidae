@@ -1,0 +1,2752 @@
+{
+  "schema": "cin-585-playground-measurements/1",
+  "label": "baseline",
+  "startedAt": "2026-10-14T06:46:59.194Z",
+  "finishedAt": "2026-10-14T08:13:16.465Z",
+  "environment": {
+    "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+    "dirtyPaths": [],
+    "untrackedPaths": [],
+    "workingTreeDiffSha256": null,
+    "lockfileSha256": "727e5e3f8e0cf7de983a273e4583a57913dc0d35fd73d005cf17f757e73f2a33",
+    "versions": {
+      "bun": "1.4.2",
+      "svelte": "5.57.0",
+      "playwright": "1.63.0"
+    },
+    "operatingSystem": {
+      "platform": "darwin",
+      "release": "27.0.0",
+      "architecture": "arm64",
+      "cpuModel": "Apple M1 Max"
+    },
+    "logicalProcessors": 10,
+    "totalMemoryBytes": 68719476736,
+    "containerMemoryLimit": "none detected (no /sys/fs/cgroup/memory.max on darwin)"
+  },
+  "routeInventory": [
+    "/",
+    "/page/access-gate",
+    "/page/accordion",
+    "/page/accordion-item",
+    "/page/action-row",
+    "/page/alert",
+    "/page/alert-dialog",
+    "/page/approval-card",
+    "/page/area-chart",
+    "/page/aspect-ratio",
+    "/page/autocomplete",
+    "/page/avatar",
+    "/page/avatar-group",
+    "/page/backdrop",
+    "/page/badge",
+    "/page/banner",
+    "/page/bar-chart",
+    "/page/breadcrumbs",
+    "/page/button",
+    "/page/button-group",
+    "/page/calendar",
+    "/page/callout",
+    "/page/capability-gate",
+    "/page/card",
+    "/page/carousel",
+    "/page/chat",
+    "/page/chat-composer-popover",
+    "/page/chat-conversation-header",
+    "/page/chat-conversation-list",
+    "/page/chat-navigation-rail",
+    "/page/chat-sub-session",
+    "/page/checkbox",
+    "/page/checkbox-group",
+    "/page/chip",
+    "/page/choice-grid",
+    "/page/choice-grid-item",
+    "/page/citation",
+    "/page/click-away-listener",
+    "/page/code-block",
+    "/page/code-location",
+    "/page/collapsible",
+    "/page/color-field",
+    "/page/color-picker",
+    "/page/color-swatch-picker",
+    "/page/combobox",
+    "/page/command-item",
+    "/page/command-menu",
+    "/page/command-palette",
+    "/page/confirm-dialog",
+    "/page/connection-indicator",
+    "/page/container",
+    "/page/context-menu",
+    "/page/context-menu-trigger",
+    "/page/copy-button",
+    "/page/data-grid",
+    "/page/data-list",
+    "/page/data-table",
+    "/page/date-picker",
+    "/page/date-range-field",
+    "/page/description-list",
+    "/page/diff-review",
+    "/page/diff-review-comments",
+    "/page/diff-statistics",
+    "/page/diff-viewer",
+    "/page/divider",
+    "/page/donut-chart",
+    "/page/drawer",
+    "/page/dropdown",
+    "/page/dropdown-group",
+    "/page/dropdown-item",
+    "/page/dropdown-label",
+    "/page/dropdown-menu",
+    "/page/dropdown-separator",
+    "/page/dropdown-trigger",
+    "/page/empty-state",
+    "/page/feed",
+    "/page/feed-boundary",
+    "/page/feed-event",
+    "/page/file-upload",
+    "/page/filter-bar",
+    "/page/find-bar",
+    "/page/floating-action",
+    "/page/focus-trap",
+    "/page/footer",
+    "/page/form",
+    "/page/form-field",
+    "/page/form-section",
+    "/page/grid",
+    "/page/grid-item",
+    "/page/grid-list",
+    "/page/grid-list-item",
+    "/page/guidance-region",
+    "/page/host-provider",
+    "/page/hover-card",
+    "/page/image",
+    "/page/inline-confirm",
+    "/page/inline-loading",
+    "/page/input",
+    "/page/invocation-rule-builder",
+    "/page/json-editor",
+    "/page/json-schema-editor",
+    "/page/json-viewer",
+    "/page/kanban-board",
+    "/page/kbd",
+    "/page/key-value-editor",
+    "/page/keyboard-shortcuts",
+    "/page/label",
+    "/page/line-chart",
+    "/page/link",
+    "/page/load-more",
+    "/page/locale-provider",
+    "/page/markdown-editor",
+    "/page/marquee",
+    "/page/masonry",
+    "/page/matrix-chart",
+    "/page/media-controls",
+    "/page/mega-menu",
+    "/page/menu-bar",
+    "/page/message",
+    "/page/meter",
+    "/page/modal",
+    "/page/modal-region",
+    "/page/multi-select",
+    "/page/navigation-bar",
+    "/page/navigation-item",
+    "/page/number-input",
+    "/page/page-header",
+    "/page/pagination",
+    "/page/parameter-field",
+    "/page/payload-inspector",
+    "/page/permission-matrix",
+    "/page/phone-input",
+    "/page/pin-input",
+    "/page/policy-lock",
+    "/page/popover",
+    "/page/portal",
+    "/page/preview-panel",
+    "/page/pricing-card",
+    "/page/progress",
+    "/page/qr-code",
+    "/page/quota-meter",
+    "/page/radio-group",
+    "/page/rating",
+    "/page/relative-time",
+    "/page/resizable-panels",
+    "/page/review-editor",
+    "/page/run-step-timeline",
+    "/page/schedule-builder",
+    "/page/schema-form",
+    "/page/scroll-area",
+    "/page/search-field",
+    "/page/secret-value-field",
+    "/page/section-heading",
+    "/page/segment",
+    "/page/segmented-control",
+    "/page/select",
+    "/page/selectable-row",
+    "/page/selection-popover",
+    "/page/setting-row",
+    "/page/share-card",
+    "/page/shortcut-field",
+    "/page/shortcut-hint",
+    "/page/side-navigation",
+    "/page/side-navigation-group",
+    "/page/side-navigation-item",
+    "/page/sidebar",
+    "/page/skeleton",
+    "/page/skip-link",
+    "/page/slider",
+    "/page/sortable-list",
+    "/page/source-diff-viewer",
+    "/page/sparkbar",
+    "/page/spectrogram",
+    "/page/spectrum-chart",
+    "/page/speed-dial",
+    "/page/speed-dial-action",
+    "/page/spinner",
+    "/page/stack",
+    "/page/stacked-list-item",
+    "/page/statistic",
+    "/page/statistic-group",
+    "/page/status-dot",
+    "/page/steps",
+    "/page/surface",
+    "/page/tab",
+    "/page/tab-list",
+    "/page/tab-panel",
+    "/page/table",
+    "/page/table-body",
+    "/page/table-cell",
+    "/page/table-header",
+    "/page/table-header-cell",
+    "/page/table-of-contents",
+    "/page/table-row",
+    "/page/tabs",
+    "/page/tag-input",
+    "/page/terminal-frame",
+    "/page/terminal-output",
+    "/page/textarea",
+    "/page/time-field",
+    "/page/timeline",
+    "/page/toast-region",
+    "/page/toggle",
+    "/page/toolbar",
+    "/page/tooltip",
+    "/page/transfer-list",
+    "/page/tree",
+    "/page/tree-item",
+    "/page/virtual-list",
+    "/page/visually-hidden",
+    "/page/waveform",
+    "/page/zoom-pan-viewer"
+  ],
+  "definitions": {
+    "cold": "This checkout's applications/playground/.tmp removed and BUN_RUNTIME_TRANSPILER_CACHE_PATH set to a new empty run-owned directory; the exporter clears build/ itself; no OS cache flush.",
+    "warm": "Immediately after the cold sample, a new process with the same transpiler cache directory and the same disk inputs.",
+    "childMaxResidentBytes": "Bun.Subprocess.resourceUsage().maxRSS, bytes on every platform: one process's own high-water mark.",
+    "treePeakResidentBytes": "Largest sum of ps rss (KiB x 1024) across the child and its descendants, sampled every 100 ms by one observer for baseline and candidate.",
+    "spawnToReadyMilliseconds": "Spawn of bun src/playground-server.ts to the first GET /ready answering 200 \"ready\", polled every 100 ms.",
+    "jsHeap": "Chromium JS heap through CDP Runtime.getHeapUsage after HeapProfiler.collectGarbage; never summed with RSS.",
+    "hostLoad": "uptime load averages and os.availableParallelism() captured before and after every sample."
+  },
+  "prerequisites": [
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 5.559584000000001,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T06:46:59.335Z",
+          "uptime": "0:46  up 12 days,  8:12, 1 user, load averages: 24.51 37.52 65.00",
+          "loadAverages": {
+            "oneMinute": 24.51,
+            "fiveMinutes": 37.52,
+            "fifteenMinutes": 65
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T06:46:59.341Z",
+        "uptime": "0:46  up 12 days,  8:12, 1 user, load averages: 24.51 37.52 65.00",
+        "loadAverages": {
+          "oneMinute": 24.51,
+          "fiveMinutes": 37.52,
+          "fifteenMinutes": 65
+        },
+        "logicalProcessors": 10
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T06:46:59.530Z",
+        "uptime": "0:46  up 12 days,  8:12, 1 user, load averages: 24.51 37.52 65.00",
+        "loadAverages": {
+          "oneMinute": 24.51,
+          "fiveMinutes": 37.52,
+          "fifteenMinutes": 65
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "child": {
+        "command": ["bun", "install", "--frozen-lockfile"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 46.20579100000003,
+        "childMaxResidentBytes": 16433152,
+        "userCpuMicroseconds": 20290,
+        "systemCpuMicroseconds": 65872,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1,
+          "skippedTicks": 0,
+          "peakResidentBytes": 606208,
+          "peakProcessCount": 1,
+          "observedPids": [94647]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/prerequisites.log"
+      }
+    }
+  ],
+  "staticExport": [
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 5.922957999999994,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T06:46:59.536Z",
+          "uptime": "0:46  up 12 days,  8:12, 1 user, load averages: 24.51 37.52 65.00",
+          "loadAverages": {
+            "oneMinute": 24.51,
+            "fiveMinutes": 37.52,
+            "fifteenMinutes": 65
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T06:46:59.541Z",
+        "uptime": "0:46  up 12 days,  8:12, 1 user, load averages: 24.51 37.52 65.00",
+        "loadAverages": {
+          "oneMinute": 24.51,
+          "fiveMinutes": 37.52,
+          "fifteenMinutes": 65
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T06:57:03.930Z",
+        "uptime": "0:57  up 12 days,  8:22, 1 user, load averages: 35.41 56.66 62.74",
+        "loadAverages": {
+          "oneMinute": 35.41,
+          "fiveMinutes": 56.66,
+          "fifteenMinutes": 62.74
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 604184.071,
+        "childMaxResidentBytes": 3998777344,
+        "userCpuMicroseconds": 683928162,
+        "systemCpuMicroseconds": 360850488,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 5903,
+          "skippedTicks": 27,
+          "peakResidentBytes": 4781768704,
+          "peakProcessCount": 2,
+          "observedPids": [
+            139, 266, 328, 392, 520, 686, 865, 1075, 1301, 1708, 1790, 1867, 1994, 2081, 2155, 2220,
+            2294, 2398, 2454, 2521, 2608, 2749, 2840, 2924, 3000, 3100, 3168, 3238, 3304, 3429,
+            3467, 3528, 3602, 3701, 3775, 3835, 3908, 3947, 4099, 4159, 4223, 4356, 4497, 4547,
+            4617, 4711, 4802, 4929, 4984, 5049, 5086, 5181, 5325, 5481, 5566, 5630, 5681, 5782,
+            5906, 6039, 6183, 6293, 6496, 6812, 7236, 7694, 8327, 8467, 8602, 8852, 9015, 9176,
+            9353, 9510, 9698, 9895, 10096, 10254, 10420, 10513, 10625, 10738, 10813, 10918, 11063,
+            11139, 11232, 11345, 11564, 11966, 12120, 12434, 12622, 13000, 13284, 13653, 13949,
+            14276, 14571, 14824, 15073, 15424, 15645, 15801, 16024, 16104, 16221, 16400, 16589,
+            16908, 17080, 17238, 17416, 17570, 17741, 17909, 18047, 18123, 18223, 18402, 18605,
+            18752, 18892, 19089, 19255, 19410, 19555, 94670, 94928, 95551, 95753, 95884, 96042,
+            96177, 96314, 96451, 96573, 96646, 96701, 96761, 96858, 96918, 97001, 97053, 97117,
+            97176, 97250, 97354, 97418, 97448, 97520, 97617, 97688, 97750, 97825, 97895, 97960,
+            98031, 98105, 98196, 98254, 98329, 98414, 98525, 98593, 98667, 98736, 98862, 98959,
+            99017, 99102, 99196, 99275, 99341, 99414, 99526, 99611, 99677, 99755, 99874, 99942,
+            99965
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/static-export-1-cold.log"
+      },
+      "inventory": {
+        "fileCount": 4220,
+        "totalBytes": 291299215,
+        "uniqueContentCount": 4130,
+        "uniqueContentBytes": 289909441,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 2902,
+            "bytes": 249072922
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005227
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 4220,
+        "sidebarComponents": 181,
+        "reportedSeconds": 603.1
+      }
+    },
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 60036.97308299993,
+        "checks": 3,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T06:58:04.229Z",
+          "uptime": "0:58  up 12 days,  8:23, 1 user, load averages: 29.26 50.96 60.16",
+          "loadAverages": {
+            "oneMinute": 29.26,
+            "fiveMinutes": 50.96,
+            "fifteenMinutes": 60.16
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T06:58:04.237Z",
+        "uptime": "0:58  up 12 days,  8:23, 1 user, load averages: 29.26 50.96 60.16",
+        "loadAverages": {
+          "oneMinute": 29.26,
+          "fiveMinutes": 50.96,
+          "fifteenMinutes": 60.16
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T07:08:04.387Z",
+        "uptime": "1:08  up 12 days,  8:33, 1 user, load averages: 37.84 45.13 52.29",
+        "loadAverages": {
+          "oneMinute": 37.84,
+          "fiveMinutes": 45.13,
+          "fifteenMinutes": 52.29
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 599970.276083,
+        "childMaxResidentBytes": 4186865664,
+        "userCpuMicroseconds": 692510948,
+        "systemCpuMicroseconds": 368188481,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 5890,
+          "skippedTicks": 4,
+          "peakResidentBytes": 4900503552,
+          "peakProcessCount": 2,
+          "observedPids": [
+            40621, 41039, 41863, 42122, 42270, 42412, 42672, 42840, 42942, 43061, 43189, 43259,
+            43381, 43519, 43649, 43729, 43807, 44066, 44150, 44263, 44394, 44531, 44686, 44756,
+            44845, 45013, 45119, 45278, 45391, 45570, 45743, 45842, 45915, 46058, 46233, 46304,
+            46431, 46626, 46865, 47132, 47454, 48016, 48520, 48752, 48879, 49095, 49304, 49525,
+            49674, 49958, 50087, 50263, 50420, 50508, 50582, 50716, 50819, 50898, 50967, 51082,
+            51240, 51379, 51496, 51650, 52021, 52105, 52176, 52325, 52385, 52450, 52525, 52642,
+            52752, 52796, 52921, 53027, 53121, 53275, 53432, 53610, 53761, 53906, 54027, 54249,
+            54367, 54457, 54583, 54752, 54927, 55138, 55286, 55456, 55697, 55911, 56077, 56255,
+            56636, 56795, 56966, 57165, 57392, 57585, 57761, 57908, 58081, 58244, 58367, 58490,
+            58555, 58808, 58909, 59048, 59126, 59240, 59343, 59453, 59660, 59846, 60018, 60187,
+            60380, 60516, 60716, 60879, 61037, 61170, 61300, 61476, 61675, 61812, 62003, 62250,
+            62478, 62640, 62769, 62905, 62987, 63189, 63378, 63476, 63612, 63750, 63897, 64054,
+            64228, 64400, 64577, 64684, 64946, 65191, 65444, 65724, 65960, 66213, 66389, 66574,
+            66770, 66994, 67167, 67461, 67689, 67847, 68065, 68495, 68881, 69088, 69174, 69308,
+            69469, 69537, 69670, 69781, 69884, 69975, 70107, 70256, 70336, 70430, 70716, 70844,
+            70951, 71049
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/static-export-1-warm.log"
+      },
+      "inventory": {
+        "fileCount": 4220,
+        "totalBytes": 291299215,
+        "uniqueContentCount": 4130,
+        "uniqueContentBytes": 289909441,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 2902,
+            "bytes": 249072922
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005227
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 4220,
+        "sidebarComponents": 181,
+        "reportedSeconds": 599.2
+      }
+    },
+    {
+      "pair": 2,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 60057.583083000034,
+        "checks": 3,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T07:09:04.779Z",
+          "uptime": "1:09  up 12 days,  8:34, 1 user, load averages: 29.98 41.67 50.52",
+          "loadAverages": {
+            "oneMinute": 29.98,
+            "fiveMinutes": 41.67,
+            "fifteenMinutes": 50.52
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T07:09:04.789Z",
+        "uptime": "1:09  up 12 days,  8:34, 1 user, load averages: 29.98 41.67 50.52",
+        "loadAverages": {
+          "oneMinute": 29.98,
+          "fiveMinutes": 41.67,
+          "fifteenMinutes": 50.52
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T07:18:23.589Z",
+        "uptime": "1:18  up 12 days,  8:43, 1 user, load averages: 33.71 37.03 43.75",
+        "loadAverages": {
+          "oneMinute": 33.71,
+          "fiveMinutes": 37.03,
+          "fifteenMinutes": 43.75
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 558627.8905420001,
+        "childMaxResidentBytes": 4399087616,
+        "userCpuMicroseconds": 690383589,
+        "systemCpuMicroseconds": 365690370,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 5473,
+          "skippedTicks": 8,
+          "peakResidentBytes": 5105582080,
+          "peakProcessCount": 2,
+          "observedPids": [
+            158, 233, 300, 415, 588, 720, 808, 969, 1199, 1356, 1430, 1511, 1591, 1694, 1848, 2028,
+            2149, 2313, 2518, 2633, 2802, 2958, 3263, 3597, 3818, 3964, 4101, 4208, 4366, 4460,
+            4530, 4593, 4677, 4746, 4806, 4918, 4977, 5078, 5171, 5258, 5392, 84658, 84993, 85700,
+            85888, 86052, 86202, 86334, 86479, 86639, 86794, 86932, 87068, 87205, 87353, 87456,
+            87513, 87571, 87631, 87703, 87770, 87868, 87935, 88001, 88068, 88166, 88260, 88325,
+            88416, 88551, 88624, 88730, 88804, 88922, 88987, 89102, 89173, 89285, 89352, 89386,
+            89467, 89577, 89643, 89753, 89847, 89973, 90096, 90165, 90240, 90317, 90451, 90523,
+            90597, 90686, 90771, 90848, 90892, 90974, 91095, 91161, 91229, 91305, 91418, 91516,
+            91580, 91914, 92058, 92204, 92387, 92545, 92682, 92745, 92818, 92893, 93005, 93110,
+            93188, 93286, 93403, 93506, 93606, 93695, 93821, 93866, 93933, 94014, 94085, 94168,
+            94235, 94305, 94395, 94504, 94586, 94660, 94789, 94922, 94990, 95086, 95196, 95311,
+            95383, 95459, 95535, 95660, 95764, 95821, 95891, 95974, 96151, 96263, 96407, 96490,
+            96566, 96704, 96821, 96912, 96984, 97047, 97130, 97219, 97294, 97337, 97415, 97551,
+            97710, 97859, 98000, 98154, 98287, 98416, 98545, 98688, 98773, 98903, 99022, 99157,
+            99286, 99406, 99611, 99737, 99870, 99952
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/static-export-2-cold.log"
+      },
+      "inventory": {
+        "fileCount": 4220,
+        "totalBytes": 291299213,
+        "uniqueContentCount": 4130,
+        "uniqueContentBytes": 289909439,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 2902,
+            "bytes": 249072922
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005225
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 4220,
+        "sidebarComponents": 181,
+        "reportedSeconds": 556.7
+      }
+    },
+    {
+      "pair": 2,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 30033.938166999957,
+        "checks": 2,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T07:18:53.877Z",
+          "uptime": "1:18  up 12 days,  8:44, 1 user, load averages: 28.25 35.40 42.93",
+          "loadAverages": {
+            "oneMinute": 28.25,
+            "fiveMinutes": 35.4,
+            "fifteenMinutes": 42.93
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T07:18:53.883Z",
+        "uptime": "1:18  up 12 days,  8:44, 1 user, load averages: 28.25 35.40 42.93",
+        "loadAverages": {
+          "oneMinute": 28.25,
+          "fiveMinutes": 35.4,
+          "fifteenMinutes": 42.93
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T07:28:37.907Z",
+        "uptime": "1:28  up 12 days,  8:53, 1 user, load averages: 45.29 43.56 44.16",
+        "loadAverages": {
+          "oneMinute": 45.29,
+          "fiveMinutes": 43.56,
+          "fifteenMinutes": 44.16
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 583861.414166,
+        "childMaxResidentBytes": 4477681664,
+        "userCpuMicroseconds": 685473999,
+        "systemCpuMicroseconds": 365398115,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 5713,
+          "skippedTicks": 11,
+          "peakResidentBytes": 5186322432,
+          "peakProcessCount": 2,
+          "observedPids": [
+            15220, 15480, 16019, 16194, 16349, 16471, 16617, 16692, 16763, 16835, 16901, 16979,
+            17104, 17175, 17249, 17330, 17478, 17624, 17800, 17837, 17912, 17984, 18082, 18234,
+            18395, 18547, 18700, 18855, 19005, 19160, 19307, 19450, 19566, 19713, 19910, 20052,
+            20195, 20340, 20482, 20624, 20768, 20830, 20900, 21011, 21081, 21144, 21232, 21330,
+            21403, 21487, 21568, 21674, 21742, 21815, 21890, 21979, 22060, 22174, 22255, 22373,
+            22439, 22500, 22584, 22695, 22905, 23018, 23086, 23171, 23247, 23367, 23508, 23580,
+            23676, 23887, 24069, 24175, 24254, 24499, 24673, 24824, 24921, 25047, 25127, 25247,
+            25347, 25454, 25526, 25606, 25698, 25782, 25952, 26092, 26231, 26467, 26627, 26790,
+            26908, 26992, 27085, 27213, 27279, 27350, 27429, 27520, 27609, 27682, 27761, 27861,
+            27985, 28103, 28202, 28287, 28378, 28495, 28596, 28698, 28808, 28872, 28976, 29094,
+            29219, 29296, 29396, 29495, 29633, 29759, 29831, 29913, 30014, 30149, 30237, 30298,
+            30383, 30492, 30608, 30669, 30739, 30887, 31034, 31225, 31310, 31381, 31470, 31568,
+            31650, 31733, 31875, 32019, 32175, 32351, 32545, 32792, 32957, 33134, 33264, 33361,
+            33572, 33700, 33844, 34081, 34209, 34334, 34501, 34789, 35013, 35091, 35170, 35297,
+            35369, 35402, 35521, 35632, 35774, 35936, 36016, 36099, 36176, 36253, 36461, 36616,
+            36754, 36894
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/static-export-2-warm.log"
+      },
+      "inventory": {
+        "fileCount": 4220,
+        "totalBytes": 291299215,
+        "uniqueContentCount": 4130,
+        "uniqueContentBytes": 289909441,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 2902,
+            "bytes": 249072922
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005227
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 4220,
+        "sidebarComponents": 181,
+        "reportedSeconds": 583.2
+      }
+    },
+    {
+      "pair": 3,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 420283.94533400005,
+        "checks": 15,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T07:35:38.566Z",
+          "uptime": "1:35  up 12 days, 9 hrs, 1 user, load averages: 29.31 49.68 49.84",
+          "loadAverages": {
+            "oneMinute": 29.31,
+            "fiveMinutes": 49.68,
+            "fifteenMinutes": 49.84
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T07:35:38.575Z",
+        "uptime": "1:35  up 12 days, 9 hrs, 1 user, load averages: 29.31 49.68 49.84",
+        "loadAverages": {
+          "oneMinute": 29.31,
+          "fiveMinutes": 49.68,
+          "fifteenMinutes": 49.84
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T07:44:44.158Z",
+        "uptime": "1:44  up 12 days,  9:09, 1 user, load averages: 24.49 34.57 42.53",
+        "loadAverages": {
+          "oneMinute": 24.49,
+          "fiveMinutes": 34.57,
+          "fifteenMinutes": 42.53
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 545317.4860419999,
+        "childMaxResidentBytes": 4684333056,
+        "userCpuMicroseconds": 678156503,
+        "systemCpuMicroseconds": 367189990,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 5348,
+          "skippedTicks": 7,
+          "peakResidentBytes": 5398986752,
+          "peakProcessCount": 2,
+          "observedPids": [
+            67372, 67587, 68335, 68640, 68781, 68915, 69036, 69191, 69360, 69504, 69704, 69848,
+            69981, 70181, 70325, 70474, 70592, 70727, 70823, 70902, 71002, 71199, 71288, 71364,
+            71511, 71723, 71895, 72030, 72169, 72307, 72482, 72609, 72814, 73014, 73208, 73378,
+            73559, 73790, 74013, 74270, 74518, 74755, 74983, 75293, 75493, 75684, 75890, 76099,
+            76315, 76476, 76604, 76740, 76815, 76914, 76995, 77092, 77164, 77233, 77327, 77399,
+            77462, 77535, 77637, 77701, 77960, 78042, 78101, 78226, 78314, 78351, 78433, 78501,
+            78598, 78687, 78760, 78831, 78920, 79114, 79187, 79284, 79357, 79441, 79504, 79547,
+            79618, 79729, 79788, 79883, 79951, 80082, 80185, 80250, 80328, 80499, 80570, 80636,
+            80731, 80926, 81082, 81228, 81372, 81522, 81681, 81774, 81836, 81911, 81983, 82118,
+            82195, 82280, 82356, 82476, 82538, 82602, 82683, 82786, 82876, 82942, 83026, 83095,
+            83193, 83251, 83294, 83363, 83478, 83558, 83618, 83704, 83784, 83867, 83944, 84032,
+            84239, 84413, 84522, 84601, 84709, 84941, 85106, 85232, 85355, 85449, 85569, 85708,
+            85790, 85854, 86049, 86185, 86274, 86372, 86436, 86507, 86579, 86695, 86794, 86874,
+            86993, 87165, 87312, 87545, 87694, 87850, 88012, 88230, 88621, 88789, 88914, 89083,
+            89207, 89350, 89520, 89654, 89775, 89862, 89967, 90071, 90141, 90266, 90515, 90701,
+            90774, 90909
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/static-export-3-cold.log"
+      },
+      "inventory": {
+        "fileCount": 4220,
+        "totalBytes": 291299214,
+        "uniqueContentCount": 4130,
+        "uniqueContentBytes": 289909440,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 2902,
+            "bytes": 249072922
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005226
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 4220,
+        "sidebarComponents": 181,
+        "reportedSeconds": 544.1
+      }
+    },
+    {
+      "pair": 3,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 10.993875000160187,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T07:44:44.471Z",
+          "uptime": "1:44  up 12 days,  9:09, 1 user, load averages: 24.49 34.57 42.53",
+          "loadAverages": {
+            "oneMinute": 24.49,
+            "fiveMinutes": 34.57,
+            "fifteenMinutes": 42.53
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T07:44:44.482Z",
+        "uptime": "1:44  up 12 days,  9:09, 1 user, load averages: 24.49 34.57 42.53",
+        "loadAverages": {
+          "oneMinute": 24.49,
+          "fiveMinutes": 34.57,
+          "fifteenMinutes": 42.53
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T07:54:43.485Z",
+        "uptime": "1:54  up 12 days,  9:19, 1 user, load averages: 23.05 31.48 37.20",
+        "loadAverages": {
+          "oneMinute": 23.05,
+          "fiveMinutes": 31.48,
+          "fifteenMinutes": 37.2
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "run", "scripts/static-export.ts"],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 598738.6880409997,
+        "childMaxResidentBytes": 4081549312,
+        "userCpuMicroseconds": 687140276,
+        "systemCpuMicroseconds": 387614277,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 5868,
+          "skippedTicks": 13,
+          "peakResidentBytes": 4799021056,
+          "peakProcessCount": 2,
+          "observedPids": [
+            935, 1172, 1776, 1965, 2043, 2164, 2253, 2350, 2498, 2593, 2718, 2884, 3028, 3173, 3274,
+            3414, 3494, 3633, 3698, 3820, 3892, 3953, 4059, 4193, 4386, 4445, 4559, 4638, 4823,
+            4915, 4998, 5083, 5179, 5304, 5502, 5579, 5647, 5716, 5814, 5919, 5986, 6057, 6130,
+            6311, 6461, 6625, 6797, 6949, 7141, 7311, 7445, 7572, 7702, 7824, 7952, 8090, 8219,
+            8391, 8536, 8684, 8754, 8884, 8952, 9018, 9361, 9453, 9569, 9815, 10012, 10087, 10165,
+            10259, 10356, 10509, 10653, 10796, 10950, 11166, 11369, 11528, 11678, 11819, 11976,
+            12137, 12280, 12407, 12557, 12705, 12851, 13005, 13145, 13204, 13284, 13401, 13472,
+            13543, 13699, 13776, 13845, 13923, 14044, 14151, 14220, 14295, 14401, 14504, 14601,
+            14673, 14746, 14964, 15035, 15123, 15217, 15353, 15411, 15506, 15578, 15709, 15776,
+            15823, 15896, 16025, 16136, 16206, 16273, 16347, 16441, 16511, 16587, 16682, 16796,
+            16884, 16969, 17048, 17170, 17240, 17306, 17428, 17562, 17631, 17701, 17780, 17903,
+            18048, 18210, 18366, 18655, 18790, 18860, 18929, 19082, 19194, 19303, 19372, 19496,
+            19577, 19762, 19838, 19911, 20079, 20166, 20280, 20360, 20593, 20821, 21012, 21115,
+            21194, 21279, 21392, 21494, 21563, 21652, 21783, 21881, 21953, 22031, 22115, 22320,
+            22391, 22508, 22589
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/static-export-3-warm.log"
+      },
+      "inventory": {
+        "fileCount": 4220,
+        "totalBytes": 291299212,
+        "uniqueContentCount": 4130,
+        "uniqueContentBytes": 289909438,
+        "groups": {
+          "(root):.html": {
+            "files": 1,
+            "bytes": 165959
+          },
+          "(root):.txt": {
+            "files": 1,
+            "bytes": 67
+          },
+          "(root):.xml": {
+            "files": 1,
+            "bytes": 13716
+          },
+          "(root):(none)": {
+            "files": 1,
+            "bytes": 4
+          },
+          "api:(none)": {
+            "files": 422,
+            "bytes": 5674286
+          },
+          "assets:.css": {
+            "files": 186,
+            "bytes": 1104038
+          },
+          "assets:.js": {
+            "files": 2902,
+            "bytes": 249072922
+          },
+          "assets:.png": {
+            "files": 1,
+            "bytes": 732014
+          },
+          "example-src:(none)": {
+            "files": 494,
+            "bytes": 530982
+          },
+          "page:.html": {
+            "files": 211,
+            "bytes": 34005224
+          }
+        }
+      },
+      "routeCount": 212,
+      "exporterSummary": {
+        "renderedFiles": 4220,
+        "sidebarComponents": 181,
+        "reportedSeconds": 597.6
+      }
+    }
+  ],
+  "serverReady": [
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 5.309082999825478,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T07:54:43.737Z",
+          "uptime": "1:54  up 12 days,  9:19, 1 user, load averages: 23.05 31.48 37.20",
+          "loadAverages": {
+            "oneMinute": 23.05,
+            "fiveMinutes": 31.48,
+            "fifteenMinutes": 37.2
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T07:54:43.742Z",
+        "uptime": "1:54  up 12 days,  9:19, 1 user, load averages: 23.05 31.48 37.20",
+        "loadAverages": {
+          "oneMinute": 23.05,
+          "fiveMinutes": 31.48,
+          "fifteenMinutes": 37.2
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T07:56:47.455Z",
+        "uptime": "1:56  up 12 days,  9:21, 1 user, load averages: 21.48 28.77 35.39",
+        "loadAverages": {
+          "oneMinute": 21.48,
+          "fiveMinutes": 28.77,
+          "fifteenMinutes": 35.39
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 123558.64425000036,
+        "childMaxResidentBytes": 3634053120,
+        "userCpuMicroseconds": 172403830,
+        "systemCpuMicroseconds": 140300315,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1214,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3633954816,
+          "peakProcessCount": 1,
+          "observedPids": [29379]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/server-1-cold.log"
+      },
+      "spawnToReadyMilliseconds": 123504.24570899969,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 1214,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3633954816,
+        "peakProcessCount": 1,
+        "observedPids": [29379]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3347
+      }
+    },
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.263458000030369,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T07:56:47.460Z",
+          "uptime": "1:56  up 12 days,  9:21, 1 user, load averages: 21.48 28.77 35.39",
+          "loadAverages": {
+            "oneMinute": 21.48,
+            "fiveMinutes": 28.77,
+            "fifteenMinutes": 35.39
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T07:56:47.464Z",
+        "uptime": "1:56  up 12 days,  9:21, 1 user, load averages: 21.48 28.77 35.39",
+        "loadAverages": {
+          "oneMinute": 21.48,
+          "fiveMinutes": 28.77,
+          "fifteenMinutes": 35.39
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T07:58:31.402Z",
+        "uptime": "1:58  up 12 days,  9:23, 1 user, load averages: 23.78 27.23 34.03",
+        "loadAverages": {
+          "oneMinute": 23.78,
+          "fiveMinutes": 27.23,
+          "fifteenMinutes": 34.03
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 103805.91437500017,
+        "childMaxResidentBytes": 3617177600,
+        "userCpuMicroseconds": 165384480,
+        "systemCpuMicroseconds": 132004878,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1023,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3617046528,
+          "peakProcessCount": 1,
+          "observedPids": [33167]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/server-1-warm.log"
+      },
+      "spawnToReadyMilliseconds": 103750.46891600033,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 1023,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3617046528,
+        "peakProcessCount": 1,
+        "observedPids": [33167]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3326
+      }
+    },
+    {
+      "pair": 2,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.096750000491738,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T07:58:31.407Z",
+          "uptime": "1:58  up 12 days,  9:23, 1 user, load averages: 23.78 27.23 34.03",
+          "loadAverages": {
+            "oneMinute": 23.78,
+            "fiveMinutes": 27.23,
+            "fifteenMinutes": 34.03
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T07:58:31.411Z",
+        "uptime": "1:58  up 12 days,  9:23, 1 user, load averages: 23.78 27.23 34.03",
+        "loadAverages": {
+          "oneMinute": 23.78,
+          "fiveMinutes": 27.23,
+          "fifteenMinutes": 34.03
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:00:14.185Z",
+        "uptime": "2:00  up 12 days,  9:25, 1 user, load averages: 16.75 23.86 31.93",
+        "loadAverages": {
+          "oneMinute": 16.75,
+          "fiveMinutes": 23.86,
+          "fifteenMinutes": 31.93
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 102664.63862499967,
+        "childMaxResidentBytes": 3626369024,
+        "userCpuMicroseconds": 166333733,
+        "systemCpuMicroseconds": 140221924,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1012,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3626270720,
+          "peakProcessCount": 1,
+          "observedPids": [36833]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/server-2-cold.log"
+      },
+      "spawnToReadyMilliseconds": 102619.2112499997,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 1012,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3626270720,
+        "peakProcessCount": 1,
+        "observedPids": [36833]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3290
+      }
+    },
+    {
+      "pair": 2,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 5.086834000423551,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:00:14.191Z",
+          "uptime": "2:00  up 12 days,  9:25, 1 user, load averages: 16.75 23.86 31.93",
+          "loadAverages": {
+            "oneMinute": 16.75,
+            "fiveMinutes": 23.86,
+            "fifteenMinutes": 31.93
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:00:14.196Z",
+        "uptime": "2:00  up 12 days,  9:25, 1 user, load averages: 16.75 23.86 31.93",
+        "loadAverages": {
+          "oneMinute": 16.75,
+          "fiveMinutes": 23.86,
+          "fifteenMinutes": 31.93
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:01:57.565Z",
+        "uptime": "2:01  up 12 days,  9:27, 1 user, load averages: 18.24 22.32 30.39",
+        "loadAverages": {
+          "oneMinute": 18.24,
+          "fiveMinutes": 22.32,
+          "fifteenMinutes": 30.39
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 103258.60654200055,
+        "childMaxResidentBytes": 3561357312,
+        "userCpuMicroseconds": 168105617,
+        "systemCpuMicroseconds": 139931734,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1018,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3561226240,
+          "peakProcessCount": 1,
+          "observedPids": [39997]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/server-2-warm.log"
+      },
+      "spawnToReadyMilliseconds": 103214.50995799992,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 1018,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3561226240,
+        "peakProcessCount": 1,
+        "observedPids": [39997]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3282
+      }
+    },
+    {
+      "pair": 3,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.088500000536442,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:01:57.569Z",
+          "uptime": "2:01  up 12 days,  9:27, 1 user, load averages: 18.24 22.32 30.39",
+          "loadAverages": {
+            "oneMinute": 18.24,
+            "fiveMinutes": 22.32,
+            "fifteenMinutes": 30.39
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:01:57.575Z",
+        "uptime": "2:01  up 12 days,  9:27, 1 user, load averages: 18.24 22.32 30.39",
+        "loadAverages": {
+          "oneMinute": 18.24,
+          "fiveMinutes": 22.32,
+          "fifteenMinutes": 30.39
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:03:44.854Z",
+        "uptime": "2:03  up 12 days,  9:28, 1 user, load averages: 17.04 20.42 28.69",
+        "loadAverages": {
+          "oneMinute": 17.04,
+          "fiveMinutes": 20.42,
+          "fifteenMinutes": 28.69
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 107167.95162500069,
+        "childMaxResidentBytes": 3671670784,
+        "userCpuMicroseconds": 170001692,
+        "systemCpuMicroseconds": 139408836,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1057,
+          "skippedTicks": 0,
+          "peakResidentBytes": 3671588864,
+          "peakProcessCount": 1,
+          "observedPids": [44895]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/server-3-cold.log"
+      },
+      "spawnToReadyMilliseconds": 107100.40675000008,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 1057,
+        "skippedTicks": 0,
+        "peakResidentBytes": 3671588864,
+        "peakProcessCount": 1,
+        "observedPids": [44895]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3336
+      }
+    },
+    {
+      "pair": 3,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.282207999378443,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:03:44.858Z",
+          "uptime": "2:03  up 12 days,  9:28, 1 user, load averages: 17.04 20.42 28.69",
+          "loadAverages": {
+            "oneMinute": 17.04,
+            "fiveMinutes": 20.42,
+            "fifteenMinutes": 28.69
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:03:44.862Z",
+        "uptime": "2:03  up 12 days,  9:28, 1 user, load averages: 17.04 20.42 28.69",
+        "loadAverages": {
+          "oneMinute": 17.04,
+          "fiveMinutes": 20.42,
+          "fifteenMinutes": 28.69
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:05:26.688Z",
+        "uptime": "2:05  up 12 days,  9:30, 1 user, load averages: 14.23 18.15 26.86",
+        "loadAverages": {
+          "oneMinute": 14.23,
+          "fiveMinutes": 18.15,
+          "fifteenMinutes": 26.86
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": ["bun", "src/playground-server.ts"],
+        "exitCode": 143,
+        "signalCode": null,
+        "wallMilliseconds": 101718.4511250006,
+        "childMaxResidentBytes": 4029317120,
+        "userCpuMicroseconds": 166073387,
+        "systemCpuMicroseconds": 143660511,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1004,
+          "skippedTicks": 0,
+          "peakResidentBytes": 4029202432,
+          "peakProcessCount": 1,
+          "observedPids": [49876]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/server-3-warm.log"
+      },
+      "spawnToReadyMilliseconds": 101654.49758299999,
+      "readyOutcome": "ready",
+      "readyDeadlineMilliseconds": 300000,
+      "treeUntilReady": {
+        "intervalMilliseconds": 100,
+        "sampleCount": 1004,
+        "skippedTicks": 0,
+        "peakResidentBytes": 4029202432,
+        "peakProcessCount": 1,
+        "observedPids": [49876]
+      },
+      "prebuildSummary": {
+        "succeeded": 181,
+        "total": 181,
+        "selfReportedPeakResidentMegabytes": 3802
+      }
+    }
+  ],
+  "playwright": [
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 3.890165999531746,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:05:26.693Z",
+          "uptime": "2:05  up 12 days,  9:30, 1 user, load averages: 14.23 18.15 26.86",
+          "loadAverages": {
+            "oneMinute": 14.23,
+            "fiveMinutes": 18.15,
+            "fifteenMinutes": 26.86
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "cold",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:05:26.805Z",
+        "uptime": "2:05  up 12 days,  9:30, 1 user, load averages: 13.50 17.93 26.73",
+        "loadAverages": {
+          "oneMinute": 13.5,
+          "fiveMinutes": 17.93,
+          "fifteenMinutes": 26.73
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:07:15.606Z",
+        "uptime": "2:07  up 12 days,  9:32, 1 user, load averages: 12.91 16.43 25.12",
+        "loadAverages": {
+          "oneMinute": 12.91,
+          "fiveMinutes": 16.43,
+          "fifteenMinutes": 25.12
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": [
+          "bun",
+          "run",
+          "test:browser",
+          "--project=chromium",
+          "--reporter=json",
+          "tests/playground-shell-layout.playwright.ts"
+        ],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 108694.23699999973,
+        "childMaxResidentBytes": 3730243584,
+        "userCpuMicroseconds": 179144781,
+        "systemCpuMicroseconds": 152834763,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1072,
+          "skippedTicks": 0,
+          "peakResidentBytes": 5200035840,
+          "peakProcessCount": 10,
+          "observedPids": [
+            53161, 53163, 53164, 53170, 56628, 56631, 56634, 56635, 56637, 56645, 56648, 56695,
+            56702, 56705, 56741, 56745, 56747, 56752, 56758, 56763, 56770, 56774, 56775, 56823,
+            56826, 56874, 56876, 56894, 56895, 56956
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/playwright-1-cold.log"
+      },
+      "report": {
+        "reportedDurationMilliseconds": 108187,
+        "expected": 17,
+        "unexpected": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "testResults": 17,
+        "testExecutionMilliseconds": 9969
+      }
+    },
+    {
+      "pair": 1,
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 3.7845840007066727,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:07:15.610Z",
+          "uptime": "2:07  up 12 days,  9:32, 1 user, load averages: 12.91 16.43 25.12",
+          "loadAverages": {
+            "oneMinute": 12.91,
+            "fiveMinutes": 16.43,
+            "fifteenMinutes": 25.12
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "temperature": "warm",
+      "hostLoadBefore": {
+        "capturedAt": "2026-10-14T08:07:15.715Z",
+        "uptime": "2:07  up 12 days,  9:32, 1 user, load averages: 12.91 16.43 25.12",
+        "loadAverages": {
+          "oneMinute": 12.91,
+          "fiveMinutes": 16.43,
+          "fifteenMinutes": 25.12
+        },
+        "logicalProcessors": 10
+      },
+      "source": {
+        "sourceSha": "f165d12291077b319fdef857376125e9fb1bd66f",
+        "dirtyPaths": [],
+        "untrackedPaths": [],
+        "workingTreeDiffSha256": null
+      },
+      "hostLoadAfter": {
+        "capturedAt": "2026-10-14T08:09:04.125Z",
+        "uptime": "2:09  up 12 days,  9:34, 1 user, load averages: 12.84 15.60 23.75",
+        "loadAverages": {
+          "oneMinute": 12.84,
+          "fiveMinutes": 15.6,
+          "fifteenMinutes": 23.75
+        },
+        "logicalProcessors": 10
+      },
+      "child": {
+        "command": [
+          "bun",
+          "run",
+          "test:browser",
+          "--project=chromium",
+          "--reporter=json",
+          "tests/playground-shell-layout.playwright.ts"
+        ],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 108304.53354100045,
+        "childMaxResidentBytes": 3666198528,
+        "userCpuMicroseconds": 179274904,
+        "systemCpuMicroseconds": 152901561,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1067,
+          "skippedTicks": 0,
+          "peakResidentBytes": 5119246336,
+          "peakProcessCount": 10,
+          "observedPids": [
+            56968, 56970, 56971, 56976, 60056, 60059, 60063, 60064, 60066, 60079, 60084, 60135,
+            60139, 60143, 60149, 60152, 60155, 60158, 60163, 60199, 60203, 60207, 60208, 60223,
+            60260, 60280, 60282, 60332, 60333, 60350
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/playwright-1-warm.log"
+      },
+      "report": {
+        "reportedDurationMilliseconds": 108036.474,
+        "expected": 17,
+        "unexpected": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "testResults": 17,
+        "testExecutionMilliseconds": 9849
+      }
+    }
+  ],
+  "probes": {
+    "navigation": {
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.118875000625849,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:09:04.130Z",
+          "uptime": "2:09  up 12 days,  9:34, 1 user, load averages: 12.84 15.60 23.75",
+          "loadAverages": {
+            "oneMinute": 12.84,
+            "fiveMinutes": 15.6,
+            "fifteenMinutes": 23.75
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "child": {
+        "command": [
+          "bun",
+          "scripts/measure-playground-probe.ts",
+          "navigation",
+          "--cycles",
+          "5",
+          "--output",
+          "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/probe-navigation.json",
+          "--port",
+          "5610"
+        ],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 143829.02562499978,
+        "childMaxResidentBytes": 3740254208,
+        "userCpuMicroseconds": 180440168,
+        "systemCpuMicroseconds": 148878599,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1421,
+          "skippedTicks": 0,
+          "peakResidentBytes": 5073125376,
+          "peakProcessCount": 6,
+          "observedPids": [60390, 63737, 63741, 63742, 63744, 63755, 63817, 63881, 63979, 64041]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/probe-navigation.log"
+      },
+      "result": {
+        "probe": "navigation",
+        "routes": [
+          "/",
+          "/page/button",
+          "/page/action-row",
+          "/page/chat",
+          "/page/modal",
+          "/page/review-editor"
+        ],
+        "warmup": {
+          "cycle": 0,
+          "requests": 189,
+          "encodedBytes": 14548490,
+          "routes": [
+            {
+              "route": "/",
+              "interactionReadyMilliseconds": 230.19708399999945,
+              "playgroundOpenMilliseconds": null,
+              "playgroundCloseMilliseconds": null
+            },
+            {
+              "route": "/page/button",
+              "interactionReadyMilliseconds": 1044.902040999994,
+              "playgroundOpenMilliseconds": 89.34129199999734,
+              "playgroundCloseMilliseconds": 46.15679100000125
+            },
+            {
+              "route": "/page/action-row",
+              "interactionReadyMilliseconds": 1130.3667499999865,
+              "playgroundOpenMilliseconds": 67.58962499999325,
+              "playgroundCloseMilliseconds": 46.358041999992565
+            },
+            {
+              "route": "/page/chat",
+              "interactionReadyMilliseconds": 1292.6378750000003,
+              "playgroundOpenMilliseconds": 84.52583400000003,
+              "playgroundCloseMilliseconds": 61.521584000001894
+            },
+            {
+              "route": "/page/modal",
+              "interactionReadyMilliseconds": 1033.1887910000078,
+              "playgroundOpenMilliseconds": 69.67549999999756,
+              "playgroundCloseMilliseconds": 47.56633299999521
+            },
+            {
+              "route": "/page/review-editor",
+              "interactionReadyMilliseconds": 1189.682707999993,
+              "playgroundOpenMilliseconds": 216.49662499999977,
+              "playgroundCloseMilliseconds": 48.46516700000211
+            },
+            {
+              "route": "/",
+              "interactionReadyMilliseconds": 32.50325000000885,
+              "playgroundOpenMilliseconds": null,
+              "playgroundCloseMilliseconds": null
+            }
+          ],
+          "browser": {
+            "exampleMountHosts": 0,
+            "populatedExampleMountHosts": 0,
+            "openEventSources": 7,
+            "domCounters": {
+              "documents": 1,
+              "nodes": 2622,
+              "jsEventListeners": 23
+            },
+            "jsHeapUsedBytes": 1762944,
+            "jsHeapTotalBytes": 3473408
+          },
+          "server": {
+            "page": {
+              "entryPointers": 181,
+              "artifacts": 2612,
+              "artifactBytes": 365887055
+            },
+            "shell": {
+              "entryPointers": 1,
+              "artifacts": 35,
+              "artifactBytes": 4106878
+            },
+            "scenario": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "fixture": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "totalArtifacts": 2647,
+            "totalArtifactBytes": 369993933,
+            "inFlightBuilds": 0,
+            "cachedManifests": 211
+          },
+          "probeProcess": {
+            "residentBytes": 3739484160,
+            "heapUsedBytes": 1335157081
+          }
+        },
+        "cycles": [
+          {
+            "cycle": 1,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 32.42750000000524,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 110.48670799999672,
+                "playgroundOpenMilliseconds": 80.8830420000013,
+                "playgroundCloseMilliseconds": 46.21899999999732
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 100.09270800001104,
+                "playgroundOpenMilliseconds": 73.76637500000652,
+                "playgroundCloseMilliseconds": 45.852957999988575
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 181.2601660000073,
+                "playgroundOpenMilliseconds": 57.157666999992216,
+                "playgroundCloseMilliseconds": 61.804457999998704
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 110.4252919999999,
+                "playgroundOpenMilliseconds": 64.01179200000479,
+                "playgroundCloseMilliseconds": 47.77387499999895
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 233.55829100000847,
+                "playgroundOpenMilliseconds": 146.07895799999824,
+                "playgroundCloseMilliseconds": 48.47658300001058
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 25.916333000001032,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 14,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1763400,
+              "jsHeapTotalBytes": 2949120
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211
+            },
+            "probeProcess": {
+              "residentBytes": 3739779072,
+              "heapUsedBytes": 1333938207
+            }
+          },
+          {
+            "cycle": 2,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 37.83995799999684,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 55.44137499999488,
+                "playgroundOpenMilliseconds": 73.50725000000966,
+                "playgroundCloseMilliseconds": 46.073583000004874
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 77.71629200001189,
+                "playgroundOpenMilliseconds": 61.076874999998836,
+                "playgroundCloseMilliseconds": 45.724291000005906
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 114.53445799999463,
+                "playgroundOpenMilliseconds": 71.62145900000178,
+                "playgroundCloseMilliseconds": 60.984084000010625
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 80.13758300000336,
+                "playgroundOpenMilliseconds": 59.77408400000422,
+                "playgroundCloseMilliseconds": 48.22720799999661
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 113.86779200000456,
+                "playgroundOpenMilliseconds": 163.01400000001013,
+                "playgroundCloseMilliseconds": 49.01741600000241
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 26.89170799999556,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 21,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1763400,
+              "jsHeapTotalBytes": 3211264
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211
+            },
+            "probeProcess": {
+              "residentBytes": 3739828224,
+              "heapUsedBytes": 1330561715
+            }
+          },
+          {
+            "cycle": 3,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 32.04575000000477,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 52.2208329999994,
+                "playgroundOpenMilliseconds": 74.35433400000329,
+                "playgroundCloseMilliseconds": 46.12200000000303
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 49.08304099999077,
+                "playgroundOpenMilliseconds": 90.57325000000128,
+                "playgroundCloseMilliseconds": 47.06195899999875
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 113.24054199999955,
+                "playgroundOpenMilliseconds": 72.91716700000688,
+                "playgroundCloseMilliseconds": 60.185416000007535
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 54.63500000000931,
+                "playgroundOpenMilliseconds": 61.40183299999626,
+                "playgroundCloseMilliseconds": 47.081792000011774
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 114.01895800000057,
+                "playgroundOpenMilliseconds": 164.08708399999887,
+                "playgroundCloseMilliseconds": 47.99858400000085
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 26.627416999996058,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 28,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1763400,
+              "jsHeapTotalBytes": 3211264
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211
+            },
+            "probeProcess": {
+              "residentBytes": 3739828224,
+              "heapUsedBytes": 1330950802
+            }
+          },
+          {
+            "cycle": 4,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 32.35054200000013,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 74.16729199999827,
+                "playgroundOpenMilliseconds": 83.38120899999922,
+                "playgroundCloseMilliseconds": 46.613959000009345
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 72.9947080000129,
+                "playgroundOpenMilliseconds": 49.56145799999649,
+                "playgroundCloseMilliseconds": 45.74870799999917
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 114.47029100000509,
+                "playgroundOpenMilliseconds": 71.66858299999149,
+                "playgroundCloseMilliseconds": 61.045957999973325
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 77.60675000000629,
+                "playgroundOpenMilliseconds": 59.74129200002062,
+                "playgroundCloseMilliseconds": 47.11491699999897
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 123.85129099999904,
+                "playgroundOpenMilliseconds": 164.64341600000625,
+                "playgroundCloseMilliseconds": 49.06450000000768
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 27.139125000016065,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 35,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1763400,
+              "jsHeapTotalBytes": 3211264
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211
+            },
+            "probeProcess": {
+              "residentBytes": 3739844608,
+              "heapUsedBytes": 1331339789
+            }
+          },
+          {
+            "cycle": 5,
+            "requests": 189,
+            "encodedBytes": 2992016,
+            "routes": [
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 33.97250000000349,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              },
+              {
+                "route": "/page/button",
+                "interactionReadyMilliseconds": 68.48412499998813,
+                "playgroundOpenMilliseconds": 74.37216699999408,
+                "playgroundCloseMilliseconds": 45.65758299999288
+              },
+              {
+                "route": "/page/action-row",
+                "interactionReadyMilliseconds": 74.70549999998184,
+                "playgroundOpenMilliseconds": 61.28041700000176,
+                "playgroundCloseMilliseconds": 46.47254200000316
+              },
+              {
+                "route": "/page/chat",
+                "interactionReadyMilliseconds": 120.09391599998344,
+                "playgroundOpenMilliseconds": 71.59541599999648,
+                "playgroundCloseMilliseconds": 60.798042000009445
+              },
+              {
+                "route": "/page/modal",
+                "interactionReadyMilliseconds": 77.72795899998164,
+                "playgroundOpenMilliseconds": 62.5482909999846,
+                "playgroundCloseMilliseconds": 48.1203749999986
+              },
+              {
+                "route": "/page/review-editor",
+                "interactionReadyMilliseconds": 113.97958400001517,
+                "playgroundOpenMilliseconds": 165.44237500001327,
+                "playgroundCloseMilliseconds": 48.72720799999661
+              },
+              {
+                "route": "/",
+                "interactionReadyMilliseconds": 26.841541000001598,
+                "playgroundOpenMilliseconds": null,
+                "playgroundCloseMilliseconds": null
+              }
+            ],
+            "browser": {
+              "exampleMountHosts": 0,
+              "populatedExampleMountHosts": 0,
+              "openEventSources": 42,
+              "domCounters": {
+                "documents": 1,
+                "nodes": 2622,
+                "jsEventListeners": 23
+              },
+              "jsHeapUsedBytes": 1764168,
+              "jsHeapTotalBytes": 3473408
+            },
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2612,
+                "artifactBytes": 365887055
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2647,
+              "totalArtifactBytes": 369993933,
+              "inFlightBuilds": 0,
+              "cachedManifests": 211
+            },
+            "probeProcess": {
+              "residentBytes": 3739959296,
+              "heapUsedBytes": 1331702214
+            }
+          }
+        ],
+        "growth": {
+          "exampleMountHosts": {
+            "series": [0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "populatedExampleMountHosts": {
+            "series": [0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "openEventSources": {
+            "series": [14, 21, 28, 35, 42],
+            "classification": "monotonic-growth"
+          },
+          "domNodes": {
+            "series": [2622, 2622, 2622, 2622, 2622],
+            "classification": "stable"
+          },
+          "jsEventListeners": {
+            "series": [23, 23, 23, 23, 23],
+            "classification": "stable"
+          },
+          "documents": {
+            "series": [1, 1, 1, 1, 1],
+            "classification": "stable"
+          },
+          "jsHeapUsedBytes": {
+            "series": [1763400, 1763400, 1763400, 1763400, 1764168],
+            "classification": "monotonic-growth"
+          },
+          "serverArtifacts": {
+            "series": [2647, 2647, 2647, 2647, 2647],
+            "classification": "stable"
+          },
+          "serverArtifactBytes": {
+            "series": [369993933, 369993933, 369993933, 369993933, 369993933],
+            "classification": "stable"
+          },
+          "probeResidentBytes": {
+            "series": [3739779072, 3739828224, 3739828224, 3739844608, 3739959296],
+            "classification": "monotonic-growth"
+          }
+        }
+      }
+    },
+    "rebuild": {
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 4.76354099996388,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:11:27.988Z",
+          "uptime": "2:11  up 12 days,  9:36, 1 user, load averages: 10.46 14.55 22.11",
+          "loadAverages": {
+            "oneMinute": 10.46,
+            "fiveMinutes": 14.55,
+            "fifteenMinutes": 22.11
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "child": {
+        "command": [
+          "bun",
+          "scripts/measure-playground-probe.ts",
+          "rebuild",
+          "--cycles",
+          "5",
+          "--output",
+          "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/probe-rebuild.json",
+          "--port",
+          "5610"
+        ],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 108464.82937499974,
+        "childMaxResidentBytes": 4033003520,
+        "userCpuMicroseconds": 178484761,
+        "systemCpuMicroseconds": 157912594,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1070,
+          "skippedTicks": 0,
+          "peakResidentBytes": 4744675328,
+          "peakProcessCount": 2,
+          "observedPids": [66345, 70938, 70995, 71053, 71108, 71136, 71189, 71259]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/baseline-2026-10-14T06-46-59-192Z/probe-rebuild.log"
+      },
+      "result": {
+        "probe": "rebuild",
+        "component": "button",
+        "scenario": "measure-rebuild-66345",
+        "before": {
+          "server": {
+            "page": {
+              "entryPointers": 181,
+              "artifacts": 2613,
+              "artifactBytes": 365888178
+            },
+            "shell": {
+              "entryPointers": 1,
+              "artifacts": 35,
+              "artifactBytes": 4106878
+            },
+            "scenario": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "fixture": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "totalArtifacts": 2648,
+            "totalArtifactBytes": 369995056,
+            "inFlightBuilds": 0,
+            "cachedManifests": 1
+          },
+          "probeProcess": {
+            "residentBytes": 3963568128,
+            "heapUsedBytes": 752413692
+          }
+        },
+        "cycles": [
+          {
+            "cycle": 1,
+            "generation": 2,
+            "invalidatedMilliseconds": 121.57249999999476,
+            "rebuiltAndServedMilliseconds": 1735.8283749999973,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1
+            },
+            "probeProcess": {
+              "residentBytes": 3982442496,
+              "heapUsedBytes": 753787630
+            }
+          },
+          {
+            "cycle": 2,
+            "generation": 3,
+            "invalidatedMilliseconds": 121.13341699999,
+            "rebuiltAndServedMilliseconds": 1705.9366670000018,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1
+            },
+            "probeProcess": {
+              "residentBytes": 3997204480,
+              "heapUsedBytes": 754462503
+            }
+          },
+          {
+            "cycle": 3,
+            "generation": 4,
+            "invalidatedMilliseconds": 120.92145799999707,
+            "rebuiltAndServedMilliseconds": 1706.9517500000075,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1
+            },
+            "probeProcess": {
+              "residentBytes": 4006084608,
+              "heapUsedBytes": 754726028
+            }
+          },
+          {
+            "cycle": 4,
+            "generation": 5,
+            "invalidatedMilliseconds": 120.58475000000908,
+            "rebuiltAndServedMilliseconds": 1741.5148330000084,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1
+            },
+            "probeProcess": {
+              "residentBytes": 4016603136,
+              "heapUsedBytes": 754359732
+            }
+          },
+          {
+            "cycle": 5,
+            "generation": 6,
+            "invalidatedMilliseconds": 120.96741700000712,
+            "rebuiltAndServedMilliseconds": 1758.7721250000031,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1
+            },
+            "probeProcess": {
+              "residentBytes": 4025925632,
+              "heapUsedBytes": 754601784
+            }
+          }
+        ],
+        "afterFixtureRemoved": {
+          "server": {
+            "page": {
+              "entryPointers": 181,
+              "artifacts": 2612,
+              "artifactBytes": 365887055
+            },
+            "shell": {
+              "entryPointers": 1,
+              "artifacts": 35,
+              "artifactBytes": 4106878
+            },
+            "scenario": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "fixture": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "totalArtifacts": 2647,
+            "totalArtifactBytes": 369993933,
+            "inFlightBuilds": 0,
+            "cachedManifests": 1
+          },
+          "probeProcess": {
+            "residentBytes": 4032888832,
+            "heapUsedBytes": 754683577
+          }
+        },
+        "growth": {
+          "pageArtifacts": {
+            "series": [2613, 2613, 2613, 2613, 2613],
+            "classification": "stable"
+          },
+          "pageArtifactBytes": {
+            "series": [365888178, 365888178, 365888178, 365888178, 365888178],
+            "classification": "stable"
+          },
+          "totalArtifacts": {
+            "series": [2648, 2648, 2648, 2648, 2648],
+            "classification": "stable"
+          },
+          "totalArtifactBytes": {
+            "series": [369995056, 369995056, 369995056, 369995056, 369995056],
+            "classification": "stable"
+          },
+          "inFlightBuilds": {
+            "series": [0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "probeResidentBytes": {
+            "series": [3982442496, 3997204480, 4006084608, 4016603136, 4025925632],
+            "classification": "monotonic-growth"
+          },
+          "probeHeapUsedBytes": {
+            "series": [753787630, 754462503, 754726028, 754359732, 754601784],
+            "classification": "fluctuating"
+          }
+        }
+      }
+    }
+  }
+}

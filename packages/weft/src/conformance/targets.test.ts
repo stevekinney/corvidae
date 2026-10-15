@@ -22,6 +22,7 @@ function failingServe(): WeftServer {
 }
 
 describe('createConformanceTargetRunner — validation', () => {
+  // spawn-free: the injected serve throws, so no run ever spawns a worker.
   it('lists target names and resolved timeouts, never commands', () => {
     const runner = createConformanceTargetRunner(
       {
@@ -38,6 +39,7 @@ describe('createConformanceTargetRunner — validation', () => {
     expect(JSON.stringify(runner.list())).not.toContain('secret-flag');
   });
 
+  // spawn-free: the injected serve throws, so no run ever spawns a worker.
   it('rejects an empty command, an empty argument, a bad timeout, and an unroutable name', () => {
     expect(() => createConformanceTargetRunner({ a: { command: [] } }, failingServe)).toThrow(
       'conformanceTargets.a.command must be a non-empty array of non-empty strings',
@@ -55,6 +57,7 @@ describe('createConformanceTargetRunner — validation', () => {
 });
 
 describe('createConformanceTargetRunner — run', () => {
+  // spawn-free: the injected serve throws, so no run ever spawns a worker.
   it('returns undefined for an unknown name, including inherited Object.prototype keys', () => {
     const runner = createConformanceTargetRunner({ reference: { command: ['bun'] } }, failingServe);
 
@@ -64,6 +67,7 @@ describe('createConformanceTargetRunner — run', () => {
     expect(runner.run('toString')).toBeUndefined();
   });
 
+  // spawn-free: the injected serve throws, so no run ever spawns a worker.
   it('stamps the shared report with the target name and run timestamps', async () => {
     let now = 100;
     const runner = createConformanceTargetRunner(
@@ -85,6 +89,7 @@ describe('createConformanceTargetRunner — run', () => {
     });
   });
 
+  // spawn-free: the injected serve throws, so no run ever spawns a worker.
   it('shares one in-flight run between concurrent callers and starts a fresh run afterwards', async () => {
     let serveCalls = 0;
     const runner = createConformanceTargetRunner({ reference: { command: ['bun'] } }, () => {

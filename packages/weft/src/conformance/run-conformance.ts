@@ -166,6 +166,10 @@ async function runConformanceChecks(
   }
   const checks: ConformanceCheck[] = [];
   let worker: RunningWorker | undefined;
+  // Tracked apart from `worker` from the moment it spawns: a replacement that
+  // never registers makes the waits below throw while `worker` still names
+  // the original, and a long-lived host must not keep the orphan running.
+  let replacementWorker: RunningWorker | undefined;
 
   try {
     worker = startWorker(command, server);
@@ -246,7 +250,7 @@ async function runConformanceChecks(
       'in-flight reconnect task assignment',
     );
 
-    const replacementWorker = startWorker(command, server);
+    replacementWorker = startWorker(command, server);
     const replacementWorkerId = await waitForReplacementWorker(server, workerId, timeoutMs);
     await waitForWorkerHeartbeat(server, replacementWorkerId, timeoutMs);
     await stopWorker(worker);
@@ -305,6 +309,7 @@ async function runConformanceChecks(
     checks.push(createCheck('graceful shutdown', true, 'worker disconnected after shutdown'));
   } finally {
     await stopWorker(worker);
+    if (replacementWorker !== worker) await stopWorker(replacementWorker);
     await server.stop();
     engine[Symbol.dispose]();
   }

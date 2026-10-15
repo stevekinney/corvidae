@@ -65,15 +65,27 @@ type RequestIdleTimeoutController = {
 };
 
 /**
- * Keep the live-reload event stream open between edits without weakening the
- * timeout for ordinary HTTP requests. Bun applies its default ten-second idle
- * timeout to streaming responses unless the request opts out explicitly.
+ * Routes whose first request builds an artifact (a page's HTML, its bundle, the
+ * shell bundle) rather than reading one that already exists.
+ */
+const LAZY_BUILD_ROUTE = /^\/(?:page-bundle|shell-bundle|page)\//;
+
+/**
+ * Lift Bun's ten-second idle timeout where it would cut off legitimate work,
+ * without weakening it for ordinary HTTP requests.
+ *
+ * - The live-reload event stream stays open between edits.
+ * - A request that triggers a lazy build is busy, not idle: the socket is silent
+ *   while the server compiles. On a loaded host a cold build outlasts ten seconds,
+ *   Bun closes the connection, and the browser sees `ERR_EMPTY_RESPONSE` for the
+ *   page bundle, so the page never hydrates (COR-1518).
  */
 export function configureRequestIdleTimeout(
   request: Request,
   server: RequestIdleTimeoutController,
 ): void {
-  if (new URL(request.url).pathname === '/events') {
+  const { pathname } = new URL(request.url);
+  if (pathname === '/events' || LAZY_BUILD_ROUTE.test(pathname)) {
     server.timeout(request, 0);
   }
 }

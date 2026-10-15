@@ -41,6 +41,7 @@ import {
   createCheckpointStore,
   createComplexityStrategy,
   createCostAwareStrategy,
+  createDefaultGuardrailsPreset,
   createFalloverGenerate,
   createGeminiProvider,
   createGeminiProviderStream,
@@ -48,9 +49,6 @@ import {
   createIdentityHook,
   createOpenAIProvider,
   createOpenAIProviderStream,
-  createOutputPIIValidator,
-  createPolicyEnforcementHook,
-  createPromptInjectionDetector,
   createRequestHumanInputTool,
   createRoutingGenerate,
   createRunEngine,
@@ -60,7 +58,6 @@ import {
   createSessionStore,
   createStepBasedStrategy,
   DEFAULT_MAXIMUM_STEPS,
-  DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD,
   isAgentRunWorkflowInput,
   isScheduledAgentRunInput,
   reservedIdentifierReason,
@@ -70,9 +67,9 @@ import {
   SCHEDULER_ORIGIN_TAG,
   SCHEDULER_RUN_ID_PREFIX,
   ScheduleSkippedEvent,
+  withActiveSkillToolPolicy,
   withCache,
   withEnhancedStreaming,
-  withMinimumTripwireConfidence,
   WorkflowVersionMismatchEvent,
 } from '@lostgradient/operative';
 import {
@@ -86,7 +83,6 @@ import {
   type SkillActivationRecord,
   type SkillCatalogRevision,
   type SkillEventMap,
-  type SkillGuardrailOptions,
   type ToolPolicy,
 } from '@lostgradient/skills';
 import {
@@ -124,6 +120,7 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 
+import { createSkillGuardrailOptions } from './agent-skills';
 import {
   type GoalAttemptFence,
   type GoalAttemptTarget,
@@ -446,46 +443,6 @@ export function createSchedulerServiceRequestContext(
   } satisfies ToolRequestContext;
 }
 
-/**
- * COR-1228 — makes an active skill's `allowed-tools` actually narrow the tool
- * set the model sees.
- *
- * Two halves of a designed mechanism existed and were never connected:
- * `SkillSession.getActiveToolPolicy()` produced the merged policy and had no
- * consumer, and `@lostgradient/operative`'s `createPolicyEnforcementHook` consumes
- * exactly that shape through its `getActiveSkillToolPolicy` option and had no
- * consumer either. This wires them together.
- *
- * Deliberately a FILTER, not a per-call gate. `armorer`'s own
- * `PermissionGate` documentation draws the line: "a filter removes a tool from
- * the array before the model ever sees it exists. A gate runs per call against
- * the actual arguments the model chose." `ToolPolicy` is named there as the
- * filter, so implementing it as one is faithful to the contract rather than
- * inventing a stronger promise than the type makes. The per-call gate remains
- * `createHeadlessPermissionPolicyHooks`, a complementary layer — the two
- * compose, and this adds no second narrowing path.
- *
- * The policy is read live on each `tools()` call rather than captured, because
- * the active skill set changes during a run as the model activates and
- * deactivates skills. A proxy is used rather than rebuilding the toolbox so the
- * emitter, approval wiring, and request context all survive untouched.
- */
-function withActiveSkillToolPolicy(
-  toolbox: AnyToolbox,
-  getActiveSkillToolPolicy: () => ToolPolicy | undefined,
-): AnyToolbox {
-  const filterTools = createPolicyEnforcementHook({ getActiveSkillToolPolicy });
-
-  return new Proxy(toolbox, {
-    get(target, property, receiver) {
-      if (property === 'tools') {
-        return () => filterTools([...target.tools()]);
-      }
-      return Reflect.get(target, property, receiver) as unknown;
-    },
-  });
-}
-
 function withDefaultToolboxRequestContext(
   toolbox: AnyToolbox,
   requestContext: ToolRequestContext | undefined,
@@ -581,31 +538,6 @@ function raceRequestAuthorityValidation(
     if (onAbort) signal?.removeEventListener('abort', onAbort);
     if (timer !== undefined) clearTimeoutFunction(timer);
   });
-}
-
-/**
- * AB-40 — the enabled-by-default guardrail preset. Wired whenever
- * `BureauOptions.guardrails` is omitted (`undefined`): a prompt-injection
- * input detector (gated at `confidence >= DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD`
- * — see {@link withMinimumTripwireConfidence}) and an output PII validator,
- * both in `mode: 'tripwire'` — a trip hard-halts the run (`finishReason:
- * 'tripwire'`) rather than substituting a blocked/redacted response. Pass
- * `guardrails: false` to opt out entirely, or a `GuardrailsOptions` to
- * replace this preset.
- */
-function defaultGuardrailsPreset(): GuardrailsOptions {
-  return {
-    mode: 'tripwire',
-    input: {
-      detectors: [
-        withMinimumTripwireConfidence(
-          createPromptInjectionDetector(),
-          DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD,
-        ),
-      ],
-    },
-    output: { validators: [createOutputPIIValidator()] },
-  };
 }
 
 /**
@@ -950,7 +882,17 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
  * than reaching into the catalog directly.
  */
 export type CatalogAgentRunOptionsResolution =
-  | { status: 'resolved'; options: RunOptions; definitionRevision: number }
+  | {
+      status: 'resolved';
+      options: RunOptions;
+      definitionRevision: number;
+      /**
+       * COR-1367 — the agent resolved its own guardrails (`resolvesOwnGuardrails`),
+       * so recovery registers no Bureau guardrail invariant on top, exactly as
+       * the run's fresh dispatch did not.
+       */
+      agentResolvesGuardrails?: boolean;
+    }
   | { status: 'missing-agent' }
   /**
    * The named agent exists in the catalog but does not (or no longer)
@@ -1826,7 +1768,20 @@ export interface RuntimeComposition {
    * {@link RuntimeComposition.createRunRuntime}. Merged as the first tier so
    * Bureau's policy still applies to those runs.
    */
-  createBureauInvariantHooks(goalAttempt?: GoalAttemptTarget): HookRegistry<OperativeHookMap>;
+  createBureauInvariantHooks(
+    goalAttempt?: GoalAttemptTarget,
+    options?: BureauInvariantOptions,
+  ): HookRegistry<OperativeHookMap>;
+}
+
+/** COR-1367 — per-dispatch options for {@link RuntimeComposition.createBureauInvariantHooks}. */
+export interface BureauInvariantOptions {
+  /**
+   * The dispatched agent resolves its own guardrails from its declaration and
+   * its inherited policy (`resolvesOwnGuardrails`), so Bureau registers no
+   * guardrail invariant of its own for the run.
+   */
+  agentResolvesGuardrails?: boolean;
 }
 
 /**
@@ -2465,7 +2420,7 @@ async function buildRuntimeComposition(
    */
   function resolveGuardrailsConfiguration(): GuardrailsOptions | undefined {
     const resolved =
-      options.guardrails === undefined ? defaultGuardrailsPreset() : options.guardrails;
+      options.guardrails === undefined ? createDefaultGuardrailsPreset() : options.guardrails;
     return resolved === false ? undefined : resolved;
   }
 
@@ -2501,6 +2456,7 @@ async function buildRuntimeComposition(
    */
   function createBureauInvariantHooks(
     goalAttempt?: GoalAttemptTarget,
+    invariantOptions?: BureauInvariantOptions,
   ): HookRegistry<OperativeHookMap> {
     const invariants = new HookRegistry<OperativeHookMap>({ source: BUREAU_HOOK_TIER });
     // First, so no other `prepareStep` handler (the guardrail scan included)
@@ -2514,7 +2470,14 @@ async function buildRuntimeComposition(
     if (options.identity) {
       registerIdentityInvariant(invariants, options.identity);
     }
-    const guardrailsConfig = resolveGuardrailsConfiguration();
+    // COR-1367 — an agent that resolves its own guardrails was handed this
+    // bureau's policy through `inheritedGuardrails` (see
+    // `catalogRunGuardrailsContext`) and applies it in its own tier, so
+    // registering it here as well would run the same policy twice.
+    const guardrailsConfig =
+      invariantOptions?.agentResolvesGuardrails === true
+        ? undefined
+        : resolveGuardrailsConfiguration();
     if (guardrailsConfig) {
       registerGuardrailInvariants(invariants, createGuardrails(guardrailsConfig));
     }
@@ -2665,30 +2628,13 @@ async function buildRuntimeComposition(
     // context. `GuardrailHooks.taint`'s own doc comment names skill resources
     // as one of the retrieval surfaces that cannot reach the model through
     // `prepareStep`/`validateResponse` and so must scan directly and fold its
-    // detections back into the session-wide taint state. The taint wiring below
-    // mirrors `create-guardrails.ts`'s own input-guardrail wiring, including its
-    // confidence threshold check.
-    const skillGuardrail: SkillGuardrailOptions | undefined =
-      guardrails && guardrailsConfig?.input
-        ? {
-            detectors: guardrailsConfig.input.detectors,
-            ...(guardrailsConfig.input.action !== undefined
-              ? { action: guardrailsConfig.input.action === 'warn' ? 'warn' : 'block' }
-              : {}),
-            getSessionTainted: () => guardrails.taint.isTainted(),
-            onTriggered: (event) => {
-              if (event.confidence >= (guardrailsConfig.taint?.taintThreshold ?? 0.8)) {
-                guardrails.taint.taint({
-                  reason: event.detail ?? `Detection by ${event.detector}`,
-                  detector: event.detector,
-                  confidence: event.confidence,
-                  step: 0,
-                  provenance: event.provenance,
-                });
-              }
-              guardrailsConfig.input?.onTriggered?.(event);
-            },
-          }
+    // detections back into the session-wide taint state. The wiring is
+    // `createSkillGuardrailOptions` from `./agent-skills`, which
+    // `createAgentSkills` uses for per-agent skills too (COR-1367), so the
+    // two paths cannot drift.
+    const skillGuardrail =
+      guardrails && guardrailsConfig
+        ? createSkillGuardrailOptions(guardrailsConfig, guardrails)
         : undefined;
 
     let skillRecovery: Promise<unknown> | undefined;
@@ -3373,6 +3319,7 @@ async function buildRuntimeComposition(
             attemptIndex: record.goalAttempt.attemptIndex,
             runId,
           },
+      { agentResolvesGuardrails: resolution.agentResolvesGuardrails === true },
     );
     return {
       status: 'available',

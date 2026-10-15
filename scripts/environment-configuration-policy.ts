@@ -31,6 +31,7 @@ export const environmentBoundaries = [
       'components/cinder/scripts/environment-configuration.ts',
       'components/weft-ui/scripts/browser/environment-configuration.ts',
       'scripts/browser-fixtures/environment-configuration.ts',
+      'scripts/environment-configuration.ts',
       'scripts/mirror/environment-configuration.ts',
       'packages/weft/examples/environment-configuration.ts',
       'packages/weft/src/cli/__fixtures__/environment-configuration.ts',

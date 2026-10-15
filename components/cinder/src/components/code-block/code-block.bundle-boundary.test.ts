@@ -157,6 +157,7 @@ function renderServerFallback(): { exitCode: number; stderr: string; ssrHtml: st
       }
     `;
   const result = Bun.spawnSync({
+    timeout: 120_000,
     cmd: ['bun', '-e', script],
     cwd: repositoryRoot,
     stdout: 'pipe',

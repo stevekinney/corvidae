@@ -344,7 +344,10 @@ export type ImportProbeReport = {
   forbiddenModules: string[];
   /** Calls to `fetch`, WebAssembly compilation or construction, timers, workers, or sockets made while importing. */
   trappedCalls: string[];
-  /** DOM globals the import read, including ones a plain Bun process already defines. */
+  /**
+   * DOM globals the package's own source read while importing, including ones a plain Bun process
+   * already defines. A dependency's guarded read is not counted; the server-render test owns it.
+   */
   domGlobals: string[];
   /** Globals the import added to `globalThis`. */
   addedGlobals: string[];

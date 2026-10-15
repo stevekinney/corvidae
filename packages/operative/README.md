@@ -2369,6 +2369,16 @@ The three retrieval tags mark a distinct trust boundary from `'user-input'`: tha
 
 Pass `guardrails: false` to `bureau`'s options to opt out entirely, or a `GuardrailsOptions` object to replace the preset with your own detectors/validators.
 
+The preset is exported as `createDefaultGuardrailsPreset()`, and `createAgent` applies it too (COR-1367): an agent whose `guardrails` option is omitted resolves its run's guardrails as `inheritedGuardrails ?? createDefaultGuardrailsPreset()`, where `inheritedGuardrails` is the policy a host hands down through `AgentRunContext` (Bureau hands down the deprecated `BureauOptions.guardrails`). `guardrails: false` opts the agent out, and a `GuardrailsOptions` replaces the preset whatever the host says. The guardrails are created per run, registered in the agent's tier (`agent:guardrails-prepare-step`, `agent:guardrails-validate-response`, pinned behind the agent's own hooks), and also scan the agent's skill bodies and resources when `skills` is set.
+
+```typescript
+const guarded = createAgent({ generate }); // AB-40 preset
+const custom = createAgent({ generate, guardrails: { mode: 'tripwire', input: { detectors } } });
+const unguarded = createAgent({ generate, guardrails: false });
+```
+
+A `createAgent` agent does not buffer its own `generate`: if that function streams text to a client as it arrives, the output validator sees the response only after it was delivered. Buffer generation when the output tripwire must gate what a client sees.
+
 **Buffered-generation note:** the default preset's output PII validator only ever sees a complete response—it cannot inspect a stream mid-flight. `bureau` accounts for this: whenever the default preset is in effect (`options.guardrails === undefined`), it forces buffered (non-streaming) generation so the tripwire has a chance to fire before any output reaches the caller. A caller who supplies their own `GuardrailsOptions` (replacing the preset) has opted into managing that tradeoff themselves and keeps streaming enabled.
 
 ### Usage
@@ -2812,6 +2822,8 @@ const result = await activeRun.result;
 > [!NOTE] Reattaching after a restart `reattachDurableActiveRun` wraps a handle already returned by `engine.recoverAll()`—it does not take a `sessionId`/`options` bag. `createRunEngine`'s default `recover: true` runs recovery during construction and does not surface the handles, so observing a recovered run as a live `ActiveRun` requires `recover: false` plus calling `engine.recoverAll()` yourself and reattaching each returned handle. See `reattachDurableActiveRun`'s own JSDoc and `bureau`'s `create-bureau.ts` (`reattachRecoveredRun`) for the full recovery-driven flow.
 
 > [!NOTE] Multi-process safety (AB-178) `createRunEngine`'s `ownership` option defaults to `'workflow-lease'`, so more than one engine can safely share a store without opting in: Weft claims each workflow for exactly one engine before its generator runs, so a second engine racing to resume the same workflow fails closed instead of double-executing it. This requires a storage backend with the `conditionalBatch` capability (`MemoryStorage` and `SQLiteStorage` both qualify). Same-engine suspend/resume preemption is supported under `'workflow-lease'`; the claim is reacquired after suspend and remains exclusive to the resuming engine. Construction throws when the storage lacks `conditionalBatch`; hosts with such an adapter, or that deliberately run one engine per store by infrastructure convention (one replica, a `Recreate` deploy), pass `ownership: 'none'` to opt out.
+
+> [!NOTE] Per-step persistence cost (COR-1376) Weft encodes every step's memoized result into the run's checkpoint, hashes it into the workflow event log, and stores every operation's input and output in the timeline. A step's result therefore records the conversation as a delta from the snapshot the step started from (the messages, history nodes, and path entries it appended), and that step's `saveConversation` activity receives the same delta and applies it to the transcript the run saved last, so what each step writes stays the size of that step however long the run grows. The checkpoint store still holds the whole transcript. The first step, and the first step after a wakeup or signal continuation, record the snapshot whole, because their input is built outside a memo with fresh ids and timestamps on every replay. A delta refuses to apply to any snapshot but its recorded base, so a diverged replay fails loudly rather than corrupting the transcript. `scripts/benchmarks/durable-snapshot-save.ts` times a long run on demand and can be profiled with `bun --cpu-prof`; nothing in `bun run test` measures time.
 
 > [!WARNING] weft 0.23 persisted-data schema bump (breaking for existing stores) `@lostgradient/weft` 0.23 advances its persisted-data schema from version 1 to version 2 with **no in-place migration**: a store written by weft 0.22.x or earlier is rejected with `PersistedDataIncompatibleError` when opened under 0.23+. There is no online upgrade path—plan a cutover (new store, or offline migration) before deploying this version against an existing durable store.
 

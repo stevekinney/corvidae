@@ -43,7 +43,11 @@ import { METRICS } from '../observability/metrics.ts';
 import type { Storage as WeftStorage } from '../storage/interface.ts';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import {
+  outcomeOf,
+  rethrow,
+  SCENARIO_HANG_GUARD_MILLISECONDS,
+} from '../testing/module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { WorkerManifest } from '../worker/manifest/index.ts';
 import { REMOTE_WORKER_PROTOCOL_VERSION } from '../worker/protocol.ts';
@@ -431,7 +435,7 @@ const scenario1 = await outcomeOf(async () => {
   const fifoPath = join(directory, 'asset.fifo');
   try {
     try {
-      execFileSync('mkfifo', [fifoPath]);
+      execFileSync('mkfifo', [fifoPath], { timeout: SCENARIO_HANG_GUARD_MILLISECONDS });
     } catch (error) {
       const errorCode =
         typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
