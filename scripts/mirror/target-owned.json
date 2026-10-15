@@ -555,6 +555,36 @@
         "issue": "COR-491"
       },
       {
+        "directory": "packages/components/scripts/tokens/registry.test.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of `scripts/tokens/registry.test.ts`, which imports kernel modules COR-491 moved into `src/tokens/runtime/` and fails the target's typecheck once their stale copies are retired. Corvidae keeps its own suite at this path, but tests run in corvidae and nowhere else (COR-1286) and nothing emitted imports it, so the sync never overwrites the target's copy. Retired rather than declared for that reason.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/resolve.test.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of `scripts/tokens/resolve.test.ts`, which imports kernel modules COR-491 moved into `src/tokens/runtime/` and fails the target's typecheck once their stale copies are retired. Corvidae keeps its own suite at this path, but tests run in corvidae and nowhere else (COR-1286) and nothing emitted imports it, so the sync never overwrites the target's copy. Retired rather than declared for that reason.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/validate-corpus.test.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of `scripts/tokens/validate-corpus.test.ts`, which imports kernel modules COR-491 moved into `src/tokens/runtime/` and fails the target's typecheck once their stale copies are retired. Corvidae keeps its own suite at this path, but tests run in corvidae and nowhere else (COR-1286) and nothing emitted imports it, so the sync never overwrites the target's copy. Retired rather than declared for that reason.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/validate-schema.test.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of `scripts/tokens/validate-schema.test.ts`, which imports kernel modules COR-491 moved into `src/tokens/runtime/` and fails the target's typecheck once their stale copies are retired. Corvidae keeps its own suite at this path, but tests run in corvidae and nowhere else (COR-1286) and nothing emitted imports it, so the sync never overwrites the target's copy. Retired rather than declared for that reason.",
+        "issue": "COR-491"
+      },
+      {
+        "directory": "packages/components/scripts/tokens/validate.test.ts",
+        "target": "cinder",
+        "reason": "The target's stale copy of `scripts/tokens/validate.test.ts`, which imports kernel modules COR-491 moved into `src/tokens/runtime/` and fails the target's typecheck once their stale copies are retired. Corvidae keeps its own suite at this path, but tests run in corvidae and nowhere else (COR-1286) and nothing emitted imports it, so the sync never overwrites the target's copy. Retired rather than declared for that reason.",
+        "issue": "COR-491"
+      },
+      {
         "directory": "packages/chat",
         "target": "cinder",
         "reason": "The repository owner ruled on 2026-10-14 to stop publishing `@lostgradient/chat`, and `package-map.json` now excludes it. Excluding a workspace only stops the transform from emitting it; under COR-1221 the cinder mirror's existing copy would survive every later sync, stay a workspace under `packages/*`, and keep releasing through the mirror's own Changesets flow from frozen source. Retired here so the next sync removes it. Any reference to `packages/chat` in Cinder-owned release tooling has to go in the target's own pull request.",

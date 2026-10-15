@@ -880,6 +880,9 @@ describe('retiring a directory the target still carries', async () => {
         'value-entry',
         'value-formatters',
       ].map((name) => `packages/components/scripts/tokens/${name}.ts`),
+      ...['registry', 'resolve', 'validate-corpus', 'validate-schema', 'validate'].map(
+        (name) => `packages/components/scripts/tokens/${name}.test.ts`,
+      ),
       'packages/chat',
       'packages/playground',
       '.github/workflows/deploy-playground.yaml',
