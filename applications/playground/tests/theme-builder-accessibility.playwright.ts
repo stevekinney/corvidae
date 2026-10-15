@@ -64,6 +64,24 @@ const FRAME = 'iframe[title="Theme preview"]';
  * from the console tracker for the duration of the analysis and nothing else is.
  */
 async function axeViolations(page: Page, scope: 'builder' | 'frame'): Promise<string[]> {
+  // A dialog that is still fading in has colors in between; Axe reads them as a contrast
+  // failure. Wait until no finite, time-driven animation is running; looping ones and
+  // scroll-driven ones (the modal body's scroll fade) are left alone.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document
+            .getAnimations()
+            .filter(
+              (animation) =>
+                animation.playState === 'running' &&
+                animation.timeline === document.timeline &&
+                animation.effect?.getComputedTiming().iterations !== Infinity,
+            ).length,
+      ),
+    )
+    .toBe(0);
   const before = problems.length;
   const builder = new AxeBuilder({ page }).withTags([...WCAG_22_AA_TAGS]);
   const results = await (scope === 'builder'
@@ -79,21 +97,14 @@ async function axeViolations(page: Page, scope: 'builder' | 'frame'): Promise<st
   );
 }
 
-test.describe('axe, WCAG 2.2 AA tags, every impact level', () => {
+/** Axe over the builder chrome in one context, with the checks panel's long list open. */
+test.describe('axe on the builder chrome, one test per context', () => {
   for (const context of CONTEXTS) {
     const label = `${context.colorMode}/${context.motion}`;
-    // Motion only changes motion tokens, so the other four contexts check the reference scenes.
-    const scenes =
-      context.motion === 'default'
-        ? THEME_PREVIEW_SCENES.map((scene) => scene.id)
-        : [REFERENCE_SCENE, 'foundations/specimens'];
-
-    test(`the builder and its preview scenes in ${label}`, async ({ page }) => {
-      test.setTimeout(420_000);
+    test(`the builder in ${label}`, async ({ page }) => {
       await openBuilder(page, DESKTOP);
       await selectContext(page, context);
       await waitForPreviewApplied(page);
-      // The checks panel is part of the builder chrome that Axe sees, with its long list open.
       await expect(page.getByTestId('checks-panel')).toBeVisible();
       await expect(page.getByTestId('checks-panel')).toHaveAttribute('data-readiness', 'ready', {
         timeout: 60_000,
@@ -101,10 +112,197 @@ test.describe('axe, WCAG 2.2 AA tags, every impact level', () => {
       expect(await axeViolations(page, 'builder'), `builder chrome ${label}`).toEqual([]);
       await page.getByTestId('group-advisory').locator('summary').click();
       expect(await axeViolations(page, 'builder'), `advisory findings ${label}`).toEqual([]);
-      for (const sceneId of scenes) {
+    });
+  }
+});
+
+/**
+ * Axe over each preview scene, one test per scene and context. Motion only changes motion
+ * tokens, so the four non-default motion contexts check the reference scenes.
+ */
+test.describe('axe on the preview scenes, one test per scene and context', () => {
+  for (const context of CONTEXTS) {
+    const label = `${context.colorMode}/${context.motion}`;
+    const scenes =
+      context.motion === 'default'
+        ? THEME_PREVIEW_SCENES.map((scene) => scene.id)
+        : [REFERENCE_SCENE, 'foundations/specimens'];
+    for (const sceneId of scenes) {
+      test(`${sceneId} in ${label}`, async ({ page }) => {
+        await openBuilder(page, DESKTOP);
+        await selectContext(page, context);
+        await waitForPreviewApplied(page);
         await showScene(page, sceneId);
         expect(await axeViolations(page, 'frame'), `${sceneId} in ${label}`).toEqual([]);
-      }
+      });
+    }
+  }
+});
+
+/** Every builder surface and state other than the resting page: dialogs, proposals, disclosure. */
+test.describe('axe on every builder surface and state', () => {
+  const clean = async (page: Page, name: string) => {
+    expect(await axeViolations(page, 'builder'), name).toEqual([]);
+  };
+
+  async function select(page: Page, group: string, path: string): Promise<void> {
+    await page.locator('nav[aria-label="Token categories"] button', { hasText: group }).click();
+    await page.locator('#theme-builder-token-filter').fill(path);
+    await page.locator(`[data-token-path="${path}"]`).click();
+    await expect(page.getByTestId('selected-token-path')).toHaveText(path);
+  }
+
+  async function makeFailingDraft(page: Page): Promise<void> {
+    await select(page, 'Semantic', 'text.default');
+    await page.locator('[id="theme-builder-color-text-default-text"]').fill('oklch(0.93 0.01 245)');
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await expect(page.getByTestId('checks-panel')).toHaveAttribute(
+      'data-readiness',
+      'blocked-accessibility-errors',
+      { timeout: 60_000 },
+    );
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await openBuilder(page, DESKTOP);
+    await expect(page.getByTestId('save-state')).toHaveText('Saved locally');
+  });
+
+  test('library: new theme, rename and a name conflict', async ({ page }) => {
+    await page.getByRole('button', { name: 'New theme' }).click();
+    await expect(page.getByRole('dialog', { name: 'New theme' })).toBeVisible();
+    await clean(page, 'new theme dialog');
+    await page.getByLabel('Theme name').fill('Ocean');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.getByTestId('theme-name')).toHaveText('Ocean');
+    await page.getByRole('button', { name: 'Rename', exact: true }).click();
+    await page.getByLabel('Theme name').fill('cinder default');
+    await page.getByRole('button', { name: 'Rename', exact: true }).last().click();
+    await expect(page.getByLabel('Theme name')).toHaveAttribute('aria-invalid', 'true');
+    await clean(page, 'rename dialog with its error');
+  });
+
+  test('library: delete, trash and permanent delete', async ({ page }) => {
+    await page.getByRole('button', { name: 'New theme' }).click();
+    await page.getByLabel('Theme name').fill('Ocean');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('Ocean');
+    await clean(page, 'delete dialog');
+    await page.getByRole('dialog').getByRole('button', { name: 'Move to Trash' }).click();
+    await page.getByRole('button', { name: /Trash \(1\)/ }).click();
+    await expect(page.getByRole('dialog', { name: 'Trash' })).toBeVisible();
+    await clean(page, 'trash dialog');
+    await page.getByRole('button', { name: 'Delete Ocean permanently' }).click();
+    await expect(page.getByRole('dialog').last()).toContainText('embedded Cinder base');
+    await clean(page, 'permanent delete confirmation');
+  });
+
+  test('proposals: a palette', async ({ page }) => {
+    await select(page, 'Semantic', 'accent.solid');
+    await page.getByRole('button', { name: 'Create palette' }).click();
+    await page.locator('[id="palette-seed"]').fill('#0ea5e9');
+    await expect(page.getByTestId('palette-roles-light')).toBeVisible();
+    await clean(page, 'palette proposal');
+    await page.getByRole('button', { name: 'Preview Application' }).click();
+    await expect(page.getByTestId('proposal-preview-note')).toBeVisible();
+    await clean(page, 'palette proposal previewed');
+  });
+
+  test('proposals: a spacing preset and an alias replacement', async ({ page }) => {
+    await page
+      .locator('nav[aria-label="Token categories"] button', { hasText: 'Foundations' })
+      .click();
+    await page
+      .getByTestId('presets-spacing')
+      .getByRole('button', { name: 'Compact (0.75)' })
+      .click();
+    await expect(page.getByTestId('proposal-spacing')).toBeVisible();
+    await clean(page, 'spacing preset proposal');
+    await page.getByTestId('presets-spacing').getByRole('button', { name: 'Cancel' }).click();
+
+    await select(page, 'Foundations', 'radius.surface');
+    await page.getByRole('button', { name: 'Replace with literal', exact: true }).click();
+    await expect(page.getByTestId('impact-list')).toBeVisible();
+    await clean(page, 'alias impact list');
+  });
+
+  test('proposals: a remediation fix', async ({ page }) => {
+    await makeFailingDraft(page);
+    await clean(page, 'checks panel with errors');
+    await page.getByRole('button', { name: /Go to the first accessibility errors/ }).click();
+    await page
+      .locator('[data-testid="finding"][data-severity="accessibility-error"]:focus')
+      .getByRole('button', { name: /Review a fix/ })
+      .click();
+    await expect(page.getByTestId('remediation-proposal')).toBeVisible({ timeout: 30_000 });
+    await clean(page, 'remediation proposal');
+    await page.getByRole('button', { name: /Apply fix/ }).click();
+    await expect(page.getByRole('button', { name: /Undo last fix/ })).toBeVisible({
+      timeout: 60_000,
+    });
+    await clean(page, 'checks panel after a fix');
+  });
+
+  test('the export dialog, before and after acknowledgement', async ({ page }) => {
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    const exporter = page.getByRole('dialog', { name: 'Export theme' });
+    await expect(exporter.getByTestId('export-base')).toBeVisible({ timeout: 60_000 });
+    await clean(page, 'export dialog');
+    const acknowledge = exporter.getByLabel(/I have read the \d+ items/);
+    if ((await acknowledge.count()) > 0) await acknowledge.check();
+    await clean(page, 'export dialog acknowledged');
+  });
+
+  test('the import dialog with an invalid and a supported result', async ({ page }) => {
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
+    const importer = page.getByRole('dialog', { name: 'Import theme' });
+    await expect(importer).toBeVisible();
+    await clean(page, 'import dialog');
+    await importer
+      .getByLabel('Or paste JSON')
+      .fill('{"radius":{"medium":{"$type":"dimension","$value":"{radius.nowhere}"}}}');
+    await importer.getByRole('button', { name: 'Check pasted JSON' }).click();
+    await expect(importer.getByTestId('import-result')).toHaveAttribute('data-outcome', 'invalid', {
+      timeout: 60_000,
+    });
+    await clean(page, 'import dialog with an invalid result');
+    await importer.getByLabel('Or paste JSON').fill(
+      JSON.stringify({
+        radius: { medium: { $type: 'dimension', $value: { value: 5, unit: 'px' } } },
+      }),
+    );
+    await importer.getByRole('button', { name: 'Check pasted JSON' }).click();
+    await expect(importer.getByTestId('import-result')).not.toHaveAttribute(
+      'data-outcome',
+      'invalid',
+      { timeout: 60_000 },
+    );
+    await clean(page, 'import dialog with a supported result');
+  });
+
+  test('the Source and dependencies disclosure', async ({ page }) => {
+    await select(page, 'Foundations', 'radius.large');
+    await page.locator('#theme-source-radius-large-header').click();
+    await expect(page.getByTestId('source-disclosure')).toBeVisible();
+    await clean(page, 'source and dependencies disclosure');
+  });
+
+  test('the checks panel, passing and failing', async ({ page }) => {
+    await expect(page.getByTestId('checks-panel')).toHaveAttribute('data-readiness', 'ready', {
+      timeout: 60_000,
+    });
+    await clean(page, 'checks panel, passing');
+    await makeFailingDraft(page);
+    await clean(page, 'checks panel, failing');
+  });
+
+  for (const tab of ['Edit', 'Preview', 'Checks']) {
+    test(`the mobile ${tab} tab at 390px`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 800 });
+      await page.getByRole('tab', { name: tab }).click();
+      await expect(page.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
+      await clean(page, `${tab} tab at 390px`);
     });
   }
 });
