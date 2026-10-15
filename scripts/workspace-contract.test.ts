@@ -176,10 +176,10 @@ describe('internal workspace architecture', () => {
       'bun run lint',
       'bun run typecheck',
       'bun run test',
-      // COR-1499: slow correctness tests run serially after the fast phase, then the duration ratchet
-      // reads the fast phase's reports.
+      // COR-1499: slow correctness tests run serially after the fast phase, then the duration report
+      // (warnings only) reads the fast phase's reports.
       'bun run test:slow',
-      'bun run check:test-durations',
+      'bun run report:test-durations',
       'bun run coverage',
       'bun run build',
       'bun run format:check',

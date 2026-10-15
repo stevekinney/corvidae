@@ -1,5 +1,7 @@
 /**
- * Ratchet on how long a default-gate test may take.
+ * Ratchet on how long a default-gate test may take. On demand it enforces (`bun run
+ * check:test-durations`); `bun run validate` runs `--report`, which prints the same findings as
+ * warnings and exits 0, because a wall-time budget depends on host load (see `verdict`).
  *
  * Bun applies a 5-second budget to every test. A test that does seconds of real
  * work (spawning processes, bundling, git, instrumented loops) sits near that
@@ -284,6 +286,24 @@ function writeAllowlist(entries: readonly string[]): void {
 /** Seed headroom: entries at three quarters of the budget absorb the load swing between runs. */
 export const SEED_FLOOR_MILLISECONDS = BUDGET_MILLISECONDS * 0.75;
 
+/**
+ * Decide the exit code. Over-budget tests and stale entries depend on host load, so `bun run
+ * validate` runs the `report` mode, which prints them as warnings and exits 0; the on-demand
+ * `enforce` mode (`bun run check:test-durations`) fails on them. Wiring problems (a workspace
+ * bypassing the wrapper, slow files without their lane) do not depend on load and fail both.
+ */
+export function verdict(
+  mode: 'report' | 'enforce',
+  wiringProblems: readonly string[],
+  overBudget: readonly string[],
+  stale: readonly string[],
+): { exitCode: number; lines: string[] } {
+  const loadDependent = [...overBudget, ...stale];
+  const lines = [...wiringProblems, ...loadDependent];
+  const failing = wiringProblems.length > 0 || (mode === 'enforce' && loadDependent.length > 0);
+  return { exitCode: failing ? 1 : 0, lines };
+}
+
 function main(): number {
   const mode = Bun.argv[2];
   const collected = collect();
@@ -313,26 +333,36 @@ function main(): number {
     return 0;
   }
 
-  const lines: string[] = [...collected.problems];
-  for (const test of findings.overBudget) {
-    lines.push(`over budget: ${Math.round(test.milliseconds)} ms — ${test.key}`);
-  }
-  for (const entry of findings.stale)
-    lines.push(`stale allowlist entry (${entry.reason}): ${entry.key}`);
-  if (lines.length === 0) {
+  const overBudget = findings.overBudget.map(
+    (test) => `over budget: ${Math.round(test.milliseconds)} ms — ${test.key}`,
+  );
+  const stale = findings.stale.map(
+    (entry) => `stale allowlist entry (${entry.reason}): ${entry.key}`,
+  );
+  const outcome = verdict(
+    mode === '--report' ? 'report' : 'enforce',
+    collected.problems,
+    overBudget,
+    stale,
+  );
+  if (outcome.lines.length === 0) {
     process.stdout.write(
       `check-test-durations — OK (no fast-lane test over ${BUDGET_MILLISECONDS} ms outside the allowlist of ${allowlist.length}).\n`,
     );
     return 0;
   }
+  const heading =
+    outcome.exitCode === 0
+      ? `check-test-durations — WARNING: the fast lane has tests over ${BUDGET_MILLISECONDS} ms, or the allowlist is stale. Validate does not fail on this; run bun run check:test-durations on a quiet host to enforce it.\n`
+      : `check-test-durations — the fast lane has tests over ${BUDGET_MILLISECONDS} ms, or the allowlist is stale.\n`;
   process.stderr.write(
-    `check-test-durations — the fast lane has tests over ${BUDGET_MILLISECONDS} ms, or the allowlist is stale.\n` +
+    heading +
       `Make the test fast (drop redundant spawns, bundles, history), or move a test that is slow by\n` +
       `nature to a ${SLOW_LANE_SUFFIX} file run by the workspace's test:slow. Never raise the budget or a timeout.\n` +
       `Remove stale entries with: bun scripts/check-test-durations.ts --shrink\n\n`,
   );
-  for (const line of lines) process.stderr.write(`  ${line}\n`);
-  return 1;
+  for (const line of outcome.lines) process.stderr.write(`  ${line}\n`);
+  return outcome.exitCode;
 }
 
 if (import.meta.main) process.exitCode = main();

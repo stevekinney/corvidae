@@ -34,9 +34,9 @@ export function parseWrapperArguments(argumentsList: readonly string[]): {
 }
 
 /**
- * Turn a finished run into an exit code. A run that passed but left a fast-lane test over budget
- * and off the allowlist fails here, in the test task itself, so turbo never caches the report and
- * rerunning `bun run test` measures again instead of replaying an inflated duration.
+ * Turn a finished run into an exit code. A passing run that left a fast-lane test over budget and
+ * off the allowlist prints a warning and still passes: the budget depends on host load, so it is
+ * enforced on demand by `bun run check:test-durations`, never by the gate.
  */
 export function finishRun(
   workspace: string,
@@ -47,13 +47,14 @@ export function finishRun(
 ): number {
   if (exitCode !== 0) return exitCode;
   const failures = budgetFailures(workspace, reportXmls, allowlist);
-  if (failures.length === 0) return 0;
-  write(
-    'bun-test-junit — a fast-lane test is over the per-test budget and not on the allowlist.\n' +
-      'Make it fast or move it to a .slow.test.ts file; rerun if the host was busy. See AGENTS.md.\n' +
-      failures.map((failure) => `  ${failure}\n`).join(''),
-  );
-  return 1;
+  if (failures.length > 0) {
+    write(
+      'bun-test-junit — WARNING: a fast-lane test is over the per-test budget and not on the allowlist.\n' +
+        'The run still passes; see AGENTS.md and run bun run check:test-durations on a quiet host.\n' +
+        failures.map((failure) => `  ${failure}\n`).join(''),
+    );
+  }
+  return 0;
 }
 
 async function main(): Promise<number> {

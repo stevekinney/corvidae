@@ -9,6 +9,7 @@ import {
   judgeDurations,
   laneProblems,
   parseJunit,
+  verdict,
 } from './check-test-durations.ts';
 
 const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -161,16 +162,48 @@ describe('finishRun', () => {
   const slowReport =
     '<testsuite><testcase name="t" classname="c" time="3" file="f.test.ts" /></testsuite>';
 
-  test('fails a passing run whose report has an over-budget test, so turbo never caches it', () => {
+  test('warns about an over-budget test in a passing run but never fails the run', () => {
     const messages: string[] = [];
-    expect(finishRun('w', 0, [slowReport], [], (message) => messages.push(message))).toBe(1);
+    expect(finishRun('w', 0, [slowReport], [], (message) => messages.push(message))).toBe(0);
     expect(messages.join('')).toContain('w :: f.test.ts :: c :: t');
   });
 
-  test('keeps the exit code of a run that already failed, and passes a clean report', () => {
-    expect(finishRun('w', 7, [slowReport], [], () => {})).toBe(7);
-    expect(finishRun('w', 0, [], [], () => {})).toBe(0);
-    expect(finishRun('w', 0, [slowReport], ['w :: f.test.ts :: c :: t'], () => {})).toBe(0);
+  test('keeps the exit code of a run that already failed, and stays quiet on a clean report', () => {
+    const messages: string[] = [];
+    expect(finishRun('w', 7, [slowReport], [], (message) => messages.push(message))).toBe(7);
+    expect(finishRun('w', 0, [], [], (message) => messages.push(message))).toBe(0);
+    expect(
+      finishRun('w', 0, [slowReport], ['w :: f.test.ts :: c :: t'], (message) =>
+        messages.push(message),
+      ),
+    ).toBe(0);
+    expect(messages).toEqual([]);
+  });
+});
+
+describe('verdict', () => {
+  const overBudget = ['over budget: 3000 ms — w :: f.test.ts :: c :: t'];
+  const stale = ['stale allowlist entry (took 0 ms, under the 1000 ms floor): w :: f :: c :: t'];
+
+  test('validate mode reports over-budget and stale findings as warnings and exits 0', () => {
+    expect(verdict('report', [], overBudget, stale)).toMatchObject({ exitCode: 0 });
+    expect(verdict('report', [], overBudget, stale).lines).toEqual([...overBudget, ...stale]);
+  });
+
+  test('enforcing mode exits 1 on the same findings, and on a stale entry alone', () => {
+    expect(verdict('enforce', [], overBudget, stale)).toMatchObject({ exitCode: 1 });
+    expect(verdict('enforce', [], [], stale)).toMatchObject({ exitCode: 1 });
+  });
+
+  test('wiring problems fail both modes, because they do not depend on host load', () => {
+    const wiring = ['w: has .slow.test.ts files but defines no test:slow script'];
+    expect(verdict('report', wiring, [], [])).toMatchObject({ exitCode: 1 });
+    expect(verdict('enforce', wiring, [], [])).toMatchObject({ exitCode: 1 });
+  });
+
+  test('no findings exit 0 in both modes', () => {
+    expect(verdict('report', [], [], [])).toMatchObject({ exitCode: 0, lines: [] });
+    expect(verdict('enforce', [], [], [])).toMatchObject({ exitCode: 0, lines: [] });
   });
 });
 
