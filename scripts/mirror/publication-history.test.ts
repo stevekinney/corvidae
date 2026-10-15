@@ -331,10 +331,7 @@ test('accepts an intervening commit that edits a path outside the historical tra
       mirrorCommit,
     };
     // COR-1192, owner ruling 2026-10-15: release tooling the transform neither emits nor prunes.
-    await Bun.write(
-      join(target, 'packages/weft/scripts/unlisted-release-tool.ts'),
-      'export {};\n',
-    );
+    await Bun.write(join(target, 'packages/weft/scripts/unlisted-release-tool.ts'), 'export {};\n');
     await Bun.write(join(target, 'packages/weft/scripts/unlisted-release-tool.test.ts'), '\n');
     const tooling = await commit(target, 'Edit release scripts');
     expect(await verifyHistoricalCheckout({ ...options, gitHead: tooling })).toBe(sourceCommit);
