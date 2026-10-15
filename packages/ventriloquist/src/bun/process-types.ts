@@ -42,6 +42,8 @@ export type SpawnedProcess = {
   readonly stdout?: unknown;
   readonly stderr?: unknown;
   readonly terminal?: unknown;
+  /** The descriptors Bun opened for extra stdio entries, by position; only a gated PTY child uses them. */
+  readonly stdio?: readonly unknown[] | undefined;
   kill(signal?: number | string): void;
 };
 

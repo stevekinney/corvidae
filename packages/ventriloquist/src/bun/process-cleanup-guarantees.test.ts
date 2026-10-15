@@ -51,6 +51,7 @@ function derive(
     stdout: child.stdout,
     stderr: child.stderr,
     terminal: child.terminal,
+    stdio: child.stdio,
     ...replaced,
   };
 }
@@ -219,6 +220,28 @@ describe.each(MODES)('a %s process whose unread output overflows', (mode) => {
     ]);
     // However it ended, by the signal or by the pipe closing under it, it ended on its own account.
     expect(outcome).not.toBe('still running');
+  });
+});
+
+describe('a PTY that Bun returned without the release channel', () => {
+  test('is reaped before the start fails as unsupported-runtime, and its command never ran', async () => {
+    let captured: ReturnType<typeof Bun.spawn> | undefined;
+    const hosted = trackHostedProcess(
+      createPtyProcess({
+        profile: shellProfile('sleep 7919'),
+        dimensions: PTY_DIMENSIONS,
+        terminationGraceMilliseconds: 100,
+        spawn: spawnWith((child) => {
+          captured = child;
+          return derive(child, { stdio: undefined });
+        }),
+      }),
+    );
+    const error = await rejectionOf(hosted.backend.start());
+    expect((error as ProcessStartFailure).code).toBe('unsupported-runtime');
+    expect(hosted.startFailure?.code).toBe('unsupported-runtime');
+    expect(captured?.exitCode !== null || captured?.signalCode !== null).toBe(true);
+    expect(await hosted.backend.cleanup()).toBe('complete');
   });
 });
 

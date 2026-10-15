@@ -8,8 +8,23 @@ import {
   spawnOwnedProcess,
 } from './hosted-process.ts';
 import { ProcessStartFailure } from './process-start-failure.ts';
-import type { HostedProcess, PtyProcessOptions } from './process-types.ts';
+import type { HostedProcess, ProcessProfile, PtyProcessOptions } from './process-types.ts';
 import { validateDimensions, validateProcessProfile } from './process-validation.ts';
+import { GATE_STDIO, abandonGate, gatedCommand, releaseGate } from './pty-start-gate.ts';
+
+/**
+ * Why the profile's executable cannot be run, or `undefined` when it can. A bare name is looked up on
+ * the profile's own `PATH`, a path is taken relative to the working directory, and a file that is
+ * missing, a directory, or a file without the executable bit is not runnable.
+ */
+function notRunnable(profile: ProcessProfile): string | undefined {
+  const path = profile.environment['PATH'];
+  const found = Bun.which(profile.executable, {
+    cwd: profile.workingDirectory,
+    ...(path === undefined ? {} : { PATH: path }),
+  });
+  return found === null ? 'no executable file was found' : undefined;
+}
 
 /** The master side of a child's pseudo-terminal, as `Bun.Terminal` offers it. */
 type PtyTerminal = {
@@ -32,6 +47,10 @@ type PtyTerminal = {
  * deadline ends the session. The terminal's data callback cannot be paused, and a write that Bun
  * has accepted says nothing about the output, so neither is used to infer the other. Output the session has not yet read is
  * bounded, and exceeding the bound fails the source visibly.
+ *
+ * The child does not run its command until `Bun.spawn` has returned (see `pty-start-gate.ts`, which
+ * works around a Bun hang). So a missing or non-executable command is found after the spawn, before
+ * the gate is released, and fails the start as `spawn-failed` exactly as a refused spawn does.
  *
  * End of file on the terminal ends the output source; the process exit is reported separately and in
  * either order. If this Bun does not return a terminal, the process is killed and reaped, and the start fails as
@@ -69,20 +88,25 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
     start: async () => {
       let child;
       try {
-        child = spawnOwnedProcess(settings, [profile.executable, ...profile.argumentList], {
-          cwd: profile.workingDirectory,
-          env: { ...profile.environment },
-          terminal: {
-            cols: dimensions.columns,
-            rows: dimensions.rows,
-            data: (_terminal: unknown, bytes: Uint8Array) => feed.push(bytes),
-            exit: (_terminal: unknown, status: number) =>
-              status === 0
-                ? feed.end()
-                : feed.fail(new Error(`the terminal closed with status ${status}`)),
-            drain: () => flushed(),
+        child = spawnOwnedProcess(
+          settings,
+          gatedCommand([profile.executable, ...profile.argumentList]),
+          {
+            stdio: GATE_STDIO,
+            cwd: profile.workingDirectory,
+            env: { ...profile.environment },
+            terminal: {
+              cols: dimensions.columns,
+              rows: dimensions.rows,
+              data: (_terminal: unknown, bytes: Uint8Array) => feed.push(bytes),
+              exit: (_terminal: unknown, status: number) =>
+                status === 0
+                  ? feed.end()
+                  : feed.fail(new Error(`the terminal closed with status ${status}`)),
+              drain: () => flushed(),
+            },
           },
-        });
+        );
       } catch (error) {
         startFailure = error as ProcessStartFailure;
         throw error;
@@ -102,7 +126,29 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
         throw startFailure;
       }
       owned.adopt(child);
-      terminal = child.terminal as PtyTerminal;
+      // The child is held until the gate is released, so it cannot have run before `Bun.spawn`
+      // returned. A command that cannot be run is found here, before the release, and the child
+      // ends without having run anything.
+      const unrunnable = notRunnable(profile);
+      const hasChannel = unrunnable === undefined ? releaseGate(child) : abandonGate(child);
+      if (hasChannel && unrunnable === undefined) {
+        terminal = child.terminal as PtyTerminal;
+        return;
+      }
+      child.kill('SIGKILL');
+      await child.exited;
+      await owned.terminate();
+      await attempt(() => (child.terminal as PtyTerminal).close());
+      startFailure = hasChannel
+        ? new ProcessStartFailure(
+            'spawn-failed',
+            `could not spawn ${profile.executable}: ${unrunnable}`,
+          )
+        : new ProcessStartFailure(
+            'unsupported-runtime',
+            'this Bun did not provide the channel that releases a terminal process',
+          );
+      throw startFailure;
     },
     write: async (bytes) => {
       if (terminal === undefined) throw new Error('the process has no open terminal');

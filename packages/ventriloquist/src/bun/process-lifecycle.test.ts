@@ -31,6 +31,9 @@ describe.each(MODES)('a %s process that cannot start', (mode) => {
   test.each([
     ['an executable that does not exist', { executable: '/nonexistent/ventriloquist' }],
     ['a working directory that does not exist', { workingDirectory: '/nonexistent/ventriloquist' }],
+    ['a file that is not executable', { executable: '/etc/hosts' }],
+    ['a directory', { executable: '/tmp' }],
+    ['a name that is not on the path', { executable: 'ventriloquist-no-such-command' }],
   ])(
     'reports spawn-failed for %s, apart from any exit or transport failure',
     async (_label, change) => {

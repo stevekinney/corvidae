@@ -276,6 +276,7 @@ describe('cleanup that cannot finish every step', () => {
           return child.signalCode;
         },
         kill: (signal) => child.kill(signal),
+        stdio: child.stdio,
         terminal: {
           write: () => 0,
           resize: () => undefined,
