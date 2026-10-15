@@ -55,6 +55,11 @@ export type BenchmarkCell = {
   readonly control: ObservedWorkload;
 };
 
+/** The cleanup outcome as text, whatever the raw record held. */
+function outcomeText(outcome: unknown): string {
+  return typeof outcome === 'string' ? outcome : JSON.stringify(outcome);
+}
+
 /** Whether a cell meets its target and, for a cleanup cell, ended with a complete cleanup. */
 export function cellPasses(cell: BenchmarkCell): boolean {
   const observation = cell.observed.metrics[cell.target.metric];
@@ -106,7 +111,7 @@ function toCell(cell: BenchmarkCell): EvidenceCell {
       `${cell.target.metric} ${observation?.value ?? 'missing'} ${cell.target.unit}, target ${cell.target.comparator} ${cell.target.value}`,
       ...(cell.observed.raw['outcome'] === undefined
         ? []
-        : [`cleanup outcome ${JSON.stringify(cell.observed.raw['outcome'])}, required complete`]),
+        : [`cleanup outcome ${outcomeText(cell.observed.raw['outcome'])}, required complete`]),
     ],
     versions: { bun: Bun.version, platform: `${platform()}/${arch()}`, kernel: release() },
     metrics: cell.observed.metrics,
