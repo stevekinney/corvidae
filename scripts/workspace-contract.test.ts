@@ -171,7 +171,13 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
-    const validationStages = scripts['validate']?.split(' && ');
+    // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
+    // instead of rejoining the queue at every stage. Its stages find the lock held by their parent
+    // and reuse it rather than queueing behind it.
+    const validationChain = scripts['validate']?.match(
+      /^bun scripts\/run-exclusively\.ts '([^']+)'$/,
+    );
+    const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
       'bun run lint',
       'bun run typecheck',
@@ -187,7 +193,7 @@ describe('internal workspace architecture', () => {
     ]);
     // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
     // agent sessions stop oversubscribing it and timing out unrelated tests.
-    for (const stage of ['lint', 'typecheck', 'test', 'coverage', 'build']) {
+    for (const stage of ['lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
       expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
     }
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
