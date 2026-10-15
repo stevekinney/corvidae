@@ -29,6 +29,8 @@ function harness(options: {
   table?: ProcessRecord[] | 'unreadable';
   /** The signal that empties the group and ends the leader; `never` leaves it standing. */
   endsOn?: 'SIGTERM' | 'SIGKILL' | 'never';
+  /** Holds the process-table read open until the test releases it. */
+  tableGate?: Promise<void>;
 }): Harness {
   const exited = createDeferred<number>();
   const signals: string[] = [];
@@ -55,6 +57,7 @@ function harness(options: {
     observationMilliseconds: 300,
     readProcessTable: async () => {
       tableReads += 1;
+      await options.tableGate;
       if (options.table === 'unreadable') throw new Error('no ps');
       return options.table ?? [];
     },
@@ -129,6 +132,34 @@ describe('OwnedProcess', () => {
       exitCode: null,
       signal: expected,
     });
+  });
+
+  test('does not signal a group whose leader exited, leaving it empty, while the process table was being read', async () => {
+    const gate = createDeferred<void>();
+    const { owned, child, endLeader, signals, tableReads } = harness({ tableGate: gate.promise });
+    owned.adopt(child);
+    const terminating = owned.terminate();
+    await flush();
+    expect(tableReads()).toBe(1);
+    // The leader ends and its group empties while `ps` is still running: the number may now belong
+    // to an unrelated group, so nothing may be signaled once the read returns.
+    await endLeader(0);
+    gate.resolve();
+    expect(await terminating).toBe('complete');
+    expect(signals).toEqual([]);
+  });
+
+  test('still signals a group that outlived its leader while the process table was being read', async () => {
+    const gate = createDeferred<void>();
+    const { owned, child, endLeader, signals } = harness({ tableGate: gate.promise });
+    owned.adopt(child);
+    const terminating = owned.terminate();
+    await flush();
+    await endLeader(0, { groupEmpty: false });
+    gate.resolve();
+    await flush();
+    expect(signals).toEqual(['SIGTERM']);
+    expect(await terminating).toBe('complete');
   });
 
   test('does not signal a group that was already empty when its leader exited', async () => {

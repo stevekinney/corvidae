@@ -187,6 +187,43 @@ describe('PTY input', () => {
   );
 
   scenarioTest(
+    'a zero-length write settles at once: the terminal need not report a flush for no bytes',
+    async () => {
+      const { spawn, writes, drain } = drivenTerminal();
+      const hosted = trackHostedProcess(
+        createPtyProcess({
+          profile: shellProfile('sleep 7919'),
+          dimensions: PTY_DIMENSIONS,
+          terminationGraceMilliseconds: 100,
+          spawn,
+        }),
+      );
+      await hosted.backend.start();
+      const settled: string[] = [];
+      const empty = hosted.backend.write(utf8('')).then(() => settled.push('empty'));
+      await flush();
+      expect(settled).toEqual(['empty']);
+      await empty;
+      expect(writes).toEqual([]);
+      // Nothing is left waiting, so a later write still waits for its own flush and no earlier.
+      const next = hosted.backend.write(utf8('x')).then(() => settled.push('x'));
+      await flush();
+      expect(settled).toEqual(['empty']);
+      expect(writes).toHaveLength(1);
+      drain();
+      await next;
+    },
+  );
+
+  scenarioTest('a zero-length write to a real PTY settles without a flush', async () => {
+    const hosted = trackHostedProcess(
+      hostFor('pty', shellProfile('sleep 7919'), { terminationGraceMilliseconds: 100 }),
+    );
+    await hosted.backend.start();
+    await hosted.backend.write(utf8(''));
+  });
+
+  scenarioTest(
     'the session input budget keeps counting bytes the terminal has not flushed',
     async () => {
       const { spawn, writes, drain } = drivenTerminal();

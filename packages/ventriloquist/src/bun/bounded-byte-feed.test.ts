@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing';
-import { BoundedByteFeed, OutputOverflowError } from './bounded-byte-feed.ts';
+import { BoundedByteFeed, ByteBudget, OutputOverflowError } from './bounded-byte-feed.ts';
 
 const bytes = (...values: number[]) => Uint8Array.from(values);
 
@@ -118,5 +118,58 @@ describe('BoundedByteFeed', () => {
     expect(() => feed.stream.getReader()).toThrow(TypeError);
     reader.releaseLock();
     expect(() => feed.stream.getReader()).not.toThrow();
+  });
+});
+
+describe('feeds that share one byte budget', () => {
+  function shared(maximumBufferedBytes: number) {
+    const budget = new ByteBudget(maximumBufferedBytes);
+    const overflows: string[] = [];
+    const first = new BoundedByteFeed(
+      budget,
+      () => undefined,
+      () => overflows.push('first'),
+    );
+    const second = new BoundedByteFeed(
+      budget,
+      () => undefined,
+      () => overflows.push('second'),
+    );
+    return { first, second, overflows };
+  }
+
+  test('each under the bound but together over it fails the feed that crossed it', async () => {
+    const { first, second, overflows } = shared(4);
+    first.push(bytes(1, 2, 3));
+    second.push(bytes(4, 5, 6));
+    expect(overflows).toEqual(['second']);
+    const failure = await rejectionOf(second.stream.getReader().read());
+    expect(failure).toBeInstanceOf(OutputOverflowError);
+    expect((failure as OutputOverflowError).maximumBufferedBytes).toBe(4);
+  });
+
+  test('together at exactly the bound is not an overflow', async () => {
+    const { first, second, overflows } = shared(4);
+    first.push(bytes(1, 2));
+    second.push(bytes(3, 4));
+    first.end();
+    second.end();
+    expect(overflows).toEqual([]);
+    const reader = second.stream.getReader();
+    expect(await reader.read()).toEqual({ done: false, value: bytes(3, 4) });
+    expect(await reader.read()).toEqual({ done: true });
+  });
+
+  test('a read on one feed makes room for the other, and a cancel returns what it held', () => {
+    const { first, second, overflows } = shared(4);
+    first.push(bytes(1, 2, 3));
+    void first.stream.getReader().read();
+    second.push(bytes(4, 5, 6));
+    expect(overflows).toEqual([]);
+    const third = new BoundedByteFeed(new ByteBudget(2), () => undefined);
+    third.push(bytes(1, 2));
+    void third.stream.getReader().cancel?.();
+    third.push(bytes(3));
+    expect(overflows).toEqual([]);
   });
 });

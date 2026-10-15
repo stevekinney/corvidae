@@ -1,6 +1,6 @@
 import type { ProcessBackend } from '../session/session-types.ts';
 import { attempt, combineOutcomes } from '../session/settle.ts';
-import { BoundedByteFeed } from './bounded-byte-feed.ts';
+import { BoundedByteFeed, ByteBudget } from './bounded-byte-feed.ts';
 import {
   assembleHostedProcess,
   createOwnedProcess,
@@ -9,7 +9,7 @@ import {
 } from './hosted-process.ts';
 import { ProcessStartFailure } from './process-start-failure.ts';
 import type { HostedProcess, PipeProcessOptions } from './process-types.ts';
-import { validateProcessProfile } from './process-validation.ts';
+import { snapshotProfile, validateProcessProfile } from './process-validation.ts';
 
 /** The writable end of a child's stdin, as Bun's `FileSink` offers it. */
 type InputSink = {
@@ -73,9 +73,10 @@ function pumpPipe(
  * Nothing is spawned until the session starts the backend.
  */
 export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
-  validateProcessProfile(options.profile);
+  // The copy is what is validated and what later spawns, whatever the caller does to its own object.
+  const profile = snapshotProfile(options.profile);
+  validateProcessProfile(profile);
   const settings = resolveHostSettings(options);
-  const { profile } = options;
   const acceptsInput = options.acceptsInput === true;
   const owned = createOwnedProcess(settings);
   let startFailure: ProcessStartFailure | undefined;
@@ -90,9 +91,11 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
     void attempt(stopPumps);
     void owned.terminate();
   };
+  // One budget for both channels, so the cap is per process and not per channel.
+  const budget = new ByteBudget(settings.maximumBufferedOutputBytes);
   const feeds = {
-    stdout: new BoundedByteFeed(settings.maximumBufferedOutputBytes, stopPumps, onOverflow),
-    stderr: new BoundedByteFeed(settings.maximumBufferedOutputBytes, stopPumps, onOverflow),
+    stdout: new BoundedByteFeed(budget, stopPumps, onOverflow),
+    stderr: new BoundedByteFeed(budget, stopPumps, onOverflow),
   };
 
   const backend: ProcessBackend = {

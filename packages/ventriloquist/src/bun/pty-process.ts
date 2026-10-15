@@ -9,7 +9,12 @@ import {
 } from './hosted-process.ts';
 import { ProcessStartFailure } from './process-start-failure.ts';
 import type { HostedProcess, ProcessProfile, PtyProcessOptions } from './process-types.ts';
-import { validateDimensions, validateProcessProfile } from './process-validation.ts';
+import {
+  snapshotDimensions,
+  snapshotProfile,
+  validateDimensions,
+  validateProcessProfile,
+} from './process-validation.ts';
 import { GATE_STDIO, abandonGate, gatedCommand, releaseGate } from './pty-start-gate.ts';
 
 /**
@@ -59,10 +64,12 @@ type PtyTerminal = {
  * Nothing is spawned until the session starts the backend.
  */
 export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
-  validateProcessProfile(options.profile);
-  validateDimensions(options.dimensions);
+  // The copies are what is validated and what later spawns, whatever the caller does to its objects.
+  const profile = snapshotProfile(options.profile);
+  const dimensions = snapshotDimensions(options.dimensions);
+  validateProcessProfile(profile);
+  validateDimensions(dimensions);
   const settings = resolveHostSettings(options);
-  const { profile, dimensions } = options;
   const owned = createOwnedProcess(settings);
   let startFailure: ProcessStartFailure | undefined;
   let terminal: PtyTerminal | undefined;
@@ -152,6 +159,10 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
     },
     write: async (bytes) => {
       if (terminal === undefined) throw new Error('the process has no open terminal');
+      // Bun need not report a flush for no bytes, so an empty write would wait for a `drain` that
+      // may never come and be reported unknown at the acknowledgement deadline. There is nothing
+      // to flush, so it is done.
+      if (bytes.length === 0) return;
       // The terminal accepts every byte and buffers what the process has not read, so accepting
       // says nothing about how much is buffered. The operation stays unsettled until the terminal
       // reports the buffer flushed, which keeps the session's input budget counting those bytes.

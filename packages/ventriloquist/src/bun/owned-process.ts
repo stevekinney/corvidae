@@ -100,6 +100,10 @@ export class OwnedProcess {
     if (this.#exiting) await this.#exit;
     if (this.#exited && this.#emptyAtExit) return 'complete';
     const scope = await this.#observeScope(child.pid);
+    // The leader may have exited, and its group emptied, while the process table was being read.
+    // That group's number can belong to an unrelated group by now, so it is not signaled.
+    if (this.#exiting) await this.#exit;
+    if (this.#exited && this.#emptyAtExit) return scope;
     const { operations, clock, graceMilliseconds, observationMilliseconds } = this.#options;
     const ended = await terminateProcessGroup({
       group: child.pid,

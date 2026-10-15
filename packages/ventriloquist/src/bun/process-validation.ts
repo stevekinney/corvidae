@@ -5,6 +5,34 @@ import {
 import type { TerminalDimensions } from '../session/session-types.ts';
 import type { ProcessProfile } from './process-types.ts';
 
+/**
+ * Copy what a caller handed over, so that what is validated is what later runs. Validation happens
+ * at construction and the spawn at a deferred start, and a caller that mutates its own objects in
+ * between must not turn a validated command into another one. The copy is taken first and the copy
+ * is what gets validated. A value of the wrong shape is passed through untouched for the validator
+ * to refuse.
+ */
+export function snapshotProfile(profile: ProcessProfile): ProcessProfile {
+  return {
+    executable: profile.executable,
+    argumentList: Array.isArray(profile.argumentList)
+      ? [...profile.argumentList]
+      : profile.argumentList,
+    workingDirectory: profile.workingDirectory,
+    environment:
+      typeof profile.environment === 'object' && profile.environment !== null
+        ? { ...profile.environment }
+        : profile.environment,
+  };
+}
+
+/** Copy the dimensions for the same reason as `snapshotProfile`. */
+export function snapshotDimensions(dimensions: TerminalDimensions): TerminalDimensions {
+  return typeof dimensions === 'object' && dimensions !== null
+    ? { columns: dimensions.columns, rows: dimensions.rows }
+    : dimensions;
+}
+
 const NUL = '\u0000';
 
 function assertText(label: string, value: unknown): asserts value is string {

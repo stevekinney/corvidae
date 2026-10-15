@@ -11,6 +11,30 @@ export class OutputOverflowError extends Error {
   }
 }
 
+/**
+ * Bytes that may sit unread across every feed holding the same budget. A process with several
+ * output channels shares one, so its cap is per process, not per channel.
+ */
+export class ByteBudget {
+  readonly maximumBytes: number;
+  #used = 0;
+
+  constructor(maximumBytes: number) {
+    this.maximumBytes = maximumBytes;
+  }
+
+  /** Take `bytes` if they fit; otherwise take nothing and say so. */
+  reserve(bytes: number): boolean {
+    if (this.#used + bytes > this.maximumBytes) return false;
+    this.#used += bytes;
+    return true;
+  }
+
+  release(bytes: number): void {
+    this.#used -= bytes;
+  }
+}
+
 type Waiter = {
   resolve(result: ByteReadResult): void;
   reject(error: unknown): void;
@@ -28,12 +52,12 @@ type Waiter = {
  */
 export class BoundedByteFeed {
   readonly stream: ByteStream;
-  readonly #maximumBufferedBytes: number;
+  readonly #budget: ByteBudget;
   readonly #onCancel: () => void | Promise<void>;
   readonly #onOverflow: () => void;
   readonly #chunks: Uint8Array[] = [];
   readonly #waiters: Waiter[] = [];
-  #queuedBytes = 0;
+  #heldBytes = 0;
   #ended = false;
   #canceled = false;
   #locked = false;
@@ -45,11 +69,14 @@ export class BoundedByteFeed {
    * for a reader that may never come.
    */
   constructor(
-    maximumBufferedBytes: number,
+    maximumBufferedBytes: number | ByteBudget,
     onCancel: () => void | Promise<void>,
     onOverflow: () => void = () => undefined,
   ) {
-    this.#maximumBufferedBytes = maximumBufferedBytes;
+    this.#budget =
+      typeof maximumBufferedBytes === 'number'
+        ? new ByteBudget(maximumBufferedBytes)
+        : maximumBufferedBytes;
     this.#onCancel = onCancel;
     this.#onOverflow = onOverflow;
     this.stream = { getReader: () => this.#acquire() };
@@ -63,13 +90,13 @@ export class BoundedByteFeed {
       waiter.resolve({ done: false, value: bytes.slice() });
       return;
     }
-    if (this.#queuedBytes + bytes.length > this.#maximumBufferedBytes) {
-      this.fail(new OutputOverflowError(this.#maximumBufferedBytes));
+    if (!this.#budget.reserve(bytes.length)) {
+      this.fail(new OutputOverflowError(this.#budget.maximumBytes));
       this.#onOverflow();
       return;
     }
     this.#chunks.push(bytes.slice());
-    this.#queuedBytes += bytes.length;
+    this.#heldBytes += bytes.length;
   }
 
   /** The producer reached end of file. Queued chunks are still delivered first. */
@@ -105,7 +132,8 @@ export class BoundedByteFeed {
   #read(): Promise<ByteReadResult> {
     const chunk = this.#chunks.shift();
     if (chunk !== undefined) {
-      this.#queuedBytes -= chunk.length;
+      this.#heldBytes -= chunk.length;
+      this.#budget.release(chunk.length);
       return Promise.resolve({ done: false, value: chunk });
     }
     if (this.#failure !== undefined) return Promise.reject(this.#failure.error);
@@ -119,7 +147,8 @@ export class BoundedByteFeed {
     if (this.#canceled) return;
     this.#canceled = true;
     this.#chunks.length = 0;
-    this.#queuedBytes = 0;
+    this.#budget.release(this.#heldBytes);
+    this.#heldBytes = 0;
     for (const waiter of this.#waiters.splice(0)) waiter.resolve({ done: true });
     await this.#onCancel();
   }

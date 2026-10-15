@@ -116,6 +116,60 @@ describe('refusing a process before it exists', () => {
   );
 });
 
+describe('a profile changed after construction', () => {
+  /** A profile and dimensions the test owns, mutated in every field once the process exists. */
+  function mutable() {
+    const profile = {
+      executable: 'sh',
+      argumentList: ['-c', 'true', 'sh'],
+      workingDirectory: '/tmp',
+      environment: { PATH: '/usr/bin:/bin', KEPT: '1' } as Record<string, string>,
+    };
+    const dimensions = { columns: 90, rows: 33 };
+    const mutate = () => {
+      profile.executable = '/nonexistent/changed';
+      profile.argumentList[1] = 'exit 9';
+      profile.argumentList.push('extra');
+      profile.workingDirectory = '/nonexistent';
+      profile.environment['KEPT'] = '2';
+      profile.environment['ADDED'] = '1';
+      dimensions.columns = 1;
+      dimensions.rows = 1;
+    };
+    return { profile, dimensions, mutate };
+  }
+
+  scenarioTest('a pipe runs the command that was validated', async () => {
+    const { profile, mutate } = mutable();
+    const { spawn, calls } = recordingSpawn();
+    const hosted = trackHostedProcess(createPipeProcess({ profile, spawn }));
+    mutate();
+    await hosted.backend.start();
+    expect(calls[0]?.command).toEqual(['sh', '-c', 'true', 'sh']);
+    expect(calls[0]?.options).toMatchObject({
+      cwd: '/tmp',
+      env: { PATH: '/usr/bin:/bin', KEPT: '1' },
+    });
+    expect(calls[0]?.options['env']).not.toHaveProperty('ADDED');
+  });
+
+  scenarioTest('a PTY runs the command and geometry that were validated', async () => {
+    const { profile, dimensions, mutate } = mutable();
+    const { spawn, calls } = recordingSpawn();
+    const hosted = trackHostedProcess(createPtyProcess({ profile, dimensions, spawn }));
+    mutate();
+    await hosted.backend.start();
+    // After the gate: shell, -c, script, argument zero, then the command that was validated.
+    expect(calls[0]?.command.slice(4)).toEqual(['sh', '-c', 'true', 'sh']);
+    expect(calls[0]?.options).toMatchObject({
+      cwd: '/tmp',
+      env: { PATH: '/usr/bin:/bin', KEPT: '1' },
+      terminal: { cols: 90, rows: 33 },
+    });
+    expect(calls[0]?.options['env']).not.toHaveProperty('ADDED');
+  });
+});
+
 describe('an unsupported runtime', () => {
   const windows = { platform: 'win32', architecture: 'x64' };
 
@@ -388,6 +442,49 @@ describe('output the consumer has not read', () => {
       },
     );
   }
+});
+
+describe('a pipe whose two channels share one output bound', () => {
+  const settle = (hosted: HostedProcess) =>
+    Promise.allSettled(
+      [0, 1].map(async (index) => {
+        const reader = readerOf(hosted, index);
+        for (let result = await reader.read(); !result.done; result = await reader.read());
+      }),
+    );
+
+  scenarioTest(
+    'fails visibly when each channel is under the bound but together they pass it',
+    async () => {
+      const hosted = trackHostedProcess(
+        createPipeProcess({
+          profile: shellProfile("printf 'aaaa'; printf 'bbbb' >&2"),
+          maximumBufferedOutputBytes: 6,
+        }),
+      );
+      await hosted.backend.start();
+      await hosted.reportExitTo({ start: () => Promise.resolve(), reportProcessExit: () => true });
+      const outcomes = await settle(hosted);
+      const failures = outcomes.flatMap((outcome) =>
+        outcome.status === 'rejected' ? [outcome.reason] : [],
+      );
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toBeInstanceOf(OutputOverflowError);
+    },
+  );
+
+  scenarioTest('does not fail when the two channels together hold exactly the bound', async () => {
+    const hosted = trackHostedProcess(
+      createPipeProcess({
+        profile: shellProfile("printf 'aaa'; printf 'bbb' >&2"),
+        maximumBufferedOutputBytes: 6,
+      }),
+    );
+    await hosted.backend.start();
+    await hosted.reportExitTo({ start: () => Promise.resolve(), reportProcessExit: () => true });
+    const outcomes = await settle(hosted);
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['fulfilled', 'fulfilled']);
+  });
 });
 
 describe('the end of the terminal stream', () => {
