@@ -117,3 +117,14 @@ All live in `scripts/browser-fixtures/scripts/`, each with a unit test:
 - `docker-baseline-runner.ts`: the shared host load record, image build, archive, container run, kill-on-signal, and apply step.
 - `baseline-diff-report.ts`: the review report.
 - `snapshot-change-detection.ts`: exits 0 when the working tree has baseline or provenance changes, 1 when it has none.
+
+## Terminal fixtures
+
+The terminal's baselines (`snapshots/chromium/linux/terminal/`) come from the `terminal` fixture group, `src/fixtures/terminal.svelte` with its helpers in `src/fixtures/terminal/`, and are owned by `tests/terminal-visual.playwright.ts`; `components.playwright.ts` skips the `terminal` entry so each image has one writer. `bun run test:browser:terminal` runs the `terminal-*.playwright.ts` specs in Chromium, Firefox and WebKit (the `firefox-terminal` and `webkit-terminal` projects), lists its selection first and fails when a browser, a spec in one browser or a baseline cell is missing. It is not part of `bun run validate`. Choices a reader of those files will meet:
+
+- **Fixture IDs**: one fixture per state or variant, because an ID is a file name and cannot hold a `/`: `loading` and `connecting`, `exited` and `disconnected`, `denied`, `failed` and `engine-load-failed` are separate. `lab` is the interactive fixture every behavioral spec drives; it has a resting baseline too.
+- **Error states come from the `state` prop**, never from a real failure, because the shared sweep fails any page that logs an error. Real failures (a 404 for the engine, a Content Security Policy denial, a canceled initialization, a thrown handler) are in `terminal-failure.playwright.ts`.
+- **Platform shim**: the emulated Chrome device sends a Windows user agent from whatever host runs it, while the engine reads `navigator.platform`. `installSideEffectRecorder` in `tests/terminal-support.ts` makes the two agree, so Chromium exercises the Shift selection modifier and Firefox and WebKit, which report a Mac, the Option one on a Mac host.
+- **Input methods**: IME and dead keys are dispatched `CompositionEvent`s and key events, plus Chromium's `Input.imeSetComposition`; they are not operating-system input.
+- **Server render**: `terminal-failure.playwright.ts` sets `NODE_ENV=test` before rendering on the server, because the render helper's child process compiles Svelte for development otherwise and cannot render a mix.
+- **Pressed controls**: the `keyboard-capture` and `keyboard-mouse-reporting` fixtures turn capture on after the page is visible and again after the sweep's single blur, since a blur correctly releases it.

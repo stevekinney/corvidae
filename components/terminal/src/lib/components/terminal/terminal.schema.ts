@@ -76,6 +76,11 @@ const schema = {
       description:
         'The most paste text, in UTF-8 bytes, offered for review. A larger paste is refused whole and nothing is sent. Anything outside the range uses the default. Default `65536`.',
     },
+    cleanupPending: {
+      type: 'boolean',
+      description:
+        'Cleanup of the previous attachment has not finished. Replacing the session (`New session`, and `Retry` after a failure) is blocked until it has, so those buttons are disabled. Default `false`.',
+    },
     class: {
       type: 'string',
       description: "Additional class merged with the component's root class.",
@@ -89,6 +94,24 @@ const schema = {
         reason: 'unknown-shape',
         description:
           'The session controller whose output the terminal renders. It is borrowed: the terminal unsubscribes when the controller is replaced or the component unmounts and never disposes it.',
+      },
+      {
+        name: 'onCancel',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the reader activates `Cancel` in `loading` or `connecting`. The button renders only when this is provided; the host cancels construction or the connection and returns the state to `empty`.',
+      },
+      {
+        name: 'onCheckCleanup',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the reader activates `Check cleanup` in `cleanup-incomplete`. The button renders only when this is provided; no replacement, retry, input or replay is offered while cleanup is incomplete.',
+      },
+      {
+        name: 'onNewSession',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the reader activates `New session` in `empty`, `exited`, `disconnected` or `denied`. The button renders only when this is provided, and is disabled while `cleanupPending` is set. It never resumes or replays a session.',
       },
       {
         name: 'onGeometryChange',
@@ -118,6 +141,18 @@ const schema = {
         name: 'onRecoveryRequest',
         reason: 'function-or-snippet',
         description: "Called when the reader activates the frame's recovery control.",
+      },
+      {
+        name: 'onRetry',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the reader activates `Retry` in `failed`. The button renders only when this is provided, and is disabled while `cleanupPending` is set. For `engine-load-failed`, `onRecoveryRequest` is the handler.',
+      },
+      {
+        name: 'onTryAgain',
+        reason: 'function-or-snippet',
+        description:
+          'Called when the reader activates `Try again` in `denied`, which repeats connection authorization only. The button renders only when this is provided.',
       },
       {
         name: 'onTitleChange',

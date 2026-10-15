@@ -31,7 +31,7 @@
     VisuallyHidden,
     useAnnouncer,
   } from '@lostgradient/cinder';
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import { detectInputPlatform } from '../../input/input-platform.ts';
   import type { InputSettings } from '../../input/input-types.ts';
@@ -43,6 +43,7 @@
   import { createTerminalInput, type TerminalInput } from '../../input/terminal-input.ts';
   import { createTerminalAttachment, type AttachmentSettings } from './terminal-attachment.ts';
   import { engineLoader } from './terminal-engine-loader.ts';
+  import { recoveryActions, type RecoveryActionId } from './terminal-recovery.ts';
   import { acceptsInput, isErrorState, mountsEngine, ownsGrid } from './terminal-state.ts';
   import {
     TERMINAL_FRAME_STATUS,
@@ -68,6 +69,12 @@
     mouseReporting = false,
     onInputRefused,
     onInspectionEvent,
+    onNewSession,
+    onTryAgain,
+    onRetry: onRetryFailed,
+    onCheckCleanup,
+    onCancel,
+    cleanupPending = false,
     class: customClassName,
     ...rest
   }: TerminalProps = $props();
@@ -299,6 +306,52 @@
     else input?.capture();
   }
 
+  const recoveryHandlers: Record<RecoveryActionId, (() => void) | undefined> = $derived({
+    'new-session': onNewSession,
+    'try-again': onTryAgain,
+    retry: onRetryFailed,
+    'check-cleanup': onCheckCleanup,
+    cancel: onCancel,
+  });
+  const recovery = $derived(
+    recoveryActions(
+      effectiveState,
+      {
+        'new-session': onNewSession !== undefined,
+        'try-again': onTryAgain !== undefined,
+        retry: onRetryFailed !== undefined,
+        'check-cleanup': onCheckCleanup !== undefined,
+        cancel: onCancel !== undefined,
+      },
+      cleanupPending,
+    ),
+  );
+
+  // Focus follows the action the reader activated. A button that survives the change keeps focus
+  // (it is focused explicitly, since Safari does not focus a clicked button). One the new state
+  // removed would drop focus to the page, so focus moves to the first action of the new state's
+  // group, or to the frame when the new state has none.
+  let activatedIn: TerminalState | undefined;
+  function activate(id: RecoveryActionId, event: MouseEvent): void {
+    (event.currentTarget as HTMLElement).focus();
+    activatedIn = effectiveState;
+    recoveryHandlers[id]?.();
+  }
+  $effect(() => {
+    const now = effectiveState;
+    if (activatedIn === undefined || activatedIn === now) return;
+    activatedIn = undefined;
+    void (async () => {
+      await tick();
+      const active = document.activeElement;
+      if (active !== null && active !== document.body && frameBody?.contains(active)) return;
+      const first = frameBody?.querySelector<HTMLElement>(
+        '.cinder-terminal__recovery button:not(:disabled)',
+      );
+      (first ?? frameBody)?.focus();
+    })();
+  });
+
   // Recovery is the host's: a renderer failure revoked the controller and cleaned it up, so
   // remounting against it would revive a dead session. The host answers by supplying a new
   // controller or session. The one exception is a failure with no controller, where nothing was
@@ -331,6 +384,21 @@
     {#if effectiveState === 'engine-load-failed' && onRecoveryRequest !== undefined && !error}
       <div class="cinder-terminal__actions">
         <Button label="Retry" size="sm" onclick={retry} />
+      </div>
+    {:else if recovery.length > 0}
+      <div
+        class="cinder-terminal__actions cinder-terminal__recovery"
+        role="group"
+        aria-label="Terminal recovery"
+      >
+        {#each recovery as action (action.id)}
+          <Button
+            label={action.label}
+            size="sm"
+            disabled={action.disabled}
+            onclick={(event) => activate(action.id, event)}
+          />
+        {/each}
       </div>
     {:else if effectiveState === 'writable'}
       <div class="cinder-terminal__actions">

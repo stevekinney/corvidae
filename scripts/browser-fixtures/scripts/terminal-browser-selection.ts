@@ -16,6 +16,7 @@ export const TERMINAL_BEHAVIORAL_SPECS = [
   'terminal-inspection.playwright.ts',
   'terminal-layout.playwright.ts',
   'terminal-mouse.playwright.ts',
+  'terminal-recovery.playwright.ts',
   'terminal-vt.playwright.ts',
 ] as const;
 

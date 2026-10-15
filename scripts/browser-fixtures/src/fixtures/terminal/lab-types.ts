@@ -19,6 +19,10 @@ export type LabProps = {
   links: boolean;
   /** Pass `onRecoveryRequest`, which gives a recovery control to the states that offer one. */
   recovery: boolean;
+  /** Pass every recovery action handler, so each state shows the buttons it offers. */
+  actions: boolean;
+  /** Cleanup of the previous attachment is unfinished, which blocks replacing the session. */
+  cleanupPending: boolean;
   ownerGeometry: TerminalGeometry | undefined;
   maximumPasteBytes: number | undefined;
 };
@@ -30,6 +34,8 @@ export type LabEvents = {
   titles: string[];
   links: string[];
   recoveryRequests: number;
+  /** The recovery actions the reader activated, by button label, in order. */
+  actions: string[];
 };
 
 /**

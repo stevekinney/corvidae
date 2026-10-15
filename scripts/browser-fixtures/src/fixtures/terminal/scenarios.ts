@@ -25,6 +25,9 @@ export type FixtureScenario = {
   mouseReporting?: boolean;
   /** A recovery handler, so a state that offers recovery shows its control. */
   recovery?: boolean;
+  /** The recovery action handlers (`onNewSession`, `onRetry`, ...), so the state shows its buttons. */
+  actions?: boolean;
+  cleanupPending?: boolean;
   step?: FixtureStep;
 };
 
@@ -35,18 +38,23 @@ export type FixtureScenario = {
  * sweep fails any fixture whose page logs an error.
  */
 export const VISUAL_SCENARIOS = {
-  empty: { state: 'empty' },
-  loading: { state: 'loading' },
-  connecting: { state: 'connecting' },
+  empty: { state: 'empty', actions: true },
+  loading: { state: 'loading', actions: true },
+  connecting: { state: 'connecting', actions: true },
   writable: { state: 'writable', output: TRANSCRIPT },
   'read-only': { state: 'read-only', output: READ_ONLY_TRANSCRIPT },
   backpressured: { state: 'backpressured', output: TRANSCRIPT },
-  exited: { state: 'exited', output: EXITED_TRANSCRIPT, recovery: true },
-  disconnected: { state: 'disconnected', output: EXITED_TRANSCRIPT, recovery: true },
-  denied: { state: 'denied', recovery: true },
-  failed: { state: 'failed', output: FAILED_TRANSCRIPT, recovery: true },
+  exited: { state: 'exited', output: EXITED_TRANSCRIPT, actions: true },
+  disconnected: { state: 'disconnected', output: EXITED_TRANSCRIPT, actions: true },
+  denied: { state: 'denied', actions: true },
+  failed: { state: 'failed', output: FAILED_TRANSCRIPT, actions: true },
   'engine-load-failed': { state: 'engine-load-failed', recovery: true },
-  'cleanup-incomplete': { state: 'cleanup-incomplete', output: FAILED_TRANSCRIPT },
+  'cleanup-incomplete': {
+    state: 'cleanup-incomplete',
+    output: FAILED_TRANSCRIPT,
+    actions: true,
+    cleanupPending: true,
+  },
   'snapshot-modal': { state: 'writable', output: TRANSCRIPT, step: 'export' },
   'snapshot-modal-stale': { state: 'writable', output: TRANSCRIPT, step: 'export-stale' },
   'snapshot-modal-truncated': {

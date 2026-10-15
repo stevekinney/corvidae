@@ -64,6 +64,8 @@
     ariaLabel: query.get('label') ?? 'Terminal',
     links: flag('links'),
     recovery: flag('recovery', scenario.recovery ?? false),
+    actions: flag('actions', scenario.actions ?? false),
+    cleanupPending: flag('cleanup', scenario.cleanupPending ?? false),
     ownerGeometry: undefined,
     maximumPasteBytes: number('maxPaste'),
   });
@@ -74,6 +76,7 @@
     titles: [],
     links: [],
     recoveryRequests: 0,
+    actions: [],
   };
   const lifecycle = { mounts: 0, unmounts: 0 };
   let mounted = $state(true);
@@ -212,12 +215,27 @@
   });
 
   // Props the component leaves out rather than receives as `undefined`.
+  // With `flow`, the handlers answer as a host does: by changing the state the reader sees.
+  const flow = flag('flow');
+  const act = (label: string, next?: LabProps['state']) => () => {
+    events.actions.push(label);
+    if (flow && next !== undefined) props.state = next;
+  };
   const optional = $derived({
     ...(props.error === undefined ? {} : { error: props.error }),
     ...(props.ownerGeometry === undefined ? {} : { ownerGeometry: props.ownerGeometry }),
     ...(props.maximumPasteBytes === undefined
       ? {}
       : { maximumPasteBytes: props.maximumPasteBytes }),
+    ...(props.actions
+      ? {
+          onNewSession: act('New session', 'connecting'),
+          onTryAgain: act('Try again', 'connecting'),
+          onRetry: act('Retry', 'connecting'),
+          onCheckCleanup: act('Check cleanup'),
+          onCancel: act('Cancel', 'empty'),
+        }
+      : {}),
     ...(props.links ? { onLinkActivate: (url: string) => void events.links.push(url) } : {}),
     ...(props.recovery ? { onRecoveryRequest: () => void (events.recoveryRequests += 1) } : {}),
   });
@@ -279,6 +297,7 @@
           state={props.state}
           controller={session}
           mouseReporting={props.mouseReporting}
+          cleanupPending={props.cleanupPending}
           announceOutput={props.announceOutput}
           ariaLabel={props.ariaLabel}
           onGeometryChange={(geometry) => {
