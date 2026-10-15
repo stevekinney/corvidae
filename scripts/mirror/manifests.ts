@@ -337,6 +337,17 @@ function rewriteWorkspaceManifest(
       context,
     );
   }
+  // COR-1468: `peerDependenciesMeta` qualifies `peerDependencies` by name, so it follows the same
+  // public-name rewrite, or a renamed internal peer would lose its `optional` entry.
+  const peerMeta = workspace.manifest['peerDependenciesMeta'];
+  if (isJsonObject(peerMeta)) {
+    emitted['peerDependenciesMeta'] = Object.fromEntries(
+      Object.entries(peerMeta).map(([name, entry]) => [
+        context.publicNames.get(name) ?? name,
+        entry,
+      ]),
+    );
+  }
   return emitted;
 }
 
@@ -394,10 +405,10 @@ function buildRootManifest(
  * The blocks whose entries say what the source needs installed, and which the dependency rule
  * therefore composes entry by entry.
  *
- * `peerDependencies` is deliberately absent. A peer range is not a statement about what this
- * package imports; it is half of a packaging declaration whose other half, `peerDependenciesMeta`,
- * is target-owned outright. `target-owned.json` lists it under `manifestDefaults` instead, so the
- * pair is preserved or supplied together and can never drift apart.
+ * `peerDependencies` is deliberately absent. A peer range is half of a packaging declaration whose
+ * other half is `peerDependenciesMeta`, so the two are composed together, by name, in
+ * `overlayDeclaredPeers` — under `target-owned.json`'s `insideFiles.peerDependencies` rule rather
+ * than the dependency rule's three cases, which would split the pair.
  */
 const installedDependencyFields = [
   'dependencies',
@@ -418,8 +429,9 @@ export interface ComposedManifest {
  * For a manifest the target does not carry there is nothing to preserve and corvidae's is all
  * there is. For one it does, the target's copy is the base: the transform overlays the keys
  * `target-owned.json` says it owns, supplies the ones it only defaults, composes the dependency
- * blocks by that file's rule, and leaves every other key — scripts, metadata, `lint-staged`,
- * `peerDependenciesMeta`, the lot — exactly as the target had it.
+ * blocks by that file's rule, merges each peer corvidae declares into the target's peer pair, and
+ * leaves every other key — scripts, metadata, `lint-staged`, the peers corvidae does not declare,
+ * the lot — exactly as the target had it.
  *
  * An owned key absent from the emitted manifest is removed rather than left at the target's value,
  * because "the transform owns this key" and "corvidae's source does not have one" together say the
@@ -453,6 +465,8 @@ export function composeManifest({
   for (const key of keysFor(policy.insideFiles.manifestDefaults, target)) {
     if (!(key in manifest) && key in emitted) manifest[key] = emitted[key];
   }
+  const peers = overlayDeclaredPeers(existing, emitted);
+  if (peers !== undefined) writePeerPair(manifest, peers);
 
   const { blocks, added } = composeDependencies(emitted, existing, mirrorPackages);
   for (const field of installedDependencyFields) {
@@ -461,6 +475,77 @@ export function composeManifest({
     else manifest[field] = block;
   }
   return { manifest, added };
+}
+
+/** A manifest's peer pair: the ranges and the `peerDependenciesMeta` entries that qualify them. */
+export interface PeerPair {
+  peerDependencies?: unknown;
+  peerDependenciesMeta?: unknown;
+}
+
+/** A peer pair after `overlayDeclaredPeers`, sorted, with an empty meta block dropped. */
+export interface ComposedPeers {
+  peerDependencies: Record<string, string>;
+  peerDependenciesMeta: JsonObject | undefined;
+}
+
+function sortedByName<Value>(record: Readonly<Record<string, Value>>): Record<string, Value> {
+  return Object.fromEntries(
+    Object.entries(record).toSorted(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+/**
+ * COR-1468: overlay the peers corvidae declares onto a base pair — the target's own in
+ * `composeManifest`, the vendored `package-surface.json` entry in `surface.ts`.
+ *
+ * For each name in `declared.peerDependencies`, corvidae's range wins, and so does corvidae's
+ * `peerDependenciesMeta` entry for it — including its absence, which declares a required peer, so
+ * an `optional` entry the base held for that name is removed rather than left to contradict it.
+ * Every other name keeps the base's range and meta. A meta entry corvidae carries for a name it
+ * does not declare as a peer qualifies nothing and is not carried.
+ *
+ * `undefined` when corvidae declares no peers, which tells the caller to leave the base alone:
+ * a workspace without a declaration composes exactly as it did before this rule existed.
+ */
+export function overlayDeclaredPeers(
+  base: PeerPair,
+  declared: PeerPair,
+): ComposedPeers | undefined {
+  const declaredPeers = declared.peerDependencies;
+  if (!isJsonObject(declaredPeers) || Object.keys(declaredPeers).length === 0) return undefined;
+  const declaredMeta = isJsonObject(declared.peerDependenciesMeta)
+    ? declared.peerDependenciesMeta
+    : {};
+  const peerDependencies: Record<string, string> = {};
+  if (isJsonObject(base.peerDependencies)) {
+    for (const [name, range] of Object.entries(base.peerDependencies)) {
+      peerDependencies[name] = String(range);
+    }
+  }
+  const peerDependenciesMeta: JsonObject = isJsonObject(base.peerDependenciesMeta)
+    ? { ...base.peerDependenciesMeta }
+    : {};
+  for (const [name, range] of Object.entries(declaredPeers)) {
+    peerDependencies[name] = String(range);
+    if (name in declaredMeta) peerDependenciesMeta[name] = declaredMeta[name];
+    else delete peerDependenciesMeta[name];
+  }
+  return {
+    // Both targets sort their manifests, and an added peer would otherwise land out of order.
+    peerDependencies: sortedByName(peerDependencies),
+    peerDependenciesMeta:
+      Object.keys(peerDependenciesMeta).length === 0
+        ? undefined
+        : sortedByName(peerDependenciesMeta),
+  };
+}
+
+/** Write a composed peer pair onto a manifest, removing a meta block left with no entries. */
+export function writePeerPair(manifest: JsonObject, peers: ComposedPeers): void {
+  manifest['peerDependencies'] = peers.peerDependencies;
+  if (peers.peerDependenciesMeta === undefined) delete manifest['peerDependenciesMeta'];
+  else manifest['peerDependenciesMeta'] = peers.peerDependenciesMeta;
 }
 
 /**
