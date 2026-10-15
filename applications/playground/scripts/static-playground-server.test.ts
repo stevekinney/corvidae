@@ -20,7 +20,11 @@ describe('static host configuration', () => {
     expect(configuration.redirects).toEqual([
       { source: '/c/:name', destination: '/page/:name', statusCode: 301 },
     ]);
-    expect(configuration.headers.map((rule) => rule.source)).toEqual(['/assets/(.*)', '/(.*)']);
+    expect(configuration.headers.map((rule) => rule.source)).toEqual([
+      '/assets/(.*)',
+      '/((?!theme-builder/preview$).*)',
+      '/theme-builder/preview',
+    ]);
   });
 
   it('compiles parameters and groups into anchored expressions', () => {
@@ -28,6 +32,13 @@ describe('static host configuration', () => {
     expect(compileRouteSource('/c/:name').test('/c/button/extra')).toBe(false);
     expect(compileRouteSource('/assets/(.*)').test('/assets/a/b.css')).toBe(true);
     expect(compileRouteSource('/assets/(.*)').test('/page/assets/x')).toBe(false);
+  });
+
+  it('compiles a nested lookahead group as one group', () => {
+    const everythingButPreview = compileRouteSource('/((?!theme-builder/preview$).*)');
+    expect(everythingButPreview.test('/page/button')).toBe(true);
+    expect(everythingButPreview.test('/theme-builder')).toBe(true);
+    expect(everythingButPreview.test('/theme-builder/preview')).toBe(false);
   });
 
   it('rejects a redirect that is not a 3xx', () => {
