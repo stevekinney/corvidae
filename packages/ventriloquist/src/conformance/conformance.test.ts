@@ -33,6 +33,7 @@ import {
   PROCESS_MODES,
   TRANSPORT_PATHS,
   check,
+  type CellMode,
   type ProcessMode,
   type TransportPath,
 } from './conformance.test-support.ts';
@@ -63,7 +64,7 @@ type Cell = {
   /** The family whose two paths a parity cell compares. */
   readonly compares?: string;
   readonly path: TransportPath | 'both';
-  readonly mode: ProcessMode;
+  readonly mode: CellMode;
   readonly definition: string;
 };
 
@@ -150,7 +151,9 @@ for (const cell of MATRIX) {
 }
 for (const cell of LEAK_CELLS) {
   scenarioTest(cell.id, () =>
-    record(cell.id, () => descriptorStability(cell.path as TransportPath, cell.mode, scratch)),
+    record(cell.id, () =>
+      descriptorStability(cell.path as TransportPath, cell.mode as ProcessMode, scratch),
+    ),
   );
 }
 await settleScenarios();
@@ -205,7 +208,10 @@ function buildCell(id: string): EvidenceCell {
   return {
     id,
     passed,
-    observations: result.checks.map((entry) => `${entry.ok ? 'pass' : 'FAIL'}: ${entry.label}`),
+    observations: [
+      ...result.checks.map((entry) => `${entry.ok ? 'pass' : 'FAIL'}: ${entry.label}`),
+      ...(result.notes ?? []).map((note) => `scope: ${note}`),
+    ],
     versions,
     metrics: {
       checksEvaluated: { value: result.checks.length, unit: 'checks' },
@@ -256,6 +262,39 @@ describe('the conformance matrix', () => {
         }
       }
     }
+  });
+
+  test('labels a script-backed cell as scripted, never as a pipe or a PTY', () => {
+    for (const name of [
+      'lost-acknowledgement',
+      'fifo-full-keeps-control-capacity',
+      'default-operation-capacity',
+      'input-over-budget',
+      'control-unknown-cleanup',
+      'control-incomplete-cleanup',
+      'control-missing-parse-completion',
+      'control-late-callback-after-close',
+      'control-revoked-input-during-paste',
+      'control-leak-detectors',
+      'owned-source-release',
+      'hanging-cancellation',
+    ]) {
+      const ids = EXPECTED_CELL_IDS.filter((id) => id.endsWith(`:${name}`));
+      expect(ids.length, name).toBeGreaterThan(0);
+      for (const id of ids) expect(id, id).toMatch(/:scripted:/);
+    }
+  });
+
+  test('records which combinations a narrower case covers, and why', () => {
+    const report = buildReport();
+    const notes = (name: string) =>
+      report.cells
+        .filter((cell) => cell.id.includes(`:${name}`) && !cell.id.includes(':parity:'))
+        .flatMap((cell) => cell.observations.filter((line) => line.startsWith('scope: ')));
+    expect(notes('exit-before-attach').join()).toContain('direct path only');
+    expect(notes('output-after-exit-before-eof').join()).toContain('pipe only');
+    expect(notes('eof-without-exit').join()).toContain('pipe only');
+    expect(notes('lost-acknowledgement').join()).toContain('scripted backend');
   });
 
   test('runs the controls before any other cell', () => {

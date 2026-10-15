@@ -24,6 +24,13 @@ import {
 export type TransportPath = 'direct' | 'websocket';
 export type ProcessMode = 'pipe' | 'pty';
 
+/**
+ * What a cell is labelled with. `scripted` is a cell whose backend is a script, not a process: its
+ * ordering races are settled by barriers and a fake clock. It says nothing about pipes or PTYs,
+ * and the real-process requirement is met by the `pipe` and `pty` cells, never by these.
+ */
+export type CellMode = ProcessMode | 'scripted';
+
 export const TRANSPORT_PATHS: readonly TransportPath[] = ['direct', 'websocket'];
 export const PROCESS_MODES: readonly ProcessMode[] = ['pipe', 'pty'];
 

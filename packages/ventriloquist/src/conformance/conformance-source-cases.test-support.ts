@@ -141,7 +141,7 @@ async function stopAndConclude(context: Parameters<CaseDefinition['run']>[0]) {
 
 const ownedRelease: CaseDefinition = {
   id: 'owned-source-release',
-  modes: ['pipe'],
+  modes: ['scripted'],
   launch: () => ownedOver(spawnPrinter(), 'resolve'),
   async run(context) {
     const { child, cleanup } = await stopAndConclude(context);
@@ -157,7 +157,7 @@ const ownedRelease: CaseDefinition = {
 
 const borrowedUnsubscribe: CaseDefinition = {
   id: 'borrowed-source-unsubscribe',
-  modes: ['pipe'],
+  modes: ['scripted'],
   launch: () => borrowedOver(spawnPrinter()),
   async run(context) {
     const { child, cleanup } = await stopAndConclude(context);
@@ -176,7 +176,7 @@ const borrowedUnsubscribe: CaseDefinition = {
 
 const failingCancellation: CaseDefinition = {
   id: 'failing-cancellation',
-  modes: ['pipe'],
+  modes: ['scripted'],
   launch: () => ownedOver(spawnPrinter(), 'reject'),
   async run(context) {
     const { cleanup } = await stopAndConclude(context);
@@ -193,7 +193,7 @@ const failingCancellation: CaseDefinition = {
 
 const hangingCancellation: CaseDefinition = {
   id: 'hanging-cancellation',
-  modes: ['pipe'],
+  modes: ['scripted'],
   launch: () => ownedOver(spawnPrinter(), 'hang'),
   async run(context) {
     const { rig } = context;

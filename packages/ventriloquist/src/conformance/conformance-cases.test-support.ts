@@ -16,6 +16,7 @@ import type { ScriptedProcess } from '../websocket/websocket.test-support.ts';
 import {
   check,
   createRig,
+  type CellMode,
   type Check,
   type ProcessMode,
   type Rig,
@@ -26,6 +27,8 @@ import {
 /** What one cell observed, and the shape of the conversation, so the two paths can be compared. */
 export type CellResult = {
   readonly checks: readonly Check[];
+  /** What the cell does and does not cover, recorded beside its observations. */
+  readonly notes?: readonly string[];
   /** The kinds the client saw, consecutive output frames collapsed, then the transport's close code. */
   readonly signature: readonly string[];
 };
@@ -61,7 +64,9 @@ export type CaseDefinition = {
   readonly id: string;
   /** Whether the two paths must tell the same story. A client that vanishes is told nothing. */
   readonly comparable?: boolean;
-  readonly modes: readonly ProcessMode[];
+  readonly modes: readonly CellMode[];
+  /** Which combinations this case covers and why the rest are impossible or covered elsewhere. */
+  readonly scope?: string;
   readonly paths?: readonly TransportPath[];
   launch(mode: ProcessMode, scratch: string): CaseLaunch;
   run(context: CaseContext): Promise<readonly Check[]>;
@@ -104,9 +109,11 @@ export function signatureOf(messages: readonly ServerMessage[], closeCode: numbe
 export async function runCell(
   definition: CaseDefinition,
   path: TransportPath,
-  mode: ProcessMode,
+  cellMode: CellMode,
   scratch: string,
 ): Promise<CellResult> {
+  // A scripted cell's backend is a script; the rig still needs a terminal-shaped mode to be built with.
+  const mode: ProcessMode = cellMode === 'scripted' ? 'pty' : cellMode;
   const launch = definition.launch(mode, scratch);
   const hosted =
     launch.hosted ??
@@ -147,6 +154,14 @@ export async function runCell(
       check('no timer is left running', leaks.timers === 0),
       check('no connection remains', leaks.connections === 0),
       check('no socket remains open', leaks.openSockets === 0),
+    ],
+    notes: [
+      ...(definition.scope === undefined ? [] : [definition.scope]),
+      ...(cellMode === 'scripted'
+        ? [
+            'scripted backend: ordering is settled by barriers and a fake clock; the real-process requirement is met by the pipe and pty cells',
+          ]
+        : []),
     ],
     signature: signatureOf(rig.client.messages, closeCode),
   };
@@ -446,6 +461,8 @@ const exitImmediately: CaseDefinition = {
 const exitBeforeAttach: CaseDefinition = {
   id: 'exit-before-attach',
   modes: ['pipe', 'pty'],
+  scope:
+    "direct path only: a socket's process is created after the hello, so none can already have exited when a client arrives; pipe and pty are both covered",
   // A socket's process exists only after the hello, so the in-memory path is the one that can
   // have a process already gone when a client arrives.
   paths: ['direct'],
@@ -472,6 +489,8 @@ const BARRIER_SCRIPT =
 
 const outputAfterExit: CaseDefinition = {
   id: 'output-after-exit-before-eof',
+  scope:
+    'pipe only: a PTY hangs up its session when the leader exits, so no descendant can write after it; both paths are covered',
   // A PTY hangs up its session when the leader exits, so only a pipe can write after the exit.
   modes: ['pipe'],
   launch: (_mode, scratch) => ({
@@ -500,6 +519,8 @@ const outputAfterExit: CaseDefinition = {
 
 const eofWithoutExit: CaseDefinition = {
   id: 'eof-without-exit',
+  scope:
+    'pipe only: a terminal reports end of file only after its leader exits, so only a pipe can close its streams and keep running; both paths are covered',
   // A terminal's EOF follows the leader's exit; only a pipe can close its streams and live on.
   modes: ['pipe'],
   launch: () => ({

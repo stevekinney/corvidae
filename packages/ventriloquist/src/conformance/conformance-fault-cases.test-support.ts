@@ -285,7 +285,7 @@ const idleConsumer: CaseDefinition = {
 
 const lostAcknowledgement: CaseDefinition = {
   id: 'lost-acknowledgement',
-  modes: ['pty'],
+  modes: ['scripted'],
   launch: () => ({ profile: shellProfile('true'), scripted: scriptedProcess() }),
   async run({ rig, scripted }) {
     const process = scripted!;
@@ -317,7 +317,7 @@ const lostAcknowledgement: CaseDefinition = {
 
 const fifoReserve: CaseDefinition = {
   id: 'fifo-full-keeps-control-capacity',
-  modes: ['pty'],
+  modes: ['scripted'],
   launch: () => ({
     profile: shellProfile('true'),
     scripted: scriptedProcess(),
@@ -359,7 +359,7 @@ const fifoReserve: CaseDefinition = {
 
 const defaultCapacity: CaseDefinition = {
   id: 'default-operation-capacity',
-  modes: ['pty'],
+  modes: ['scripted'],
   launch: () => ({ profile: shellProfile('true'), scripted: scriptedProcess() }),
   async run({ rig, scripted }) {
     const process = scripted!;
@@ -398,7 +398,7 @@ const defaultCapacity: CaseDefinition = {
 
 const inputOverBudget: CaseDefinition = {
   id: 'input-over-budget',
-  modes: ['pty'],
+  modes: ['scripted'],
   launch: () => ({
     profile: shellProfile('true'),
     scripted: scriptedProcess(),

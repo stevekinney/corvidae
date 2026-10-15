@@ -113,7 +113,7 @@ const byteComparison: CaseDefinition = {
 function quarantineCase(outcome: 'unknown' | 'incomplete'): CaseDefinition {
   return {
     id: `control-${outcome}-cleanup`,
-    modes: ['pty'],
+    modes: ['scripted'],
     launch: () => ({
       profile: shellProfile('true'),
       scripted: scriptedProcess({ cleanup: outcome }),
@@ -133,7 +133,7 @@ function quarantineCase(outcome: 'unknown' | 'incomplete'): CaseDefinition {
 
 const missingParseCompletion: CaseDefinition = {
   id: 'control-missing-parse-completion',
-  modes: ['pty'],
+  modes: ['scripted'],
   launch: () => ({ profile: shellProfile('true'), scripted: scriptedProcess() }),
   async run({ rig, scripted }) {
     const process = scripted!;
@@ -164,7 +164,7 @@ const missingParseCompletion: CaseDefinition = {
 
 const lateCallback: CaseDefinition = {
   id: 'control-late-callback-after-close',
-  modes: ['pty'],
+  modes: ['scripted'],
   launch: () => ({ profile: shellProfile('true'), scripted: scriptedProcess() }),
   async run({ rig, scripted }) {
     const process = scripted!;
@@ -195,7 +195,7 @@ const lateCallback: CaseDefinition = {
 
 const revokedDuringPaste: CaseDefinition = {
   id: 'control-revoked-input-during-paste',
-  modes: ['pty'],
+  modes: ['scripted'],
   launch: () => ({
     profile: shellProfile('true'),
     scripted: scriptedProcess(),
@@ -241,7 +241,7 @@ const revokedDuringPaste: CaseDefinition = {
 
 const leakDetectors: CaseDefinition = {
   id: 'control-leak-detectors',
-  modes: ['pty'],
+  modes: ['scripted'],
   launch: () => ({ profile: shellProfile('true'), scripted: scriptedProcess() }),
   async run({ rig }) {
     await rig.client.handshake();
