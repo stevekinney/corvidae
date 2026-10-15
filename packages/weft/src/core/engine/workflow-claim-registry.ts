@@ -298,11 +298,7 @@ export class WorkflowClaimRegistry {
    * re-minting its own claim, which supersedes the old generation without
    * losing it.
    */
-  #installClaim(
-    workflowId: string,
-    entry: ClaimTrackingEntry,
-    observedEpoch: number | null,
-  ): void {
+  #installClaim(workflowId: string, entry: ClaimTrackingEntry, observedEpoch: number | null): void {
     const replaced = this.#claims.get(workflowId);
     if (replaced !== undefined && replaced.epoch !== observedEpoch) {
       this.#recordLostEpoch(workflowId, replaced.epoch);

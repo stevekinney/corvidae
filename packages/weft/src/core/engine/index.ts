@@ -369,8 +369,8 @@ export {
   type WorkflowRevisionDiagnostics,
 } from './catalog-removal.ts';
 export {
-  WeftWorkflowCheckpointConflictWarning,
   WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME,
+  WeftWorkflowCheckpointConflictWarning,
 } from './checkpoint-conflict-error.ts';
 export {
   DynamicWorkflowSourceUnavailableError,
@@ -405,14 +405,13 @@ export {
   WorkflowTypeNotRegisteredForRecoveryError,
 } from './errors.ts';
 export { HANDLE_RESULT_PROMISE, WorkflowHandle } from './handles.ts';
-export type { WorkflowClaimHandle } from './handles.ts';
-export type { PreparedWorkflowHandle } from './handles.ts';
+export type { PreparedWorkflowHandle, WorkflowClaimHandle } from './handles.ts';
 export { getWorkflowCatalog } from './internals.ts';
 export {
-  WeftWorkflowClaimLostWarning,
-  WeftWorkflowWakeDiscardedWarning,
   WORKFLOW_CLAIM_LOST_WARNING_NAME,
   WORKFLOW_WAKE_DISCARDED_WARNING_NAME,
+  WeftWorkflowClaimLostWarning,
+  WeftWorkflowWakeDiscardedWarning,
 } from './lease-deposition.ts';
 export type { WorkflowWakeKind } from './lease-deposition.ts';
 export {
@@ -2659,6 +2658,17 @@ export class Engine<
    * siblings in the same call.
    */
   async recoverAll(options?: RecoverAllOptions): Promise<WorkflowHandle[]> {
+    // Install a supplied hook before anything below can yield. Under
+    // `ownership: 'workflow-lease'` the reclaim interval may already be running
+    // with the hook passed to `Engine.create`, and a reclaim-driven resume that
+    // lands during the awaits below must use this call's override, as documented.
+    // Retained for a LATER same-engine reclaim (ADR 0002's recurring scan) to
+    // reuse — see `onRecoveredWorkflowHook`'s doc on `EngineInternals` for why
+    // a reclaim-driven resume must not silently skip this hook just because it
+    // was installed here rather than passed to that reclaim's own call.
+    if (options?.onRecoveredWorkflow !== undefined) {
+      getInternals(this).onRecoveredWorkflowHook = options.onRecoveredWorkflow;
+    }
     // Run the `ownership: 'workflow-lease'` boot gates on the `new Engine()` +
     // `recoverAll()` construction path too, not just via `Engine.create` — ADR
     // 0002 is explicit that attaching them to `Engine.create` alone leaves a
@@ -2691,12 +2701,6 @@ export class Engine<
     // before (or during) workflow replay still resolves a parked activity.
     await recoverPendingAsyncActivities(getInternals(this));
     await recoverOrphanedScheduleTimers(getInternals(this));
-    // Retained for a LATER same-engine reclaim (ADR 0002's recurring scan) to
-    // reuse — see `onRecoveredWorkflowHook`'s doc on `EngineInternals` for why
-    // a reclaim-driven resume must not silently skip this hook just because it
-    // was installed here rather than passed to that reclaim's own call.
-    getInternals(this).onRecoveredWorkflowHook =
-      options?.onRecoveredWorkflow ?? getInternals(this).onRecoveredWorkflowHook;
     const recoveredWorkflowHook = getInternals(this).onRecoveredWorkflowHook;
     return recoverAllFromLifecycle(
       getInternals(this),

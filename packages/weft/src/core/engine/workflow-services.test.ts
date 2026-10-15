@@ -24,6 +24,7 @@ import { encode } from '../codec.ts';
 import { DevelopmentWarningEvent, ScheduleFiredEvent } from '../events.ts';
 import type { ScheduleOverlapPolicy, WorkflowContext } from '../types.ts';
 import { workflow } from '../types.ts';
+import { ASYNC_ACTIVITY_KEY_PREFIX } from './async-activity-records.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { runRetentionSweep } from './retention.ts';
@@ -310,6 +311,101 @@ describe('ctx.services — recovery re-provision', () => {
     await handles[0]!.signal('continue');
     expect(await handles[0]!.result()).toBe('completed');
     await secondEngine[Symbol.asyncDispose]();
+  });
+
+  /**
+   * Stage a `workflow-lease` engine whose `recoverAll()` is parked in its early awaits (the
+   * async-activity token reload) while a reclaim-driven resume of an ownerless running run lands.
+   */
+  async function reclaimDuringRecoverAll(
+    recoverAllHook: ((info: { workflowId: string }) => void) | undefined,
+  ) {
+    const storage = new MemoryStorage();
+    const wf = workflow({ name: 'reclaim-hook' }).execute(async function* (ctx: WorkflowContext) {
+      yield* ctx.waitForSignal('continue');
+      return 'completed';
+    });
+    {
+      await using seedEngine = await Engine.create({
+        storage,
+        recover: false,
+        workflows: { 'reclaim-hook': wf },
+      });
+      await seedEngine.start('reclaim-hook', null, { id: 'reclaimed-run' });
+      await flush();
+    }
+
+    const createdWith: string[] = [];
+    const overriddenWith: string[] = [];
+    const engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { 'reclaim-hook': wf },
+      ownership: 'workflow-lease',
+      backgroundTasks: 'manual',
+      onRecoveredWorkflow: ({ workflowId }) => {
+        createdWith.push(workflowId);
+      },
+    });
+    const internals = getInternals(engine);
+    const realStorage = internals.storage;
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let parked = false;
+    internals.storage = new Proxy(realStorage, {
+      get(target, property, receiver) {
+        if (property === 'scan') {
+          return (prefix: string, ...rest: unknown[]) => {
+            const scan = Reflect.get(target, 'scan', target) as (
+              ...scanArguments: unknown[]
+            ) => AsyncIterable<[string, Uint8Array]>;
+            if (parked || prefix !== ASYNC_ACTIVITY_KEY_PREFIX)
+              return scan.call(target, prefix, ...rest);
+            parked = true;
+            return (async function* () {
+              reached.resolve();
+              await release.promise;
+              yield* scan.call(target, prefix, ...rest);
+            })();
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+
+    const recovering = engine.recoverAll(
+      recoverAllHook === undefined
+        ? undefined
+        : {
+            onRecoveredWorkflow: ({ workflowId }) => {
+              recoverAllHook({ workflowId });
+              overriddenWith.push(workflowId);
+            },
+          },
+    );
+    await reached.promise;
+    // recoverAll() is parked before its own recovery pass; the reclaim scan resumes the run now.
+    await engine.runMaintenance();
+    release.resolve();
+    await recovering;
+    return { engine, createdWith, overriddenWith };
+  }
+
+  it('hands a run reclaimed while recoverAll() is still starting to the hook recoverAll() was given', async () => {
+    const { engine, createdWith, overriddenWith } = await reclaimDuringRecoverAll(() => {});
+
+    expect(overriddenWith).toEqual(['reclaimed-run']);
+    expect(createdWith).toEqual([]);
+    await engine[Symbol.asyncDispose]();
+  });
+
+  it('keeps the hook installed at Engine.create for a reclaim during a recoverAll() with no hook', async () => {
+    const { engine, createdWith, overriddenWith } = await reclaimDuringRecoverAll(undefined);
+
+    expect(createdWith).toEqual(['reclaimed-run']);
+    expect(overriddenWith).toEqual([]);
+    await engine[Symbol.asyncDispose]();
   });
 
   it('isolates a recovery hook failure to its run and continues recovering siblings', async () => {
