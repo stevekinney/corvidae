@@ -396,4 +396,32 @@ describe('VirtualList — coalescing a held ArrowDown under smoothScroll (COR-37
     arrowDown(list);
     expect(writes).toEqual([2 * 20 - 20, 3 * 20 - 20]);
   });
+
+  test('case 9: under dynamicSize an instant write keeps its destination until the settle loop finishes', async () => {
+    // The first write of a `dynamicSize` jump lands on an estimate that
+    // `runScrollToIndex` goes on correcting as rows mount and measure, so until it
+    // settles the live position is not yet the destination. Revert to prove this
+    // fails: drop `dynamicSize ||` from the wait in `watchPendingKeyboardIndex`.
+    // The first destination is then dropped at once, and the second press steps
+    // from the live position to row 2 again (writes end in 20) instead of
+    // continuing to row 3 (40).
+    //
+    // The setter records each write and applies none of them, standing in for a
+    // position the settle loop has not finished correcting.
+    const container = renderStickySmoothList({ smoothScroll: false, dynamicSize: true });
+    await waitFor(() => expect(renderedRows(container).length).toBeGreaterThan(0));
+    const list = requiredInstance(container.querySelector('.cinder-virtual-list'), HTMLElement);
+    const writes: number[] = [];
+    Object.defineProperty(list, 'scrollTop', {
+      configurable: true,
+      get: () => 0,
+      set: (value: number) => {
+        writes.push(value);
+      },
+    });
+
+    arrowDown(list);
+    arrowDown(list);
+    expect(writes).toEqual([2 * 20 - 20, 3 * 20 - 20]);
+  });
 });

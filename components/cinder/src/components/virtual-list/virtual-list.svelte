@@ -1926,7 +1926,13 @@
     // destination alive past a write this list did not issue — a consumer setting
     // `scrollTop`, a fragment link — so a press right after one stepped from the
     // stale row instead of the one the reader was looking at.
-    if (isKeyboardScrollAnimated(element)) {
+    //
+    // Two writes are not final when they return. An animated one has not moved yet,
+    // and under `dynamicSize` the first write lands on an ESTIMATE that the settle
+    // loop in `runScrollToIndex` goes on correcting as the destination's rows mount
+    // and measure, so the live position can name a different row until it finishes.
+    // Both keep the destination until the scroll settles.
+    if (dynamicSize || isKeyboardScrollAnimated(element)) {
       await waitForScrollSettled(element, KEYBOARD_DESTINATION_STABLE_INTERVALS);
       // Superseded by a newer press or an explicit retirement while this was
       // waiting — either already holds whatever destination is now correct, so
