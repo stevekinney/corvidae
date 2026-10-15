@@ -9,6 +9,13 @@ import { settleToOutcome } from './settle.ts';
  */
 export const OUTPUT_LOW_WATER_BYTES = 64 * 1024;
 
+/**
+ * How much a pull-based source delivers before it gives the event loop a turn. Reads from a queue
+ * resolve in microtasks, so without this a freed budget is delivered in one uninterrupted run: a
+ * megabyte of frames built and sent while every other session, and the client of this one, wait.
+ */
+export const OUTPUT_YIELD_BYTES = 16 * 1024;
+
 /** Where a started source delivers what it produces. */
 export type SourceHandlers = {
   /**
@@ -61,6 +68,7 @@ type Pullable = {
  * accepting output are handed over once so they are counted as unavailable, never lost silently.
  */
 async function pullInto(handlers: SourceHandlers, source: Pullable): Promise<void> {
+  let sinceYield = 0;
   try {
     for (;;) {
       if ((await handlers.room(OUTPUT_LOW_WATER_BYTES)) === undefined || source.isReleased())
@@ -81,6 +89,11 @@ async function pullInto(handlers: SourceHandlers, source: Pullable): Promise<voi
         const take = Math.min(room, carried.length);
         handlers.chunk(carried.subarray(0, take));
         carried = carried.subarray(take);
+        sinceYield += take;
+        if (sinceYield >= OUTPUT_YIELD_BYTES) {
+          sinceYield = 0;
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
       } while (carried.length > 0);
     }
   } catch (error) {

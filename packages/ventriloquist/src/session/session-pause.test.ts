@@ -172,6 +172,34 @@ describe('a source the session can pause', () => {
   });
 });
 
+describe('a burst the budget lets through', () => {
+  test('lets the event loop run before it has all been delivered', async () => {
+    const stream = createScriptedStream('pty');
+    const harness = createHarness({ sources: [stream.source] });
+    await startAndAttach(harness);
+    const total = 16 * 65_536;
+    let deliveredWhenTheLoopRan = -1;
+    // Scheduled before the burst, so it runs first among the loop's turns after it.
+    setImmediate(() => {
+      deliveredWhenTheLoopRan = concatenate(harness.recorder.events).length;
+    });
+    for (let index = 0; index < 16; index += 1) stream.push(pattern(65_536, index));
+    // It goes on in the turns that follow.
+    for (
+      let turn = 0;
+      turn < 50 && concatenate(harness.recorder.events).length < total;
+      turn += 1
+    ) {
+      await flush();
+    }
+    // A burst delivered without ever yielding would have finished before any other work could run,
+    // which is what delays every other session and every client sharing the loop.
+    expect(deliveredWhenTheLoopRan).toBeGreaterThanOrEqual(0);
+    expect(deliveredWhenTheLoopRan).toBeLessThan(total / 2);
+    expect(concatenate(harness.recorder.events).length).toBe(total);
+  });
+});
+
 describe('two channels of one process', () => {
   test('share the one output budget: together they never hold more than it, and neither starves', async () => {
     const out = createScriptedStream('stdout');
