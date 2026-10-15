@@ -1,15 +1,17 @@
 import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 import { describe, expect, it } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
   captureSourceState,
   loadExceedsLimit,
+  NORMALIZED_CHILD_ENVIRONMENT,
   parseContainerMemoryLimit,
   parseLoadAverages,
   partitionPorcelainStatus,
+  recordedChildEnvironment,
   waitForSettledLoad,
   type HostLoad,
 } from './measure-playground-environment.ts';
@@ -160,4 +162,83 @@ const untrackedContentIsFingerprinted = await outcomeOf(async () => {
 describe('captureSourceState untracked content (4274040383)', () => {
   it('fingerprints the contents of untracked, non-ignored files and ignores ignored ones', () =>
     rethrow(untrackedContentIsFingerprinted));
+});
+
+/** The scenario runs real `git` and `captureSourceState`, so it runs at module scope. */
+const excludedResultsStayOutOfTheFingerprint = await outcomeOf(async () => {
+  const repository = await mkdtemp(join(tmpdir(), 'measure-playground-exclusion-'));
+
+  async function git(...args: string[]): Promise<void> {
+    const child = Bun.spawn(['git', '-C', repository, ...args], {
+      stdout: 'ignore',
+      stderr: 'pipe',
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    });
+    if ((await child.exited) !== 0) throw new Error(await new Response(child.stderr).text());
+  }
+
+  try {
+    await git('init', '-q');
+    await mkdir(join(repository, 'results'));
+    await writeFile(join(repository, 'results', 'kept.json'), '{}\n');
+    await writeFile(join(repository, 'source.ts'), 'export const value = 1;\n');
+    await git('add', '.');
+    await git('-c', 'user.email=t@example.com', '-c', 'user.name=t', 'commit', '-q', '-m', 'root');
+    const clean = captureSourceState(repository, ['results']);
+
+    await writeFile(join(repository, 'results', 'kept.json'), '{"changed":true}\n');
+    await writeFile(join(repository, 'results', 'baseline.json'), '{}\n');
+    expect(captureSourceState(repository, ['results'])).toEqual(clean);
+
+    await writeFile(join(repository, 'source.ts'), 'export const value = 2;\n');
+    await writeFile(join(repository, 'added.ts'), 'export {};\n');
+    const withSourceChange = captureSourceState(repository, ['results']);
+    expect(withSourceChange.dirtyPaths).toEqual(['source.ts']);
+    expect(withSourceChange.untrackedPaths).toEqual(['added.ts']);
+    expect(withSourceChange.workingTreeDiffSha256).not.toBeNull();
+    expect(withSourceChange.untrackedSha256).not.toBeNull();
+  } finally {
+    await rm(repository, { recursive: true, force: true });
+  }
+});
+
+describe('captureSourceState output exclusion (CIN-588 harness fix 1)', () => {
+  it('leaves files under an excluded results directory out of every part of the fingerprint', () =>
+    rethrow(excludedResultsStayOutOfTheFingerprint));
+});
+
+describe('NORMALIZED_CHILD_ENVIRONMENT (CIN-588 harness fix 2)', () => {
+  it('covers every variable the Playground configuration reads', async () => {
+    const source = await Bun.file(
+      join(import.meta.dirname, '..', 'src', 'environment-configuration.ts'),
+    ).text();
+    const registered = [...source.matchAll(/env: '([A-Z0-9_]+)'/gu)].map((match) => match[1]!);
+    expect(registered.length).toBeGreaterThan(0);
+    for (const name of registered)
+      expect(Object.keys(NORMALIZED_CHILD_ENVIRONMENT)).toContain(name);
+  });
+
+  it('removes everything but an empty component scope, recorded with null for removed', () => {
+    const recorded = recordedChildEnvironment();
+    expect(recorded['CINDER_TEST_COMPONENTS']).toBe('');
+    for (const [name, value] of Object.entries(recorded)) {
+      if (name !== 'CINDER_TEST_COMPONENTS') expect(value).toBeNull();
+    }
+  });
+});
+
+describe('waitForSettledLoad record-only (CIN-588 harness fix 5)', () => {
+  it('records the load once and never waits when no factor is given', async () => {
+    let slept = 0;
+    const wait = await waitForSettledLoad(undefined, {
+      capture: () => hostLoad(400),
+      sleep: async () => {
+        slept += 1;
+      },
+      now: () => 0,
+    });
+    expect(slept).toBe(0);
+    expect(wait).toMatchObject({ thresholdOneMinute: null, waitedMilliseconds: 0, checks: 1 });
+    expect(wait.loadAtStart.loadAverages.oneMinute).toBe(400);
+  });
 });

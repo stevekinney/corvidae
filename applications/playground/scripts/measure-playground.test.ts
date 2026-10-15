@@ -3,12 +3,16 @@ import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 
 import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
+import { NORMALIZED_CHILD_ENVIRONMENT } from './measure-playground-environment.ts';
 import {
   isPortListening,
   microsecondsFrom,
-  NORMALIZED_CHILD_ENVIRONMENT,
+  outputExclusions,
   parseCommandLine,
   PHASES,
+  prerequisitesThenEnvironment,
+  readinessWaitExceeded,
+  SERVER_READY_DEADLINE_MILLISECONDS,
 } from './measure-playground.ts';
 
 const now = new Date('2026-10-13T12:34:56.789Z');
@@ -32,7 +36,6 @@ describe('parseCommandLine', () => {
       playwrightPairs: 1,
       cycles: 5,
       serverPort: 5610,
-      maximumLoadFactor: 3,
     });
   });
 
@@ -129,5 +132,89 @@ describe('NORMALIZED_CHILD_ENVIRONMENT (4274040392)', () => {
     expect('NODE_ENV' in NORMALIZED_CHILD_ENVIRONMENT).toBe(true);
     expect(NORMALIZED_CHILD_ENVIRONMENT['NODE_ENV']).toBeUndefined();
     expect(NORMALIZED_CHILD_ENVIRONMENT['CINDER_TEST_COMPONENTS']).toBe('');
+  });
+});
+
+describe('outputExclusions (CIN-588 harness fix 1)', () => {
+  it('excludes the output file directory and an in-repository work directory', () => {
+    expect(
+      outputExclusions(
+        '/repository/applications/playground/docs/decisions/cin-588-results/baseline.json',
+        '/repository/tmp/playground-measurements/baseline',
+        '/repository',
+      ),
+    ).toEqual([
+      'applications/playground/docs/decisions/cin-588-results',
+      'tmp/playground-measurements/baseline',
+    ]);
+  });
+
+  it('ignores directories outside the repository', () => {
+    expect(outputExclusions('/elsewhere/out.json', '/scratch/work', '/repository')).toEqual([]);
+  });
+});
+
+describe('prerequisitesThenEnvironment (CIN-588 harness fix 4)', () => {
+  it('captures the environment only after the install prerequisite finishes', async () => {
+    let installedSvelte = '5.0.0';
+    const environment = await prerequisitesThenEnvironment(
+      async () => {
+        await Bun.sleep(1);
+        installedSvelte = '5.1.0';
+      },
+      () => ({ svelte: installedSvelte }),
+    );
+    expect(environment).toEqual({ svelte: '5.1.0' });
+  });
+
+  it('does not capture an environment when the prerequisite throws', async () => {
+    let captured = false;
+    const attempt = prerequisitesThenEnvironment(
+      () => Promise.reject(new Error('install failed')),
+      () => {
+        captured = true;
+        return {};
+      },
+    );
+    let message = '';
+    try {
+      await attempt;
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toBe('install failed');
+    expect(captured).toBe(false);
+  });
+});
+
+describe('record-only load gate by default (CIN-588 harness fix 5)', () => {
+  it('sets no load factor unless one is asked for', () => {
+    const options = parseCommandLine(['run', '--label', 'baseline', '--output', 'out.json']);
+    expect(options.command === 'run' && options.maximumLoadFactor).toBeUndefined();
+    const gated = parseCommandLine([
+      'run',
+      '--label',
+      'baseline',
+      '--output',
+      'out.json',
+      '--maximum-load-factor',
+      '3',
+    ]);
+    expect(gated.command === 'run' && gated.maximumLoadFactor).toBe(3);
+  });
+});
+
+describe('server readiness cutoff (CIN-588, owner-approved 2026-10-15)', () => {
+  it('is a 900 s measurement censor', () => {
+    expect(SERVER_READY_DEADLINE_MILLISECONDS).toBe(900_000);
+  });
+
+  it('keeps waiting for a readiness slower than the old 300 s cutoff but inside 900 s', () => {
+    expect(readinessWaitExceeded(450_000)).toBe(false);
+    expect(readinessWaitExceeded(900_000)).toBe(false);
+  });
+
+  it('stops waiting, so the sample fails, only past 900 s', () => {
+    expect(readinessWaitExceeded(900_001)).toBe(true);
   });
 });
