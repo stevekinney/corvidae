@@ -23,6 +23,7 @@
 
 <script lang="ts">
   import {
+    Badge,
     Button,
     Modal,
     TerminalFrame,
@@ -71,6 +72,7 @@
   // here and held there; a session or engine change disposes the binding, which ends both.
   let input = $state.raw<TerminalInput>();
   let captured = $state(false);
+  let mouseActive = $state(false);
   let reviewOpen = $state(false);
   let displayedReview = $state.raw<PasteReview>();
   const announcer = useAnnouncer();
@@ -78,6 +80,7 @@
   const reviewId = $props.id();
   const captureControlId = `${reviewId}-capture`;
   const interruptControlId = `${reviewId}-interrupt`;
+  const mouseIndicatorId = `${reviewId}-mouse`;
 
   // A failure the renderer found itself. It outranks the state the host passed in: the engine is
   // gone, so no other state can be shown truthfully, and nothing is silently reset or replaced.
@@ -154,6 +157,8 @@
     // Track every setting the engine mirrors; the attachment re-reads them itself. The class and
     // inline style are styling inputs too: they can change the tokens the engine colors resolve to.
     readSettings();
+    // The input settings too: a host turning mouse reporting off ends it at once.
+    readInputSettings();
     void customClassName;
     void rest.style;
     live?.refresh();
@@ -224,6 +229,10 @@
       // Not `instanceof Element`: the focus target may belong to another realm.
       isTerminalControl: (node) =>
         'id' in node && (node.id === captureControlId || node.id === interruptControlId),
+      onMouseReportingChange: (active, announce) => {
+        mouseActive = active;
+        if (announce) announcer.announce(active ? 'Mouse reporting on' : 'Mouse reporting off');
+      },
       onCaptureChange: (next) => {
         captured = next;
         announcer.announce(next ? 'Terminal key capture on' : 'Terminal key capture off');
@@ -287,9 +296,13 @@
           label="Capture terminal keys"
           size="sm"
           aria-pressed={captured}
+          aria-describedby={mouseActive ? mouseIndicatorId : undefined}
           onclick={toggleCapture}
           onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
         />
+        {#if mouseActive}
+          <Badge id={mouseIndicatorId} variant="info" size="sm">Mouse reporting on</Badge>
+        {/if}
         <Button
           id={interruptControlId}
           label="Interrupt"

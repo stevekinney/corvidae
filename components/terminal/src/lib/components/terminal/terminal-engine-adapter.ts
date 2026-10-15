@@ -154,6 +154,11 @@ export type RendererEngine = {
   readonly bracketedPaste: boolean;
   /** Whether the program asked for mouse reports, so the engine turns pointer events into input. */
   readonly mouseTracking: boolean;
+  /**
+   * Subscribe to changes of the mouse mode the program set, seen once the output that changed it
+   * is parsed. The returned function unsubscribes.
+   */
+  onModeChange(listener: () => void): () => void;
   /** Move focus to the engine's input element. */
   focus(): void;
   /** Release the engine and its DOM. Safe to call twice. */
@@ -176,9 +181,17 @@ export function createRendererEngine(
   // Acknowledgements for chunks whose last bytes are still held in `carry`, in arrival order.
   let heldAcknowledgements: Array<() => void> = [];
 
+  const modeListeners = new Set<() => void>();
+  let tracking = false;
+
   function writeBytes(bytes: Uint8Array, acknowledgements: Array<() => void>): void {
     terminal.write(bytes, () => {
       if (disposed) return;
+      const now = terminal.modes.mouseTrackingMode !== 'none';
+      if (now !== tracking) {
+        tracking = now;
+        for (const listener of modeListeners) listener();
+      }
       for (const acknowledge of acknowledgements) acknowledge();
     });
   }
@@ -305,6 +318,10 @@ export function createRendererEngine(
     },
     hasSelection() {
       return terminal.hasSelection();
+    },
+    onModeChange(listener) {
+      modeListeners.add(listener);
+      return () => modeListeners.delete(listener);
     },
     get mouseTracking() {
       return !disposed && terminal.modes.mouseTrackingMode !== 'none';

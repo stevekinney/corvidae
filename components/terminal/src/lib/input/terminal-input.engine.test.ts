@@ -305,6 +305,7 @@ describe('a throwing key hook rejects the operation', () => {
         paste: (text) => engine.paste(text),
         bracketedPaste: engine.bracketedPaste,
         mouseTracking: engine.mouseTracking,
+        onModeChange: (listener) => engine.onModeChange(listener),
         hasSelection: () => {
           throw new Error('selection exploded');
         },

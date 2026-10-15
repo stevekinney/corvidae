@@ -16,7 +16,14 @@ import { analyzePaste, reviewPaste, type PasteReview } from './paste-review.ts';
 /** What the input path needs of the engine; the full adapter satisfies it. */
 export type InputEngine = Pick<
   RendererEngine,
-  'onInput' | 'setKeyHook' | 'hasSelection' | 'paste' | 'focus' | 'bracketedPaste' | 'mouseTracking'
+  | 'onInput'
+  | 'setKeyHook'
+  | 'hasSelection'
+  | 'paste'
+  | 'focus'
+  | 'bracketedPaste'
+  | 'mouseTracking'
+  | 'onModeChange'
 >;
 
 export type TerminalInputOptions = {
@@ -32,6 +39,12 @@ export type TerminalInputOptions = {
    * capture button would find capture already off and turn it back on.
    */
   isTerminalControl?: (node: Node) => boolean;
+  /**
+   * Mouse reporting became active or inactive: opted in, tracked by the program, captured and
+   * writable. `announce` is true when the program changed it, and false when capture or the view
+   * did, which have announcements of their own.
+   */
+  onMouseReportingChange?: (active: boolean, announce: boolean) => void;
   onCaptureChange: (captured: boolean) => void;
   /** A paste review opened (a review) or ended (`undefined`). The caller shows it. */
   onReview: (review: PasteReview | undefined) => void;
@@ -137,11 +150,28 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     return saturated ? 'paused' : undefined;
   }
 
+  /** Whether pointer events may become input right now: opted in, captured and able to send. */
+  function mouseReportingPermitted(): boolean {
+    return options.readSettings().mouseReporting && captured && refusalReason() === undefined;
+  }
+
+  let mouseActive = false;
+  /** Tell the caller when reporting turned on or off, once per change. */
+  function syncMouseReporting(announce: boolean): void {
+    const active = !disposed && engine.mouseTracking && mouseReportingPermitted();
+    if (active === mouseActive) return;
+    mouseActive = active;
+    options.onMouseReportingChange?.(active, announce);
+  }
+
   function setCaptured(next: boolean): void {
     if (captured === next) return;
     captured = next;
     options.onCaptureChange(next);
+    syncMouseReporting(false);
   }
+
+  const stopModeChanges = engine.onModeChange(() => syncMouseReporting(true));
 
   function freeze(): void {
     frozen = true;
@@ -206,11 +236,6 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     latchedKeys.delete(event.code || event.key);
   }
   document.addEventListener('keyup', releaseLatch);
-
-  /** Whether pointer events may become input right now: opted in, captured and able to send. */
-  function mouseReportingPermitted(): boolean {
-    return options.readSettings().mouseReporting && captured && refusalReason() === undefined;
-  }
 
   const stopInput = engine.onInput((report) => {
     if (disposed) return;
@@ -446,6 +471,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
         else if (leftWritable) saturated = leftWritable = false;
       }
       if (captured && refusalReason() !== undefined) setCaptured(false);
+      syncMouseReporting(false);
     },
     dispose() {
       if (disposed) return;
@@ -453,6 +479,8 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
       disposed = true;
       resumeAfterReview = false;
       setCaptured(false);
+      syncMouseReporting(false);
+      stopModeChanges();
       stopInput();
       engine.setKeyHook(undefined);
       host.removeEventListener('paste', handlePaste, true);

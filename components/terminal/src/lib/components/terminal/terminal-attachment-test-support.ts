@@ -129,6 +129,9 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
       engine.calls.push('paste');
       engine.pastes.push(text);
     },
+    onModeChange() {
+      return () => {};
+    },
     focus() {
       engine.calls.push('focus');
       engine.focusCount += 1;

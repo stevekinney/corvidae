@@ -239,6 +239,36 @@ describe('selection and paste', () => {
     expect(captured.engine.mouseTracking).toBe(false);
   });
 
+  test('onModeChange fires once per parsed change of the mouse mode, and stops when unsubscribed', async () => {
+    const { captured } = mounted();
+    let changes = 0;
+    const stop = captured.engine.onModeChange(() => {
+      changes += 1;
+    });
+    await captured.deliver([bytes('plain output')]);
+    expect(changes).toBe(0);
+    await captured.deliver([bytes('\u001b[?1000h')]);
+    expect(changes).toBe(1);
+    await captured.deliver([bytes('\u001b[?1002h'), bytes('\u001b[?1006h')]);
+    expect(changes).toBe(1);
+    await captured.deliver([bytes('\u001b[?1000l\u001b[?1002l')]);
+    expect(changes).toBe(2);
+    stop();
+    await captured.deliver([bytes('\u001b[?1000h')]);
+    expect(changes).toBe(2);
+  });
+
+  test('onModeChange is silent after dispose', async () => {
+    const { captured } = mounted();
+    let changes = 0;
+    captured.engine.onModeChange(() => {
+      changes += 1;
+    });
+    captured.engine.dispose();
+    captured.engine.write(bytes('\u001b[?1000h'), () => {});
+    expect(changes).toBe(0);
+  });
+
   test('a read-only engine takes no paste', () => {
     const { captured, reports } = mounted({ readOnly: true });
     captured.engine.paste('x');

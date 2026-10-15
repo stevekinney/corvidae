@@ -147,6 +147,9 @@ export type FakeInputEngine = InputEngine & {
   pastes: string[];
   bracketedPaste: boolean;
   mouseTracking: boolean;
+  /** Change the mouse mode the way a program does, and tell the listeners. */
+  setMouseTracking(tracking: boolean): void;
+  modeListeners: Set<() => void>;
   focusTarget: HTMLElement | undefined;
   listeners: Set<(report: EngineInputReport) => void>;
 };
@@ -159,6 +162,15 @@ export function createFakeInputEngine(): FakeInputEngine {
     pastes: [],
     bracketedPaste: false,
     mouseTracking: false,
+    modeListeners: new Set(),
+    setMouseTracking(tracking) {
+      engine.mouseTracking = tracking;
+      for (const listener of engine.modeListeners) listener();
+    },
+    onModeChange(listener) {
+      engine.modeListeners.add(listener);
+      return () => engine.modeListeners.delete(listener);
+    },
     focusTarget: undefined,
     listeners: new Set(),
     report(report) {

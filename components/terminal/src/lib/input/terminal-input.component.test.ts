@@ -476,6 +476,97 @@ describe('mouse reporting', () => {
   });
 });
 
+describe('the mouse reporting indicator in the component', () => {
+  const indicator = (harness: MountedHarness) =>
+    [...harness.target.querySelectorAll<HTMLElement>('.cinder-badge')].find(
+      (badge) => badge.textContent?.trim() === 'Mouse reporting on',
+    );
+
+  async function mounted(props: Partial<TerminalProps>) {
+    const controller = wiredController();
+    const result = await mountReady({ title: 'Shell', state: 'writable', controller, ...props });
+    return { ...result, controller, seen: recordAnnouncements(result.harness) };
+  }
+
+  test('appears only when opted in, tracked, captured and writable', async () => {
+    const props = reactiveProps<TerminalProps>({
+      title: 'Shell',
+      state: 'writable',
+      controller: wiredController(),
+      mouseReporting: true,
+    });
+    const { harness } = await mountReady(props);
+    const capture = button('Capture terminal keys', harness.target);
+    expect(indicator(harness)).toBeUndefined();
+    await deliverOutput(props.controller as ReturnType<typeof wiredController>, '\u001b[?1000h');
+    expect(indicator(harness)).toBeUndefined();
+    capture.click();
+    harness.flush();
+    expect(indicator(harness)).toBeDefined();
+    props.mouseReporting = false;
+    harness.flush();
+    expect(indicator(harness)).toBeUndefined();
+    props.mouseReporting = true;
+    harness.flush();
+    expect(indicator(harness)).toBeDefined();
+    capture.click();
+    harness.flush();
+    expect(indicator(harness)).toBeUndefined();
+    capture.click();
+    harness.flush();
+    props.state = 'read-only';
+    harness.flush();
+    expect(indicator(harness)).toBeUndefined();
+  });
+
+  test('is never shown without the opt-in', async () => {
+    const { harness, controller } = await mounted({});
+    await deliverOutput(controller, '\u001b[?1000h');
+    button('Capture terminal keys', harness.target).click();
+    harness.flush();
+    expect(indicator(harness)).toBeUndefined();
+  });
+
+  test('describes the capture button while shown', async () => {
+    const { harness, controller } = await mounted({ mouseReporting: true });
+    await deliverOutput(controller, '\u001b[?1000h');
+    const capture = button('Capture terminal keys', harness.target);
+    expect(capture.hasAttribute('aria-describedby')).toBe(false);
+    capture.click();
+    harness.flush();
+    const badge = indicator(harness)!;
+    expect(capture.getAttribute('aria-describedby')).toBe(badge.id);
+    expect(badge.closest('[aria-live]')).toBeNull();
+  });
+
+  test('the program turning it on and off is announced once each, however often it repeats', async () => {
+    const { harness, controller, seen } = await mounted({ mouseReporting: true });
+    button('Capture terminal keys', harness.target).click();
+    harness.flush();
+    await waitFor(() => seen.length === 1, 'the capture announcement');
+    await deliverOutput(controller, '\u001b[?1000h');
+    harness.flush();
+    await waitFor(() => seen.length === 2, 'the mouse announcement');
+    await deliverOutput(controller, '\u001b[?1002h\u001b[?1006h\u001b[?1000h');
+    await deliverOutput(controller, '\u001b[?1000l\u001b[?1002l');
+    harness.flush();
+    await waitFor(() => seen.length === 3, 'the second mouse announcement');
+    await settle();
+    expect(seen).toEqual(['Terminal key capture on', 'Mouse reporting on', 'Mouse reporting off']);
+  });
+
+  test('capture alone turning it on is left to the capture announcement', async () => {
+    const { harness, controller, seen } = await mounted({ mouseReporting: true });
+    await deliverOutput(controller, '\u001b[?1000h');
+    button('Capture terminal keys', harness.target).click();
+    harness.flush();
+    await waitFor(() => seen.length === 1, 'the capture announcement');
+    await settle();
+    expect(seen).toEqual(['Terminal key capture on']);
+    expect(indicator(harness)).toBeDefined();
+  });
+});
+
 describe('authority follows the state', () => {
   test('a read-only terminal sends nothing for typing, paste or query replies', async () => {
     const controller = wiredController();

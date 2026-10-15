@@ -26,6 +26,7 @@ type Fixture = {
   settings: InputSettings;
   refusals: InputRefusal[];
   captures: boolean[];
+  mouse: Array<[boolean, boolean]>;
   reviews: Array<PasteReview | undefined>;
 };
 
@@ -37,6 +38,7 @@ function fixture(
     controller?: FakeInputController | undefined;
     withoutController?: boolean;
     isTerminalControl?: (node: Node) => boolean;
+    withMouseListener?: boolean;
   } = {},
 ): Fixture {
   const host = document.createElement('div');
@@ -50,6 +52,7 @@ function fixture(
   const settings = createInputSettings(options.settings);
   const refusals: InputRefusal[] = [];
   const captures: boolean[] = [];
+  const mouse: Array<[boolean, boolean]> = [];
   const reviews: Array<PasteReview | undefined> = [];
   const input = createTerminalInput({
     engine,
@@ -59,11 +62,12 @@ function fixture(
     ...(options.isTerminalControl === undefined
       ? {}
       : { isTerminalControl: options.isTerminalControl }),
+    onMouseReportingChange: (active, announce) => mouse.push([active, announce]),
     onCaptureChange: (captured) => captures.push(captured),
     onReview: (review) => reviews.push(review),
     onRefused: (refusal) => refusals.push(refusal),
   });
-  return { host, inner, engine, controller, input, settings, refusals, captures, reviews };
+  return { host, inner, engine, controller, input, settings, refusals, captures, mouse, reviews };
 }
 
 afterEach(() => {
@@ -208,6 +212,73 @@ describe('splitting input to the frame budget', () => {
     context.engine.report({ kind: 'binary', data: '\u0080\u0081\u0082' });
     expect(controller.sent).toEqual([]);
     expect(context.refusals).toEqual([{ reason: 'oversized' }]);
+  });
+});
+
+describe('the mouse reporting indicator', () => {
+  function ready() {
+    const context = fixture({ settings: { mouseReporting: true } });
+    context.inner.focus();
+    return context;
+  }
+
+  test('is reported only when opted in, tracked, captured and writable, announcing engine changes', () => {
+    const context = ready();
+    expect(context.mouse).toEqual([]);
+    context.input.capture();
+    expect(context.mouse).toEqual([]);
+    context.engine.setMouseTracking(true);
+    expect(context.mouse).toEqual([[true, true]]);
+    context.engine.setMouseTracking(false);
+    expect(context.mouse).toEqual([
+      [true, true],
+      [false, true],
+    ]);
+  });
+
+  test('capture changing it is reported without an announcement of its own', () => {
+    const context = ready();
+    context.engine.mouseTracking = true;
+    context.input.capture();
+    context.input.release();
+    expect(context.mouse).toEqual([
+      [true, false],
+      [false, false],
+    ]);
+  });
+
+  test('stays off without the opt-in, however the other conditions stand', () => {
+    const context = fixture();
+    context.inner.focus();
+    context.input.capture();
+    context.engine.setMouseTracking(true);
+    expect(context.mouse).toEqual([]);
+  });
+
+  test('ends quietly when the view stops taking input, and when disposed', () => {
+    const context = ready();
+    context.input.capture();
+    context.engine.setMouseTracking(true);
+    context.settings.writable = false;
+    context.input.refresh();
+    expect(context.mouse.at(-1)).toEqual([false, false]);
+    context.settings.writable = true;
+    context.input.refresh();
+    context.input.capture();
+    expect(context.mouse.at(-1)).toEqual([true, false]);
+    context.input.dispose();
+    expect(context.mouse.at(-1)).toEqual([false, false]);
+    context.engine.setMouseTracking(false);
+    expect(context.mouse).toHaveLength(4);
+  });
+
+  test('repeated mode changes that leave it unchanged report nothing', () => {
+    const context = ready();
+    context.input.capture();
+    context.engine.setMouseTracking(true);
+    context.engine.setMouseTracking(true);
+    context.input.refresh();
+    expect(context.mouse).toEqual([[true, true]]);
   });
 });
 
