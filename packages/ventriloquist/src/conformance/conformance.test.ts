@@ -1,8 +1,8 @@
 import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
-import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { release, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -112,6 +112,10 @@ const definitions = new Map(
 
 const scratch = mkdtempSync(join(tmpdir(), 'ventriloquist-conformance-'));
 const results = new Map<string, CellResult>();
+
+afterAll(() => {
+  rmSync(scratch, { recursive: true, force: true });
+});
 
 async function record(id: string, body: () => Promise<CellResult>): Promise<void> {
   let result: CellResult;
