@@ -169,7 +169,7 @@ The ProseMirror element keeps `role="textbox"` with `aria-multiline="true"`; the
 | Diagnostics summary | `${id}-placeholder-diagnostics` |
 | Instructions (visually hidden) | `${id}-placeholder-instructions` |
 
-The status region is always rendered and announces "N placeholders available", "1 placeholder available", "No matching placeholders", or the active option as "path, types, i of N". The instructions read "Type two opening braces to insert a placeholder. Use arrow keys and Enter to choose; Escape or Tab dismisses." The editor adds the instructions and diagnostics IDs to `aria-describedby` after any IDs you pass.
+The status region element is always rendered but is a live region (`role="status"`) only while completion is configured, and announces "N placeholders available", "1 placeholder available", "No matching placeholders", or the active option as "path, types, i of N". The instructions read "Type two opening braces to insert a placeholder. Use arrow keys and Enter to choose; Escape or Tab dismisses." The editor adds the instructions and diagnostics IDs to `aria-describedby` after any IDs you pass.
 
 ### Diagnostics
 

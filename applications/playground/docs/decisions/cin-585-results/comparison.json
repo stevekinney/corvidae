@@ -1,0 +1,149 @@
+{
+  "selected": false,
+  "comparisons": [
+    {
+      "key": "staticExportMilliseconds/cold",
+      "baseline": {
+        "samples": [604184.071, 558627.8905420001, 545317.4860419999],
+        "minimum": 545317.4860419999,
+        "median": 558627.8905420001,
+        "maximum": 604184.071
+      },
+      "candidate": {
+        "samples": [197359.76404200002, 210774.60341699992, 201677.1869160001],
+        "minimum": 197359.76404200002,
+        "median": 201677.1869160001,
+        "maximum": 210774.60341699992
+      },
+      "improved": true,
+      "withinBaseline": true
+    },
+    {
+      "key": "serverSpawnToReadyMilliseconds/cold",
+      "baseline": {
+        "samples": [123504.24570899969, 102619.2112499997, 107100.40675000008],
+        "minimum": 102619.2112499997,
+        "median": 107100.40675000008,
+        "maximum": 123504.24570899969
+      },
+      "candidate": {
+        "samples": [9138.504209000152, 8931.194584000157, 9101.523125000065],
+        "minimum": 8931.194584000157,
+        "median": 9101.523125000065,
+        "maximum": 9138.504209000152
+      },
+      "improved": true,
+      "withinBaseline": true
+    },
+    {
+      "key": "processTreePeakResidentBytes(static-export)/cold",
+      "baseline": {
+        "samples": [4781768704, 5105582080, 5398986752],
+        "minimum": 4781768704,
+        "median": 5105582080,
+        "maximum": 5398986752
+      },
+      "candidate": {
+        "samples": [5180080128, 5479825408, 4786978816],
+        "minimum": 4786978816,
+        "median": 5180080128,
+        "maximum": 5479825408
+      },
+      "improved": false,
+      "withinBaseline": true
+    },
+    {
+      "key": "processTreePeakResidentBytes(server-until-ready)/cold",
+      "baseline": {
+        "samples": [3633954816, 3626270720, 3671588864],
+        "minimum": 3626270720,
+        "median": 3633954816,
+        "maximum": 3671588864
+      },
+      "candidate": {
+        "samples": [3899932672, 3975200768, 4027334656],
+        "minimum": 3899932672,
+        "median": 3975200768,
+        "maximum": 4027334656
+      },
+      "improved": false,
+      "withinBaseline": false
+    },
+    {
+      "key": "staticExportMilliseconds/warm",
+      "baseline": {
+        "samples": [599970.276083, 583861.414166, 598738.6880409997],
+        "minimum": 583861.414166,
+        "median": 598738.6880409997,
+        "maximum": 599970.276083
+      },
+      "candidate": {
+        "samples": [198072.16504200004, 205962.76495799993, 206921.00116699992],
+        "minimum": 198072.16504200004,
+        "median": 205962.76495799993,
+        "maximum": 206921.00116699992
+      },
+      "improved": true,
+      "withinBaseline": true
+    },
+    {
+      "key": "serverSpawnToReadyMilliseconds/warm",
+      "baseline": {
+        "samples": [103750.46891600033, 103214.50995799992, 101654.49758299999],
+        "minimum": 101654.49758299999,
+        "median": 103214.50995799992,
+        "maximum": 103750.46891600033
+      },
+      "candidate": {
+        "samples": [8843.409874999896, 9050.605874999892, 8831.767624999862],
+        "minimum": 8831.767624999862,
+        "median": 8843.409874999896,
+        "maximum": 9050.605874999892
+      },
+      "improved": true,
+      "withinBaseline": true
+    },
+    {
+      "key": "processTreePeakResidentBytes(static-export)/warm",
+      "baseline": {
+        "samples": [4900503552, 5186322432, 4799021056],
+        "minimum": 4799021056,
+        "median": 4900503552,
+        "maximum": 5186322432
+      },
+      "candidate": {
+        "samples": [5017190400, 5611864064, 5421006848],
+        "minimum": 5017190400,
+        "median": 5421006848,
+        "maximum": 5611864064
+      },
+      "improved": false,
+      "withinBaseline": false
+    },
+    {
+      "key": "processTreePeakResidentBytes(server-until-ready)/warm",
+      "baseline": {
+        "samples": [3617046528, 3561226240, 4029202432],
+        "minimum": 3561226240,
+        "median": 3617046528,
+        "maximum": 4029202432
+      },
+      "candidate": {
+        "samples": [3790176256, 4045799424, 3986309120],
+        "minimum": 3790176256,
+        "median": 3986309120,
+        "maximum": 4045799424
+      },
+      "improved": false,
+      "withinBaseline": true
+    }
+  ],
+  "reasons": [
+    "staticExportMilliseconds/cold: candidate maximum 210774.60341699992 is below baseline minimum 545317.4860419999.",
+    "serverSpawnToReadyMilliseconds/cold: candidate maximum 9138.504209000152 is below baseline minimum 102619.2112499997.",
+    "staticExportMilliseconds/warm: candidate maximum 206921.00116699992 is below baseline minimum 583861.414166.",
+    "serverSpawnToReadyMilliseconds/warm: candidate maximum 9050.605874999892 is below baseline minimum 101654.49758299999.",
+    "processTreePeakResidentBytes(server-until-ready)/cold: candidate median 3975200768 exceeds baseline maximum 3671588864.",
+    "processTreePeakResidentBytes(static-export)/warm: candidate median 5421006848 exceeds baseline maximum 5186322432."
+  ]
+}

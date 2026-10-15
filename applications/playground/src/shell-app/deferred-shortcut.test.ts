@@ -8,7 +8,11 @@ async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-function setup(options: { hydrate: () => Promise<void>; attachOnHydrate?: boolean }) {
+function setup(options: {
+  hydrate: () => Promise<void>;
+  attachOnHydrate?: boolean;
+  signal?: AbortSignal;
+}) {
   const target = new EventTarget() as unknown as Window;
   const errors: unknown[] = [];
   let activations = 0;
@@ -26,6 +30,7 @@ function setup(options: { hydrate: () => Promise<void>; attachOnHydrate?: boolea
       activations += 1;
     },
     onError: (error) => errors.push(error),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   const press = (init: KeyboardEventInit = { key: 'k', metaKey: true }) => {
     const event = new KeyboardEvent('keydown', { cancelable: true, ...init });
@@ -136,5 +141,24 @@ describe('attachDeferredShortcut', () => {
     await settle();
     expect(hydrationCalls()).toBe(2);
     expect(activations()).toBe(1);
+  });
+
+  it('does not activate when the page was swapped out while the shell hydrated', async () => {
+    const controller = new AbortController();
+    let finish!: () => void;
+    const { press, activations } = setup({
+      hydrate: () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+      signal: controller.signal,
+    });
+
+    press();
+    controller.abort();
+    finish();
+    await settle();
+
+    expect(activations()).toBe(0);
   });
 });

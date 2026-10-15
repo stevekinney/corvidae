@@ -27,6 +27,27 @@ type CoverageAllowance = {
   requireUncoveredLines?: boolean;
 };
 
+/**
+ * The `workflow-event-feed.ts` lines Bun leaves uncovered on a given host. Linux on x64 misses
+ * line 398 (the returned `subscribe` reference); macOS and linux/arm64 (the Dev Container on
+ * Apple silicon, COR-1379) cover it, and the allowance's `requireUncoveredLines` would fail
+ * them if it still named the line.
+ */
+export function workflowEventFeedUncoveredLines(platform: string, architecture: string): number[] {
+  return platform === 'darwin' || architecture === 'arm64' ? [] : [398];
+}
+
+/**
+ * What `scripts/benchmarks/memory-footprint.ts` leaves uncovered on a given platform: nothing on
+ * macOS, and its macOS-only `proc_pid_rusage` FFI path everywhere else.
+ */
+export function memoryFootprintUncoveredOutsideDarwin(
+  platform: string,
+): Pick<CoverageAllowance, 'functions' | 'lines'> {
+  if (platform === 'darwin') return { lines: new Set() };
+  return { functions: 3, lines: new Set([36, 37, 38, 39, 40, 41, 45, 46, 47, 54, 79]) };
+}
+
 type DocumentedCoverageAllowance = CoverageAllowance & { reason: string };
 
 type CoverageAllowanceEntry = readonly [path: string, allowance: DocumentedCoverageAllowance];
@@ -670,7 +691,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Bun maps the returned subscribe reference and no-op dispose body inconsistently across platforms even though both are exercised by the feed tests.',
-        lines: new Set(process.platform === 'darwin' ? [] : [398]),
+        lines: new Set(workflowEventFeedUncoveredLines(process.platform, process.arch)),
         requireUncoveredLines: true,
       },
     ],
@@ -1776,6 +1797,15 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
       reason:
         "Every identifiable function in this file — echoWorkflow's generator (closed by get-task-diagnostics.test-support.test.ts, COR-1283), createEngine, ThrowingScanStorage's async-iterator chain, queuedFixture/leasedFixture/terminalFixture/deadLetteredFixture, putLedgerRecord, runDiagnostics (including its `now: () => 10_000` callback, confirmed via `options.now?.()` at get-task-diagnostics.ts:196), and diagnosticsValue — is called by the existing test suite (get-task-diagnostics.test.ts, get-task-diagnostics-filters.test.ts, and the new test-support test), matching this file's 100% line coverage (LF/LH 152/152). Directly re-verified with standalone console.log-instrumented calls that ThrowingScanStorage's scan actually throws through runDiagnostics and that the `now` callback's result flows into a successful diagnostics response, ruling out the two most structurally likely trivial-closure candidates. Bun's LCOV FNF for this file (16) still exceeds every function this elimination could identify by source inspection (12), the same kind of undercount already documented elsewhere in this registry as a known Bun LCOV limitation (see pre-commit.ts and check-revision-keyed-lookups.ts below: \"Bun's LCOV omits per-function FN:/FNDA: detail\") — unlike the two allowances directly above this one, no single function could be pinned down as the specific one FNH doesn't count, only that one residual gap remains after exhausting every identifiable call site.",
       functions: 1,
+    },
+  ],
+  [
+    'scripts/benchmarks/memory-footprint.ts',
+    {
+      reason:
+        'The `proc_pid_rusage` FFI path (opening libSystem, caching the symbol, calling it, and the darwin branch of readMemoryFootprint) exists only on macOS, where memory-footprint.test.ts covers it. On Linux there is no libSystem to open, so those lines and three functions cannot run; COR-1379 found the gap in the linux/arm64 Dev Container.',
+      ...memoryFootprintUncoveredOutsideDarwin(process.platform),
+      requireUncoveredLines: true,
     },
   ],
 ]);

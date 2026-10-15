@@ -1858,8 +1858,8 @@ describe('changeset emission through the sync (COR-1433)', async () => {
     rethrow(outcomeChangesetDelivery));
 });
 
-describe('newestMirrorProvenance (COR-1433)', () => {
-  test('strict mode throws when the squash fallback cannot fetch the pull request, and lenient mode does not', async () => {
+describe('newestMirrorProvenance (COR-1433)', async () => {
+  const strictModeThrowsWhenSquashFallbackOutcome = await outcomeOf(async () => {
     const root = await mkdtemp(join(tmpdir(), 'mirror-strict-provenance-'));
     try {
       await git(root, 'init', '--quiet', '--initial-branch=main');
@@ -1875,6 +1875,8 @@ describe('newestMirrorProvenance (COR-1433)', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  test('strict mode throws when the squash fallback cannot fetch the pull request, and lenient mode does not', () =>
+    rethrow(strictModeThrowsWhenSquashFallbackOutcome));
 });
 
 describe('the private-workspace check', () => {
@@ -2001,7 +2003,7 @@ describe('the foreign-commit guard net-effect rule', async () => {
   test('judges a run of edits without spawning git per commit or per repeated path', () =>
     rethrow(spawnCountOutcome));
 
-  test('accepts a foreign edit that a later commit restores to the mirror bytes', async () => {
+  const restoredEditOutcome = await outcomeOf(async () => {
     await withRepository(async (root, ownership) => {
       await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
       await commitMirror(root);
@@ -2012,8 +2014,10 @@ describe('the foreign-commit guard net-effect rule', async () => {
       expect(await subjects(root, ownership)).toEqual([]);
     });
   });
+  test('accepts a foreign edit that a later commit restores to the mirror bytes', () =>
+    rethrow(restoredEditOutcome));
 
-  test('keeps a foreign edit foreign while HEAD still differs from the mirror', async () => {
+  const unrestoredEditOutcome = await outcomeOf(async () => {
     await withRepository(async (root, ownership) => {
       await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
       await commitMirror(root);
@@ -2024,6 +2028,8 @@ describe('the foreign-commit guard net-effect rule', async () => {
       expect(await subjects(root, ownership)).toEqual(['Edit source again', 'Edit source']);
     });
   });
+  test('keeps a foreign edit foreign while HEAD still differs from the mirror', () =>
+    rethrow(unrestoredEditOutcome));
 
   // Real local remotes, clones, installs and packs (or a fresh `bun -e` child) are the behavior; they run at module scope, off the per-test clock.
   const outcome30 = await outcomeOf(async () => {
@@ -2153,7 +2159,7 @@ describe('the foreign-commit guard net-effect rule', async () => {
       rethrow(outcome37));
   });
 
-  test('accepts a mode-only change that a later commit reverts', async () => {
+  const revertedModeChangeOutcome = await outcomeOf(async () => {
     await withRepository(async (root, ownership) => {
       await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
       await commitMirror(root);
@@ -2165,8 +2171,10 @@ describe('the foreign-commit guard net-effect rule', async () => {
       expect(await subjects(root, ownership)).toEqual([]);
     });
   });
+  test('accepts a mode-only change that a later commit reverts', () =>
+    rethrow(revertedModeChangeOutcome));
 
-  test('accepts a transform-owned manifest key change that a later commit reverts', async () => {
+  const revertedManifestKeyOutcome = await outcomeOf(async () => {
     const original = { name: '@lostgradient/weft', version: '0.27.0', files: ['dist'] };
     const changed = { ...original, files: ['dist', '!src/**'] };
     await withRepository(
@@ -2190,8 +2198,10 @@ describe('the foreign-commit guard net-effect rule', async () => {
       { generatedManifest: original },
     );
   });
+  test('accepts a transform-owned manifest key change that a later commit reverts', () =>
+    rethrow(revertedManifestKeyOutcome));
 
-  test('judges each commit by its own paths when only the second restores a shared path', async () => {
+  const sharedPathRestoreOutcome = await outcomeOf(async () => {
     await withRepository(async (root, ownership) => {
       await Bun.write(join(root, sourcePath), 'export const value = 0;\n');
       await Bun.write(join(root, otherPath), 'export const other = 0;\n');
@@ -2204,8 +2214,10 @@ describe('the foreign-commit guard net-effect rule', async () => {
       expect(await subjects(root, ownership)).toEqual(['Edit both']);
     });
   });
+  test('judges each commit by its own paths when only the second restores a shared path', () =>
+    rethrow(sharedPathRestoreOutcome));
 
-  test('accepts a foreign edit whose path ends at this sync emission rather than the mirror bytes', async () => {
+  const emissionEndpointOutcome = await outcomeOf(async () => {
     const emission = 'export const value = 2;\n';
     await withRepository(
       async (root, ownership) => {
@@ -2224,4 +2236,6 @@ describe('the foreign-commit guard net-effect rule', async () => {
       { generatedFiles: new Map([[sourcePath, { contents: emission, executable: false }]]) },
     );
   });
+  test('accepts a foreign edit whose path ends at this sync emission rather than the mirror bytes', () =>
+    rethrow(emissionEndpointOutcome));
 });

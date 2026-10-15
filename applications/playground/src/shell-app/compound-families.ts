@@ -105,3 +105,20 @@ export const CONTEXT_REQUIRED_PARTS: ReadonlySet<string> = new Set([
   'table-header-cell',
   'tree-item',
 ]);
+
+/**
+ * Compound parts whose root element is a list item (`<li>`), so they are only valid inside the
+ * parent's list. They read context through the optional accessors and bare-mount without
+ * throwing, but a bare `<li>` with no `<ul>`/`<ol>` is invalid markup that assistive technology
+ * cannot place (axe `listitem`). Like {@link CONTEXT_REQUIRED_PARTS}, they skip the bare mount and
+ * take the compose-guidance branch that links to the root's page, which shows the real list.
+ *
+ * Kept in step with the sources by `compound-families.test.ts`, in both directions.
+ */
+export const LIST_ITEM_PARTS: ReadonlySet<string> = new Set([
+  'feed-boundary',
+  'feed-event',
+  'grid-list-item',
+  'side-navigation-group',
+  'side-navigation-item',
+]);

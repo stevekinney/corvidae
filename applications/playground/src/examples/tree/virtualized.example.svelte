@@ -17,7 +17,7 @@
   aria-label="Virtualized files"
   {items}
   virtualized
-  virtualizationEstimatedRowHeight={32}
+  virtualizationEstimatedRowHeight={36}
   virtualizationHeight={320}
   style="border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md);"
 />

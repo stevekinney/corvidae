@@ -1,0 +1,957 @@
+{
+  "schema": "cin-585-playground-measurements/1",
+  "label": "diagnostic-rebuild",
+  "startedAt": "2026-10-14T08:38:33.746Z",
+  "finishedAt": "2026-10-14T08:40:46.043Z",
+  "environment": {
+    "sourceSha": "591bf0e0ffa060f788a516a8f955f7f65f49e728",
+    "dirtyPaths": [],
+    "untrackedPaths": [],
+    "workingTreeDiffSha256": null,
+    "lockfileSha256": "727e5e3f8e0cf7de983a273e4583a57913dc0d35fd73d005cf17f757e73f2a33",
+    "versions": {
+      "bun": "1.4.2",
+      "svelte": "5.57.0",
+      "playwright": "1.63.0"
+    },
+    "operatingSystem": {
+      "platform": "darwin",
+      "release": "27.0.0",
+      "architecture": "arm64",
+      "cpuModel": "Apple M1 Max"
+    },
+    "logicalProcessors": 10,
+    "totalMemoryBytes": 68719476736,
+    "containerMemoryLimit": "none detected (no /sys/fs/cgroup/memory.max on darwin)"
+  },
+  "routeInventory": [],
+  "definitions": {
+    "cold": "This checkout's applications/playground/.tmp removed and BUN_RUNTIME_TRANSPILER_CACHE_PATH set to a new empty run-owned directory; the exporter clears build/ itself; no OS cache flush.",
+    "warm": "Immediately after the cold sample, a new process with the same transpiler cache directory and the same disk inputs.",
+    "childMaxResidentBytes": "Bun.Subprocess.resourceUsage().maxRSS, bytes on every platform: one process's own high-water mark.",
+    "treePeakResidentBytes": "Largest sum of ps rss (KiB x 1024) across the child and its descendants, sampled every 100 ms by one observer for baseline and candidate.",
+    "spawnToReadyMilliseconds": "Spawn of bun src/playground-server.ts to the first GET /ready answering 200 \"ready\", polled every 100 ms.",
+    "jsHeap": "Chromium JS heap through CDP Runtime.getHeapUsage after HeapProfiler.collectGarbage; never summed with RSS.",
+    "hostLoad": "uptime load averages and os.availableParallelism() captured before and after every sample."
+  },
+  "prerequisites": [],
+  "staticExport": [],
+  "serverReady": [],
+  "playwright": [],
+  "probes": {
+    "rebuild": {
+      "loadWait": {
+        "thresholdOneMinute": 30,
+        "waitedMilliseconds": 5.187708000000001,
+        "checks": 1,
+        "loadAtStart": {
+          "capturedAt": "2026-10-14T08:38:33.851Z",
+          "uptime": "2:38  up 12 days, 10:03, 1 user, load averages: 9.73 11.84 13.87",
+          "loadAverages": {
+            "oneMinute": 9.73,
+            "fiveMinutes": 11.84,
+            "fifteenMinutes": 13.87
+          },
+          "logicalProcessors": 10
+        }
+      },
+      "child": {
+        "command": [
+          "bun",
+          "scripts/measure-playground-probe.ts",
+          "rebuild",
+          "--cycles",
+          "20",
+          "--output",
+          "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/diagnostic-rebuild-2026-10-14T08-38-33-744Z/probe-rebuild.json",
+          "--port",
+          "5610"
+        ],
+        "exitCode": 0,
+        "signalCode": null,
+        "wallMilliseconds": 132186.92575000002,
+        "childMaxResidentBytes": 4079288320,
+        "userCpuMicroseconds": 216103245,
+        "systemCpuMicroseconds": 185523599,
+        "tree": {
+          "intervalMilliseconds": 100,
+          "sampleCount": 1303,
+          "skippedTicks": 0,
+          "peakResidentBytes": 4801249280,
+          "peakProcessCount": 2,
+          "observedPids": [
+            41972, 44726, 44777, 44835, 44862, 44918, 44984, 45042, 45095, 45148, 45207, 45239,
+            45289, 45346, 45398, 45453, 45511, 45571, 45639, 45684, 45738, 45793, 45857
+          ]
+        },
+        "survivingPids": [],
+        "logPath": "/Users/stevekinney/.agent-worktrees/claude/cin-585-measurement/tmp/playground-measurements/diagnostic-rebuild-2026-10-14T08-38-33-744Z/probe-rebuild.log"
+      },
+      "result": {
+        "probe": "rebuild",
+        "component": "button",
+        "scenario": "measure-rebuild-41972",
+        "before": {
+          "server": {
+            "page": {
+              "entryPointers": 181,
+              "artifacts": 2613,
+              "artifactBytes": 365888178
+            },
+            "shell": {
+              "entryPointers": 1,
+              "artifacts": 35,
+              "artifactBytes": 4106878
+            },
+            "scenario": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "fixture": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "totalArtifacts": 2648,
+            "totalArtifactBytes": 369995056,
+            "inFlightBuilds": 0,
+            "cachedManifests": 1,
+            "liveReloadSubscribers": 0
+          },
+          "probeProcess": {
+            "residentBytes": 4047765504,
+            "heapUsedBytes": 752313391
+          }
+        },
+        "cycles": [
+          {
+            "cycle": 1,
+            "generation": 2,
+            "invalidatedMilliseconds": 121.6131660000101,
+            "rebuiltAndServedMilliseconds": 1731.782124999998,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4056055808,
+              "heapUsedBytes": 753595589
+            }
+          },
+          {
+            "cycle": 2,
+            "generation": 3,
+            "invalidatedMilliseconds": 121.59291700000176,
+            "rebuiltAndServedMilliseconds": 1661.7381250000035,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4063936512,
+              "heapUsedBytes": 754128565
+            }
+          },
+          {
+            "cycle": 3,
+            "generation": 4,
+            "invalidatedMilliseconds": 120.1037079999951,
+            "rebuiltAndServedMilliseconds": 1672.8818329999922,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4064280576,
+              "heapUsedBytes": 754254053
+            }
+          },
+          {
+            "cycle": 4,
+            "generation": 5,
+            "invalidatedMilliseconds": 119.07425000000512,
+            "rebuiltAndServedMilliseconds": 1659.7350000000006,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4067082240,
+              "heapUsedBytes": 754363831
+            }
+          },
+          {
+            "cycle": 5,
+            "generation": 6,
+            "invalidatedMilliseconds": 122.90270900000178,
+            "rebuiltAndServedMilliseconds": 1663.6840839999932,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4067590144,
+              "heapUsedBytes": 754436458
+            }
+          },
+          {
+            "cycle": 6,
+            "generation": 7,
+            "invalidatedMilliseconds": 119.54454099999566,
+            "rebuiltAndServedMilliseconds": 1691.028290999995,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4068458496,
+              "heapUsedBytes": 754428134
+            }
+          },
+          {
+            "cycle": 7,
+            "generation": 8,
+            "invalidatedMilliseconds": 119.95991700000013,
+            "rebuiltAndServedMilliseconds": 1700.2660830000095,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4073029632,
+              "heapUsedBytes": 754525601
+            }
+          },
+          {
+            "cycle": 8,
+            "generation": 9,
+            "invalidatedMilliseconds": 111.97662499999569,
+            "rebuiltAndServedMilliseconds": 1671.2729579999868,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4074225664,
+              "heapUsedBytes": 754404365
+            }
+          },
+          {
+            "cycle": 9,
+            "generation": 10,
+            "invalidatedMilliseconds": 120.86770800000522,
+            "rebuiltAndServedMilliseconds": 1796.361208000002,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888178
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995056,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4074438656,
+              "heapUsedBytes": 754107397
+            }
+          },
+          {
+            "cycle": 10,
+            "generation": 11,
+            "invalidatedMilliseconds": 120.08816700000898,
+            "rebuiltAndServedMilliseconds": 1691.8207919999986,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4074536960,
+              "heapUsedBytes": 753518477
+            }
+          },
+          {
+            "cycle": 11,
+            "generation": 12,
+            "invalidatedMilliseconds": 121.41629200000898,
+            "rebuiltAndServedMilliseconds": 1678.7134579999984,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4075110400,
+              "heapUsedBytes": 751974126
+            }
+          },
+          {
+            "cycle": 12,
+            "generation": 13,
+            "invalidatedMilliseconds": 120.58920800000487,
+            "rebuiltAndServedMilliseconds": 1657.1289580000011,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078305280,
+              "heapUsedBytes": 752175551
+            }
+          },
+          {
+            "cycle": 13,
+            "generation": 14,
+            "invalidatedMilliseconds": 120.13841699999466,
+            "rebuiltAndServedMilliseconds": 1667.1567919999943,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078403584,
+              "heapUsedBytes": 752273385
+            }
+          },
+          {
+            "cycle": 14,
+            "generation": 15,
+            "invalidatedMilliseconds": 121.6127919999999,
+            "rebuiltAndServedMilliseconds": 1701.8505420000001,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078403584,
+              "heapUsedBytes": 752261576
+            }
+          },
+          {
+            "cycle": 15,
+            "generation": 16,
+            "invalidatedMilliseconds": 120.01791699999012,
+            "rebuiltAndServedMilliseconds": 1675.275874999992,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078485504,
+              "heapUsedBytes": 752461688
+            }
+          },
+          {
+            "cycle": 16,
+            "generation": 17,
+            "invalidatedMilliseconds": 121.10533400000713,
+            "rebuiltAndServedMilliseconds": 1671.8540000000066,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078518272,
+              "heapUsedBytes": 752511758
+            }
+          },
+          {
+            "cycle": 17,
+            "generation": 18,
+            "invalidatedMilliseconds": 120.66104099999939,
+            "rebuiltAndServedMilliseconds": 1691.6758750000008,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078518272,
+              "heapUsedBytes": 752596952
+            }
+          },
+          {
+            "cycle": 18,
+            "generation": 19,
+            "invalidatedMilliseconds": 121.04700000000594,
+            "rebuiltAndServedMilliseconds": 1690.9942080000037,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078583808,
+              "heapUsedBytes": 752768027
+            }
+          },
+          {
+            "cycle": 19,
+            "generation": 20,
+            "invalidatedMilliseconds": 119.56008300000394,
+            "rebuiltAndServedMilliseconds": 1646.1471670000028,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078927872,
+              "heapUsedBytes": 752952756
+            }
+          },
+          {
+            "cycle": 20,
+            "generation": 21,
+            "invalidatedMilliseconds": 121.71800000000803,
+            "rebuiltAndServedMilliseconds": 1724.16004100001,
+            "server": {
+              "page": {
+                "entryPointers": 181,
+                "artifacts": 2613,
+                "artifactBytes": 365888180
+              },
+              "shell": {
+                "entryPointers": 1,
+                "artifacts": 35,
+                "artifactBytes": 4106878
+              },
+              "scenario": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "fixture": {
+                "entryPointers": 0,
+                "artifacts": 0,
+                "artifactBytes": 0
+              },
+              "totalArtifacts": 2648,
+              "totalArtifactBytes": 369995058,
+              "inFlightBuilds": 0,
+              "cachedManifests": 1,
+              "liveReloadSubscribers": 0
+            },
+            "probeProcess": {
+              "residentBytes": 4078927872,
+              "heapUsedBytes": 752683191
+            }
+          }
+        ],
+        "afterFixtureRemoved": {
+          "server": {
+            "page": {
+              "entryPointers": 181,
+              "artifacts": 2612,
+              "artifactBytes": 365887055
+            },
+            "shell": {
+              "entryPointers": 1,
+              "artifacts": 35,
+              "artifactBytes": 4106878
+            },
+            "scenario": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "fixture": {
+              "entryPointers": 0,
+              "artifacts": 0,
+              "artifactBytes": 0
+            },
+            "totalArtifacts": 2647,
+            "totalArtifactBytes": 369993933,
+            "inFlightBuilds": 0,
+            "cachedManifests": 1,
+            "liveReloadSubscribers": 0
+          },
+          "probeProcess": {
+            "residentBytes": 4079157248,
+            "heapUsedBytes": 753110978
+          }
+        },
+        "growth": {
+          "pageArtifacts": {
+            "series": [
+              2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613, 2613,
+              2613, 2613, 2613, 2613, 2613, 2613
+            ],
+            "classification": "stable"
+          },
+          "pageArtifactBytes": {
+            "series": [
+              365888178, 365888178, 365888178, 365888178, 365888178, 365888178, 365888178,
+              365888178, 365888178, 365888180, 365888180, 365888180, 365888180, 365888180,
+              365888180, 365888180, 365888180, 365888180, 365888180, 365888180
+            ],
+            "classification": "monotonic-growth"
+          },
+          "totalArtifacts": {
+            "series": [
+              2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648, 2648,
+              2648, 2648, 2648, 2648, 2648, 2648
+            ],
+            "classification": "stable"
+          },
+          "totalArtifactBytes": {
+            "series": [
+              369995056, 369995056, 369995056, 369995056, 369995056, 369995056, 369995056,
+              369995056, 369995056, 369995058, 369995058, 369995058, 369995058, 369995058,
+              369995058, 369995058, 369995058, 369995058, 369995058, 369995058
+            ],
+            "classification": "monotonic-growth"
+          },
+          "inFlightBuilds": {
+            "series": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            "classification": "stable"
+          },
+          "probeResidentBytes": {
+            "series": [
+              4056055808, 4063936512, 4064280576, 4067082240, 4067590144, 4068458496, 4073029632,
+              4074225664, 4074438656, 4074536960, 4075110400, 4078305280, 4078403584, 4078403584,
+              4078485504, 4078518272, 4078518272, 4078583808, 4078927872, 4078927872
+            ],
+            "classification": "monotonic-growth"
+          },
+          "probeHeapUsedBytes": {
+            "series": [
+              753595589, 754128565, 754254053, 754363831, 754436458, 754428134, 754525601,
+              754404365, 754107397, 753518477, 751974126, 752175551, 752273385, 752261576,
+              752461688, 752511758, 752596952, 752768027, 752952756, 752683191
+            ],
+            "classification": "fluctuating"
+          }
+        }
+      }
+    }
+  }
+}

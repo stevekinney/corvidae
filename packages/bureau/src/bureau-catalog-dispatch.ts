@@ -6,6 +6,7 @@ import type {
   AgentRunContext,
   ClosedOptions,
   DefinitionResolvingAgentWithResolver,
+  GuardrailsOptions,
   RunnableAgent,
   RunOptions,
 } from '@lostgradient/operative';
@@ -17,6 +18,7 @@ import {
   hasDefinitionResolver,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   readGenerationProfile,
+  resolvesOwnGuardrails,
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
@@ -52,6 +54,38 @@ export interface CatalogDispatcherDependencies {
    * policy exactly as boot recovery would for the same cancelled workflow.
    */
   readonly onDurableRunAborted: (runId: string, reason: string) => void;
+  /**
+   * COR-1367 — the deprecated `BureauOptions.guardrails`, handed down to each
+   * catalog agent as its inherited policy. See {@link catalogRunGuardrailsContext}.
+   */
+  readonly guardrails?: GuardrailsOptions | false | undefined;
+}
+
+/**
+ * COR-1367 — the guardrail half of a catalog run's `AgentRunContext`.
+ *
+ * An agent that resolves its own guardrails (`createAgent`, marked by
+ * `OPERATIVE_RESOLVES_GUARDRAILS`) is handed the bureau-level policy as its
+ * inherited one: omitted means the agent falls back to the AB-40 preset
+ * itself, `false` opts an undeclared agent out, and a configuration replaces
+ * the preset for it. The agent's own `guardrails` declaration, when it has
+ * one, wins over all three. Bureau then registers no guardrail invariant for
+ * the run (`createBureauInvariantHooks(…, { agentResolvesGuardrails: true })`),
+ * so the policy runs exactly once.
+ *
+ * Any other agent — a hand-written `RunnableAgent`, or a `createLazyAgent`
+ * wrapper whose underlying agent is unknown until it loads — keeps the
+ * behaviour it always had: Bureau registers the policy in its own invariant
+ * tier, and the context carries `false` so a `createAgent` behind a lazy
+ * wrapper does not add the preset a second time underneath it. Such an inner
+ * agent's own explicit declaration still runs, in addition to Bureau's.
+ */
+export function catalogRunGuardrailsContext(
+  agent: object,
+  guardrails: GuardrailsOptions | false | undefined,
+): Pick<AgentRunContext, 'inheritedGuardrails'> {
+  if (!resolvesOwnGuardrails(agent)) return { inheritedGuardrails: false };
+  return guardrails === undefined ? {} : { inheritedGuardrails: guardrails };
 }
 
 /**
@@ -168,6 +202,7 @@ export function createCatalogDispatcher({
   validateAgentRunInput,
   validateBureauRunOptions,
   onDurableRunAborted,
+  guardrails,
 }: CatalogDispatcherDependencies): {
   runAgent: (
     name: string,
@@ -370,6 +405,9 @@ export function createCatalogDispatcher({
      * AB-240's separation is untouched: this adds a hook tier, not a provider, a
      * toolbox or a generate.
      */
+    // COR-1367 — read once: the agent applies its own guardrails, so Bureau's
+    // tier carries none for it (see `inheritedGuardrailsContext`).
+    const agentResolvesGuardrails = resolvesOwnGuardrails(agent);
     const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
       const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
       return {
@@ -380,6 +418,7 @@ export function createCatalogDispatcher({
         hooks: mergeHookRegistries(
           runtime.createBureauInvariantHooks(
             goalAttempt === undefined ? undefined : { ...goalAttempt, runId },
+            { agentResolvesGuardrails },
           ),
           withRuntime.hooks,
         ),
@@ -728,7 +767,13 @@ export function createCatalogDispatcher({
     }
     validateAgentRunInput(input);
 
-    const { context, principal } = prepareCatalogRunContext(name, runOptions);
+    const prepared = prepareCatalogRunContext(name, runOptions);
+    const principal = prepared.principal;
+    // COR-1367 — the agent's inherited guardrail policy travels in its context.
+    const context: AgentRunContext = {
+      ...prepared.context,
+      ...catalogRunGuardrailsContext(agent, guardrails),
+    };
 
     const hasResolver = hasDefinitionResolver(agent);
     if (runtime.durable && hasResolver) {
@@ -792,6 +837,7 @@ export function createCatalogDispatcher({
       agentName: start.agentName,
       ...start.context,
       ...(start.principal === undefined ? {} : { principal: start.principal }),
+      ...catalogRunGuardrailsContext(agent, guardrails),
     };
     const hasResolver = hasDefinitionResolver(agent);
     if (runtime.durable && hasResolver) {
@@ -851,6 +897,7 @@ export function createCatalogDispatcher({
     const context: AgentRunContext = {
       agentName: start.agentName,
       ...(start.principal === undefined ? {} : { principal: start.principal }),
+      ...catalogRunGuardrailsContext(agent, guardrails),
     };
     let resolveStart!: () => void;
     let rejectStart!: (error: unknown) => void;
@@ -962,7 +1009,12 @@ export function createCatalogDispatcher({
       // Bureau first, so it wins `runFirst` and — being pinned last — still
       // wins the waterfall. Only the invariants that close over nothing
       // run-specific travel here; see `createBureauInvariantHooks`.
-      hooks: mergeHookRegistries(runtime.createBureauInvariantHooks(), resolvedOptions.hooks),
+      hooks: mergeHookRegistries(
+        runtime.createBureauInvariantHooks(undefined, {
+          agentResolvesGuardrails: resolvesOwnGuardrails(agent),
+        }),
+        resolvedOptions.hooks,
+      ),
     };
     const hasOutput = merged.output !== undefined;
 

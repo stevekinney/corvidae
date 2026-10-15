@@ -4,8 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 import {
   BUILD_PIPELINE_MODULE_NAMES,
+  PROCESS_OWNING_MODULE_NAMES,
   createTestProcessPlan,
+  discoverTestFiles,
   requiresFreshProcess,
+  selectLaneFiles,
   type PlaygroundTestFile,
 } from './run-tests.ts';
 
@@ -28,6 +31,16 @@ describe('playground test process isolation', () => {
       "import { buildDocumentationStylesheet } from './documentation-styles.ts';",
     ],
     ['src/direct-build.test.ts', 'await Bun.build(options);'],
+    ['scripts/spawns.test.ts', "const child = Bun.spawn(['true']);"],
+    ['scripts/spawns-sync.test.ts', "Bun.spawnSync(['git', 'status']);"],
+    [
+      'scripts/gate-lifecycle.test.ts',
+      "import { ProcessOwner } from './static-playground-processes.ts';",
+    ],
+    [
+      'scripts/gate.test.ts',
+      "import { runStaticPlaygroundGate } from './check-static-playground.ts';",
+    ],
     ['src/dynamic-server.test.ts', "const server = await import('./playground-server.ts');"],
     ['src/side-effect-server.test.ts', "import './playground-server.ts';"],
   ])('isolates %s in a fresh process', (path, source) => {
@@ -90,5 +103,60 @@ describe('playground test process isolation', () => {
     expect(callers.length).toBeGreaterThan(0);
     const listed: readonly string[] = BUILD_PIPELINE_MODULE_NAMES;
     expect(callers.filter((moduleName) => !listed.includes(moduleName)).toSorted()).toEqual([]);
+  });
+
+  it('runs the stand-in lifecycle cases by default but never the real-Chromium check', async () => {
+    const testFiles = await discoverTestFiles();
+    const paths = testFiles.map((testFile) => testFile.path);
+
+    expect(paths).toContain('scripts/static-playground-lifecycle.test.ts');
+    expect(paths).toContain('scripts/check-static-playground.test.ts');
+    expect(
+      await Bun.file(
+        join(import.meta.dirname, 'static-playground-browser-lifecycle.check.ts'),
+      ).exists(),
+    ).toBe(true);
+    expect(paths.filter((path) => !path.endsWith('.test.ts'))).toEqual([]);
+    expect(paths.filter((path) => path.includes('browser-lifecycle'))).toEqual([]);
+  });
+
+  it('isolates every test that spawns processes or imports a process-owning module', async () => {
+    const testFiles = await discoverTestFiles();
+    // This file names those calls and modules only inside string fixtures, which the AST
+    // classifier correctly ignores; the text match here would not.
+    const spawning = testFiles.filter(
+      (testFile) =>
+        testFile.path !== 'scripts/run-tests.test.ts' &&
+        (/\bBun\.spawn(?:Sync)?\(/.test(testFile.source) ||
+          PROCESS_OWNING_MODULE_NAMES.some((moduleName) => testFile.source.includes(moduleName))),
+    );
+
+    expect(spawning.map((testFile) => testFile.path)).toContain(
+      'scripts/static-playground-lifecycle.test.ts',
+    );
+    expect(
+      spawning.filter((testFile) => !requiresFreshProcess(testFile)).map((t) => t.path),
+    ).toEqual([]);
+  });
+});
+
+describe('playground test lanes', () => {
+  const files = [
+    testFile('src/analyze.test.ts'),
+    testFile('src/analyze.slow.test.ts'),
+    testFile('scripts/run-tests.test.ts'),
+  ];
+
+  it('keeps slow files out of the fast lane', () => {
+    expect(selectLaneFiles(files, 'fast').map(({ path }) => path)).toEqual([
+      'src/analyze.test.ts',
+      'scripts/run-tests.test.ts',
+    ]);
+  });
+
+  it('runs only slow files in the slow lane', () => {
+    expect(selectLaneFiles(files, 'slow').map(({ path }) => path)).toEqual([
+      'src/analyze.slow.test.ts',
+    ]);
   });
 });
