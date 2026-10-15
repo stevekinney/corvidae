@@ -27,6 +27,27 @@ type CoverageAllowance = {
   requireUncoveredLines?: boolean;
 };
 
+/**
+ * The `workflow-event-feed.ts` lines Bun leaves uncovered on a given host. Linux on x64 misses
+ * line 398 (the returned `subscribe` reference); macOS and linux/arm64 (the Dev Container on
+ * Apple silicon, COR-1379) cover it, and the allowance's `requireUncoveredLines` would fail
+ * them if it still named the line.
+ */
+export function workflowEventFeedUncoveredLines(platform: string, architecture: string): number[] {
+  return platform === 'darwin' || architecture === 'arm64' ? [] : [398];
+}
+
+/**
+ * What `scripts/benchmarks/memory-footprint.ts` leaves uncovered on a given platform: nothing on
+ * macOS, and its macOS-only `proc_pid_rusage` FFI path everywhere else.
+ */
+export function memoryFootprintUncoveredOutsideDarwin(
+  platform: string,
+): Pick<CoverageAllowance, 'functions' | 'lines'> {
+  if (platform === 'darwin') return { lines: new Set() };
+  return { functions: 3, lines: new Set([36, 37, 38, 39, 40, 41, 45, 46, 47, 54, 79]) };
+}
+
 type DocumentedCoverageAllowance = CoverageAllowance & { reason: string };
 
 type CoverageAllowanceEntry = readonly [path: string, allowance: DocumentedCoverageAllowance];
@@ -670,7 +691,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Bun maps the returned subscribe reference and no-op dispose body inconsistently across platforms even though both are exercised by the feed tests.',
-        lines: new Set(process.platform === 'darwin' ? [] : [398]),
+        lines: new Set(workflowEventFeedUncoveredLines(process.platform, process.arch)),
         requireUncoveredLines: true,
       },
     ],
@@ -1084,21 +1105,21 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
   'AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS',
   [
     [
-      'src/cli/conformance.ts',
+      'src/conformance/run-conformance.ts',
       {
         reason:
-          'Process-entry and failure-exit behavior runs in child processes whose hits are not attributed to the parent Bun LCOV report. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption): upstream’s coordinates no longer matched corvidae’s file. Realigned again (COR-235) after the process-lifecycle and wait/observation primitives (`waitForCondition`, `startWorker`/`stopWorker`, the worker-heartbeat/idle/registration waits, and the ledger readers) moved out to `conformance-harness.ts`, which carries its own allowance below — this file now has 100% function coverage and only the three defensive dispatch/cancel/shutdown failure throws remain uncovered. Realigned a third time (still COR-235) after adding the `waitForReassignmentPastFirstAttempt` import shifted the graceful-shutdown throw from line 216 to 217. Realigned a fourth time after `createRegisterCheck` (unit-tested directly, so fully covered) was added above the dispatch helper, moving the same three throws from 63/136/217 to 91/158/239.',
-        lines: new Set([91, 158, 239]),
+          'The shared conformance check sequence (COR-1365 moved it here from `src/cli/conformance.ts`, which carried this allowance at lines 91/158/239). Only the three defensive dispatch/cancel/shutdown failure throws remain uncovered: a sandbox server that refuses a dispatch, refuses to record a cancellation it was just handed, or loses the worker it just registered is not something any conformance fixture can produce.',
+        lines: new Set([131, 220, 301]),
         requireUncoveredLines: true,
       },
     ],
     [
-      'src/cli/conformance-harness.ts',
+      'src/conformance/harness.ts',
       {
         reason:
-          "Process lifecycle and observation primitives extracted from `conformance.ts` (COR-235, to keep that file under the line-count ceiling). Same rationale as that file previously carried: `waitForCondition`'s catch clause is never exercised because no predicate in the passing conformance fixtures throws, and the disconnected-worker/registry-empty throws in `waitForRegisteredWorker`/`waitForReplacementWorker`/`waitForWorkerHeartbeat` are defensive failure paths no passing conformance run reaches.",
+          "Process lifecycle and observation primitives for the shared conformance check sequence (moved from `src/cli/conformance-harness.ts` by COR-1365; its import block grew by six lines, so every line below shifted by six). `waitForCondition`'s catch clause is never exercised because no predicate in the passing conformance fixtures throws, and the disconnected-worker/registry-empty throws in `waitForRegisteredWorker`/`waitForReplacementWorker`/`waitForWorkerHeartbeat` are defensive failure paths no passing conformance run reaches.",
         functions: 1,
-        lines: new Set([45, 99, 121, 134, 144, 161]),
+        lines: new Set([51, 105, 127, 140, 150, 167]),
         requireUncoveredLines: true,
       },
     ],
@@ -1606,13 +1627,21 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       // +3 below it. Re-derived from a fresh coverage/lcov.info, which reports exactly the same 25
       // missed lines and one missed function: 164-167 -> 165-168, 260-268 -> 261-269,
       // 291 -> 292, 492-498 -> 496-502, 700/701/704/705 -> 704/705/708/709.
+      //
+      // Realigned again for COR-1366 (task result delivery history), from a fresh
+      // coverage/lcov.info on the rebased tree. The same five branches remain; two grew because
+      // they now record a delivery entry. The oversized-result persistence-failure branch also
+      // records a `commit-rejected` delivery before logging (165-168 -> 224-232), and the
+      // revision-mismatch branch now goes through the shared `rejectTaskResult` helper that
+      // sends the protocolError and records the rejection (261-269 -> 331-340). The rest only
+      // shifted: 292 -> 363, 496-502 -> 569-575, 704/705/708/709 -> 777/778/781/782.
       {
         reason:
-          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (165-168, 292), a revision-mismatch rejection unreachable without fabricating a non-resend (261-269), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (496-502), and the closed WorkerToServerMessage union default branch (704, 705, 708, 709).",
+          "Defensive error-logging branches for a storage write or fallback-path failure that no current test forces (224-232, 363), a revision-mismatch rejection unreachable without fabricating a non-resend (331-340), a heartbeat-retry reassignment race reachable only during withRetry's real backoff sleep (569-575), and the closed WorkerToServerMessage union default branch (777, 778, 781, 782).",
         functions: 1,
         lines: new Set([
-          165, 166, 167, 168, 261, 262, 263, 264, 265, 266, 267, 268, 269, 292, 496, 497, 498, 499,
-          500, 501, 502, 704, 705, 708, 709,
+          224, 225, 226, 227, 228, 229, 230, 231, 232, 331, 332, 333, 334, 335, 336, 337, 338, 339,
+          340, 363, 569, 570, 571, 572, 573, 574, 575, 777, 778, 781, 782,
         ]),
         requireUncoveredLines: true,
       },
@@ -1768,6 +1797,15 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
       reason:
         "Every identifiable function in this file — echoWorkflow's generator (closed by get-task-diagnostics.test-support.test.ts, COR-1283), createEngine, ThrowingScanStorage's async-iterator chain, queuedFixture/leasedFixture/terminalFixture/deadLetteredFixture, putLedgerRecord, runDiagnostics (including its `now: () => 10_000` callback, confirmed via `options.now?.()` at get-task-diagnostics.ts:196), and diagnosticsValue — is called by the existing test suite (get-task-diagnostics.test.ts, get-task-diagnostics-filters.test.ts, and the new test-support test), matching this file's 100% line coverage (LF/LH 152/152). Directly re-verified with standalone console.log-instrumented calls that ThrowingScanStorage's scan actually throws through runDiagnostics and that the `now` callback's result flows into a successful diagnostics response, ruling out the two most structurally likely trivial-closure candidates. Bun's LCOV FNF for this file (16) still exceeds every function this elimination could identify by source inspection (12), the same kind of undercount already documented elsewhere in this registry as a known Bun LCOV limitation (see pre-commit.ts and check-revision-keyed-lookups.ts below: \"Bun's LCOV omits per-function FN:/FNDA: detail\") — unlike the two allowances directly above this one, no single function could be pinned down as the specific one FNH doesn't count, only that one residual gap remains after exhausting every identifiable call site.",
       functions: 1,
+    },
+  ],
+  [
+    'scripts/benchmarks/memory-footprint.ts',
+    {
+      reason:
+        'The `proc_pid_rusage` FFI path (opening libSystem, caching the symbol, calling it, and the darwin branch of readMemoryFootprint) exists only on macOS, where memory-footprint.test.ts covers it. On Linux there is no libSystem to open, so those lines and three functions cannot run; COR-1379 found the gap in the linux/arm64 Dev Container.',
+      ...memoryFootprintUncoveredOutsideDarwin(process.platform),
+      requireUncoveredLines: true,
     },
   ],
 ]);

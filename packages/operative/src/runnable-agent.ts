@@ -15,6 +15,7 @@ import type { AgentRun, RunEvent } from './agent-run';
 import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
 import type { AgentGenerationProfile } from './generation-profile';
+import type { GuardrailsOptions } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import type { RunOptions } from './types';
@@ -93,6 +94,17 @@ export interface AgentRunContext {
    * with `readParentSignals(context, contract)`.
    */
   parentSignals?: ChildSignalPort | undefined;
+  /**
+   * COR-1367 — the guardrail policy a host hands down to an agent that
+   * declares none of its own. A `createAgent` agent resolves its run's
+   * guardrails as `options.guardrails ?? inheritedGuardrails ?? <AB-40
+   * preset>`, so `false` here opts an undeclared agent out and a
+   * configuration here replaces the preset for it. An agent that declared
+   * `guardrails` ignores this field. Bureau supplies it from the deprecated
+   * `BureauOptions.guardrails` during the transition, only to agents that
+   * carry `OPERATIVE_RESOLVES_GUARDRAILS`.
+   */
+  inheritedGuardrails?: GuardrailsOptions | false | undefined;
 }
 
 /**

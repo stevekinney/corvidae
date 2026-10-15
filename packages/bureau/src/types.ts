@@ -564,22 +564,25 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Pass a `GuardrailsOptions` to override the preset entirely (input/output
    * detectors, taint, `mode`), or `false` to opt out of guardrails altogether.
    *
-   * @deprecated Agent-owned. AB-15's end state moves this per-agent onto
-   * `createAgent`, dispatched through {@link Bureau.run}; that field has
-   * not landed on `CreateAgentOptions` yet, which is part of why this stays
-   * deprecated rather than removed — see AB-242's decision record and the
-   * removal issue it names (AB-352).
+   * @deprecated Agent-owned. Use `createAgent`'s `guardrails` (COR-1367),
+   * dispatched through {@link Bureau.run}. During the transition a catalog
+   * agent that declares no `guardrails` of its own inherits this value
+   * through `AgentRunContext.inheritedGuardrails` (a configuration replaces
+   * the preset for it, `false` opts it out); an agent's own declaration
+   * always wins. Removing this field leaves an undeclared agent on the
+   * AB-40 preset, so the removal is not a behavior change.
    */
   guardrails?: GuardrailsOptions | false;
   identity?: IdentityConfiguration;
   /** Host-owned authority check used before durable recovery resumes user code. */
   requestAuthorityValidator?: (context: ToolRequestContext) => boolean | Promise<boolean>;
   /**
-   * @deprecated Agent-owned. AB-15's end state moves this per-agent onto
-   * `createAgent`, dispatched through {@link Bureau.run}; that field has
-   * not landed on `CreateAgentOptions` yet, which is part of why this stays
-   * deprecated rather than removed — see AB-242's decision record and the
-   * removal issue it names (AB-352).
+   * Skills for the runs this bureau composes itself (`createRun`). Never
+   * applied to a catalog agent dispatched through {@link Bureau.run}.
+   *
+   * @deprecated Agent-owned. Use `createAgent`'s `skills` (COR-1367); a
+   * catalog agent offers only the catalog it declares, and inherits nothing
+   * from this field.
    */
   skills?: SkillRuntimeConfiguration;
   streaming?: StreamingConfiguration;

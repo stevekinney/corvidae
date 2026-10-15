@@ -5,6 +5,7 @@
  * @internal
  */
 
+import type { ConformanceTargetRunner } from '../conformance/targets.ts';
 import type { Engine } from '../core/engine.ts';
 import { getEnginePayloadSizeMaxBytes } from '../core/engine/payload-size-policy.ts';
 import { createMcpSessionManager } from '../mcp/session.ts';
@@ -184,6 +185,8 @@ export type ServerHolder = { current: ReturnType<typeof Bun.serve> | null };
 /** `ServeOptions` with `prometheusExporter` guaranteed present. */
 export type ResolvedServeOptions = ServeOptions & {
   prometheusExporter: NonNullable<ServeOptions['prometheusExporter']>;
+  /** Built by `serve()` from `conformanceTargets`; see `conformance/targets.ts`. */
+  conformanceTargetRunner?: ConformanceTargetRunner;
 };
 
 /**
@@ -313,6 +316,7 @@ export function buildServerContext(
         ? {}
         : { workerStartOverrideSigningSecret: options.workerStartOverrideSigningSecret }),
       ...(options.operations === undefined ? {} : { additionalOperations: options.operations }),
+      conformanceTargetRunner: options.conformanceTargetRunner,
     }),
     liveRestBindings: createLiveRestBindings(),
     supportedAuthenticationSchemes: deriveSupportedOpenApiSecuritySchemes(options.auth),

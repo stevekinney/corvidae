@@ -20,7 +20,7 @@ import {
   classifyErrorFinishReason,
   serializeError,
 } from './run-workflow-result';
-import { runStepMemo } from './run-workflow-step';
+import { conversationAfterStep, runStepMemo } from './run-workflow-step';
 import { isScheduledAgentRunInput, type ScheduledAgentRunInput } from './schedule-agent';
 import { createStorageActivities } from './storage-activities';
 import type { PendingHumanWait, PendingWakeup, RunCursor } from './types';
@@ -180,6 +180,14 @@ export function createRunWorkflow(
           return seeded.snapshot();
         })();
         let snapshot = seededConversation;
+        // COR-1376 — the snapshot the latest step memo produced. A step whose
+        // input is that snapshot records its conversation as a delta from it:
+        // on replay the same snapshot is rebuilt from the same recorded results,
+        // so the delta applies to an identical base. Any other input (the seeded
+        // conversation, a continuation message appended after a park) is built
+        // outside a memo with fresh ids and timestamps on every replay, so that
+        // step records its conversation whole.
+        let lastStepSnapshot: typeof snapshot | undefined;
         // COR-104: the steering floor is captured in the RESULT of this first
         // `saveConversation` activity, not in a new replay slot: Weft keys
         // operations by position, so adding a step ahead of this one would shift
@@ -267,9 +275,11 @@ export function createRunWorkflow(
               stepIndex,
               carriedAccumulators,
               runId,
+              { delta: snapshot === lastStepSnapshot },
             );
 
-            snapshot = stepResult.conversationSnapshot;
+            snapshot = conversationAfterStep(snapshot, stepResult);
+            lastStepSnapshot = snapshot;
 
             // Accumulate park requests from this step's memoized result. Last-write-
             // wins across steps, matching the in-process tool semantics (a later
@@ -296,7 +306,14 @@ export function createRunWorkflow(
             // === Durable commits — all plain data. Order: transcript, then the
             // step record (if any), then the advanced cursor last, so a crash
             // between commits never advances the cursor past un-persisted state. ===
-            yield* ctx.run('saveConversation', { runId, snapshot });
+            // A step that recorded a delta saves the same delta: the transcript
+            // the run saved last is that delta's base, the previous step's output.
+            yield* ctx.run(
+              'saveConversation',
+              stepResult.conversationDelta === undefined
+                ? { runId, snapshot }
+                : { runId, delta: stepResult.conversationDelta },
+            );
             if (stepResult.record !== null) {
               yield* ctx.run('recordStep', { runId, record: stepResult.record });
             }

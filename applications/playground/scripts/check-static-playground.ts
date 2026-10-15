@@ -304,7 +304,16 @@ async function serverDeathOf(
   settled: Promise<number>,
   abort: AbortController | undefined,
 ): Promise<never> {
-  await server.subprocess.exited;
+  // The watcher retires once the guarded work settles or the runner is interrupted: after either,
+  // the server only exits because the runner stops it at teardown, and that is not a death.
+  const retired = Promise.race([settled, state.interrupted.catch(() => undefined)]).then(
+    () => 'retired' as const,
+  );
+  const ended = await Promise.race([
+    server.subprocess.exited.then(() => 'exited' as const),
+    retired,
+  ]);
+  if (ended === 'retired') return new Promise<never>(() => {});
   if (abort !== undefined) {
     abort.abort(new Error('the static server died'));
     await exitedWithin({ exited: settled }, ABORTED_WORK_MILLISECONDS);
