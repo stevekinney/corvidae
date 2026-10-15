@@ -104,6 +104,7 @@
     </div>
     <FileUpload
       id="theme-import-file"
+      aria-label="Theme file (JSON)"
       accept=".json,application/json"
       title="Choose a theme file"
       description="JSON up to 1 MiB"

@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import { bus, tab } from './theme-builder-test-support.ts';
+import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
+import { bus, evaluator, tab } from './theme-builder-test-support.ts';
+import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
 import { THEME_RECORD_VERSION } from './theme-draft-record.ts';
 import { domError, memoryThemeStore } from './theme-draft-test-support.ts';
+import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
 const px = (value: number) => ({ $type: 'dimension', $value: { value, unit: 'px' } });
 const setRadius = (value: number, scope: 'shared' | 'dark' = 'shared') => ({
@@ -173,6 +176,63 @@ describe('history and reset', () => {
     expect(workbench.properties[0]?.value).toBe('9px');
     expect(workbench.context.colorMode).toBe('dark');
     expect(controller.history!.entries).toHaveLength(entries);
+  });
+});
+
+describe('context changes made before the previous one has landed', () => {
+  // The runtime evaluates in a worker, so a context change lands a moment after it is made.
+  // A second change made in that moment must build on the first, not on the applied context.
+  test('two quick changes land as one combined context', async () => {
+    const workbench = new ThemeWorkbenchState();
+    const slow: ThemeEvaluator = {
+      async evaluate(source, revision, context) {
+        await new Promise((resolve) => setTimeout(resolve, 15));
+        return evaluator.evaluate(source, revision, context);
+      },
+    };
+    const controller = new ThemeBuilderController({
+      workbench,
+      evaluator: slow,
+      persistence: null,
+      newId: () => 'theme-quick',
+      now: () => '2026-10-14T00:00:00.000Z',
+    });
+    await controller.start();
+
+    workbench.setContext({ ...workbench.requestedContext, colorMode: 'dark' });
+    workbench.setContext({ ...workbench.requestedContext, motion: 'reduced' });
+    expect(workbench.requestedContext).toEqual({ colorMode: 'dark', motion: 'reduced' });
+    for (let attempt = 0; attempt < 100 && workbench.context.motion !== 'reduced'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(workbench.context).toEqual({ colorMode: 'dark', motion: 'reduced' });
+    expect(workbench.requestedContext).toEqual(workbench.context);
+  });
+
+  test('a change that cannot be evaluated gives the request back to the applied context', async () => {
+    const workbench = new ThemeWorkbenchState();
+    const failing: ThemeEvaluator = {
+      async evaluate(source, revision, context) {
+        if (context.startsWith('dark')) {
+          return { revision, context, ok: false, diagnostics: [] };
+        }
+        return evaluator.evaluate(source, revision, context);
+      },
+    };
+    const controller = new ThemeBuilderController({
+      workbench,
+      evaluator: failing,
+      persistence: null,
+      newId: () => 'theme-failing',
+      now: () => '2026-10-14T00:00:00.000Z',
+    });
+    await controller.start();
+    workbench.setContext({ colorMode: 'dark', motion: 'default' });
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(workbench.context.colorMode).toBe('light');
+    expect(workbench.requestedContext.colorMode).toBe('light');
   });
 });
 

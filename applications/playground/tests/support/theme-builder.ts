@@ -50,6 +50,17 @@ export async function selectContext(page: Page, context: PreviewContext): Promis
   // Exact: editor fields are labeled with token names, such as "Motion slow value".
   await page.getByLabel('Color mode', { exact: true }).selectOption(context.colorMode);
   await page.getByLabel('Motion', { exact: true }).selectOption(context.motion);
+  // The runtime evaluates off the main thread, so the frame takes the new context a moment
+  // after the selection. Wait for the frame itself, never assume the change is synchronous.
+  const frame = await previewFrame(page);
+  await expect
+    .poll(() =>
+      frame.evaluate(() => [
+        document.documentElement.dataset['theme'],
+        document.documentElement.getAttribute('data-cinder-motion'),
+      ]),
+    )
+    .toEqual([context.colorMode, context.motion]);
 }
 
 /** A state the builder's own host would never send, posted from the builder window. */

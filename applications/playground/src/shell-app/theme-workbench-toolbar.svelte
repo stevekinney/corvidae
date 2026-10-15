@@ -67,11 +67,11 @@
         id="theme-builder-color-mode"
         label="Color mode"
         options={colorModeOptions}
-        value={workbench.context.colorMode}
+        value={workbench.requestedContext.colorMode}
         onchange={(event) =>
           workbench.setContext({
             colorMode: event.currentTarget.value as ThemePreviewColorMode,
-            motion: workbench.context.motion,
+            motion: workbench.requestedContext.motion,
           })}
       />
     </div>
@@ -80,10 +80,10 @@
         id="theme-builder-motion"
         label="Motion"
         options={motionOptions}
-        value={workbench.context.motion}
+        value={workbench.requestedContext.motion}
         onchange={(event) =>
           workbench.setContext({
-            colorMode: workbench.context.colorMode,
+            colorMode: workbench.requestedContext.colorMode,
             motion: event.currentTarget.value as ThemePreviewMotion,
           })}
       />

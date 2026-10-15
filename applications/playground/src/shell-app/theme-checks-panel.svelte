@@ -33,7 +33,7 @@
   import ThemeRemediationControl from './theme-remediation-control.svelte';
   import { diagnosticSubject, findingSubject } from './theme-remediation-subject.ts';
   import { ruleById } from './theme-check-rules.ts';
-  import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
+  import { defaultThemeEvaluator } from './theme-runtime-evaluator.ts';
   import type { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
   type Props = {
@@ -42,7 +42,7 @@
     /** Supplies the evaluations; the real runtime unless a test passes another. */
     evaluator?: ThemeEvaluator;
   };
-  let { workbench, controller, evaluator = createRuntimeEvaluator() }: Props = $props();
+  let { workbench, controller, evaluator = defaultThemeEvaluator() }: Props = $props();
 
   /** The evaluation target fixes are computed for; sRGB unless the author picks Display P3. */
   let gamut = $state<OutputGamut>('srgb');

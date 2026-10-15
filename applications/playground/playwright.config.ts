@@ -14,7 +14,8 @@ delete process.env['NO_COLOR'];
  * documentation bundle before it answers `/ready`, which takes minutes on a cold start, so
  * its start-up timeout is measured, not arbitrary. `PLAYGROUND_BROWSER_REUSE=1` reuses a
  * server that is already running on the port. `PLAYGROUND_BROWSER_STATIC=1` adds a second
- * project that exports the site and serves the exported files.
+ * project that exports the site and serves the exported files; it runs every theme builder
+ * suite, so the builder is proven on the production build as well as in development.
  */
 const environment = browserTestEnvironment();
 const devPort = Number(environment.browserPort ?? 54231);
@@ -61,7 +62,7 @@ export default defineConfig({
       ? [
           {
             name: 'static',
-            testMatch: '**/theme-builder-preview.playwright.ts',
+            testMatch: '**/theme-builder-*.playwright.ts',
             use: { ...devices['Desktop Chrome'], baseURL: staticOrigin },
           },
         ]

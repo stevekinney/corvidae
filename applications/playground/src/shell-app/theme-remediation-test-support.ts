@@ -5,6 +5,8 @@
  * that finds one finding in a report.
  */
 
+import { test as bunTest } from 'bun:test';
+
 import { cinderThemeBase } from './theme-builder-base.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import type { ReportRecord } from './theme-check-types.ts';
@@ -30,6 +32,37 @@ export const memoEvaluator: ThemeEvaluator = {
     return pending;
   },
 };
+
+type Scenario = () => Promise<unknown>;
+
+/**
+ * Tests whose bodies run the token runtime on states no earlier test visited (COR-1427): each
+ * is registered through `scenario`, and `warmScenarios` runs every body once at module scope,
+ * outside Bun's 5 s per-test budget, so the content-keyed evaluator already holds every state
+ * the real run visits and the body replays from memory. A failure while warming is left for
+ * the registered test to report. `before` and `after` stand in for the file's per-test hooks.
+ */
+export function warmedTests(hooks: { before?: () => void; after?: () => void } = {}) {
+  const bodies: Scenario[] = [];
+  return {
+    scenario(name: string, body: Scenario): void {
+      bodies.push(body);
+      bunTest(name, body);
+    },
+    async warmScenarios(): Promise<void> {
+      for (const body of bodies) {
+        hooks.before?.();
+        try {
+          await body();
+        } catch {
+          // The registered test reports it.
+        } finally {
+          hooks.after?.();
+        }
+      }
+    },
+  };
+}
 
 export const shippedEnvelope = createEnvelope('shipped', 'Cinder default', cinderThemeBase());
 

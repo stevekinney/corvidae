@@ -15,12 +15,12 @@
     takeExportSnapshot,
     type ExportSnapshot,
   } from './theme-export-snapshot.ts';
-  import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
+  import { defaultThemeEvaluator } from './theme-runtime-evaluator.ts';
 
   type Props = { controller: ThemeBuilderController; open: boolean; onClose: () => void };
   let { controller, open, onClose }: Props = $props();
 
-  const evaluator = createRuntimeEvaluator();
+  const evaluator = defaultThemeEvaluator();
   let snapshot = $state.raw<ExportSnapshot | null>(null);
   let acknowledged = $state(false);
   let status = $state('');

@@ -28,6 +28,7 @@ export const THEME_BUILDER_BUNDLE_PUBLIC_PATH = '/theme-builder-bundle/';
 export const THEME_BUILDER_ENTRY_SOURCES = {
   'theme-builder': '../../src/shell-app/theme-builder-entry.ts',
   'theme-preview': '../../src/shell-app/theme-preview-entry.ts',
+  'theme-runtime-worker': '../../src/shell-app/theme-runtime-worker.ts',
 } as const;
 
 export type ThemeBuilderEntryName = keyof typeof THEME_BUILDER_ENTRY_SOURCES;

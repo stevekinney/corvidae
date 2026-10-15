@@ -23,20 +23,35 @@ import {
   valueFromFields,
   type FoundationFields,
 } from './theme-foundation-values.ts';
-import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
+import { memoEvaluator, warmedTests } from './theme-remediation-test-support.ts';
 import { literalValueOf } from './theme-token-edit.ts';
 import { editorForToken } from './theme-token-editors.ts';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
 setupHappyDom();
 
-const evaluator = createRuntimeEvaluator();
+// A content-keyed evaluator: a state the runtime has evaluated once is answered from memory.
+const evaluator = memoEvaluator;
 // Validate the shipped corpus once, outside any test's time budget; later evaluations reuse it.
 const baseline = createEnvelope('warmup', 'Warm-up', cinderThemeBase());
 await evaluator.evaluate(baseline, 0, 'light/default');
 
 let mounted: ReturnType<typeof mount> | null = null;
 let target: HTMLElement;
+
+// The tests that edit and reset many tokens evaluate a new state per commit. They are warmed
+// at module scope (the end of this file), so Bun's 5 s budget never covers a cold evaluation.
+const { scenario, warmScenarios } = warmedTests({
+  before() {
+    target = document.createElement('div');
+    document.body.append(target);
+  },
+  after() {
+    if (mounted !== null) void unmount(mounted);
+    mounted = null;
+    target.remove();
+  },
+});
 
 beforeEach(() => {
   target = document.createElement('div');
@@ -287,30 +302,33 @@ describe('environment-dependent fonts', () => {
 });
 
 describe('the mounted editors', () => {
-  test('a dimension editor labels every control with the token and context and edits with units', async () => {
-    const { controller, row } = await open('space.2');
-    for (const element of target.querySelectorAll<HTMLElement>('input, select')) {
-      const label = target.querySelector(`label[for="${element.id}"]`)?.textContent ?? '';
-      if (element.id.endsWith('-scope') || element.id.endsWith('-locked')) continue;
-      expect(label).toContain(row.path);
-      expect(label).toContain('shared');
-    }
-    expect(input('-amount').value).toBe('0.5');
-    await typeInto(input('-amount'), '12');
-    const unit = target.querySelector<HTMLSelectElement>('select[id$="-unit"]')!;
-    unit.value = 'px';
-    unit.dispatchEvent(new Event('change', { bubbles: true }));
-    await settle();
-    await click('Apply');
-    expect(shared(controller)).toEqual({
-      space: { '2': { $type: 'dimension', $value: { value: 12, unit: 'px' } } },
-    });
-    expect(controller.draftValues.get(row.cssProperty)).toBe('12px');
-    expect(target.querySelector('[data-testid="scale-preview"]')).not.toBeNull();
-    expect(
-      target.querySelector('[data-testid="scale-preview"] [aria-current="true"]'),
-    ).not.toBeNull();
-  });
+  scenario(
+    'a dimension editor labels every control with the token and context and edits with units',
+    async () => {
+      const { controller, row } = await open('space.2');
+      for (const element of target.querySelectorAll<HTMLElement>('input, select')) {
+        const label = target.querySelector(`label[for="${element.id}"]`)?.textContent ?? '';
+        if (element.id.endsWith('-scope') || element.id.endsWith('-locked')) continue;
+        expect(label).toContain(row.path);
+        expect(label).toContain('shared');
+      }
+      expect(input('-amount').value).toBe('0.5');
+      await typeInto(input('-amount'), '12');
+      const unit = target.querySelector<HTMLSelectElement>('select[id$="-unit"]')!;
+      unit.value = 'px';
+      unit.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle();
+      await click('Apply');
+      expect(shared(controller)).toEqual({
+        space: { '2': { $type: 'dimension', $value: { value: 12, unit: 'px' } } },
+      });
+      expect(controller.draftValues.get(row.cssProperty)).toBe('12px');
+      expect(target.querySelector('[data-testid="scale-preview"]')).not.toBeNull();
+      expect(
+        target.querySelector('[data-testid="scale-preview"] [aria-current="true"]'),
+      ).not.toBeNull();
+    },
+  );
 
   test('invalid or partial input stays visible, is flagged, and never moves the committed preview', async () => {
     const { controller, workbench } = await open('space.2');
@@ -392,37 +410,43 @@ describe('the mounted editors', () => {
     expect(css(controller, 'motion.fast')).toBe('77ms');
   });
 
-  test('a reduced-motion edit stays in the reduced override and leaves other contexts alone', async () => {
-    const { controller } = await open('motion.slow', { colorMode: 'light', motion: 'reduced' });
-    const scope = target.querySelector<HTMLSelectElement>('select[id$="-scope"]')!;
-    scope.value = 'motion-mode';
-    scope.dispatchEvent(new Event('change', { bubbles: true }));
-    await settle();
-    await typeInto(input('-amount'), '5');
-    await click('Apply');
-    expect(controller.draft!.envelope.overrides.reduced).toMatchObject({ motion: { slow: {} } });
-    expect(controller.draft!.envelope.overrides.forcedReduced).toEqual({});
-    expect(shared(controller)).toEqual({});
-    expect(css(controller, 'motion.slow')).toBe('5ms');
-    await controller.switchContext({ colorMode: 'light', motion: 'default' });
-    expect(css(controller, 'motion.slow')).toBe('400ms');
-  });
+  scenario(
+    'a reduced-motion edit stays in the reduced override and leaves other contexts alone',
+    async () => {
+      const { controller } = await open('motion.slow', { colorMode: 'light', motion: 'reduced' });
+      const scope = target.querySelector<HTMLSelectElement>('select[id$="-scope"]')!;
+      scope.value = 'motion-mode';
+      scope.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle();
+      await typeInto(input('-amount'), '5');
+      await click('Apply');
+      expect(controller.draft!.envelope.overrides.reduced).toMatchObject({ motion: { slow: {} } });
+      expect(controller.draft!.envelope.overrides.forcedReduced).toEqual({});
+      expect(shared(controller)).toEqual({});
+      expect(css(controller, 'motion.slow')).toBe('5ms');
+      await controller.switchContext({ colorMode: 'light', motion: 'default' });
+      expect(css(controller, 'motion.slow')).toBe('400ms');
+    },
+  );
 
-  test('an alias is replaced only by an explicit action, and reset removes the override', async () => {
-    const { controller } = await open('gap.stack');
-    expect(target.querySelector('[data-testid="alias-note"]')).not.toBeNull();
-    expect(target.querySelector('input[id$="-amount"]')).toBeNull();
-    await click('Replace with literal');
-    expect(entries(controller)).toBe(0);
-    expect(target.querySelector('[data-testid="impact-list"]')).not.toBeNull();
-    await applyImpact();
-    expect(entries(controller)).toBe(1);
-    expect(input('-amount').value).not.toBe('');
-    await click('Reset field');
-    expect(shared(controller)).toEqual({});
-  });
+  scenario(
+    'an alias is replaced only by an explicit action, and reset removes the override',
+    async () => {
+      const { controller } = await open('gap.stack');
+      expect(target.querySelector('[data-testid="alias-note"]')).not.toBeNull();
+      expect(target.querySelector('input[id$="-amount"]')).toBeNull();
+      await click('Replace with literal');
+      expect(entries(controller)).toBe(0);
+      expect(target.querySelector('[data-testid="impact-list"]')).not.toBeNull();
+      await applyImpact();
+      expect(entries(controller)).toBe(1);
+      expect(input('-amount').value).not.toBe('');
+      await click('Reset field');
+      expect(shared(controller)).toEqual({});
+    },
+  );
 
-  test('a stale detach proposal cannot be applied', async () => {
+  scenario('a stale detach proposal cannot be applied', async () => {
     const { controller } = await open('gap.stack');
     await click('Replace with literal');
     expect(impactApply()!.disabled).toBe(false);
@@ -441,35 +465,38 @@ describe('the mounted editors', () => {
     expect(impactApply()!.disabled).toBe(true);
   });
 
-  test('reset at field, category and theme works for each family, and is undoable', async () => {
-    const { controller } = await open('opacity.disabled');
-    for (const [path, value] of [
-      ['opacity.disabled', { $type: 'number', $value: 0.2 }],
-      ['font.bold', { $type: 'fontWeight', $value: 600 }],
-      ['motion.fast', { $type: 'duration', $value: { value: 50, unit: 'ms' } }],
-      ['ease.standard', { $type: 'cubicBezier', $value: [0.1, 0.1, 0.1, 0.1] }],
-      ['space.2', { $type: 'dimension', $value: { value: 1, unit: 'rem' } }],
-      ['font.mono', { $type: 'fontFamily', $value: ['monospace'] }],
-    ] as Array<[string, JsonObject]>) {
-      await controller.commit({
-        kind: 'edit',
-        label: path,
-        edit: { kind: 'set-override', scope: 'shared', path, node: value },
-      });
-    }
-    expect(controller.changedPaths.size).toBe(6);
-    await controller.reset({ kind: 'category', prefix: 'motion' }, 'Reset motion');
-    expect(controller.changedPaths.has('motion.fast')).toBe(false);
-    expect(controller.changedPaths.has('font.bold')).toBe(true);
-    await controller.reset({ kind: 'field', path: 'font.bold' }, 'Reset font.bold');
-    expect(controller.changedPaths.has('font.bold')).toBe(false);
-    await controller.reset({ kind: 'theme' }, 'Reset theme');
-    expect(controller.changedPaths.size).toBe(0);
-    await controller.undo();
-    expect(controller.changedPaths.size).toBeGreaterThan(0);
-  });
+  scenario(
+    'reset at field, category and theme works for each family, and is undoable',
+    async () => {
+      const { controller } = await open('opacity.disabled');
+      for (const [path, value] of [
+        ['opacity.disabled', { $type: 'number', $value: 0.2 }],
+        ['font.bold', { $type: 'fontWeight', $value: 600 }],
+        ['motion.fast', { $type: 'duration', $value: { value: 50, unit: 'ms' } }],
+        ['ease.standard', { $type: 'cubicBezier', $value: [0.1, 0.1, 0.1, 0.1] }],
+        ['space.2', { $type: 'dimension', $value: { value: 1, unit: 'rem' } }],
+        ['font.mono', { $type: 'fontFamily', $value: ['monospace'] }],
+      ] as Array<[string, JsonObject]>) {
+        await controller.commit({
+          kind: 'edit',
+          label: path,
+          edit: { kind: 'set-override', scope: 'shared', path, node: value },
+        });
+      }
+      expect(controller.changedPaths.size).toBe(6);
+      await controller.reset({ kind: 'category', prefix: 'motion' }, 'Reset motion');
+      expect(controller.changedPaths.has('motion.fast')).toBe(false);
+      expect(controller.changedPaths.has('font.bold')).toBe(true);
+      await controller.reset({ kind: 'field', path: 'font.bold' }, 'Reset font.bold');
+      expect(controller.changedPaths.has('font.bold')).toBe(false);
+      await controller.reset({ kind: 'theme' }, 'Reset theme');
+      expect(controller.changedPaths.size).toBe(0);
+      await controller.undo();
+      expect(controller.changedPaths.size).toBeGreaterThan(0);
+    },
+  );
 
-  test('a locked token cannot be edited, and locking is an undoable transaction', async () => {
+  scenario('a locked token cannot be edited, and locking is an undoable transaction', async () => {
     const { controller } = await open('space.2');
     const lock = target.querySelector<HTMLInputElement>('input[type="checkbox"][id$="-locked"]')!;
     lock.click();
@@ -483,3 +510,5 @@ describe('the mounted editors', () => {
     expect(controller.draft!.envelope.locked).toBeUndefined();
   });
 });
+
+await warmScenarios();

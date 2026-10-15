@@ -40,7 +40,14 @@ export type SaveStatus = 'saved' | 'unsaved';
 export class ThemeWorkbenchState {
   themeName = $state('Cinder default');
   selectedTokenPath = $state<string | null>(firstFoundationPath());
+  /** The context the preview shows: the last one whose map has landed. */
   context = $state<ThemePreviewContext>({ colorMode: 'light', motion: 'default' });
+  /**
+   * A context change that was asked for and has not landed yet. The runtime evaluates off the
+   * main thread, so a change lands a moment after it is made; the controls read the
+   * requested context so a second change builds on the first instead of undoing it.
+   */
+  pendingContext = $state.raw<ThemePreviewContext | null>(null);
   sceneId = $state(DEFAULT_THEME_PREVIEW_SCENE_ID);
   /** The latest revision requested of the preview; it only ever grows. */
   revision = $state(0);
@@ -115,12 +122,19 @@ export class ThemeWorkbenchState {
     this.revision += 1;
   }
 
+  /** The context the controls show: the pending change if there is one, else the applied one. */
+  get requestedContext(): ThemePreviewContext {
+    return this.pendingContext ?? this.context;
+  }
+
   /** A context switch is not an edit: it keeps the selection and the properties. */
   setContext(context: ThemePreviewContext): void {
-    if (context.colorMode === this.context.colorMode && context.motion === this.context.motion) {
+    const requested = this.requestedContext;
+    if (context.colorMode === requested.colorMode && context.motion === requested.motion) {
       return;
     }
     if (this.contextChangeHandler !== null) {
+      this.pendingContext = context;
       this.contextChangeHandler(context);
       return;
     }
@@ -128,9 +142,18 @@ export class ThemeWorkbenchState {
     this.revision += 1;
   }
 
+  /** The controller could not land the requested context; the controls show the applied one. */
+  dropPendingContext(context: ThemePreviewContext): void {
+    const pending = this.pendingContext;
+    if (pending?.colorMode === context.colorMode && pending.motion === context.motion) {
+      this.pendingContext = null;
+    }
+  }
+
   /** Land a context switch together with that context's committed map: one preview revision. */
   applyContext(context: ThemePreviewContext, properties: readonly ThemePreviewProperty[]): void {
     this.context = context;
+    this.dropPendingContext(context);
     this.properties = properties;
     this.revision += 1;
   }
