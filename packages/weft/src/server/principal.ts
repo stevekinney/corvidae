@@ -20,6 +20,7 @@
 import {
   AUTHORIZATION_SCOPES,
   extractScopesFromClaims,
+  type AdditionalScopeSet,
   type AuthorizationScope,
 } from './authorization-scope.ts';
 
@@ -104,7 +105,10 @@ export type UnauthenticatedPrincipal = {
 export type Principal = AuthenticatedPrincipal | UnauthenticatedPrincipal;
 
 /**
- * Build an `AuthenticatedPrincipal` from a JWT claims payload.
+ * Build an `AuthenticatedPrincipal` from a JWT claims payload. Scopes come
+ * from the `scope`, `scp`, and `permissions` claims; only built-in scopes and
+ * those in `options.additionalScopes` (the package scopes the admitting
+ * handler registered) are kept.
  *
  * @example
  * ```ts
@@ -117,8 +121,11 @@ export type Principal = AuthenticatedPrincipal | UnauthenticatedPrincipal;
  * console.log(principal.hasScope('workflows:read'));
  * ```
  */
-export function principalFromJwtClaims(claims: JwtClaims): AuthenticatedPrincipal {
-  const scopes = extractScopesFromClaims(claims);
+export function principalFromJwtClaims(
+  claims: JwtClaims,
+  options: { readonly additionalScopes?: AdditionalScopeSet } = {},
+): AuthenticatedPrincipal {
+  const scopes = extractScopesFromClaims(claims, options.additionalScopes);
   const subject = typeof claims['sub'] === 'string' ? claims['sub'] : undefined;
 
   return {

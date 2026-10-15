@@ -174,7 +174,9 @@ export type AuthConfig = {
   /**
    * Scopes granted to principals admitted via static `apiKeys`. Ignored
    * when `resolveApiKeyPrincipal` is configured (the resolver's scopes
-   * are authoritative for keys it admits). Defaults to `[]`.
+   * are authoritative for keys it admits). Defaults to `[]`. A package
+   * scope is granted only when the handler lists it in `additionalScopes`;
+   * an unlisted one is dropped, as it would be from a JWT claim.
    */
   defaultApiKeyScopes?: ReadonlyArray<AuthorizationScope>;
   /**

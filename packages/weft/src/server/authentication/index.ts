@@ -10,7 +10,14 @@
  * @module server/authentication
  */
 
-import type { AuthorizationScope } from '../authorization-scope.ts';
+import {
+  createAdditionalScopeSet,
+  filterRecognizedScopes,
+  type AdditionalScopeSet,
+  type AuthorizationScope,
+  type PackageAuthorizationScope,
+} from '../authorization-scope.ts';
+import { principalFromJwtClaims } from '../principal.ts';
 import { tryAdmitApiKey } from './api-key.ts';
 import { defaultAuthAuditSink, emitAuthAuditEvent, type AuthAuditSink } from './audit.ts';
 import {
@@ -150,6 +157,7 @@ async function authenticateViaJwt(
   request: Request,
   jwtKey: CryptoKey | null,
   jwtConfig: JWTConfig | undefined,
+  additionalScopes: AdditionalScopeSet,
 ): Promise<AuthAttempt> {
   if (!jwtKey || !jwtConfig) {
     return { explicitAuthAttempted: false, result: null };
@@ -166,7 +174,14 @@ async function authenticateViaJwt(
 
   try {
     const claims = await verifyJWT(token, jwtKey, jwtConfig);
-    return { explicitAuthAttempted: true, result: { authenticated: true, method: 'jwt', claims } };
+    // Shape the principal here, where this handler's registered scopes are
+    // known: every transport forwards `principal` verbatim, so scope parsing
+    // never falls back to a vocabulary shared across handlers.
+    const principal = principalFromJwtClaims(claims, { additionalScopes });
+    return {
+      explicitAuthAttempted: true,
+      result: { authenticated: true, method: 'jwt', claims, principal },
+    };
   } catch (error) {
     console.warn('JWT verification failed:', error instanceof Error ? error.message : error);
     return { explicitAuthAttempted: true, result: null };
@@ -205,6 +220,15 @@ export type CreateAuthenticatorOptions = {
    * whenever TLS terminates anywhere else.
    */
   transportVerifiesClientCertificates?: boolean;
+  /**
+   * Package scopes this authenticator recognizes beyond Weft's built-in
+   * vocabulary, such as `bureau.tasks:read`. They are retained from JWT
+   * `scope`, `scp`, and `permissions` claims and from `defaultApiKeyScopes`;
+   * any other unknown scope is still dropped. The set belongs to this
+   * authenticator alone. An entry that is not `<namespace>.<resource>:<action>`
+   * or that uses the reserved `weft` namespace rejects construction.
+   */
+  additionalScopes?: readonly PackageAuthorizationScope[];
 };
 
 /**
@@ -268,13 +292,17 @@ export async function createAuthenticator(
   options: CreateAuthenticatorOptions = {},
 ): Promise<Authenticator> {
   validateAuthConfig(config);
+  const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
   const transportVerifiesClientCertificates = options.transportVerifiesClientCertificates === true;
 
   const apiKeyEntries = config.apiKeys?.length
     ? createConstantTimeApiKeyMatcher(config.apiKeys).entries
     : null;
   const resolver = config.resolveApiKeyPrincipal;
-  const defaultApiKeyScopes = config.defaultApiKeyScopes ?? [];
+  const defaultApiKeyScopes = filterRecognizedScopes(
+    config.defaultApiKeyScopes ?? [],
+    additionalScopes,
+  );
   const jwtKey = config.jwt ? await importJWTKey(config.jwt) : null;
   const publicPaths = new Set(config.publicPaths ?? DEFAULT_PUBLIC_PATHS);
   const auditSink: AuthAuditSink = config.auditSink ?? defaultAuthAuditSink;
@@ -295,7 +323,7 @@ export async function createAuthenticator(
       return auditDecision(auditSink, request, apiKeyAttempt.result);
     }
 
-    const jwtAttempt = await authenticateViaJwt(request, jwtKey, config.jwt);
+    const jwtAttempt = await authenticateViaJwt(request, jwtKey, config.jwt, additionalScopes);
     if (jwtAttempt.result !== null) {
       return auditDecision(auditSink, request, jwtAttempt.result);
     }
