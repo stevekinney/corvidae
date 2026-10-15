@@ -138,9 +138,9 @@ Every field except `agents` is optional.
 | `memory` | `GovernedMemory` | COR-41—attach governed recall and persistence hooks. Recall runs through the governed memory's mandatory recall admission and is injected as a labeled `<memory-evidence>` system message; final assistant content is admitted as untrusted `conversation` memory (scanned, quota-checked, quarantined when poisoned). Both run under the run's memory authority, and a recovered run whose request authority cannot be restored gets no memory hooks. Catalog runs (`bureau.run`) and `bureau.children` children get none either. See [Governed memory](#governed-memory-cor-41). |
 | `memoryAuthority` | `BureauMemoryAuthorityOptions` | COR-41—`runCapabilities` (default `['memory:search', 'memory:write']`) Bureau delegates to each run through the request principal; explicit `memory:*` capabilities on a request can only narrow them. `purpose` defaults to `'conversation-memory'`. See `createRunMemoryAuthority` and [Governed memory](#governed-memory-cor-41). |
 | `cache` | `CacheConfiguration` | Wrap the resolved generate function with response caching. |
-| `guardrails` **(deprecated)** | `GuardrailsOptions` | Attach `operative` guardrail detectors to every run. Agent-owned now—deprecated, not removed, per AB-242; AB-15's end state moves this per-agent onto `createAgent`, but that field has not landed on `CreateAgentOptions` yet—see AB-242 and AB-352. |
+| `guardrails` **(deprecated)** | `GuardrailsOptions \| false` | Attach `operative` guardrail detectors to every run; omitted wires the AB-40 preset, `false` opts out. Agent-owned now—migrate to `createAgent`'s `guardrails` (COR-1367). During the transition a catalog agent that declares no `guardrails` of its own inherits this value (see [Per-agent guardrails and skills](#per-agent-guardrails-and-skills-cor-1367)). |
 | `identity` | `IdentityConfiguration` | Configure identity resolution for memory and session ownership. |
-| `skills` **(deprecated)** | `SkillRuntimeConfiguration` | Attach a skill catalog; injects an `<available_skills>` system block on step 0 of every run. Agent-owned now—deprecated, not removed, per AB-242; AB-15's end state moves this per-agent onto `createAgent`, but that field has not landed on `CreateAgentOptions` yet—see AB-242 and AB-352. |
+| `skills` **(deprecated)** | `SkillRuntimeConfiguration` | Attach a skill catalog to `createRun` runs; injects an `<available_skills>` system block on step 0 of every run. Agent-owned now—migrate to `createAgent`'s `skills` (COR-1367). It never reached catalog agents (`bureau.run`) and still does not. |
 | `streaming` | `StreamingConfiguration` | Enable enhanced streaming and expose a `streamEventTarget` on run runtime. |
 | `scheduler` | `SchedulerConfiguration` | Attach an in-process priority scheduler (`submitSchedulerTask`). `retentionWindowMs` (finite, greater than zero; unset defaults to 3600000 milliseconds, one hour, and an explicit value overrides it) bounds how long a settled task stays resolvable through `locateSchedulerTask` / `awaitSchedulerTask`; an explicit value is forwarded unchanged to operative's `createScheduler`, and Bureau's composed runtime drives its timers. |
 | `stopWhen` **(deprecated)** | `StopCondition \| StopCondition[]` | Default stop condition(s) applied to every run. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `stopWhen`. |
@@ -155,6 +155,37 @@ Every field except `agents` is optional.
 | `sessionInput` | `{ sessionBacklogLimit?: number; principalBacklogLimit?: number }` | AB-42/AB-194—per-session/per-principal backlog caps for `submitSessionInput`. Each is validated as a positive integer at construction time (`BureauError('...', 'BAD_REQUEST')` otherwise); `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT` (32) and `DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT` (128) are the values a future mailbox-backed admission path will apply for an omitted field—neither cap is enforced yet. |
 | `modelCatalog` | `ModelCatalogService` | AB-246—the started-work-conformant model-catalog refresh service exposed as `bureau.modelCatalog`. Omit to let `createBureau` build a default service seeded from `@lostgradient/operative`'s static `createModelCatalog()`; pass one explicitly to share a catalog across bureaus or supply a non-default `descriptorSource`. See [`model-catalog-refresh.ts`](./src/model-catalog-refresh.ts). |
 | `modelPolicy` | `{ deployment?; bureau?; users?: Record<string, UserModelConfiguration>; policyRevision: number }` | AB-64/AB-250—deployment/Bureau model-policy invariants and the per-principal user configuration `bureau.planSelection`/a run's `SelectionGate` compose against, held in memory for the bureau's lifetime. Named policy profiles are keys of `users` and of each configuration's own `fallbackOrder`; there is no storage schema. `BureauRunOptions` gains no field for any of this. See [`model-policy.ts`](./src/model-policy.ts). |
+
+### Per-agent guardrails and skills (COR-1367)
+
+`createAgent` accepts `guardrails` and `skills`, the per-agent counterparts of the deprecated `BureauOptions.guardrails`/`skills`. For a catalog agent dispatched with `bureau.run`, the guardrails a run applies resolve most specific first:
+
+| Agent `guardrails` | `BureauOptions.guardrails` | The run applies |
+| --- | --- | --- |
+| omitted | omitted | the AB-40 preset, once, in the agent's tier |
+| omitted | a configuration | the bureau configuration (inherited), instead of the preset |
+| a configuration | anything | the agent's configuration only |
+| `false` | anything | no guardrails |
+| omitted | `false` | no guardrails |
+
+Bureau hands its value down through `AgentRunContext.inheritedGuardrails` to agents that carry `OPERATIVE_RESOLVES_GUARDRAILS` (every `createAgent` result), and then registers no guardrail invariant of its own for that run, so the policy runs exactly once and a recovered run resumes under the same composition its fresh dispatch used. A hand-written `RunnableAgent`, or a `createLazyAgent` wrapper, keeps Bureau's own guardrail invariant as before and is handed `false`, so a `createAgent` behind a lazy wrapper does not add the preset a second time.
+
+Skills do not inherit: `BureauOptions.skills` only ever composed `createRun` runs. A catalog agent offers exactly the catalog its own `skills: createAgentSkills({ catalog })` names, scanned by its own guardrails.
+
+`createAgentSkills({ catalog, includeTools?, loadArtifact?, events? })` is exported by this package. It implements operative's `AgentSkills` seam over `@lostgradient/skills`, which is why it lives here: operative cannot import the private skills package, and the skills package sits below operative in the package graph and must not import it. Each run gets a fresh skill client bound to the catalog, so activations never leak between runs. Active skills are not snapshotted for durable recovery on this path: a catalog-dispatched run has no Bureau session to hold them, so a recovered run starts with an empty active set.
+
+```typescript
+import { createAgentSkills } from '@lostgradient/bureau';
+import { createAgent } from '@lostgradient/operative';
+import { discoverSkills } from '@lostgradient/skills';
+
+const catalog = await discoverSkills({
+  sources: [{ id: 'user', kind: 'user', location: './skills', precedence: 20 }],
+});
+const agent = createAgent({ generate, skills: createAgentSkills({ catalog }) });
+```
+
+Removing the two deprecated fields later is therefore not a behavior change for an agent that says nothing: with no bureau value to inherit, it still resolves to the AB-40 preset.
 
 `durableExecution: true` cannot be combined with a custom `persistence` value—`persistence` shadows `storage`, and the durable engine needs a raw `Storage` backend to checkpoint against. Provide `storage` without `persistence` for durable runs.
 
