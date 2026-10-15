@@ -29,6 +29,9 @@ export default defineConfig({
   testMatch: '**/*.playwright.ts',
   fullyParallel: false,
   workers: 1,
+  // The static production gate's spec needs the case list and static server that
+  // `scripts/check-static-playground.ts` provides, so only `test:production` runs it.
+  testIgnore: 'playground-production.playwright.ts',
   timeout: 60_000,
   expect: { timeout: 10_000 },
   use: { trace: 'retain-on-failure' },

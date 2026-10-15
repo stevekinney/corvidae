@@ -6,6 +6,7 @@ import {
   COMPOUND_COMPONENT_FAMILIES,
   COMPOUND_COMPONENT_PARENTS,
   CONTEXT_REQUIRED_PARTS,
+  LIST_ITEM_PARTS,
 } from './compound-families.ts';
 
 describe('compound-families registry completeness', () => {
@@ -67,5 +68,28 @@ describe('CONTEXT_REQUIRED_PARTS', () => {
       // it `Get`, and the lowercase `t` before it denies the word boundary.
       expect(/\bget[A-Za-z]*Context\s*\(/.test(source)).toBe(true);
     }
+  });
+});
+
+describe('LIST_ITEM_PARTS', () => {
+  test('lists exactly the compound leaves whose root element is a list item', async () => {
+    // Both directions: a leaf whose markup starts with `<li` must skip the bare mount (an orphan
+    // `<li>` fails axe `listitem`), and a listed part that no longer renders one should get its
+    // live preview back. Leaves without a Cinder source (the `chat-*` package parts) are skipped,
+    // and so are strict-context parts, which already skip the bare mount for that reason.
+    const { join } = await import('node:path');
+    const listItemRoots: string[] = [];
+    for (const part of Object.keys(COMPOUND_COMPONENT_PARENTS)) {
+      const file = Bun.file(join(CINDER_COMPONENT_SOURCE.componentsRoot, part, `${part}.svelte`));
+      if (CONTEXT_REQUIRED_PARTS.has(part) || !(await file.exists())) continue;
+      const source = await file.text();
+      const markup = source
+        .replace(/<script[\s\S]*?<\/script>/g, '')
+        .replace(/<style[\s\S]*?<\/style>/g, '')
+        .replace(/<!--[\s\S]*?-->/g, '');
+      if (/<([a-z][a-z0-9-]*)\b/.exec(markup)?.[1] === 'li') listItemRoots.push(part);
+    }
+
+    expect(listItemRoots.toSorted()).toEqual([...LIST_ITEM_PARTS].toSorted());
   });
 });

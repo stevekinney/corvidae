@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 
 import { CINDER_COMPONENT_SOURCE } from '../src/component-sources.ts';
+import { assetUrlsFromHtml, initialRoutePayload } from './initial-route-payload.ts';
 import { fingerprintStaticAssets } from './static-asset-fingerprints.ts';
 import {
   assertDocumentationMetadata,
@@ -13,8 +14,6 @@ import {
   assertExactlyOneH1,
   assertSafeOutputDirectory,
   assertSitemapMatchesRoutes,
-  assetUrlsFromHtml,
-  initialRoutePayload,
   type OutputDirectoryBoundaries,
   requireProductionBaseUrl,
   runStaticExport,
@@ -386,7 +385,7 @@ describe('static export', () => {
   test('writes the root landing shell instead of a redirect', async () => {
     const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-'));
     try {
-      const rendered = await runStaticExport({
+      const { files: rendered } = await runStaticExport({
         outputDirectory,
         sidebarComponents: ['button'],
         allComponents: [],
@@ -469,7 +468,7 @@ describe('static export', () => {
   test('materializes extracted Chat routes, bundles, documentation, and styles', async () => {
     const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-chat-'));
     try {
-      const rendered = await runStaticExport({
+      const { files: rendered } = await runStaticExport({
         outputDirectory,
         sidebarComponents: ['chat'],
         allComponents: ['chat', 'chat-composer-popover', 'chat-conversation-header'],
@@ -575,7 +574,7 @@ describe('static export', () => {
   test('materializes shell routes for navigable family children', async () => {
     const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-family-'));
     try {
-      const rendered = await runStaticExport({
+      const { files: rendered } = await runStaticExport({
         outputDirectory,
         sidebarComponents: ['chat'],
         allComponents: [],

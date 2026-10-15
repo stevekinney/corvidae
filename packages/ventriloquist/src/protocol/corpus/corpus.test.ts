@@ -179,6 +179,67 @@ describe('the corpus', () => {
   });
 });
 
+describe('the corpus is shared and immutable', () => {
+  test('freezes the fixture list, every fixture and both identifier lists', () => {
+    expect(Object.isFrozen(CORPUS)).toBe(true);
+    expect(Object.isFrozen(REQUIRED_CORPUS_FIXTURE_IDS)).toBe(true);
+    expect(Object.isFrozen(SUPPLEMENTARY_CORPUS_FIXTURE_IDS)).toBe(true);
+    for (const fixture of CORPUS) expect(Object.isFrozen(fixture)).toBe(true);
+  });
+
+  test('refuses every structural change to an exported value', () => {
+    const lists = [
+      CORPUS,
+      REQUIRED_CORPUS_FIXTURE_IDS,
+      SUPPLEMENTARY_CORPUS_FIXTURE_IDS,
+    ] as never as {
+      push(value: unknown): number;
+      length: number;
+      [index: number]: unknown;
+    }[];
+    for (const list of lists) {
+      const length = list.length;
+      const first = list[0];
+      expect(() => list.push('intruder')).toThrow(TypeError);
+      expect(() => {
+        list[0] = 'intruder';
+      }).toThrow(TypeError);
+      expect(list.length).toBe(length);
+      expect(list[0]).toBe(first);
+    }
+    const fixture = CORPUS[0] as unknown as Record<string, unknown>;
+    const { id, description, channel } = CORPUS[0]!;
+    for (const key of ['id', 'description', 'channel', 'bytes', 'mutatesProducerBuffer']) {
+      expect(() => {
+        fixture[key] = 'changed';
+      }).toThrow(TypeError);
+    }
+    expect(() => {
+      delete fixture['description'];
+    }).toThrow(TypeError);
+    expect(CORPUS[0]).toMatchObject({ id, description, channel });
+  });
+
+  test('cannot be changed through the bytes a consumer read', () => {
+    for (const fixture of CORPUS) {
+      const pristine = Array.from(fixture.bytes);
+      const chunks = fixture.declaredChunks?.map((chunk) => Array.from(chunk));
+      // A consumer scribbles over everything it was handed.
+      fixture.bytes.fill(0xaa);
+      for (const chunk of fixture.declaredChunks ?? []) chunk.fill(0xbb);
+      // A later consumer reads the original bytes.
+      expect(Array.from(fixture.bytes)).toEqual(pristine);
+      expect(fixture.declaredChunks?.map((chunk) => Array.from(chunk))).toEqual(chunks);
+      // Each read is its own copy.
+      expect(fixture.bytes).not.toBe(fixture.bytes);
+      if (fixture.declaredChunks !== undefined) {
+        expect(fixture.declaredChunks).not.toBe(fixture.declaredChunks);
+        expect(fixture.declaredChunks[1]).not.toBe(fixture.declaredChunks[1]);
+      }
+    }
+  });
+});
+
 describe.each(CORPUS.map((fixture) => [fixture.id, fixture] as const))('%s', (_id, fixture) => {
   test('arrives intact for every two-chunk split', () => {
     for (const chunks of twoChunkSplits(fixture.bytes)) {

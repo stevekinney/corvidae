@@ -11,9 +11,15 @@ export type CorpusFixture = {
   /** A stable identifier. Later suites report results against these and never rename them. */
   readonly id: string;
   readonly description: string;
-  /** The contiguous payload every chunking must reproduce exactly. */
+  /**
+   * The contiguous payload every chunking must reproduce exactly. Every read returns a fresh copy,
+   * so a consumer that changes the bytes it was given changes nothing a later consumer reads.
+   */
   readonly bytes: Uint8Array;
-  /** Chunks the fixture insists on, including zero-length ones, in addition to generated splits. */
+  /**
+   * Chunks the fixture insists on, including zero-length ones, in addition to generated splits.
+   * Every read returns fresh copies, for the same reason as `bytes`.
+   */
   readonly declaredChunks?: readonly Uint8Array[];
   /** The producer reuses and overwrites its buffer as soon as it has handed a chunk over. */
   readonly mutatesProducerBuffer?: boolean;
@@ -34,6 +40,35 @@ function bytesOf(...parts: readonly (string | readonly number[])[]): Uint8Array 
   return joined;
 }
 
+/**
+ * A frozen fixture whose byte payloads are only ever handed out as copies. A typed array cannot be
+ * frozen, so the bytes live in this closure and the frozen object exposes them through getters.
+ */
+function fixture(
+  definition: Omit<CorpusFixture, 'bytes' | 'declaredChunks'> & {
+    readonly id: CorpusFixtureId;
+    readonly bytes: Uint8Array;
+    readonly declaredChunks?: readonly Uint8Array[];
+  },
+): CorpusFixture & { readonly id: CorpusFixtureId } {
+  const { bytes, declaredChunks, ...rest } = definition;
+  const stored = bytes.slice();
+  const storedChunks = declaredChunks?.map((chunk) => chunk.slice());
+  const frozen = { ...rest } as CorpusFixture & { readonly id: CorpusFixtureId };
+  // Accessors are defined, not spread, because a spread would read each one once and keep the copy.
+  Object.defineProperty(frozen, 'bytes', {
+    enumerable: true,
+    get: () => stored.slice(),
+  });
+  if (storedChunks !== undefined) {
+    Object.defineProperty(frozen, 'declaredChunks', {
+      enumerable: true,
+      get: () => storedChunks.map((chunk) => chunk.slice()),
+    });
+  }
+  return Object.freeze(frozen);
+}
+
 const emptyChunks = [
   new Uint8Array(0),
   encodeUtf8('prompt'),
@@ -47,7 +82,7 @@ const emptyChunks = [
  * The ten fixture identifiers `documentation/terminal/contract.md` freezes, in contract order.
  * Consumers validating the exact contract cells must use this list and nothing wider.
  */
-export const REQUIRED_CORPUS_FIXTURE_IDS = [
+export const REQUIRED_CORPUS_FIXTURE_IDS = Object.freeze([
   'utf8-split-alpha',
   'control-split-sgr',
   'combining-and-zwj',
@@ -58,73 +93,73 @@ export const REQUIRED_CORPUS_FIXTURE_IDS = [
   'cursor-and-attributes',
   'invalid-utf8',
   'query-reply',
-] as const;
+] as const);
 
 /**
  * Fixtures the protocol suite also runs and the contract does not freeze. They are outside the
  * required identifiers, so exact cell identity checks against the contract are unaffected.
  */
-export const SUPPLEMENTARY_CORPUS_FIXTURE_IDS = [
+export const SUPPLEMENTARY_CORPUS_FIXTURE_IDS = Object.freeze([
   'csi-osc-terminators',
   'nul-and-binary-mouse',
   'empty-chunks',
   'producer-mutation',
-] as const;
+] as const);
 
 export type CorpusFixtureId =
   (typeof REQUIRED_CORPUS_FIXTURE_IDS)[number] | (typeof SUPPLEMENTARY_CORPUS_FIXTURE_IDS)[number];
 
 /** Every fixture: the required ones in contract order, then the supplementary ones. */
-export const CORPUS: readonly (CorpusFixture & { readonly id: CorpusFixtureId })[] = [
-  {
+export const CORPUS: readonly (CorpusFixture & { readonly id: CorpusFixtureId })[] = Object.freeze([
+  fixture({
     id: 'utf8-split-alpha',
     description: 'Two, three and four byte UTF-8 sequences that a chunk boundary can cut in half.',
     bytes: bytesOf('Aα é 日本 \u{1f600} done'),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'control-split-sgr',
     description: 'SGR color sequences, including a truecolor one with many parameters.',
     bytes: bytesOf(`${ESC}[31mred${ESC}[0m ${ESC}[38;2;255;100;0morange${ESC}[0m`),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'combining-and-zwj',
     description: 'A combining mark, a zero-width-joiner family and a regional indicator pair.',
     bytes: bytesOf('é \u{1f468}‍\u{1f469}‍\u{1f467} \u{1f1fa}\u{1f1f8}'),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'cjk-width',
     description: 'Double-width CJK and Hangul text beside full-width Latin letters.',
     bytes: bytesOf('日本語 ＡＢＣ 한글'),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'rtl-logical-order',
     description: 'Right-to-left text kept in logical order beside left-to-right text.',
     bytes: bytesOf('שלום abc مرحبا'),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'soft-wrap-retention',
     description: 'A run longer than a typical row, followed by a hard line break.',
     bytes: bytesOf(`${'1234567890'.repeat(12)}\r\n`),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'alternate-screen',
     description: 'Enter the alternate screen, draw, and leave it again.',
     bytes: bytesOf(`${ESC}[?1049h${ESC}[2J${ESC}[1;1Hfull screen${ESC}[?1049l`),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'cursor-and-attributes',
     description: 'Cursor positioning, save and restore, and bold, underline and reverse video.',
     bytes: bytesOf(`${ESC}[2;3H${ESC}[1;4;7mX${ESC}[0m${ESC}[s${ESC}[1;1H${ESC}[u`),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'invalid-utf8',
     description: 'Overlong, surrogate, out-of-range, stray continuation and truncated sequences.',
     bytes: bytesOf(
@@ -135,14 +170,14 @@ export const CORPUS: readonly (CorpusFixture & { readonly id: CorpusFixtureId })
       [0xff, 0x80, 0xe2, 0x82],
     ),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'query-reply',
     description: 'Terminal queries a program writes and expects the terminal to answer.',
     bytes: bytesOf(`${ESC}[6n${ESC}[c${ESC}]10;?\u0007`),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'csi-osc-terminators',
     description: 'CSI, and OSC strings ended by BEL and by the two-byte string terminator.',
     bytes: bytesOf(
@@ -151,26 +186,26 @@ export const CORPUS: readonly (CorpusFixture & { readonly id: CorpusFixtureId })
       `${ESC}]8;;https://example.test/${ESC}\\link${ESC}]8;;${ESC}\\`,
     ),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'nul-and-binary-mouse',
     description: 'NUL bytes, an SGR mouse report and an X10 mouse report with bytes above 0x7f.',
     bytes: bytesOf([0x00, 0x00], `${ESC}[<0;10;5M`, `${ESC}[M`, [0x20, 0xe0, 0xf0], [0x00]),
     channel: 'pty',
-  },
-  {
+  }),
+  fixture({
     id: 'empty-chunks',
     description: 'A producer that emits zero-length chunks between real ones.',
     bytes: bytesOf('prompt$ '),
     declaredChunks: emptyChunks,
     channel: 'stdout',
-  },
-  {
+  }),
+  fixture({
     id: 'producer-mutation',
     description:
       'A producer that scribbles over its buffer as soon as a chunk has been handed over.',
     bytes: bytesOf(`first chunk ${ESC}[1mbold${ESC}[0m last chunk`),
     mutatesProducerBuffer: true,
     channel: 'pty',
-  },
-];
+  }),
+]);

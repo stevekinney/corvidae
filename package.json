@@ -57,6 +57,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/unist": "^3.0.0",
     "@valibot/to-json-schema": "^1.7.0",
+    "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "ajv": "^8",
     "ajv-formats": "^3.0.1",
@@ -140,13 +141,15 @@
     "typecheck": "bun scripts/run-exclusively.ts 'bun scripts/browser-fixtures/scripts/prepare-manifest.ts && tsc --noEmit && svelte-check --workspace scripts/browser-fixtures --tsconfig ./tsconfig.json --fail-on-warnings && turbo run typecheck'",
     "validate": "bun run lint && bun run typecheck && bun run test && bun run coverage && bun run build && bun run format:check && bun run audit",
     "lint:styles": "stylelint \"components/**/src/**/*.{css,svelte}\" \"packages/**/src/**/*.{css,svelte}\" \"applications/**/src/**/*.{css,svelte}\" \"scripts/browser-fixtures/src/**/*.{css,svelte}\"",
-    "lint:root": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json scripts && bun scripts/check-wait-for-element-assertions.ts && bun scripts/check-wall-clock-assertions.ts && bun scripts/check-promise-assertion-modifiers.ts",
+    "lint:root": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json scripts && bun scripts/check-wait-for-element-assertions.ts && bun scripts/check-wall-clock-assertions.ts && bun scripts/check-promise-assertion-modifiers.ts && bun scripts/check-test-process-spawns.ts",
     "test:browser-fixtures": "bun scripts/browser-fixtures/scripts/prepare-manifest.ts && bun test scripts/browser-fixtures/scripts && bun scripts/browser-fixtures/scripts/verify-curated-build.ts",
     "test:browser": "bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts",
     "test:browser:preview": "FIXTURE_HOST_MODE=preview bun --bun playwright test --config scripts/browser-fixtures/playwright.config.ts",
     "dev:browser-fixtures": "bun --watch scripts/browser-fixtures/scripts/serve.ts",
     "test:browser:visual": "CINDER_VISUAL_DIFF=block bun run test:browser",
-    "test:browser:update": "CINDER_VISUAL_DIFF=block CINDER_UPDATE_SNAPSHOTS=1 bun run test:browser --update-snapshots=all"
+    "test:browser:update": "bun scripts/browser-fixtures/scripts/update-snapshots.ts",
+    "test:browser:update:docker": "bun scripts/browser-fixtures/scripts/update-snapshots-docker.ts",
+    "test:browser:visual:docker": "bun scripts/browser-fixtures/scripts/run-browser-docker.ts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
