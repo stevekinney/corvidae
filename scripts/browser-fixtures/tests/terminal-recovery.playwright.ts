@@ -40,14 +40,14 @@ test.describe('each state offers the actions its row of the state table names', 
     ['backpressured', []],
   ];
 
-  test('buttons appear in the table’s order, and only the ones the state allows', async ({
-    terminalPage,
-  }) => {
-    for (const [state, expected] of TABLE) {
+  for (const [state, expected] of TABLE) {
+    test(`${state} offers ${expected.length === 0 ? 'no action' : expected.join(' and ')}`, async ({
+      terminalPage,
+    }) => {
       const page = await openState(terminalPage, state);
-      expect(await recoveryLabels(page), state).toEqual(expected);
-    }
-  });
+      expect(await recoveryLabels(page)).toEqual(expected);
+    });
+  }
 
   test('an action without a host handler is not rendered', async ({ terminalPage }) => {
     const page = await terminalPage.open({ query: { state: 'denied', quiet: true } });

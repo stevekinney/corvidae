@@ -80,7 +80,7 @@ test.describe('the accessible output dialog', () => {
     await expect(dialog(page)).toContainText('Download ready');
     const text = await snapshot(page).inputValue();
     expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(64 * 1024);
-    expect(text.trimEnd().endsWith('line 9000')).toBe(true);
+    expect(text.trimEnd().split('\n').at(-1)).toMatch(/^line 1500 \.+$/);
     await expect
       .poll(async () => await announcementText(page))
       .toContain('Terminal snapshot truncated');

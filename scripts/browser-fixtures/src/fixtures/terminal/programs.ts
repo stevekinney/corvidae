@@ -63,9 +63,14 @@ export const BRACKETED_PASTE_OFF = `${CSI}?2004l`;
 export const MOUSE_TRACKING_SGR = `${CSI}?1000h${CSI}?1006h`;
 export const MOUSE_TRACKING_OFF = `${CSI}?1000l${CSI}?1006l`;
 
-/** Enough numbered lines to overflow the scrollback viewport and, for a large count, the 64 KiB snapshot bound. */
-export function numberedLines(count: number, prefix = 'line'): string {
-  return Array.from({ length: count }, (_, index) => `${prefix} ${index + 1}`).join('\r\n');
+/**
+ * Numbered lines padded to a fixed width, so a modest number of rows holds more than the 64 KiB
+ * snapshot bound without the engine parsing and painting thousands of rows.
+ */
+export function wideLines(count: number, width = 64): string {
+  return Array.from({ length: count }, (_, index) => `line ${index + 1} `.padEnd(width, '.')).join(
+    '\r\n',
+  );
 }
 
 export const PASTE_SAMPLE = 'echo one\necho two\u001b[31m\n';

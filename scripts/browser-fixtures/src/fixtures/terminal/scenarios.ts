@@ -8,7 +8,7 @@ import {
   PASTE_SAMPLE,
   READ_ONLY_TRANSCRIPT,
   TRANSCRIPT,
-  numberedLines,
+  wideLines,
 } from './programs.ts';
 
 /**
@@ -59,7 +59,7 @@ export const VISUAL_SCENARIOS = {
   'snapshot-modal-stale': { state: 'writable', output: TRANSCRIPT, step: 'export-stale' },
   'snapshot-modal-truncated': {
     state: 'writable',
-    output: numberedLines(9000),
+    output: wideLines(1500),
     step: 'export-truncated',
   },
   'keyboard-capture': { state: 'writable', output: TRANSCRIPT, step: 'capture' },
