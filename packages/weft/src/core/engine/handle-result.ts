@@ -14,7 +14,8 @@ export function createWorkflowHandleWithResultPromise(
   internals: EngineInternals,
   workflowId: string,
 ): WorkflowHandle {
-  const handle = new WorkflowHandle(workflowId, internals.engine);
+  const claimEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
+  const handle = new WorkflowHandle(workflowId, internals.engine, claimEpoch);
   cacheHandle(internals, workflowId, handle);
   return handle;
 }

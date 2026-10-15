@@ -291,8 +291,10 @@ describe('WFT-78: two engines sharing one store under ownership: "workflow-lease
 describe('Engine.lostWorkflowClaim', () => {
   it('is false under ownership: "none"', async () => {
     const storage = new MemoryStorage();
-    await using engine = await Engine.create({ storage, recover: false });
-    expect(await engine.lostWorkflowClaim('any-workflow')).toBe(false);
+    const workflows: ClaimWorkflows = { 'claim-race-recovery': claimRaceRecoveryWorkflow };
+    await using engine = await Engine.create({ storage, workflows, recover: false });
+    const handle = await engine.start('claim-race-recovery', null, { id: 'any-workflow' });
+    expect(await engine.lostWorkflowClaim(handle)).toBe(false);
   });
 
   it('tells the holder whose lapsed claim another engine reclaimed that the result it observes is not its own', async () => {
@@ -332,24 +334,103 @@ describe('Engine.lostWorkflowClaim', () => {
     // The first engine recovers the parked run and holds its claim.
     const recoveredByFirst = await firstEngine.recoverAll();
     expect(recoveredByFirst.map((handle) => handle.id)).toEqual([workflowId]);
-    const observedByFirst = firstEngine.getHandle(workflowId).result();
-    expect(await firstEngine.lostWorkflowClaim(workflowId)).toBe(false);
+    const handleOnFirst = firstEngine.getHandle(workflowId);
+    const observedByFirst = handleOnFirst.result();
+    expect(await firstEngine.lostWorkflowClaim(handleOnFirst)).toBe(false);
 
     // Its claim lapses without a renewal; the second engine reclaims the run and finishes it.
     now += ttlMs + 2 * renewMs + 1;
     expect(await second.registry.takeover(workflowId)).toMatchObject({ status: 'acquired' });
     const recoveredBySecond = await secondEngine.recoverAll();
     expect(recoveredBySecond.map((handle) => handle.id)).toEqual([workflowId]);
-    await secondEngine.getHandle(workflowId).signal('go');
-    expect(await secondEngine.getHandle(workflowId).result()).toBe('ran');
+    const handleOnSecond = secondEngine.getHandle(workflowId);
+    await handleOnSecond.signal('go');
+    expect(await handleOnSecond.result()).toBe('ran');
 
     // The first engine's waiter settles with the run's outcome, read from the store...
     await firstEngine.runMaintenance();
     expect(await observedByFirst).toBe('ran');
     // ...but the outcome is the second engine's, not the first's.
-    expect(await firstEngine.lostWorkflowClaim(workflowId)).toBe(true);
-    expect(await secondEngine.lostWorkflowClaim(workflowId)).toBe(false);
+    expect(await firstEngine.lostWorkflowClaim(handleOnFirst)).toBe(true);
+    expect(await secondEngine.lostWorkflowClaim(handleOnSecond)).toBe(false);
     expect(activityRunCounts.get(workflowId)).toBe(1);
+  });
+
+  it('keeps answering for the run generation that lost its claim after a start-new replacement reuses the workflow id', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'lost-claim-then-replaced';
+    await seedParkedWorkflow(storage, workflowId);
+    let now = 1_000_000;
+    const ttlMs = 60_000;
+    const renewMs = 5_000;
+    const workflows: ClaimWorkflows = { 'claim-race-recovery': claimRaceRecoveryWorkflow };
+    const createEngine = async (engineId: string) => {
+      const engine = await Engine.create({
+        storage,
+        workflows,
+        ownership: 'workflow-lease',
+        workflowClaimTtl: ttlMs,
+        workflowClaimRenewInterval: renewMs,
+        recover: false,
+        backgroundTasks: 'manual',
+      });
+      const registry = new WorkflowClaimRegistry({
+        storage,
+        engineId,
+        getNow: () => now,
+        claimTtlMs: ttlMs,
+        claimRenewIntervalMs: renewMs,
+        warn: () => {},
+      });
+      getInternals(engine).workflowClaimRegistry = registry;
+      return { engine, registry };
+    };
+    const first = await createEngine('engine-a');
+    await using firstEngine = first.engine;
+    const second = await createEngine('engine-b');
+    await using secondEngine = second.engine;
+
+    // Engine A drives the run; its claim lapses and engine B takes the run and completes it.
+    const [originalOnFirst] = await firstEngine.recoverAll();
+    expect(originalOnFirst?.id).toBe(workflowId);
+    const originalOutcome = originalOnFirst?.result();
+    now += ttlMs + 2 * renewMs + 1;
+    expect(await second.registry.takeover(workflowId)).toMatchObject({ status: 'acquired' });
+    await secondEngine.recoverAll();
+    await secondEngine.getHandle(workflowId).signal('go');
+    expect(await secondEngine.getHandle(workflowId).result()).toBe('ran');
+    await firstEngine.runMaintenance();
+    expect(await originalOutcome).toBe('ran');
+    expect(await firstEngine.lostWorkflowClaim(originalOnFirst!)).toBe(true);
+
+    // Engine A then starts a replacement run under the same id, with a fresh claim.
+    const replacementOnFirst = await firstEngine.start('claim-race-recovery', null, {
+      id: workflowId,
+      onTerminalConflict: 'start-new',
+    });
+    expect(await firstEngine.lostWorkflowClaim(replacementOnFirst)).toBe(false);
+
+    // The original run's answer belongs to its own generation, so the replacement cannot change it.
+    expect(await firstEngine.lostWorkflowClaim(originalOnFirst!)).toBe(true);
+    expect(await firstEngine.lostWorkflowClaim(replacementOnFirst)).toBe(false);
+  });
+
+  it('stays false for a run this engine completed and replaced itself', async () => {
+    const storage = new MemoryStorage();
+    const workflows: ClaimWorkflows = { 'claim-race-start': claimRaceStartWorkflow };
+    await using engine = await createClaimEngine(storage, 'engine-a', workflows);
+    const workflowId = 'completed-then-replaced';
+
+    const original = await engine.start('claim-race-start', null, { id: workflowId });
+    expect(await original.result()).toBe('ran');
+    const replacement = await engine.start('claim-race-start', null, {
+      id: workflowId,
+      onTerminalConflict: 'start-new',
+    });
+    expect(await replacement.result()).toBe('ran');
+
+    expect(await engine.lostWorkflowClaim(original)).toBe(false);
+    expect(await engine.lostWorkflowClaim(replacement)).toBe(false);
   });
 });
 

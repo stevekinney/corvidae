@@ -206,7 +206,13 @@ import {
   getWorkflowResultPromise as getWorkflowResultPromiseFromInternals,
   pollPendingCrossEngineResultWaiters,
 } from './handle-result.ts';
-import { HANDLE_RESULT_PROMISE, WorkflowHandle, type PreparedWorkflowHandle } from './handles.ts';
+import {
+  HANDLE_RESULT_PROMISE,
+  WorkflowHandle,
+  readHandleClaimEpoch,
+  type PreparedWorkflowHandle,
+  type WorkflowClaimHandle,
+} from './handles.ts';
 import { hasQueuedInlineWorkflowStart } from './inline-launch-queue.ts';
 import {
   handleStrategyMessage as handleStrategyMessageFromInternals,
@@ -399,6 +405,7 @@ export {
   WorkflowTypeNotRegisteredForRecoveryError,
 } from './errors.ts';
 export { HANDLE_RESULT_PROMISE, WorkflowHandle } from './handles.ts';
+export type { WorkflowClaimHandle } from './handles.ts';
 export type { PreparedWorkflowHandle } from './handles.ts';
 export { getWorkflowCatalog } from './internals.ts';
 export {
@@ -2897,22 +2904,31 @@ export class Engine<
     return getInternals(this).workflowClaimRegistry?.holderStatus(workflowId);
   }
   /**
-   * Whether this engine claimed `workflowId` under `ownership:
+   * Whether this engine claimed the run `handle` drives under `ownership:
    * 'workflow-lease'` and another engine has since taken that claim, so the
    * run's outcome is the other engine's. {@link WorkflowHandle.result} settles
    * with that outcome either way, read from the store, because it reports the
    * workflow, not who drove it. A caller that publishes a run's terminal
    * outcome exactly once checks this after `result()` settles and leaves
-   * publication to the engine that kept the claim. `false` under every other
-   * ownership mode, for a workflow this engine never claimed, and for a claim
-   * this engine released itself. A cancel, timeout, or suspend rotates the
-   * claim's epoch whichever engine commits it, so after one of those this
-   * reports `true` even when this engine committed it: ask it only about a
-   * completed workflow, whose completion is committed under the holder's own
-   * claim. A storage read failure rejects.
+   * publication to the engine that kept the claim.
+   *
+   * The answer belongs to the run generation the handle was created for: it
+   * uses the claim epoch this engine held at that moment, so a later run that
+   * reuses the same workflow id (a `start-new` replacement) never changes it.
+   * `false` under every other ownership mode, for a handle whose run this
+   * engine never claimed, and for a claim this engine released itself. A
+   * cancel, timeout, or suspend rotates the claim's epoch whichever engine
+   * commits it, so after one of those this reports `true` even when this
+   * engine committed it: ask it only about a completed workflow, whose
+   * completion is committed under the holder's own claim. A storage read
+   * failure rejects.
    */
-  async lostWorkflowClaim(workflowId: string): Promise<boolean> {
-    return (await getInternals(this).workflowClaimRegistry?.lostClaim(workflowId)) ?? false;
+  async lostWorkflowClaim(handle: WorkflowClaimHandle): Promise<boolean> {
+    const claimEpoch = readHandleClaimEpoch(handle);
+    if (claimEpoch === null) return false;
+    return (
+      (await getInternals(this).workflowClaimRegistry?.lostClaim(handle.id, claimEpoch)) ?? false
+    );
   }
   async getCurrentCheckpointStep(workflowId: string): Promise<number | null> {
     // Prefer the in-memory checkpoint: for a run live in this engine it is the

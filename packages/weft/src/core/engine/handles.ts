@@ -78,6 +78,28 @@ function synthesizeTerminalEventFromState(state: WorkflowState): Event | null {
 
 export const HANDLE_RESULT_PROMISE = Symbol('handleResultPromise');
 
+/**
+ * Key of the workflow-claim epoch a handle was created under. Engine-internal:
+ * `Engine.lostWorkflowClaim(handle)` reads it to answer for the run generation
+ * this handle drives rather than for whatever run later holds the same id.
+ */
+export const HANDLE_CLAIM_EPOCH = Symbol('handleClaimEpoch');
+
+/**
+ * What `Engine.lostWorkflowClaim` accepts: the run's own handle, as returned by
+ * `start`, `getHandle`, or `recoverAll`. Only `id` is part of the type so a
+ * caller holding a narrowed handle shape can pass it; the claim epoch the
+ * answer is read from travels on the handle under {@link HANDLE_CLAIM_EPOCH},
+ * and a shape without it is treated as holding no claim.
+ */
+export type WorkflowClaimHandle = { readonly id: string };
+
+/** The claim epoch `handle` was created under, or `null` when it carries none. */
+export function readHandleClaimEpoch(handle: WorkflowClaimHandle): number | null {
+  const epoch = (handle as { readonly [HANDLE_CLAIM_EPOCH]?: number | null })[HANDLE_CLAIM_EPOCH];
+  return epoch ?? null;
+}
+
 export interface WorkflowHandleEngine extends EventTarget {
   [HANDLE_RESULT_PROMISE](workflowId: string): Promise<unknown>;
   cancel(workflowId: string): Promise<void>;
@@ -159,12 +181,19 @@ export interface WorkflowHandleEngine extends EventTarget {
  */
 export class WorkflowHandle<TResult = unknown> extends EventTarget implements AsyncDisposable {
   readonly id: string;
+  /**
+   * The `ownership: 'workflow-lease'` claim epoch this engine held for the run
+   * when the handle was created, or `null` when it held none (another
+   * ownership mode, or a workflow this engine never claimed).
+   */
+  readonly [HANDLE_CLAIM_EPOCH]: number | null;
   readonly #engine: WorkflowHandleEngine;
   #resultPromise: Promise<TResult> | undefined;
 
-  constructor(id: string, engine: WorkflowHandleEngine) {
+  constructor(id: string, engine: WorkflowHandleEngine, claimEpoch: number | null = null) {
     super();
     this.id = id;
+    this[HANDLE_CLAIM_EPOCH] = claimEpoch;
     this.#engine = engine;
     this.#resultPromise = undefined;
   }

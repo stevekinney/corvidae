@@ -1,5 +1,5 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import { HISTORY_CIRCUIT_BREAKER_REASON } from '@lostgradient/weft';
+import { HISTORY_CIRCUIT_BREAKER_REASON, type WorkflowClaimHandle } from '@lostgradient/weft';
 import { Conversation } from 'conversationalist';
 
 import type { ActiveRun } from '../create-run';
@@ -243,13 +243,17 @@ export function emptyRunState(): RunState {
  * whoever commits it, so a rotation proves nothing about who drove the run. A
  * failed claim read keeps the caller publishing: it proves no loss, and
  * suppressing the only publisher would leave the run looking `running`.
+ *
+ * Asked of the run's own handle, not its id: the answer belongs to the run
+ * generation that handle drives, so a later run reusing `runId` (a scheduler
+ * `start-new` restart) cannot change it.
  */
 export async function lostRunToAnotherEngine(
   context: DurableActiveRunContext,
-  runId: string,
+  handle: WorkflowClaimHandle,
 ): Promise<boolean> {
   try {
-    return await context.engine.lostWorkflowClaim(runId);
+    return await context.engine.lostWorkflowClaim(handle);
   } catch {
     return false;
   }
