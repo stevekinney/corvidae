@@ -44,7 +44,11 @@ export type TerminalProjection = {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-/** Cells read per call, so a row costs a bounded allocation however wide it is. */
+/**
+ * The most cells read per call. A slice is also never wider than the bytes still unspent: every
+ * cell that holds anything contributes at least one byte, so a wider read could only fetch text
+ * that the limit is about to discard.
+ */
 const ROW_SLICE_CELLS = 256;
 
 /**
@@ -64,15 +68,21 @@ export function projectBuffer(
   const parts: string[] = [];
   let bytes = 0;
 
-  /** Adds `text`, or the longest whole-code-point prefix of it that fits. False once full. */
+  /**
+   * Adds `text`, or the longest whole-code-point prefix of it that fits. False once full. Text is
+   * clipped to the unspent bytes before it is encoded: a UTF-16 code unit encodes to at least one
+   * byte, so a longer text cannot fit and only its first `unspent` units can matter.
+   */
   function append(text: string): boolean {
-    const segment = encoder.encode(text);
-    if (bytes + segment.length <= maximumBytes) {
+    const unspent = maximumBytes - bytes;
+    const overflows = text.length > unspent;
+    const segment = encoder.encode(overflows ? text.slice(0, unspent) : text);
+    if (!overflows && segment.length <= unspent) {
       parts.push(text);
       bytes += segment.length;
       return true;
     }
-    let cut = maximumBytes - bytes;
+    let cut = Math.min(unspent, segment.length);
     // A UTF-8 continuation byte has the bit pattern 10xxxxxx; step back to the start of its code point.
     while (cut > 0 && (segment[cut]! & 0b1100_0000) === 0b1000_0000) cut -= 1;
     parts.push(decoder.decode(segment.subarray(0, cut)));
@@ -92,8 +102,10 @@ export function projectBuffer(
     }
     // A slice is empty exactly when it starts past the row's last content, so the first empty
     // slice ends the row: a blank row costs one read, and a hostile one costs the limit.
-    for (let column = 0; column < line.length; column += ROW_SLICE_CELLS) {
-      const text = line.translateToString(true, column, column + ROW_SLICE_CELLS);
+    for (let column = 0; column < line.length;) {
+      const width = Math.min(ROW_SLICE_CELLS, Math.max(1, maximumBytes - bytes));
+      const text = line.translateToString(true, column, column + width);
+      column += width;
       if (text === '') break;
       const lead = '\n'.repeat(pendingBreaks);
       pendingBreaks = 0;
