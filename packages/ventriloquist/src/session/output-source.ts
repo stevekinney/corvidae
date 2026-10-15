@@ -25,6 +25,12 @@ export type SourceHandlers = {
    * reads only after this resolves, which is how a producer that is not read stays blocked.
    */
   room(minimum: number): Promise<number | undefined>;
+  /**
+   * Deliver as much of `bytes` as the output budget can take right now and say how much that was.
+   * The room is checked and taken in the same step, so sources woken together by one release cannot
+   * each take the whole of it; the rest stays with the source, which waits again.
+   */
+  offer(bytes: Uint8Array): number;
   chunk(bytes: Uint8Array): void;
   end(): void;
   failed(error: unknown): void;
@@ -86,8 +92,7 @@ async function pullInto(handlers: SourceHandlers, source: Pullable): Promise<voi
           handlers.chunk(carried);
           return;
         }
-        const take = Math.min(room, carried.length);
-        handlers.chunk(carried.subarray(0, take));
+        const take = handlers.offer(carried);
         carried = carried.subarray(take);
         sinceYield += take;
         if (sinceYield >= OUTPUT_YIELD_BYTES) {

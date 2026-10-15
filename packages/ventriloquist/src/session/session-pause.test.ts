@@ -26,6 +26,11 @@ function concatenate(events: readonly SessionEvent[]): Uint8Array {
 
 const BUDGET = 65_536;
 
+/** Let the pumps run until they are waiting again: delivery goes on over several turns of the event loop. */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 30; turn += 1) await flush();
+}
+
 describe('a source the session can pause', () => {
   test('is not read once the output budget is nearly full, and nothing overflows', async () => {
     const stream = createScriptedStream('pty');
@@ -232,6 +237,46 @@ describe('two channels of one process', () => {
     }
     expect(held('stdout')).toBe(60_000);
     expect(held('stderr')).toBe(60_000);
+  });
+});
+
+describe('two sources that read at the same moment', () => {
+  test('never take more than the room there is, and both go on as it is freed', async () => {
+    const out = createScriptedStream('stdout');
+    const err = createScriptedStream('stderr');
+    const limit = 262_144;
+    const harness = createHarness({
+      backend: { mode: 'pipe' },
+      sources: [out.source, err.source],
+      budgets: { outputQueueBytes: limit },
+    });
+    const attachment = await startAndAttach(harness);
+    // Leave 70,000 bytes of room: enough that both sources are reading again, not enough for both of what they read.
+    const filler = pattern(limit - 70_000, 3);
+    out.push(filler);
+    await settle();
+    const first = pattern(65_536, 5);
+    const second = pattern(65_536, 9);
+    out.push(first);
+    err.push(second);
+    await settle();
+    expect(harness.recorder.ofType('attachmentRevoked')).toEqual([]);
+    expect(harness.session.snapshot.closed).toBe(false);
+    const delivered = (channel: string): Uint8Array =>
+      concatenate(
+        harness.recorder.events.filter(
+          (event) => event.type === 'output' && event.channel === channel,
+        ),
+      );
+    // One of them took what it could and the other waited, so neither pushed the queue past its limit.
+    expect(concatenate(harness.recorder.events).length).toBeLessThanOrEqual(limit);
+    for (let round = 0; round < 60; round += 1) {
+      attachment.outputParsedThrough(concatenate(harness.recorder.events).length);
+      await settle();
+    }
+    expect(harness.recorder.ofType('attachmentRevoked')).toEqual([]);
+    expect(delivered('stdout')).toEqual(new Uint8Array([...filler, ...first]));
+    expect(delivered('stderr')).toEqual(second);
   });
 });
 

@@ -44,6 +44,7 @@ export const REQUIRED_CELL_NAMES = [
   'output-overflow',
   'flood-yes',
   'flood-cat',
+  'flood-both-channels',
   'stalled-consumer-pauses',
   'stalled-consumer-completes',
   'stop-while-paused',

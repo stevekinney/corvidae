@@ -144,6 +144,51 @@ const floodCat: CaseDefinition = {
   },
 };
 
+const BOTH_CHANNELS = 'printf \'leader=%s \' "$$"; yes out & yes err >&2 & wait';
+
+const floodBothChannels: CaseDefinition = {
+  id: 'flood-both-channels',
+  modes: ['pipe'],
+  scope:
+    'pipe only: a terminal has one channel, so there is no second source to share the queue with',
+  launch: (mode) => ({ profile: outputProfile(mode, BOTH_CHANNELS) }),
+  async run({ rig }) {
+    // A consumer that parses a little at a time, so releases free room in pieces and wake both sources together.
+    rig.pauseConsuming();
+    await rig.client.handshake();
+    const { leader } = pidsIn(await rig.client.waitForOutput(/leader=\d+ /));
+    let unharmed = true;
+    for (let step = 0; step < 60; step += 1) {
+      await Bun.sleep(20);
+      const { received, consumed } = rig.client.endpoint.outputBytes;
+      const owed = Math.min(received - consumed, 100_000);
+      if (owed > 0) rig.client.sendResult(rig.client.endpoint.consumeOutput(owed));
+      unharmed &&= !rig.client.endpoint.authorityRevoked && !rig.session().snapshot.closed;
+    }
+    const { received, consumed } = rig.client.endpoint.outputBytes;
+    const text = (channel: 'stdout' | 'stderr') => bytesOn(rig.client.messages, channel);
+    const stdout = text('stdout');
+    const stderr = text('stderr');
+    rig.client.sendResult(rig.client.endpoint.terminate());
+    const { cleanup, closeCode } = await conclude(rig);
+    await waitUntilGone(leader as number);
+    return [
+      check('neither channel overflowed the one queue they share', unharmed),
+      check(
+        `both channels kept moving (${stdout.length} bytes of stdout, ${stderr.length} of stderr)`,
+        stdout.length > 100_000 && stderr.length > 100_000,
+      ),
+      check(
+        `no more than the budget was unparsed (${received - consumed} bytes)`,
+        received - consumed <= BUDGET,
+      ),
+      check('cleanup was complete', cleanup.outcome === 'complete'),
+      check('the producers are gone', !isAlive(leader as number)),
+      check('the transport closed normally', closeCode === 1000),
+    ];
+  },
+};
+
 const stalledConsumerPauses: CaseDefinition = {
   id: 'stalled-consumer-pauses',
   modes: ['pipe', 'pty'],
@@ -327,6 +372,7 @@ const cleanupKillsPaused: CaseDefinition = {
 export const PAUSE_CASES: readonly CaseDefinition[] = [
   floodYes,
   floodCat,
+  floodBothChannels,
   stalledConsumerPauses,
   stalledConsumerCompletes,
   stopWhilePaused,

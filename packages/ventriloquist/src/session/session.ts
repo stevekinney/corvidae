@@ -550,6 +550,7 @@ export class Session {
       try {
         source.start({
           room: (minimum) => this.#waitForRoom(minimum),
+          offer: (bytes) => this.#offer(source.channel, bytes),
           chunk: (bytes) => this.#ingest(source.channel, bytes),
           end: () => this.#sourceEnded(source.channel),
           failed: () => this.#beginClose('source-failed'),
@@ -611,6 +612,21 @@ export class Session {
       };
       if (!settle()) this.#roomWaiters.push(settle);
     });
+  }
+
+  /**
+   * Take up to what the output budget has free right now, in one step with checking it. A session
+   * that no longer accepts output takes everything, to count it as unavailable.
+   */
+  #offer(channel: OutputChannel, bytes: Uint8Array): number {
+    const attachment = this.#attachment;
+    const take =
+      this.#finalized || attachment === undefined || attachment.revoked
+        ? bytes.length
+        : Math.min(attachment.output.availableBytes, bytes.length);
+    if (take === 0 && bytes.length > 0) return 0;
+    this.#ingest(channel, bytes.subarray(0, take));
+    return take;
   }
 
   /** Wake every source waiting for room whose wait can now end. */
