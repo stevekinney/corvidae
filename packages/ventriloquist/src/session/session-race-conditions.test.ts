@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createDeferred } from './fixtures/deferred.ts';
-import { createScriptedStream } from './fixtures/scripted-sources.ts';
+import { createScriptedStream, createScriptedSubscription } from './fixtures/scripted-sources.ts';
 import type { AttachmentListener } from './session-types.ts';
 import {
   createHarness,
@@ -239,7 +239,12 @@ describe('a startup exit followed by a rejected start', () => {
 
 describe('output that overflows during a natural drain', () => {
   test('quarantines the slot although the first cause was the process exit', async () => {
-    const harness = createHarness({ budgets: { outputQueueBytes: 65_536 } });
+    // Only a source that is pushed at the session can outrun its budget: a read source waits instead.
+    const pushed = createScriptedSubscription('pty');
+    const harness = createHarness({
+      sources: [pushed.source],
+      budgets: { outputQueueBytes: 65_536 },
+    });
     expectAttached(
       harness.session.attach({
         requestedMode: 'interactive',
@@ -250,8 +255,8 @@ describe('output that overflows during a natural drain', () => {
     void harness.session.start();
     await flush();
     harness.session.reportProcessExit(0, null);
-    harness.stream.push(new Uint8Array(40_000));
-    harness.stream.push(new Uint8Array(40_000));
+    pushed.push(new Uint8Array(40_000));
+    pushed.push(new Uint8Array(40_000));
     await flush();
     const summary = await harness.session.closed;
     expect(summary).toMatchObject({

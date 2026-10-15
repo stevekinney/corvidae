@@ -9,7 +9,7 @@ import {
   type FixtureTransport,
   type FixtureTransportOptions,
 } from './fixtures/fixture-transport.ts';
-import { createScriptedStream } from './fixtures/scripted-sources.ts';
+import { createScriptedStream, createScriptedSubscription } from './fixtures/scripted-sources.ts';
 import { SessionConnection } from './session-connection.ts';
 import {
   createHarness,
@@ -330,7 +330,7 @@ describe('output and consumption', () => {
   });
 
   test('without a report, the next chunk that does not fit fails the session', async () => {
-    const stream = createScriptedStream('pty');
+    const stream = createScriptedSubscription('pty');
     const { harness, transport } = await wire({
       sources: [stream.source],
       budgets: { outputQueueBytes: 65_536 },

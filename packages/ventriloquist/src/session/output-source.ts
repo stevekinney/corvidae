@@ -3,8 +3,21 @@ import type { SessionClock } from './session-clock.ts';
 import type { OutputSource, SourceOwnership } from './session-types.ts';
 import { settleToOutcome } from './settle.ts';
 
+/**
+ * How much headroom a pull-based source waits for before it reads, so that a read is worth the
+ * chunk it returns. A budget smaller than four times this waits for a quarter of itself instead.
+ */
+export const OUTPUT_LOW_WATER_BYTES = 64 * 1024;
+
 /** Where a started source delivers what it produces. */
 export type SourceHandlers = {
+  /**
+   * Resolves with the bytes the output budget can take once it has at least `minimum` of them
+   * (never more than the budget's own low-water share), or with `undefined` when the session no
+   * longer accepts output: the attachment was revoked or the session closed. A pull-based source
+   * reads only after this resolves, which is how a producer that is not read stays blocked.
+   */
+  room(minimum: number): Promise<number | undefined>;
   chunk(bytes: Uint8Array): void;
   end(): void;
   failed(error: unknown): void;
@@ -31,28 +44,71 @@ function copy(bytes: Uint8Array): Uint8Array {
   return bytes.slice();
 }
 
+/** What `pullInto` needs from a pull-based source. */
+type Pullable = {
+  /** The next chunk, or `undefined` once the source ended. */
+  next(): Promise<Uint8Array | undefined>;
+  ended(): void;
+  failed(error: unknown): void;
+  isReleased(): boolean;
+};
+
+/**
+ * Drive a pull-based source from the session's output budget. The source is read only while the
+ * budget has room, so a producer that nobody reads stays blocked in the kernel instead of being
+ * buffered here; a chunk bigger than the room is cut to fit and the rest is carried, so the host
+ * holds at most the budget plus one source chunk per source. Bytes read after the session stopped
+ * accepting output are handed over once so they are counted as unavailable, never lost silently.
+ */
+async function pullInto(handlers: SourceHandlers, source: Pullable): Promise<void> {
+  try {
+    for (;;) {
+      if ((await handlers.room(OUTPUT_LOW_WATER_BYTES)) === undefined || source.isReleased())
+        return;
+      const next = await source.next();
+      if (next === undefined) {
+        source.ended();
+        return;
+      }
+      // Copied before anything else happens to it, so a producer that reuses its buffer cannot change accepted output.
+      let carried = copy(next);
+      do {
+        const room = await handlers.room(Math.min(OUTPUT_LOW_WATER_BYTES, carried.length));
+        if (room === undefined) {
+          handlers.chunk(carried);
+          return;
+        }
+        const take = Math.min(room, carried.length);
+        handlers.chunk(carried.subarray(0, take));
+        carried = carried.subarray(take);
+      } while (carried.length > 0);
+    }
+  } catch (error) {
+    source.failed(error);
+  }
+}
+
 function openStream(channel: OutputChannel, source: Extract<OutputSource, { kind: 'stream' }>) {
   const reader = source.stream.getReader();
   let finished = false;
   let released = false;
-  const pump = async (handlers: SourceHandlers): Promise<void> => {
-    try {
-      for (;;) {
+  const pump = (handlers: SourceHandlers): Promise<void> =>
+    pullInto(handlers, {
+      next: async () => {
         const result = await reader.read();
-        if (result.done) {
-          finished = true;
-          if (!released) handlers.end();
-          return;
-        }
-        // A chunk read while the release was in flight still belongs to the session, which accounts for it.
-        handlers.chunk(copy(result.value));
-      }
-    } catch (error) {
-      if (released) return;
-      finished = true;
-      handlers.failed(error);
-    }
-  };
+        return result.done ? undefined : result.value;
+      },
+      ended: () => {
+        finished = true;
+        if (!released) handlers.end();
+      },
+      failed: (error) => {
+        if (released) return;
+        finished = true;
+        handlers.failed(error);
+      },
+      isReleased: () => released,
+    });
   const open: OpenSource = {
     channel,
     ownership: 'owned',
@@ -78,22 +134,22 @@ function openIterable(channel: OutputChannel, source: Extract<OutputSource, { ki
   // Set only when the iterator reports `done`; a failed iteration is not finished and still needs `return()`.
   let finished = false;
   let released = false;
-  const pump = async (handlers: SourceHandlers): Promise<void> => {
-    try {
-      for (;;) {
+  const pump = (handlers: SourceHandlers): Promise<void> =>
+    pullInto(handlers, {
+      next: async () => {
         const result = await iterator.next();
-        if (result.done) {
-          finished = true;
-          if (!released) handlers.end();
-          return;
-        }
-        handlers.chunk(copy(result.value));
-      }
-    } catch (error) {
-      if (released) return;
-      handlers.failed(error);
-    }
-  };
+        return result.done ? undefined : result.value;
+      },
+      ended: () => {
+        finished = true;
+        if (!released) handlers.end();
+      },
+      failed: (error) => {
+        if (released) return;
+        handlers.failed(error);
+      },
+      isReleased: () => released,
+    });
   const open: OpenSource = {
     channel,
     ownership: 'owned',
