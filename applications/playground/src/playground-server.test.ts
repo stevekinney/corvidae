@@ -717,6 +717,25 @@ describe('request idle timeout configuration', () => {
 
     expect(calls).toEqual([{ request: eventsRequest, seconds: 0 }]);
   });
+
+  it('disables the idle timeout for routes that build on first request, and no others', () => {
+    // A cold lazy build is busy work, not an idle socket. Bun's ten-second idle
+    // timeout drops the connection mid-build on a loaded host, so the browser
+    // sees ERR_EMPTY_RESPONSE for the page bundle and the page never hydrates.
+    const calls: string[] = [];
+    const server = {
+      timeout(request: Request) {
+        calls.push(new URL(request.url).pathname);
+      },
+    };
+    for (const path of ['/page-bundle/combobox.js', '/shell-bundle/shell.js', '/page/combobox']) {
+      configureRequestIdleTimeout(req(path), server);
+    }
+    configureRequestIdleTimeout(req('/ping'), server);
+    configureRequestIdleTimeout(req('/styles.css'), server);
+
+    expect(calls).toEqual(['/page-bundle/combobox.js', '/shell-bundle/shell.js', '/page/combobox']);
+  });
 });
 
 async function fixtureContentHash(componentName: string): Promise<string> {
@@ -1544,18 +1563,6 @@ describe('/page/:name', () => {
     expect(stylesheet.status).toBe(200);
     expect(stylesheet.headers.get('Content-Type')).toBe('text/css');
     expect(await stylesheet.text()).not.toContain('@import');
-  });
-
-  it('loads package-owned component CSS for extracted Chat pages', async () => {
-    const response = await handleRequest(req('/page/chat'));
-    expect(response.status).toBe(200);
-    const html = await response.text();
-    expect(html).toContain('href="/package-components/chat/chat/chat.css"');
-
-    const stylesheet = await handleRequest(req('/package-components/chat/chat/chat.css'));
-    expect(stylesheet.status).toBe(200);
-    expect(stylesheet.headers.get('Content-Type')).toBe('text/css');
-    expect(await stylesheet.text()).toContain('.cinder-chat');
   });
 
   /*

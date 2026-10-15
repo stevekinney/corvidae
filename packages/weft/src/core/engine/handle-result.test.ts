@@ -174,6 +174,22 @@ describe('workflow result resolution', () => {
     expect(await replacementWaiter.promise).toBe('resolved through replacement');
   });
 
+  it('rejects a linked replacement waiter with the current waiter rejection', async () => {
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    const internals = getInternals(engine);
+    const currentWaiter = createWorkflowResultWaiter(internals, 'wf-replacement-rejected');
+    const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+    const replacementWaiter = { promise, resolve, reject };
+
+    await bootstrapWorkflowResultResolver(internals, 'wf-replacement-rejected', replacementWaiter);
+    const replacementRejection = throwingRejectionOf(replacementWaiter.promise);
+    const currentRejection = throwingRejectionOf(currentWaiter.promise);
+    currentWaiter.reject(new Error('replacement run failed'));
+
+    expect(await replacementRejection).toThrow('replacement run failed');
+    expect(await currentRejection).toThrow('replacement run failed');
+  });
+
   it('unregisters the previous cached handle token before replacing it', async () => {
     await using engine = new Engine({ storage: new MemoryStorage() });
     const internals = getInternals(engine);

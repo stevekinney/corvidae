@@ -53,6 +53,16 @@
       "type": "boolean",
       "description": "Mirror engine output into a bounded screen-reader live region. Default `false`."
     },
+    "mouseReporting": {
+      "type": "boolean",
+      "description": "Send the mouse to the program (tmux, vim) as reports, while key capture is on and the view is writable. Default `false`: otherwise the pointer selects text and no report is sent."
+    },
+    "maximumPasteBytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 262144,
+      "description": "The most paste text, in UTF-8 bytes, offered for review. A larger paste is refused whole and nothing is sent. Anything outside the range uses the default. Default `65536`."
+    },
     "class": {
       "type": "string",
       "description": "Additional class merged with the component's root class."
@@ -70,6 +80,16 @@
         "name": "onGeometryChange",
         "reason": "function-or-snippet",
         "description": "Called with the engine's measured geometry, once per accepted change. The engine's cell measurement is the sole resize authority; the frame's own estimate is never forwarded. A terminal that does not own the grid never calls it."
+      },
+      {
+        "name": "onInputRefused",
+        "reason": "function-or-snippet",
+        "description": "Called when input, or part of it, did not reach the wire. Input is never queued, retried, or replayed, so this is the machine-readable record of what was dropped and why; the reader is also told through the status region, except for typing into a read-only view. `source` is set when a paste or the Interrupt control asked for the input."
+      },
+      {
+        "name": "onInspectionEvent",
+        "reason": "function-or-snippet",
+        "description": "Called with a typed metric when the reader searches, steps through matches, clears, opens or refreshes the accessible output, exports, or activates a listed link. An event holds counts, booleans and fixed words only: never output, a query, a keystroke, an argument, an environment value or a credential. A handler that throws changes nothing about the session."
       },
       {
         "name": "onLinkActivate",

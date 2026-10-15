@@ -34,3 +34,5 @@ components/editor/src/lib/export/__fixtures__/diff-review/
 .env.*
 # Interoperability fixtures are pinned by SHA-256 (manifest.json); formatting would change their bytes.
 components/cinder/scripts/tokens/fixtures/theme-builder/interoperability/
+# CIN-588 raw measurement output, kept byte-for-byte as the harness wrote it (comparison-*.json is compare's text output).
+applications/playground/docs/decisions/cin-588-results/

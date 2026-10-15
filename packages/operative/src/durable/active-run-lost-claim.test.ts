@@ -56,31 +56,54 @@ function completedSummary(runId: string) {
 /** No checkpoint: the kept-claim control reconstructs from an empty run state. */
 const emptyCheckpointStore = { loadCheckpoint: async () => null };
 
-function engineThat(lostClaim: boolean, runId: string): RegistryAgnosticEngine {
+/** What `handle.result()` settles with: the completed summary, or a rejection. */
+type Settlement = { rejectWith?: unknown };
+
+function settle(runId: string, settlement: Settlement): Promise<unknown> {
+  return 'rejectWith' in settlement
+    ? Promise.reject(settlement.rejectWith)
+    : Promise.resolve(completedSummary(runId));
+}
+
+const timeoutRejection = Object.assign(new Error('Workflow timed out'), {
+  code: 'WorkflowTimeoutError',
+});
+
+function engineThat(
+  lostClaim: boolean,
+  runId: string,
+  settlement: Settlement = {},
+): RegistryAgnosticEngine {
   return {
-    start: async () => ({ result: () => Promise.resolve(completedSummary(runId)) }),
-    lostWorkflowClaim: async (workflowId: string) => lostClaim && workflowId === runId,
+    start: async () => ({ id: runId, result: () => settle(runId, settlement) }),
+    lostWorkflowClaim: (handle: { id: string }) => lostClaim && handle.id === runId,
   } as unknown as RegistryAgnosticEngine;
 }
 
-function startFreshRun(lostClaim: boolean, runId: string) {
+function startFreshRun(lostClaim: boolean, runId: string, settlement: Settlement = {}) {
   const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
   const terminalEvents = observeTerminalLifecycle(emitter);
   const activeRun = createDurableActiveRun(
-    { engine: engineThat(lostClaim, runId), checkpointStore: emptyCheckpointStore } as never,
+    {
+      engine: engineThat(lostClaim, runId, settlement),
+      checkpointStore: emptyCheckpointStore,
+    } as never,
     { runId, sessionId: runId, options: runOptions(), emitter },
   );
   return { activeRun, terminalEvents };
 }
 
-function reattachRun(lostClaim: boolean, runId: string) {
+function reattachRun(lostClaim: boolean, runId: string, settlement: Settlement = {}) {
   const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
   const terminalEvents = observeTerminalLifecycle(emitter);
   const recoveredRun = reattachDurableActiveRun(
-    { engine: engineThat(lostClaim, runId), checkpointStore: emptyCheckpointStore as never },
+    {
+      engine: engineThat(lostClaim, runId, settlement),
+      checkpointStore: emptyCheckpointStore as never,
+    },
     {
       runId,
-      handle: { id: runId, result: () => Promise.resolve(completedSummary(runId)) },
+      handle: { id: runId, result: () => settle(runId, settlement) },
       emitter,
     },
   );
@@ -125,6 +148,71 @@ describe('a durable run whose workflow claim another engine took', () => {
     const result = await recoveredRun.result;
 
     expect(result.finishReason).toBe('stop-condition');
+    expect(terminalEvents).toEqual([RunCompletedEvent.type]);
+  });
+});
+
+describe('a durable run whose rejected result is another engine’s outcome', () => {
+  const cancelRejection = new Error('Workflow cancelled');
+  const failureRejection = new Error('step blew up');
+
+  it.each([
+    ['timeout', timeoutRejection],
+    ['cancel', cancelRejection],
+    ['failure', failureRejection],
+  ])(
+    'leaves a fresh run write-free and unreachable on a %s another engine committed',
+    async (_, rejectWith) => {
+      const { activeRun, terminalEvents } = startFreshRun(true, `fresh-lost-${_}`, { rejectWith });
+
+      const result = await activeRun.result;
+      await Promise.resolve();
+
+      expect(result.finishReason).toBe('aborted');
+      expect(terminalEvents).toEqual([]);
+      expect(await activeRun.closed()).toEqual({ status: 'unresolved', reason: 'unreachable' });
+    },
+  );
+
+  it.each([
+    ['timeout', timeoutRejection],
+    ['failure', failureRejection],
+    ['cancel', cancelRejection],
+  ])(
+    'leaves a reattached run write-free and unreachable on a %s another engine committed',
+    async (_, rejectWith) => {
+      const { recoveredRun, terminalEvents } = reattachRun(true, `reattach-lost-${_}`, {
+        rejectWith,
+      });
+
+      const result = await recoveredRun.result;
+
+      expect(result.finishReason).toBe('aborted');
+      expect(terminalEvents).toEqual([]);
+      expect(await recoveredRun.closed()).toEqual({ status: 'unresolved', reason: 'unreachable' });
+    },
+  );
+
+  it('still publishes a timeout for a fresh run on the engine that kept its claim', async () => {
+    const { activeRun, terminalEvents } = startFreshRun(false, 'fresh-kept-timeout', {
+      rejectWith: timeoutRejection,
+    });
+
+    const result = await activeRun.result;
+    await Promise.resolve();
+
+    expect(result.finishReason).toBe('error');
+    expect(terminalEvents).toEqual([RunCompletedEvent.type]);
+  });
+
+  it('still publishes a timeout for a reattached run on the engine that kept its claim', async () => {
+    const { recoveredRun, terminalEvents } = reattachRun(false, 'reattach-kept-timeout', {
+      rejectWith: timeoutRejection,
+    });
+
+    const result = await recoveredRun.result;
+
+    expect(result.finishReason).toBe('error');
     expect(terminalEvents).toEqual([RunCompletedEvent.type]);
   });
 });

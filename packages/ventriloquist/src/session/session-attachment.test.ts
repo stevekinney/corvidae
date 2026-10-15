@@ -122,6 +122,28 @@ describe('attachment authority is derived on the server', () => {
     });
   });
 
+  test('a pipe opened without stdin advertises no input and refuses it as unsupported', () => {
+    const session = new Session(
+      optionsFor({ backend: { ...createScriptedBackend({ mode: 'pipe' }), acceptsInput: false } }),
+    );
+    const result = session.attach({
+      requestedMode: 'interactive',
+      grant: 'interactive',
+      listener: () => undefined,
+    });
+    expect(result.accepted && result.authority).toEqual({
+      generation: 1,
+      canWrite: false,
+      capabilities: { mode: 'pipe', input: false, resize: false, kill: true, readOnly: false },
+    });
+    const attachment = expectAttached(result);
+    expect(attachment.write(utf8('x'))).toEqual({
+      disposition: 'failed',
+      sequence: 1,
+      reason: 'unsupported',
+    });
+  });
+
   test.each([
     ['a read-only grant', 'interactive', 'read-only'],
     ['a read-only request', 'read-only', 'interactive'],

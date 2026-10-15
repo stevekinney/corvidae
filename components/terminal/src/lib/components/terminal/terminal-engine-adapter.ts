@@ -7,6 +7,7 @@ import type {
 } from '@xterm/xterm';
 
 import { boundTitle, linksForRow, parseVisibleHttpsUrl } from './terminal-links.ts';
+import { locateRange } from './terminal-locate.ts';
 import { projectBuffer, type TerminalProjection } from './terminal-projection.ts';
 import type { EngineTheme } from './terminal-theme.ts';
 import { createUtf8Carry } from './terminal-utf8-boundary.ts';
@@ -15,8 +16,23 @@ import type { TerminalGeometry } from './terminal.types.ts';
 /** The retained scrollback, from `documentation/terminal/security-and-budgets.md`. */
 export const SCROLLBACK_LINES = 10_000;
 
+/**
+ * What a local clear removes. None of them writes to the process: they act on the engine's own
+ * buffer, in order behind the output already received.
+ *
+ * - `visible`: erases the screen rows and keeps the scrollback.
+ * - `retained`: discards the scrollback and every screen row except the cursor's own, as the
+ *   engine's `clear()` does. Only the active buffer is cleared.
+ * - `reset`: the engine's full reset, which also returns modes, charsets and the active buffer to
+ *   their start state.
+ */
+export type ClearScope = 'visible' | 'retained' | 'reset';
+
 /** The grid the engine starts with, before the first fit or owner geometry arrives. */
 export const INITIAL_GEOMETRY: TerminalGeometry = { columns: 80, rows: 24 };
+
+/** Erase in display, all rows. It never moves the cursor and never reaches the process. */
+const ERASE_DISPLAY = '\u001b[2J';
 
 /** The engine classes, loaded together so one failure covers both. */
 export type EngineConstructors = {
@@ -68,6 +84,8 @@ export function buildEngineOptions(
     allowProposedApi: false,
     convertEol: false,
     disableStdin: options.readOnly,
+    // Option-click selects on a Mac even while the program tracks the mouse, as Shift does elsewhere.
+    macOptionClickForcesSelection: true,
     cursorBlink: !options.reducedMotion && !options.readOnly,
     screenReaderMode: options.announceOutput,
     linkHandler: INERT_LINK_HANDLER,
@@ -76,6 +94,25 @@ export function buildEngineOptions(
     ...(options.fontSize === undefined ? {} : { fontSize: options.fontSize }),
   };
 }
+
+/**
+ * One report of input the engine produced. Its two shapes convert to bytes differently, so they
+ * stay distinct: `text` is characters and goes out as UTF-8, `binary` is one byte per character.
+ * Automatic replies to terminal queries arrive here too, as `text`; a read-only engine produces
+ * neither (it sets `disableStdin`, which the engine checks before any report is made).
+ */
+export type EngineInputReport = { kind: 'text' | 'binary'; data: string };
+
+/**
+ * The engine's key hook. xterm.js 6.0.0 calls it for every keydown, keypress and keyup on its
+ * input element, before it does anything else with the event, and skips the event only when the
+ * hook returns exactly `false` (`CoreBrowserTerminal._keyDown`, `_keyPress` and `_keyUp` all test
+ * `=== false`). Any other value, including `undefined`, lets the engine process it. The engine
+ * never prevents the event's default or stops its propagation on a skipped event, so the browser
+ * acts on it unless the hook prevents it. Input events, IME composition and paste never ask the
+ * hook.
+ */
+export type EngineKeyHook = (event: KeyboardEvent) => boolean;
 
 /**
  * The private face of the selected engine. Nothing outside the renderer receives the engine
@@ -111,8 +148,58 @@ export type RendererEngine = {
   setLinkActivation(activate: ((url: string) => void) | undefined): void;
   /** A bounded plain-text projection of the active retained buffer. */
   readProjection(maximumBytes?: number): TerminalProjection;
+  /**
+   * Select the retained text a search found, without scrolling the viewport or moving focus. The
+   * match is `text.slice(start, end)` of the projection read within `maximumBytes` now; if the
+   * buffer no longer holds exactly `text` there, or the cells cannot be placed exactly, nothing is
+   * selected and this returns `false`. A trailing line break is not selected, because a selection
+   * cannot end after one; a match of nothing but line breaks cannot be selected.
+   */
+  selectMatch(match: { start: number; end: number; text: string }, maximumBytes: number): boolean;
+  /** Drop the selection {@link RendererEngine.selectMatch} made. A reader's own selection stays. */
+  clearMatchSelection(): void;
+  /**
+   * Clear the local buffer. The clear takes effect in order behind every chunk already given to
+   * {@link RendererEngine.write}. A unicode prefix still held from earlier output is dropped with
+   * the rest of it, so a continuation byte written after the clear is an orphan and never completes
+   * a character that began before it. Nothing is sent to the
+   * process. `done` runs once the clear has been applied, and never after dispose.
+   */
+  clear(scope: ClearScope, done?: () => void): void;
+  /**
+   * Subscribe to changes of the retained content: output parsed, a clear or reset applied, or a
+   * resize that reflows rows. The returned function unsubscribes.
+   */
+  onChange(listener: () => void): () => void;
   /** Whether the viewport shows the live bottom, where new output scrolls into view. */
   readonly following: boolean;
+  /**
+   * Subscribe to the input the engine produces, as the reports it makes. The returned function
+   * unsubscribes. Both shapes arrive through the one listener, in the order the engine made them.
+   */
+  onInput(listener: (report: EngineInputReport) => void): () => void;
+  /** Replace the engine's key hook, or remove it with `undefined`. */
+  setKeyHook(hook: EngineKeyHook | undefined): void;
+  /** Whether the engine holds a non-empty selection. */
+  hasSelection(): boolean;
+  /**
+   * Paste `text` as the engine does: line breaks become carriage returns and the text is wrapped in
+   * the bracketed-paste markers when the program asked for them. It is reported through
+   * {@link RendererEngine.onInput} as one text report, and nothing is reported when the engine takes
+   * no input.
+   */
+  paste(text: string): void;
+  /** Whether the program asked for pastes to be bracketed, so the engine wraps them in markers. */
+  readonly bracketedPaste: boolean;
+  /** Whether the program asked for mouse reports, so the engine turns pointer events into input. */
+  readonly mouseTracking: boolean;
+  /**
+   * Subscribe to changes of the mouse mode the program set, seen once the output that changed it
+   * is parsed. The returned function unsubscribes.
+   */
+  onModeChange(listener: () => void): () => void;
+  /** Move focus to the engine's input element. */
+  focus(): void;
   /** Release the engine and its DOM. Safe to call twice. */
   dispose(): void;
 };
@@ -132,10 +219,48 @@ export function createRendererEngine(
   const carry = createUtf8Carry();
   // Acknowledgements for chunks whose last bytes are still held in `carry`, in arrival order.
   let heldAcknowledgements: Array<() => void> = [];
+  const changeListeners = new Set<() => void>();
+  // Whether the current selection is one `selectMatch` made, so clearing never takes a reader's.
+  let ownsSelection = false;
+
+  function notifyChange(): void {
+    for (const listener of changeListeners) listener();
+  }
+  terminal.onWriteParsed(notifyChange);
+  terminal.onResize(notifyChange);
+
+  /**
+   * Drop a unicode prefix still held from earlier output without parsing it, and acknowledge the
+   * chunks that carried it. A clear removes everything received before it, and the prefix is part
+   * of that: parsed, it would wait inside the engine for its continuation and complete after the
+   * clear.
+   */
+  function discardHeldOutput(): void {
+    carry.flush();
+    const released = heldAcknowledgements;
+    heldAcknowledgements = [];
+    if (released.length > 0) writeBytes(new Uint8Array(0), released);
+  }
+
+  function finishHeldOutput(): void {
+    if (disposed) return;
+    const rest = carry.flush();
+    const released = heldAcknowledgements;
+    heldAcknowledgements = [];
+    if (rest.length > 0 || released.length > 0) writeBytes(rest, released);
+  }
+
+  const modeListeners = new Set<() => void>();
+  let tracking = false;
 
   function writeBytes(bytes: Uint8Array, acknowledgements: Array<() => void>): void {
     terminal.write(bytes, () => {
       if (disposed) return;
+      const now = terminal.modes.mouseTrackingMode !== 'none';
+      if (now !== tracking) {
+        tracking = now;
+        for (const listener of modeListeners) listener();
+      }
       for (const acknowledge of acknowledgements) acknowledge();
     });
   }
@@ -198,13 +323,7 @@ export function createRendererEngine(
         writeBytes(bytes, [...released, parsed]);
       }
     },
-    finishOutput() {
-      if (disposed) return;
-      const rest = carry.flush();
-      const released = heldAcknowledgements;
-      heldAcknowledgements = [];
-      if (rest.length > 0 || released.length > 0) writeBytes(rest, released);
-    },
+    finishOutput: finishHeldOutput,
     resize(geometry) {
       terminal.resize(geometry.columns, geometry.rows);
     },
@@ -244,13 +363,93 @@ export function createRendererEngine(
     readProjection(maximumBytes) {
       return projectBuffer(terminal.buffer.active, maximumBytes);
     },
+    selectMatch(match, maximumBytes) {
+      const buffer = terminal.buffer.active;
+      const projection = projectBuffer(buffer, maximumBytes);
+      // A selection cannot end after a line feed, so a match that ends with one selects up to the
+      // end of its last line.
+      const selected = match.text.replace(/\n+$/u, '');
+      const end = match.start + selected.length;
+      const cells =
+        selected !== '' && projection.text.slice(match.start, end) === selected
+          ? locateRange(buffer, projection, terminal.cols, { start: match.start, end })
+          : undefined;
+      if (cells !== undefined) {
+        terminal.select(cells.column, cells.row, cells.length);
+        if (terminal.getSelection() === selected) {
+          ownsSelection = true;
+          return true;
+        }
+        // The cells did not hold exactly the match; the selection just made is wrong, so it goes.
+        terminal.clearSelection();
+      } else if (ownsSelection) {
+        terminal.clearSelection();
+      }
+      ownsSelection = false;
+      return false;
+    },
+    clearMatchSelection() {
+      if (!ownsSelection) return;
+      ownsSelection = false;
+      terminal.clearSelection();
+    },
+    clear(scope, done) {
+      if (disposed) return;
+      discardHeldOutput();
+      const applied = () => {
+        if (disposed) return;
+        if (scope === 'retained') terminal.clear();
+        else if (scope === 'reset') terminal.reset();
+        notifyChange();
+        done?.();
+      };
+      // The write queue is the only ordered channel into the parser, so the clear travels
+      // through it: erase-in-display for the screen, an empty write that runs the call otherwise.
+      terminal.write(scope === 'visible' ? ERASE_DISPLAY : '', applied);
+    },
+    onChange(listener) {
+      changeListeners.add(listener);
+      return () => changeListeners.delete(listener);
+    },
     get following() {
       const buffer = terminal.buffer.active;
       return buffer.viewportY >= buffer.baseY;
     },
+    onInput(listener) {
+      const text = terminal.onData((data) => listener({ kind: 'text', data }));
+      const binary = terminal.onBinary((data) => listener({ kind: 'binary', data }));
+      return () => {
+        text.dispose();
+        binary.dispose();
+      };
+    },
+    setKeyHook(hook) {
+      // The engine cannot detach a hook; one that always says "process" is the same as none.
+      terminal.attachCustomKeyEventHandler(hook ?? (() => true));
+    },
+    hasSelection() {
+      return terminal.hasSelection();
+    },
+    onModeChange(listener) {
+      modeListeners.add(listener);
+      return () => modeListeners.delete(listener);
+    },
+    get mouseTracking() {
+      return !disposed && terminal.modes.mouseTrackingMode !== 'none';
+    },
+    get bracketedPaste() {
+      return !disposed && terminal.modes.bracketedPasteMode;
+    },
+    paste(text) {
+      if (!disposed) terminal.paste(text);
+    },
+    focus() {
+      if (!disposed) terminal.focus();
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
+      changeListeners.clear();
       terminal.dispose();
     },
   };

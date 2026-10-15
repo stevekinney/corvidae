@@ -26,7 +26,7 @@ import { createCheckpointStore } from './checkpoint-store';
 import { createRunWorkflow } from './run-workflow';
 import { type AgentRunWorkflowInput, isAgentRunWorkflowInput } from './run-workflow-input';
 import { normalizeAgentRunWorkflowResult } from './run-workflow-result';
-import { runStepMemo } from './run-workflow-step';
+import { conversationAfterStep, runStepMemo } from './run-workflow-step';
 import { createStorageActivities } from './storage-activities';
 import type { DurableRunDeps } from './types';
 
@@ -4009,7 +4009,7 @@ describe('durable agentRun workflow', () => {
                 zeroAccumulators,
                 ctx.workflowId,
               );
-              snapshot = result.conversationSnapshot;
+              snapshot = conversationAfterStep(snapshot, result);
               yield* ctx.run('saveConversation', { runId: ctx.workflowId, snapshot });
               if (result.record !== null) {
                 yield* ctx.run('recordStep', { runId: ctx.workflowId, record: result.record });

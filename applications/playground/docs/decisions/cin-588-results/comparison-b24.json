@@ -1,0 +1,9 @@
+SELECT candidate
+  - staticExportMilliseconds/cold: candidate maximum 359672.6638750001 is below baseline minimum 874663.979208.
+  - serverSpawnToReadyMilliseconds/cold: candidate maximum 26025.551124999765 is below baseline minimum 213589.02641599998.
+  - processTreePeakResidentBytes(static-export)/cold: candidate maximum 3531145216 is below baseline minimum 4786913280.
+  - processTreePeakResidentBytes(server-until-ready)/cold: candidate maximum 3284271104 is below baseline minimum 3685056512.
+  - staticExportMilliseconds/warm: candidate maximum 353485.750125 is below baseline minimum 646855.251375.
+  - serverSpawnToReadyMilliseconds/warm: candidate maximum 41423.59695899999 is below baseline minimum 215427.85729099996.
+  - processTreePeakResidentBytes(static-export)/warm: candidate maximum 3521740800 is below baseline minimum 4850319360.
+  - processTreePeakResidentBytes(server-until-ready)/warm: candidate maximum 3137257472 is below baseline minimum 3805855744.

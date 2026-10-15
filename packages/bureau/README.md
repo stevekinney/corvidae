@@ -19,6 +19,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The `Bureau` Object](#the-bureau-object)
   - [`streamEventToFrame`](#streameventtoframe)
   - [The Audit Trail](#the-audit-trail)
+  - [Run-creation receipts (COR-424)](#run-creation-receipts-cor-424)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
   - [Durable goals (COR-851)](#durable-goals-cor-851)
@@ -137,9 +138,9 @@ Every field except `agents` is optional.
 | `memory` | `GovernedMemory` | COR-41—attach governed recall and persistence hooks. Recall runs through the governed memory's mandatory recall admission and is injected as a labeled `<memory-evidence>` system message; final assistant content is admitted as untrusted `conversation` memory (scanned, quota-checked, quarantined when poisoned). Both run under the run's memory authority, and a recovered run whose request authority cannot be restored gets no memory hooks. Catalog runs (`bureau.run`) and `bureau.children` children get none either. See [Governed memory](#governed-memory-cor-41). |
 | `memoryAuthority` | `BureauMemoryAuthorityOptions` | COR-41—`runCapabilities` (default `['memory:search', 'memory:write']`) Bureau delegates to each run through the request principal; explicit `memory:*` capabilities on a request can only narrow them. `purpose` defaults to `'conversation-memory'`. See `createRunMemoryAuthority` and [Governed memory](#governed-memory-cor-41). |
 | `cache` | `CacheConfiguration` | Wrap the resolved generate function with response caching. |
-| `guardrails` **(deprecated)** | `GuardrailsOptions` | Attach `operative` guardrail detectors to every run. Agent-owned now—deprecated, not removed, per AB-242; AB-15's end state moves this per-agent onto `createAgent`, but that field has not landed on `CreateAgentOptions` yet—see AB-242 and AB-352. |
+| `guardrails` **(deprecated)** | `GuardrailsOptions \| false` | Attach `operative` guardrail detectors to every run; omitted wires the AB-40 preset, `false` opts out. Agent-owned now—migrate to `createAgent`'s `guardrails` (COR-1367). During the transition a catalog agent that declares no `guardrails` of its own inherits this value (see [Per-agent guardrails and skills](#per-agent-guardrails-and-skills-cor-1367)). |
 | `identity` | `IdentityConfiguration` | Configure identity resolution for memory and session ownership. |
-| `skills` **(deprecated)** | `SkillRuntimeConfiguration` | Attach a skill catalog; injects an `<available_skills>` system block on step 0 of every run. Agent-owned now—deprecated, not removed, per AB-242; AB-15's end state moves this per-agent onto `createAgent`, but that field has not landed on `CreateAgentOptions` yet—see AB-242 and AB-352. |
+| `skills` **(deprecated)** | `SkillRuntimeConfiguration` | Attach a skill catalog to `createRun` runs; injects an `<available_skills>` system block on step 0 of every run. Agent-owned now—migrate to `createAgent`'s `skills` (COR-1367). It never reached catalog agents (`bureau.run`) and still does not. |
 | `streaming` | `StreamingConfiguration` | Enable enhanced streaming and expose a `streamEventTarget` on run runtime. |
 | `scheduler` | `SchedulerConfiguration` | Attach an in-process priority scheduler (`submitSchedulerTask`). `retentionWindowMs` (finite, greater than zero; unset defaults to 3600000 milliseconds, one hour, and an explicit value overrides it) bounds how long a settled task stays resolvable through `locateSchedulerTask` / `awaitSchedulerTask`; an explicit value is forwarded unchanged to operative's `createScheduler`, and Bureau's composed runtime drives its timers. |
 | `stopWhen` **(deprecated)** | `StopCondition \| StopCondition[]` | Default stop condition(s) applied to every run. Agent-owned now—deprecated, not removed, per AB-242; migrate to `createAgent`'s `stopWhen`. |
@@ -154,6 +155,37 @@ Every field except `agents` is optional.
 | `sessionInput` | `{ sessionBacklogLimit?: number; principalBacklogLimit?: number }` | AB-42/AB-194—per-session/per-principal backlog caps for `submitSessionInput`. Each is validated as a positive integer at construction time (`BureauError('...', 'BAD_REQUEST')` otherwise); `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT` (32) and `DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT` (128) are the values a future mailbox-backed admission path will apply for an omitted field—neither cap is enforced yet. |
 | `modelCatalog` | `ModelCatalogService` | AB-246—the started-work-conformant model-catalog refresh service exposed as `bureau.modelCatalog`. Omit to let `createBureau` build a default service seeded from `@lostgradient/operative`'s static `createModelCatalog()`; pass one explicitly to share a catalog across bureaus or supply a non-default `descriptorSource`. See [`model-catalog-refresh.ts`](./src/model-catalog-refresh.ts). |
 | `modelPolicy` | `{ deployment?; bureau?; users?: Record<string, UserModelConfiguration>; policyRevision: number }` | AB-64/AB-250—deployment/Bureau model-policy invariants and the per-principal user configuration `bureau.planSelection`/a run's `SelectionGate` compose against, held in memory for the bureau's lifetime. Named policy profiles are keys of `users` and of each configuration's own `fallbackOrder`; there is no storage schema. `BureauRunOptions` gains no field for any of this. See [`model-policy.ts`](./src/model-policy.ts). |
+
+### Per-agent guardrails and skills (COR-1367)
+
+`createAgent` accepts `guardrails` and `skills`, the per-agent counterparts of the deprecated `BureauOptions.guardrails`/`skills`. For a catalog agent dispatched with `bureau.run`, the guardrails a run applies resolve most specific first:
+
+| Agent `guardrails` | `BureauOptions.guardrails` | The run applies |
+| --- | --- | --- |
+| omitted | omitted | the AB-40 preset, once, in the agent's tier |
+| omitted | a configuration | the bureau configuration (inherited), instead of the preset |
+| a configuration | anything | the agent's configuration only |
+| `false` | anything | no guardrails |
+| omitted | `false` | no guardrails |
+
+Bureau hands its value down through `AgentRunContext.inheritedGuardrails` to agents that carry `OPERATIVE_RESOLVES_GUARDRAILS` (every `createAgent` result), and then registers no guardrail invariant of its own for that run, so the policy runs exactly once and a recovered run resumes under the same composition its fresh dispatch used. A hand-written `RunnableAgent`, or a `createLazyAgent` wrapper, keeps Bureau's own guardrail invariant as before and is handed `false`, so a `createAgent` behind a lazy wrapper does not add the preset a second time.
+
+Skills do not inherit: `BureauOptions.skills` only ever composed `createRun` runs. A catalog agent offers exactly the catalog its own `skills: createAgentSkills({ catalog })` names, scanned by its own guardrails.
+
+`createAgentSkills({ catalog, includeTools?, loadArtifact?, events? })` is exported by this package. It implements operative's `AgentSkills` seam over `@lostgradient/skills`, which is why it lives here: operative cannot import the private skills package, and the skills package sits below operative in the package graph and must not import it. Each run gets a fresh skill client bound to the catalog, so activations never leak between runs. Active skills are not snapshotted for durable recovery on this path: a catalog-dispatched run has no Bureau session to hold them, so a recovered run starts with an empty active set.
+
+```typescript
+import { createAgentSkills } from '@lostgradient/bureau';
+import { createAgent } from '@lostgradient/operative';
+import { discoverSkills } from '@lostgradient/skills';
+
+const catalog = await discoverSkills({
+  sources: [{ id: 'user', kind: 'user', location: './skills', precedence: 20 }],
+});
+const agent = createAgent({ generate, skills: createAgentSkills({ catalog }) });
+```
+
+Removing the two deprecated fields later is therefore not a behavior change for an agent that says nothing: with no bureau value to inherit, it still resolves to the AB-40 preset.
 
 `durableExecution: true` cannot be combined with a custom `persistence` value—`persistence` shadows `storage`, and the durable engine needs a raw `Storage` backend to checkpoint against. Provide `storage` without `persistence` for durable runs.
 
@@ -183,7 +215,8 @@ The most commonly used members:
 | `memory` | `GovernedMemory \| undefined` | COR-41—the governed memory passed as `BureauOptions.memory`, for host-side reads, legal holds, retention sweeps, deletions, and deletion propagation under the host's own authority. See [Governed memory](#governed-memory-cor-41). |
 | `children` | `BureauChildren` | COR-772—dispatch a catalog agent as the child of a run this bureau knows, then `list`/`get`/`wait`/`signal`/`cancel` it by its stable identifier, including after a restart. See [Parent-child topology](#parent-child-topology-cor-772). |
 | `goals` | `BureauGoals` | COR-851—create a durable goal, then `get`/`list`/`active`/`cancel`/`close` it and `recover` every unfinished one after a restart. Needs a durable engine. See [Durable goals](#durable-goals-cor-851). |
-| `createRun(request)` **(deprecated)** | `Promise<RunSummary>` | Create and start a run against a session. Deprecated, not removed, per AB-242; migrate to `bureau.run(name, input, options?)` with a catalog `RunnableAgent`. |
+| `createRun(request)` **(deprecated)** | `Promise<CreatedRunSummary>` | Create and start a run against a session. With `runCreationRequestId`, resolves with a durable `receipt` and replays exact retries (see [Run-creation receipts](#run-creation-receipts-cor-424)). Deprecated, not removed, per AB-242; migrate to `bureau.run(name, input, options?)` with a catalog `RunnableAgent`. |
+| `locateRunCreationReceipt(request)` | `Promise<RunCreationReceiptLocation>` | COR-424: report where a `runCreationRequestId`'s receipt stands, scoped to its `principal` and `agentName`: `recorded`, `pending`, `expired` once the binding's retention window has passed, or `not-found`. Needs a durable engine. See [Run-creation receipts](#run-creation-receipts-cor-424). |
 | `submitSchedulerTask(request)` | `Promise<SubmitSchedulerTaskResponse>` | Queue a task on the in-process scheduler. |
 | `locateSchedulerTask(taskId)` | `SchedulerTaskLocation` | Resolve a receipt's `taskId` to `in-progress`, `terminal` (with a `PromiseSettledResult` outcome), `expired`, or `not-found`. Synchronous; throws `BureauError` (`NOT_CONFIGURED`) when the scheduler is not enabled. In-process and in-memory only: a restart loses it. |
 | `awaitSchedulerTask(taskId)` | `Promise<RunResult \| null>` | Await a task's settlement from its `taskId` alone, mirroring what the scheduler's `submit()` promise settled with. An `expired` or unknown id rejects with `SchedulerTaskLookupError` (`reason: 'expired' \| 'not-found'`). Throws `BureauError` (`NOT_CONFIGURED`) synchronously when the scheduler is not enabled. |
@@ -295,6 +328,24 @@ The acknowledgement is operative's `CleanupAcknowledgement`: `{ status: 'complet
 Weft exposes no engine-wide operation timeout to inherit, so `timeoutMilliseconds` is opt-in. When set, the bound sleeps on `BureauOptions.shutdownTimeoutSleep`—`RuntimeServices.timers`-backed, never a real timer—and its abort signal is passed into `pruneCheckpoints({ signal })`, so Weft aborts before issuing any delete. Abandoning only the wait would leave unowned deletes running behind a cached `'timed-out'` result. Omitted, the step is unbounded and a caller bounds its own wait through `closed({ signal })`.
 
 The step also folds into the durable run's `closed()`, where it only ever _downgrades_: a step reporting `completed` or `not-required` leaves a `completed` run `completed`, while `unresolved` or `failed` surfaces in its place. The run's own cleanup genuinely did finish; a retention step with nothing to prune is a separate fact, and it belongs in the audit record rather than in the run's acknowledgement. The hook is registered on a run's `closed()` only when a retention policy is actually configured—registering it disqualifies `closed()`'s `not-required` fast path (a run with cleanup registered does have cleanup left to do), which would otherwise change `closed()`'s answer for every bureau that never asked for retention. The audit record is written either way.
+
+### Run-creation receipts (COR-424)
+
+A `createRun` request that names `runCreationRequestId` goes through a durable command ledger (`command-ledger.ts`) and resolves with a `RunCreationReceipt`: `{ runId, requestId, createdAt, status }`, where `status` is the run's status when the receipt was recorded. The request must also carry a non-blank `principal`; without one it is a `BAD_REQUEST`. Receipts need a bureau with storage and a durable engine, because a receipt promises that a retry after a restart finds the original run. Without a durable engine the request is rejected with `BureauError` (`NOT_CONFIGURED`, subject `durable`). The restart guarantee holds only as far as the storage itself persists.
+
+The ledger keys each entry on `(principal, agentName, runCreationRequestId, operationVersion)`, with surrounding whitespace trimmed from the request id. The principal is keyed exactly as the run records its owner, so a receipt only ever replays to the principal that owns the run. `agentName` is the published agent the run is for, defaulting to `bureau`, so one request id sent to two agents creates two runs rather than a conflict. Beside the key, the ledger stores a SHA-256 digest of the payload that decides the run: `message`, `sessionId`, `systemPrompt`, `maximumSteps`, and `maximumTokens`, each taken at the value the run will use. A retry that spells out a default it first omitted is therefore the same command. The request context is not part of the digest, because its credentials and tracing legitimately differ between retries. Entries live in the same key-value store as the bureau's sessions.
+
+- **Exact retry.** The same principal, agent, request id, and payload return the original run and the original receipt. Nothing is written, and flow control is not consulted, so a retry is never rejected as a duplicate trigger. Concurrent identical requests in one process create one run.
+- **Conflicting retry.** The same identity with a different payload rejects with `BureauLedgerConflictError` (`requestId`, `reason: 'payload-mismatch'`, and `originalReceipt` once the original has one). The attempt is recorded as its own failed entry, and the original entry is never changed. This is not a `BureauError`.
+- **Retry while pending.** The ledger claims the identity, with the run and session identifiers it minted, before flow control admits the run, and records the receipt once the run is durably started. A retry that finds the claim pending waits for the attempt when it is in flight in the same process. Otherwise (after a restart) it looks for the claimed run. When the run exists, live or in the durable engine, the retry records the receipt with the status it observed, and every later retry receives that same receipt.
+- **A claim whose run never started.** When the claiming process died before the run reached the durable engine, retries report the claimed run as `pending` and start nothing. Without a lease, a crashed claimant cannot be told apart from a slow one, so the request id stays bound to that claim until the retention window, measured from the claim, has passed. A caller that needs the run sooner must use a new request id.
+- **Failure.** When no run results (flow control rejects it, or a session or durable write fails), the claim is released and a retry starts afresh. When the run was durably started but its receipt could not be recorded, `createRun` rejects with `RunCreationReceiptUnrecordedError`, which names the `runId`. The run keeps executing, and a retry of the same request records and returns its receipt.
+
+**Retention.** Each rule above holds only while the binding is retained. A binding is kept for `BureauOptions.runCreationTerminalRetentionMs` after its run settles: a positive integer, 86,400,000 (24 hours) by default, the same as Weft's mailbox `terminalRetentionMs`. Time is the bureau's injected runtime clock. A run still in progress holds its binding however old it is, so a delayed retry of a long-running run never starts a second one. The window runs from the run's terminal action, as the bureau's run store recorded it, whether or not anyone queried the run in the meantime. The one exception is a run that settled before a restart and was not reattached: the ledger cannot see when it settled, so it records the first retry, receipt query, or prune that observes it settled, and the window runs from that moment. A claim whose run never started is measured from the claim.
+
+Once the window has passed, `bureau.locateRunCreationReceipt({ principal, agentName?, runCreationRequestId })` reports `{ status: 'expired', requestId, expiredAt }`, and the same request id creates a new run as a fresh attempt, whatever its payload. The new claim replaces the expired entry and deletes its conflict records in the same compare-and-swap. Until then, those conflict records are ignored, because the binding they conflicted with no longer holds. Durable maintenance deletes expired bindings and their conflict records: `runDurableMaintenance()` on a `'manual'` host, and the bureau's own maintenance interval under the default `'automatic'` profile. A query for a pruned binding reports `not-found`. Before expiry, the query reports `recorded` with the original receipt, or `pending` for a claim with no started run. Like a retry, a query that finds the claimed run started records its receipt.
+
+`run-creation-fault-points.test.ts` covers the crash-before-claim, after-claim, after-work-start, after-effect-before-ack, and during-cancellation fault points over both SQLite and LMDB. Session-input admission, schedule mutation, review resolution, and cancellation do not use this ledger yet.
 
 ### The Durable Event History Store (AB-91)
 

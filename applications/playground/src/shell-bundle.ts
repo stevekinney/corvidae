@@ -1,8 +1,7 @@
-import { randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  GENERATED_ENTRY_DIRECTORY,
   PUBLIC_PATH_BY_FAMILY,
   SHARED_BUILD_OPTIONS,
   collectBuildArtifacts,
@@ -10,8 +9,8 @@ import {
   publishShellArtifacts,
   shellArtifactByPath,
   stableEntryModule,
+  writeGeneratedEntries,
 } from './build-artifacts-shared.ts';
-import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { getRebuildGeneration, isShellStale, setShellStale } from './rebuild-generation.ts';
 
 /**
@@ -57,41 +56,35 @@ export async function compileShellBundleArtifacts(): Promise<{
   entryCode: string;
   artifacts: Map<string, string>;
 } | null> {
-  const entryBasename = 'shell-shell';
-  const entryTempDir = join(PLAYGROUND_TEMP_ROOT, randomUUID());
-  const entryTempPath = join(entryTempDir, `${entryBasename}.ts`);
+  const entryPath = join(GENERATED_ENTRY_DIRECTORY, 'shell-shell.ts');
   // Side-effect import: `shell-entry.ts` calls `mount(Shell, ...)` at module
   // top level and exports nothing. `export {} from` is a re-export of named
   // bindings and is eligible for tree-shaking when the source exports no
   // names; a bare side-effect import preserves the module's evaluation.
   const shim = `import '../../src/shell-app/shell-entry.ts';\n`;
 
-  try {
-    await Bun.write(entryTempPath, shim);
+  await writeGeneratedEntries({ [entryPath]: shim });
 
-    const result = await coordinatedBuild(() =>
-      Bun.build({
-        entrypoints: [entryTempPath],
-        publicPath: PUBLIC_PATH_BY_FAMILY.shell,
-        ...SHARED_BUILD_OPTIONS,
-      }),
-    );
+  const result = await coordinatedBuild(() =>
+    Bun.build({
+      entrypoints: [entryPath],
+      publicPath: PUBLIC_PATH_BY_FAMILY.shell,
+      ...SHARED_BUILD_OPTIONS,
+    }),
+  );
 
-    if (!result.success) {
-      console.error('[playground] shell bundle failed:', result.logs);
-      return null;
-    }
-
-    const entry = await collectBuildArtifacts(result.outputs);
-    if (entry === null) {
-      console.error('[playground] shell bundle produced no entry chunk');
-      return null;
-    }
-
-    return entry;
-  } finally {
-    rmSync(entryTempDir, { recursive: true, force: true });
+  if (!result.success) {
+    console.error('[playground] shell bundle failed:', result.logs);
+    return null;
   }
+
+  const entry = await collectBuildArtifacts(result.outputs);
+  if (entry === null) {
+    console.error('[playground] shell bundle produced no entry chunk');
+    return null;
+  }
+
+  return entry;
 }
 
 /**

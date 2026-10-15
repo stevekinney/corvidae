@@ -22,11 +22,28 @@ describe('package entry points', () => {
 
   test('every entry loads, and each exposes only its own surface', async () => {
     expect(Object.keys(await import('./bun/index.ts')).toSorted()).toEqual([
+      'ProcessStartFailure',
       'SUPPORTED_HOST_ARCHITECTURES',
       'SUPPORTED_HOST_PLATFORMS',
+      'createByteOutputSource',
+      'createPipeProcess',
+      'createPtyProcess',
       'isSupportedHost',
     ]);
-    expect(Object.keys(await import('./websocket/index.ts'))).toEqual(['isSendableCloseCode']);
+    expect(Object.keys(await import('./websocket/index.ts')).toSorted()).toEqual([
+      'WEBSOCKET_LIMIT_RANGES',
+      'canonicalizeOrigin',
+      'createBunProcessFactory',
+      'createOriginPolicy',
+      'createTerminalWebSocketServer',
+      'decideTransport',
+      'forwardedSchemeIsSecure',
+      'isLoopbackAddress',
+      'isLoopbackListener',
+      'isSendableCloseCode',
+      'normalizeAddress',
+      'serveTerminalWebSocket',
+    ]);
     expect(Object.keys(neutralEntry).toSorted()).toEqual(
       [
         'ATTACHMENT_ERROR_CODES',

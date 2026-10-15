@@ -22,6 +22,17 @@
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
     },
     "test": {
+      "outputs": ["test-output/junit/**"],
+      "dependsOn": ["transit"],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+      ]
+    },
+    "test:slow": {
       "outputs": [],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV"]
@@ -53,14 +64,15 @@
     "//#test:self": {
       "dependsOn": ["//#preflight"],
       "env": ["CODEX_CI", "NODE_ENV"],
-      "outputs": []
+      "outputs": ["test-output/junit/self.xml"]
     },
     "//#test:browser-fixtures": {
       "dependsOn": ["//#preflight", "@lostgradient/browser-fixtures#transit"],
       "env": ["CODEX_CI", "TMPDIR"],
       "outputs": [
         "scripts/browser-fixtures/.playwright/manifest.json",
-        "scripts/browser-fixtures/.playwright/fixture-modules.ts"
+        "scripts/browser-fixtures/.playwright/fixture-modules.ts",
+        "test-output/junit/browser-fixtures.xml"
       ]
     },
     "//#dev:browser-fixtures": {
@@ -80,7 +92,26 @@
       "cache": false,
       "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]
     },
+    "@lostgradient/bureau#test": {
+      "dependsOn": ["transit"],
+      "outputs": ["test-output/junit/**"],
+      "env": ["CODEX_CI", "NODE_ENV"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/documentation/runtime-contracts.md"
+      ]
+    },
     "@lostgradient/weft#test": {
+      "outputs": ["test-output/junit/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+      ],
       "dependsOn": ["transit"],
       "env": [
         "CODEX_CI",
@@ -153,14 +184,17 @@
       ]
     },
     "@lostgradient/ventriloquist#test": {
-      "outputs": ["test-results/**"],
+      "outputs": ["test-results/**", "test-output/junit/**"],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
       ]
     },
     "@lostgradient/ventriloquist#test:coverage": {
@@ -185,13 +219,17 @@
       ]
     },
     "@lostgradient/cinder#test": {
+      "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
+        "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
       ]
     }
   },

@@ -9,6 +9,8 @@ export type {
   CreateAgentCatalogOptions,
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
+export type { AgentSkillsOptions } from './agent-skills';
+export { createAgentSkills } from './agent-skills';
 export type { AssetServiceOptions, BureauAssetOptions } from './assets/asset-service';
 export { createAssetService, managedAssetSource } from './assets/asset-service';
 export {
@@ -117,6 +119,41 @@ export type {
   BureauChildTerminalStatus,
   BureauChildWorkflowIdentity,
 } from './child-topology-store';
+export type {
+  BeginRunCreationInput,
+  CommandLedger,
+  CommandLedgerClaimOutcome,
+  CommandLedgerCompletedEntry,
+  CommandLedgerConflictEntry,
+  CommandLedgerEntry,
+  CommandLedgerIdentity,
+  CommandLedgerLocation,
+  CommandLedgerPendingEntry,
+  CommandLedgerPruneResult,
+  CommandPayloadValue,
+  CreateCommandLedgerOptions,
+  CreatedRunSummary,
+  CreateRunCreationLedgerOptions,
+  LocateRunCreationReceiptInput,
+  RunCreationAttempt,
+  RunCreationClaim,
+  RunCreationLedger,
+  RunCreationLedgerResult,
+  RunCreationObservation,
+  RunCreationPayload,
+  RunCreationReceipt,
+  RunCreationReceiptLocation,
+} from './command-ledger';
+export {
+  BureauLedgerConflictError,
+  COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
+  createCommandLedger,
+  createRunCreationLedger,
+  digestCommandPayload,
+  digestRunCreationPayload,
+  RUN_CREATION_OPERATION_VERSION,
+  RunCreationReceiptUnrecordedError,
+} from './command-ledger';
 export { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 export type {
   BureauErrorNotConfiguredSubject,
@@ -368,6 +405,7 @@ export type {
   GenerateProviderName,
   IdentityConfiguration,
   LoadedSkill,
+  LocateRunCreationReceiptRequest,
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,

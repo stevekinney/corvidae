@@ -404,7 +404,7 @@ function buildReactivationBatchOperations(
   return [
     ...buildTerminalWorkflowIndexOperations(currentState, reactivatedState),
     { type: 'put', key: KEYS.workflow(workflowId), value: encode(reactivatedState) },
-    ...visibilityIndexOperations(internals, workflowId, currentState, reactivatedState),
+    ...visibilityIndexOperations(internals, currentState, reactivatedState),
     ...buildRetrySearchAttributeOperations(
       workflowId,
       currentAttributes,
@@ -463,6 +463,7 @@ function buildReactivatedWorkflowState(
   delete reactivatedState.result;
   delete reactivatedState.terminationReason;
   delete reactivatedState.terminalCleanupToken;
+  delete reactivatedState.terminalCommittedBy;
   return reactivatedState;
 }
 

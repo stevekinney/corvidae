@@ -1,5 +1,6 @@
 import {
   INITIAL_GEOMETRY,
+  type ClearScope,
   type EngineSettings,
   type RendererEngine,
   type RendererEngineFactory,
@@ -61,7 +62,26 @@ export type AttachmentOptions = {
   /** The renderer failed closed. Called at most once, after the engine was disposed. */
   onFailure: (failure: TerminalRendererFailure) => void;
   onTitle: (title: string) => void;
+  /**
+   * Bind the session's input path to the mounted engine. Called once, right after the engine is
+   * mounted and before its output is subscribed. The binding is refreshed with every settings
+   * refresh and disposed first on release, while the engine is still alive, so nothing it listens
+   * to outlives the engine or the session it was made for.
+   */
+  bindEngine?: (engine: RendererEngine) => EngineBinding;
   scheduleFit?: FitScheduler;
+  /**
+   * The retained content changed: output was parsed, a clear or reset was applied, or a resize
+   * reflowed the rows. It carries nothing from the content, and it runs inside the same guard as
+   * the engine's other callbacks, so a throwing handler fails closed like any renderer failure.
+   */
+  onContentChange?: () => void;
+};
+
+/** What binding input to the engine hands back. */
+export type EngineBinding = {
+  refresh(): void;
+  dispose(): void;
 };
 
 export type TerminalAttachment = {
@@ -75,6 +95,19 @@ export type TerminalAttachment = {
   readonly following: boolean;
   /** A bounded projection of the active retained buffer, or `undefined` with no live engine. */
   readProjection(maximumBytes?: number): TerminalProjection | undefined;
+  /**
+   * Clear the local buffer, in order behind the output already received. Sends nothing to the
+   * process and never restarts it. Returns `false`, doing nothing, with no live engine; `done`
+   * runs once the clear has been applied.
+   */
+  clear(scope: ClearScope, done?: () => void): boolean;
+  /**
+   * Select a search match in the terminal, leaving the scroll position and focus alone. `false`
+   * when there is no live engine or the match cannot be placed exactly.
+   */
+  selectMatch(match: { start: number; end: number; text: string }, maximumBytes: number): boolean;
+  /** Drop the selection a search made. */
+  clearMatchSelection(): void;
   /** Release the engine, listeners, observers, scheduled work, and the output subscription. */
   dispose(): void;
 };
@@ -108,6 +141,7 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
   let failed = false;
   let ready = false;
   let engine: RendererEngine | undefined;
+  let binding: EngineBinding | undefined;
   let fit: FitCoordinator | undefined;
   let unsubscribe: (() => void) | undefined;
   let unwatchers: Unwatch[] = [];
@@ -128,6 +162,8 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
         errors.push(cause);
       }
     }
+    const bound = binding;
+    binding = undefined;
     const handle = unsubscribe;
     unsubscribe = undefined;
     const pending = unwatchers;
@@ -141,6 +177,7 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
     const released = engine;
     engine = undefined;
     ready = false;
+    step(() => bound?.dispose());
     step(() => handle?.());
     for (const unwatch of pending) step(unwatch);
     step(() => media?.dispose());
@@ -229,6 +266,7 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
       appliedFont = font;
       if (fontChanged) engine.remeasure();
       engine.setLinkActivation(guardedLinkActivation(options.readSettings().activateLink));
+      binding?.refresh();
       requestFit();
     });
   }
@@ -271,6 +309,11 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
     engine = created;
     created.mount(options.host);
     created.setLinkActivation(guardedLinkActivation(settings.activateLink));
+    binding = options.bindEngine?.(created);
+    if (options.onContentChange !== undefined) {
+      const notify = options.onContentChange;
+      created.onChange(() => guarded('render', notify));
+    }
     fit = createFitCoordinator({
       ...(options.scheduleFit === undefined ? {} : { schedule: options.scheduleFit }),
       measure: () => {
@@ -335,6 +378,24 @@ export function createTerminalAttachment(options: AttachmentOptions): TerminalAt
       return engine?.following ?? true;
     },
     readProjection: (maximumBytes) => engine?.readProjection(maximumBytes),
+    selectMatch(match, maximumBytes) {
+      let selected = false;
+      guarded('render', () => {
+        selected = engine?.selectMatch(match, maximumBytes) ?? false;
+      });
+      return selected;
+    },
+    clearMatchSelection() {
+      guarded('render', () => engine?.clearMatchSelection());
+    },
+    clear(scope, done) {
+      if (engine === undefined) return false;
+      const live = engine;
+      guarded('render', () =>
+        live.clear(scope, done === undefined ? undefined : () => guarded('render', done)),
+      );
+      return true;
+    },
     dispose() {
       disposed = true;
       release();

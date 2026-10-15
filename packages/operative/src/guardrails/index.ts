@@ -15,6 +15,7 @@ export type {
   TopicBoundaryDetectorOptions,
 } from 'armorer';
 export { createGuardrails } from './create-guardrails';
+export { createDefaultGuardrailsPreset } from './default-preset';
 export { createInputGuardrail } from './input-guardrail';
 export { createOutputGuardrail } from './output-guardrail';
 export { createSessionTaintTracker } from './session-taint';

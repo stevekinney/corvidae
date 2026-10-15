@@ -121,3 +121,39 @@ describe('startTreeSampler failures (4273630265)', () => {
     expect(series.failureMessages.length).toBeLessThanOrEqual(5);
   });
 });
+
+describe('startTreeSampler memory pressure (CIN-588 harness fix 5)', () => {
+  it('reads the pressure level on every tick and keeps the maximum', async () => {
+    const levels = [1, 4, 2];
+    let pressureReads = 0;
+    let tableReads = 0;
+    const sampler = startTreeSampler({
+      rootPids: () => [10],
+      readProcessTable: () => {
+        tableReads += 1;
+        return Promise.resolve('10 1 100\n');
+      },
+      readPressureLevel: () =>
+        Promise.resolve(levels[Math.min(pressureReads++, levels.length - 1)]!),
+      intervalMilliseconds: 1,
+    });
+    // Paced by table reads, so a sampler that never reads pressure fails instead of hanging.
+    while (tableReads < 6) await Bun.sleep(2);
+    const series = await sampler.stop();
+    expect(series.maximumPressureLevel).toBe(4);
+    expect(series.pressureReadings).toBeGreaterThanOrEqual(3);
+  });
+
+  it('records no pressure level when none can be read', async () => {
+    const sampler = startTreeSampler({
+      rootPids: () => [10],
+      readProcessTable: () => Promise.resolve('10 1 100\n'),
+      readPressureLevel: () => Promise.resolve(null),
+      intervalMilliseconds: 1,
+    });
+    await Bun.sleep(5);
+    const series = await sampler.stop();
+    expect(series.maximumPressureLevel).toBeNull();
+    expect(series.pressureReadings).toBe(0);
+  });
+});

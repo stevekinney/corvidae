@@ -258,4 +258,115 @@ describe('test support reachability', () => {
       'Package entry src/index.ts does not exist',
     );
   });
+
+  describe('every runtime target in the exports map', () => {
+    const subpathSources = {
+      'src/index.ts': 'export const run = 1;\n',
+      'src/bun/index.ts':
+        "import { open } from './process-test-helpers.ts';\nexport const spawn = open;\n",
+      'src/bun/process-test-helpers.ts': 'export const open = 1;\n',
+    };
+
+    test('finds a helper imported only from a subpath entry', () => {
+      const directory = scratchDirectory();
+      writeFiles(directory, {
+        ...subpathSources,
+        'package.json': JSON.stringify({
+          exports: { '.': './src/index.ts', './bun': './src/bun/index.ts' },
+        }),
+      });
+      expect(runtimeImportsOfTestSupport(directory)).toEqual([
+        { file: 'src/bun/index.ts', specifier: './process-test-helpers.ts' },
+      ]);
+    });
+
+    test('walks only the default entry when the package exports nothing else', () => {
+      const directory = scratchDirectory();
+      writeFiles(directory, {
+        ...subpathSources,
+        'package.json': JSON.stringify({ exports: { '.': './src/index.ts' } }),
+      });
+      expect(runtimeImportsOfTestSupport(directory)).toEqual([]);
+    });
+
+    test('falls back to src/index.ts without a package manifest or an exports map', () => {
+      const withoutManifest = scratchDirectory();
+      writeFiles(withoutManifest, subpathSources);
+      expect(runtimeImportsOfTestSupport(withoutManifest)).toEqual([]);
+      const withoutExports = scratchDirectory();
+      writeFiles(withoutExports, { ...subpathSources, 'package.json': '{"name":"x"}' });
+      expect(runtimeImportsOfTestSupport(withoutExports)).toEqual([]);
+    });
+
+    test('reads a string exports map', () => {
+      const directory = scratchDirectory();
+      writeFiles(directory, {
+        'src/main.ts': "import { open } from './main-test-helpers.ts';\nexport const run = open;\n",
+        'src/main-test-helpers.ts': 'export const open = 1;\n',
+        'package.json': JSON.stringify({ exports: './src/main.ts' }),
+      });
+      expect(runtimeImportsOfTestSupport(directory)).toEqual([
+        { file: 'src/main.ts', specifier: './main-test-helpers.ts' },
+      ]);
+    });
+
+    test('follows nested conditions and arrays but not type declarations or non-source targets', () => {
+      const directory = scratchDirectory();
+      writeFiles(directory, {
+        'src/index.ts': 'export const run = 1;\n',
+        'src/bun/index.ts': "import './bun-test-helpers.ts';\n",
+        'src/bun/bun-test-helpers.ts': 'export const open = 1;\n',
+        'src/node/index.ts': "import './node-test-helpers.ts';\n",
+        'src/node/node-test-helpers.ts': 'export const open = 1;\n',
+        'src/types-only.ts': "import './types-test-helpers.ts';\n",
+        'src/types-test-helpers.ts': 'export const open = 1;\n',
+        'src/declarations.d.ts': "import './declarations-test-helpers.ts';\n",
+        'src/declarations-test-helpers.ts': 'export const open = 1;\n',
+        'package.json': JSON.stringify({
+          exports: {
+            '.': { types: './src/types-only.ts', default: './src/index.ts' },
+            './bun': { bun: { import: './src/bun/index.ts' }, default: null },
+            './node': ['./src/node/index.ts', './missing.json'],
+            './package.json': './package.json',
+            './styles.css': './src/styles.css',
+            './pattern/*': './src/pattern/*.ts',
+            './declarations': './src/declarations.d.ts',
+          },
+        }),
+      });
+      expect(runtimeImportsOfTestSupport(directory)).toEqual([
+        { file: 'src/bun/index.ts', specifier: './bun-test-helpers.ts' },
+        { file: 'src/node/index.ts', specifier: './node-test-helpers.ts' },
+      ]);
+    });
+
+    test('reports a helper reached from two entries once', () => {
+      const directory = scratchDirectory();
+      writeFiles(directory, {
+        'src/index.ts': "export * from './shared.ts';\n",
+        'src/bun/index.ts': "export * from '../shared.ts';\n",
+        'src/shared.ts': "import './shared-test-helpers.ts';\n",
+        'src/shared-test-helpers.ts': 'export const open = 1;\n',
+        'package.json': JSON.stringify({
+          exports: { '.': './src/index.ts', './bun': './src/bun/index.ts' },
+        }),
+      });
+      expect(runtimeImportsOfTestSupport(directory)).toEqual([
+        { file: 'src/shared.ts', specifier: './shared-test-helpers.ts' },
+      ]);
+    });
+
+    test('requires every walkable target to exist, naming it', () => {
+      const directory = scratchDirectory();
+      writeFiles(directory, {
+        'src/index.ts': 'export const run = 1;\n',
+        'package.json': JSON.stringify({
+          exports: { '.': './src/index.ts', './bun': './src/bun/index.ts' },
+        }),
+      });
+      expect(() => runtimeImportsOfTestSupport(directory)).toThrow(
+        'Package entry src/bun/index.ts does not exist',
+      );
+    });
+  });
 });

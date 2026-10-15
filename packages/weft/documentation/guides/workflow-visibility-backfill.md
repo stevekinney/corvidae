@@ -40,7 +40,7 @@ Pause every other path that can write workflow state or write directly to Weft s
 - Custom storage-layer write paths that call `put`, `delete`, `batch`, `conditionalBatch`, `deletePrefix`, or raw SQL against the Weft key-value table.
 - Direct database jobs, migrations, or maintenance scripts that touch `wf:*`, `wf-idx-*`, `attr:*`, `idx:*`, `tag:*`, or related workflow visibility keys.
 
-The engine's normal write path is safe because it updates visibility indexes together with workflow state whenever the indexes are live, or whenever the engine runs with the option above. The dangerous case is a foreign write path that changes a workflow below the current cursor without also maintaining its manifest and index rows.
+The engine's normal write path is safe because it updates visibility indexes together with workflow state whenever the indexes are live, or whenever the engine runs with the option above. The dangerous case is a foreign write path that changes a workflow below the current cursor without also maintaining its index rows.
 
 ## Run the backfill
 
@@ -51,6 +51,10 @@ bun scripts/rebuild-workflow-visibility-indexes.ts --storage /var/lib/weft/weft.
 ```
 
 A run that starts without a saved cursor first clears every existing `wf-idx-*` row. Engines skip index writes while the watermark is stale, so rows left from before that point can be stale or orphaned; the scan rebuilds all of them from the workflow records.
+
+### Upgrading from index layout version 1
+
+Layout version 2 stopped writing a per-workflow `wf-idx-manifest:` row and keys the `wf-idx-updated:` index by the minute containing `updatedAt` instead of the exact millisecond. An engine at version 2 treats a version-1 watermark as stale, so `engine.list()` and `engine.aggregate()` use the full-scan path until you run the backfill again. That run rebuilds from empty and removes the version-1 rows. A cursor that an interrupted version-1 run saved is discarded rather than resumed, because resuming would keep the version-1 rows below it.
 
 With `--verbose`, `--batch-size` controls how often the script reports progress. It does not change storage commit size or resume granularity; the cursor is written after each processed workflow.
 
@@ -72,7 +76,7 @@ Backfill complete. Processed <count> workflows. Watermark advanced.
 
 After that message, restart the paused engines.
 
-Only resume a paused foreign write path if it now uses the engine write path or maintains the same visibility-index contract as the engine. A direct storage writer that still changes workflow state without updating the manifest and `wf-idx-*` rows remains unsafe after the watermark exists, because visibility queries will trust the index.
+Only resume a paused foreign write path if it now uses the engine write path or maintains the same visibility-index contract as the engine. A direct storage writer that still changes workflow state without updating the `wf-idx-*` rows remains unsafe after the watermark exists, because visibility queries will trust the index.
 
 ## Exit codes
 

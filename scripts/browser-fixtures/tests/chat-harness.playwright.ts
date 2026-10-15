@@ -218,6 +218,24 @@ async function holdNextFirstStreamToken(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Keeps the harness's streamed reply open until the test stops it. Without
+ * this the reply finishes on a wall-clock cadence (five chunks, 120 ms apart),
+ * and a test that hovers, waits for a tooltip and presses a key can outlive
+ * the Stop button it is about to click.
+ */
+async function holdStreamOpen(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessHoldStreamOpen?: (held: boolean) => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessHoldStreamOpen === undefined) {
+      throw new Error('Chat harness stream-hold hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessHoldStreamOpen(true);
+  });
+}
+
 async function captureHarnessScreenshot(
   page: Page,
   testInfo: TestInfo,
@@ -460,11 +478,14 @@ test('selected conversations and transcript boundaries use one flat divider syst
   }
 });
 
-test('artifact actions remain visible and panel headers stay compact', async ({
-  browser,
-}, testInfo) => {
-  for (const colorScheme of ['light', 'dark'] as const) {
-    for (const width of [320, 512, 848]) {
+// One test per colour scheme and width. Each case loads a full chat fixture and
+// drives two artifact layouts, so running all six in one test spent a single
+// 30 s budget on six cold loads and timed out under load for that reason alone.
+for (const colorScheme of ['light', 'dark'] as const) {
+  for (const width of [320, 512, 848]) {
+    test(`artifact actions remain visible and panel headers stay compact (${colorScheme}, ${width}px)`, async ({
+      browser,
+    }, testInfo) => {
       const { page, dispose } = await openChatFixture(browser, {
         colorScheme,
         viewport: { width, height: 820 },
@@ -610,9 +631,9 @@ test('artifact actions remain visible and panel headers stay compact', async ({
       } finally {
         await dispose();
       }
-    }
+    });
   }
-});
+}
 
 async function expectDocumentedChatSizing(
   shell: Locator,
@@ -3013,6 +3034,7 @@ test.describe('chat harness — composer acceptance matrix', () => {
   }) => {
     const { harness, page, dispose } = await openHarness(browser);
     try {
+      await holdStreamOpen(page);
       await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
       await harness.locator('[data-testid="send-reply"]').click();
       const stop = harness.locator('.chat-input-send[data-stop]');

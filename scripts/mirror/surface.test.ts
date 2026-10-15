@@ -5,10 +5,15 @@ import { committedPlans, corvidaeRoot } from './committed-plans.ts';
 import { layoutFor } from './layout-map.ts';
 import { assertNothingDeferred, discoverWorkspaces } from './manifests.ts';
 import { loadPackageMap } from './package-map.ts';
-import { checkPublishedImportGraph, loadPackageSurface } from './package-surface.ts';
+import {
+  checkPublishedImportGraph,
+  loadPackageSurface,
+  type PackageSurfaceEntry,
+} from './package-surface.ts';
 import { isFirstPublish } from './registry-baseline.ts';
 import { nonSourceNames, nonSourcePrefixes } from './source.ts';
 import {
+  applySurfaceToManifest,
   assertPublishable,
   isExpectedPackRewrite,
   privateBuildDependencies,
@@ -34,6 +39,122 @@ test('private build dependencies include development edges only to other private
   expect(
     privateBuildDependencies(manifest, new Set(['@lostgradient/memory', '@lostgradient/skills'])),
   ).toEqual(['@lostgradient/memory', '@lostgradient/skills']);
+});
+
+/**
+ * COR-1468. `applySurfaceToManifest` supplies the vendored peers only for a target that has no
+ * `peerDependencies` of its own, and what it finds on the manifest there is corvidae's own
+ * declaration, which `composeManifest` passed through. The vendored entry is the base and
+ * corvidae's declarations win over it name by name, rather than the vendored entry replacing them.
+ */
+describe('peers corvidae declares, against the vendored surface', () => {
+  const entry: PackageSurfaceEntry = {
+    publicName: '@lostgradient/weft',
+    provenance: { repository: null, path: null, commit: null, version: null },
+    exports: { '.': './dist/index.js' },
+    files: ['dist'],
+    build: {
+      scripts: {},
+      toolchain: {},
+      requiredInputs: [],
+      sourceRoot: 'src',
+      packedBy: 'files',
+    },
+    peerDependencies: { '@opentelemetry/api': '^1.0.0', pg: '^8.11.0' },
+    manifestFields: { peerDependenciesMeta: { pg: { optional: true } } },
+  };
+
+  function apply(
+    manifest: Record<string, unknown>,
+    existing: Record<string, unknown> | undefined,
+  ): Record<string, unknown> {
+    applySurfaceToManifest(manifest, entry, { '.': './dist/index.js' }, ['dist'], existing);
+    return manifest;
+  }
+
+  test('a declared optional peer is merged over the vendored peers on a fresh target', () => {
+    const manifest = apply(
+      {
+        name: '@lostgradient/weft',
+        peerDependencies: { '@a2a-js/sdk': '^0.3.4' },
+        peerDependenciesMeta: { '@a2a-js/sdk': { optional: true } },
+      },
+      undefined,
+    );
+    expect(manifest['peerDependencies']).toEqual({
+      '@a2a-js/sdk': '^0.3.4',
+      '@opentelemetry/api': '^1.0.0',
+      pg: '^8.11.0',
+    });
+    expect(manifest['peerDependenciesMeta']).toEqual({
+      '@a2a-js/sdk': { optional: true },
+      pg: { optional: true },
+    });
+  });
+
+  test('corvidae’s range and meta entry win over the vendored entry for the same name', () => {
+    const manifest = apply(
+      { name: '@lostgradient/weft', peerDependencies: { pg: '^9.0.0' }, peerDependenciesMeta: {} },
+      undefined,
+    );
+    expect(manifest['peerDependencies']).toEqual({
+      '@opentelemetry/api': '^1.0.0',
+      pg: '^9.0.0',
+    });
+    expect(manifest['peerDependenciesMeta']).toBeUndefined();
+  });
+
+  test('with no declaration of corvidae’s own the vendored pair is supplied as before', () => {
+    const manifest = apply({ name: '@lostgradient/weft' }, undefined);
+    expect(manifest['peerDependencies']).toEqual(entry.peerDependencies);
+    expect(manifest['peerDependenciesMeta']).toEqual({ pg: { optional: true } });
+  });
+
+  test('corvidae’s meta for a name it does not declare is dropped on a fresh target', () => {
+    // The entry vendors peers but no meta, so nothing but corvidae's own meta block is on the
+    // manifest; its entry for `stray` qualifies no declared peer and must not become the base.
+    const manifest: Record<string, unknown> = {
+      name: '@lostgradient/weft',
+      peerDependencies: { a: '^1.0.0' },
+      peerDependenciesMeta: { a: { optional: true }, stray: { optional: true } },
+    };
+    applySurfaceToManifest(
+      manifest,
+      { ...entry, peerDependencies: { pg: '^8.0.0' }, manifestFields: {} },
+      { '.': './dist/index.js' },
+      ['dist'],
+      undefined,
+    );
+    expect(manifest['peerDependencies']).toEqual({ a: '^1.0.0', pg: '^8.0.0' });
+    expect(manifest['peerDependenciesMeta']).toEqual({ a: { optional: true } });
+  });
+
+  test('a vendored meta block is not supplied beside the target’s own peers', () => {
+    // A workspace that declares no peers, on a target that carries peers but no meta block: the
+    // target owns its pair outright, so the vendored meta half is not attached to it.
+    const targetPeers = { pg: '^8.11.0' };
+    const manifest = apply(
+      { name: '@lostgradient/weft', peerDependencies: { ...targetPeers } },
+      { name: '@lostgradient/weft', peerDependencies: { ...targetPeers } },
+    );
+    expect(manifest['peerDependencies']).toEqual(targetPeers);
+    expect(manifest).not.toHaveProperty('peerDependenciesMeta');
+  });
+
+  test('an already-composed pair passes through unchanged where the target has peers', () => {
+    const composed = {
+      peerDependencies: { '@a2a-js/sdk': '^0.3.4', 'better-sqlite3': '^12.8.0' },
+      peerDependenciesMeta: { '@a2a-js/sdk': { optional: true } },
+    };
+    const manifest = apply(
+      { name: '@lostgradient/weft', ...structuredClone(composed) },
+      // The target has peers but no meta block: the vendored meta must not displace the one
+      // `composeManifest` already merged corvidae's declaration into.
+      { name: '@lostgradient/weft', peerDependencies: { 'better-sqlite3': '^12.8.0' } },
+    );
+    expect(manifest['peerDependencies']).toEqual(composed.peerDependencies);
+    expect(manifest['peerDependenciesMeta']).toEqual(composed.peerDependenciesMeta);
+  });
 });
 
 /**

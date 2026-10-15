@@ -3,6 +3,7 @@ import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { EngineDisposedError } from './errors.ts';
 import { WorkflowHandle } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
+import { copyResultCommitter, recordResultCommitter } from './result-committer.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from './storage-io.ts';
 
 /** What a result waiter rejects with for a workflow that is not (or no longer) in storage. */
@@ -344,6 +345,7 @@ export async function bootstrapWorkflowResultResolver(
     // result (or a spurious "still running") to this waiter.
     const result = deriveWorkflowResultFromState(state);
     clearResultWaiter(internals, workflowId, waiter);
+    recordResultCommitter(waiter, state.terminalCommittedBy);
     waiter.resolve(result);
     return 'settled';
   } catch (error) {
@@ -355,6 +357,7 @@ export async function bootstrapWorkflowResultResolver(
     // awaiting a failed child hanging forever (re-deriving throws the same
     // way every time).
     clearResultWaiter(internals, workflowId, waiter);
+    recordResultCommitter(waiter, state.terminalCommittedBy);
     waiter.reject(error);
     return 'settled';
   }
@@ -370,7 +373,16 @@ function linkToReplacementWaiter(
     return false;
   }
 
-  void currentWaiter.promise.then(waiter.resolve, waiter.reject);
+  void currentWaiter.promise.then(
+    (value) => {
+      copyResultCommitter(currentWaiter, waiter);
+      return waiter.resolve(value);
+    },
+    (reason) => {
+      copyResultCommitter(currentWaiter, waiter);
+      return waiter.reject(reason);
+    },
+  );
   return true;
 }
 

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "NODE_ENV=production PLAYGROUND_BASE_URL=https://cinder.website bun scripts/static-export.ts",
+    "build": "NODE_ENV=production PLAYGROUND_BASE_URL=https://cinder.website TZ=UTC LANG=en_US.UTF-8 bun scripts/static-export.ts",
     "check:source-temp": "bun scripts/check-source-temp.ts",
     "clean": "bun scripts/clean.ts",
     "dev": "bun --watch src/playground-server.ts",
@@ -11,9 +11,11 @@
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts tests playwright.config.ts playwright-static.config.ts && bun scripts/check-raw-native-controls.ts --strict && bun scripts/check-source-temp.ts",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts tests playwright.config.ts playwright-static.config.ts",
     "test": "bun scripts/run-tests.ts",
+    "test:slow": "bun scripts/run-tests.ts --slow",
     "test:browser": "bun --bun playwright test --config playwright.config.ts",
     "test:lifecycle": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 ./scripts/static-playground-lifecycle.test.ts && bun scripts/static-playground-browser-lifecycle.check.ts",
     "test:production": "bun scripts/check-static-playground.ts",
+    "test:path-independence": "bun scripts/check-export-path-independence.ts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "validate": "bun scripts/validate-playground.ts"
   },

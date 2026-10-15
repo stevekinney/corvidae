@@ -85,6 +85,10 @@ export type TreeSampleSeries = {
   failedReads: number;
   /** The first few failure messages, kept so a failed observer is diagnosable. */
   failureMessages: string[];
+  /** Successful reads of `kern.memorystatus_vm_pressure_level`, one per tick. */
+  pressureReadings: number;
+  /** The highest pressure level read (1 normal, 2 warning, 4 critical), or null when none was read. */
+  maximumPressureLevel: number | null;
   peakResidentBytes: number;
   peakProcessCount: number;
   /** Every pid the observer attributed to the tree at any sample. */
@@ -95,11 +99,32 @@ export type TreeSampleSeries = {
 export type TreeSamplerOptions = {
   rootPids: () => readonly number[];
   readProcessTable?: () => Promise<string>;
+  /** Reads the host's memory-pressure level once per tick; null when it cannot be read. */
+  readPressureLevel?: () => Promise<number | null>;
   intervalMilliseconds?: number;
   now?: () => number;
 };
 
 const MAXIMUM_RETAINED_FAILURE_MESSAGES = 5;
+
+/**
+ * Read macOS's memory-pressure level (1 normal, 2 warning, 4 critical). Null elsewhere, or when the
+ * value cannot be read, so a missing reading is visible rather than mistaken for normal.
+ */
+export async function readSystemPressureLevel(): Promise<number | null> {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const child = Bun.spawn(['sysctl', '-n', 'kern.memorystatus_vm_pressure_level'], {
+      stdout: 'pipe',
+      stderr: 'ignore',
+    });
+    const [output, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+    const level = Number(output.trim());
+    return exitCode === 0 && Number.isInteger(level) ? level : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function readSystemProcessTable(): Promise<string> {
   const child = Bun.spawn(['ps', '-axo', 'pid=,ppid=,rss='], { stdout: 'pipe', stderr: 'ignore' });
@@ -125,13 +150,29 @@ export function startTreeSampler(options: TreeSamplerOptions): {
   const observedPids = new Set<number>();
   let skippedTicks = 0;
   let failedReads = 0;
+  let pressureReadings = 0;
+  let maximumPressureLevel: number | null = null;
+  const readPressureLevel = options.readPressureLevel ?? readSystemPressureLevel;
   const failureMessages: string[] = [];
   let inFlight: Promise<void> | null = null;
 
+  const samplePressure = async (): Promise<void> => {
+    const level = await readPressureLevel().catch(() => null);
+    if (level === null) return;
+    pressureReadings += 1;
+    maximumPressureLevel = Math.max(maximumPressureLevel ?? level, level);
+  };
+
   const sampleOnce = async (): Promise<void> => {
+    // Pressure is read on every tick, alongside the process table.
+    const pressure = samplePressure();
     const rootPids = options.rootPids();
-    if (rootPids.length === 0) return;
-    const reading = treeResidentBytes(rootPids, parseProcessTable(await readProcessTable()));
+    if (rootPids.length === 0) {
+      await pressure;
+      return;
+    }
+    const [table] = await Promise.all([readProcessTable(), pressure]);
+    const reading = treeResidentBytes(rootPids, parseProcessTable(table));
     if (reading.processCount === 0) return;
     for (const pid of reading.pids) observedPids.add(pid);
     samples.push({
@@ -171,6 +212,8 @@ export function startTreeSampler(options: TreeSamplerOptions): {
         skippedTicks,
         failedReads,
         failureMessages,
+        pressureReadings,
+        maximumPressureLevel,
         peakResidentBytes: Math.max(0, ...samples.map((sample) => sample.residentBytes)),
         peakProcessCount: Math.max(0, ...samples.map((sample) => sample.processCount)),
         observedPids: [...observedPids].toSorted((left, right) => left - right),

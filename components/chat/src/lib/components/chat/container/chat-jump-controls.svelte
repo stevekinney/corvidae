@@ -179,7 +179,8 @@
 
   .chat-new-indicator:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
-    box-shadow: var(--_cinder-focus-ring-shadow), var(--cinder-shadow-lg);
+    /* The indicator is a solid accent fill: gap, then ring (COR-1498). */
+    box-shadow: var(--_cinder-focus-ring-filled-shadow), var(--cinder-shadow-lg);
   }
 
   @media (forced-colors: active) {

@@ -190,12 +190,23 @@ export function summarizeCaseResults(
   for (const result of results)
     byId.set(result.caseId, [...(byId.get(result.caseId) ?? []), result]);
   const missing = cases.filter((testCase) => byId.get(testCase.id)?.length !== 1).map((c) => c.id);
+  const expected = new Set(cases.map((testCase) => testCase.id));
+  // A result for a test the case list does not name means the list and the spec have drifted
+  // apart; it is a failure, and it never counts toward the passed total.
+  const unexpected = results
+    .filter((result) => !expected.has(result.caseId))
+    .map((result) => ({
+      ...result,
+      status: 'unexpected',
+      errors: ['the case list does not name this test'],
+    }));
   // A browser diagnostic that arrives after a case's last assertion (before its fixtures tear
   // down) never fails the case in Playwright, so a passed result that carries one is a failure.
-  const failed = results.filter(
+  const listed = results.filter((result) => expected.has(result.caseId));
+  const failed = listed.filter(
     (result) => result.status !== 'passed' || result.diagnostics.length > 0,
   );
-  return { passed: results.length - failed.length, failed, missing };
+  return { passed: listed.length - failed.length, failed: [...failed, ...unexpected], missing };
 }
 
 async function readExportReport(path: string): Promise<ExportReport> {
@@ -293,7 +304,16 @@ async function serverDeathOf(
   settled: Promise<number>,
   abort: AbortController | undefined,
 ): Promise<never> {
-  await server.subprocess.exited;
+  // The watcher retires once the guarded work settles or the runner is interrupted: after either,
+  // the server only exits because the runner stops it at teardown, and that is not a death.
+  const retired = Promise.race([settled, state.interrupted.catch(() => undefined)]).then(
+    () => 'retired' as const,
+  );
+  const ended = await Promise.race([
+    server.subprocess.exited.then(() => 'exited' as const),
+    retired,
+  ]);
+  if (ended === 'retired') return new Promise<never>(() => {});
   if (abort !== undefined) {
     abort.abort(new Error('the static server died'));
     await exitedWithin({ exited: settled }, ABORTED_WORK_MILLISECONDS);

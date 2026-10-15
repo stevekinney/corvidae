@@ -4,6 +4,7 @@ import {
   classifyGrowth,
   growthReport,
   median,
+  retainedArtifactProblems,
   selectCandidate,
   summarize,
   type MetricObservation,
@@ -142,5 +143,31 @@ describe('growthReport', () => {
       heap: { series: [1, 2, 3], classification: 'monotonic-growth' },
       single: { series: [9], classification: 'stable' },
     });
+  });
+});
+
+describe('retainedArtifactProblems (CIN-588 preservation)', () => {
+  const settled = { totalArtifacts: 2648, totalArtifactBytes: 369_995_056 };
+
+  it('accepts five edits whose retained entries and bytes match the first settled value exactly', () => {
+    expect(retainedArtifactProblems([settled, settled, settled, settled, settled])).toEqual([]);
+  });
+
+  it('fails a regression fixture whose edits keep a stale generation alive', () => {
+    // Each edit leaves the superseded page entry and its chunk resident: the stale-generation leak.
+    const leaking = [0, 1, 2, 3, 4].map((edit) => ({
+      totalArtifacts: settled.totalArtifacts + 2 * edit,
+      totalArtifactBytes: settled.totalArtifactBytes + 41_000 * edit,
+    }));
+    expect(retainedArtifactProblems(leaking)).toEqual([
+      'Edit 2 retained 2650 artifacts and 370036056 bytes; the first settled edit retained 2648 and 369995056.',
+      'Edit 3 retained 2652 artifacts and 370077056 bytes; the first settled edit retained 2648 and 369995056.',
+      'Edit 4 retained 2654 artifacts and 370118056 bytes; the first settled edit retained 2648 and 369995056.',
+      'Edit 5 retained 2656 artifacts and 370159056 bytes; the first settled edit retained 2648 and 369995056.',
+    ]);
+  });
+
+  it('needs at least two settled edits to compare', () => {
+    expect(() => retainedArtifactProblems([settled])).toThrow(RangeError);
   });
 });

@@ -30,9 +30,13 @@
  * join the shared process and recreate this failure mode.
  */
 
-import { resolve } from 'node:path';
+import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 import ts from 'typescript';
+
+import { finishRun } from '../../../scripts/bun-test-junit.ts';
+import { readAllowlist } from '../../../scripts/check-test-durations.ts';
 
 const TEST_ENV = {
   ...process.env,
@@ -51,6 +55,20 @@ const TEST_DIRECTORIES = ['scripts', 'src'] as const;
 const SHARED_FLAGS = ['--conditions', 'browser', '--conditions', 'svelte', '--parallel=1'];
 
 const MOUNT_HEAVY_TEST = 'src/component-page.test.ts';
+
+/**
+ * Tests that are slow by nature (COR-1499) live in `*.slow.test.ts` files. The default lane skips
+ * them and `--slow` runs only them, serially after the fast phase, so their contention stays out
+ * of the fast lane. The fast lane writes one JUnit report per process for the root duration ratchet.
+ */
+export const SLOW_TEST_SUFFIX = '.slow.test.ts';
+export type TestLane = 'fast' | 'slow';
+const JUNIT_DIRECTORY = join(PLAYGROUND_ROOT, 'test-output', 'junit');
+
+/** Keep the files that belong to a lane. */
+export function selectLaneFiles<T extends { path: string }>(files: T[], lane: TestLane): T[] {
+  return files.filter((file) => file.path.endsWith(SLOW_TEST_SUFFIX) === (lane === 'slow'));
+}
 
 /**
  * Modules that run `Bun.build`, directly or through the build pipeline, so a
@@ -171,7 +189,8 @@ export function createTestProcessPlan(testFiles: PlaygroundTestFile[]): string[]
 }
 
 /** Discover every playground test and load enough source to classify it. */
-export async function discoverTestFiles(): Promise<PlaygroundTestFile[]> {
+/** Discover the playground's tests: one lane's files, or every file when no lane is named. */
+export async function discoverTestFiles(lane?: TestLane): Promise<PlaygroundTestFile[]> {
   const testFiles: PlaygroundTestFile[] = [];
 
   for (const directory of TEST_DIRECTORIES) {
@@ -187,15 +206,17 @@ export async function discoverTestFiles(): Promise<PlaygroundTestFile[]> {
     }
   }
 
-  return testFiles;
+  return lane === undefined ? testFiles : selectLaneFiles(testFiles, lane);
 }
 
 /**
  * Run one `bun test` invocation for a process group. Inherits stdio so the
  * child's reporter streams straight through. Returns its exit code.
  */
-async function runBunTest(args: string[]): Promise<number> {
-  const child = Bun.spawn(['bun', 'test', ...SHARED_FLAGS, ...args], {
+async function runBunTest(args: string[], reportPath: string | null): Promise<number> {
+  const reporter =
+    reportPath === null ? [] : ['--reporter=junit', `--reporter-outfile=${reportPath}`];
+  const child = Bun.spawn(['bun', 'test', ...SHARED_FLAGS, ...reporter, ...args], {
     cwd: PLAYGROUND_ROOT,
     env: TEST_ENV,
     stdout: 'inherit',
@@ -206,17 +227,36 @@ async function runBunTest(args: string[]): Promise<number> {
 
 /** Run every test process in sequence; exit non-zero if any process fails. */
 async function main(): Promise<void> {
-  const processPlan = createTestProcessPlan(await discoverTestFiles());
+  const lane: TestLane = Bun.argv.includes('--slow') ? 'slow' : 'fast';
+  const processPlan = createTestProcessPlan(await discoverTestFiles(lane));
   if (processPlan.length === 0) {
-    throw new Error('No playground tests were discovered.');
+    throw new Error(`No playground ${lane} tests were discovered.`);
   }
   let failed = false;
 
-  for (const testPaths of processPlan) {
-    failed = (await runBunTest(testPaths)) !== 0 || failed;
+  if (lane === 'fast') {
+    mkdirSync(JUNIT_DIRECTORY, { recursive: true });
+    for (const name of readdirSync(JUNIT_DIRECTORY)) {
+      if (name.startsWith('fast-') && name.endsWith('.xml')) rmSync(join(JUNIT_DIRECTORY, name));
+    }
   }
 
-  process.exit(failed ? 1 : 0);
+  for (const [index, testPaths] of processPlan.entries()) {
+    const reportPath = lane === 'fast' ? join(JUNIT_DIRECTORY, `fast-${index}.xml`) : null;
+    failed = (await runBunTest(testPaths, reportPath)) !== 0 || failed;
+  }
+
+  let exitCode = failed ? 1 : 0;
+  if (lane === 'fast') {
+    // A passing fast lane with an over-budget test fails here, uncached, so a rerun remeasures.
+    const reports = readdirSync(JUNIT_DIRECTORY)
+      .filter((name) => name.startsWith('fast-') && name.endsWith('.xml'))
+      .map((name) => readFileSync(join(JUNIT_DIRECTORY, name), 'utf8'));
+    exitCode = finishRun('applications/playground', exitCode, reports, readAllowlist(), (message) =>
+      process.stderr.write(message),
+    );
+  }
+  process.exit(exitCode);
 }
 
 if (import.meta.main) {

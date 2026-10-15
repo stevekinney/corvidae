@@ -50,6 +50,7 @@ import {
   discoverSidebarComponents,
 } from '../src/discover.ts';
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
+import { prebuildPageBundlesInBatches } from '../src/page-bundle.ts';
 import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
 import { handleRequest } from '../src/playground-server.ts';
 import { COMPOUND_COMPONENT_FAMILIES } from '../src/shell-app/compound-families.ts';
@@ -467,6 +468,9 @@ export async function runStaticExport(
 
   // Per-component: documentation page, page-bundle graph, manifest, sources.
   const documentationPages: { name: string; html: string }[] = [];
+  // Build every page bundle as shared graphs before the crawl, so each page's
+  // `/page-bundle/<name>.js` request is served from the cache (CIN-588).
+  await prebuildPageBundlesInBatches(documentationRoutes);
   for (const name of documentationRoutes) {
     const pageHtml = await render(`/page/${name}`, context);
     if (pageHtml !== null) {
