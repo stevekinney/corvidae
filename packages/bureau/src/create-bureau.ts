@@ -2103,6 +2103,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     readonly timer: ReturnType<typeof runtimeServices.timers.setInterval>;
     /** The last failure reported, so a repeating one is reported once. */
     lastFailure?: string | undefined;
+    /** The poll still running, if any: a tick never starts a second one. */
+    inFlight?: Promise<void> | undefined;
   }
   /**
    * One poller per session while this process drives any of its durable
@@ -2137,9 +2139,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
     const timer = runtimeServices.timers.setInterval(() => {
+      // One poll per session at a time: a slow backend skips ticks instead
+      // of stacking reads behind one another.
+      const current = steeringPollers.get(sessionId);
+      if (current === undefined || current.inFlight !== undefined) return;
       const poll = pollSteeringOnce(kv, sessionId);
+      current.inFlight = poll;
       inFlightSteeringPolls.add(poll);
-      void poll.finally(() => inFlightSteeringPolls.delete(poll));
+      void poll.finally(() => {
+        inFlightSteeringPolls.delete(poll);
+        current.inFlight = undefined;
+      });
     }, STEERING_POLL_MS);
     steeringPollers.set(sessionId, { incarnation, gate, runIds: new Set([runId]), timer });
   }

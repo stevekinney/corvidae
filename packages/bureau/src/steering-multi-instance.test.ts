@@ -284,6 +284,37 @@ describe('durable steering across two Bureau processes', () => {
       // The run's session is polled through the injected timer service, so
       // a host driving time itself drives cross-process steering too.
       expect(pollTimers().length).toBe(before + 1);
+
+      // A poll still waiting on a slow store is not joined by another on the
+      // next tick: the reads of one poll are all that happen.
+      const kv = bureau.kv;
+      if (kv === undefined) throw new Error('expected a durable store');
+      const read = kv.get.bind(kv);
+      let release: (() => void) | undefined;
+      const slow = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let sessionReads = 0;
+      const reads = spyOn(kv, 'get').mockImplementation(async (key: string) => {
+        if (key.startsWith('agent-session-v2:body:')) {
+          sessionReads += 1;
+          await slow;
+        }
+        return read(key);
+      });
+      try {
+        await runtime.advance(2_000);
+        await Bun.sleep(0);
+        const readsOfOnePoll = sessionReads;
+        expect(readsOfOnePoll).toBeGreaterThan(0);
+        await runtime.advance(2_000);
+        await runtime.advance(2_000);
+        await Bun.sleep(0);
+        expect(sessionReads).toBe(readsOfOnePoll);
+      } finally {
+        release?.();
+        reads.mockRestore();
+      }
       bureau.abortRun(run.id);
       for (let attempt = 0; attempt < 200 && pollTimers().length > before; attempt += 1) {
         await Bun.sleep(10);
