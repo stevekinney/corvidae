@@ -80,9 +80,12 @@ describe('analyzeComponent — button.svelte', () => {
     expect(manifest.props.find((p) => p.name === 'class')).toBeUndefined();
   });
 
-  it('file is the absolute path to the svelte file', async () => {
+  it('file is the repository-relative POSIX path, so the export never names the checkout', async () => {
+    // The manifest is published in `/api/manifest/<name>`, `/api/documentation/<name>`, and every
+    // page's inline payload, so an absolute path would make the export depend on (and reveal)
+    // the directory it was built in.
     const manifest = await analyzeComponent(componentPath('button'));
-    expect(manifest.file).toBe(componentPath('button'));
+    expect(manifest.file).toBe('components/cinder/src/components/button/button.svelte');
   });
 });
 

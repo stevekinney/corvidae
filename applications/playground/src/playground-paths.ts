@@ -11,3 +11,12 @@ export function relativeImportSpecifier(fromDirectory: string, targetPath: strin
   const relativePath = relative(fromDirectory, targetPath).replaceAll(sep, '/');
   return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
 }
+
+/**
+ * `path` relative to the repository root, with POSIX separators. Anything the static export
+ * publishes names source files this way, so the exported bytes are the same in every checkout
+ * and never reveal the build machine's directory layout.
+ */
+export function repositoryRelativePath(path: string): string {
+  return relative(REPOSITORY_ROOT, path).replaceAll(sep, '/');
+}
