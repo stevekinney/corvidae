@@ -27,7 +27,9 @@ import {
 } from './navigation-eligibility.ts';
 import {
   assertCurrent,
+  createHistoryGeneration,
   createNavigationSequencer,
+  fallbackNavigationMethod,
   SupersededNavigationError,
   type NavigationTicket,
 } from './navigation-sequence.ts';
@@ -291,6 +293,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
   // Visits between `visit()` starting and finishing: a history step that returns to the page on
   // screen while one is pending must not be mistaken for a change inside the document.
   let pendingVisits = 0;
+  const historyGeneration = createHistoryGeneration();
 
   history.scrollRestoration = 'manual';
   history.replaceState({ cinderNavigation: true, id: currentEntryId } satisfies EntryState, '');
@@ -317,7 +320,11 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
     return { url: target, document: parsed, entryHref };
   }
 
-  async function swapToLoaded(loaded: LoadedDocument, mode: Visit): Promise<void> {
+  async function swapToLoaded(
+    loaded: LoadedDocument,
+    mode: Visit,
+    progress: { historyWritten: boolean; generation: number },
+  ): Promise<void> {
     const outgoing = scope['__CINDER_PAGE__'];
     if (outgoing !== undefined && currentEntryHref !== null) pages.set(currentEntryHref, outgoing);
     await outgoing?.unmount();
@@ -329,15 +336,20 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
 
     // The address moves before the page boots: the page reads its own location to decide which
     // sidebar entry is current, and hydrating under the old address would mark the wrong one.
+    // The reader stepped through history since this visit began, and that step queued its own
+    // visit behind this one: let it win rather than write an entry over where they went.
+    if (mode.kind === 'push' && historyGeneration.read() !== progress.generation) return;
     if (mode.kind === 'push') {
+      progress.historyWritten = true;
       currentEntryId = crypto.randomUUID();
       history.pushState(
         { cinderNavigation: true, id: currentEntryId } satisfies EntryState,
         '',
         loaded.url,
       );
-    } else if (mode.entryId !== null) {
-      currentEntryId = mode.entryId;
+    } else {
+      progress.historyWritten = true;
+      if (mode.entryId !== null) currentEntryId = mode.entryId;
     }
     currentPath = loaded.url.pathname;
     document.title = loaded.document.title;
@@ -367,6 +379,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
     latestRequested = target.href;
     const ticket = sequencer.begin();
     let ownsPage = false;
+    const progress = { historyWritten: mode.kind === 'pop', generation: historyGeneration.read() };
     pendingVisits += 1;
     let release: () => void = () => undefined;
     try {
@@ -381,11 +394,11 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       assertCurrent(ticket);
       // From here the navigation owns the page and runs to the end.
       ownsPage = true;
-      await swapToLoaded(loaded, mode);
+      await swapToLoaded(loaded, mode, progress);
     } catch (error) {
       if (error instanceof SupersededNavigationError || (!ownsPage && !ticket.isCurrent())) return;
       console.error('[cinder playground] in-page navigation failed; navigating natively:', error);
-      window.location.assign(latestRequested);
+      window.location[fallbackNavigationMethod(progress.historyWritten)](latestRequested);
     } finally {
       pendingVisits -= 1;
       release();
@@ -458,6 +471,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
   });
 
   window.addEventListener('popstate', (event) => {
+    historyGeneration.advance();
     const destination = new URL(window.location.href);
     rememberScroll();
     const state = readEntryState(event.state);

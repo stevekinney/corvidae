@@ -119,6 +119,9 @@ if (target === null) {
   throw new Error('[cinder playground] #app target not found');
 }
 const listeners = new AbortController();
+// Set by unmount(): hydration that is still loading its modules then mounts nothing, and unmount
+// never waits on it.
+let disposed = false;
 let instance: Record<string, unknown> | undefined;
 const sidebarNavigation = document.querySelector<HTMLElement>('nav.dx-nav');
 const releaseSidebarScroll =
@@ -193,6 +196,7 @@ function hydratePage(): Promise<void> {
   if (pageHydration !== undefined) return pageHydration;
 
   const hydration = Promise.all([import('svelte'), import('../../src/component-page.svelte')]).then(async ([svelte, { default: ComponentPage }]) => {
+    if (disposed) return;
     if (shouldHydrate) {
       instance = svelte.hydrate(ComponentPage, { target, props });
       markPageControlsHydrated();
@@ -401,8 +405,8 @@ const ready = hydratePage();
 const run: PageRun = {
   ready,
   unmount: async () => {
+    disposed = true;
     listeners.abort();
-    await ready.catch(() => undefined);
     if (instance !== undefined) {
       const svelte = await import('svelte');
       await svelte.unmount(instance);

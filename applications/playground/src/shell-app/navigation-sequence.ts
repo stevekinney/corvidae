@@ -44,3 +44,33 @@ export class SupersededNavigationError extends Error {
 export function assertCurrent(ticket: NavigationTicket): void {
   if (!ticket.isCurrent()) throw new SupersededNavigationError();
 }
+
+/**
+ * Counts the history steps the reader took (Back, Forward) so a navigation can tell, just before
+ * it writes a history entry of its own, that the reader has moved on since it started.
+ */
+export type HistoryGeneration = {
+  /** Record a history step by the reader. */
+  advance(): void;
+  /** The generation now, to compare against later. */
+  read(): number;
+};
+
+export function createHistoryGeneration(): HistoryGeneration {
+  let generation = 0;
+  return {
+    advance: () => {
+      generation += 1;
+    },
+    read: () => generation,
+  };
+}
+
+/**
+ * How a failed in-page navigation falls back to a document load. Once the navigation has written
+ * history (or the reader's own step already moved it), the document load must replace that entry,
+ * not add another after it.
+ */
+export function fallbackNavigationMethod(historyWritten: boolean): 'assign' | 'replace' {
+  return historyWritten ? 'replace' : 'assign';
+}

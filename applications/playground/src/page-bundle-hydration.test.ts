@@ -121,4 +121,15 @@ describe('page bundle hydration policy', () => {
       "import { installProgressiveNavigation } from '../../src/shell-app/progressive-navigation.ts';",
     );
   });
+
+  test('unmount never waits on a hydration that is still loading its modules', async () => {
+    const source = await Bun.file(new URL('./page-bundle.ts', import.meta.url)).text();
+    const unmountStart = source.indexOf('unmount: async () => {');
+    const unmountBody = source.slice(unmountStart, source.indexOf('\n  },', unmountStart));
+
+    expect(source).toContain('let disposed = false;');
+    expect(source).toContain('if (disposed) return;');
+    expect(unmountBody).toContain('disposed = true;');
+    expect(unmountBody).not.toContain('await ready');
+  });
 });

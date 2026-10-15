@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   assertCurrent,
+  createHistoryGeneration,
   createNavigationSequencer,
+  fallbackNavigationMethod,
   SupersededNavigationError,
 } from './navigation-sequence.ts';
 
@@ -50,5 +52,22 @@ describe('createNavigationSequencer', () => {
     const latest = sequencer.begin();
     expect(() => assertCurrent(latest)).not.toThrow();
     expect(() => assertCurrent(stale)).toThrow(SupersededNavigationError);
+  });
+});
+
+describe('createHistoryGeneration', () => {
+  test('a visit sees that the reader stepped through history after it started', () => {
+    const generation = createHistoryGeneration();
+    const atStart = generation.read();
+    expect(generation.read()).toBe(atStart);
+    generation.advance();
+    expect(generation.read()).not.toBe(atStart);
+  });
+});
+
+describe('fallbackNavigationMethod', () => {
+  test('replaces the entry once history was written and assigns before that', () => {
+    expect(fallbackNavigationMethod(false)).toBe('assign');
+    expect(fallbackNavigationMethod(true)).toBe('replace');
   });
 });

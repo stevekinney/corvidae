@@ -46,6 +46,8 @@ export function attachDeferredShortcut(
       void hydrate()
         .then(() => {
           attempting = false;
+          // The page was swapped out while the shell hydrated: there is nothing to activate.
+          if (signal?.aborted === true) return undefined;
           activate();
           return undefined;
         })

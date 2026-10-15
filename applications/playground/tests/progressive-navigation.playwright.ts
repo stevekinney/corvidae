@@ -471,6 +471,65 @@ test.describe('in-page navigation', () => {
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(buttonScroll);
   });
 
+  test('leaving a page whose hydration is still loading does not wait for it', async ({ page }) => {
+    const entry = await page.request.get('/page-bundle/button.js');
+    const entryText = await entry.text();
+    const hashedUrl = /import "([^"]+)"/.exec(entryText)?.[1];
+    expect(hashedUrl).toBeDefined();
+    const hashedResponse = await page.request.get(hashedUrl!);
+    const hashed = await hashedResponse.text();
+    const chunks = new Set([...hashed.matchAll(/import\("([^"]+)"\)/g)].map((match) => match[1]!));
+    expect(chunks.size).toBeGreaterThan(0);
+    const held: Route[] = [];
+    await page.route('**/page-bundle/**', async (route: Route) => {
+      if (chunks.has(new URL(route.request().url()).pathname)) held.push(route);
+      else await route.continue();
+    });
+    const problems: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'error') problems.push(message.text());
+    });
+
+    await page.goto('/page/button');
+    await expect.poll(() => held.length).toBeGreaterThan(0);
+    await markDocument(page);
+
+    // The old page's hydration is stalled on held chunks; the click must still swap.
+    await sidebarLink(page, 'alert').click();
+    await expect(page).toHaveURL(/\/page\/alert$/);
+    await expect(page.locator('#app h1').first()).toHaveText('Alert');
+
+    for (const route of held) await route.continue().catch(() => undefined);
+    await hydratedHeading(page, 'Alert');
+    await expect(page.locator('#app h1')).toHaveCount(1);
+    expect(problems).toEqual([]);
+    expect(await documentSurvived(page)).toBe(true);
+  });
+
+  test('a failure after the address moved falls back without adding a history entry', async ({
+    page,
+  }) => {
+    await page.goto('/page/button');
+    await hydratedHeading(page, 'Button');
+    const lengthBefore = await page.evaluate(() => history.length);
+    let failed = false;
+    await page.route('**/page-bundle/chat.js', async (route: Route) => {
+      if (!failed) {
+        failed = true;
+        await route.abort('failed');
+      } else await route.continue();
+    });
+
+    await sidebarLink(page, 'chat').click();
+
+    await expect(page).toHaveURL(/\/page\/chat$/);
+    await hydratedHeading(page, 'Chat');
+    expect(failed).toBe(true);
+    expect(await page.evaluate(() => history.length)).toBe(lengthBefore + 1);
+    await page.goBack();
+    await expect(page).toHaveURL(/\/page\/button$/);
+  });
+
   test('the home link swaps to the landing page and back', async ({ page }) => {
     await page.goto('/page/button');
     await hydratedHeading(page, 'Button');
