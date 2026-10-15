@@ -20,7 +20,9 @@ import {
   tlsOptionsVerifyClientCertificates,
   validateAuthConfig,
   validateRateLimitConfig,
+  type Authenticator,
 } from './authentication.ts';
+import { createAdditionalScopeSet } from './authorization-scope.ts';
 import { DeadlineTracker } from './deadline-tracker.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
@@ -207,6 +209,22 @@ export type ResolvedNetworkConfig = {
 // ---------------------------------------------------------------------------
 
 /**
+ * Start building this server's authenticator, or `null` when `auth` is
+ * omitted. The server's `additionalScopes` go to this authenticator alone.
+ */
+function createServerAuthenticator(options: ServeOptions): Promise<Authenticator> | null {
+  if (!options.auth) return null;
+  return createAuthenticator(options.auth, {
+    transportVerifiesClientCertificates: tlsOptionsVerifyClientCertificates(
+      buildTLSOptions(options.auth),
+    ),
+    ...(options.additionalScopes === undefined
+      ? {}
+      : { additionalScopes: options.additionalScopes }),
+  });
+}
+
+/**
  * Resolves all network configuration defaults and validates the auth config
  * synchronously so misconfigurations fail fast before `Bun.serve()` binds.
  */
@@ -214,6 +232,9 @@ export function resolveNetworkConfig(options: ServeOptions): ResolvedNetworkConf
   if (options.auth) {
     validateAuthConfig(options.auth);
   }
+  // Fail fast before binding: a malformed or `weft.`-namespaced registration
+  // would otherwise surface only as a rejected authenticator promise.
+  createAdditionalScopeSet(options.additionalScopes);
   if (options.rateLimit) {
     // Fail fast before binding: a non-positive window or budget is a
     // misconfiguration that would otherwise admit an always-zero or
@@ -332,13 +353,7 @@ export function buildServerContext(
     mcpSessionManager: createMcpSessionManager(engine),
     // The authenticator is initialized asynchronously (key import) but the
     // promise is created eagerly and resolved before the first request completes.
-    authenticatorPromise: options.auth
-      ? createAuthenticator(options.auth, {
-          transportVerifiesClientCertificates: tlsOptionsVerifyClientCertificates(
-            buildTLSOptions(options.auth),
-          ),
-        })
-      : null,
+    authenticatorPromise: createServerAuthenticator(options),
     rateLimiter: options.rateLimit ? createRateLimiter(options.rateLimit) : null,
     visibilityPollMs: options.visibilityPollIntervalMs ?? 5_000,
     workerReconnectGracePeriodMs: clampWorkerReconnectGracePeriod(

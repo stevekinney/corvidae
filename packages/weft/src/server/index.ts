@@ -13,6 +13,7 @@ import { requireStorageCapability } from '../storage/interface.ts';
 import type { RoutingPolicy } from '../worker/registry.ts';
 import { WorkerRegistry } from '../worker/registry.ts';
 import type { AuthConfig, RateLimitConfig } from './authentication.ts';
+import type { PackageAuthorizationScope } from './authorization-scope.ts';
 import {
   createDashboardAssetRoute,
   resolveDashboardAssets,
@@ -64,7 +65,11 @@ export type {
 export {
   AUTHORIZATION_SCOPES,
   isAuthorizationScope,
+  isPackageAuthorizationScope,
+  PACKAGE_AUTHORIZATION_SCOPE_PATTERN,
   type AuthorizationScope,
+  type BuiltInAuthorizationScope,
+  type PackageAuthorizationScope,
 } from './authorization-scope.ts';
 
 export type { GetPrincipalOutput } from './operations/get-principal.ts';
@@ -238,6 +243,20 @@ export interface ServeOptions {
    * port is bound — so a foreign operation cannot shadow one of Weft's.
    */
   operations?: ReadonlyArray<RegistrableOperation>;
+  /**
+   * Package scopes this server recognizes beyond Weft's built-in vocabulary,
+   * such as `bureau.tasks:read`, for the packages whose `operations` require
+   * them. The server's authenticator retains them from JWT `scope`, `scp`,
+   * and `permissions` claims, from `defaultApiKeyScopes`, and from the
+   * principal `resolveApiKeyPrincipal` returns; any other unknown scope is
+   * still dropped. They belong to this server alone: another
+   * `serve()` in the same process does not see them.
+   *
+   * Each entry must be `<namespace>.<resource>:<action>`, and the `weft`
+   * namespace is reserved. An invalid entry throws synchronously, before a
+   * port is bound.
+   */
+  additionalScopes?: readonly PackageAuthorizationScope[];
   /**
    * Signing authority for server-issued destructive worker start override
    * previews. Configure this when exposing `weft.worker.startoverrides.preview`
