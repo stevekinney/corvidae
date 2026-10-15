@@ -9,8 +9,9 @@ import {
   channelOf,
   hostFor,
   isAlive,
-  registerSessionCleanup,
   runHosted,
+  scenarioTest,
+  settleScenarios,
   textOf,
   type HostedRun,
 } from './bun-process.test-support.ts';
@@ -27,8 +28,6 @@ import {
 } from './fixtures/terminal-output.ts';
 import { createPipeProcess } from './pipe-process.ts';
 import { createPtyProcess } from './pty-process.ts';
-
-registerSessionCleanup();
 
 /**
  * The real-process matrix: every cell runs a real child on this host, through a real session, in
@@ -62,7 +61,7 @@ function corpusDirectory(): string {
 }
 
 function cell(mode: OutputMode, name: (typeof CELLS)[number], body: () => Promise<void>): void {
-  test(`${mode}:${name}`, async () => {
+  scenarioTest(`${mode}:${name}`, async () => {
     await body();
     completed.add(`${mode}:${name}`);
   });
@@ -218,7 +217,7 @@ describe('the real-process matrix', () => {
 
   for (const mode of MODES) {
     for (const fixture of CORPUS) {
-      test(`${mode}:corpus-passthrough:${fixture.id}`, async () => {
+      scenarioTest(`${mode}:corpus-passthrough:${fixture.id}`, async () => {
         const file = join(corpusDirectory(), `${mode}-${fixture.id}.bin`);
         writeFileSync(file, fixture.bytes);
         const profile = shellProfile(`${mode === 'pty' ? 'stty -opost; ' : ''}cat "$1"`, [file]);
@@ -274,6 +273,8 @@ async function expectStubbornDescendantsEnded(mode: OutputMode): Promise<void> {
   expect(isAlive(leader as number)).toBe(false);
   expect(isAlive(descendant as number)).toBe(false);
 }
+
+await settleScenarios();
 
 afterAll(() => {
   completed.clear();

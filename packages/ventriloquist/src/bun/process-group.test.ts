@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import { rejectionOf } from '@lostgradient/testing';
+import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { flush } from '../session/session.test-support.ts';
+import { scenarioTest, settleScenarios } from './bun-process.test-support.ts';
 import {
   createProcessGroupOperations,
   descendantsOutsideGroup,
@@ -134,10 +135,11 @@ describe('processGroupOperations', () => {
     expect(() => processGroupOperations.signal(4242, 'SIGNOPE' as unknown as 'SIGTERM')).toThrow();
   });
 
-  test('signals a real group and sees it empty', async () => {
+  scenarioTest('signals a real group and sees it empty', async () => {
     const child = Bun.spawn(['sleep', '7919'], {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     expect(await processGroupOperations.exists(child.pid)).toBe(true);
     processGroupOperations.signal(child.pid, 'SIGTERM');
@@ -159,7 +161,12 @@ async function startZombieGroup(): Promise<{ readonly group: number; end(): Prom
       '-e',
       '$|=1; my $pid = fork(); if (!$pid) { setpgrp(0, 0); exit 0 } print "$pid\\n"; sleep 60',
     ],
-    { stdout: 'pipe', stderr: 'ignore', stdin: 'ignore' },
+    {
+      stdout: 'pipe',
+      stderr: 'ignore',
+      stdin: 'ignore',
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    },
   );
   const reader = parent.stdout.getReader();
   const first = await reader.read();
@@ -181,7 +188,7 @@ async function startZombieGroup(): Promise<{ readonly group: number; end(): Prom
 }
 
 describe('a group whose only member is a zombie', () => {
-  test('is empty, though kill(-group, 0) still reports it', async () => {
+  scenarioTest('is empty, though kill(-group, 0) still reports it', async () => {
     const zombie = await startZombieGroup();
     try {
       // The premise: the operating system still answers for the group (EPERM on macOS, success on Linux).
@@ -198,23 +205,27 @@ describe('a group whose only member is a zombie', () => {
     }
   });
 
-  test('is present while any member is not a zombie, and when its members cannot be read', async () => {
-    const leader = Bun.spawn(['sleep', '7919'], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-    });
-    try {
-      const exists = (reading: readonly string[] | undefined): Promise<boolean> | boolean =>
-        createProcessGroupOperations(() => reading).exists(leader.pid);
-      expect(await exists(['Z', 'S'])).toBe(true);
-      expect(await exists(['Z', 'Z'])).toBe(false);
-      expect(await exists([])).toBe(false);
-      expect(await exists(undefined)).toBe(true);
-    } finally {
-      leader.kill('SIGKILL');
-      await leader.exited;
-    }
-  });
+  scenarioTest(
+    'is present while any member is not a zombie, and when its members cannot be read',
+    async () => {
+      const leader = Bun.spawn(['sleep', '7919'], {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+      });
+      try {
+        const exists = (reading: readonly string[] | undefined): Promise<boolean> | boolean =>
+          createProcessGroupOperations(() => reading).exists(leader.pid);
+        expect(await exists(['Z', 'S'])).toBe(true);
+        expect(await exists(['Z', 'Z'])).toBe(false);
+        expect(await exists([])).toBe(false);
+        expect(await exists(undefined)).toBe(true);
+      } finally {
+        leader.kill('SIGKILL');
+        await leader.exited;
+      }
+    },
+  );
 });
 
 describe('the states of a group', () => {
@@ -227,10 +238,11 @@ describe('the states of a group', () => {
     expect(() => parseGroupMemberStates(row, 10)).toThrow('unreadable process state row');
   });
 
-  test('are read from the running host', async () => {
+  scenarioTest('are read from the running host', async () => {
     const leader = Bun.spawn(['sleep', '7919'], {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     try {
       expect(await readGroupMemberStates(leader.pid)).toEqual([expect.stringMatching(/^[A-Y]/)]);
@@ -240,11 +252,14 @@ describe('the states of a group', () => {
     }
   });
 
-  test('are unknown when the command fails, cannot run, or prints something unreadable', async () => {
-    expect(await readGroupMemberStates(1, ['sh', '-c', 'exit 3'])).toBeUndefined();
-    expect(await readGroupMemberStates(1, ['/nonexistent/ventriloquist-ps'])).toBeUndefined();
-    expect(await readGroupMemberStates(1, ['echo', 'not a table'])).toBeUndefined();
-  });
+  scenarioTest(
+    'are unknown when the command fails, cannot run, or prints something unreadable',
+    async () => {
+      expect(await readGroupMemberStates(1, ['sh', '-c', 'exit 3'])).toBeUndefined();
+      expect(await readGroupMemberStates(1, ['/nonexistent/ventriloquist-ps'])).toBeUndefined();
+      expect(await readGroupMemberStates(1, ['echo', 'not a table'])).toBeUndefined();
+    },
+  );
 });
 
 describe('the process table', () => {
@@ -260,12 +275,12 @@ describe('the process table', () => {
     expect(() => parseProcessTable(row)).toThrow('unreadable process table row');
   });
 
-  test('is read from the running host and includes this process', async () => {
+  scenarioTest('is read from the running host and includes this process', async () => {
     const table = await readProcessTable();
     expect(table).toContainEqual(expect.objectContaining({ pid: process.pid }));
   });
 
-  test('a failing command refuses the read rather than guessing', async () => {
+  scenarioTest('a failing command refuses the read rather than guessing', async () => {
     const failure = await rejectionOf(readProcessTable(['sh', '-c', 'exit 3']));
     expect((failure as Error).message).toBe('ps exited with 3');
   });
@@ -300,3 +315,5 @@ describe('descendantsOutsideGroup', () => {
     expect(descendantsOutsideGroup(cyclic, 100, 100)).toEqual([]);
   });
 });
+
+await settleScenarios();

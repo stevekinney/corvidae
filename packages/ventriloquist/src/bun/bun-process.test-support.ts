@@ -1,4 +1,5 @@
-import { afterEach } from 'bun:test';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
+import { test } from 'bun:test';
 
 import { systemClock } from '../session/session-clock.ts';
 import type {
@@ -36,12 +37,39 @@ export type HostedRun = {
 const sessions: Session[] = [];
 const hostedProcesses: HostedProcess[] = [];
 
-/** Register once per file: after each test, end every session and clean up every process it opened. */
-export function registerSessionCleanup(): void {
-  afterEach(async () => {
-    await Promise.all(sessions.splice(0).map((session) => session.dispose()));
-    await Promise.all(hostedProcesses.splice(0).map((hosted) => hosted.backend.cleanup()));
-  });
+async function disposeTracked(): Promise<void> {
+  await Promise.all(sessions.splice(0).map((session) => session.dispose()));
+  await Promise.all(hostedProcesses.splice(0).map((hosted) => hosted.backend.cleanup()));
+}
+
+/** The scenarios run one after another, so the sessions and processes they track never overlap. */
+let scenarioQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Define a test whose body starts real processes. Bun gives a test body five seconds, and a child's
+ * boot spends that on a loaded host, so the body runs at module scope instead, where no per-test
+ * clock applies, and the test only rethrows what it recorded (`outcomeOf` fails a body that never
+ * settles after `SCENARIO_HANG_GUARD_MILLISECONDS`). Scenarios run in definition order, and every
+ * session and process the body tracked is cleaned up when it ends. Call `settleScenarios` with
+ * top-level `await` at the end of the file so every body has finished before any test runs.
+ */
+export function scenarioTest(name: string, body: () => Promise<void> | void): void {
+  const outcome = scenarioQueue.then(() =>
+    outcomeOf(async () => {
+      try {
+        await body();
+      } finally {
+        await disposeTracked();
+      }
+    }),
+  );
+  scenarioQueue = outcome;
+  test(name, async () => rethrow(await outcome));
+}
+
+/** Wait for every scenario defined so far; `await` it at module scope after the last definition. */
+export async function settleScenarios(): Promise<void> {
+  await scenarioQueue;
 }
 
 /** Make sure a process a test drives by hand, without a session, is cleaned up when the test ends. */
