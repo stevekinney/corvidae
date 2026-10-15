@@ -59,7 +59,7 @@ const emptyCheckpointStore = { loadCheckpoint: async () => null };
 function engineThat(lostClaim: boolean, runId: string): RegistryAgnosticEngine {
   return {
     start: async () => ({ id: runId, result: () => Promise.resolve(completedSummary(runId)) }),
-    lostWorkflowClaim: async (handle: { id: string }) => lostClaim && handle.id === runId,
+    lostWorkflowClaim: (handle: { id: string }) => lostClaim && handle.id === runId,
   } as unknown as RegistryAgnosticEngine;
 }
 

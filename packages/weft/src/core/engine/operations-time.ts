@@ -8,7 +8,6 @@ import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../typ
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
-import { rebindHandleClaimEpoch } from './handle-result.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveDelayedStartRegistrationOrFail } from './lifecycle/delayed-start-registration.ts';
 import { reprovideRecoveredServices } from './lifecycle/recovered-services.ts';
@@ -297,9 +296,10 @@ export async function startDelayedWorkflow(
     return;
   }
 
-  // A delayed-start workflow that crashed `pending` before its timer fired loses its in-memory
-  // services on recovery (fires in a fresh process). Re-provide them before execution, as resume
-  // does — fail rather than run with `ctx.services === undefined`.
+  // A delayed-start workflow that crashed `pending` before its timer fired loses
+  // its in-memory services on recovery (fires in a fresh process). Re-provide
+  // them before execution, as resume does — fail rather than run with
+  // `ctx.services === undefined`.
   const servicesUnavailable = await reprovideRecoveredServices(
     internals,
     runningState,
@@ -344,7 +344,6 @@ export async function startDelayedWorkflow(
     runningState.executionStateOwnerId ?? entry.workflowId,
     registration,
   );
-  rebindHandleClaimEpoch(internals, entry.workflowId);
 }
 
 async function loadDelayedWorkflowCheckpoint(

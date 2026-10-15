@@ -18,9 +18,7 @@ import {
   createWorkflowResultWaiter,
   getWorkflowResultPromise,
   pollPendingCrossEngineResultWaiters,
-  rebindHandleClaimEpoch,
 } from './handle-result.ts';
-import { HANDLE_CLAIM_EPOCH, WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
 import { encodeEpoch, encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 
@@ -768,39 +766,5 @@ describe('WFT-79 F3/[25]: terminal result derivation never re-reads storage', ()
 
     expect(await waiter.promise).toBe('first-run-result');
     expect(reads).toBe(1);
-  });
-});
-
-describe('rebindHandleClaimEpoch', () => {
-  function internalsHolding(epoch: number | null, handle: WorkflowHandle) {
-    return {
-      workflowClaimRegistry: { currentEpoch: () => epoch },
-      handleCache: new Map([['wf-1', { ref: new WeakRef(handle), unregisterToken: {} }]]),
-    } as never;
-  }
-
-  it('moves the cached handle to the held epoch and can undo the move', () => {
-    const handle = new WorkflowHandle('wf-1', {} as never, 2);
-    const restore = rebindHandleClaimEpoch(internalsHolding(5, handle), 'wf-1');
-
-    expect(handle[HANDLE_CLAIM_EPOCH]).toBe(5);
-    restore?.();
-    expect(handle[HANDLE_CLAIM_EPOCH]).toBe(2);
-  });
-
-  it('leaves a later rebind alone when undoing', () => {
-    const handle = new WorkflowHandle('wf-1', {} as never, 2);
-    const restore = rebindHandleClaimEpoch(internalsHolding(5, handle), 'wf-1');
-    rebindHandleClaimEpoch(internalsHolding(7, handle), 'wf-1');
-
-    restore?.();
-    expect(handle[HANDLE_CLAIM_EPOCH]).toBe(7);
-  });
-
-  it('moves nothing when no claim is held or no handle is cached', () => {
-    const handle = new WorkflowHandle('wf-1', {} as never, 2);
-    expect(rebindHandleClaimEpoch(internalsHolding(null, handle), 'wf-1')).toBeUndefined();
-    expect(rebindHandleClaimEpoch(internalsHolding(5, handle), 'other')).toBeUndefined();
-    expect(handle[HANDLE_CLAIM_EPOCH]).toBe(2);
   });
 });

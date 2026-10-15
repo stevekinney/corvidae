@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import {
-  KEYS,
-  storageConditionalBatch,
-  type BatchOperation,
-  type Storage,
-} from '../../storage/interface.ts';
+import { KEYS, type BatchOperation, type Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { WeftWorkflowClaimLostWarning } from './lease-deposition.ts';
@@ -641,120 +636,6 @@ describe('WorkflowClaimRegistry.takeover · anti-thrash cooldown', () => {
     clock.advance(RENEW_MS);
     const result = await registry.takeover('wf-1');
     expect(result.status).toBe('not-expired');
-  });
-});
-
-// COR-1390: an engine whose claim lapsed and was reclaimed still sees the
-// workflow's result through `handle.result()`, so the claim registry is what
-// tells it the outcome was another engine's.
-describe('WorkflowClaimRegistry.lostClaim', () => {
-  function twoEngines() {
-    const storage = new MemoryStorage();
-    const clock = makeClock();
-    const first = new WorkflowClaimRegistry(
-      registryOptions({ storage, getNow: clock.now, warn: () => {} }),
-    );
-    const second = new WorkflowClaimRegistry(
-      registryOptions({ storage, getNow: clock.now, engineId: 'engine-b', warn: () => {} }),
-    );
-    return { storage, clock, first, second };
-  }
-  const LAPSE_MS = TTL_MS + WORKFLOW_CLAIM_TAKEOVER_GRACE_MULTIPLIER * RENEW_MS + 1;
-
-  it('is false for a generation this engine never held', async () => {
-    const { first } = twoEngines();
-    expect(await first.lostClaim('wf-1', 1)).toBe(false);
-  });
-
-  it('is false while this engine still holds the claim, and after it releases it', async () => {
-    const { first } = twoEngines();
-    await first.acquire('wf-1');
-    expect(await first.lostClaim('wf-1', 1)).toBe(false);
-    await first.release('wf-1');
-    expect(await first.lostClaim('wf-1', 1)).toBe(false);
-  });
-
-  it('is true once another engine reclaims a lapsed claim, before this engine renews', async () => {
-    const { clock, first, second } = twoEngines();
-    await first.acquire('wf-1');
-    clock.advance(LAPSE_MS);
-    expect(await second.takeover('wf-1')).toMatchObject({ status: 'acquired', epoch: 2 });
-
-    // The first engine has not renewed, so it still tracks its epoch-1 claim.
-    expect(first.currentEpoch('wf-1')).toBe(1);
-    expect(await first.lostClaim('wf-1', 1)).toBe(true);
-    expect(await second.lostClaim('wf-1', 2)).toBe(false);
-
-    // The successor finishing and releasing does not make the loss its predecessor's again.
-    await second.release('wf-1');
-    expect(await first.lostClaim('wf-1', 1)).toBe(true);
-    expect(await second.lostClaim('wf-1', 2)).toBe(false);
-  });
-
-  it('keeps a generation lost after a failed renewal drops it, even once this engine claims the id again', async () => {
-    const { clock, first, second } = twoEngines();
-    await first.acquire('wf-1');
-    clock.advance(LAPSE_MS);
-    await second.takeover('wf-1');
-
-    expect(await first.renew('wf-1')).toEqual({ status: 'lost', workflowId: 'wf-1' });
-    expect(first.currentEpoch('wf-1')).toBeNull();
-    expect(await first.lostClaim('wf-1', 1)).toBe(true);
-    clock.advance(RENEW_MS + 1);
-    expect(await first.lostClaim('wf-1', 1)).toBe(true);
-
-    await second.release('wf-1');
-    expect(await first.acquire('wf-1')).toMatchObject({ status: 'acquired', epoch: 3 });
-    expect(await first.lostClaim('wf-1', 3)).toBe(false);
-    expect(await first.lostClaim('wf-1', 1)).toBe(true);
-  });
-
-  it('keeps a generation lost when a replacement claim replaces it before any renewal noticed', async () => {
-    const { clock, first, second } = twoEngines();
-    await first.acquire('wf-1');
-    clock.advance(LAPSE_MS);
-    await second.takeover('wf-1');
-    await second.release('wf-1');
-
-    // This engine never renewed, so its epoch-1 entry is still tracked when the replacement lands.
-    expect(first.currentEpoch('wf-1')).toBe(1);
-    expect(await first.acquire('wf-1')).toMatchObject({ status: 'acquired', epoch: 3 });
-    expect(await first.lostClaim('wf-1', 1)).toBe(true);
-    expect(await first.lostClaim('wf-1', 3)).toBe(false);
-  });
-
-  it('keeps a generation lost when a folded replacement acquire replaces it', async () => {
-    const { storage, clock, first, second } = twoEngines();
-    await first.acquire('wf-1');
-    clock.advance(LAPSE_MS);
-    await second.takeover('wf-1');
-    await second.release('wf-1');
-
-    const preparation = await first.prepareAcquireFragment('wf-1');
-    await storageConditionalBatch(
-      storage,
-      preparation.fragment.conditions,
-      preparation.fragment.operations,
-    );
-    first.recordFoldedAcquire('wf-1', preparation);
-    expect(await first.lostClaim('wf-1', 1)).toBe(true);
-    expect(await first.lostClaim('wf-1', preparation.epoch)).toBe(false);
-  });
-
-  it('is not lost when this engine re-mints its own still-durable claim', async () => {
-    const { storage, first } = twoEngines();
-    await first.acquire('wf-1');
-    const ownHolder = await storage.get(KEYS.workflowOwnerHolder('wf-1'));
-
-    const preparation = await first.prepareAcquireFragment('wf-1', ownHolder);
-    await storageConditionalBatch(
-      storage,
-      preparation.fragment.conditions,
-      preparation.fragment.operations,
-    );
-    first.recordFoldedAcquire('wf-1', preparation);
-    expect(await first.lostClaim('wf-1', 1)).toBe(false);
-    expect(await first.lostClaim('wf-1', preparation.epoch)).toBe(false);
   });
 });
 

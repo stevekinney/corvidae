@@ -1,8 +1,9 @@
 import { abandonedGenerationConflict } from './checkpoint-conflict-abandon.ts';
 import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { EngineDisposedError } from './errors.ts';
-import { HANDLE_CLAIM_EPOCH, WorkflowHandle } from './handles.ts';
+import { WorkflowHandle } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
+import { copyResultCommitter, recordResultCommitter } from './result-committer.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from './storage-io.ts';
 
 /** What a result waiter rejects with for a workflow that is not (or no longer) in storage. */
@@ -14,37 +15,9 @@ export function createWorkflowHandleWithResultPromise(
   internals: EngineInternals,
   workflowId: string,
 ): WorkflowHandle {
-  const claimEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
-  const handle = new WorkflowHandle(workflowId, internals.engine, claimEpoch);
+  const handle = new WorkflowHandle(workflowId, internals.engine);
   cacheHandle(internals, workflowId, handle);
   return handle;
-}
-
-/**
- * The run behind `workflowId` was just acquired again on this engine (resume,
- * recovery, reclaim, a delayed start's firing, a retry): point its cached handle
- * at the new claim epoch, so `lostWorkflowClaim(handle)` keeps answering for the
- * same run. Call it only for the SAME run, and only once nothing after it can
- * fail and release the claim: a `start-new` replacement is a new run and must not
- * call it (the superseded handle keeps its own generation). Returns a function
- * that restores the handle's previous epoch, for a caller whose later steps can
- * still fail, or `undefined` when nothing moved.
- */
-export function rebindHandleClaimEpoch(
-  internals: EngineInternals,
-  workflowId: string,
-): (() => void) | undefined {
-  const epoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
-  if (epoch === null) return undefined;
-  const handle = internals.handleCache.get(workflowId)?.ref.deref();
-  if (handle === undefined) return undefined;
-  const previousEpoch = handle[HANDLE_CLAIM_EPOCH];
-  handle[HANDLE_CLAIM_EPOCH] = epoch;
-  // Undo the move when what followed it fails, so the handle never keeps an epoch
-  // nobody tracks after its own epoch was overwritten. A later rebind is left alone.
-  return () => {
-    if (handle[HANDLE_CLAIM_EPOCH] === epoch) handle[HANDLE_CLAIM_EPOCH] = previousEpoch;
-  };
 }
 
 export function createWorkflowResultWaiter(
@@ -372,6 +345,7 @@ export async function bootstrapWorkflowResultResolver(
     // result (or a spurious "still running") to this waiter.
     const result = deriveWorkflowResultFromState(state);
     clearResultWaiter(internals, workflowId, waiter);
+    recordResultCommitter(waiter, state.terminalCommittedBy);
     waiter.resolve(result);
     return 'settled';
   } catch (error) {
@@ -383,6 +357,7 @@ export async function bootstrapWorkflowResultResolver(
     // awaiting a failed child hanging forever (re-deriving throws the same
     // way every time).
     clearResultWaiter(internals, workflowId, waiter);
+    recordResultCommitter(waiter, state.terminalCommittedBy);
     waiter.reject(error);
     return 'settled';
   }
@@ -398,7 +373,16 @@ function linkToReplacementWaiter(
     return false;
   }
 
-  void currentWaiter.promise.then(waiter.resolve, waiter.reject);
+  void currentWaiter.promise.then(
+    (value) => {
+      copyResultCommitter(currentWaiter, waiter);
+      waiter.resolve(value);
+    },
+    (reason) => {
+      copyResultCommitter(currentWaiter, waiter);
+      waiter.reject(reason);
+    },
+  );
   return true;
 }
 

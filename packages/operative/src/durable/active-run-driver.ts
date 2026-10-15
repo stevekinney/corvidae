@@ -367,7 +367,7 @@ export async function driveDurableRun(
 
   // COR-1390: `handle.result()` also settles when another engine took this
   // run's claim and finished it; that engine publishes the terminal lifecycle.
-  if (await lostRunToAnotherEngine(context, handle)) {
+  if (lostRunToAnotherEngine(context, handle)) {
     reachability.unreachable = true;
     return makeInterruptedRunResult(conversation);
   }

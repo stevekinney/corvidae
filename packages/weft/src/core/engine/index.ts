@@ -209,7 +209,6 @@ import {
 import {
   HANDLE_RESULT_PROMISE,
   WorkflowHandle,
-  readHandleClaimEpoch,
   type PreparedWorkflowHandle,
   type WorkflowClaimHandle,
 } from './handles.ts';
@@ -268,6 +267,7 @@ import {
   resolveWorkflowTypeTarget as resolveWorkflowTypeTargetFromRegistration,
   type RegistrationCallbacks,
 } from './registration.ts';
+import { readHandleResultCommitter } from './result-committer.ts';
 import {
   ensureRetentionSweepInterval,
   getRetentionOverview as getRetentionOverviewSnapshot,
@@ -369,8 +369,8 @@ export {
   type WorkflowRevisionDiagnostics,
 } from './catalog-removal.ts';
 export {
-  WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME,
   WeftWorkflowCheckpointConflictWarning,
+  WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME,
 } from './checkpoint-conflict-error.ts';
 export {
   DynamicWorkflowSourceUnavailableError,
@@ -408,10 +408,10 @@ export { HANDLE_RESULT_PROMISE, WorkflowHandle } from './handles.ts';
 export type { PreparedWorkflowHandle, WorkflowClaimHandle } from './handles.ts';
 export { getWorkflowCatalog } from './internals.ts';
 export {
-  WORKFLOW_CLAIM_LOST_WARNING_NAME,
-  WORKFLOW_WAKE_DISCARDED_WARNING_NAME,
   WeftWorkflowClaimLostWarning,
   WeftWorkflowWakeDiscardedWarning,
+  WORKFLOW_CLAIM_LOST_WARNING_NAME,
+  WORKFLOW_WAKE_DISCARDED_WARNING_NAME,
 } from './lease-deposition.ts';
 export type { WorkflowWakeKind } from './lease-deposition.ts';
 export {
@@ -2910,31 +2910,27 @@ export class Engine<
     return getInternals(this).workflowClaimRegistry?.holderStatus(workflowId);
   }
   /**
-   * Whether this engine claimed the run `handle` drives under `ownership:
-   * 'workflow-lease'` and another engine has since taken that claim, so the
-   * run's outcome is the other engine's. {@link WorkflowHandle.result} settles
-   * with that outcome either way, read from the store, because it reports the
-   * workflow, not who drove it. A caller that publishes a run's terminal
-   * outcome exactly once checks this after `result()` settles and leaves
-   * publication to the engine that kept the claim.
+   * Whether `handle`'s run settled with a terminal outcome another engine committed,
+   * under `ownership: 'workflow-lease'`: the engine took the run's claim and finished
+   * it, so {@link WorkflowHandle.result} reports the other engine's outcome, read from
+   * the store, and this engine must not publish it again. A caller that publishes a
+   * run's terminal outcome exactly once checks this after `result()` settles and
+   * leaves publication to the committing engine.
    *
-   * The answer belongs to the run generation the handle was created for: it
-   * uses the claim epoch this engine held at that moment, so a later run that
-   * reuses the same workflow id (a `start-new` replacement) never changes it.
-   * `false` under every other ownership mode, for a handle whose run this
-   * engine never claimed, and for a claim this engine released itself. A
-   * cancel, timeout, or suspend rotates the claim's epoch whichever engine
-   * commits it, so after one of those this reports `true` even when this
-   * engine committed it: ask it only about a completed workflow, whose
-   * completion is committed under the holder's own claim. A storage read
-   * failure rejects.
+   * The answer comes from the terminal commit itself: each terminal write (complete,
+   * fail, cancel, timeout) records the committing engine's ID, and the handle keeps
+   * that ID when its `result()` settles. It is exact for every terminal outcome,
+   * belongs to the run the handle awaited (a later `start-new` run under the same
+   * workflow id never changes it), and reads no storage. `false` while the result is
+   * unsettled or was never requested, when no committer was recorded (a result
+   * settled without a terminal commit, or a record written before the engine
+   * recorded one), and under every other ownership mode.
    */
-  async lostWorkflowClaim(handle: WorkflowClaimHandle): Promise<boolean> {
-    const claimEpoch = readHandleClaimEpoch(handle);
-    if (claimEpoch === null) return false;
-    return (
-      (await getInternals(this).workflowClaimRegistry?.lostClaim(handle.id, claimEpoch)) ?? false
-    );
+  lostWorkflowClaim(handle: WorkflowClaimHandle): boolean {
+    const engineId = getInternals(this).workflowClaimRegistry?.engineId;
+    if (engineId === undefined) return false;
+    const committedBy = readHandleResultCommitter(handle);
+    return committedBy !== undefined && committedBy !== engineId;
   }
   async getCurrentCheckpointStep(workflowId: string): Promise<number | null> {
     // Prefer the in-memory checkpoint: for a run live in this engine it is the

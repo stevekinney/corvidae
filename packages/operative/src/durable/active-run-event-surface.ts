@@ -1,5 +1,4 @@
 import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import type { WorkflowClaimHandle } from '@lostgradient/weft';
 import type { AnyToolbox, ToolboxEventMap } from 'armorer';
 
 import type { CombinedOperativeEventMap, OperativeEventEmitter } from '../events';
@@ -45,12 +44,12 @@ export function wireHumanWaitLiveness(
 }
 /**
  * The minimal recovered-handle surface {@link reattachDurableActiveRun} needs: a
- * pinned id (== runId), the settling `result()`, and the claim epoch
- * `engine.lostWorkflowClaim(handle)` answers from. `engine.recoverAll()` returns
+ * pinned id (== runId) and the settling `result()`. `engine.recoverAll()` returns
  * full `WorkflowHandle`s; this narrow shape avoids depending on Weft's invariant
  * `WorkflowHandle` generics (matching the `RegistryAgnosticEngine` widening convention).
  */
-export interface RecoveredRunHandle extends WorkflowClaimHandle {
+export interface RecoveredRunHandle {
+  readonly id: string;
   result(): Promise<unknown>;
 }
 

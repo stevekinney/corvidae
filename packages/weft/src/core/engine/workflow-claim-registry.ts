@@ -53,7 +53,6 @@ import { KEYS, storageConditionalBatch, type Storage } from '../../storage/inter
 import { emitWorkflowClaimLostWarning, type EmitWorkflowLeaseWarning } from './lease-deposition.ts';
 import { decodeEpoch, decodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 import { WorkflowClaimTakeoverCooldown } from './workflow-claim-cooldown.ts';
-import { WorkflowClaimLostGenerations } from './workflow-claim-lost-generations.ts';
 import {
   buildWorkflowClaimAcquireTransition,
   buildWorkflowClaimReleaseTransition,
@@ -177,7 +176,6 @@ export class WorkflowClaimRegistry {
   readonly #warn: EmitWorkflowLeaseWarning | undefined;
 
   readonly #claims = new Map<string, ClaimTrackingEntry>();
-  readonly #lostGenerations = new WorkflowClaimLostGenerations();
   readonly #inFlightRenewals = new Map<string, Promise<WorkflowClaimRenewResult>>();
   readonly #releasing = new Set<string>();
   readonly #takeoverCooldown: WorkflowClaimTakeoverCooldown;
@@ -258,23 +256,6 @@ export class WorkflowClaimRegistry {
     };
   }
 
-  /** Whether another engine took generation `epoch` of this engine's claim on `workflowId`; a read failure rejects. */
-  async lostClaim(workflowId: string, epoch: number): Promise<boolean> {
-    if (this.#lostGenerations.has(workflowId, epoch)) return true;
-    const entry = this.#claims.get(workflowId);
-    if (entry === undefined || entry.epoch !== epoch) return false;
-    const stored = await this.#claimStorage.get(KEYS.workflowOwnerEpoch(workflowId));
-    return stored === null || decodeEpoch(stored) !== epoch;
-  }
-
-  /** Install `entry`; a claim is minted from epoch `entry.epoch - 1`, per `mintNextEpoch`. */
-  #installClaim(workflowId: string, entry: ClaimTrackingEntry): void {
-    const replaced = this.#claims.get(workflowId);
-    this.#lostGenerations.recordReplaced(workflowId, replaced?.epoch, entry.epoch - 1);
-    this.#claims.set(workflowId, entry);
-    this.#takeoverCooldown.clear(workflowId);
-  }
-
   async #resolveHeldBy(workflowId: string): Promise<string | null> {
     const raw = await this.#claimStorage.get(KEYS.workflowOwnerHolder(workflowId));
     if (raw === null) return null;
@@ -318,7 +299,8 @@ export class WorkflowClaimRegistry {
       fragment.operations,
       KEYS.workflowOwnerHolder(workflowId),
     );
-    this.#installClaim(workflowId, { epoch, claimedAt: now, epochBytes, holderBytes });
+    this.#claims.set(workflowId, { epoch, claimedAt: now, epochBytes, holderBytes });
+    this.#takeoverCooldown.clear(workflowId);
     return { status: 'acquired', workflowId, epoch };
   }
 
@@ -377,12 +359,13 @@ export class WorkflowClaimRegistry {
       preparation.fragment.operations,
       KEYS.workflowOwnerHolder(workflowId),
     );
-    this.#installClaim(workflowId, {
+    this.#claims.set(workflowId, {
       epoch: preparation.epoch,
       claimedAt: preparation.claimedAt,
       epochBytes,
       holderBytes,
     });
+    this.#takeoverCooldown.clear(workflowId);
   }
 
   /**
@@ -424,7 +407,6 @@ export class WorkflowClaimRegistry {
       // fresh entry, which must not be dropped or throttled in its place.
       if (this.#claims.get(workflowId) === entry) {
         this.#claims.delete(workflowId);
-        this.#lostGenerations.record(workflowId, entry.epoch);
         this.#takeoverCooldown.recordDeposition(workflowId, this.#getNow());
       }
       emitWorkflowClaimLostWarning(workflowId, this.#warn);
@@ -562,7 +544,8 @@ export class WorkflowClaimRegistry {
       fragment.operations,
       KEYS.workflowOwnerHolder(workflowId),
     );
-    this.#installClaim(workflowId, { epoch, claimedAt: now, epochBytes, holderBytes });
+    this.#claims.set(workflowId, { epoch, claimedAt: now, epochBytes, holderBytes });
+    this.#takeoverCooldown.clear(workflowId);
     return { status: 'acquired', workflowId, epoch };
   }
 
