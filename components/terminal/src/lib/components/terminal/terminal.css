@@ -64,6 +64,48 @@
     gap: var(--cinder-space-2);
   }
 
+  .cinder-terminal__inspection {
+    display: flex;
+    flex-wrap: wrap;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-terminal__search {
+    display: flex;
+    flex-direction: column;
+    padding: var(--cinder-space-1) var(--cinder-space-3) var(--cinder-space-2);
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-terminal__search-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-terminal__search-status,
+  .cinder-terminal__search-excerpt {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font: var(--cinder-font-medium) var(--cinder-text-xs) / 1.4 var(--cinder-font-sans);
+  }
+
+  .cinder-terminal__search-excerpt {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    font-family: var(--cinder-font-mono);
+  }
+
+  .cinder-terminal__links {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    gap: var(--cinder-space-1);
+    list-style: none;
+  }
+
   /* Reduced motion disables non-essential motion; status and focus changes stay immediate. */
   @media (prefers-reduced-motion: reduce) {
     .cinder-terminal,

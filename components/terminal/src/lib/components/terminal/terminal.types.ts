@@ -2,6 +2,7 @@ import type { TerminalFrameStatus } from '@lostgradient/cinder';
 import type { HTMLAttributes } from 'svelte/elements';
 
 import type { InputRefusal, TerminalInputController } from '../../input/input-types.ts';
+import type { InspectionEvent } from '../../inspection/inspection-types.ts';
 
 /**
  * The interaction states the terminal surface renders, as specified in
@@ -154,6 +155,13 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
    * also told through the status region, except for typing into a read-only view.
    */
   onInputRefused?: (refusal: InputRefusal) => void;
+  /**
+   * Called with a typed metric when the reader searches, steps through matches, clears, opens or
+   * refreshes the accessible output, exports, or activates a listed link. An event holds counts,
+   * booleans and fixed words only: never output, a query, a keystroke, an argument, an environment
+   * value or a credential. A handler that throws changes nothing about the session.
+   */
+  onInspectionEvent?: (event: InspectionEvent) => void;
   /** Additional class merged with the component's root class. */
   class?: string;
 };

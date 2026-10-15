@@ -53,12 +53,12 @@ describe('projectBuffer', () => {
     expect(projection.text).toBe('top\n\nbottom');
   });
 
+  test('keeps a blank line at the start', () => {
+    expect(projectBuffer(bufferOf(['', false], ['abc', false])).text).toBe('\nabc');
+  });
+
   test('projects an empty buffer as empty text', () => {
-    expect(projectBuffer(bufferOf())).toEqual({
-      text: '',
-      truncated: false,
-      bytes: 0,
-    });
+    expect(projectBuffer(bufferOf())).toEqual({ text: '', truncated: false, bytes: 0, lines: [] });
     expect(projectBuffer(bufferOf(['', false], ['', false])).text).toBe('');
   });
 
@@ -72,42 +72,121 @@ describe('projectBuffer', () => {
     expect(projectBuffer(bufferOf(['tail', true], ['next', false])).text).toBe('tail\nnext');
   });
 
+  test('closes a line left open when the oldest rows are not retained', () => {
+    expect(projectBuffer(bufferOf(undefined, ['tail', true])).text).toBe('tail');
+  });
+
   test('reports the byte count of what it returns', () => {
-    const projection = projectBuffer(bufferOf(['日本', false]));
-    expect(projection.bytes).toBe(6);
+    expect(projectBuffer(bufferOf(['日本', false])).bytes).toBe(6);
   });
 
-  test('truncates at the byte limit', () => {
-    const projection = projectBuffer(bufferOf(['abcdefghij', false]), 4);
-    expect(projection).toEqual({ text: 'abcd', truncated: true, bytes: 4 });
+  test('says where each whole logical line starts', () => {
+    const projection = projectBuffer(
+      bufferOf(['one', false], ['wrapped', false], ['-more', true], ['', false], ['end', false]),
+    );
+    expect(projection.text).toBe('one\nwrapped-more\n\nend');
+    expect(projection.lines).toEqual([
+      { row: 0, start: 0 },
+      { row: 1, start: 4 },
+      { row: 3, start: 17 },
+      { row: 4, start: 18 },
+    ]);
+  });
+});
+
+describe('keeping the newest content within the byte limit', () => {
+  test('keeps whole newest lines and omits earlier ones, with no marker in the text', () => {
+    const projection = projectBuffer(
+      bufferOf(['first', false], ['second', false], ['third', false]),
+      12,
+    );
+    expect(projection.text).toBe('second\nthird');
+    expect(projection.truncated).toBe(true);
+    expect(projection.bytes).toBe(12);
   });
 
-  test('never splits a multi-byte code point when it truncates', () => {
-    // "日" is three bytes, so "a日" needs 4 and "a日b" needs 5.
-    expect(projectBuffer(bufferOf(['a日b', false]), 4).text).toBe('a日');
-    expect(projectBuffer(bufferOf(['a日b', false]), 3).text).toBe('a');
-    expect(projectBuffer(bufferOf(['a日b', false]), 2).text).toBe('a');
-    expect(projectBuffer(bufferOf(['\u{1f600}x', false]), 3).text).toBe('');
-    expect(projectBuffer(bufferOf(['\u{1f600}x', false]), 4).text).toBe('\u{1f600}');
+  test('starts at a whole line when the next earlier line does not fit', () => {
+    const projection = projectBuffer(bufferOf(['aaaaaaaa', false], ['bbbb', false]), 8);
+    expect(projection).toEqual({
+      text: 'bbbb',
+      truncated: true,
+      bytes: 4,
+      lines: [{ row: 1, start: 0 }],
+    });
   });
 
   test('a limit equal to the content is not a truncation', () => {
-    const projection = projectBuffer(bufferOf(['abcd', false]), 4);
-    expect(projection.truncated).toBe(false);
+    expect(projectBuffer(bufferOf(['abcd', false]), 4).truncated).toBe(false);
+    expect(projectBuffer(bufferOf(['ab', false], ['cd', false]), 5).truncated).toBe(false);
+  });
+
+  test('a newest line larger than the limit keeps its end, from a whole code point', () => {
+    const projection = projectBuffer(bufferOf(['abcdefghij', false]), 4);
+    expect(projection).toEqual({ text: 'ghij', truncated: true, bytes: 4, lines: [] });
+  });
+
+  test('never starts inside a multi-byte code point', () => {
+    // "日" is three bytes: a limit that lands inside one starts at the next whole character.
+    expect(projectBuffer(bufferOf(['日a日b', false]), 4).text).toBe('日b');
+    expect(projectBuffer(bufferOf(['日a日b', false]), 5).text).toBe('a日b');
+    expect(projectBuffer(bufferOf(['日a日b', false]), 3).text).toBe('b');
+    expect(projectBuffer(bufferOf(['x\u{1f600}y', false]), 4).text).toBe('y');
+    expect(projectBuffer(bufferOf(['x\u{1f600}y', false]), 5).text).toBe('\u{1f600}y');
+  });
+
+  test('keeps the end of a soft-wrapped line when the line alone is over the limit', () => {
+    const projection = projectBuffer(
+      bufferOf(['aaaa', false], ['bbbb', true], ['cccc', true], ['dddd', true]),
+      6,
+    );
+    expect(projection.text).toBe('ccdddd');
+    expect(projection.truncated).toBe(true);
+  });
+
+  test('keeps a blank line between content that straddles the limit', () => {
+    expect(projectBuffer(bufferOf(['ab', false], ['', false], ['cd', false]), 5).text).toBe('\ncd');
+    expect(projectBuffer(bufferOf(['ab', false], ['', false], ['cd', false]), 6).text).toBe(
+      'ab\n\ncd',
+    );
+  });
+
+  test('blank rows at the end cost nothing and are not content', () => {
+    const rows: Array<readonly [string, boolean]> = [['abcd', false]];
+    for (let index = 0; index < 50; index += 1) rows.push(['', false]);
+    expect(projectBuffer(bufferOf(...rows), 4)).toEqual({
+      text: 'abcd',
+      truncated: false,
+      bytes: 4,
+      lines: [{ row: 0, start: 0 }],
+    });
   });
 
   test('defaults to the 64 KiB accessible-snapshot budget', () => {
     expect(DEFAULT_PROJECTION_BYTE_LIMIT).toBe(65_536);
-    const big = bufferOf(...Array.from({ length: 100 }, () => ['x'.repeat(1000), false] as const));
-    const projection = projectBuffer(big);
+    const rows = Array.from(
+      { length: 100 },
+      (_, index) => [`${index}`.padEnd(999, 'x'), false] as const,
+    );
+    const projection = projectBuffer(bufferOf(...rows));
     expect(projection.truncated).toBe(true);
-    expect(projection.bytes).toBe(65_536);
+    expect(projection.bytes).toBeLessThanOrEqual(65_536);
+    const kept = projection.text.split('\n');
+    expect(kept.at(-1)!.startsWith('99')).toBe(true);
+    expect(Number.parseInt(kept[0]!, 10)).toBeGreaterThan(0);
   });
 
-  test('reads only as many rows and cells as the limit needs from a hostile scrollback', () => {
+  test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects the byte limit %p',
+    (limit) => {
+      expect(() => projectBuffer(bufferOf(['x', false]), limit)).toThrow(RangeError);
+    },
+  );
+});
+
+describe('the work is bounded by the limit, not by the scrollback or a row', () => {
+  test('reads only as many rows as the limit needs from a hostile scrollback', () => {
     const rowText = 'x'.repeat(100);
     let linesRead = 0;
-    let rowsTranslated = 0;
     const hostile: ProjectionBuffer = {
       length: 1_000_000,
       getLine() {
@@ -115,22 +194,19 @@ describe('projectBuffer', () => {
         return {
           isWrapped: false,
           length: rowText.length,
-          translateToString(_trimRight, start = 0, end = rowText.length) {
-            rowsTranslated += 1;
-            return rowText.slice(start, end);
-          },
+          translateToString: (_trimRight, start = 0, end = rowText.length) =>
+            rowText.slice(start, end),
         };
       },
     };
     const projection = projectBuffer(hostile);
     expect(projection.truncated).toBe(true);
-    expect(projection.bytes).toBe(DEFAULT_PROJECTION_BYTE_LIMIT);
-    // Each row adds 101 bytes, so 64 KiB is reached within 650 rows, not a million.
+    expect(projection.bytes).toBeLessThanOrEqual(DEFAULT_PROJECTION_BYTE_LIMIT);
+    // Each row adds 101 bytes, so 64 KiB is reached within about 650 rows, not a million.
     expect(linesRead).toBeLessThanOrEqual(Math.ceil(DEFAULT_PROJECTION_BYTE_LIMIT / 101) + 2);
-    expect(rowsTranslated).toBe(linesRead);
   });
 
-  test('stops at the limit inside one very long soft-wrapped line', () => {
+  test('stops inside one very long soft-wrapped line', () => {
     let linesRead = 0;
     const wrapped: ProjectionBuffer = {
       length: 1_000_000,
@@ -150,61 +226,44 @@ describe('projectBuffer', () => {
     expect(linesRead).toBeLessThanOrEqual(6);
   });
 
-  test('blank rows after the limit cost nothing and are not a truncation', () => {
-    const rows: Array<readonly [string, boolean]> = [['abcd', false]];
-    for (let index = 0; index < 50; index += 1) rows.push(['', false]);
-    const projection = projectBuffer(bufferOf(...rows), 4);
-    expect(projection).toEqual({ text: 'abcd', truncated: false, bytes: 4 });
-  });
-
-  test('keeps a blank line between content that straddles the limit', () => {
-    expect(projectBuffer(bufferOf(['ab', false], ['', false], ['cd', false]), 5).text).toBe(
-      'ab\n\nc',
-    );
-  });
-
-  test.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-    'rejects the byte limit %p',
-    (limit) => {
-      expect(() => projectBuffer(bufferOf(['x', false]), limit)).toThrow(RangeError);
-    },
-  );
-});
-
-describe('the budget is enforced inside a row', () => {
   const COLUMNS = 1_000_000;
-
-  function hostileBuffer(rows: number) {
-    const counts = { cells: 0, calls: 0 };
-    const buffer: ProjectionBuffer = {
-      length: rows,
+  /** A row whose content ends at `end` cells, as a million-cell row of `x` would. */
+  function wideRow(end: number, counts: { cells: number }): ProjectionBuffer {
+    return {
+      length: 1,
       getLine: () => ({
         isWrapped: false,
         length: COLUMNS,
-        translateToString: (_trimRight, start = 0, end = COLUMNS) => {
-          counts.calls += 1;
-          const stop = Math.min(end, COLUMNS);
-          counts.cells += Math.max(0, stop - start);
-          return 'x'.repeat(Math.max(0, stop - start));
+        translateToString: (_trimRight, start = 0, stop = COLUMNS) => {
+          const to = Math.min(stop, end);
+          const cells = Math.max(0, to - start);
+          counts.cells += cells;
+          return 'x'.repeat(cells);
         },
       }),
     };
-    return { buffer, counts };
   }
 
-  test('a million-cell row materializes only about the byte limit', () => {
-    const { buffer, counts } = hostileBuffer(1);
-    const projection = projectBuffer(buffer, 1024);
+  test('a million-cell row materializes only about the byte limit, found without scanning it', () => {
+    const counts = { cells: 0 };
+    const projection = projectBuffer(wideRow(COLUMNS, counts), 1024);
     expect(projection.truncated).toBe(true);
-    expect(projection.bytes).toBe(1024);
     expect(projection.text).toBe('x'.repeat(1024));
-    expect(counts.cells).toBeLessThanOrEqual(1024 + 256);
+    expect(counts.cells).toBeLessThanOrEqual(1024 + 256 + 64);
   });
 
-  test('many hostile rows stop at the first one that reaches the limit', () => {
-    const { buffer, counts } = hostileBuffer(10_000);
-    projectBuffer(buffer, 1024);
-    expect(counts.cells).toBeLessThanOrEqual(1024 + 256);
+  test('a wide row with little content reads only that content', () => {
+    const counts = { cells: 0 };
+    const projection = projectBuffer(wideRow(10, counts), 1024);
+    expect(projection.text).toBe('x'.repeat(10));
+    expect(projection.truncated).toBe(false);
+    expect(counts.cells).toBeLessThanOrEqual(10 + 64);
+  });
+
+  test('a blank wide row is found blank without scanning it', () => {
+    const counts = { cells: 0 };
+    expect(projectBuffer(wideRow(0, counts), 1024).text).toBe('');
+    expect(counts.cells).toBe(0);
   });
 
   test('a row read in slices projects exactly what one whole read would', () => {
@@ -212,9 +271,9 @@ describe('the budget is enforced inside a row', () => {
     expect(projectBuffer(bufferOf([text, false], ['tail', false])).text).toBe(`${text}\ntail`);
   });
 
-  test('a cut inside a multibyte character in a later slice still lands on a code point', () => {
-    const projection = projectBuffer(bufferOf(['a'.repeat(255) + '日日日', false]), 258);
-    expect(projection.text).toBe('a'.repeat(255) + '日');
+  test('a cut inside a multibyte character in an earlier slice still starts on a code point', () => {
+    const projection = projectBuffer(bufferOf(['日日日' + 'a'.repeat(255), false]), 258);
+    expect(projection.text).toBe('日' + 'a'.repeat(255));
     expect(projection.bytes).toBe(258);
   });
 });
@@ -246,8 +305,9 @@ describe('slices are bounded by bytes before they are materialized (COR-1516)', 
   test('never asks for more cells than the bytes still unspent', () => {
     const { buffer, counts } = markedBuffer();
     const projection = projectBuffer(buffer, 8);
-    // "a" is one byte and each combining mark two, so seven bytes is the last whole code point.
-    expect(projection.bytes).toBe(7);
+    // Newest first: the last four marks, two bytes each, are the whole code points that fit eight.
+    expect(projection.text).toBe('\u0301'.repeat(4));
+    expect(projection.bytes).toBe(8);
     expect(projection.truncated).toBe(true);
     expect(counts.widest).toBeLessThanOrEqual(8);
     expect(counts.cells).toBeLessThanOrEqual(8);
@@ -263,11 +323,45 @@ describe('slices are bounded by bytes before they are materialized (COR-1516)', 
     try {
       const { buffer } = markedBuffer();
       const projection = projectBuffer(buffer, 8);
-      expect(projection.text).toBe('a' + '\u0301'.repeat(3));
-      expect(projection.bytes).toBe(7);
+      expect(projection.text).toBe('\u0301'.repeat(4));
+      expect(projection.bytes).toBe(8);
     } finally {
       TextEncoder.prototype.encode = original;
     }
     expect(Math.max(...encoded)).toBeLessThanOrEqual(8);
+  });
+
+  test('a clip drops the astral cell it cut and reads nothing older past it', () => {
+    // One cell per entry, as the engine reports them: a wide emoji is one entry and its
+    // continuation cell is empty.
+    const cells = ['x', '\u{1f600}', '', 'a', 'b', 'c'];
+    const buffer: ProjectionBuffer = {
+      length: 1,
+      getLine: () => ({
+        isWrapped: false,
+        length: cells.length,
+        translateToString: (_trimRight, start = 0, end = cells.length) =>
+          cells.slice(start, end).join(''),
+      }),
+    };
+    const projection = projectBuffer(buffer, 4);
+    expect(projection.text).toBe('abc');
+    expect(projection.truncated).toBe(true);
+    expect(projection.bytes).toBe(3);
+  });
+
+  test('a clip never leaves half of a surrogate pair', () => {
+    const buffer: ProjectionBuffer = {
+      length: 1,
+      getLine: () => ({
+        isWrapped: false,
+        length: 10,
+        translateToString: (_trimRight, start = 0, end = 10) =>
+          '\u{1f600}'.repeat(10).slice(start * 2, end * 2),
+      }),
+    };
+    const projection = projectBuffer(buffer, 5);
+    expect(projection.text).toBe('\u{1f600}');
+    expect(projection.bytes).toBe(4);
   });
 });
