@@ -44,6 +44,35 @@ export function captureTerminalFence(
   };
 }
 
+/**
+ * The fence for a terminal commit, reading the run's identity first when this engine holds no
+ * attempt for it (a cancel or timeout of a run another engine drives). The read happens before
+ * the commit is issued, so it cannot observe a replacement: none can exist until the run's
+ * terminal commit lands. A fence whose engine does hold the run costs no read and no await.
+ */
+export function captureOrReadTerminalFence(
+  internals: EngineInternals,
+  workflowId: string,
+  workflowExecutionToken: string | undefined,
+): TerminalFence | Promise<TerminalFence> {
+  const fence = captureTerminalFence(internals, workflowId, workflowExecutionToken);
+  if (fence.identity !== undefined || fence.pending !== undefined) return fence;
+  const attempt = currentExecutionAttempt(internals, workflowId);
+  if (attempt !== undefined && attempt.workflowExecutionToken === workflowExecutionToken) {
+    return fence;
+  }
+  return readRunIdentity(internals, workflowId).then((identity) => ({ identity }));
+}
+
+async function readRunIdentity(
+  internals: EngineInternals,
+  workflowId: string,
+): Promise<RunIdentity> {
+  const generation = await internals.storage.get(KEYS.workflowGeneration(workflowId));
+  const holderMarker = await internals.storage.get(KEYS.workflowConcurrencyHolder(workflowId));
+  return { generation, holderMarker };
+}
+
 /** Report that a terminal teardown had no run identity to fence on and skipped its fenced writes. */
 export function warnUnknownRunIdentity(
   fence: TerminalFence,

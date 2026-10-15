@@ -33,7 +33,7 @@ import {
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf, throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
-import { decode } from '../codec.ts';
+import { decode, encode } from '../codec.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION } from '../types/checkpoint.ts';
 import { purgeWorkflow } from './bulk-operations-purge.ts';
@@ -2002,6 +2002,62 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
       await expectReplacementIntact(storage, engineB, id, replacement, 'P1');
     } finally {
       readRelease.resolve();
+      gate.release.resolve();
+    }
+  });
+
+  it('a replacement moving the id to another partition while the classification reads are in flight still frees the old partition', async () => {
+    const id = `teardown-durable-classify-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    const gate = newGate();
+    const generationHold = newGate();
+    let holdingGenerationReads = false;
+    const gated = gateFirstWrite(storage, gate, deletes(KEYS.workflowConcurrencyHolder(id)));
+    const held = new Proxy(gated, {
+      get(target, property, receiver) {
+        if (property === 'get') {
+          return async (key: string) => {
+            if (holdingGenerationReads && key === KEYS.workflowGeneration(id)) {
+              generationHold.reached.resolve();
+              await generationHold.release.promise;
+            }
+            return target.get(key);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await using engineA = await createEngine(held);
+    await using engineB = await createEngine(storage);
+    try {
+      const oldDone = terminateOldRun(engineA, id, 'cancel', gate);
+      await gate.reached.promise;
+      // Move the slot's version so the release batch loses its condition and has to classify.
+      const slotKey = KEYS.workflowConcurrency(TYPE, 'P1');
+      const versionKey = `${slotKey}:version`;
+      const version = decode((await storage.get(versionKey))!) as number;
+      await storage.put(versionKey, encode(version + 1));
+      holdingGenerationReads = true;
+      gate.release.resolve();
+      await generationHold.reached.promise;
+
+      // The replacement lands in another partition while the classification read is in flight.
+      const replacement = await engineB.start(TYPE, 'P2:NEW', {
+        id,
+        onTerminalConflict: 'start-new',
+        searchAttributes: { tag: 'new' },
+      });
+      await engineB[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+      holdingGenerationReads = false;
+      generationHold.release.resolve();
+      await oldDone;
+      await Bun.sleep(50);
+
+      expect(await slotHolders(storage, 'P1')).toEqual([]);
+      await expectReplacementIntact(storage, engineB, id, replacement, 'P2');
+    } finally {
+      generationHold.release.resolve();
       gate.release.resolve();
     }
   });

@@ -17,7 +17,7 @@ import { ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING, Engine } from './index.ts'
 import { getInternals } from './internals.ts';
 
 const TYPE = 'identity-capture';
-const parked = workflow({ name: TYPE, concurrency: { max: 2 } }).execute(async function* (
+const parked = workflow({ name: TYPE, concurrency: { max: 1 } }).execute(async function* (
   ctx: WorkflowContext,
   input: string,
 ) {
@@ -191,8 +191,8 @@ describe('COR-1384: run identity captured on the execution attempt', () => {
     expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
   });
 
-  it('an engine that never held the run skips its fenced teardown and warns', async () => {
-    const id = nextId('unknown');
+  it('a cancel from an engine that never held the run still releases its slot', async () => {
+    const id = nextId('remote');
     const storage = new MemoryStorage();
     await using owner = await createEngine(storage);
     await owner.start(TYPE, 'P', { id });
@@ -205,8 +205,39 @@ describe('COR-1384: run identity captured on the execution attempt', () => {
 
     await outsider.cancel(id);
 
-    expect(warnings).toContain('terminal-teardown-fence');
-    // Fail closed: nothing was released on the strength of a guessed identity.
-    expect(await slotHolders(storage)).toEqual([id]);
+    expect(await slotHolders(storage)).toEqual([]);
+    expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
+    expect(warnings).not.toContain('terminal-teardown-fence');
+    // The limit is 1, so a new run can start only because the slot really was freed.
+    await outsider.start(TYPE, 'next', { id: nextId('after-remote') });
+  });
+
+  it('a run whose adoption read failed has no identity, so its fenced teardown is skipped and warned', async () => {
+    const id = nextId('unreadable');
+    const storage = new MemoryStorage();
+    await strandParkedRun(storage, id);
+    const failing = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'get') {
+          return async (key: string) => {
+            if (key === KEYS.workflowGeneration(id)) throw new Error('generation unreadable');
+            return target.get(key);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await using engine = await createEngine(failing);
+    const warnings: unknown[] = [];
+    engine.addEventListener('cleanup:warning', (event) => {
+      warnings.push((event as Event & { source?: string }).source);
+    });
+    await engine.recoverAll();
+    await engine.signal(id, 'go');
+    await waitForCondition(async () => warnings.includes('terminal-teardown-fence'), {
+      label: 'fail-closed warning',
+    });
+    expect(attemptIdentity(engine, id)).toBeUndefined();
   });
 });

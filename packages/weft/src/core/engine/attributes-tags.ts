@@ -23,7 +23,7 @@ import {
   commitSelfWorkflowStateOperations,
   runSerializedWorkflowStateWrite,
 } from './storage-io.ts';
-import { captureTerminalFence, type TerminalFence } from './termination/terminal-fence.ts';
+import { captureOrReadTerminalFence, type TerminalFence } from './termination/terminal-fence.ts';
 import {
   decodeWorkflowState,
   isTerminalWorkflowStatus,
@@ -149,6 +149,12 @@ export function buildTerminalWorkflowIndexOperations(
   return operations;
 }
 
+/** Whether the status guard or the caller's `skipCommitIf` refuses this update. */
+function updateIsRefused(state: WorkflowState, options: WorkflowStateUpdateOptions): boolean {
+  if (options.allowedStatuses && !options.allowedStatuses.includes(state.status)) return true;
+  return options.skipCommitIf?.(state) === true;
+}
+
 /** Apply a serialized workflow-state update and return the previous state metadata. */
 export async function updateWorkflowState(
   internals: EngineInternals,
@@ -164,11 +170,7 @@ export async function updateWorkflowState(
     }
 
     const state = decodeWorkflowState(bytes);
-    const fence = captureTerminalFence(internals, workflowId, state.workflowExecutionToken);
-    if (options.allowedStatuses && !options.allowedStatuses.includes(state.status)) {
-      return null;
-    }
-    if (options.skipCommitIf?.(state) === true) {
+    if (updateIsRefused(state, options)) {
       return null;
     }
 
@@ -187,6 +189,14 @@ export async function updateWorkflowState(
     // EXTERNAL terminal transition (terminateWorkflow: cancel/timeout)
     // rotates the claim epoch instead (ADR 0002). Operator tag/attribute
     // mutations do NOT use this helper; they batch directly.
+    const captured = captureOrReadTerminalFence(
+      internals,
+      workflowId,
+      state.workflowExecutionToken,
+    );
+    // Only a run this engine does not hold costs a read, and it is issued before the commit so a
+    // replacement cannot yet exist; a held run's fence is already in hand.
+    const fence = captured instanceof Promise ? await captured : captured;
     const commit =
       category === 'self'
         ? commitSelfWorkflowStateOperations

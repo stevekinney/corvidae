@@ -277,7 +277,15 @@ export async function releaseWorkflowConcurrencySlotForRun(
     ];
     const slotVersion = encodeVersionCondition(stateKey, snapshot.version);
     const releaseAll = [...slotOperations, { type: 'delete' as const, key: holderKey }];
-    if (await storageConditionalBatch(internals.storage, [slotVersion, ownCommit], releaseAll)) {
+    // The marker deleted is the one captured for this run, enforced by the condition itself.
+    const ownMarker = { key: holderKey, expectedValue: capturedMarker };
+    if (
+      await storageConditionalBatch(
+        internals.storage,
+        [slotVersion, ownCommit, ownMarker],
+        releaseAll,
+      )
+    ) {
       return;
     }
 
@@ -328,11 +336,13 @@ async function settleAfterConflict(
   slotOperations: BatchOperation[],
 ): Promise<boolean> {
   const holderKey = KEYS.workflowConcurrencyHolder(workflowId);
-  const [generationNow, markerNow] = await Promise.all([
-    internals.storage.get(KEYS.workflowGeneration(workflowId)),
-    internals.storage.get(holderKey),
-  ]);
+  // Read the generation, then the marker, never together: a replacement writes its generation and
+  // marker in one batch, so a marker read after a changed generation is the replacement's (or a
+  // later state), never this run's own. Read together, a marker fetched just before the
+  // replacement landed would look like the replacement's and the old partition would be skipped.
+  const generationNow = await internals.storage.get(KEYS.workflowGeneration(workflowId));
   if (bytesEqual(generationNow, identity.generation)) return false;
+  const markerNow = await internals.storage.get(holderKey);
   if (isSamePartitionMarker(markerNow, marker)) return true;
   const conditions = [slotVersion, { key: holderKey, expectedValue: markerNow }];
   return storageConditionalBatch(internals.storage, conditions, slotOperations);
