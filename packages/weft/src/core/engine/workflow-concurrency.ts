@@ -19,11 +19,15 @@ import type { WorkflowConcurrencyOptions } from '../types.ts';
 import { WorkflowConcurrencyLimitExceededError } from './errors.ts';
 import type { RunIdentity } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
-import { bytesEqual, sameRunCondition, type TerminalFence } from './termination/terminal-fence.ts';
+import {
+  bytesEqual,
+  FENCED_RETRY_BUDGET,
+  sameRunCondition,
+  type TerminalFence,
+} from './termination/terminal-fence.ts';
 
 const WORKFLOW_CONCURRENCY_HOLDER_VERSION = 1;
-/** Matches `AtomicState`'s default retry budget for the unfenced release. */
-const MAX_FENCED_RELEASE_ATTEMPTS = 10;
+const MAX_FENCED_RELEASE_ATTEMPTS = FENCED_RETRY_BUDGET;
 const NON_EXPIRING_WORKFLOW_CONCURRENCY_LEASE = Number.MAX_SAFE_INTEGER;
 
 export type WorkflowConcurrencyStartOperations = {

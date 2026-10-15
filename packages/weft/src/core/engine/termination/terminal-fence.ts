@@ -45,6 +45,13 @@ export function captureOrReadTerminalFence(
   return attempt.pendingIdentity.then(() => ({ identity: attempt.identity }));
 }
 
+/**
+ * Attempts a fenced terminal operation makes when a concurrent change beats its conditional write:
+ * the release of a run's slot and the terminal state commit share it, matching `AtomicState`'s
+ * default retry budget.
+ */
+export const FENCED_RETRY_BUDGET = 10;
+
 /** Report that a terminal teardown had no run identity to fence on and skipped its fenced writes. */
 export function warnUnknownRunIdentity(
   fence: TerminalFence,

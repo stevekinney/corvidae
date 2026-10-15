@@ -2471,6 +2471,50 @@ describe('COR-1384: an old run durable terminal teardown must not touch a same-i
     }
   });
 
+  it('a remote cancel still commits when concurrent tag edits keep changing the record under it', async () => {
+    const id = `teardown-durable-tagstorm-${nextInvocation()}`;
+    const storage = new MemoryStorage();
+    await using engineA = await createEngine(storage);
+    // Every cancel commit attempt is beaten by a tag edit landing just before it, more times than
+    // any bounded retry budget would absorb.
+    let edits = 0;
+    const cancelWrites = (operations: BatchOperation[]) =>
+      operations.some(
+        (operation) =>
+          operation.type === 'put' &&
+          operation.key === KEYS.workflow(id) &&
+          (decode(operation.value) as { status?: string }).status === 'cancelled',
+      );
+    const racing = new Proxy(storage, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch') {
+          return async (conditions: ConditionalBatchCondition[], operations: BatchOperation[]) => {
+            if (cancelWrites(operations) && edits < 14) {
+              edits += 1;
+              await engineA.addTags(id, `edit-${String(edits)}`);
+            }
+            return target.conditionalBatch(conditions, operations);
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await using engineB = await createEngine(racing);
+    const old = await engineA.start(TYPE, 'P1:OLD', { id });
+    void old.result().catch(() => undefined);
+    await engineA[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+
+    await engineB.cancel(id);
+
+    // The cancel committed, so the run is not left durably running with its slot held.
+    const state = await engineA.get(id);
+    expect(state?.status).toBe('cancelled');
+    expect(edits).toBeGreaterThan(3);
+    expect(await slotHolders(storage, 'P1')).toEqual([]);
+    expect(await storage.get(KEYS.workflowConcurrencyHolder(id))).toBeNull();
+  });
+
   it('a completion racing a remote cancel of the same run both settle and release the slot once', async () => {
     const id = `teardown-durable-racing-${nextInvocation()}`;
     const storage = new MemoryStorage();

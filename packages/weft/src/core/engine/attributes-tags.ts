@@ -1,5 +1,7 @@
+import { sleep } from '../../runtime/portable.ts';
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
+import { retryDelay } from '../atomic-state.ts';
 import { assertScopedBulkWorkflowFilter } from '../bulk-workflow-filter.ts';
 import { decode, encode } from '../codec.ts';
 import {
@@ -26,6 +28,7 @@ import {
 import {
   bytesEqual,
   captureOrReadTerminalFence,
+  FENCED_RETRY_BUDGET,
   sameRunCondition,
   type TerminalFence,
 } from './termination/terminal-fence.ts';
@@ -179,7 +182,9 @@ async function rethrowUnlessDecisionLost(
   error: unknown,
 ): Promise<void> {
   const current = await internals.storage.get(KEYS.workflow(workflowId));
-  if (attempt + 1 >= MAX_STATE_UPDATE_ATTEMPTS || bytesEqual(current, loadedBytes)) throw error;
+  if (attempt + 1 >= FENCED_RETRY_BUDGET || bytesEqual(current, loadedBytes)) throw error;
+  // Back off with jitter, as `AtomicState` does, so contenders on the record spread out.
+  await sleep(retryDelay(attempt));
 }
 
 /** What the first attempt of a state update decided, kept for any re-decision after a lost commit. */
@@ -189,9 +194,6 @@ type StateUpdateDecision = {
   /** Captured once, before the first commit, so a retry never reads a replacement's identity. */
   fence: TerminalFence;
 };
-
-/** Attempts a state update makes when a concurrent change to the record beats its commit. */
-const MAX_STATE_UPDATE_ATTEMPTS = 3;
 
 /**
  * Apply a serialized workflow-state update and return the previous state metadata.
@@ -266,7 +268,12 @@ async function attemptWorkflowStateUpdate(
       ],
       {
         includePendingAtomicSideEffects: isTerminalWorkflowStatus(updated.status),
-        extraConditions: decisionConditions(workflowId, bytes, fence),
+        extraConditions: decisionConditions(
+          workflowId,
+          bytes,
+          fence,
+          attempt + 1 >= FENCED_RETRY_BUDGET,
+        ),
       },
     );
   } catch (error) {
@@ -308,10 +315,13 @@ function decisionConditions(
   workflowId: string,
   loadedBytes: Uint8Array,
   fence: TerminalFence,
+  lastAttempt: boolean,
 ): ConditionalBatchCondition[] {
-  const conditions: ConditionalBatchCondition[] = [
-    { key: KEYS.workflow(workflowId), expectedValue: loadedBytes },
-  ];
+  // The last attempt drops the exact-bytes condition and keeps the generation one, so a cancel that
+  // was beaten by edits to the same run's record still commits, while a replacement still blocks it.
+  const conditions: ConditionalBatchCondition[] = lastAttempt
+    ? []
+    : [{ key: KEYS.workflow(workflowId), expectedValue: loadedBytes }];
   if (fence.identity !== undefined) conditions.push(sameRunCondition(workflowId, fence.identity));
   return conditions;
 }
