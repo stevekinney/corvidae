@@ -258,6 +258,9 @@ let activeRun: ShellRun | undefined;
 
 const page: CinderPage = {
   boot() {
+    // Registered on every boot, not once at evaluation: the navigator boots this cached module
+    // again after other pages replaced the handle, and unmounts whatever the handle names.
+    (window as unknown as { __CINDER_PAGE__?: CinderPage })['__CINDER_PAGE__'] = page;
     activeRun ??= attachLandingPage();
     return Promise.resolve();
   },

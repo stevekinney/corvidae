@@ -46,7 +46,7 @@ async function hydratedHeading(page: Page, text: string): Promise<void> {
   await expect(page.locator('#app h1').first()).toHaveText(text);
 }
 
-/** The stylesheet hrefs and Svelte style texts the server rendered for `path`. */
+/** The stylesheet hrefs the server rendered in the head of `path`. */
 async function renderedHeadResources(page: Page, path: string) {
   const response = await page.request.get(path);
   const html = await response.text();
@@ -63,6 +63,85 @@ async function liveStylesheetHrefs(page: Page): Promise<string[]> {
       (link) => new URL(link.getAttribute('href') ?? '', location.href).pathname,
     ),
   );
+}
+
+type LiveListener = { target: string; type: string; capture: boolean; signalled: boolean };
+
+/**
+ * Track every listener on document and window that is still live: not removed, and not tied to
+ * an aborted signal. Call before the first navigation.
+ */
+async function trackLiveListeners(page: Page): Promise<() => Promise<LiveListener[]>> {
+  await page.addInitScript(() => {
+    type Registration = {
+      target: string;
+      type: string;
+      capture: boolean;
+      signal: AbortSignal | undefined;
+      removed: boolean;
+    };
+    const registrations = new Map<string, Registration>();
+    const identities = new WeakMap<object, number>();
+    let nextIdentity = 0;
+    const identityOf = (listener: object): number => {
+      if (!identities.has(listener)) identities.set(listener, nextIdentity++);
+      return identities.get(listener)!;
+    };
+    const keyOf = (target: EventTarget, type: string, listener: object, options: unknown) => {
+      const capture =
+        typeof options === 'boolean'
+          ? options
+          : Boolean((options as AddEventListenerOptions)?.capture);
+      return `${target === window ? 'window' : 'document'}|${type}|${capture}|${identityOf(listener)}`;
+    };
+    const add = EventTarget.prototype.addEventListener;
+    const remove = EventTarget.prototype.removeEventListener;
+    EventTarget.prototype.addEventListener = function (
+      this: EventTarget,
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | AddEventListenerOptions,
+    ) {
+      if ((this === window || this === document) && listener !== null) {
+        const key = keyOf(this, type, listener, options);
+        if (!registrations.has(key) || registrations.get(key)!.removed) {
+          registrations.set(key, {
+            target: this === window ? 'window' : 'document',
+            type,
+            capture: key.split('|')[2] === 'true',
+            signal: typeof options === 'object' ? options.signal : undefined,
+            removed: false,
+          });
+        }
+      }
+      return add.call(this, type, listener, options);
+    };
+    EventTarget.prototype.removeEventListener = function (
+      this: EventTarget,
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | EventListenerOptions,
+    ) {
+      if ((this === window || this === document) && listener !== null) {
+        const registration = registrations.get(keyOf(this, type, listener, options));
+        if (registration) registration.removed = true;
+      }
+      return remove.call(this, type, listener, options);
+    };
+    (window as unknown as Record<string, unknown>)['__liveListeners'] = () =>
+      [...registrations.values()]
+        .filter((entry) => !entry.removed && entry.signal?.aborted !== true)
+        .map((entry) => ({
+          target: entry.target,
+          type: entry.type,
+          capture: entry.capture,
+          signalled: entry.signal !== undefined,
+        }));
+  });
+  return () =>
+    page.evaluate(() =>
+      (window as unknown as { __liveListeners: () => LiveListener[] }).__liveListeners(),
+    );
 }
 
 test.describe('in-page navigation', () => {
@@ -185,64 +264,11 @@ test.describe('in-page navigation', () => {
   });
 
   test('unmounting a page releases its document and window listeners', async ({ page }) => {
-    // Track every listener on document and window that is still live: not removed, and not
-    // tied to an aborted signal.
-    await page.addInitScript(() => {
-      type Registration = { signal: AbortSignal | undefined; removed: boolean };
-      const registrations = new Map<string, Registration>();
-      const identities = new WeakMap<object, number>();
-      let nextIdentity = 0;
-      const identityOf = (listener: object): number => {
-        if (!identities.has(listener)) identities.set(listener, nextIdentity++);
-        return identities.get(listener)!;
-      };
-      const keyOf = (target: EventTarget, type: string, listener: object, options: unknown) => {
-        const capture =
-          typeof options === 'boolean'
-            ? options
-            : Boolean((options as AddEventListenerOptions)?.capture);
-        return `${target === window ? 'window' : 'document'}|${type}|${capture}|${identityOf(listener)}`;
-      };
-      const add = EventTarget.prototype.addEventListener;
-      const remove = EventTarget.prototype.removeEventListener;
-      EventTarget.prototype.addEventListener = function (
-        this: EventTarget,
-        type: string,
-        listener: EventListenerOrEventListenerObject | null,
-        options?: boolean | AddEventListenerOptions,
-      ) {
-        if ((this === window || this === document) && listener !== null) {
-          const key = keyOf(this, type, listener, options);
-          if (!registrations.has(key) || registrations.get(key)!.removed) {
-            registrations.set(key, {
-              signal: typeof options === 'object' ? options.signal : undefined,
-              removed: false,
-            });
-          }
-        }
-        return add.call(this, type, listener, options);
-      };
-      EventTarget.prototype.removeEventListener = function (
-        this: EventTarget,
-        type: string,
-        listener: EventListenerOrEventListenerObject | null,
-        options?: boolean | EventListenerOptions,
-      ) {
-        if ((this === window || this === document) && listener !== null) {
-          const registration = registrations.get(keyOf(this, type, listener, options));
-          if (registration) registration.removed = true;
-        }
-        return remove.call(this, type, listener, options);
-      };
-      (window as unknown as Record<string, unknown>)['__liveListeners'] = () =>
-        [...registrations.values()].filter(
-          (entry) => !entry.removed && entry.signal?.aborted !== true,
-        ).length;
-    });
-    const liveListeners = () =>
-      page.evaluate(() =>
-        (window as unknown as { __liveListeners: () => number }).__liveListeners(),
-      );
+    const listeners = await trackLiveListeners(page);
+    const liveListeners = async () => {
+      const live = await listeners();
+      return live.length;
+    };
 
     await page.goto('/page/button');
     await hydratedHeading(page, 'Button');
@@ -262,6 +288,92 @@ test.describe('in-page navigation', () => {
     }
 
     expect(await liveListeners()).toBe(afterFirstCycle);
+  });
+
+  test('the landing page stays registered when it is booted again from the cache', async ({
+    page,
+  }) => {
+    const listeners = await trackLiveListeners(page);
+    await page.goto('/page/button');
+    await hydratedHeading(page, 'Button');
+    await markDocument(page);
+    const home = () => page.locator('nav.dx-nav a.dx-nav__brand');
+    const liveCount = async () => {
+      const live = await listeners();
+      return live.length;
+    };
+
+    // Home, a component, Home again (from the cache), another component, and a second lap.
+    const lap = async () => {
+      await home().click();
+      await expect(page.locator('#shell-root h1')).toHaveCount(1);
+      await page.locator('nav.dx-nav a[href="/page/alert"]').click();
+      await hydratedHeading(page, 'Alert');
+      await home().click();
+      await expect(page.locator('#shell-root h1')).toHaveCount(1);
+      await page.locator('nav.dx-nav a[href="/page/button"]').click();
+      await hydratedHeading(page, 'Button');
+    };
+    await lap();
+    const afterFirstLap = await liveCount();
+    await lap();
+    await lap();
+
+    // The shell was unmounted each time it left, so its window listeners did not pile up.
+    expect(await liveCount()).toBe(afterFirstLap);
+    expect(await documentSurvived(page)).toBe(true);
+  });
+
+  test('a fragment entry restores its scroll position on Back', async ({ page }) => {
+    await page.goto('/page/button');
+    await hydratedHeading(page, 'Button');
+    await page.evaluate(() => {
+      const link = document.createElement('a');
+      link.id = 'fragment-probe';
+      link.href = '#overview';
+      link.textContent = 'overview';
+      link.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;background:white';
+      document.body.append(link);
+      window.scrollTo(0, 240);
+    });
+    const before = await page.evaluate(() => window.scrollY);
+    expect(before).toBeGreaterThan(0);
+
+    await page.locator('#fragment-probe').click();
+    await expect(page).toHaveURL(/#overview$/);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).not.toBe(before);
+
+    await page.goBack();
+    await expect(page).not.toHaveURL(/#overview/);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(before);
+  });
+
+  test('a page whose hydration failed still releases its listeners', async ({ page }) => {
+    // Every dynamically imported chunk of the entry fails, so hydration rejects.
+    const entry = await page.request.get('/page-bundle/button.js');
+    const hashedUrl = /import "([^"]+)"/.exec(await entry.text())?.[1];
+    expect(hashedUrl).toBeDefined();
+    const hashedResponse = await page.request.get(hashedUrl!);
+    const hashed = await hashedResponse.text();
+    const chunks = new Set([...hashed.matchAll(/import\("([^"]+)"\)/g)].map((match) => match[1]!));
+    expect(chunks.size).toBeGreaterThan(0);
+    await page.route('**/page-bundle/**', async (route) => {
+      const { pathname } = new URL(route.request().url());
+      if (chunks.has(pathname)) await route.abort('failed');
+      else await route.continue();
+    });
+    const failures: string[] = [];
+    page.on('console', (message) => {
+      if (message.text().includes('failed to hydrate page')) failures.push(message.text());
+    });
+    const listeners = await trackLiveListeners(page);
+
+    await page.goto('/page/button');
+    await expect.poll(() => failures.length).toBeGreaterThan(0);
+
+    // The failed run's capture listeners (which carry an abort signal) are gone.
+    const live = await listeners();
+    expect(live.filter((entry) => entry.signalled)).toEqual([]);
   });
 
   test('the home link swaps to the landing page and back', async ({ page }) => {
@@ -340,29 +452,43 @@ test.describe('native fallback', () => {
     expect(await documentSurvived(page)).toBe(false);
   });
 
-  test('modified and middle clicks stay native and leave this document alone', async ({
-    page,
-    context,
-  }) => {
+  test('modified and middle clicks stay native and leave this document alone', async ({ page }) => {
     await page.goto('/page/button');
     await hydratedHeading(page, 'Button');
     await markDocument(page);
+    // Record whether anything claimed each click by the time it reaches the window, then cancel
+    // it so the browser does not open tabs: a native click is one nothing prevented.
+    await page.evaluate(() => {
+      const claimed: boolean[] = [];
+      (window as unknown as Record<string, unknown>)['__claimedClicks'] = claimed;
+      window.addEventListener('click', (event) => {
+        claimed.push(event.defaultPrevented);
+        event.preventDefault();
+      });
+    });
+    const readClaims = () =>
+      page.evaluate(() =>
+        (window as unknown as Record<string, boolean[]>)['__claimedClicks']!.slice(),
+      );
 
-    for (const options of [
-      { modifiers: ['ControlOrMeta'] as Array<'ControlOrMeta'> },
-      { modifiers: ['Shift'] as Array<'Shift'> },
-      { button: 'middle' as const },
-    ]) {
-      await page.bringToFront();
-      const [popup] = await Promise.all([
-        context.waitForEvent('page'),
-        sidebarLink(page, 'chat').click(options),
-      ]);
-      await popup.waitForURL(/\/page\/chat$/);
-      await popup.close();
-      await expect(page).toHaveURL(/\/page\/button$/);
-      expect(await documentSurvived(page)).toBe(true);
-    }
+    await sidebarLink(page, 'chat').click({ modifiers: ['ControlOrMeta'] });
+    await sidebarLink(page, 'chat').click({ modifiers: ['Shift'] });
+    await sidebarLink(page, 'chat').click({ modifiers: ['Alt'] });
+    expect(await readClaims()).toEqual([false, false, false]);
+
+    // A middle click is an auxclick, which the navigator does not listen to.
+    await sidebarLink(page, 'chat').click({ button: 'middle' });
+    expect(await readClaims()).toHaveLength(3);
+
+    await expect(page).toHaveURL(/\/page\/button$/);
+    await expect(page.locator('#app h1').first()).toHaveText('Button');
+    expect(await documentSurvived(page)).toBe(true);
+
+    // The same link without a modifier is claimed, which is what the checks above rule out.
+    await sidebarLink(page, 'chat').click();
+    await hydratedHeading(page, 'Chat');
+    const claims = await readClaims();
+    expect(claims.at(-1)).toBe(true);
   });
 
   test('a link that opens another target stays native', async ({ page }) => {
@@ -433,5 +559,53 @@ test.describe('overlapping navigations', () => {
     expect(await documentSurvived(page)).toBe(true);
     await page.goBack();
     await expect(page).toHaveURL(/\/page\/button$/);
+  });
+
+  test('a Back and Forward before the pending page responds never commits it', async ({ page }) => {
+    await page.goto('/page/button');
+    await hydratedHeading(page, 'Button');
+    await sidebarLink(page, 'chat').click();
+    await hydratedHeading(page, 'Chat');
+    await markDocument(page);
+    const titlesSeen: string[] = [];
+    await page.exposeFunction('recordTitle', (title: string) => titlesSeen.push(title));
+    await page.evaluate(() => {
+      new MutationObserver(() =>
+        (window as unknown as { recordTitle: (title: string) => void }).recordTitle(document.title),
+      ).observe(document.querySelector('title')!, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    });
+
+    let heldButton: Route | undefined;
+    await page.route('**/page/button', async (route: Route) => {
+      if (isNavigatorFetch(route.request())) heldButton = route;
+      else await route.continue();
+    });
+    const buttonFetch = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === '/page/button',
+    );
+
+    await page.goBack();
+    await buttonFetch;
+    await page.goForward();
+    await expect(page).toHaveURL(/\/page\/chat$/);
+    await hydratedHeading(page, 'Chat');
+
+    expect(heldButton).toBeDefined();
+    await heldButton!.continue().catch(() => undefined);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+
+    await expect(page).toHaveURL(/\/page\/chat$/);
+    await expect(page.locator('#app h1').first()).toHaveText('Chat');
+    expect(titlesSeen.filter((title) => title.startsWith('Button'))).toEqual([]);
+    expect(await documentSurvived(page)).toBe(true);
   });
 });

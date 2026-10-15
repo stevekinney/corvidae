@@ -415,7 +415,12 @@ const run: PageRun = {
 };
 activeRun = run;
 void ready.catch(() => {
-  if (activeRun === run) activeRun = undefined;
+  // A run that failed to hydrate still owns its listeners and sidebar attachment: release them,
+  // then forget the run so a later boot() can try again.
+  if (activeRun === run) {
+    activeRun = undefined;
+    void run.unmount();
+  }
 });
 return ready;
 }

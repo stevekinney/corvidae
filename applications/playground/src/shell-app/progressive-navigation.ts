@@ -91,11 +91,13 @@ function findContainer(root: Document): HTMLElement | null {
   return null;
 }
 
-function findEntryHref(root: Document, base: string): string | null {
+/** The module URL of the page entry a document loads, or `null` when it names none. */
+export function findEntryHref(root: Document, base: string): string | null {
   const source = root.querySelector('script[type="module"][src]')?.getAttribute('src');
   if (source === null || source === undefined) return null;
   const href = new URL(source, base);
-  return /^\/(?:page|shell)-bundle\//.test(href.pathname) ? href.href : null;
+  // The static export serves entries from a fingerprinted prefix: /assets/<digest>/page-bundle/...
+  return /^(?:\/assets\/[^/]+)?\/(?:page|shell)-bundle\//.test(href.pathname) ? href.href : null;
 }
 
 function readGlobalIslands(root: Document): Map<string, unknown> {
@@ -268,6 +270,9 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
   let currentEntryId = readEntryState(history.state)?.id ?? crypto.randomUUID();
   let latestRequested = window.location.href;
   let commitQueue: Promise<void> = Promise.resolve();
+  // Visits between `visit()` starting and finishing: a history step that returns to the page on
+  // screen while one is pending must not be mistaken for a change inside the document.
+  let pendingVisits = 0;
 
   history.scrollRestoration = 'manual';
   history.replaceState({ cinderNavigation: true, id: currentEntryId } satisfies EntryState, '');
@@ -320,6 +325,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
     document.title = loaded.document.title;
 
     let page = pages.get(loaded.entryHref);
+    if (page !== undefined) scope['__CINDER_PAGE__'] = page;
     if (page === undefined) {
       await import(/* webpackIgnore: true */ loaded.entryHref);
       page = scope['__CINDER_PAGE__'];
@@ -343,6 +349,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
     latestRequested = target.href;
     const ticket = sequencer.begin();
     let ownsPage = false;
+    pendingVisits += 1;
     let release: () => void = () => undefined;
     try {
       const loaded = await load(target, ticket);
@@ -362,8 +369,19 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       console.error('[cinder playground] in-page navigation failed; navigating natively:', error);
       window.location.assign(latestRequested);
     } finally {
+      pendingVisits -= 1;
       release();
     }
+  }
+
+  /** Tag the history entry on screen when it was made by something other than this module. */
+  function adoptEntry(state: EntryState | null): void {
+    if (state !== null) {
+      currentEntryId = state.id;
+      return;
+    }
+    currentEntryId = crypto.randomUUID();
+    history.replaceState({ cinderNavigation: true, id: currentEntryId } satisfies EntryState, '');
   }
 
   const navigation: ProgressiveNavigation = {
@@ -394,20 +412,46 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
     void visit(target, { kind: 'push' });
   });
 
+  // A native fragment link makes a history entry this module never sees. Save the scroll of the
+  // entry it leaves before the browser jumps, and tag the new entry once it exists, so a later
+  // Back finds an offset to restore (manual restoration turns the browser's own off).
+  document.addEventListener(
+    'click',
+    (event) => {
+      const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      const sameDocument =
+        anchor.origin === window.location.origin &&
+        anchor.pathname === window.location.pathname &&
+        anchor.search === window.location.search;
+      if (sameDocument && anchor.hash !== '') rememberScroll();
+    },
+    { capture: true },
+  );
+
+  window.addEventListener('hashchange', () => {
+    if (readEntryState(history.state) === null) adoptEntry(null);
+  });
+
   window.addEventListener('popstate', (event) => {
     const destination = new URL(window.location.href);
-    // A change the page made to its own query or hash is not a document change.
-    if (destination.pathname === currentPath) {
-      const state = readEntryState(event.state);
-      if (state !== null) currentEntryId = state.id;
+    rememberScroll();
+    const state = readEntryState(event.state);
+    // A step to another entry of the document on screen is not a document change, unless a
+    // visit is still pending: then the pending one must be superseded, or it would commit over
+    // the page the reader just returned to.
+    if (destination.pathname === currentPath && pendingVisits === 0) {
+      adoptEntry(state);
+      const saved = scrollByEntry.get(currentEntryId);
+      if (saved !== undefined) window.scrollTo(0, saved);
+      else if (destination.hash !== '') scrollToHashOrTop(destination.hash);
       return;
     }
     if (!isCanonicalDocumentPath(destination.pathname) || destination.search !== '') {
       window.location.assign(destination.href);
       return;
     }
-    rememberScroll();
-    void visit(destination, { kind: 'pop', entryId: readEntryState(event.state)?.id ?? null });
+    void visit(destination, { kind: 'pop', entryId: state?.id ?? null });
   });
 
   scope['__CINDER_NAVIGATION__'] = navigation;
