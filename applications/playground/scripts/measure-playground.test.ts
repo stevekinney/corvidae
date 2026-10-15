@@ -1,3 +1,4 @@
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 
@@ -87,16 +88,20 @@ describe('parseCommandLine', () => {
   });
 });
 
+/** Reading `cpuTime` needs a real subprocess, so the body runs at module scope. */
+const subprocessCpuTimeBecomesANumber = await outcomeOf(async () => {
+  const child = Bun.spawn(['true'], { timeout: SCENARIO_HANG_GUARD_MILLISECONDS });
+  await child.exited;
+  const user: unknown = child.resourceUsage()?.cpuTime.user;
+  expect(typeof user).toBe('bigint');
+  const value = microsecondsFrom(user as bigint);
+  expect(typeof value).toBe('number');
+  expect(() => JSON.stringify({ value })).not.toThrow();
+});
+
 describe('microsecondsFrom', () => {
-  it('turns the bigint cpuTime a subprocess reports into a serializable number', async () => {
-    const child = Bun.spawn(['true']);
-    await child.exited;
-    const user: unknown = child.resourceUsage()?.cpuTime.user;
-    expect(typeof user).toBe('bigint');
-    const value = microsecondsFrom(user as bigint);
-    expect(typeof value).toBe('number');
-    expect(() => JSON.stringify({ value })).not.toThrow();
-  });
+  it('turns the bigint cpuTime a subprocess reports into a serializable number', () =>
+    rethrow(subprocessCpuTimeBecomesANumber));
 
   it('passes a number through', () => {
     expect(microsecondsFrom(42)).toBe(42);

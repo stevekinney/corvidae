@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { committedPlans, corvidaeRoot, packageMapForFixtures } from './committed-plans.ts';
 import { loadPackageMap, type PackageMap } from './package-map.ts';
@@ -434,7 +435,7 @@ for (const target of mirrorTargets) {
   });
 }
 
-describe('the guard against the real workspaces', () => {
+describe('the guard against the real workspaces', async () => {
   test.each([...mirrorTargets])(
     'planSurface for %s reads the committed package-map.json when given no override',
     (target) => {
@@ -481,24 +482,34 @@ describe('the guard against the real workspaces', () => {
     return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
   };
 
-  test.each([
+  const staleEdgeCases = [
     ['agent-bureau', '@lostgradient/weft'],
     ['cinder', 'conversationalist'],
-  ] as const)(
+  ] as const;
+  const staleEdgeOutcomes = new Map<string, unknown>();
+  // Planning a surface starts real processes, so each case runs at module scope, off the per-test clock.
+  for (const [target, dependency] of staleEdgeCases) {
+    staleEdgeOutcomes.set(
+      `${target} ${dependency}`,
+      await outcomeOf(async () => {
+        // `committed-plans.ts` planned this target from the current-digest map at import, and a
+        // refusal there would have failed the whole file, so a present plan is the planned outcome.
+        expect(Object.keys(committedPlans[target].plan.files).length).toBeGreaterThan(0);
+        for (const packageMap of [
+          withDigest(dependency, undefined),
+          withDigest(dependency, '0'.repeat(64)),
+        ]) {
+          const refusal = planSurface({ corvidaeRoot, target, packageMap });
+          expect(await throwingRejectionOf(refusal)).toThrow(StaleCrossTargetEdgeError);
+          expect(await throwingRejectionOf(refusal)).toThrow(dependency);
+        }
+      }),
+    );
+  }
+
+  test.each(staleEdgeCases)(
     '%s plans when %s is current and refuses when it is not',
-    async (target, dependency) => {
-      // `committed-plans.ts` planned this target from the current-digest map at import, and a
-      // refusal there would have failed the whole file, so a present plan is the planned outcome.
-      expect(Object.keys(committedPlans[target].plan.files).length).toBeGreaterThan(0);
-      for (const packageMap of [
-        withDigest(dependency, undefined),
-        withDigest(dependency, '0'.repeat(64)),
-      ]) {
-        const refusal = planSurface({ corvidaeRoot, target, packageMap });
-        expect(await throwingRejectionOf(refusal)).toThrow(StaleCrossTargetEdgeError);
-        expect(await throwingRejectionOf(refusal)).toThrow(dependency);
-      }
-    },
+    (target, dependency) => rethrow(staleEdgeOutcomes.get(`${target} ${dependency}`)),
   );
 });
 

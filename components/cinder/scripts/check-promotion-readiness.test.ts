@@ -42,6 +42,7 @@ type PromotionCheckResult = { stdout: string; stderr: string; exitCode: number }
 
 async function spawnPromotionCheck(args: string[]): Promise<PromotionCheckResult> {
   const process = Bun.spawn(['bun', SCRIPT_FILE, ...args], {
+    timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
   });

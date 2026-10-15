@@ -25,6 +25,7 @@ function runSeamProbe(): { exitCode: number; stdout: string; stderr: string } {
     process.stdout.write(JSON.stringify({ memoized: first === second, ts, escaped }));
   `;
   const result = Bun.spawnSync({
+    timeout: 120_000,
     cmd: ['bun', '--conditions', 'browser', '--conditions', 'svelte', '-e', script],
     cwd: REPOSITORY_ROOT,
     stdout: 'pipe',
