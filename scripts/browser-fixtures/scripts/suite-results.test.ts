@@ -3,6 +3,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+
 import {
   compareWithControl,
   decideApply,
@@ -166,6 +168,27 @@ const screenshot: SuiteResults = {
   ],
 };
 
+/** The compare command is a real process, so the whole scenario runs at module scope. */
+const compareCommandExitCodes = await outcomeOf(async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'suite-results-'));
+  const runPath = join(directory, 'run.json');
+  const controlPath = join(directory, 'control.json');
+  writeFileSync(runPath, JSON.stringify({ sha: 'b', results: behavioural }));
+  writeFileSync(controlPath, JSON.stringify({ sha: 'main', results: behavioural }));
+  const compare = (control: string) =>
+    Bun.spawn(['bun', join(import.meta.dirname, 'suite-results.ts'), 'compare', runPath, control], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    }).exited;
+  expect(await compare(controlPath)).toBe(0);
+  writeFileSync(
+    controlPath,
+    JSON.stringify({ sha: 'main', results: { ...behavioural, failures: [] } }),
+  );
+  expect(await compare(controlPath)).toBe(1);
+});
+
 describe('decideApply', () => {
   it('applies a passing suite', () => {
     expect(decideApply(0, undefined, false).apply).toBe(true);
@@ -226,25 +249,6 @@ describe('stability control comparison output', () => {
     expect(markdown).toContain('### Failing only in the run\n\nNone.');
   });
 
-  it('exits 0 from the compare command only when the rule holds', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'suite-results-'));
-    const runPath = join(directory, 'run.json');
-    const controlPath = join(directory, 'control.json');
-    writeFileSync(runPath, JSON.stringify({ sha: 'b', results: behavioural }));
-    writeFileSync(controlPath, JSON.stringify({ sha: 'main', results: behavioural }));
-    const compare = (control: string) =>
-      Bun.spawn(
-        ['bun', join(import.meta.dirname, 'suite-results.ts'), 'compare', runPath, control],
-        {
-          stdout: 'pipe',
-          stderr: 'pipe',
-        },
-      ).exited;
-    expect(await compare(controlPath)).toBe(0);
-    writeFileSync(
-      controlPath,
-      JSON.stringify({ sha: 'main', results: { ...behavioural, failures: [] } }),
-    );
-    expect(await compare(controlPath)).toBe(1);
-  });
+  it('exits 0 from the compare command only when the rule holds', () =>
+    rethrow(compareCommandExitCodes));
 });

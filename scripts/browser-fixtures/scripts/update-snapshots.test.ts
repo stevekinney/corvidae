@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { resolve } from 'node:path';
 
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+
 import { REPOSITORY_ROOT } from './baseline-provenance.ts';
 import {
   completedSuite,
@@ -51,20 +53,30 @@ describe('completedSuite', () => {
   });
 });
 
+/** The guard runs in a fresh Bun, so the whole scenario runs at module scope. */
+const updateRefusalOutsideRenderer = await outcomeOf(async () => {
+  // Without the variables only the renderer image bakes in, the guard refuses on any
+  // host, including inside a plain jammy arm64 container.
+  const childEnvironment: Record<string, string | undefined> = { ...process.env };
+  delete childEnvironment['BASELINE_DOCKER'];
+  delete childEnvironment['BASELINE_PLAYWRIGHT_VERSION'];
+  const child = Bun.spawn(
+    ['bun', resolve(REPOSITORY_ROOT, 'scripts/browser-fixtures/scripts/update-snapshots.ts')],
+    {
+      cwd: REPOSITORY_ROOT,
+      env: childEnvironment,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    },
+  );
+  const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+  expect(exitCode).not.toBe(0);
+  expect(stderr).toContain('Refusing to update visual baselines');
+  expect(stderr).toContain('bun run test:browser:update:docker');
+});
+
 describe('bun run test:browser:update outside the renderer image', () => {
-  it('exits non-zero with instructions to use the Docker path', async () => {
-    // Without the variables only the renderer image bakes in, the guard refuses on any
-    // host, including inside a plain jammy arm64 container.
-    const childEnvironment: Record<string, string | undefined> = { ...process.env };
-    delete childEnvironment['BASELINE_DOCKER'];
-    delete childEnvironment['BASELINE_PLAYWRIGHT_VERSION'];
-    const child = Bun.spawn(
-      ['bun', resolve(REPOSITORY_ROOT, 'scripts/browser-fixtures/scripts/update-snapshots.ts')],
-      { cwd: REPOSITORY_ROOT, env: childEnvironment, stdout: 'pipe', stderr: 'pipe' },
-    );
-    const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
-    expect(exitCode).not.toBe(0);
-    expect(stderr).toContain('Refusing to update visual baselines');
-    expect(stderr).toContain('bun run test:browser:update:docker');
-  });
+  it('exits non-zero with instructions to use the Docker path', () =>
+    rethrow(updateRefusalOutsideRenderer));
 });
