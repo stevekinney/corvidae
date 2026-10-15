@@ -218,6 +218,24 @@ async function holdNextFirstStreamToken(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Keeps the harness's streamed reply open until the test stops it. Without
+ * this the reply finishes on a wall-clock cadence (five chunks, 120 ms apart),
+ * and a test that hovers, waits for a tooltip and presses a key can outlive
+ * the Stop button it is about to click.
+ */
+async function holdStreamOpen(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const harnessWindow = window as Window & {
+      corvidaeChatHarnessHoldStreamOpen?: (held: boolean) => void;
+    };
+    if (harnessWindow.corvidaeChatHarnessHoldStreamOpen === undefined) {
+      throw new Error('Chat harness stream-hold hook is unavailable.');
+    }
+    harnessWindow.corvidaeChatHarnessHoldStreamOpen(true);
+  });
+}
+
 async function captureHarnessScreenshot(
   page: Page,
   testInfo: TestInfo,
@@ -3016,6 +3034,7 @@ test.describe('chat harness — composer acceptance matrix', () => {
   }) => {
     const { harness, page, dispose } = await openHarness(browser);
     try {
+      await holdStreamOpen(page);
       await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
       await harness.locator('[data-testid="send-reply"]').click();
       const stop = harness.locator('.chat-input-send[data-stop]');
