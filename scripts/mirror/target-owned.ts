@@ -93,6 +93,8 @@ const policySchema = z.object({
     /** Manifest keys the transform supplies only where the target carries none of its own. */
     manifestDefaults: z.array(keyEntrySchema).min(1),
     dependencies: z.object({ policy: z.string().min(1) }),
+    /** COR-1468: how the peer pair composes, by name, between corvidae, the target and the surface. */
+    peerDependencies: z.object({ policy: z.string().min(1) }),
     typeScriptTargetOwnedPolicy: z.string().min(1),
     /** Keys in an emitted `tsconfig*.json` read back out of the target's own. */
     typeScriptTargetOwned: z.array(keyEntrySchema).min(1),

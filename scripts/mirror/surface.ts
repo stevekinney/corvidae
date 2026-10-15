@@ -10,9 +10,11 @@ import {
 import { serializeJson } from './json-formatting.ts';
 import {
   ManifestTransformError,
+  overlayDeclaredPeers,
   planManifests,
   publicNameFor,
   readExistingManifest,
+  writePeerPair,
   type ManifestPlan,
   type PlanOptions,
 } from './manifests.ts';
@@ -227,8 +229,15 @@ function readExports(existing: JsonObject | undefined): SurfaceExportsMap | unde
  *
  * `build.scripts` merge rather than replace for the same reason: a build script is the transform's
  * because it produces the artifact, and every other script in the block is the target's.
+ *
+ * The peer pair is the one default that merges (COR-1468, `target-owned.json`'s
+ * `insideFiles.peerDependencies`). Where the target has no `peerDependencies`, the peers already on
+ * `manifest` are corvidae's own declarations — `composeManifest` passed them through — so the
+ * vendored entry is the base and they win over it name by name. Where the target has the key,
+ * `composeManifest` already merged them into the target's pair, and both halves pass through
+ * unchanged: a vendored `peerDependenciesMeta` is never supplied beside a target's own peers.
  */
-function applySurfaceToManifest(
+export function applySurfaceToManifest(
   manifest: JsonObject,
   entry: PackageSurfaceEntry,
   exports: SurfaceExportsMap,
@@ -236,7 +245,16 @@ function applySurfaceToManifest(
   existing: JsonObject | undefined,
 ): void {
   const supplies = (key: string): boolean => existing === undefined || !(key in existing);
+  const suppliesPeers = supplies('peerDependencies');
+  // Read before the vendored fields below can overwrite the meta half.
+  const declared = suppliesPeers
+    ? {
+        peerDependencies: manifest['peerDependencies'],
+        peerDependenciesMeta: manifest['peerDependenciesMeta'],
+      }
+    : {};
   for (const [key, value] of Object.entries(entry.manifestFields)) {
+    if (key === 'peerDependenciesMeta' && !suppliesPeers) continue;
     if (supplies(key)) manifest[key] = value;
   }
   manifest['exports'] = exports;
@@ -245,8 +263,17 @@ function applySurfaceToManifest(
     ? (manifest['scripts'] as Record<string, string>)
     : {};
   manifest['scripts'] = { ...scripts, ...entry.build.scripts };
-  if (entry.peerDependencies && supplies('peerDependencies')) {
-    manifest['peerDependencies'] = { ...entry.peerDependencies };
+  if (suppliesPeers) {
+    const peers = overlayDeclaredPeers(
+      {
+        peerDependencies: entry.peerDependencies,
+        // The vendored meta where it was just supplied, otherwise the target's own.
+        peerDependenciesMeta: manifest['peerDependenciesMeta'],
+      },
+      declared,
+    );
+    if (peers !== undefined) writePeerPair(manifest, peers);
+    else if (entry.peerDependencies) manifest['peerDependencies'] = { ...entry.peerDependencies };
   }
   if (entry.sideEffects !== undefined) manifest['sideEffects'] = entry.sideEffects;
   if (entry.bin !== undefined) manifest['bin'] = entry.bin;

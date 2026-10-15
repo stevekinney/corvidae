@@ -741,6 +741,103 @@ describe('composition against a manifest the target already carries', () => {
     expect(manifest['engines']).toEqual(target.engines);
   });
 
+  /**
+   * COR-1468. A peer corvidae declares is a fact about corvidae's source — Weft's A2A subpath
+   * imports `@a2a-js/sdk` and must not install it for every consumer — so it reaches the target
+   * through the sync itself. Before this, the target's `peerDependencies` and
+   * `peerDependenciesMeta` were kept exactly as they were and the declaration was dropped, leaving
+   * a hand edit after the sync that `publication-history.ts` would reject.
+   */
+  describe('peers corvidae declares', () => {
+    const existing = {
+      name: '@lostgradient/weft',
+      version: '0.25.0',
+      peerDependencies: { 'better-sqlite3': '^12.8.0', pg: '^8.11.0' },
+      peerDependenciesMeta: {
+        'better-sqlite3': { optional: true },
+        pg: { optional: true },
+      },
+    };
+
+    async function composePeers(
+      emitted: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+      const { manifest } = composeManifest({
+        policy: await loadTargetOwnedPolicy(),
+        target: 'weft',
+        emitted: { name: '@lostgradient/weft', version: '0.0.0', ...emitted },
+        existing: structuredClone(existing),
+        mirrorPackages: new Set(['@lostgradient/weft']),
+      });
+      return manifest;
+    }
+
+    test('a declared optional peer joins the target’s own peers, which keep their values', async () => {
+      const manifest = await composePeers({
+        peerDependencies: { '@a2a-js/sdk': '^0.3.4' },
+        peerDependenciesMeta: { '@a2a-js/sdk': { optional: true } },
+      });
+      expect(manifest['peerDependencies']).toEqual({
+        '@a2a-js/sdk': '^0.3.4',
+        'better-sqlite3': '^12.8.0',
+        pg: '^8.11.0',
+      });
+      expect(manifest['peerDependenciesMeta']).toEqual({
+        '@a2a-js/sdk': { optional: true },
+        'better-sqlite3': { optional: true },
+        pg: { optional: true },
+      });
+      // Both targets sort their manifests, so an added peer lands in order rather than appended.
+      expect(Object.keys(manifest['peerDependencies'] as object)).toEqual([
+        '@a2a-js/sdk',
+        'better-sqlite3',
+        'pg',
+      ]);
+    });
+
+    test('corvidae’s range and meta entry win over the target’s for a name both declare', async () => {
+      const manifest = await composePeers({
+        peerDependencies: { pg: '^9.0.0' },
+        // Corvidae declares `pg` as a required peer: its absence from the meta block is the
+        // declaration, so the target's `optional` entry for it cannot survive alongside.
+        peerDependenciesMeta: {},
+      });
+      expect(manifest['peerDependencies']).toEqual({ 'better-sqlite3': '^12.8.0', pg: '^9.0.0' });
+      expect(manifest['peerDependenciesMeta']).toEqual({ 'better-sqlite3': { optional: true } });
+    });
+
+    test('a meta entry for a name corvidae does not declare as a peer is not carried', async () => {
+      const manifest = await composePeers({
+        peerDependencies: { '@a2a-js/sdk': '^0.3.4' },
+        peerDependenciesMeta: { '@a2a-js/sdk': { optional: true }, stray: { optional: true } },
+      });
+      expect(manifest['peerDependenciesMeta']).not.toHaveProperty('stray');
+    });
+
+    test('a target with no peers of its own receives corvidae’s pair', async () => {
+      const { manifest } = composeManifest({
+        policy: await loadTargetOwnedPolicy(),
+        target: 'weft',
+        emitted: {
+          name: '@lostgradient/weft',
+          version: '0.0.0',
+          peerDependencies: { '@a2a-js/sdk': '^0.3.4' },
+          peerDependenciesMeta: { '@a2a-js/sdk': { optional: true } },
+        },
+        existing: { name: '@lostgradient/weft', version: '0.25.0' },
+        mirrorPackages: new Set(['@lostgradient/weft']),
+      });
+      expect(manifest['peerDependencies']).toEqual({ '@a2a-js/sdk': '^0.3.4' });
+      expect(manifest['peerDependenciesMeta']).toEqual({ '@a2a-js/sdk': { optional: true } });
+    });
+
+    test('a workspace that declares no peers leaves the target’s pair exactly as it was', async () => {
+      const manifest = await composePeers({});
+      expect(manifest['peerDependencies']).toEqual(existing.peerDependencies);
+      expect(manifest['peerDependenciesMeta']).toEqual(existing.peerDependenciesMeta);
+    });
+  });
+
   test('a dependency the target declares nowhere is added, in corvidae’s block, and reported', async () => {
     const { manifest, added } = await compose();
     expect(manifest['dependencies']).toHaveProperty('newly-imported', '^1.0.0');
