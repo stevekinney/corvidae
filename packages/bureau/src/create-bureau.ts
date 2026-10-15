@@ -3169,7 +3169,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       request.runCreationRequestId === undefined
         ? undefined
         : await requireRunCreationLedger().begin({
-            callerId: (request.principal ?? '').trim(),
+            // Keyed exactly as the run records its owner, so the caller a
+            // receipt replays to is the principal that owns the run.
+            callerId: request.principal ?? '',
             agentName,
             requestId: request.runCreationRequestId.trim(),
             payloadDigest: digestRunCreationPayload({
@@ -3833,10 +3835,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function locateRunCreationReceipt(
     request: LocateRunCreationReceiptRequest,
   ): Promise<RunCreationReceiptLocation> {
-    const principal = typeof request.principal === 'string' ? request.principal.trim() : '';
+    const principal = typeof request.principal === 'string' ? request.principal : '';
     const requestId =
       typeof request.runCreationRequestId === 'string' ? request.runCreationRequestId.trim() : '';
-    if (principal.length === 0) toBadRequest('"principal" must be a non-empty string');
+    if (principal.trim().length === 0) toBadRequest('"principal" must be a non-empty string');
     if (requestId.length === 0) toBadRequest('"runCreationRequestId" must be a non-empty string');
     return requireRunCreationLedger().locate({
       callerId: principal,

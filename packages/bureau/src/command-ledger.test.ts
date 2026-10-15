@@ -83,6 +83,13 @@ describe('digestCommandPayload', () => {
   it('distinguishes a string from the number it spells', () => {
     expect(digestCommandPayload({ value: '3' })).not.toBe(digestCommandPayload({ value: 3 }));
   });
+
+  it('refuses a non-finite number, which JSON would spell as null', () => {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => digestCommandPayload({ value })).toThrow(/finite number/);
+    }
+    expect(digestCommandPayload({ value: null })).toBe(digestCommandPayload({ value: null }));
+  });
 });
 
 describe('digestRunCreationPayload', () => {
@@ -409,6 +416,26 @@ describe('createCommandLedger (memory backend)', () => {
       await fixture.dispose();
     }
   });
+
+  it('fails closed on an entry whose timestamp does not parse, and never prunes it', async () => {
+    const { fixture, kv, ledger, runtime } = memoryLedger();
+    try {
+      const first = await ledger.claim(identity(), 'digest-a', { runId: 'run-1' });
+      if (first.outcome !== 'claimed') throw new Error('expected a fresh claim');
+      const [key] = await kv.list('');
+      const corrupted = JSON.stringify({ ...first.entry, claimedAt: 'not a time' });
+      await kv.set(key!, corrupted);
+      runtime.setTime(Date.parse(ORIGIN) + 365 * 24 * 60 * 60 * 1000);
+
+      expect(
+        await throwingRejectionOf(ledger.claim(identity(), 'digest-a', { runId: 'run-2' })),
+      ).toThrow(/unreadable/);
+      expect(await ledger.prune()).toEqual({ entries: 0, conflicts: 0 });
+      expect(await kv.get(key!)).toBe(corrupted);
+    } finally {
+      await fixture.dispose();
+    }
+  });
 });
 
 function summary(overrides: Partial<RunSummary> = {}): RunSummary {
@@ -721,6 +748,60 @@ describe('createRunCreationLedger', () => {
 
       expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
       expect((conflict as BureauLedgerConflictError).originalReceipt).toEqual(created.receipt);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('attaches no receipt to a conflict when the binding it conflicted with was replaced', async () => {
+    const fixture = createMemoryStorageFixture();
+    const kv = textValueStore(fixture.configuration, { disposeUnderlyingStorage: false });
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    try {
+      const options = {
+        clock: runtime.clock,
+        identifiers: runtime.identifiers,
+        observe: notObserved,
+      };
+      const first = await createRunCreationLedger({ kv, ...options }).begin(beginInput());
+      if (first.kind !== 'claimed') throw new Error('expected a fresh claim');
+      await first.complete(summary());
+      const keys = await kv.list('');
+      const entryKey = keys.find((key) => key.includes(':entry:'));
+      const original = JSON.parse((await kv.get(entryKey!))!) as { claimedAt: string };
+      // Between the conflict being recorded and its receipt being read, the
+      // original binding is replaced by another run of the same identity.
+      const replacing: ConditionalTextValueStore = {
+        ...kv,
+        async conditionalBatch(conditions, operations) {
+          const committed = await kv.conditionalBatch(conditions, operations);
+          if (operations.some((operation) => operation.key.includes(':conflict:'))) {
+            const replacement = JSON.parse((await kv.get(entryKey!))!) as Record<string, unknown>;
+            replacement['claimedAt'] = '2026-10-14T00:00:00.000Z';
+            replacement['result'] = {
+              summary: summary({ id: 'run-replacement' }),
+              receipt: {
+                runId: 'run-replacement',
+                requestId: 'request-1',
+                createdAt: '2026-10-14T00:00:00.000Z',
+                status: 'running',
+              },
+            };
+            await kv.set(entryKey!, JSON.stringify(replacement));
+          }
+          return committed;
+        },
+      };
+
+      const conflict = await rejectionOf(
+        createRunCreationLedger({ kv: replacing, ...options }).begin(
+          beginInput({ payloadDigest: 'digest-b' }),
+        ),
+      );
+
+      expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
+      expect((conflict as BureauLedgerConflictError).originalClaimedAt).toBe(original.claimedAt);
+      expect((conflict as BureauLedgerConflictError).originalReceipt).toBeUndefined();
     } finally {
       await fixture.dispose();
     }

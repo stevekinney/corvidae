@@ -177,18 +177,30 @@ describe('createRun with a run-creation request id', () => {
     });
   });
 
-  it('keys the request id and principal without surrounding whitespace', async () => {
+  it('keys the request id without surrounding whitespace', async () => {
     await withDurableBureau(async (bureau) => {
       const first = await bureau.createRun(REQUEST);
-      const retry = await bureau.createRun({
-        ...REQUEST,
-        principal: ' alice ',
-        runCreationRequestId: ' request-1 ',
-      });
+      const retry = await bureau.createRun({ ...REQUEST, runCreationRequestId: ' request-1 ' });
 
       expect(retry.id).toBe(first.id);
       expect(retry.receipt).toEqual(first.receipt);
       expect(await durableRunIds(bureau)).toEqual([first.id]);
+    });
+  });
+
+  it('keys the principal exactly as the run records its owner', async () => {
+    await withDurableBureau(async (bureau) => {
+      const padded = await bureau.createRun({ ...REQUEST, principal: ' alice ' });
+      const exact = await bureau.createRun(REQUEST);
+
+      // A padded principal is a different owner, so it never replays to `alice`.
+      expect(exact.id).not.toBe(padded.id);
+      expect(await durableRunIds(bureau)).toEqual([padded.id, exact.id].toSorted());
+      const located = await bureau.locateRunCreationReceipt({
+        principal: 'alice',
+        runCreationRequestId: 'request-1',
+      });
+      expect(located.status === 'recorded' && located.receipt.runId).toBe(exact.id);
     });
   });
 

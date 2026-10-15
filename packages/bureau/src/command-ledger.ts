@@ -196,6 +196,11 @@ export class BureauLedgerConflictError extends Error {
   /** Identifies the failed entry recording this attempt. */
   readonly conflictId: string;
   /**
+   * When the entry this attempt conflicted with was claimed: which binding of
+   * the identity it conflicted with.
+   */
+  readonly originalClaimedAt: string | undefined;
+  /**
    * The receipt the original command was issued, when it has one. A
    * run-creation conflict carries it once the original entry is completed;
    * an original still pending has issued no receipt yet.
@@ -205,7 +210,10 @@ export class BureauLedgerConflictError extends Error {
   constructor(
     requestId: string,
     conflictId: string,
-    options: { readonly originalReceipt?: RunCreationReceipt | undefined } = {},
+    options: {
+      readonly originalClaimedAt?: string | undefined;
+      readonly originalReceipt?: RunCreationReceipt | undefined;
+    } = {},
   ) {
     super(
       `Request "${requestId}" was already used for a command with a different payload; ` +
@@ -215,6 +223,7 @@ export class BureauLedgerConflictError extends Error {
     this.requestId = requestId;
     this.reason = 'payload-mismatch';
     this.conflictId = conflictId;
+    this.originalClaimedAt = options.originalClaimedAt;
     this.originalReceipt = options.originalReceipt;
   }
 }
@@ -354,12 +363,17 @@ function isIdentity(value: unknown): value is CommandLedgerIdentity {
   );
 }
 
+/** A stored timestamp the retention arithmetic can use: a string `Date.parse` reads as a finite time. */
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
 function isWellFormedEntry(value: unknown): boolean {
   if (
     !isRecord(value) ||
     !isIdentity(value['identity']) ||
     typeof value['payloadDigest'] !== 'string' ||
-    typeof value['claimedAt'] !== 'string' ||
+    !isTimestamp(value['claimedAt']) ||
     !('claim' in value)
   ) {
     return false;
@@ -367,9 +381,9 @@ function isWellFormedEntry(value: unknown): boolean {
   if (value['state'] === 'pending') return true;
   return (
     value['state'] === 'completed' &&
-    typeof value['completedAt'] === 'string' &&
+    isTimestamp(value['completedAt']) &&
     'result' in value &&
-    (value['settledAt'] === undefined || typeof value['settledAt'] === 'string')
+    (value['settledAt'] === undefined || isTimestamp(value['settledAt']))
   );
 }
 
@@ -601,7 +615,9 @@ export function createCommandLedger<TClaim, TResult>(
             return { outcome: 'existing', entry: existing };
           }
           const conflictId = await recordConflict(identity, payloadDigest, existing);
-          throw new BureauLedgerConflictError(identity.requestId, conflictId);
+          throw new BureauLedgerConflictError(identity.requestId, conflictId, {
+            originalClaimedAt: existing.claimedAt,
+          });
         }
         if (await writeClaim(key, entry, stored?.raw ?? null)) return { outcome: 'claimed', entry };
         // Another attempt claimed, completed, or settled the identity between
@@ -720,6 +736,13 @@ export type CommandPayloadValue = string | number | boolean | null | undefined;
 export function digestCommandPayload(
   payload: Readonly<Record<string, CommandPayloadValue>>,
 ): string {
+  for (const [key, value] of Object.entries(payload)) {
+    // JSON spells NaN and the infinities as `null`, so they would digest the
+    // same as each other and as a `null` field.
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+      throw new TypeError(`Command payload field "${key}" must be a finite number`);
+    }
+  }
   const canonical = Object.keys(payload)
     .filter((key) => payload[key] !== undefined)
     .toSorted()
@@ -1124,12 +1147,20 @@ export function createRunCreationLedger(
     return { status: replayed.status === 'pending' ? 'pending' : 'recorded', receipt };
   }
 
-  /** The original receipt a conflicting attempt reports, once the original has one. */
+  /**
+   * The original receipt a conflicting attempt reports, once the original has
+   * one. A binding released or replaced since the conflict is another run, so
+   * only the binding claimed at `originalClaimedAt` answers.
+   */
   async function originalReceipt(
     identity: CommandLedgerIdentity,
+    originalClaimedAt: string | undefined,
   ): Promise<RunCreationReceipt | undefined> {
     const original = await ledger.read(identity);
-    return original?.state === 'completed' ? original.result.receipt : undefined;
+    if (original?.state !== 'completed' || original.claimedAt !== originalClaimedAt) {
+      return undefined;
+    }
+    return original.result.receipt;
   }
 
   async function claimOrObserve(
@@ -1147,7 +1178,8 @@ export function createRunCreationLedger(
     } catch (error) {
       if (!(error instanceof BureauLedgerConflictError)) throw error;
       throw new BureauLedgerConflictError(error.requestId, error.conflictId, {
-        originalReceipt: await originalReceipt(identity),
+        originalClaimedAt: error.originalClaimedAt,
+        originalReceipt: await originalReceipt(identity, error.originalClaimedAt),
       });
     }
     if (outcome.outcome === 'existing') {

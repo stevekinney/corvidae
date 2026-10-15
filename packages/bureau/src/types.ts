@@ -2140,9 +2140,10 @@ export interface CreateRunRequest {
    * COR-424 — the caller's idempotency key for this run-creation command.
    * When present, `createRun` records the command in a durable ledger keyed
    * by `(principal, agentName, runCreationRequestId, operation version)`,
-   * with surrounding whitespace trimmed from the principal and the request
-   * id, and a digest of the payload (`message`, `sessionId`, `systemPrompt`,
-   * `maximumSteps`, `maximumTokens`, each at the value the run will use), and
+   * with surrounding whitespace trimmed from the request id (the principal is
+   * keyed exactly as the run records its owner), and a digest of the payload
+   * (`message`, `sessionId`, `systemPrompt`, `maximumSteps`, `maximumTokens`,
+   * each at the value the run will use), and
    * resolves with a receipt. Requires `principal`, since an idempotency key
    * needs an authenticated caller to belong to, and a bureau with a durable
    * engine (`NOT_CONFIGURED` otherwise), since a receipt promises a retry
