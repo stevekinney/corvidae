@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 
 import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
-import { createDeferred } from '../session/fixtures/deferred.ts';
 import type { ByteReader } from '../session/session-types.ts';
 import { flush } from '../session/session.test-support.ts';
 import { OutputOverflowError } from './bounded-byte-feed.ts';
@@ -487,34 +486,65 @@ describe('a pipe whose two channels share one output bound', () => {
   });
 });
 
+const DARWIN = { platform: 'darwin', architecture: 'arm64' };
+const LINUX = { platform: 'linux', architecture: 'arm64' };
+
+/** A PTY on `host` whose terminal the test closes by hand with `status`, while its child keeps running. */
+async function closeTerminalWith(host: typeof DARWIN, status: number) {
+  const { spawn, calls } = recordingSpawn();
+  const run = runHosted(
+    trackHostedProcess(
+      createPtyProcess({
+        ...PTY_OPTIONS,
+        profile: shellProfile('sleep 7919'),
+        terminationGraceMilliseconds: 100,
+        host,
+        spawn,
+      }),
+    ),
+  );
+  await run.started;
+  const terminal = calls[0]?.options['terminal'] as {
+    exit(terminal: unknown, status: number): void;
+  };
+  terminal.exit(undefined, status);
+  await flush();
+  return run;
+}
+
 describe('the end of the terminal stream', () => {
   scenarioTest(
     'a terminal that closes with an error status fails the output source, not the process',
     async () => {
-      const { spawn, calls } = recordingSpawn();
-      const run = runHosted(
-        trackHostedProcess(
-          createPtyProcess({
-            ...PTY_OPTIONS,
-            profile: shellProfile('sleep 7919'),
-            terminationGraceMilliseconds: 100,
-            spawn,
-          }),
-        ),
-      );
-      await run.started;
-      const terminal = calls[0]?.options['terminal'] as {
-        exit(terminal: unknown, status: number): void;
-      };
-      const closed = createDeferred();
-      void run.session.closed.then(() => closed.resolve());
-      terminal.exit(undefined, 1);
-      await closed.promise;
+      const run = await closeTerminalWith(DARWIN, 1);
       const summary = await run.session.closed;
       expect(summary.cause).toBe('source-failed');
       expect(run.recorder.ofType('sourceComplete')).toEqual([]);
     },
   );
+
+  scenarioTest(
+    'on Linux status 1 is the kernel ending the terminal, so the output ends and the process runs on',
+    async () => {
+      const run = await closeTerminalWith(LINUX, 1);
+      expect(run.recorder.ofType('sourceComplete')).toEqual([
+        { type: 'sourceComplete', channel: 'pty' },
+      ]);
+      expect(run.session.snapshot.closed).toBe(false);
+      expect(run.session.snapshot.process.kind).toBe('running');
+      const stopped = run.attachment.stop();
+      expect(stopped.accepted).toBe(true);
+      const summary = await run.session.closed;
+      expect(summary.cause).toBe('attachment-stop');
+    },
+  );
+
+  scenarioTest('on Linux any other nonzero status is still a failure', async () => {
+    const run = await closeTerminalWith(LINUX, 2);
+    const summary = await run.session.closed;
+    expect(summary.cause).toBe('source-failed');
+    expect(run.recorder.ofType('sourceComplete')).toEqual([]);
+  });
 });
 
 describe('writing input and reading it back', () => {

@@ -1,7 +1,10 @@
+import { closeSync, openSync } from 'node:fs';
+
 import { isAlive, waitUntilGone } from '../bun/bun-process.test-support.ts';
 import { shellProfile } from '../bun/fixtures/bun-pipe-stdin.ts';
 import { OUTPUT_CASES, outputProfile, pidsIn } from '../bun/fixtures/terminal-output.ts';
 import { MAXIMUM_FRAME_PAYLOAD_BYTES } from '../protocol/protocol-constants.ts';
+import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { DEFAULT_SESSION_BUDGETS } from '../session/session-types.ts';
 import { forgeInput, scriptedProcess } from '../websocket/websocket.test-support.ts';
 import {
@@ -10,7 +13,7 @@ import {
   textOn,
   type CaseDefinition,
 } from './conformance-cases.test-support.ts';
-import { check } from './conformance.test-support.ts';
+import { check, openDescriptorCount } from './conformance.test-support.ts';
 
 const CAT_WITH_PID = 'printf \'leader=%s \' "$$"; exec cat';
 const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
@@ -225,6 +228,37 @@ const revokedDuringPaste: CaseDefinition = {
   },
 };
 
+const leakDetectors: CaseDefinition = {
+  id: 'control-leak-detectors',
+  modes: ['pty'],
+  launch: () => ({ profile: shellProfile('true'), scripted: scriptedProcess() }),
+  async run({ rig }) {
+    await rig.client.handshake();
+    // Each detector the other cells rely on, shown to see a leak when one is made and to go quiet when it is released.
+    const timers = new ManualClock();
+    const cancel = timers.schedule(() => undefined, 1);
+    const withTimer = timers.pendingTimers;
+    cancel();
+    const descriptorsBefore = openDescriptorCount();
+    const descriptor = openSync('/dev/null', 'r');
+    const descriptorsHeld = openDescriptorCount();
+    closeSync(descriptor);
+    const descriptorsAfter = openDescriptorCount();
+    rig.client.sendResult(rig.client.endpoint.terminate());
+    await conclude(rig);
+    return [
+      check(
+        'a pending timer is counted, and released when canceled',
+        withTimer === 1 && timers.pendingTimers === 0,
+      ),
+      check('a held descriptor is counted', descriptorsHeld === descriptorsBefore + 1),
+      check('a closed descriptor is no longer counted', descriptorsAfter === descriptorsBefore),
+      check('a running process is seen as alive', isAlive(globalThis.process.pid)),
+      check('a process that does not exist is seen as gone', !isAlive(0x7ffffffe)),
+    ];
+  },
+};
+
 export const CONTROL_CASES: readonly CaseDefinition[] = [
   corruptedFrame,
   oversizedFrame,
@@ -234,4 +268,5 @@ export const CONTROL_CASES: readonly CaseDefinition[] = [
   missingParseCompletion,
   lateCallback,
   revokedDuringPaste,
+  leakDetectors,
 ];
