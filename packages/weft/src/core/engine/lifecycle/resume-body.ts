@@ -367,27 +367,18 @@ async function performSerializedResume(
   if (args.restampRevision !== undefined) {
     await restampWorkflowRevision(internals, latestState, args.restampRevision);
   }
-  // A suspended workflow must be flipped back to 'running' durably as part of
-  // this serialized section, before the generator is relaunched. If we
-  // relaunched but left the persisted status 'suspended', a crash right after
-  // relaunch would orphan the run: recoverAll() deliberately skips 'suspended',
-  // so nothing would ever re-drive it. Recovered-running workflows already have
-  // status 'running', so the flip is gated to the suspended case to avoid an
-  // extra state write (and visibility-index churn) on every recoverAll() resume.
+  // A suspended workflow is flipped back to 'running' durably before the relaunch: recoverAll()
+  // skips 'suspended', so a crash after relaunch would orphan the run. Gated to the suspended
+  // case to avoid a state write on every recoverAll() resume.
   await reactivateSuspendedWorkflowState(internals, latestState);
 
-  // The resume is validated and durably committed: only now does the run's handle
-  // follow the claim this engine holds. If the relaunch below fails, the handle goes
-  // back to the epoch it had, since the claim may be released with the resume.
+  // Validated and committed: the handle follows the claim now, and goes back if the relaunch fails.
   const restoreHandleClaimEpoch = rebindHandleClaimEpoch(internals, workflowId);
   try {
     commitSerializedResumeState(internals, args);
-
-    if (internals.inlineStrategy) {
-      await relaunchInlineWorkflowAfterResume(internals, latestState, args);
-      return;
-    }
-    await relaunchWorkerWorkflowAfterResume(internals, latestState, args);
+    await (internals.inlineStrategy
+      ? relaunchInlineWorkflowAfterResume(internals, latestState, args)
+      : relaunchWorkerWorkflowAfterResume(internals, latestState, args));
   } catch (error) {
     restoreHandleClaimEpoch?.();
     throw error;
