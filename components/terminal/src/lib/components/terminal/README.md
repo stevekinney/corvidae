@@ -49,6 +49,9 @@ The engine is private. The component never exposes the engine instance, its opti
 | `announceOutput` | Mirror output into the engine's bounded live region. Defaults to `false`. |
 | `onLinkActivate` | Turns links on and receives a visible HTTPS address the reader activated. |
 | `onTitleChange` | Receives the program-set title as bounded plain text. |
+| `mouseReporting` | Reports the mouse to a program that asks for it (tmux, vim), but only while key capture is on and the view is writable. Defaults to `false`: reports are dropped and the pointer selects text. |
+| `maximumPasteBytes` | The most paste text, in UTF-8 bytes, offered for review. Integer from 1 to 262144; anything else uses 65536. |
+| `onInputRefused` | Receives `{ reason, acceptedOperations?, totalOperations?, source? }` when input, or part of it, did not reach the wire. |
 
 ### The controller the renderer needs
 
@@ -56,6 +59,19 @@ The engine is private. The component never exposes the engine instance, its opti
 
 - `subscribeOutput(listener)` delivers ordered output bytes and returns an unsubscribe function. The listener receives each chunk and a `parsed` callback. The renderer calls `parsed` once per chunk when the engine has parsed it, which is the accepted parse boundary. It is independent of painting: output keeps parsing, and is acknowledged, while the page is hidden. The controller delivers everything produced since the attachment started, in order, because the renderer subscribes only after its engine is mounted.
 - `rendererFailed(failure)` is called once if the renderer fails closed. The engine is already disposed; the controller revokes input and runs cleanup.
+- `input` (optional) is where typing, paste and the engine's automatic replies go. It is `TerminalInputController`: `input(bytes)` offers one operation and returns the protocol's typed result (a throw means the delivery is unknown), `authorityRevoked` says the controller may no longer send, and `terms` carries the negotiated `maxFrameBytes` and `maxQueuedOperations`. A `ClientEndpoint` plus the transport that carries its frames satisfies it. Without `input` the terminal is a viewer and sends nothing.
+
+## Input
+
+Input is enforced in the client for feedback; the host enforces authority for security. Every engine report becomes bytes by its own conversion: text (`onData`) as UTF-8, binary (`onBinary`) as one byte per character. A report that cannot be converted exactly is refused, never repaired. Bytes are split to the negotiated frame budget only between characters and complete escape sequences, so the bracketed-paste markers and every sequence a paste carries stay whole. An input that cannot fit the queue, or has a sequence larger than a frame, is refused before anything is sent.
+
+Nothing is queued, retried or replayed. A failure after part of an input was accepted, or a delivery whose outcome is unknown, freezes input for the life of that session binding. A full operation queue holds input too, so a later keystroke cannot change what a dropped one meant, until the `state` leaves `writable` (the host reports `backpressured`) and returns to it. Dropped input is announced once through the polite status region, except typing into a view that is read-only. Typing, paste, and the automatic replies the engine makes to terminal queries are all refused unless the state is `writable` and the controller still has authority. A read-only view sends nothing, and its selection and scrolling keep working.
+
+Keys are routed in the order the experience specification sets: a focused package overlay (the paste review), then reserved platform and host actions, then authorized terminal input. Capture starts off, so Tab and Shift+Tab move through the page; the `Capture terminal keys` button (`aria-pressed`) sends them to the shell instead, and `Ctrl+Shift+Escape` releases it. Bare Escape is always shell input unless the review owns it. Capture lasts only while focus is in the terminal, on the capture button, or on the Interrupt button, so pressing the pressed capture button turns it off, Interrupt returns focus to the terminal with capture kept, and capture returns after a paste review closes. Capture never ends up on a previous session.
+
+Mouse reports are off by default. A program can turn on the engine's mouse tracking at any time; the terminal never changes that mode, but sends the reports it produces (default, SGR and SGR-pixel encodings, including the raw bytes of the default one) only when `mouseReporting` is set, capture is on and the view is writable. Otherwise they are dropped without a refusal, and a press is handed to the engine as a selection gesture (Shift, or Option on a Mac), so the pointer selects text. A read-only view never reports the mouse. While reports are actually being sent (opted in, the program tracking the mouse, capture on, view writable) a `Mouse reporting on` Cinder `Badge` shows beside the controls and describes the capture button. The badge is not a live region; the program turning the mode on or off is announced once each, and capture or the view changing it leaves the announcement to capture's own.
+
+A multiline or control-bearing paste, and any paste while the program has bracketed paste on, opens a review that shows its line breaks and controls, how long it is, and whether it ends in a newline, with Cancel and Paste. A paste over `maximumPasteBytes` is refused whole. An accepted paste goes through the engine, which converts line breaks to carriage returns and brackets it when the program asked for it. The bytes are never rewritten: a pasted bracket terminator ends the protected paste early, and the review says so while bracketed paste is on (and that it is sent as typed while it is off). If the mode changes while the review is open, the review is shown again with the new warning before anything is sent. The keys that close the review do not reach the shell.
 
 ## Geometry
 

@@ -2,8 +2,8 @@
   "lines": 1,
   "functions": 1,
   "svelte": {
-    "lines": 0.9425,
-    "functions": 0.8437
+    "lines": 1,
+    "functions": 1
   },
   "svelteMeasuredOn": {
     "platform": "darwin",

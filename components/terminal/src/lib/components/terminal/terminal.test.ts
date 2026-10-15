@@ -138,7 +138,11 @@ describe('states', () => {
     expect(statuses[0]!.classList.contains('cinder-terminal__message')).toBe(true);
     // The chip keeps its visible text; it is only no longer a second live region.
     expect(required(harness, '.cinder-terminal-frame__status').textContent).toBe('connected');
-    expect(harness.target.querySelectorAll('[aria-live]')).toHaveLength(0);
+    // The one other live region announces key capture transitions, and is empty until one happens.
+    const regions = harness.target.querySelectorAll('[aria-live]');
+    expect(regions).toHaveLength(1);
+    expect(regions[0]!.getAttribute('role')).toBeNull();
+    expect(regions[0]!.textContent?.trim()).toBe('');
   });
 
   test('announces a state change the coarse frame status does not distinguish', async () => {
@@ -216,8 +220,12 @@ describe('states', () => {
   test('writable offers the capture control, composed from the Cinder Button, and read-only does not', () => {
     const writable = mountHarness(Terminal, { title: 'Shell', state: 'writable' });
     const buttons = [...writable.target.querySelectorAll('button')];
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Capture terminal keys']);
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Capture terminal keys',
+      'Interrupt',
+    ]);
     expect(buttons[0]!.className).toContain('cinder-button');
+    expect(buttons[0]!.getAttribute('aria-pressed')).toBe('false');
     for (const state of [
       'read-only',
       'loading',

@@ -12,6 +12,7 @@
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --conditions browser --conditions svelte --parallel=1 src scripts",
     "test:renderer": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src/lib/components/terminal",
+    "test:input": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 src/lib/input",
     "test:boundaries": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 scripts/check-boundaries.test.ts && bun scripts/check-boundaries.ts",
     "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun test --conditions browser --conditions svelte --parallel=1 --no-isolate --coverage --coverage-reporter=lcov src scripts && bun scripts/check-coverage.ts"
   },

@@ -100,6 +100,9 @@ export type OperationResultReason =
   | 'revoked'
   | 'process-exited';
 
+/** The failure codes a backend's `start()` may reject with, as the failure table's startup rows name them. */
+export type StartFailureCode = 'unsupported-runtime' | 'spawn-failed';
+
 export type OperationKind = 'input' | 'resize';
 
 /** What started the session's close. The first cause wins; later ones never overwrite it. */
@@ -290,6 +293,12 @@ export type OutputSource =
  */
 export type ProcessBackend = {
   readonly mode: 'pty' | 'pipe';
+  /**
+   * Whether the process has an input channel. Absent means it does: only a backend that is
+   * known to have none (a pipe opened without stdin) sets `false`, and its attachments then
+   * advertise no input.
+   */
+  readonly acceptsInput?: boolean;
   start(): Promise<void>;
   write(bytes: Uint8Array): Promise<void>;
   resize?(columns: number, rows: number): Promise<void>;

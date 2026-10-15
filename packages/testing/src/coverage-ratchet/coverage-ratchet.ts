@@ -233,25 +233,62 @@ function isTestOnlySource(packageRelativeFile: string): boolean {
 
 const IMPORT_SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*)['"]([^'"]+)['"]/g;
 
+const WALKABLE_ENTRY = /(?<!\.d)\.[cm]?tsx?$/;
+
 /**
- * Every import of a test support module on a path reachable from the package
- * entry. The ratchet excludes test support modules on the promise that only
- * tests reach them; one reachable from the entry would be uncounted shipped
- * code, so the gate fails on any. Test fixtures that sit beside source (such
- * as `_menu-bar-ssr-test.svelte`) may import test support freely because the
- * entry never reaches them. Package source imports its own modules only by
- * relative specifier, so the walk follows relative imports.
+ * The files a package's `exports` map points consumers at, relative to `packageRoot` and without
+ * the leading `./`: every string target under any condition except `types`, which names
+ * declarations rather than runtime code. Only TypeScript targets are returned, because the import
+ * walk follows TypeScript modules; wildcard patterns, declaration files and non-source targets such
+ * as `./package.json` are skipped. A package without a manifest or an `exports` map has the single
+ * entry `src/index.ts`.
+ */
+function packageRuntimeEntries(packageRoot: string): string[] {
+  const manifestPath = resolve(packageRoot, 'package.json');
+  if (!isFile(manifestPath)) return ['src/index.ts'];
+  const { exports } = JSON.parse(readFileSync(manifestPath, 'utf8')) as { exports?: unknown };
+  if (exports === undefined) return ['src/index.ts'];
+  const targets = new Set<string>();
+  const collect = (value: unknown): void => {
+    if (typeof value === 'string') {
+      if (value.startsWith('./') && !value.includes('*') && WALKABLE_ENTRY.test(value)) {
+        targets.add(value.slice(2));
+      }
+    } else if (Array.isArray(value)) {
+      value.forEach(collect);
+    } else if (value !== null && typeof value === 'object') {
+      for (const [condition, target] of Object.entries(value)) {
+        if (condition !== 'types') collect(target);
+      }
+    }
+  };
+  collect(exports);
+  return [...targets];
+}
+
+/**
+ * Every import of a test support module on a path reachable from any runtime entry of the
+ * package: each walkable target of its `exports` map (see {@link packageRuntimeEntries}), so a
+ * helper imported only from a subpath entry such as `./bun` is found as surely as one imported from
+ * `.`. The ratchet excludes test support modules on the promise that only tests reach them; one
+ * reachable from an entry would be uncounted shipped code, so the gate fails on any. Test fixtures
+ * that sit beside source (such as `_menu-bar-ssr-test.svelte`) may import test support freely
+ * because no entry reaches them. Package source imports its own modules only by relative
+ * specifier, so the walk follows relative imports. A module reachable from several entries is
+ * visited, and reported, once.
  */
 export function runtimeImportsOfTestSupport(
   packageRoot: string,
-  entry = 'src/index.ts',
+  entries: readonly string[] = packageRuntimeEntries(packageRoot),
 ): { file: string; specifier: string }[] {
-  if (!isFile(resolve(packageRoot, entry))) {
-    throw new Error(`Package entry ${entry} does not exist under ${packageRoot}.`);
+  for (const entry of entries) {
+    if (!isFile(resolve(packageRoot, entry))) {
+      throw new Error(`Package entry ${entry} does not exist under ${packageRoot}.`);
+    }
   }
   const imports: { file: string; specifier: string }[] = [];
   const visited = new Set<string>();
-  const pending = [entry];
+  const pending = [...entries];
   while (pending.length > 0) {
     const file = pending.pop()!;
     if (visited.has(file)) continue;
