@@ -92,7 +92,10 @@ function installSideEffectRecorder(): void {
   // engine and the component pick the same selection modifier.
   const hints = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
   if (hints?.platform === 'Windows') {
-    Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'Win32' });
+    Object.defineProperty(Navigator.prototype, 'platform', {
+      get: () => 'Win32',
+      configurable: true,
+    });
   }
   const effects: SideEffects = {
     clipboardWrites: [],
@@ -429,4 +432,24 @@ export async function lastScreenRow(page: Page): Promise<string | undefined> {
 export async function lastClipboardWrite(page: Page): Promise<string> {
   const effects = await sideEffects(page);
   return effects.clipboardWrites.at(-1) ?? '';
+}
+
+/**
+ * The text the engine's selection holds, read the way the browser's own copy command reads it: the
+ * engine answers a `copy` event with its selection. Line breaks are normalized, because the engine
+ * uses CRLF when it believes it runs on Windows. Empty when nothing is selected.
+ */
+export async function selectedText(page: Page): Promise<string> {
+  const copied = await page.evaluate(() => {
+    const seen: string[] = [];
+    const listen = (event: ClipboardEvent) => {
+      seen.push(event.clipboardData?.getData('text/plain') ?? '');
+    };
+    document.addEventListener('copy', listen);
+    document.querySelector<HTMLElement>('textarea.xterm-helper-textarea')?.focus();
+    document.execCommand('copy');
+    document.removeEventListener('copy', listen);
+    return seen;
+  });
+  return (copied.at(-1) ?? '').replaceAll('\r\n', '\n');
 }

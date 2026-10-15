@@ -6,7 +6,10 @@ import {
   captureButton,
   captureKeys,
   expect,
+  isMac,
   resetSent,
+  screenRows,
+  selectedText,
   sentBytes,
   test,
   write,
@@ -15,7 +18,7 @@ import {
 const ESC = '\u001b';
 const TRACKING_ON = `${ESC}[?1000h${ESC}[?1006h`;
 
-/** The viewport position of the middle of a character cell, counted from one. */
+/** The viewport position in the left half of a character cell, away from the half-cell line where a selection edge flips, counted from one. */
 async function cellCenter(
   page: Page,
   column: number,
@@ -31,7 +34,7 @@ async function cellCenter(
     );
   const height = screen.height / rows;
   return {
-    x: screen.x + (column - 0.5) * width,
+    x: screen.x + (column - 0.75) * width,
     y: screen.y + (row - 0.5) * height,
   };
 }
@@ -43,6 +46,30 @@ async function drag(page: Page, from: [number, number], to: [number, number]): P
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 5 });
   await page.mouse.up();
+}
+
+/**
+ * The text a drag from one cell to another must select: from the first cell up to, not including,
+ * the cell the pointer ended on, with a line break where a row ends.
+ */
+async function expectDraggedText(
+  page: Page,
+  from: [number, number],
+  to: [number, number],
+): Promise<void> {
+  const rows = await screenRows(page);
+  const first = rows[from[1] - 1]!;
+  const last = rows[to[1] - 1]!;
+  const expected =
+    from[1] === to[1]
+      ? first.slice(from[0] - 1, to[0] - 1)
+      : [
+          first.slice(from[0] - 1),
+          ...rows.slice(from[1], to[1] - 1),
+          last.slice(0, to[0] - 1),
+        ].join('\n');
+  expect(expected.length, 'the drag covers text').toBeGreaterThan(5);
+  expect(await selectedText(page)).toBe(expected);
 }
 
 const selection = (page: Page) => page.locator('.xterm-selection div');
@@ -57,6 +84,7 @@ test.describe('the program tracks the mouse, and reporting is not permitted', ()
     await write(page, TRACKING_ON);
     await drag(page, [1, 1], [12, 1]);
     await expect(selection(page).first()).toBeVisible();
+    await expectDraggedText(page, [1, 1], [12, 1]);
     expect(await sentBytes(page)).toEqual([]);
     await expect(badge(page)).toHaveCount(0);
 
@@ -64,8 +92,9 @@ test.describe('the program tracks the mouse, and reporting is not permitted', ()
     await captureKeys(page);
     await page.mouse.click(5, 5);
     await resetSent(page);
-    await drag(page, [1, 2], [10, 2]);
+    await drag(page, [5, 2], [14, 3]);
     await expect(selection(page).first()).toBeVisible();
+    await expectDraggedText(page, [5, 2], [14, 3]);
     expect(await sentBytes(page)).toEqual([]);
     await expect(badge(page)).toHaveCount(0);
   });
@@ -77,6 +106,7 @@ test.describe('the program tracks the mouse, and reporting is not permitted', ()
     await write(page, TRACKING_ON);
     await drag(page, [1, 1], [12, 1]);
     await expect(selection(page).first()).toBeVisible();
+    await expectDraggedText(page, [1, 1], [12, 1]);
     expect(await sentBytes(page)).toEqual([]);
     await expect(badge(page)).toHaveCount(0);
   });
@@ -88,6 +118,7 @@ test.describe('the program tracks the mouse, and reporting is not permitted', ()
     await write(page, TRACKING_ON);
     await drag(page, [1, 1], [12, 1]);
     await expect(selection(page).first()).toBeVisible();
+    await expectDraggedText(page, [1, 1], [12, 1]);
     expect(await sentBytes(page)).toEqual([]);
     expect(await page.evaluate(() => window.terminalLab!.session.inputCalls)).toBe(0);
     await expect(badge(page)).toHaveCount(0);
@@ -101,7 +132,60 @@ test.describe('the program tracks the mouse, and reporting is not permitted', ()
     await resetSent(page);
     await drag(page, [1, 1], [12, 1]);
     await expect(selection(page).first()).toBeVisible();
+    await expectDraggedText(page, [1, 1], [12, 1]);
     expect(await sentBytes(page)).toEqual([]);
+  });
+});
+
+test.describe('on a Mac the selection gesture is Option', () => {
+  const asMac = (page: Page) =>
+    page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'platform', {
+        get: () => 'MacIntel',
+        configurable: true,
+      });
+      Object.defineProperty(navigator, 'userAgentData', {
+        get: () => ({ platform: 'macOS' }),
+        configurable: true,
+      });
+    });
+
+  test('a plain drag is re-dispatched with Option and selects the dragged text', async ({
+    terminalPage,
+  }) => {
+    const page = await terminalPage.open({ prepare: asMac });
+    expect(await isMac(page)).toBe(true);
+    await write(page, TRACKING_ON);
+    await drag(page, [1, 1], [12, 1]);
+    await expectDraggedText(page, [1, 1], [12, 1]);
+    expect(await sentBytes(page)).toEqual([]);
+  });
+
+  test('a drag already made with Option selects, even where reporting is permitted', async ({
+    terminalPage,
+  }) => {
+    const page = await terminalPage.open({ prepare: asMac, query: { mouse: true } });
+    await write(page, TRACKING_ON);
+    await captureKeys(page);
+    await expect(badge(page)).toBeVisible();
+    await resetSent(page);
+    await page.keyboard.down('Alt');
+    await drag(page, [3, 2], [14, 2]);
+    await page.keyboard.up('Alt');
+    await expectDraggedText(page, [3, 2], [14, 2]);
+    expect(await sentBytes(page), 'Option held: a selection, no report').toEqual([]);
+  });
+
+  test('without Option and with reporting permitted the same drag reports and selects nothing', async ({
+    terminalPage,
+  }) => {
+    const page = await terminalPage.open({ prepare: asMac, query: { mouse: true } });
+    await write(page, TRACKING_ON);
+    await captureKeys(page);
+    await resetSent(page);
+    await drag(page, [3, 2], [9, 2]);
+    expect(await sentBytes(page)).toEqual(bytes(`${ESC}[<0;3;2M${ESC}[<0;9;2m`));
+    expect(await selectedText(page)).toBe('');
   });
 });
 
