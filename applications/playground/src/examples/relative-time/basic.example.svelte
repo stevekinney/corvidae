@@ -16,6 +16,9 @@
   });
 </script>
 
-{#if yesterday !== undefined}
-  <RelativeTime date={yesterday} tick={false} />
-{/if}
+<p>
+  Last deployed
+  {#if yesterday !== undefined}
+    <RelativeTime date={yesterday} tick={false} />
+  {/if}
+</p>

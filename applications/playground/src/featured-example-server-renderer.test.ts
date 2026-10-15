@@ -158,6 +158,8 @@ describe('featured example determinism', () => {
     '%s/%s renders the same markup every time',
     (componentName, scenario) => {
       const [first, second] = repeatedRenders.get(`${componentName}/${scenario}`)!;
+      // A stable render must still render: the export rejects a blank overview preview.
+      expect(first.body.trim()).not.toBe('');
       expect(second.body).toBe(first.body);
       expect(second.head).toBe(first.head);
     },
