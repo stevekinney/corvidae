@@ -115,7 +115,6 @@ export async function acquireStandaloneClaimBeforeResume(
   if (result.status === 'lost-race') {
     throw new WorkflowClaimUnavailableError(workflowId, result.heldBy);
   }
-  rebindHandleClaimEpoch(internals, workflowId);
   return { freshlyAcquired: true, epoch: result.epoch };
 }
 
@@ -184,6 +183,8 @@ export async function ensureDelayedStartClaimAndCleanupBeforeFailure(
   workflowId: string,
 ): Promise<void> {
   await acquireStandaloneClaimBeforeResume(internals, workflowId);
+  // A delayed start has no rejection path after this acquire, so its handle moves now.
+  rebindHandleClaimEpoch(internals, workflowId);
   if (await storageHas(internals.storage, KEYS.terminalCleanupNeeded(workflowId))) {
     internals.workflowsNeedingTerminalCleanup.add(workflowId);
   }

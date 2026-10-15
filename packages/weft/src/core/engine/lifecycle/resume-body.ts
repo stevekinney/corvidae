@@ -24,6 +24,7 @@ import { adoptLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { rehydrateChildCancellationHandlers } from '../child-workflow-cancellation.ts';
 import { resolveExecutableRegistrationOrRenamedNotFound } from '../dynamic-source-execution.ts';
 import { commitFencedEngineWrite } from '../fenced-write.ts';
+import { rebindHandleClaimEpoch } from '../handle-result.ts';
 import { getWorkflowExecutionStartedAt, type WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import { loadWorkflowState } from '../storage-io.ts';
@@ -375,6 +376,10 @@ async function performSerializedResume(
   // extra state write (and visibility-index churn) on every recoverAll() resume.
   await reactivateSuspendedWorkflowState(internals, latestState);
 
+  // The resume is validated and durably committed: only now does the run's handle
+  // follow the claim this engine holds. Earlier, a rejection would release a freshly
+  // acquired claim after the handle had already left the epoch it lost.
+  rebindHandleClaimEpoch(internals, workflowId);
   commitSerializedResumeState(internals, args);
 
   if (internals.inlineStrategy) {
