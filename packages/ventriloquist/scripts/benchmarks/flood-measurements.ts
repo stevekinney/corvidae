@@ -130,6 +130,44 @@ export async function measureResumeLatency(
   return latencyObservation(samples, duration);
 }
 
+/**
+ * From the budget being full until the host's last byte of output reaches the client, with the
+ * client parsing nothing: how long the host takes to stop once there is no room, fifty times over.
+ */
+export async function measurePauseLatency(
+  path: TransportPath,
+  mode: ProcessMode,
+): Promise<ObservedWorkload> {
+  const rig = await stalledFlood(path, mode);
+  const samples: number[] = [];
+  const startedAt = performance.now();
+  for (let sample = 0; sample < RESUME_SAMPLES; sample += 1) {
+    // Release everything held, let the producer run on, then stall the client again.
+    rig.resumeConsuming();
+    const flowing = rig.client.endpoint.outputBytes.received + BUDGET;
+    await untilReceived(rig, flowing);
+    rig.pauseConsuming();
+    const { consumed } = rig.client.endpoint.outputBytes;
+    await untilReceived(rig, consumed + FULL_ENOUGH);
+    const fullAt = performance.now();
+    let lastAt = fullAt;
+    // The last frame is the one after which nothing arrives for a while.
+    for (let more = true; more;) {
+      const before = rig.client.frames.length;
+      more = await Promise.race([
+        rig.client.waitForFrames(before + 1).then(() => true),
+        Bun.sleep(150).then(() => false),
+      ]);
+      if (more) lastAt = performance.now();
+    }
+    samples.push(lastAt - fullAt);
+    discardHandled(rig);
+  }
+  const duration = performance.now() - startedAt;
+  await finish(rig);
+  return latencyObservation(samples, duration);
+}
+
 /** The same fifty samples taken on an in-memory stand-in, which must meet the same target on any host. */
 export function resumeLatencyControl(): ObservedWorkload {
   const samples: number[] = [];

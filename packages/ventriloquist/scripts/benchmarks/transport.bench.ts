@@ -41,6 +41,7 @@ import {
 import {
   RESUME_SAMPLES,
   measureFloodThroughput,
+  measurePauseLatency,
   measurePausedMemory,
   measureResumeLatency,
   resumeLatencyControl,
@@ -159,13 +160,22 @@ const specifications: CellSpecification[] = [
       measure: () => measureFloodThroughput('websocket', mode),
     },
     {
-      id: `resume-latency-${mode}`,
-      method: `fifty stalls of a flooding ${mode} process over the Bun WebSocket host, each timed from the client reporting its held output parsed until the next byte of output reaches it`,
+      id: `pause-latency-${mode}`,
+      method: `fifty stalls of a flooding ${mode} process through the in-memory path, each timed from the output queue being full until the last byte the host delivers before it goes quiet`,
       target: latencyTarget,
       sampleCount: RESUME_SAMPLES,
       warmupCount: 0,
       control: () => resumeLatencyControl(),
-      measure: () => measureResumeLatency('websocket', mode),
+      measure: () => measurePauseLatency('direct', mode),
+    },
+    {
+      id: `resume-latency-${mode}`,
+      method: `fifty stalls of a flooding ${mode} process through the in-memory path, each timed from the client reporting its held output parsed until the next byte of output reaches it (the host's own resume; a loopback socket and its client add milliseconds of their own on top)`,
+      target: latencyTarget,
+      sampleCount: RESUME_SAMPLES,
+      warmupCount: 0,
+      control: () => resumeLatencyControl(),
+      measure: () => measureResumeLatency('direct', mode),
     },
     {
       id: `paused-memory-${mode}`,
