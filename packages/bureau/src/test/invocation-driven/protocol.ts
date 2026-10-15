@@ -46,9 +46,6 @@ export const WEFT_WORKFLOW_INPUT = 'order-1';
 /** The one Operative run the Operative scenario drives. */
 export const OPERATIVE_RUN_ID = 'invocation-driven-agent-run';
 
-/** The environment variable naming the activity an invocation blocks inside. */
-export const BLOCK_ACTIVITY_VARIABLE = 'INVOCATION_BLOCK_ACTIVITY';
-
 const POLL_ATTEMPTS = 2000;
 const POLL_DELAY_MS = 5;
 const runtime = createDefaultRuntimeServices();
@@ -93,25 +90,28 @@ export async function pollUntil(
  */
 export async function blockIfRequested(
   name: string,
-  directory: string,
-  label: string,
+  invocation: InvocationArguments,
 ): Promise<void> {
-  if (process.env[BLOCK_ACTIVITY_VARIABLE] !== name) return;
+  if (invocation.blockActivity !== name) return;
   emit('activity-started', { activity: name });
-  await pollUntil(`the driver to release ${name}`, () => existsSync(releasePath(directory, label)));
+  await pollUntil(`the driver to release ${name}`, () =>
+    existsSync(releasePath(invocation.directory, invocation.label)),
+  );
 }
 
 export interface InvocationArguments {
   readonly directory: string;
   readonly command: string;
   readonly label: string;
+  /** The activity this invocation blocks inside, when the driver asked it to. */
+  readonly blockActivity: string | undefined;
 }
 
 export function parseInvocationArguments(usage: string): InvocationArguments {
-  const [directory, command, label] = process.argv.slice(2);
+  const [directory, command, label, blockActivity] = process.argv.slice(2);
   if (directory === undefined || command === undefined || label === undefined) {
-    process.stderr.write(`usage: ${usage} <directory> <command> <label>\n`);
+    process.stderr.write(`usage: ${usage} <directory> <command> <label> [block-activity]\n`);
     process.exit(2);
   }
-  return { directory, command, label };
+  return { directory, command, label, blockActivity };
 }

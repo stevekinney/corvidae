@@ -38,7 +38,6 @@ import {
   type InvocationEvent,
 } from './test/invocation-driven/driver';
 import {
-  BLOCK_ACTIVITY_VARIABLE,
   CLAIM_TAKEOVER_ADVANCE_MS,
   releasePath,
   VIRTUAL_START,
@@ -78,12 +77,7 @@ interface Scenario {
   readonly directory: string;
   readonly driver: InvocationDriver;
   /** Runs one invocation to completion and returns its `finished` report. */
-  readonly invoke: (
-    entry: string,
-    command: string,
-    label: string,
-    environment?: Record<string, string>,
-  ) => Promise<InvocationEvent>;
+  readonly invoke: (entry: string, command: string, label: string) => Promise<InvocationEvent>;
 }
 
 /**
@@ -105,8 +99,7 @@ function scenario(body: (scenario: Scenario) => Promise<void>): Promise<Scenario
       await body({
         directory,
         driver,
-        invoke: (entry, command, label, environment) =>
-          expectCleanExit(driver.spawn(entry, command, label, environment)),
+        invoke: (entry, command, label) => expectCleanExit(driver.spawn(entry, command, label)),
       });
     } finally {
       await release();
@@ -161,7 +154,7 @@ const weftOverlap = await scenario(async ({ directory, driver, invoke }) => {
   // Invocation A fires the timer and is held inside `finish`, holding the
   // workflow's claim. Invocation B wakes at the same moment and does the
   // same maintenance against the same workflow while A is mid-step.
-  const a = driver.spawn(WEFT, 'maintain', 'a', { [BLOCK_ACTIVITY_VARIABLE]: 'finish' });
+  const a = driver.spawn(WEFT, 'maintain', 'a', 'finish');
   await Promise.all([a.waitFor('activity-started'), a.waitFor('maintained')]);
   const b = await invoke(WEFT, 'maintain', 'b');
   expect(b['settled']).toBe('held-elsewhere');
@@ -185,9 +178,7 @@ const weftKilled = await scenario(async ({ directory, driver, invoke }) => {
   const dueAt = VIRTUAL_START + WEFT_SLEEP_MS;
   writeClock(directory, dueAt);
 
-  const killed = driver.spawn(WEFT, 'maintain', 'killed', {
-    [BLOCK_ACTIVITY_VARIABLE]: 'finish',
-  });
+  const killed = driver.spawn(WEFT, 'maintain', 'killed', 'finish');
   await Promise.all([killed.waitFor('activity-started'), killed.waitFor('maintained')]);
   killed.kill('SIGKILL');
   const killedOutcome = await killed.outcome();

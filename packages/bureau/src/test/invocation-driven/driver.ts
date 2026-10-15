@@ -69,18 +69,18 @@ export class InvocationDriver {
     this.#directory = directory;
   }
 
-  /** Starts `bun <entry> <directory> <command> <label>` as its own OS process. */
-  spawn(
-    entry: string,
-    command: string,
-    label: string,
-    environment: Record<string, string> = {},
-  ): RunningInvocation {
-    const child = Bun.spawn([process.execPath, entry, this.#directory, command, label], {
+  /**
+   * Starts `bun <entry> <directory> <command> <label> [blockActivity]` as its
+   * own OS process. With `blockActivity`, the invocation holds that activity
+   * open until the driver releases or kills it.
+   */
+  spawn(entry: string, command: string, label: string, blockActivity?: string): RunningInvocation {
+    const argv = [process.execPath, entry, this.#directory, command, label];
+    if (blockActivity !== undefined) argv.push(blockActivity);
+    const child = Bun.spawn(argv, {
       timeout: HANG_GUARD_MILLISECONDS,
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, ...environment },
     });
     this.#live.add(child);
     const events: InvocationEvent[] = [];

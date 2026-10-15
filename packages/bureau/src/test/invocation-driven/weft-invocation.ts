@@ -35,13 +35,14 @@ import {
   WEFT_WORKFLOW_INPUT,
 } from './protocol';
 
-const { directory, command, label } = parseInvocationArguments('weft-invocation');
+const invocation = parseInvocationArguments('weft-invocation');
+const { directory, command, label } = invocation;
 const now = readClock(directory);
 
 const charge = activity({
   name: 'charge',
   execute: async (order: string) => {
-    await blockIfRequested('charge', directory, label);
+    await blockIfRequested('charge', invocation);
     return `charged ${order} in ${label}`;
   },
 });
@@ -49,7 +50,7 @@ const charge = activity({
 const finish = activity({
   name: 'finish',
   execute: async (order: string) => {
-    await blockIfRequested('finish', directory, label);
+    await blockIfRequested('finish', invocation);
     return `finished ${order} in ${label}`;
   },
 });
