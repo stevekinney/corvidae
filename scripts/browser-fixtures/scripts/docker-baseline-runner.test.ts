@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { outcomeOf, rethrow } from '../../module-scope-scenario.test-support.ts';
 import { playwrightBaseImage, readRepositoryPins } from './baseline-provenance.ts';
 import {
   DOCKERFILE_PATH,
@@ -29,6 +30,52 @@ import {
   terminateContainer,
   type DockerRunner,
 } from './docker-baseline-runner.ts';
+
+// The stub docker binary is a real shell process, so this scenario runs once at module scope,
+// off the per-test clock (COR-1507), and its test rethrows what it recorded.
+const stubbedDockerSignalOutcome = await outcomeOf(async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'docker-stub-'));
+  const log = join(directory, 'calls.log');
+  const stub = join(directory, 'docker');
+  // `run` blocks until `kill` drops a file; every call is logged with its stdin size.
+  writeFileSync(
+    stub,
+    [
+      '#!/bin/sh',
+      `echo "$*" >> '${log}'`,
+      'if [ "$1" = "run" ]; then',
+      `  wc -c | tr -d ' ' >> '${log}'`,
+      `  while [ ! -f '${directory}/killed' ]; do sleep 0.05; done`,
+      '  exit 137',
+      'fi',
+      `if [ "$1" = "kill" ]; then touch '${directory}/killed'; fi`,
+      'exit 0',
+      '',
+    ].join('\n'),
+  );
+  chmodSync(stub, 0o755);
+  const input = join(directory, 'source.tar');
+  writeFileSync(input, 'archive-bytes');
+  const signals = new EventEmitter();
+  const run = runContainerWithCleanup(
+    createDockerRunner(stub),
+    ['run', '--name', 'corvidae-baselines-test'],
+    'corvidae-baselines-test',
+    input,
+    signals as unknown as Pick<NodeJS.Process, 'once' | 'off'>,
+  );
+  while (!existsSync(log) || !readFileSync(log, 'utf8').includes('13')) await Bun.sleep(20);
+  signals.emit('SIGINT');
+  expect(await run).toBe(130);
+  expect(readFileSync(log, 'utf8').split('\n')).toEqual([
+    'run --name corvidae-baselines-test',
+    '13',
+    'kill corvidae-baselines-test',
+    '',
+  ]);
+  expect(signals.listenerCount('SIGINT')).toBe(0);
+  expect(signals.listenerCount('SIGTERM')).toBe(0);
+});
 
 describe('host load record', () => {
   // Host load never blocks a run (COR-1512); each run records it instead.
@@ -171,48 +218,8 @@ describe('kill on signal', () => {
     ).toBe(130);
   });
 
-  it('turns a signal during a run into the signal status through a stubbed docker binary', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'docker-stub-'));
-    const log = join(directory, 'calls.log');
-    const stub = join(directory, 'docker');
-    // `run` blocks until `kill` drops a file; every call is logged with its stdin size.
-    writeFileSync(
-      stub,
-      [
-        '#!/bin/sh',
-        `echo "$*" >> '${log}'`,
-        'if [ "$1" = "run" ]; then',
-        `  wc -c | tr -d ' ' >> '${log}'`,
-        `  while [ ! -f '${directory}/killed' ]; do sleep 0.05; done`,
-        '  exit 137',
-        'fi',
-        `if [ "$1" = "kill" ]; then touch '${directory}/killed'; fi`,
-        'exit 0',
-        '',
-      ].join('\n'),
-    );
-    chmodSync(stub, 0o755);
-    const input = join(directory, 'source.tar');
-    writeFileSync(input, 'archive-bytes');
-    const signals = new EventEmitter();
-    const run = runContainerWithCleanup(
-      createDockerRunner(stub),
-      ['run', '--name', 'corvidae-baselines-test'],
-      'corvidae-baselines-test',
-      input,
-      signals as unknown as Pick<NodeJS.Process, 'once' | 'off'>,
-    );
-    while (!existsSync(log) || !readFileSync(log, 'utf8').includes('13')) await Bun.sleep(20);
-    signals.emit('SIGINT');
-    expect(await run).toBe(130);
-    expect(readFileSync(log, 'utf8').split('\n')).toEqual([
-      'run --name corvidae-baselines-test',
-      '13',
-      'kill corvidae-baselines-test',
-      '',
-    ]);
-    expect(signals.listenerCount('SIGINT')).toBe(0);
-    expect(signals.listenerCount('SIGTERM')).toBe(0);
+  it('turns a signal during a run into the signal status through a stubbed docker binary', () => {
+    rethrow(stubbedDockerSignalOutcome);
   });
 
   it('returns the container status when no signal arrives', async () => {
