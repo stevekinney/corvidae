@@ -125,6 +125,37 @@ The reviewer should record the artifact evidence—a section/table reference and
 
 After implementation, CIN-582 owns the actual keyboard-only, VoiceOver, browser, zoom/text-resize, 320px reflow, focus-obscuring, and performance runs. Its manual record must include platform and browser versions, assistive technology version, screenshots or traces, and findings against the exact implementation revision. CIN-573 supplies the scenarios and expected outcomes; it does not pretend that the runtime exists or that those runs passed.
 
+## Automated evidence (COR-254)
+
+This section records automated runs only. It is not a human review: it does not fill, replace or imply any field above, and it does not change the review status.
+
+| Check | Result |
+| --- | --- |
+| Axe, `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`, every impact level, builder chrome in six contexts | Zero violations |
+| Axe, same rule set, all 16 preview scenes in light and dark, and the reference scenes in the four other contexts | Zero violations |
+| Axe, same rule set, library dialogs (new, rename, delete, Trash, permanent delete), palette, spacing preset and alias proposals, remediation proposal, export and import dialogs (including an invalid result), the Source and dependencies disclosure, the checks panel passing and failing, and the Edit, Preview and Checks tabs at 390px | Zero violations |
+| Keyboard: a forward and a backward Tab pass shows visible, unobscured focus on every stop and traps nothing | Pass |
+| Keyboard: a filter, select, type, Apply and Undo flow with the keyboard alone | Pass |
+| Focus return: New theme, Rename, Delete, Import and Export return focus to their trigger after Escape and after their own button; the nested Trash and permanent-delete dialogs return one level at a time | Pass |
+| Reflow: no horizontal overflow at 1440, 768, 390 and 320px, on every tab | Pass |
+| 1.4.4 text at 200%, 1.4.12 text spacing, 2.4.7 and 2.4.11 focus, 2.5.8 target size, forced colors, reduced motion (separate from the simulated setting) on the reference scene | Pass |
+| Console errors and warnings during all of the above | None; any is a failure |
+
+The suites run in Chromium against the development server and the static export. They are `theme-builder-accessibility.playwright.ts`, `theme-builder-keyboard.playwright.ts` and `theme-builder-workflow.playwright.ts` in `applications/playground/tests/`; [theme-builder.md](theme-builder.md#shipped-behavior-and-automated-evidence) lists them with the performance results.
+
+Defects found by these runs and fixed: the import dialog's file input had no accessible name; the color picker's three copy-format buttons were 14px tall. Axe also reported a color-contrast failure on a dialog button that was still fading in; the suite now waits for finite animations to finish before analysis, because a mid-fade color is not what the user sees.
+
+### Still pending
+
+These need a person and are not claimed by any automated result:
+
+- Steve Kinney's design approval.
+- The named human practitioner's accessibility approval, with manual VoiceOver, keyboard, focus and reflow checks recorded against the final source revision.
+- Manual reproducible runs in current stable Firefox and Safari/WebKit on macOS.
+- Screenshots and findings at the four reference widths.
+
+The artifact digest in the table at the top of this record identifies the revision CIN-573 submitted for review. The documents have since been updated to match the shipped builder, so a reviewer must record the digest or commit of the revision they actually reviewed.
+
 ## Findings and disposition
 
 | ID | Finding | Severity | Owner | Disposition | Verified revision |

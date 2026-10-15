@@ -309,6 +309,69 @@ Import recognition is qualified: resolver version/resolutionOrder, Acronis value
 
 The inherited DTCG strokeStyle case remains a validation boundary: successful import preserves source and metadata, while malformed none, hidden, or banana values fail with original paths. Browser and command-line paths must report the same ordered provenance and diagnostics.
 
+## Shipped behavior and automated evidence
+
+COR-254 (TB12) is the acceptance pass over the integrated builder. This section records what shipped and which automated checks prove it; it does not record any human approval, and the approval fields in [theme-builder.a11y.md](theme-builder.a11y.md) are unchanged.
+
+### Where it runs
+
+The builder is the `/theme-builder` route of `applications/playground`, with its trusted preview frame at `/theme-builder/preview`. The static export (`bun run build`) writes both routes and their bundle graphs, including the evaluation worker. Documentation routes load none of it.
+
+### Evaluation runs off the main thread
+
+The token runtime evaluates in module workers (`theme-runtime-worker.ts`, built by the same `Bun.build` as the workbench and preview entries). `createWorkerEvaluator` implements the existing `ThemeEvaluator` seam, so no caller changed. The draft's own evaluation has a worker to itself; the checks, export and proposal surfaces share a second one, so an edit's preview is never queued behind the previous edit's background checks. The embedded Cinder base crosses the worker boundary once per worker, not with every edit. Responses are still matched to the revision and context they answer, and results are remembered per envelope on the main thread.
+
+Because a context change now lands after a short evaluation, the Color mode and Motion selects show the requested context (`requestedContext`) while the change is in flight. A second change made in that moment builds on the first. If the change cannot be evaluated, the controls return to the applied context.
+
+Cold start, measured on the same suite before and after (Chromium, `/theme-builder` loaded cold, until the draft, the preview and the checks panel are ready). Long tasks are main-thread tasks over 50ms.
+
+| Condition | Before (in-thread) | After (workers) |
+| --- | --- | --- |
+| No throttling, longest task | 234 to 277ms (three tasks, 414 to 543ms in all) | 82 to 90ms (one task) |
+| 4x CPU slowdown, longest task | 996ms (three tasks, 1780ms in all) | 348 to 373ms (two tasks, about 430ms in all) |
+| 6x CPU slowdown, longest task | 1513ms (three tasks, 2733ms in all) | 570ms (about 710ms in all) |
+
+The several-second block reported for a loaded host reproduces only under CPU slowdown. On an unloaded Apple-silicon desktop the first evaluation held the thread for roughly a quarter of a second. What remains after the change is the page's own script start-up; the runtime no longer blocks input.
+
+### Automated suites
+
+All run in Chromium against the development server and against the static export (`PLAYGROUND_BROWSER_STATIC=1`), from `applications/playground` with `bun run test:browser`.
+
+| Suite | Covers |
+| --- | --- |
+| `theme-builder-workflow.playwright.ts` | Create a theme; edit a radius, a spacing token, a motion token, a color, a composite shadow member and an alias; invalid input kept and recovered; export source, CSS and portable subset and compare them with the preview; apply a palette, see its findings, apply one remediation fix and undo it; CSS blocked while errors remain; re-import the exported source to the identical draft; reload; all six contexts; 1440, 768, 390 and 320px with every tab free of horizontal overflow |
+| `theme-builder-accessibility.playwright.ts` | Axe (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`, every impact level) on the builder chrome in six contexts, on every preview scene in light and dark and on the reference scenes in the four other contexts, and on library dialogs, proposals, the export and import dialogs, the Source and dependencies disclosure, the checks panel (passing and failing) and the three mobile tabs; plus rendered 1.4.4, 1.4.10, 1.4.12, 2.4.7, 2.4.11, 2.5.8, forced colors and reduced motion checks. One test per scene, context or surface, so no test needs a raised budget |
+| `theme-builder-keyboard.playwright.ts` | A forward and backward Tab pass with visible, unobscured focus and no trap; a keyboard-only edit, Apply and Undo; focus returned to the trigger after every dialog, by Escape and by its own button, including nested Trash and permanent-delete dialogs |
+| `theme-builder-performance.playwright.ts` | p95 (19th of 20 samples, after three warm-ups) of at most 200ms for opening a category, filtering `radius`, committing a radius edit, committing an accent edit and switching light and dark |
+| `theme-builder-responsiveness.playwright.ts` | The runtime runs in workers; the longest main-thread task during a cold start is at most 200ms, and at most 600ms at a 4x CPU slowdown |
+| `theme-builder-foundations`, `-colors`, `-composites`, `-interchange`, `-remediation`, `-draft`, `-preview` | The issue-level scenarios of the foundation, color, composite and alias, import and export, remediation, draft and storage, and preview work |
+
+Performance, in milliseconds, measured by `theme-builder-performance.playwright.ts` on an Apple-silicon desktop with no CPU throttling:
+
+| Interaction           | Development server | Static export |
+| --------------------- | ------------------ | ------------- |
+| Open a category       | 27.2               | 30.1          |
+| Filter `radius`       | 27.3               | 26.3          |
+| Commit a radius edit  | 155.0              | 154.8         |
+| Commit an accent edit | 155.8              | 154.6         |
+| Switch light and dark | 45.2               | 44.5          |
+
+The commit budgets leave about 45ms of margin: the edit is evaluated in a worker and returned, which costs more than evaluating in-thread but never blocks input.
+
+### Defects found and fixed by the acceptance pass
+
+- The import dialog's file input had no accessible name (Axe `label`, critical). It is now named "Theme file (JSON)".
+- The color picker's three stacked copy-format buttons were 14px tall (WCAG 2.5.8, Axe `target-size`). They are now at least 24px tall, with a CSS regression test.
+- A second preview-context change made before the first had landed discarded the first. The controls now build on the requested context.
+- Browser suites that assumed a synchronous evaluation now wait for the frame, the closing dialog or the committed lock. The interchange suite addressed a field the foundation editors replaced.
+
+### Still pending, and not claimed here
+
+- Steve Kinney's design sign-off, recorded against the exact revision.
+- The named practitioner's accessibility sign-off, including the manual VoiceOver, keyboard, focus and reflow checks.
+- Manual reproducible runs in current stable Firefox and Safari/WebKit on macOS.
+- Screenshots and findings at the four reference widths for the design sign-off.
+
 ## Review gate
 
 This artifact is complete for implementation handoff when the coordinator can point to every contract state above, the exact Cinder primitive mapping, and the review record in docs/theme-builder.a11y.md. It is not complete for CIN-573 until Steve's design approval and Steve's or his named practitioner's recorded accessibility review match the exact artifact revision and report zero remaining findings.
