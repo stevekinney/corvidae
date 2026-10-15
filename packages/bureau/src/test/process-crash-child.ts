@@ -9,12 +9,15 @@
  * trapped, so whatever the parent finds afterwards was genuinely on disk
  * before the process died and the claim it held is left to lapse.
  *
+ * `verify` and `relaunch-recover` are the exceptions: each is a later boot
+ * over a store a crashed child left behind, and exits normally.
+ *
  * Not a test file: it is spawned by `process-crash-recovery.test.ts`. Each
  * scenario is a named function below; the `scenarios` table is the extension
  * point for further crash scenarios.
  */
-import { writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { createCheckpointStore, stopWhen } from '@lostgradient/operative';
@@ -41,6 +44,13 @@ import {
 } from './process-crash-work-integrity-fixtures';
 
 const POLL_ATTEMPTS = 2000;
+/** Durable statuses a run never leaves. */
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'timed-out',
+]);
 const POLL_DELAY_MS = 5;
 const runtime = createDefaultRuntimeServices();
 
@@ -63,9 +73,17 @@ if (
   process.exit(2);
 }
 
-/** Bounded condition poll with a tiny real delay (LMDB starves a zero-delay loop). */
-async function pollUntil(description: string, check: () => boolean | Promise<boolean>) {
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt += 1) {
+/**
+ * Condition poll with a tiny real delay (LMDB starves a zero-delay loop),
+ * bounded by `attempts`. A scenario whose parent enforces its own deadline
+ * passes `Infinity`, so a slow host is not mistaken for a stuck one.
+ */
+async function pollUntil(
+  description: string,
+  check: () => boolean | Promise<boolean>,
+  attempts = POLL_ATTEMPTS,
+) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (await check()) return;
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, POLL_DELAY_MS));
   }
@@ -309,6 +327,73 @@ async function humanWaitParked(): Promise<void> {
   writeMarker({ runId: run.id });
 }
 
+/**
+ * COR-1439: the supervisor's relaunch after `park-after-step-0` died from
+ * SIGKILL. Boots a durable Bureau over the same store, lets boot recovery and
+ * durable maintenance adopt the run once the dead holder's claim lapses, and
+ * records the run's terminal status beside the crash marker. It polls without
+ * an attempt bound: the parent test owns the deadline and kills it there.
+ */
+async function relaunchRecover(): Promise<void> {
+  const { runId } = JSON.parse(readFileSync(markerPath as string, 'utf8')) as { runId: string };
+  let stepZeroCalls = 0;
+  let laterStepCalls = 0;
+  const bureau = await createBureau({
+    agents: {},
+    generate: async ({ step }) => {
+      if (step === 0) stepZeroCalls += 1;
+      else laterStepCalls += 1;
+      return { content: `relaunched step ${step}`, toolCalls: [] };
+    },
+    toolbox: createToolbox([createNextTool()]),
+    storage: { type: backend as 'sqlite' | 'lmdb', path: storagePath as string },
+    durableExecution: true,
+    stopWhen: stopWhen.noToolCalls(),
+    durableOwnership: {
+      ownership: 'workflow-lease',
+      workflowClaimTtlMs: CLAIM_TTL_MS,
+      workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
+    },
+  });
+  const report = await bureau.waitForRecovery?.();
+  await pollUntil(
+    'the relaunched run to reach a terminal status',
+    async () => {
+      const durable = await bureau.getDurableRun(runId);
+      if (durable !== null && durable !== undefined && TERMINAL_STATUSES.has(durable.status)) {
+        return true;
+      }
+      await bureau.runDurableMaintenance();
+      return false;
+    },
+    // The parent test kills this child at its own deadline and reports that.
+    Number.POSITIVE_INFINITY,
+  );
+  const durable = await bureau.getDurableRun(runId);
+  if (durable?.status !== 'completed') {
+    // A run that ended any other way will never complete, so say how it ended
+    // now rather than leaving the parent to wait out its deadline.
+    process.stderr.write(
+      `child: the relaunched run ended ${durable?.status}: ${durable?.error ?? 'no error'}\n`,
+    );
+    process.exit(5);
+  }
+  writeFileSync(
+    join(dirname(markerPath as string), 'relaunched.json'),
+    JSON.stringify({
+      runId,
+      recoveryOutcome: report?.outcome,
+      durableStatus: durable?.status,
+      runStatus: bureau.getRun(runId)?.status,
+      stepZeroCalls,
+      laterStepCalls,
+    }),
+    'utf8',
+  );
+  const shutdown = await bureau.shutdown();
+  process.exit(shutdown.unresolved === 0 ? 0 : 1);
+}
+
 /** COR-1391: a non-crashing boot over the recovered, shut-down store. */
 async function verify(): Promise<void> {
   const directory = dirname(markerPath as string);
@@ -337,6 +422,7 @@ const scenarios: Record<string, () => Promise<void>> = {
   'memory-write-then-crash': memoryWriteThenCrash,
   'two-parked-runs': twoParkedRuns,
   'human-wait-parked': humanWaitParked,
+  'relaunch-recover': relaunchRecover,
   verify,
 };
 

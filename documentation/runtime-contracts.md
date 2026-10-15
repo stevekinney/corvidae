@@ -180,6 +180,57 @@ Child runs are parent-owned; [Parent, child, and peer communication](#parent-chi
 
 The distinction matters in failure handling. `abort()` is a request signal. `AgentRun.result()` resolves ordinary model, tool, and cancellation outcomes, but `AgentRun.closed()` waits for tool drains, hooks, and registered children before returning `completed`; a cancellation-ignoring callback can therefore leave cleanup pending after the result has settled. Armorer makes the same distinction explicit with `whenSettled()` and `unknown-effect`.
 
+## Hosting in a long-lived process
+
+A service, worker, or interactive CLI that hosts Weft, Operative, or Bureau owns its own SIGINT and SIGTERM. The libraries already expose every part a clean exit needs; the host composes them in one order: close admission, settle in-flight work under an explicit policy, and exit only after cleanup is acknowledged. Durable work the process does not finish stays in the store, and the next process recovers it. This is the shape every process manager relies on, from Ctrl-C at a terminal to a supervisor's SIGTERM followed by a relaunch.
+
+This is the reference handler. It is the file `packages/bureau/src/test/signal-shutdown/shutdown-handler.ts`, copied here byte for byte, and `packages/bureau/src/signal-shutdown.test.ts` fails if the two differ.
+
+```ts
+/**
+ * Turns SIGINT and SIGTERM into one orderly shutdown of a long-lived process.
+ *
+ * The first signal starts `shutdown`, which closes admission, settles in-flight
+ * work under the host's policy, and resolves `true` only once every owner has
+ * acknowledged its cleanup. The process then exits 0, or 1 when cleanup is not
+ * acknowledged. A second signal during that wait exits at once with 130 (SIGINT)
+ * or 143 (SIGTERM); durable work stays in the store for the next process.
+ */
+export type ShutdownSignal = 'SIGINT' | 'SIGTERM';
+
+export interface ShutdownSignalOptions {
+  readonly shutdown: (signal: ShutdownSignal) => Promise<boolean>;
+}
+
+export const EXIT_CODES = { settled: 0, unresolved: 1, SIGINT: 130, SIGTERM: 143 } as const;
+
+export function handleShutdownSignals(options: ShutdownSignalOptions): void {
+  let shuttingDown = false;
+  const onSignal = (signal: ShutdownSignal): void => {
+    if (shuttingDown) process.exit(EXIT_CODES[signal]);
+    shuttingDown = true;
+    options.shutdown(signal).then(
+      (settled) => process.exit(settled ? EXIT_CODES.settled : EXIT_CODES.unresolved),
+      () => process.exit(EXIT_CODES.unresolved),
+    );
+  };
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+}
+```
+
+The first signal calls `shutdown`; a second SIGINT while it runs exits at once with 130, which is how an operator who pressed Ctrl-C twice gets their terminal back. Each library supplies the `shutdown` callback from its own cleanup boundary:
+
+| Host | `shutdown` callback | Settled when |
+| --- | --- | --- |
+| Weft engine | `await engine.shutdown()` | it resolves `true`: queued starts drained, write paths down, and the ownership lease released, so a relaunched engine adopts the in-flight workflow without waiting for the lease to lapse |
+| Durable Operative run | `run.abort(reason)`, then `await run.closed()` | the cleanup acknowledgement is `completed`; the run's terminal status is `aborted` and its workflow is `cancelled` |
+| Bureau | `await bureau.shutdown({ policy, timeoutMilliseconds })` | the `BureauShutdownReport` has `unresolved === 0` |
+
+Bureau's `policy` decides what happens to in-flight runs. `'drain'` refuses any new run with a `CONFLICT` `BureauError` and lets each in-flight run reach its own terminal result; `'abort'` aborts them, and the abort is durable, so the next process finds those runs cancelled rather than resuming them. `timeoutMilliseconds` bounds only the wait. When it elapses, the report's `owners` names every owner still `unresolved`, the callback returns `false`, and the process exits 1 so the supervisor can tell an unacknowledged shutdown from a clean one; the unfinished run remains durable. A process forced out by a second signal, or killed with SIGKILL, leaves its workflow claims to lapse after `workflowClaimTtlMs`; the relaunched Bureau adopts the run once the claim lapses and finishes it. The tested relaunch drives `bureau.runDurableMaintenance()` while it waits.
+
+`packages/bureau/src/signal-shutdown.test.ts` proves each row against a real child process and a real signal, and runs the Weft and Operative hosts under both Bun and native Node with `NodeSQLiteStorage`; `packages/bureau/src/process-crash-recovery.test.ts` covers the SIGKILL relaunch.
+
 ## Parent, child, and peer communication
 
 A parent addresses its children; nothing addresses a peer. The [multi-agent lifecycle guide](./multi-agent-lifecycle.md) is the full contract, with runnable examples. This is the summary.

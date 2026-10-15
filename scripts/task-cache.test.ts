@@ -482,6 +482,22 @@ test('the playground build hashes the root package map its documentation reads',
   expect(documentation).toContain('Bun.file(PACKAGE_MAP_PATH)');
 });
 
+test('the bureau tests hash the runtime contracts guide they compare a fixture with', async () => {
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const task = configuration.tasks['@lostgradient/bureau#test'];
+  // `signal-shutdown.test.ts` fails when the reference handler in the guide drifts from the
+  // tested fixture. The guide lives outside the package, so without this input an edit to it
+  // alone would restore a cached pass. The entry replaces the generic `test` definition, so it
+  // restates `transit` and the generic environment.
+  expect(task?.inputs).toContain('$TURBO_DEFAULT$');
+  expect(task?.inputs).toContain('$TURBO_ROOT$/documentation/runtime-contracts.md');
+  expect(task?.dependsOn).toContain('transit');
+  expect(task?.env).toEqual(configuration.tasks.test?.env);
+  // Pin the read the input covers, so removing the read prompts removing the input.
+  const source = await Bun.file(join(root, 'packages/bureau/src/signal-shutdown.test.ts')).text();
+  expect(source).toMatch(/'documentation',\s*'runtime-contracts\.md'/);
+});
+
 /**
  * A static model of turbo's `dependsOn` resolution: it strips a leading `^`
  * and falls back from `<package>#<task>` to the bare `<task>` definition. It
