@@ -15,16 +15,20 @@ import {
   flattenReport,
   resultProblems,
   selectionProblems,
+  TERMINAL_FILE_FILTER,
   TERMINAL_PROJECTS,
+  titlesByFile,
   type PlaywrightReport,
+  type TitleManifest,
 } from './terminal-browser-selection.ts';
 
 const root = resolve(import.meta.dirname, '..', '..', '..');
 const configuration = resolve(root, 'scripts', 'browser-fixtures', 'playwright.config.ts');
 const selection = [
   ...TERMINAL_PROJECTS.flatMap((project) => [`--project=${project}`]),
-  'terminal-',
+  TERMINAL_FILE_FILTER,
 ];
+const manifestPath = resolve(import.meta.dirname, 'terminal-browser-titles.json');
 
 function playwright(args: string[], environment: Record<string, string> = {}) {
   return Bun.spawn(
@@ -52,7 +56,14 @@ async function main(): Promise<number> {
     return 1;
   }
   const selected = flattenReport(JSON.parse(listed) as PlaywrightReport);
-  const missing = selectionProblems(selected, TERMINAL_FIXTURE_NAMES.length);
+  if (Bun.argv.includes('--write-manifest')) {
+    // Recording is a reviewed edit: the file lists every test the terminal proof must run.
+    await Bun.write(manifestPath, `${JSON.stringify(titlesByFile(selected), null, 2)}\n`);
+    process.stdout.write(`Recorded the terminal test titles in ${manifestPath}.\n`);
+    return 0;
+  }
+  const recorded = JSON.parse(await readFile(manifestPath, 'utf8')) as TitleManifest;
+  const missing = selectionProblems(selected, TERMINAL_FIXTURE_NAMES.length, recorded);
   if (missing.length > 0) {
     process.stderr.write(
       `The terminal browser selection is incomplete:\n- ${missing.join('\n- ')}\n`,
@@ -66,7 +77,7 @@ async function main(): Promise<number> {
   const directory = await mkdtemp(join(tmpdir(), 'terminal-browser-'));
   const reportPath = join(directory, 'results.json');
   try {
-    const extra = Bun.argv.slice(2);
+    const extra = Bun.argv.slice(2).filter((argument) => argument !== '--write-manifest');
     const run = Bun.spawn(
       [
         process.execPath,
@@ -88,9 +99,9 @@ async function main(): Promise<number> {
     );
     const status = await run.exited;
     if (status !== 0) return status;
-    if (extra.length > 0) return 0;
     const ran = flattenReport(JSON.parse(await readFile(reportPath, 'utf8')) as PlaywrightReport);
-    const problems = resultProblems(selected, ran);
+    // Extra arguments narrow the run; what ran must still be part of the selection and pass.
+    const problems = resultProblems(selected, ran, { subset: extra.length > 0 });
     if (problems.length > 0) {
       process.stderr.write(
         `The terminal browser run did not match its selection:\n- ${problems.join('\n- ')}\n`,

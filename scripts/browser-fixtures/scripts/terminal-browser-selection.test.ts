@@ -5,8 +5,10 @@ import {
   resultProblems,
   selectionProblems,
   TERMINAL_BEHAVIORAL_SPECS,
+  TERMINAL_FILE_FILTER,
   TERMINAL_PROJECTS,
   TERMINAL_VISUAL_SPEC,
+  titlesByFile,
   type SelectedTest,
 } from './terminal-browser-selection.ts';
 
@@ -117,7 +119,83 @@ describe('the required terminal selection', () => {
   });
 });
 
+describe('the file filter', () => {
+  const filter = new RegExp(TERMINAL_FILE_FILTER);
+
+  test('selects terminal specs in a tests directory and nothing else', () => {
+    expect(filter.test('/work/scripts/browser-fixtures/tests/terminal-input.playwright.ts')).toBe(
+      true,
+    );
+    expect(filter.test('/home/terminal-work/scripts/browser-fixtures/tests/smoke.spec.ts')).toBe(
+      false,
+    );
+    expect(filter.test('/work/tests/other-terminal-input.playwright.ts')).toBe(false);
+    expect(filter.test('/work/tests/terminal-support.ts')).toBe(false);
+    expect(filter.test('/work/src/terminal-input.playwright.ts')).toBe(false);
+  });
+});
+
+describe('the recorded title manifest', () => {
+  const recorded = () => titlesByFile(full());
+
+  test('the full selection matches the manifest it recorded', () => {
+    expect(selectionProblems(full(), FIXTURES, recorded())).toEqual([]);
+  });
+
+  test('a test deleted from every browser fails the guard, not only one removed from a browser', () => {
+    const manifest = recorded();
+    const without = full().filter(
+      (candidate) => !(candidate.file === 'terminal-vt.playwright.ts' && candidate.title === 'two'),
+    );
+    const problems = selectionProblems(without, FIXTURES, manifest).join('\n');
+    expect(problems).toContain('terminal-vt.playwright.ts › two is missing in chromium');
+    expect(problems).toContain('terminal-vt.playwright.ts › two is missing in webkit-terminal');
+  });
+
+  test('a visual cell that was recorded and is gone fails the guard', () => {
+    const manifest = recorded();
+    const without = full().filter((candidate) => candidate.title !== 'cell 3');
+    expect(selectionProblems(without, FIXTURES, manifest).join('\n')).toContain(
+      `${TERMINAL_VISUAL_SPEC} › cell 3 is missing in chromium`,
+    );
+  });
+
+  test('a test nobody recorded, and a spec with no entry, are named', () => {
+    const manifest = recorded();
+    const added = [
+      ...full(),
+      {
+        file: 'terminal-vt.playwright.ts',
+        project: 'chromium',
+        title: 'new',
+        skipped: false,
+        outcome: undefined,
+      },
+    ];
+    expect(selectionProblems(added, FIXTURES, manifest).join('\n')).toContain(
+      'terminal-vt.playwright.ts › new (chromium) is not in the recorded manifest',
+    );
+    const { 'terminal-vt.playwright.ts': _removed, ...rest } = manifest;
+    expect(selectionProblems(full(), FIXTURES, rest)).toContain(
+      'terminal-vt.playwright.ts has no entry in the recorded manifest',
+    );
+  });
+});
+
 describe('the terminal run', () => {
+  test('with narrowed arguments the subset that ran must be selected, passing and not empty', () => {
+    const selected = full();
+    const ran = selected.slice(0, 3);
+    expect(resultProblems(selected, ran, { subset: true })).toEqual([]);
+    expect(resultProblems(selected, [], { subset: true })).toEqual(['no test ran']);
+    expect(
+      resultProblems(selected, [{ ...ran[0]!, outcome: 'failed' }], { subset: true })[0],
+    ).toContain('ended as failed');
+    expect(
+      resultProblems(selected, [{ ...ran[0]!, title: 'unknown' }], { subset: true })[0],
+    ).toContain('ran but was not selected');
+  });
+
   test('every selected test must report a pass', () => {
     const selected = full();
     expect(resultProblems(selected, selected)).toEqual([]);

@@ -9,6 +9,13 @@
 
 export const TERMINAL_PROJECTS = ['chromium', 'firefox-terminal', 'webkit-terminal'] as const;
 
+/**
+ * The positional filter Playwright matches against a file's path as a regular expression. It is
+ * anchored to a `tests` directory and the `terminal-*.playwright.ts` name, so a checkout path that
+ * happens to contain `terminal-` selects nothing extra.
+ */
+export const TERMINAL_FILE_FILTER = String.raw`/tests/terminal-[^/]*\.playwright\.ts$`;
+
 /** Specs every one of the three browsers must run. */
 export const TERMINAL_BEHAVIORAL_SPECS = [
   'terminal-failure.playwright.ts',
@@ -35,7 +42,7 @@ type ReportTest = {
   results?: Array<{ status?: string }>;
 };
 type ReportSpec = { title?: string; file?: string; tests?: ReportTest[] };
-type ReportSuite = { file?: string; specs?: ReportSpec[]; suites?: ReportSuite[] };
+type ReportSuite = { title?: string; file?: string; specs?: ReportSpec[]; suites?: ReportSuite[] };
 export type PlaywrightReport = { suites?: ReportSuite[] };
 
 export type SelectedTest = {
@@ -54,14 +61,14 @@ function baseName(file: string): string {
 /** Every test in a Playwright JSON report, listing or results, flattened. */
 export function flattenReport(report: PlaywrightReport): SelectedTest[] {
   const found: SelectedTest[] = [];
-  const visit = (suite: ReportSuite, inherited: string): void => {
+  const visit = (suite: ReportSuite, inherited: string, path: string[]): void => {
     const file = suite.file ?? inherited;
     for (const spec of suite.specs ?? []) {
       for (const test of spec.tests ?? []) {
         found.push({
           file: baseName(spec.file ?? file),
           project: test.projectName ?? '',
-          title: spec.title ?? '',
+          title: [...path, spec.title ?? ''].join(' › '),
           skipped:
             test.expectedStatus === 'skipped' ||
             (test.annotations ?? []).some(
@@ -71,9 +78,12 @@ export function flattenReport(report: PlaywrightReport): SelectedTest[] {
         });
       }
     }
-    for (const child of suite.suites ?? []) visit(child, file);
+    // A file's own suite is titled with its name; only describe blocks belong in a test's title.
+    for (const child of suite.suites ?? []) {
+      visit(child, file, child.title ? [...path, child.title] : path);
+    }
   };
-  for (const suite of report.suites ?? []) visit(suite, suite.file ?? '');
+  for (const suite of report.suites ?? []) visit(suite, suite.file ?? '', []);
   return found;
 }
 
@@ -82,7 +92,11 @@ export function flattenReport(report: PlaywrightReport): SelectedTest[] {
  * all three browsers with the same number of tests in each, the baselines in Chromium with every
  * fixture in both themes at every viewport, and nothing skipped.
  */
-export function selectionProblems(tests: readonly SelectedTest[], fixtureCount: number): string[] {
+export function selectionProblems(
+  tests: readonly SelectedTest[],
+  fixtureCount: number,
+  recorded?: TitleManifest,
+): string[] {
   const problems: string[] = [];
   const count = (file: string, project: string) =>
     tests.filter((test) => test.file === file && test.project === project).length;
@@ -123,8 +137,56 @@ export function selectionProblems(tests: readonly SelectedTest[], fixtureCount: 
   for (const test of unexpected) {
     problems.push(`${test.file} is selected but is not a terminal spec (${test.project})`);
   }
+  if (recorded !== undefined) problems.push(...manifestProblems(tests, recorded));
   for (const test of tests.filter((candidate) => candidate.skipped)) {
     problems.push(`${test.file} › ${test.title} (${test.project}) is skipped`);
+  }
+  return problems;
+}
+
+/** The expected test titles of each spec file, as recorded by `--write-manifest`. */
+export type TitleManifest = Readonly<Record<string, readonly string[]>>;
+
+/** The titles of every spec file in `tests`, from the Chromium project, sorted. */
+export function titlesByFile(tests: readonly SelectedTest[]): Record<string, string[]> {
+  const titles: Record<string, string[]> = {};
+  for (const test of tests.filter((candidate) => candidate.project === 'chromium')) {
+    (titles[test.file] ??= []).push(test.title);
+  }
+  for (const list of Object.values(titles)) list.sort();
+  return titles;
+}
+
+/**
+ * Each recorded title must be selected in every browser that runs its spec, and nothing unrecorded
+ * may be selected, so removing a test from all three browsers fails the guard as surely as
+ * removing it from one.
+ */
+export function manifestProblems(
+  tests: readonly SelectedTest[],
+  recorded: TitleManifest,
+): string[] {
+  const problems: string[] = [];
+  for (const [file, titles] of Object.entries(recorded)) {
+    const projects = file === TERMINAL_VISUAL_SPEC ? ['chromium'] : [...TERMINAL_PROJECTS];
+    for (const project of projects) {
+      const present = new Set(
+        tests
+          .filter((test) => test.file === file && test.project === project)
+          .map((test) => test.title),
+      );
+      for (const title of titles) {
+        if (!present.has(title)) problems.push(`${file} › ${title} is missing in ${project}`);
+      }
+      for (const title of present) {
+        if (!titles.includes(title)) {
+          problems.push(`${file} › ${title} (${project}) is not in the recorded manifest`);
+        }
+      }
+    }
+  }
+  for (const file of [...TERMINAL_BEHAVIORAL_SPECS, TERMINAL_VISUAL_SPEC]) {
+    if (!(file in recorded)) problems.push(`${file} has no entry in the recorded manifest`);
   }
   return problems;
 }
@@ -133,9 +195,21 @@ export function selectionProblems(tests: readonly SelectedTest[], fixtureCount: 
 export function resultProblems(
   selected: readonly SelectedTest[],
   ran: readonly SelectedTest[],
+  options: { subset?: boolean } = {},
 ): string[] {
   const problems: string[] = [];
-  if (ran.length !== selected.length) {
+  const key = (test: SelectedTest) => `${test.project} ${test.file} ${test.title}`;
+  if (options.subset === true) {
+    // Extra Playwright arguments narrowed the run: whatever ran must have been selected, must have
+    // passed, and must not be nothing.
+    const known = new Set(selected.map(key));
+    if (ran.length === 0) problems.push('no test ran');
+    for (const test of ran) {
+      if (!known.has(key(test))) {
+        problems.push(`${test.file} › ${test.title} (${test.project}) ran but was not selected`);
+      }
+    }
+  } else if (ran.length !== selected.length) {
     problems.push(`${selected.length} tests were selected but ${ran.length} reported a result`);
   }
   for (const test of ran) {
