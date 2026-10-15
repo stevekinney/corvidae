@@ -144,7 +144,10 @@ async function listVersionedFixtureSource() {
         await Bun.write(join(directory, workspace, path), '');
       }
     }
-    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], { cwd: directory });
+    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], {
+      timeout: 120_000,
+      cwd: directory,
+    });
     const listed = Bun.spawnSync(
       [
         'git',
@@ -156,7 +159,7 @@ async function listVersionedFixtureSource() {
         '--others',
         '--exclude-standard',
       ],
-      { cwd: directory },
+      { timeout: 120_000, cwd: directory },
     );
     return { initialized, listed };
   } finally {
@@ -168,7 +171,13 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
-    const validationStages = scripts['validate']?.split(' && ');
+    // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
+    // instead of rejoining the queue at every stage. Its stages find the lock held by their parent
+    // and reuse it rather than queueing behind it.
+    const validationChain = scripts['validate']?.match(
+      /^bun scripts\/run-exclusively\.ts '([^']+)'$/,
+    );
+    const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
       'bun run lint',
       'bun run typecheck',

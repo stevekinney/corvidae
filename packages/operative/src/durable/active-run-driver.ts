@@ -12,6 +12,7 @@ import {
   classifyTimeoutMessage,
   emptyRunState,
   finalizeRunResult,
+  lostRunToAnotherEngine,
   makeInterruptedRunResult,
   reconstructRunResult,
 } from './active-run-result-reconstruction';
@@ -362,6 +363,13 @@ export async function driveDurableRun(
       costEstimation: options.costEstimation,
       hookTracker,
     });
+  }
+
+  // COR-1390: `handle.result()` also settles when another engine took this
+  // run's claim and finished it; that engine publishes the terminal lifecycle.
+  if (lostRunToAnotherEngine(context, handle)) {
+    reachability.unreachable = true;
+    return makeInterruptedRunResult(conversation);
   }
 
   // The authoritative conversation on the durable path is the one rehydrated

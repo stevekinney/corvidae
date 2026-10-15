@@ -77,6 +77,8 @@ import type {
   AgentRunForName,
   BureauAgentCatalog,
 } from './agent-catalog';
+import type { BureauAssetOptions } from './assets/asset-service';
+import type { AssetService } from './assets/types';
 import type { AuditRetentionOption, AuditTrail, CheckpointRetentionOption } from './audit-trail';
 import type { BureauEventFeed } from './bureau-event-feed.ts';
 import type { BureauChildDelegationOptions, BureauChildren } from './child-topology';
@@ -723,6 +725,13 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   onlineEvals?: OnlineEvalSamplerOptions;
   /**
+   * Managed assets (COR-794) — composes one asset service over the injected
+   * asset storage, policy, and ports, running on this bureau's runtime
+   * services. Exposed as {@link Bureau.assets} and shut down as the
+   * `'assets'` owner. Omit to compose none — the default.
+   */
+  assets?: BureauAssetOptions;
+  /**
    * Host sink for internal operational diagnostics — recovery failures,
    * live-frame listener exceptions, dispose errors, and persistence
    * failures (see {@link BureauDiagnostic}). Distinct from {@link onLog},
@@ -1005,6 +1014,7 @@ export interface BureauShutdownOwnerReport {
     | 'audit-trail'
     | 'event-history'
     | 'durable-engine'
+    | 'assets'
     | 'heartbeat';
   readonly id?: string;
   readonly outcome: CleanupAcknowledgement;
@@ -1825,6 +1835,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * evaluations deterministically.
    */
   readonly onlineEvalSampler: OnlineEvalSampler | undefined;
+
+  /**
+   * The managed-asset service (COR-794). Present whenever `options.assets`
+   * is configured; `undefined` otherwise (the default). `shutdown()` aborts
+   * its in-flight asset work and awaits every cleanup acknowledgement.
+   */
+  readonly assets: AssetService | undefined;
 
   /**
    * Pages `owner`'s durable event history (AB-91's `ab91-01` slice,

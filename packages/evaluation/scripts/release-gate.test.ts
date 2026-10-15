@@ -119,6 +119,7 @@ function expectReport(
 }
 
 describe('runReleaseGateCommand (in process)', () => {
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each(['baseline', 'sampleSize'])(
     'exits 64 for a test gate file missing %s',
     async (field) => {
@@ -149,6 +150,7 @@ describe('runReleaseGateCommand (in process)', () => {
     },
   );
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each<[string, GateFile, number, GateDecisionRecord['decision']]>([
     ['the passing script', fixtureGateFile('passing'), 0, 'pass'],
     ['the regressing script', fixtureGateFile('regressing'), 1, 'regression'],
@@ -181,6 +183,7 @@ describe('runReleaseGateCommand (in process)', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('fixture-regression with an expired baseline exits 3', async () => {
     // A passing decision recorded a year before this run.
     const store = textValueStore(new BunSQLiteStorage(storePath));
@@ -218,6 +221,7 @@ describe('runReleaseGateCommand (in process)', () => {
     expect(result.stderr).toContain('insufficient evidence (baseline-expired)');
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('every run appends exactly one gate decision and never changes an earlier one', async () => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
     const args = ['--gate', FIXTURE_GATE_ID, '--gates-dir', gates, '--store', storePath];
@@ -302,6 +306,7 @@ describe('runReleaseGateCommand', () => {
     expect(DEFAULT_GATES_DIRECTORY).toBe(join(PACKAGE_DIRECTORY, 'gates'));
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('runs every gate in the directory and exits with the most severe code', async () => {
     const gates = await gatesDirectory({
       alpha: fixtureGateFile('passing'),
@@ -322,6 +327,7 @@ describe('runReleaseGateCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('names the predeclared improvement a run fell short of', async () => {
     const gates = await gatesDirectory({
       [FIXTURE_GATE_ID]: fixtureGateFile('passing', {
@@ -354,6 +360,7 @@ describe('runReleaseGateCommand', () => {
    * actor of the overridden run, override fields, the reason the next run
    * reports the override rejected — `null` when it covers nothing to reject].
    */
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each<[string, GateFile, GateFile, string, Record<string, unknown>, string | null]>([
     [
       'by a principal other than the override authority',
@@ -441,6 +448,7 @@ describe('runReleaseGateCommand', () => {
     },
   );
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('describes overrides, infrastructure failures, and a gate-decision baseline on stderr', async () => {
     const overridable = fixtureGateFile('regressing', capitalThresholdAt('overridable'));
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: overridable });
@@ -514,6 +522,7 @@ describe('runReleaseGateCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test.each([
     ['an unknown option', ['--force']],
     ['a positional argument', ['fixture-regression']],
@@ -526,6 +535,7 @@ describe('runReleaseGateCommand', () => {
     expect(result.stderr).toContain('Usage: bun run --cwd packages/evaluation release-gate');
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('exits 64 when the gates directory is missing or holds no gates', async () => {
     const missing = await runInProcess([
       '--gates-dir',
@@ -547,6 +557,7 @@ describe('runReleaseGateCommand', () => {
     expect(defaultRevisionRecords).toEqual(new Set([checkedOutHead, OTHER_REVISION]));
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('runs as the current user unless --actor names someone', async () => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile() });
     await runInProcess(['--gates-dir', gates, '--store', storePath]);
@@ -557,6 +568,7 @@ describe('runReleaseGateCommand', () => {
     );
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('keeps the most severe outcome when the machinery fails after earlier gates ran', async () => {
     const gates = await gatesDirectory({
       alpha: fixtureGateFile('passing', { sampleSize: 0 }),
@@ -583,6 +595,7 @@ describe('runReleaseGateCommand', () => {
     expect(result.stderr).toContain('The release gate itself failed: the id source is exhausted');
   });
 
+  // spawn-free: the revision readers are injected here, so the command never runs git.
   test('exits 2, never 0 or 1, when the gate machinery itself fails', async () => {
     const gates = await gatesDirectory({ [FIXTURE_GATE_ID]: fixtureGateFile('regressing') });
     const result = await runInProcess(['--gates-dir', gates, '--store', directory]);

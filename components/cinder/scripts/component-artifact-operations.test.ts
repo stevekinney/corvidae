@@ -45,6 +45,7 @@ async function runPrettierOverridesProbe(): Promise<{
 
   try {
     const subprocess = Bun.spawn({
+      timeout: 120_000,
       cmd: [process.execPath, scriptPath],
       cwd: repositoryRoot,
       stdout: 'pipe',

@@ -13,6 +13,7 @@ import {
   classifyTimeoutMessage,
   finalizeRunResult,
   loadRunStateFromCheckpoint,
+  lostRunToAnotherEngine,
   makeInterruptedRunResult,
   reconstructRunResult,
   reconstructTerminalRunError,
@@ -122,6 +123,14 @@ export async function driveReattachedRun(
         }`,
       );
     }
+    return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
+  }
+
+  // COR-1390: `handle.result()` also settles when another engine reclaimed
+  // this run after this one recovered it and finished it there; that engine
+  // publishes the terminal lifecycle, so this one stays write-free.
+  if (lostRunToAnotherEngine(context, handle)) {
+    reachability.unreachable = true;
     return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
   }
 

@@ -344,9 +344,12 @@ export class Session {
     }
     if (this.#process.kind === 'starting') this.#exitedDuringStartup = true;
     this.#process = { kind: 'exited', exitCode, signal };
+    // The natural exit is the first cause, recorded before any listener can run. A listener that
+    // stops, disposes or detaches from inside its `processExit` call hurries the drain it finds
+    // under way, but it cannot take the cause from the exit that began the close.
+    this.#beginClose('process-exit');
     this.#emit({ type: 'processExit', exitCode, signal });
     this.#cancelQueued('process-exited');
-    this.#beginClose('process-exit');
     return true;
   }
 
@@ -486,7 +489,8 @@ export class Session {
       );
       attachment.inFlight = { operation, settling };
       const settled = await settling.outcome;
-      if (this.#finalized) return;
+      // A close that already reported this operation as unknown owns its result: nothing is said twice.
+      if (this.#finalized || attachment.inFlight === undefined) return;
       attachment.inFlight = undefined;
       attachment.inputBytes -= byteLengthOf(operation);
       if (settled.kind === 'value') continue;
@@ -690,6 +694,9 @@ export class Session {
     this.#revoke(cause);
     this.#cleanup = { kind: 'running' };
     const released = await this.#runCleanup();
+    // The last operation result is an event like any other, so it goes out before deliveries settle:
+    // a listener that rejects it must still be able to turn a natural close into `callback-failed`.
+    this.#abandonInFlight();
     await this.#settleDeliveries();
     // A listener that failed during a natural close means the close was not the clean end it claims.
     const finalCause =
@@ -729,18 +736,19 @@ export class Session {
     return settled.kind === 'timeout' ? 'unknown' : 'incomplete';
   }
 
+  /** Report the operation still in flight as unknown delivery, once, and stop waiting for the backend to answer it. */
+  #abandonInFlight(): void {
+    const inFlight = this.#attachment?.inFlight;
+    if (inFlight === undefined) return;
+    (this.#attachment as AttachmentRuntime).inFlight = undefined;
+    this.#emit(
+      this.#operationResult(inFlight.operation, 'unknown', 'closed-before-acknowledgement'),
+    );
+    inFlight.settling.cancel();
+  }
+
   #finalize(cause: CloseCause, cleanup: CleanupOutcome): void {
     const attachment = this.#attachment;
-    if (attachment?.inFlight !== undefined) {
-      this.#emit(
-        this.#operationResult(
-          attachment.inFlight.operation,
-          'unknown',
-          'closed-before-acknowledgement',
-        ),
-      );
-      attachment.inFlight.settling.cancel();
-    }
     attachment?.releaseControl?.();
     const unavailableBytes = (attachment?.output.pendingBytes ?? 0) + this.#droppedBytes;
     const summary: SessionClosedSummary = {

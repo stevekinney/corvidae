@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import type { AssetWorkSnapshot } from '../assets/types';
 import type { AuditRecord } from '../audit-trail';
 import { encodeKey } from '../audit-trail';
 import type { WebhookDeliveryRecord } from '../webhook-notifier';
@@ -8,6 +9,7 @@ import {
   type BureauFaultPlan,
   type BureauFaultPlanEntry,
   BureauFaultSelectorResolutionError,
+  selectAssetWorkFaultTarget,
   selectAuditWriteFaultTarget,
   selectSchedulerTaskFaultTarget,
   selectWebhookDeliveryFaultTarget,
@@ -143,6 +145,53 @@ describe('selectSchedulerTaskFaultTarget', () => {
     ];
 
     expect(() => selectSchedulerTaskFaultTarget(tasks, 'dup')).toThrow(
+      BureauFaultSelectorResolutionError,
+    );
+  });
+});
+
+describe('asset work fault targets (COR-794)', () => {
+  function work(id: string, workKind: AssetWorkSnapshot['workKind'] = 'scan'): AssetWorkSnapshot {
+    return {
+      id,
+      kind: `asset-${workKind}`,
+      workKind,
+      assetId: 'asset-1',
+      parentId: undefined,
+      owner: 'alice',
+      startedAt: new Date(0).toISOString(),
+      revision: 1,
+      status: 'pending',
+      lastTransitionAt: new Date(0).toISOString(),
+      projection: 'privileged',
+      ownership: 'independent',
+      detached: false,
+      durability: 'process-local',
+      cancellable: true,
+    };
+  }
+
+  it("names the resolved target's work kind as the plan entry's Bureau fault operation", () => {
+    const target = selectAssetWorkFaultTarget([work('work-1'), work('work-2', 'fetch')], 'work-2');
+    // The operation is derived from the selector's answer, so every work kind the registry can start is addressable.
+    const operation: BureauFaultOperation = `asset:${target.workKind}`;
+    const entry: BureauFaultPlanEntry = {
+      id: 'fetch-blocks',
+      boundary: 'before-work',
+      operation,
+      occurrence: { kind: 'nth', n: 1 },
+      effect: { kind: 'block', workId: target.id },
+    };
+    expect(entry).toMatchObject({ operation: 'asset:fetch', effect: { workId: 'work-2' } });
+  });
+
+  it('resolves an asset work target to exactly one active work snapshot', () => {
+    const active = [work('work-1'), work('work-2', 'fetch')];
+    expect(selectAssetWorkFaultTarget(active, 'work-2').workKind).toBe('fetch');
+    expect(() => selectAssetWorkFaultTarget(active, 'missing')).toThrow(
+      BureauFaultSelectorResolutionError,
+    );
+    expect(() => selectAssetWorkFaultTarget([work('dup'), work('dup')], 'dup')).toThrow(
       BureauFaultSelectorResolutionError,
     );
   });

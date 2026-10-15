@@ -64,6 +64,14 @@ export class SessionConnection {
   #sourcesCompleted = 0;
   /** Session events that arrived before the capabilities were issued, delivered in order once they are. */
   #admissionBuffer: SessionEvent[] | undefined;
+  /**
+   * Cancellations that arrived while the exit was held. On the wire a cancellation is a
+   * `backend-failed` for a submitted operation, which the client reads as the terminal status and
+   * answers a later `process-exit` with a refusal, so they follow the exit instead of preceding it.
+   */
+  /** A failure of a submitted operation was sent: it is the terminal status, so a held exit is not reported. */
+  #submittedFailureSent = false;
+  #heldCancellations: Extract<SessionEvent, { type: 'operationResult' }>[] = [];
   /** A process exit held back until output has ended, so no trailing byte follows it. */
   #pendingExit: { readonly exitCode: number | null; readonly signal: string | null } | undefined;
 
@@ -91,6 +99,19 @@ export class SessionConnection {
     // stale, foreign or malformed frame proves nothing about the peer and must not keep a process alive.
     this.#attachment?.heartbeat();
     this.#dispatch(received.value);
+  }
+
+  /**
+   * The transport itself proved the peer alive, as a WebSocket pong does, with no application frame.
+   * A read-only or output-only attachment may have nothing to send for as long as the session is
+   * quiet, so without this a healthy idle viewer would expire at the liveness deadline. The contract
+   * defines no heartbeat message ("Message kinds are `hello` ... `terminate` ..."), and "liveness
+   * probes do not grant authority", so the probe belongs to the transport, and a report never
+   * touches capabilities, sequences or any queue. A transport that never reports still expires.
+   * Returns whether an attached, unrevoked attachment's deadline was extended.
+   */
+  noteTransportAlive(): boolean {
+    return this.#attachment?.heartbeat() ?? false;
   }
 
   /** The transport closed or errored underneath the session. Idempotent; returns the one result. */
@@ -122,7 +143,10 @@ export class SessionConnection {
         attachment.outputParsedThrough(message.consumedBytes);
         break;
       case 'terminate':
-        attachment.stop();
+        // Only an attachment that advertises `kill` can stop the session. A terminate from one that
+        // does not is the client ending its attachment, so it is answered as a detach: the client
+        // gets the cleanup result and a normal close rather than silence.
+        if (!attachment.stop().accepted) void attachment.detach();
         break;
     }
   }
@@ -294,7 +318,10 @@ export class SessionConnection {
         this.#flushExitWhenOutputEnded();
         break;
       case 'operationResult':
-        this.#reportOperationResult(event);
+        // A cancellation caused by the exit is reported after the exit it must not suppress.
+        if (event.disposition === 'canceled' && this.#pendingExit !== undefined) {
+          this.#heldCancellations.push(event);
+        } else this.#reportOperationResult(event);
         break;
       case 'attachmentRevoked':
         // No further output is accepted once the generation is revoked, so a held exit is final.
@@ -326,8 +353,12 @@ export class SessionConnection {
    */
   #reportOperationResult(event: Extract<SessionEvent, { type: 'operationResult' }>): void {
     const code = event.disposition === 'unknown' ? 'transport-failed' : 'backend-failed';
-    this.#deliver(this.#host.failOperation(event.sequence, code, event.reason));
-    if (event.disposition !== 'canceled') this.#failClosed(describeFailure(code).closeCode);
+    const sent = this.#deliver(this.#host.failOperation(event.sequence, code, event.reason));
+    if (event.disposition === 'canceled') return;
+    // "A failed connection is not a successful process exit": the failure is the terminal status, and
+    // the endpoint refuses an exit after it, so a held exit is dropped rather than sent to be refused.
+    this.#submittedFailureSent ||= sent;
+    this.#failClosed(describeFailure(code).closeCode);
   }
 
   /** Send the held process exit once every source has completed, or at once when there are none to wait for. */
@@ -341,7 +372,9 @@ export class SessionConnection {
     const exit = this.#pendingExit;
     if (exit === undefined) return;
     this.#pendingExit = undefined;
-    this.#deliver(this.#host.processExit(exit.exitCode, exit.signal));
+    if (!this.#submittedFailureSent)
+      this.#deliver(this.#host.processExit(exit.exitCode, exit.signal));
+    for (const held of this.#heldCancellations.splice(0)) this.#reportOperationResult(held);
   }
 
   /** Send a chunk as however many frames the payload budget needs, preserving every byte and the order. */

@@ -48,7 +48,6 @@
     "@lostgradient/playground#build": {
       "dependsOn": ["transit"],
       "outputs": ["build/**"],
-      "env": ["NODE_ENV"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/mirror/package-map.json"]
     },
     "//#test:self": {

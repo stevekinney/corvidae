@@ -49,6 +49,7 @@ async function commentNavigationChord(page: import('@playwright/test').Page): Pr
 async function pressCommentNavigationChordAndExpectAnnouncement(
   page: import('@playwright/test').Page,
   mount: import('@playwright/test').Locator,
+  textThreadCount: number,
 ): Promise<void> {
   const chord = await commentNavigationChord(page);
   const liveRegion = mount.locator(
@@ -82,7 +83,7 @@ async function pressCommentNavigationChordAndExpectAnnouncement(
     await page.keyboard.press(chord);
     await expect(liveRegion).toHaveAttribute(
       'data-observed-announcement',
-      /^Comment 1 of 1(?:$|:)/,
+      new RegExp(`^Comment 1 of ${textThreadCount}(?:$|:)`),
     );
   } finally {
     await liveRegion.evaluate((region) => {
@@ -189,7 +190,10 @@ test.describe('ReviewEditor comment-anchor accessibility (cinder#1304)', () => {
     // heading, so "next comment" has somewhere real to move it TO.
     await page.keyboard.press('Control+Home');
 
-    await pressCommentNavigationChordAndExpectAnnouncement(page, mount);
+    // The `with-comments` fixture carries two text-anchored threads (the
+    // title and the follow-up) beside its document-level one, which keyboard
+    // navigation skips, so the first stop is "Comment 1 of 2".
+    await pressCommentNavigationChordAndExpectAnnouncement(page, mount, 2);
 
     // The popover for the thread opened — the keyboard route actually
     // works. This has no comparable lifetime limit (it stays open until
@@ -315,7 +319,7 @@ test.describe('ReviewEditor comment-anchor accessibility, readonly mode (cinder#
     // editor-dom-focused) and confirm it still navigates — i.e. the
     // scoping guard accepts an ancestor of the editor dom, not just the
     // editor dom or its descendants.
-    await pressCommentNavigationChordAndExpectAnnouncement(page, mount);
+    await pressCommentNavigationChordAndExpectAnnouncement(page, mount, 1);
     const popover = page.locator('.thread-popover');
     await expect(popover).toBeVisible({ timeout: 5_000 });
     await expect(popover.getByText('This title is clear. I would keep it.')).toBeVisible();

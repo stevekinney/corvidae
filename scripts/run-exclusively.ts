@@ -17,16 +17,35 @@
  * group is alive, and stragglers are terminated before release. Start times recorded beside each
  * pid keep a recycled pid from passing for the holder.
  *
+ * Waiters take the lock in the order they arrived. Plain re-polling lets whoever polls first after a
+ * release win, which starved a validate for over an hour behind sessions that kept winning. Each
+ * waiter first files a ticket in a queue directory beside the lock, named by arrival time, and only
+ * the oldest live ticket may attempt the install. Tickets of waiters whose process has exited are
+ * pruned, judged by pid plus start time the way the holder is.
+ *
+ * A holder that runs a chain of stages keeps its place across them. The held lock's token is
+ * exported to the command as `CORVIDAE_HOST_LOCK_TOKEN`; a nested `run-exclusively` whose token
+ * matches the lock currently held runs its command directly, so `validate` can hold the lock for
+ * its whole chain without its own stages queueing behind it.
+ *
  * Usage: `bun scripts/run-exclusively.ts '<shell command>' [arguments...]`. Arguments reach the
  * command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes them.
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
 export const ownerFileName = 'owner.json';
+
+/** Names the held lock's token in the environment of the command that runs under it. */
+export const heldLockTokenVariable = 'CORVIDAE_HOST_LOCK_TOKEN';
+
+/** The directory of waiting tickets beside the lock. */
+export function queueDirectoryFor(lockDirectory: string): string {
+  return `${lockDirectory}.queue`;
+}
 
 export type HostLockHolder = {
   readonly pid: number;
@@ -54,8 +73,11 @@ export type AcquireHostLockOptions = {
    * one rename, so such a directory was left by something else.
    */
   readonly ownerlessGraceMs?: number;
-  /** Called whenever the holder a waiter is queued behind changes, including the first time. */
-  readonly onWait?: (holder: HostLockHolder | undefined) => void;
+  /**
+   * Called whenever what a waiter is queued behind changes, including the first time: the holder
+   * of the lock, or with `'queue'` the earlier waiter whose turn comes first.
+   */
+  readonly onWait?: (holder: HostLockHolder | undefined, behind?: 'lock' | 'queue') => void;
   readonly signal?: AbortSignal;
 };
 
@@ -238,20 +260,111 @@ function delay(milliseconds: number, signal: AbortSignal | undefined): Promise<v
 }
 
 export type HeldHostLock = {
+  /** Identifies this lock in its owner file; nested stages present it to reuse the lock. */
+  readonly token: string;
   /** Records the command's process group, so the lock outlives a wrapper killed before it. */
   readonly recordProcessGroup: (processGroup: number) => Promise<void>;
   readonly release: () => Promise<void>;
 };
 
+const ticketSuffix = '.json';
+
+/** Tickets sort by their zero-padded arrival time, then by token to break an exact tie. */
+function ticketName(arrivedAt: number, token: string): string {
+  return `${String(arrivedAt).padStart(16, '0')}-${token}${ticketSuffix}`;
+}
+
+async function listTickets(queueDirectory: string): Promise<string[]> {
+  const names = await readdir(queueDirectory);
+  return names.filter((name) => name.endsWith(ticketSuffix)).toSorted();
+}
+
+/**
+ * Files this waiter's ticket and resolves to its name. The arrival time is never earlier than the
+ * newest ticket already filed, so a clock that steps back cannot put a newcomer ahead of it. The
+ * ticket is written aside and renamed in, so a reader never sees it half-written.
+ */
+async function enqueue(queueDirectory: string, self: OwnerRecord): Promise<string> {
+  await mkdir(queueDirectory, { recursive: true });
+  const tickets = await listTickets(queueDirectory);
+  const newest = tickets.at(-1);
+  const newestArrival = newest === undefined ? 0 : Number(newest.slice(0, 16));
+  const name = ticketName(Math.max(Date.now(), newestArrival + 1), self.token);
+  const staged = join(queueDirectory, `staging-${self.token}`);
+  await writeFile(staged, JSON.stringify(self));
+  await rename(staged, join(queueDirectory, name));
+  return name;
+}
+
+/** Whether the waiter that filed this ticket is still running. An unreadable ticket counts as dead. */
+async function isTicketLive(queueDirectory: string, name: string): Promise<boolean> {
+  try {
+    const waiter = JSON.parse(await readFile(join(queueDirectory, name), 'utf8')) as OwnerRecord;
+    return isSameProcess(waiter.pid, waiter.pidStartedAt);
+  } catch {
+    // Gone already (its owner took its turn or gave up) or unreadable: it no longer stands in the way.
+    return false;
+  }
+}
+
+async function readTicket(queueDirectory: string, name: string): Promise<OwnerRecord | undefined> {
+  try {
+    return JSON.parse(await readFile(join(queueDirectory, name), 'utf8')) as OwnerRecord;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The oldest ticket whose waiter is alive, after pruning the dead ones ahead of it. Resolves to the
+ * name of that ticket, which is this waiter's own once nobody live remains ahead.
+ */
+async function liveFront(queueDirectory: string, own: string): Promise<string> {
+  for (const name of await listTickets(queueDirectory)) {
+    if (name === own || (await isTicketLive(queueDirectory, name))) return name;
+    await rm(join(queueDirectory, name), { force: true });
+  }
+  return own;
+}
+
 /** Waits until it holds the lock. */
 export async function acquireHostLock(options: AcquireHostLockOptions): Promise<HeldHostLock> {
-  const { lockDirectory, holder, pollIntervalMs = 1000, ownerlessGraceMs = 10_000 } = options;
+  const { lockDirectory, holder } = options;
   const self: OwnerRecord = { ...holder, token: crypto.randomUUID() };
+  const queueDirectory = queueDirectoryFor(lockDirectory);
+  options.signal?.throwIfAborted();
+  const ticket = await enqueue(queueDirectory, self);
+  try {
+    return await waitForTurn(options, self, queueDirectory, ticket);
+  } finally {
+    // After a successful install the lock itself is the claim; on failure or abort the place is
+    // given up. Either way the ticket must not outlive the wait.
+    await rm(join(queueDirectory, ticket), { force: true });
+  }
+}
+
+async function waitForTurn(
+  options: AcquireHostLockOptions,
+  self: OwnerRecord,
+  queueDirectory: string,
+  ticket: string,
+): Promise<HeldHostLock> {
+  const { lockDirectory, pollIntervalMs = 1000, ownerlessGraceMs = 10_000 } = options;
   let lastWaitedOn: string | undefined;
   for (;;) {
     options.signal?.throwIfAborted();
+    const front = await liveFront(queueDirectory, ticket);
+    if (front !== ticket) {
+      if (front !== lastWaitedOn) {
+        lastWaitedOn = front;
+        options.onWait?.(await readTicket(queueDirectory, front), 'queue');
+      }
+      await delay(pollIntervalMs, options.signal);
+      continue;
+    }
     if (await tryInstall(lockDirectory, self)) {
       return {
+        token: self.token,
         recordProcessGroup: (processGroup) => recordProcessGroup(lockDirectory, self, processGroup),
         release: () => removeLock(lockDirectory, self),
       };
@@ -281,6 +394,8 @@ export type RunExclusivelyOptions = {
   readonly args?: readonly string[];
   readonly pollIntervalMs?: number;
   readonly report?: (line: string) => void;
+  /** The environment the command inherits; defaults to this process's. */
+  readonly environment?: Readonly<Record<string, string | undefined>>;
 };
 
 function describeHolder(holder: HostLockHolder | undefined): string {
@@ -316,25 +431,38 @@ async function terminateProcessGroup(processGroup: number): Promise<void> {
 export async function runExclusively(options: RunExclusivelyOptions): Promise<number> {
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
   let lock: HeldHostLock | undefined;
+  const environment = options.environment ?? process.env;
   try {
-    lock = await acquireHostLock({
-      lockDirectory: await options.lockDirectory,
-      holder: {
-        pid: process.pid,
-        ...pidStartedAtField(),
-        command: options.script,
-        cwd: process.cwd(),
-        acquiredAt: new Date().toISOString(),
-      },
-      ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
-      onWait: (holder) =>
-        report(`run-exclusively: waiting for the host lock held by ${describeHolder(holder)}`),
-    });
+    const lockDirectory = await options.lockDirectory;
+    // A parent run that already holds the lock exported its token; a stage it started reuses the
+    // lock rather than queueing behind its own parent.
+    const reserved = environment[heldLockTokenVariable];
+    const current = reserved === undefined ? undefined : await readOwner(lockDirectory);
+    const reusesParentLock = reserved !== undefined && current?.token === reserved;
+    if (!reusesParentLock) {
+      lock = await acquireHostLock({
+        lockDirectory,
+        holder: {
+          pid: process.pid,
+          ...pidStartedAtField(),
+          command: options.script,
+          cwd: process.cwd(),
+          acquiredAt: new Date().toISOString(),
+        },
+        ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
+        onWait: (holder, behind) =>
+          report(
+            behind === 'queue'
+              ? `run-exclusively: queued behind the earlier waiter ${describeHolder(holder)}`
+              : `run-exclusively: waiting for the host lock held by ${describeHolder(holder)}`,
+          ),
+      });
+    }
   } catch (error) {
     report(`run-exclusively: running without the host lock: ${(error as Error).message}`);
   }
   try {
-    return await runInProcessGroup(options, lock, report);
+    return await runInProcessGroup(options, lock, report, lock?.token);
   } finally {
     await lock?.release();
   }
@@ -355,11 +483,15 @@ async function runInProcessGroup(
   options: RunExclusivelyOptions,
   lock: HeldHostLock | undefined,
   report: (line: string) => void,
+  token?: string,
 ): Promise<number> {
   const args = options.args ?? [];
   const command = args.length === 0 ? options.script : `${options.script} "$@"`;
   const child = spawn('sh', ['-c', command, 'sh', ...args], {
     detached: true,
+    ...(token === undefined
+      ? {}
+      : { env: { ...(options.environment ?? process.env), [heldLockTokenVariable]: token } }),
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
@@ -371,9 +503,6 @@ async function runInProcessGroup(
     await exited;
     return 127;
   }
-  await lock?.recordProcessGroup(processGroup).catch((error: unknown) => {
-    report(`run-exclusively: could not record the command in the host lock: ${String(error)}`);
-  });
   const forward = (signal: NodeJS.Signals): void => {
     try {
       process.kill(-processGroup, signal);
@@ -382,8 +511,14 @@ async function runInProcessGroup(
     }
   };
   const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+  // Registered before the group is recorded in the lock: a caller that reads the recorded group
+  // and signals the wrapper must find the forwarders in place, or the default action ends the
+  // wrapper and orphans the group.
   for (const signal of forwarded) process.on(signal, forward);
   try {
+    await lock?.recordProcessGroup(processGroup).catch((error: unknown) => {
+      report(`run-exclusively: could not record the command in the host lock: ${String(error)}`);
+    });
     const [code, signal] = await exited;
     if (signal) return 128 + (constants.signals[signal] ?? 0);
     return code ?? 1;

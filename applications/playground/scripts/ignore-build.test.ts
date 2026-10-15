@@ -25,7 +25,7 @@ afterAll(async () => {
 });
 
 function git(...arguments_: string[]): string {
-  const result = Bun.spawnSync(['git', ...arguments_], { cwd: repository });
+  const result = Bun.spawnSync(['git', ...arguments_], { timeout: 120_000, cwd: repository });
   if (result.exitCode !== 0)
     throw new Error(`git ${arguments_.join(' ')}: ${result.stderr.toString()}`);
   return result.stdout.toString().trim();
@@ -132,6 +132,7 @@ function wrapperExit(environment: Record<string, string | undefined>, path?: str
   }
   if (path !== undefined) merged['PATH'] = path;
   const result = Bun.spawnSync(['/bin/sh', wrapperPath], {
+    timeout: 120_000,
     cwd: join(repository, 'applications/playground'),
     env: merged,
   });
