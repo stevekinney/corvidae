@@ -30,7 +30,20 @@ describe('package entry points', () => {
       'createPtyProcess',
       'isSupportedHost',
     ]);
-    expect(Object.keys(await import('./websocket/index.ts'))).toEqual(['isSendableCloseCode']);
+    expect(Object.keys(await import('./websocket/index.ts')).toSorted()).toEqual([
+      'WEBSOCKET_LIMIT_RANGES',
+      'canonicalizeOrigin',
+      'createBunProcessFactory',
+      'createOriginPolicy',
+      'createTerminalWebSocketServer',
+      'decideTransport',
+      'forwardedSchemeIsSecure',
+      'isLoopbackAddress',
+      'isLoopbackListener',
+      'isSendableCloseCode',
+      'normalizeAddress',
+      'serveTerminalWebSocket',
+    ]);
     expect(Object.keys(neutralEntry).toSorted()).toEqual(
       [
         'ATTACHMENT_ERROR_CODES',

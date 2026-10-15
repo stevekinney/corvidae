@@ -176,7 +176,7 @@ async function attemptWorkflowStateUpdate(
       [
         ...buildTerminalWorkflowIndexOperations(state, updated),
         { type: 'put', key: KEYS.workflow(workflowId), value: encode(updated) },
-        ...visibilityIndexOperations(internals, workflowId, state, updated),
+        ...visibilityIndexOperations(internals, state, updated),
         ...additionalOperations,
       ],
       {

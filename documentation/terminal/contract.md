@@ -53,6 +53,8 @@ Stop revokes authority immediately, cancels queued but unsubmitted operations wi
 
 The WebSocket server callback signatures are frozen as `handleOpen(socket, request): Promise<void>`, `handleMessage(socket, frame: Uint8Array | string): Promise<void>`, and `handleClose(socket, code, reason): Promise<void>`. The handshake payload is `{ version: 1, sessionId, requestedMode: 'read-only' | 'interactive', token }`; the response is `{ version: 1, sessionId, attachmentGeneration, capabilities, maxFrameBytes: 65536, maxQueuedOperations: 256 }`. Origin and token authorization happen before generation issuance.
 
+Transport security: only a secure request is admitted. Behind a TLS-terminating proxy the host lists that proxy's exact IP addresses in the `trustedProxies` option, and only a request whose peer address is listed has `X-Forwarded-Proto` honored: the last value of the header (the one the nearest trusted proxy appended) must be `https`. The header from any other peer is never read, and the default is no trusted proxies. A loopback-only development switch exists for a genuinely loopback listener. Origin and authentication apply in every case. The host supplies `slotFor`, which has no package default. The upgrade URL carries exactly one query parameter, `profile`; any other key is refused. The loopback development switch requires the host to state the loopback hostname it bound. While the client is `backpressured` with nothing in flight it sends an empty input as a capacity probe on a bounded backoff, since the host sends nothing when its queue drains.
+
 ## Failure and cleanup table
 
 | Code | Direction and operation | Result and attachment | WebSocket close | Drain and cleanup |

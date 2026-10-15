@@ -16,6 +16,7 @@
     "test:protocol": "bun test src/protocol",
     "test:session": "bun test src/session",
     "test:bun": "bun test src/bun",
+    "test:websocket": "bun test src/websocket",
     "test:coverage": "bun test --coverage --coverage-reporter=lcov && bun scripts/check-coverage.ts"
   },
   "devDependencies": {
