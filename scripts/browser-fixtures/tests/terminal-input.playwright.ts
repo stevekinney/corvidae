@@ -1,4 +1,5 @@
 import {
+  announcedCount,
   announcementText,
   bytes,
   captureButton,
@@ -190,9 +191,8 @@ test.describe('capture, focus and page navigation', () => {
     await expect(captureButton(page)).toHaveAttribute('aria-pressed', 'false');
     expect(await sentBytes(page), 'the release chord is not shell input').toEqual([]);
     await expect(terminalInput(page)).toBeFocused();
-    await expect
-      .poll(async () => await announcementText(page))
-      .toContain('Terminal key capture off');
+    await expect.poll(() => announcedCount(page, 'Terminal key capture off')).toBe(1);
+    expect(await announcedCount(page, 'Terminal key capture on')).toBe(1);
   });
 
   test('keys typed outside the terminal reach nothing, and capture ends when focus leaves', async ({

@@ -108,21 +108,40 @@ function installSideEffectRecorder(): void {
     announced: [],
   };
   window.__sideEffects = effects;
-  // A live region's text is replaced by the next message, so a poll can miss one. Record each
-  // distinct message as the region shows it.
-  const seen = new WeakMap<Element, string>();
-  const record = (): void => {
-    for (const region of document.querySelectorAll('[aria-live="polite"]')) {
-      const text = region.textContent?.trim() ?? '';
-      if (text !== '' && seen.get(region) !== text) effects.announced.push(text);
-      seen.set(region, text);
-    }
-  };
+  // A live region's text is replaced by the next message, and the announcer clears it first so a
+  // repeated message is heard again. Record every message the region took, in order, including
+  // repeats, by rebuilding each text node's history from the observer's old values.
+  const insideRegion = (node: Node): boolean =>
+    node.parentElement?.closest('[aria-live="polite"]') != null;
   document.addEventListener('DOMContentLoaded', () => {
-    new MutationObserver(record).observe(document.body, {
+    new MutationObserver((records) => {
+      const olds = new Map<Node, string[]>();
+      for (const record of records) {
+        if (record.type === 'characterData') {
+          const list = olds.get(record.target) ?? [];
+          list.push(record.oldValue ?? '');
+          olds.set(record.target, list);
+        } else if (insideRegion(record.target) || record.target.nodeType === 1) {
+          for (const added of record.addedNodes) {
+            const text = added.textContent?.trim() ?? '';
+            if (text !== '' && insideRegion(added)) effects.announced.push(text);
+          }
+        }
+      }
+      for (const [node, history] of olds) {
+        if (!insideRegion(node)) continue;
+        const values = [...history.slice(1), (node as CharacterData).data];
+        let previous = history[0] ?? '';
+        for (const value of values) {
+          if (value.trim() !== '' && value !== previous) effects.announced.push(value.trim());
+          previous = value;
+        }
+      }
+    }).observe(document.body, {
       subtree: true,
       childList: true,
       characterData: true,
+      characterDataOldValue: true,
     });
   });
   Object.defineProperty(navigator, 'clipboard', {
@@ -377,6 +396,12 @@ export async function announcements(page: Page): Promise<string[]> {
 /** The key that moves focus to the next control: Safari on a Mac needs Option for that. */
 export function navigationKey(browserName: string): string {
   return browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab';
+}
+
+/** How many times the polite regions took exactly this message. */
+export async function announcedCount(page: Page, message: string): Promise<number> {
+  const effects = await sideEffects(page);
+  return effects.announced.filter((entry) => entry === message).length;
 }
 
 /** Every message the polite regions showed so far, joined, for polling on. */

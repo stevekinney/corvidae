@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 
 import {
-  announcementText,
+  announcedCount,
   bytes,
   captureButton,
   captureKeys,
@@ -134,8 +134,11 @@ test.describe('reporting is permitted: the prop is on, capture is on, and the vi
     await expect(badge(page)).toBeVisible();
     await page.keyboard.press('Control+Shift+Escape');
     await expect(badge(page)).toHaveCount(0);
-    // Releasing capture is announced by capture's own message, not by a second mouse one.
-    const heard = await announcementText(page);
-    expect(heard).not.toContain('Mouse reporting on|Mouse reporting on');
+    // Releasing capture is announced by capture's own message, not by a second mouse one: the
+    // two on-announcements and the one off-announcement are the program's, and capture's are its.
+    await expect.poll(() => announcedCount(page, 'Terminal key capture off')).toBe(1);
+    expect(await announcedCount(page, 'Terminal key capture on')).toBe(1);
+    expect(await announcedCount(page, 'Mouse reporting on')).toBe(2);
+    expect(await announcedCount(page, 'Mouse reporting off')).toBe(1);
   });
 });
