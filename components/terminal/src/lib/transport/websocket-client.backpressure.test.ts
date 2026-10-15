@@ -307,7 +307,7 @@ describe('a host that refuses with fifo-full', () => {
     expect(subject.fromClient()).toMatchObject([{ kind: 'input', sequence: 3 }]);
   });
 
-  test('a probe the socket cannot send ends the transport and is unknown', async () => {
+  test('a probe the socket cannot send ends the transport, and is not counted as lost input', async () => {
     const subject = await windowOf(8);
     const sending = subject.client.sendInput('a');
     subject.fromClient();
@@ -316,7 +316,7 @@ describe('a host that refuses with fifo-full', () => {
     subject.socket().sendThrows = true;
     subject.clock.advance(250);
     expect(subject.client.state).toBe('disconnected');
-    expect(subject.client.deliveryUnknown).toEqual([2]);
+    expect(subject.client.deliveryUnknown).toEqual([]);
   });
 
   test('a refusal that arrives while not writable changes nothing', async () => {
