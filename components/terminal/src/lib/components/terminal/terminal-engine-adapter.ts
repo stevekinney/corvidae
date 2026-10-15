@@ -149,8 +149,9 @@ export type RendererEngine = {
   readProjection(maximumBytes?: number): TerminalProjection;
   /**
    * Clear the local buffer. The clear takes effect in order behind every chunk already given to
-   * {@link RendererEngine.write}; a unicode prefix still held from earlier output is completed
-   * first, so it cannot leak into whatever is written after the clear. Nothing is sent to the
+   * {@link RendererEngine.write}. A unicode prefix still held from earlier output is dropped with
+   * the rest of it, so a continuation byte written after the clear is an orphan and never completes
+   * a character that began before it. Nothing is sent to the
    * process. `done` runs once the clear has been applied, and never after dispose.
    */
   clear(scope: ClearScope, done?: () => void): void;
@@ -214,6 +215,19 @@ export function createRendererEngine(
   }
   terminal.onWriteParsed(notifyChange);
   terminal.onResize(notifyChange);
+
+  /**
+   * Drop a unicode prefix still held from earlier output without parsing it, and acknowledge the
+   * chunks that carried it. A clear removes everything received before it, and the prefix is part
+   * of that: parsed, it would wait inside the engine for its continuation and complete after the
+   * clear.
+   */
+  function discardHeldOutput(): void {
+    carry.flush();
+    const released = heldAcknowledgements;
+    heldAcknowledgements = [];
+    if (released.length > 0) writeBytes(new Uint8Array(0), released);
+  }
 
   function finishHeldOutput(): void {
     if (disposed) return;
@@ -338,7 +352,7 @@ export function createRendererEngine(
     },
     clear(scope, done) {
       if (disposed) return;
-      finishHeldOutput();
+      discardHeldOutput();
       const applied = () => {
         if (disposed) return;
         if (scope === 'retained') terminal.clear();

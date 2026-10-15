@@ -223,6 +223,19 @@ describe('the snapshot', () => {
     expect(shown.snapshot.text).toBe('before');
   });
 
+  test('only the first change after a capture republishes the view', () => {
+    const harness = createHarness(createFakeSource('x'));
+    harness.inspection.openSnapshot();
+    let heard = 0;
+    harness.inspection.subscribe(() => {
+      heard += 1;
+    });
+    harness.inspection.contentChanged();
+    harness.inspection.contentChanged();
+    harness.inspection.contentChanged();
+    expect(heard).toBe(1);
+  });
+
   test('refresh recaptures the same live generation, and is announced', () => {
     const source = createFakeSource('before');
     const harness = createHarness(source);

@@ -216,9 +216,11 @@ export function createInspection(options: InspectionOptions): Inspection {
       publish();
     },
     contentChanged() {
+      const becameStale = snapshot !== undefined && !stale;
       if (snapshot !== undefined) stale = true;
       if (searchOpen) scheduleResearch();
-      if (snapshot !== undefined) publish();
+      // Every chunk after the first changes nothing the view shows, so it is not republished.
+      if (becameStale) publish();
     },
     openSearch() {
       if (currentSource() === undefined) return;

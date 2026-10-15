@@ -180,22 +180,31 @@ describe('clearing', () => {
     expect(text()).toBe('new output');
   });
 
-  test('a unicode prefix held from before the clear cannot leak after it, and its chunk is still acknowledged', async () => {
-    const { engine, text } = mounted();
-    const euro = bytes('€');
-    const acknowledged: number[] = [];
-    engine.write(Uint8Array.of(...bytes('a\r\n'), euro[0]!, euro[1]!), () => acknowledged.push(1));
-    const cleared = new Promise<void>((resolve) => engine.clear('retained', resolve));
-    await new Promise<void>((resolve) =>
-      engine.write(bytes('b'), () => {
-        acknowledged.push(2);
-        resolve();
-      }),
-    );
-    await cleared;
-    expect(acknowledged).toEqual([1, 2]);
-    expect(text()).toBe('b');
-  });
+  test.each(['visible', 'retained', 'reset'] as const)(
+    'a unicode prefix held from before a %s clear is dropped with the output it belonged to',
+    async (scope) => {
+      const { engine, text } = mounted();
+      const euro = bytes('\u20ac');
+      const acknowledged: number[] = [];
+      // The first two bytes of one character are held, waiting for the third.
+      engine.write(Uint8Array.of(...bytes('a\r\n'), euro[0]!, euro[1]!), () =>
+        acknowledged.push(1),
+      );
+      const cleared = new Promise<void>((resolve) => engine.clear(scope, resolve));
+      // The third byte arrives after the clear: it belongs to nothing, so it cannot finish the
+      // character that began before it.
+      await new Promise<void>((resolve) =>
+        engine.write(Uint8Array.of(euro[2]!, ...bytes('b')), () => {
+          acknowledged.push(2);
+          resolve();
+        }),
+      );
+      await cleared;
+      expect(acknowledged).toEqual([1, 2]);
+      expect(text()).not.toContain('\u20ac');
+      expect(text().endsWith('b')).toBe(true);
+    },
+  );
 
   test('a clear after dispose does nothing, and one pending at dispose never reports done', async () => {
     const { engine, captured } = mounted();
