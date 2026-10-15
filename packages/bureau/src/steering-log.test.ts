@@ -170,6 +170,19 @@ describe('steering log', () => {
     await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
       SteeringLogCorruptError,
     );
+    // The selector refusal belongs to an identity selector, nothing else.
+    await kv.set(
+      entryKey,
+      JSON.stringify({
+        type: 'refused',
+        command: command(),
+        outcome: { outcome: 'unsupported-capability', reason: 'selector-unavailable' },
+        now: '2026-09-02T00:00:01.000Z',
+      }),
+    );
+    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
+      SteeringLogCorruptError,
+    );
     await kv.set(
       entryKey,
       JSON.stringify(admit({ requestedValue: { target: 'pause', override: 'x' } as never })),

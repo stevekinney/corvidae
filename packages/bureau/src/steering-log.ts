@@ -270,6 +270,17 @@ function hasValidSubmittedValue(parsed: Record<string, unknown>): boolean {
   );
 }
 
+/**
+ * `selector-unavailable` is refused for exactly one kind of command: an
+ * `agent-identity` command naming a `policyRef`, which Bureau cannot yet
+ * resolve. Paired with anything else, it is a decision no process made.
+ */
+function refusalFitsCommand(outcome: unknown, command: ImplementedSteeringCommand): boolean {
+  if ((outcome as { outcome: unknown }).outcome !== 'unsupported-capability') return true;
+  const requested = command.requestedValue as { target: string; policyRef?: unknown };
+  return requested.target === 'agent-identity' && typeof requested.policyRef === 'string';
+}
+
 function parseEvent(raw: string, sequence: number, sessionId: string): SteeringLogEvent {
   const what = `Steering log entry ${String(sequence)}`;
   const parsed = parseJson(raw, what);
@@ -299,7 +310,8 @@ function parseEvent(raw: string, sequence: number, sessionId: string): SteeringL
           isSteeringCommand(parsed['command']) &&
           parsed['command'].sessionId === sessionId &&
           hasValidSubmittedValue(parsed) &&
-          isRefusalOutcome(parsed['outcome'])
+          isRefusalOutcome(parsed['outcome']) &&
+          refusalFitsCommand(parsed['outcome'], parsed['command'])
         ) {
           return parsed as SteeringLogEvent;
         }
