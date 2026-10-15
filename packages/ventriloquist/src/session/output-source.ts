@@ -92,7 +92,10 @@ async function pullInto(handlers: SourceHandlers, source: Pullable): Promise<voi
         sinceYield += take;
         if (sinceYield >= OUTPUT_YIELD_BYTES) {
           sinceYield = 0;
-          await new Promise<void>((resolve) => setImmediate(resolve));
+          // The neutral program has no timer globals, so the host's turn is looked up, as the system clock does.
+          const turn = (globalThis as { setImmediate?: (callback: () => void) => unknown })
+            .setImmediate;
+          if (turn !== undefined) await new Promise<void>((resolve) => turn(resolve));
         }
       } while (carried.length > 0);
     }
