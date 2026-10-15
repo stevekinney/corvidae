@@ -4,6 +4,8 @@
  *   --mode pass   record a passing result for every case in the shard, then exit 0
  *   --mode fail   record the same results, then exit 3
  *   --mode hang   never exit; the runner must end it
+ *   --mode progress   start the first `--completed <n>` + 1 cases, pass the first n, write
+ *                     `<record>/progressed`, then hang like `hang`: a run the server dies under
  *
  * `--environment-record <file>` writes the names of the credential-shaped variables it inherited.
  * `--stubborn` (with `--record`) also starts a sleeper that ignores SIGTERM.
@@ -74,7 +76,23 @@ if (record !== undefined) {
   );
 }
 
-if (mode === 'hang') {
+if (mode === 'progress') {
+  const completed = Number(argumentValue('--completed') ?? '0');
+  const cases = (await Bun.file(environment.playgroundStaticCases ?? '').json()) as StaticCase[];
+  const results = environment.playgroundStaticResults ?? '';
+  for (const testCase of cases.slice(0, completed + 1)) {
+    appendFileSync(results, `${JSON.stringify({ caseId: testCase.id, event: 'begin' })}\n`);
+  }
+  for (const testCase of cases.slice(0, completed)) {
+    appendFileSync(
+      results,
+      `${JSON.stringify({ caseId: testCase.id, status: 'passed', errors: [], diagnostics: [], screenshot: null })}\n`,
+    );
+  }
+  if (record !== undefined) await Bun.write(join(record, 'progressed'), '');
+}
+
+if (mode === 'hang' || mode === 'progress') {
   // Hangs until the runner ends it, but never longer than the stand-in wait: an orphaned stand-in
   // must not outlive the test that started it.
   setInterval(() => undefined, 1_000);
