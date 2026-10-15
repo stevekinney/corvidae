@@ -5,16 +5,17 @@ import {
   INTERRUPT_BYTE,
   type InputRefusal,
   type InputRefusalReason,
+  type InputRefusalSource,
   type InputSettings,
   type TerminalInputController,
 } from './input-types.ts';
 import { routeKey } from './key-routing.ts';
-import { analyzePaste, reviewPaste, type PasteReview } from './paste-review.ts';
+import { analyzePaste, reviewPaste, stripPasteBrackets, type PasteReview } from './paste-review.ts';
 
 /** What the input path needs of the engine; the full adapter satisfies it. */
 export type InputEngine = Pick<
   RendererEngine,
-  'onInput' | 'setKeyHook' | 'hasSelection' | 'paste' | 'focus'
+  'onInput' | 'setKeyHook' | 'hasSelection' | 'paste' | 'focus' | 'bracketedPaste'
 >;
 
 export type TerminalInputOptions = {
@@ -24,6 +25,12 @@ export type TerminalInputOptions = {
   /** The controller input is sent to. Fixed for this binding: a new session is a new binding. */
   controller: TerminalInputController | undefined;
   readSettings: () => InputSettings;
+  /**
+   * Whether `node` is the control that toggles capture. It sits outside `host`, and focus moving to
+   * it as it is pressed must not release capture, or the press would find capture already off and
+   * turn it back on.
+   */
+  isCaptureControl?: (node: Node) => boolean;
   onCaptureChange: (captured: boolean) => void;
   /** A paste review opened (a review) or ended (`undefined`). The caller shows it. */
   onReview: (review: PasteReview | undefined) => void;
@@ -38,6 +45,13 @@ export type TerminalInput = {
   capture(): boolean;
   /** Leave capture. */
   release(): void;
+  /**
+   * Give capture back after a paste review closed, if it was on when the review opened. The review
+   * took focus, which ended capture; call this once the review is gone and focus can return.
+   */
+  resumeCapture(): void;
+  /** Focus left the terminal or its capture control for `next`: capture ends unless it stayed. */
+  focusLeft(next: EventTarget | null): void;
   /** Send the interrupt byte. */
   interrupt(): void;
   /** Send the reviewed paste. */
@@ -89,7 +103,13 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
   const { engine, host, controller } = options;
   let disposed = false;
   let frozen = false;
+  /** The queue refused an input: nothing is offered until the view is writable again. */
+  let saturated = false;
+  /** While saturated, the view has been seen out of the writable state since the refusal. */
+  let leftWritable = false;
   let captured = false;
+  /** Capture was on when a review opened, and has not been given back yet. */
+  let resumeAfterReview = false;
   let review: PasteReview | undefined;
   /** Keys held down while the review was open, and so still mid-press when it closed. */
   const heldDuringReview = new Set<string>();
@@ -107,7 +127,8 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     if (frozen) return 'frozen';
     if (!options.readSettings().writable) return 'read-only';
     if (controller === undefined) return 'closed';
-    return controller.authorityRevoked ? 'read-only' : undefined;
+    if (controller.authorityRevoked) return 'read-only';
+    return saturated ? 'paused' : undefined;
   }
 
   function setCaptured(next: boolean): void {
@@ -121,15 +142,15 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     setCaptured(false);
   }
 
-  function send(bytes: Uint8Array, kind: 'text' | 'binary'): void {
+  function send(bytes: Uint8Array, kind: 'text' | 'binary', source?: InputRefusalSource): void {
     const reason = refusalReason();
     if (reason !== undefined || controller === undefined) {
-      refuse({ reason: reason ?? 'closed' });
+      refuse({ reason: reason ?? 'closed', ...(source && { source }) });
       return;
     }
     const terms = controller.terms;
     if (terms === undefined) {
-      refuse({ reason: 'closed' });
+      refuse({ reason: 'closed', ...(source && { source }) });
       return;
     }
     // The advertised frame budget limits an input frame's payload; its fixed header is extra.
@@ -142,7 +163,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
           : undefined
         : planInputChunks(bytes, limit);
     if (chunks === undefined || chunks.length > terms.maxQueuedOperations) {
-      refuse({ reason: 'oversized' });
+      refuse({ reason: 'oversized', ...(source && { source }) });
       return;
     }
     const total = chunks.length;
@@ -161,7 +182,15 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
       if (failure === undefined) continue;
       // Part of an input is on the wire, or its fate is unknown: nothing after it can be trusted.
       if (accepted > 0 || failure === 'unknown-delivery') freeze();
-      refuse({ reason: failure, acceptedOperations: accepted, totalOperations: total });
+      // Nothing of this input is on the wire, but a later keystroke sent in its place could change
+      // what the dropped one meant, so a full queue holds input until the view is writable again.
+      else if (failure === 'paused') saturated = true;
+      refuse({
+        reason: failure,
+        acceptedOperations: accepted,
+        totalOperations: total,
+        ...(source && { source }),
+      });
       return;
     }
   }
@@ -196,6 +225,8 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
 
   function openReview(next: PasteReview): void {
     review = next;
+    // The dialog is about to take focus, which ends capture; the paste happened while it was on.
+    resumeAfterReview ||= captured;
     document.addEventListener('keydown', trackReviewKey, true);
     document.addEventListener('keyup', trackReviewKey, true);
     options.onReview(next);
@@ -241,7 +272,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     if (disposed || review !== undefined) return;
     const reason = refusalReason();
     if (reason !== undefined) {
-      refuse({ reason });
+      refuse({ reason, source: 'paste' });
       return;
     }
     const text = event.clipboardData?.getData('text/plain') ?? '';
@@ -252,32 +283,48 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     else openReview(reviewPaste(text, limit));
   }
 
+  function focusLeft(next: EventTarget | null): void {
+    const stayed =
+      next instanceof Node && (host.contains(next) || options.isCaptureControl?.(next) === true);
+    if (!stayed) setCaptured(false);
+  }
+
   function handleFocusOut(event: FocusEvent): void {
-    const next = event.relatedTarget;
-    if (!(next instanceof Node && host.contains(next))) setCaptured(false);
+    // A key that was down when the review closed has its keyup go wherever focus went; the latch
+    // must not outlive the focus it was set for and swallow a later, ordinary press.
+    latchedKeys.clear();
+    focusLeft(event.relatedTarget);
   }
 
   // Capture phase on the host runs before the engine's own listeners on the nodes below it.
   host.addEventListener('paste', handlePaste, true);
   host.addEventListener('focusout', handleFocusOut);
 
+  function capture(): boolean {
+    if (refusalReason() !== undefined) return false;
+    engine.focus();
+    const active = document.activeElement;
+    if (active === null || !host.contains(active)) return false;
+    setCaptured(true);
+    return true;
+  }
+
   return {
     get captured() {
       return captured;
     },
-    capture() {
-      if (refusalReason() !== undefined) return false;
-      engine.focus();
-      const active = document.activeElement;
-      if (active === null || !host.contains(active)) return false;
-      setCaptured(true);
-      return true;
-    },
+    capture,
     release() {
       setCaptured(false);
     },
+    resumeCapture() {
+      if (!resumeAfterReview) return;
+      resumeAfterReview = false;
+      capture();
+    },
+    focusLeft,
     interrupt() {
-      send(Uint8Array.of(INTERRUPT_BYTE), 'text');
+      send(Uint8Array.of(INTERRUPT_BYTE), 'text', 'interrupt');
     },
     acceptPaste() {
       const accepted = review;
@@ -286,23 +333,30 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
       // Authority can be revoked while the reader decides; the paste is then dropped, not queued.
       const reason = refusalReason();
       if (reason !== undefined) {
-        refuse({ reason });
+        refuse({ reason, source: 'paste' });
         return;
       }
       if (accepted.bytes > options.readSettings().maximumPasteBytes) {
-        refuse({ reason: 'oversized' });
+        refuse({ reason: 'oversized', source: 'paste' });
         return;
       }
-      engine.paste(accepted.text);
+      // The review warned about any marker in the text; the bracket the engine adds must be the only one.
+      engine.paste(engine.bracketedPaste ? stripPasteBrackets(accepted.text) : accepted.text);
     },
     cancelPaste: closeReview,
     refresh() {
+      // A full queue ends when the host reports the view out of the writable state and back.
+      if (saturated) {
+        if (!options.readSettings().writable) leftWritable = true;
+        else if (leftWritable) saturated = leftWritable = false;
+      }
       if (captured && refusalReason() !== undefined) setCaptured(false);
     },
     dispose() {
       if (disposed) return;
       closeReview();
       disposed = true;
+      resumeAfterReview = false;
       setCaptured(false);
       stopInput();
       engine.setKeyHook(undefined);

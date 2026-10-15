@@ -148,6 +148,8 @@ export type RendererEngine = {
    * no input.
    */
   paste(text: string): void;
+  /** Whether the program asked for pastes to be bracketed, so the engine wraps them in markers. */
+  readonly bracketedPaste: boolean;
   /** Move focus to the engine's input element. */
   focus(): void;
   /** Release the engine and its DOM. Safe to call twice. */
@@ -299,6 +301,9 @@ export function createRendererEngine(
     },
     hasSelection() {
       return terminal.hasSelection();
+    },
+    get bracketedPaste() {
+      return !disposed && terminal.modes.bracketedPasteMode;
     },
     paste(text) {
       if (!disposed) terminal.paste(text);

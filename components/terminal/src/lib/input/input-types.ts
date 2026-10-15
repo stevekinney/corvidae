@@ -31,7 +31,11 @@ export const INTERRUPT_BYTE = 0x03;
 export type InputRefusalReason =
   /** The view is not writable: the state says so, or the controller's authority was revoked. */
   | 'read-only'
-  /** The operation queue is full; nothing was sent. */
+  /**
+   * The operation queue is full. The refused input was not sent, and input stays paused until the
+   * view leaves and returns to the writable state, because a later keystroke could change what the
+   * dropped one meant.
+   */
   | 'paused'
   /** There is no live controller, or it reported the attachment gone. */
   | 'closed'
@@ -46,12 +50,20 @@ export type InputRefusalReason =
   /** The key routing threw, so the key was rejected and nothing was sent. */
   | 'hook-failed';
 
+/** A deliberate action that sends input: a paste or the Interrupt control. */
+export type InputRefusalSource = 'paste' | 'interrupt';
+
 export type InputRefusal = {
   reason: InputRefusalReason;
   /** For a multi-operation input, how many operations were accepted before the refusal. */
   acceptedOperations?: number;
   /** For a multi-operation input, how many operations it was split into. */
   totalOperations?: number;
+  /**
+   * Set when the reader asked for this input with a deliberate action rather than by typing, so
+   * the refusal is worth telling them about even when typing would be refused silently.
+   */
+  source?: InputRefusalSource;
 };
 
 /** The platform family key routing needs. */

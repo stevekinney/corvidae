@@ -108,6 +108,7 @@ export type FakeInputEngine = InputEngine & {
   hookInstalls: number;
   selection: boolean | Error;
   pastes: string[];
+  bracketedPaste: boolean;
   focusTarget: HTMLElement | undefined;
   listeners: Set<(report: EngineInputReport) => void>;
 };
@@ -118,6 +119,7 @@ export function createFakeInputEngine(): FakeInputEngine {
     hookInstalls: 0,
     selection: false,
     pastes: [],
+    bracketedPaste: false,
     focusTarget: undefined,
     listeners: new Set(),
     report(report) {

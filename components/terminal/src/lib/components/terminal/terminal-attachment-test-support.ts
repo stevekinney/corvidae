@@ -39,6 +39,7 @@ export type FakeEngine = RendererEngine & {
   keyHooks: Array<EngineKeyHook | undefined>;
   selection: boolean;
   pastes: string[];
+  bracketedPaste: boolean;
   focusCount: number;
 };
 
@@ -59,6 +60,7 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     keyHooks: [],
     selection: false,
     pastes: [],
+    bracketedPaste: false,
     focusCount: 0,
     mount() {
       engine.calls.push('mount');

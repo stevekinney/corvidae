@@ -4,6 +4,7 @@ import {
   createCapturedEngine,
   type CapturedEngine,
 } from '../components/terminal/terminal-corpus-test-support.ts';
+import { settle, waitFor } from '../components/terminal/terminal-test-support.ts';
 import {
   createFakeInputController,
   createInputSettings,
@@ -149,7 +150,10 @@ describe('IME composition and dead keys', () => {
     expect(controller.sent).toEqual([]);
     textarea.value = 'あ';
     dispatchComposition(textarea, 'compositionend', 'あ');
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    // The engine commits a composition on its next timer turn: wait for that, then for one more
+    // turn, in which a duplicate commit would have been sent.
+    await waitFor(() => controller.sent.length > 0, 'the composition to be committed');
+    await settle();
     expect(sentBytes(controller)).toEqual([0xe3, 0x81, 0x82]);
     expect(controller.sent).toHaveLength(1);
   });
@@ -299,6 +303,7 @@ describe('a throwing key hook rejects the operation', () => {
         setKeyHook: (hook) => engine.setKeyHook(hook),
         focus: () => engine.focus(),
         paste: (text) => engine.paste(text),
+        bracketedPaste: engine.bracketedPaste,
         hasSelection: () => {
           throw new Error('selection exploded');
         },
@@ -327,6 +332,25 @@ describe('paste against the real engine', () => {
     expect(context.reviews[0]).toMatchObject({ kind: 'confirm', endsWithNewline: true, lines: 2 });
     context.input.acceptPaste();
     expect(sentText(context.controller)).toBe('\u001b[200~echo one\recho two\r\u001b[201~');
+  });
+
+  test('pasted bracket markers cannot end the bracket early: one opening, one closing', async () => {
+    const context = session();
+    await context.captured.deliver([bytes('\u001b[?2004h')]);
+    pasteInto(context, 'echo hi\n\u001b[201~rm -rf ~\n\u001b[200~echo done\n');
+    expect(context.reviews[0]).toMatchObject({ kind: 'confirm', containsPasteTerminator: true });
+    context.input.acceptPaste();
+    const sent = sentText(context.controller);
+    expect(sent).toBe('\u001b[200~echo hi\rrm -rf ~\recho done\r\u001b[201~');
+    expect(sent.split('\u001b[200~')).toHaveLength(2);
+    expect(sent.split('\u001b[201~')).toHaveLength(2);
+  });
+
+  test('without bracketed paste mode the text goes as pasted, markers included', () => {
+    const context = session();
+    pasteInto(context, 'a\n\u001b[201~b');
+    context.input.acceptPaste();
+    expect(sentText(context.controller)).toBe('a\r\u001b[201~b');
   });
 
   test('an unbracketed multiline paste is reviewed too and keeps its line structure', () => {

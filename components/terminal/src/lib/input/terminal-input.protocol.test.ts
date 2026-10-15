@@ -157,7 +157,7 @@ describe('against the real protocol endpoints', () => {
     expect(refusals).toEqual([{ reason: 'oversized' }]);
   });
 
-  test('a full window pauses input with nothing lost mid-way, and a later input is tried afresh', () => {
+  test('a full window freezes input: later keystrokes never reach the host until recovery', () => {
     const refusals: InputRefusal[] = [];
     const { controller, received } = attach({ maxQueuedOperations: 2 });
     const { engine } = bind(controller, refusals);
@@ -165,7 +165,12 @@ describe('against the real protocol endpoints', () => {
     expect(payloads(received).map((payload) => payload[0])).toEqual([0x61, 0x62]);
     expect(refusals).toEqual([{ reason: 'paused', acceptedOperations: 0, totalOperations: 1 }]);
     engine.report({ kind: 'text', data: 'd' });
-    expect(refusals.map((refusal) => refusal.reason)).toEqual(['paused', 'paused']);
+    // The second refusal came from the view, which no longer offers input to the controller.
+    expect(refusals).toEqual([
+      { reason: 'paused', acceptedOperations: 0, totalOperations: 1 },
+      { reason: 'paused' },
+    ]);
+    expect(payloads(received)).toHaveLength(2);
   });
 
   test('a read-only attachment refuses typing and automatic replies locally', () => {

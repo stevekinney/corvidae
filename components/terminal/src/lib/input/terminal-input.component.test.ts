@@ -7,7 +7,7 @@ import {
 } from '../../test/mount-harness.ts';
 import { reactiveProps } from '../../test/reactive-props.svelte.ts';
 import { createFakeController } from '../components/terminal/terminal-attachment-test-support.ts';
-import { waitFor } from '../components/terminal/terminal-test-support.ts';
+import { settle, waitFor } from '../components/terminal/terminal-test-support.ts';
 import Terminal from '../components/terminal/terminal.svelte';
 import type { TerminalProps } from '../components/terminal/terminal.types.ts';
 import {
@@ -42,6 +42,17 @@ function button(label: string, root: ParentNode = document.body): HTMLButtonElem
   return found;
 }
 
+/**
+ * Deliver `text` as output and resolve when the engine reports it parsed, which is when any reply
+ * it would send has been sent. The engine acknowledges each chunk once, so this is an event, not a
+ * guess at how long parsing takes.
+ */
+function deliverOutput(controller: ReturnType<typeof wiredController>, text: string) {
+  const listener = controller.everRegistered.at(-1);
+  if (listener === undefined) throw new Error('Expected the terminal to be listening for output');
+  return new Promise<void>((resolve) => listener(new TextEncoder().encode(text), resolve));
+}
+
 function wiredController() {
   return Object.assign(createFakeController(), { input: createFakeInputController() });
 }
@@ -56,6 +67,17 @@ async function mountReady(props: TerminalProps) {
   );
   const textarea = required(harness, '.xterm-helper-textarea') as HTMLTextAreaElement;
   return { harness, textarea };
+}
+
+/** Every distinct non-empty message the polite live region showed, in order. */
+function recordAnnouncements(harness: MountedHarness): string[] {
+  const region = required(harness, '[aria-live="polite"]');
+  const seen: string[] = [];
+  new MutationObserver(() => {
+    const text = region.textContent?.trim();
+    if (text) seen.push(text);
+  }).observe(region, { childList: true, characterData: true, subtree: true });
+  return seen;
 }
 
 const announcement = (harness: MountedHarness) =>
@@ -143,6 +165,113 @@ describe('the capture control', () => {
     expect(capture.getAttribute('aria-pressed')).toBe('false');
   });
 
+  test('focus moving to the pressed button does not release capture, so the press turns it off', async () => {
+    const controller = wiredController();
+    const { harness } = await mountReady({ title: 'Shell', state: 'writable', controller });
+    const seen = recordAnnouncements(harness);
+    const capture = button('Capture terminal keys', harness.target);
+    capture.click();
+    harness.flush();
+    await waitFor(
+      () => announcement(harness) === 'Terminal key capture on',
+      'the first announcement',
+    );
+    capture.focus();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('true');
+    capture.click();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('false');
+    await waitFor(
+      () => announcement(harness) === 'Terminal key capture off',
+      'the second announcement',
+    );
+    expect(seen).toEqual(['Terminal key capture on', 'Terminal key capture off']);
+  });
+
+  test('a pointer press on the pressed button turns capture off with one announcement', async () => {
+    const controller = wiredController();
+    const { harness } = await mountReady({ title: 'Shell', state: 'writable', controller });
+    const seen = recordAnnouncements(harness);
+    const capture = button('Capture terminal keys', harness.target);
+    capture.click();
+    harness.flush();
+    await waitFor(
+      () => announcement(harness) === 'Terminal key capture on',
+      'the first announcement',
+    );
+    // The sequence a browser produces: the press moves focus to the button before the click lands.
+    capture.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    capture.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    capture.focus();
+    capture.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    capture.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    capture.click();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('false');
+    await waitFor(() => announcement(harness) === 'Terminal key capture off', 'the announcement');
+    expect(seen).toEqual(['Terminal key capture on', 'Terminal key capture off']);
+  });
+
+  test('keyboard activation of the button enters and leaves capture', async () => {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+    });
+    const capture = button('Capture terminal keys', harness.target);
+    capture.focus();
+    capture.click();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('true');
+    expect(document.activeElement).toBe(textarea);
+    typeKey(textarea, {
+      key: 'Escape',
+      code: 'Escape',
+      keyCode: 27,
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('false');
+    capture.focus();
+    capture.click();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('focus leaving the pressed button for the page releases capture', async () => {
+    const controller = wiredController();
+    const { harness } = await mountReady({ title: 'Shell', state: 'writable', controller });
+    const capture = button('Capture terminal keys', harness.target);
+    capture.click();
+    harness.flush();
+    capture.focus();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('false');
+    outside.remove();
+  });
+
+  test('focus moving from the pressed button back to the terminal keeps capture', async () => {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+    });
+    const capture = button('Capture terminal keys', harness.target);
+    capture.click();
+    harness.flush();
+    capture.focus();
+    textarea.focus();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('true');
+  });
+
   test('capture lasts only while the terminal has focus', async () => {
     const controller = wiredController();
     const { harness } = await mountReady({ title: 'Shell', state: 'writable', controller });
@@ -150,9 +279,12 @@ describe('the capture control', () => {
     capture.click();
     harness.flush();
     expect(capture.getAttribute('aria-pressed')).toBe('true');
-    capture.focus();
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
     harness.flush();
     expect(capture.getAttribute('aria-pressed')).toBe('false');
+    outside.remove();
   });
 
   test('does not enter capture before the engine is ready to take focus', () => {
@@ -170,9 +302,7 @@ describe('the capture control', () => {
     const outside = document.createElement('button');
     document.body.append(outside);
     outside.focus();
-    const encoder = new TextEncoder();
-    controller.emit(encoder.encode('hello\r\n'));
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await deliverOutput(controller, 'hello\r\n');
     expect(document.activeElement).toBe(outside);
     expect(button('Capture terminal keys', harness.target).getAttribute('aria-pressed')).toBe(
       'false',
@@ -217,8 +347,7 @@ describe('authority follows the state', () => {
     typeKey(textarea, { key: 'Enter', code: 'Enter', keyCode: 13 });
     const paste = pasteEvent('a\nb');
     textarea.dispatchEvent(paste);
-    controller.emit(new TextEncoder().encode('\u001b[c'));
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await deliverOutput(controller, '\u001b[c');
     expect(controller.input.sent).toEqual([]);
     expect(paste.defaultPrevented).toBe(true);
     expect(document.querySelector('dialog[open]')).toBeNull();
@@ -263,6 +392,115 @@ describe('authority follows the state', () => {
     typeKey(textarea, { key: 'a', code: 'KeyA', keyCode: 65 });
     expect(controller.input.sent).toEqual([]);
     expect(harness.destroyed).toBe(false);
+  });
+});
+
+describe('dropped input is announced', () => {
+  async function mountWritable(props: Partial<TerminalProps> = {}) {
+    const controller = wiredController();
+    const mounted = await mountReady({ title: 'Shell', state: 'writable', controller, ...props });
+    const seen = recordAnnouncements(mounted.harness);
+    mounted.textarea.focus();
+    return { ...mounted, controller, seen };
+  }
+
+  const key = (textarea: HTMLElement, letter: string) =>
+    typeKey(textarea, { key: letter, code: `Key${letter.toUpperCase()}`, keyCode: 65 });
+
+  test('a failure of unknown delivery is announced, and so is the freeze that follows it', async () => {
+    const { harness, textarea, controller, seen } = await mountWritable();
+    controller.input.outcome = () => ({ throws: new Error('socket closed') });
+    key(textarea, 'a');
+    await waitFor(() => announcement(harness) !== '', 'the first announcement');
+    key(textarea, 'b');
+    key(textarea, 'c');
+    await waitFor(() => seen.length === 2, 'the second announcement');
+    expect(seen).toEqual([
+      'Terminal input stopped: the last input may not have been delivered.',
+      'Terminal input stopped. Keystrokes are not being sent.',
+    ]);
+  });
+
+  test('a full queue announces that input is paused, once however many keys follow', async () => {
+    const { harness, textarea, controller, seen } = await mountWritable();
+    controller.input.outcome = () => ({ ok: false, code: 'fifo-full' });
+    for (const letter of ['a', 'b', 'c', 'd']) key(textarea, letter);
+    await waitFor(() => announcement(harness) !== '', 'the announcement');
+    expect(seen).toEqual(['Terminal input paused. Keystrokes are not being sent.']);
+  });
+
+  test('an input too large for one frame is announced', async () => {
+    const { harness, controller, textarea, seen } = await mountWritable();
+    controller.input.terms = { maxFrameBytes: 2, maxQueuedOperations: 1 };
+    textarea.dispatchEvent(pasteEvent('x'.repeat(10)));
+    await waitFor(() => announcement(harness) !== '', 'the announcement');
+    expect(seen).toEqual(['Input was too large and was not sent.']);
+  });
+
+  test('a paste refused because the terminal is read-only is announced', async () => {
+    const { harness, textarea, controller, seen } = await mountWritable({ state: 'read-only' });
+    textarea.dispatchEvent(pasteEvent('a\nb'));
+    await waitFor(() => announcement(harness) !== '', 'the announcement');
+    expect(seen).toEqual(['The terminal is read-only. Nothing was sent.']);
+    expect(controller.input.sent).toEqual([]);
+  });
+
+  test('a paste dropped because authority was revoked during its review is announced', async () => {
+    const { harness, textarea, controller, seen } = await mountWritable();
+    textarea.dispatchEvent(pasteEvent('a\nb\n'));
+    await waitFor(() => document.querySelector('dialog[open]') !== null, 'the review');
+    controller.input.authorityRevoked = true;
+    button('Paste', document.querySelector<HTMLElement>('dialog[open]')!).click();
+    await waitFor(() => announcement(harness) !== '', 'the announcement');
+    expect(seen).toEqual(['The terminal is read-only. Nothing was sent.']);
+  });
+
+  test('read-only keystroke refusals are not announced, however many are typed', async () => {
+    const refusals: InputRefusal[] = [];
+    const { textarea, controller, harness, seen } = await mountWritable({
+      onInputRefused: (refusal) => refusals.push(refusal),
+    });
+    controller.input.authorityRevoked = true;
+    for (const letter of ['a', 'b', 'c']) key(textarea, letter);
+    // The announcer writes on its next timer turn; let it, then look at the region.
+    await settle();
+    harness.flush();
+    expect(refusals).toEqual([
+      { reason: 'read-only' },
+      { reason: 'read-only' },
+      { reason: 'read-only' },
+    ]);
+    expect(seen).toEqual([]);
+    expect(controller.input.sent).toEqual([]);
+  });
+
+  test('every refusal still reaches onInputRefused, announced or not', async () => {
+    const refusals: InputRefusal[] = [];
+    const { textarea, controller } = await mountWritable({
+      onInputRefused: (refusal) => refusals.push(refusal),
+    });
+    controller.input.authorityRevoked = true;
+    key(textarea, 'a');
+    textarea.dispatchEvent(pasteEvent('a\nb'));
+    expect(refusals).toEqual([{ reason: 'read-only' }, { reason: 'read-only', source: 'paste' }]);
+  });
+
+  test('a changed state lets the same refusal be announced again', async () => {
+    const controller = wiredController();
+    controller.input.outcome = () => ({ ok: false, code: 'fifo-full' });
+    const props = reactiveProps<TerminalProps>({ title: 'Shell', state: 'writable', controller });
+    const { harness, textarea } = await mountReady(props);
+    const seen = recordAnnouncements(harness);
+    textarea.focus();
+    key(textarea, 'a');
+    await waitFor(() => seen.length === 1, 'the first announcement');
+    props.state = 'backpressured';
+    harness.flush();
+    props.state = 'writable';
+    harness.flush();
+    key(textarea, 'b');
+    await waitFor(() => seen.length === 2, 'the second announcement');
+    expect(seen[1]).toBe(seen[0]);
   });
 });
 
@@ -386,6 +624,47 @@ describe('paste review', () => {
     expect(document.activeElement).toBe(textarea);
   });
 
+  test.each([
+    ['Cancel', 'Cancel'],
+    ['Paste', 'Paste'],
+  ])('closing the review with %s restores capture when it was on', async (_name, label) => {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+    });
+    const capture = button('Capture terminal keys', harness.target);
+    capture.click();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('true');
+    textarea.dispatchEvent(pasteEvent('a\nb\n'));
+    harness.flush();
+    await waitFor(() => dialog() !== null, 'the review');
+    // A browser moves focus into a modal dialog, which takes it from the terminal.
+    button('Cancel', dialog()!).focus();
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('false');
+    button(label, dialog()!).click();
+    await waitFor(() => dialog() === null, 'the review to close');
+    await waitFor(() => capture.getAttribute('aria-pressed') === 'true', 'capture to return');
+    expect(document.activeElement).toBe(textarea);
+    // Capture is real again: Tab goes to the shell, not the page.
+    const tab = typeKey(textarea, { key: 'Tab', code: 'Tab', keyCode: 9 });
+    expect(tab.keydown.defaultPrevented).toBe(true);
+  });
+
+  test('closing the review does not turn capture on when it was off', async () => {
+    const { harness, textarea } = await pasteReview('a\nb\n');
+    await waitFor(() => dialog() !== null, 'the review');
+    button('Cancel', dialog()!).click();
+    await waitFor(() => dialog() === null, 'the review to close');
+    expect(button('Capture terminal keys', harness.target).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+    expect(document.activeElement).toBe(textarea);
+  });
+
   test('Escape closes the review, is not shell input, and its release does not reach the shell', async () => {
     const { controller, textarea } = await pasteReview('a\nb\n');
     await waitFor(() => dialog() !== null, 'the review');
@@ -443,6 +722,6 @@ describe('paste review', () => {
     button('Paste', dialog()!).click();
     await waitFor(() => dialog() === null, 'the review to close');
     expect(controller.input.sent).toEqual([]);
-    expect(refusals).toEqual([{ reason: 'read-only' }]);
+    expect(refusals).toEqual([{ reason: 'read-only', source: 'paste' }]);
   });
 });

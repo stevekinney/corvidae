@@ -13,6 +13,23 @@ import {
 /** The terminator of a bracketed paste. Pasted text that carries it ends the bracket early. */
 const PASTE_TERMINATOR = '\u001b[201~';
 
+const PASTE_START = '\u001b[200~';
+
+/**
+ * `text` without any bracketed-paste marker. The engine wraps a paste in the markers but does not
+ * remove ones the text carries, so pasted `ESC[201~` would end the bracket early and run the rest as
+ * typed commands. Removal repeats until nothing is left, because taking one marker out can join the
+ * text on either side of it into another.
+ */
+export function stripPasteBrackets(text: string): string {
+  let stripped = text;
+  for (let previous = ''; previous !== stripped;) {
+    previous = stripped;
+    stripped = stripped.replaceAll(PASTE_START, '').replaceAll(PASTE_TERMINATOR, '');
+  }
+  return stripped;
+}
+
 export type PasteReview =
   | {
       kind: 'confirm';

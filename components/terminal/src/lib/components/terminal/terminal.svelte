@@ -35,6 +35,7 @@
   import { detectInputPlatform } from '../../input/input-platform.ts';
   import type { InputSettings } from '../../input/input-types.ts';
   import { resolvePasteLimit, type PasteReview } from '../../input/paste-review.ts';
+  import { createRefusalAnnouncer } from '../../input/refusal-announcement.ts';
   import { createTerminalInput, type TerminalInput } from '../../input/terminal-input.ts';
   import { createTerminalAttachment, type AttachmentSettings } from './terminal-attachment.ts';
   import { engineLoader } from './terminal-engine-loader.ts';
@@ -72,7 +73,9 @@
   let reviewOpen = $state(false);
   let displayedReview = $state.raw<PasteReview>();
   const announcer = useAnnouncer();
+  const refusalAnnouncer = createRefusalAnnouncer(announcer.announce);
   const reviewId = $props.id();
+  const captureControlId = `${reviewId}-capture`;
 
   // A failure the renderer found itself. It outranks the state the host passed in: the engine is
   // gone, so no other state can be shown truthfully, and nothing is silently reset or replaced.
@@ -153,6 +156,12 @@
     live?.refresh();
   });
 
+  // A refusal announced before the state changed is news again if it recurs after it.
+  $effect(() => {
+    void effectiveState;
+    refusalAnnouncer.reset();
+  });
+
   // These states say the process is gone, so no output will finish a held unicode prefix. The
   // engine can load after the state ended, and replay what the controller buffered while it did,
   // so the effect also runs when the engine becomes ready: the earlier call found no engine.
@@ -209,6 +218,7 @@
       host,
       controller: borrowed?.input,
       readSettings: readInputSettings,
+      isCaptureControl: (node) => node instanceof Element && node.id === captureControlId,
       onCaptureChange: (next) => {
         captured = next;
         announcer.announce(next ? 'Terminal key capture on' : 'Terminal key capture off');
@@ -217,7 +227,10 @@
         if (next !== undefined) displayedReview = next;
         reviewOpen = next !== undefined;
       },
-      onRefused: (refusal) => onInputRefused?.(refusal),
+      onRefused: (refusal) => {
+        refusalAnnouncer.refused(refusal);
+        onInputRefused?.(refusal);
+      },
     });
     input = binding;
     return {
@@ -265,10 +278,12 @@
     {:else if effectiveState === 'writable'}
       <div class="cinder-terminal__actions">
         <Button
+          id={captureControlId}
           label="Capture terminal keys"
           size="sm"
           aria-pressed={captured}
           onclick={toggleCapture}
+          onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
         />
         <Button label="Interrupt" size="sm" onclick={() => input?.interrupt()} />
       </div>
@@ -286,6 +301,8 @@
   onExitComplete={() => {
     // The pasted text may be a secret; it is not kept once the review has gone.
     displayedReview = undefined;
+    // The dialog took focus and with it key capture; the terminal gets both back.
+    input?.resumeCapture();
   }}
 >
   {#if displayedReview?.kind === 'confirm'}

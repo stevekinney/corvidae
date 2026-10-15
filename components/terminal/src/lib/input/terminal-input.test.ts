@@ -229,16 +229,51 @@ describe('failures freeze input and never replay', () => {
     });
   });
 
-  test('a full queue before anything was accepted pauses input but does not freeze it', () => {
+  test('a full queue freezes input: later keystrokes are not sent, not even once capacity returns', () => {
+    const context = fixture();
+    context.controller.outcome = (index) =>
+      index === 0 ? undefined : { ok: false, code: 'fifo-full' };
+    context.engine.report({ kind: 'text', data: 'a' });
+    context.engine.report({ kind: 'text', data: 'b' });
+    // The controller would now accept input again; the view has not been told so.
+    context.controller.outcome = () => undefined;
+    context.engine.report({ kind: 'text', data: 'c' });
+    expect(sentText(context.controller)).toBe('a');
+    expect(context.refusals).toEqual([
+      { reason: 'paused', acceptedOperations: 0, totalOperations: 1 },
+      { reason: 'paused' },
+    ]);
+  });
+
+  test('input resumes only when the view returns to writable after leaving it', () => {
     const context = fixture();
     context.controller.outcome = (index) =>
       index === 0 ? undefined : { ok: false, code: 'fifo-full' };
     context.engine.report({ kind: 'text', data: 'a' });
     context.engine.report({ kind: 'text', data: 'b' });
     context.controller.outcome = () => undefined;
+    // Refreshing while still writable is not a recovery signal.
+    context.input.refresh();
     context.engine.report({ kind: 'text', data: 'c' });
-    expect(sentText(context.controller)).toBe('ac');
-    expect(context.refusals.map((refusal) => refusal.reason)).toEqual(['paused']);
+    expect(sentText(context.controller)).toBe('a');
+    // The host reports the backpressure, then that capacity returned.
+    context.settings.writable = false;
+    context.input.refresh();
+    context.engine.report({ kind: 'text', data: 'd' });
+    expect(sentText(context.controller)).toBe('a');
+    context.settings.writable = true;
+    context.input.refresh();
+    context.engine.report({ kind: 'text', data: 'e' });
+    expect(sentText(context.controller)).toBe('ae');
+  });
+
+  test('a full queue also holds back a paste and a reviewed paste until recovery', () => {
+    const context = fixture();
+    context.controller.outcome = () => ({ ok: false, code: 'fifo-full' });
+    context.engine.report({ kind: 'text', data: 'a' });
+    context.host.querySelector('textarea')!.dispatchEvent(pasteEvent('x\ny'));
+    expect(context.reviews).toEqual([]);
+    expect(context.refusals.at(-1)).toEqual({ reason: 'paused', source: 'paste' });
   });
 
   test('a failure part-way through an input freezes input and drops the rest, without retry', () => {
@@ -459,7 +494,7 @@ describe('interrupt', () => {
     const context = fixture({ settings: { writable: false } });
     context.input.interrupt();
     expect(context.controller.sent).toEqual([]);
-    expect(context.refusals).toEqual([{ reason: 'read-only' }]);
+    expect(context.refusals).toEqual([{ reason: 'read-only', source: 'interrupt' }]);
   });
 });
 
@@ -553,7 +588,7 @@ describe('paste', () => {
     expect(event.defaultPrevented).toBe(true);
     expect(context.reviews).toEqual([]);
     expect(context.engine.pastes).toEqual([]);
-    expect(context.refusals).toEqual([{ reason: 'read-only' }]);
+    expect(context.refusals).toEqual([{ reason: 'read-only', source: 'paste' }]);
   });
 
   test('permission revoked while the reader decides drops the paste, without queueing it', () => {
@@ -563,7 +598,7 @@ describe('paste', () => {
     context.input.acceptPaste();
     context.controller.authorityRevoked = false;
     expect(context.engine.pastes).toEqual([]);
-    expect(context.refusals).toEqual([{ reason: 'read-only' }]);
+    expect(context.refusals).toEqual([{ reason: 'read-only', source: 'paste' }]);
     context.input.acceptPaste();
     expect(context.engine.pastes).toEqual([]);
   });
@@ -574,7 +609,64 @@ describe('paste', () => {
     context.settings.maximumPasteBytes = 3;
     context.input.acceptPaste();
     expect(context.engine.pastes).toEqual([]);
-    expect(context.refusals).toEqual([{ reason: 'oversized' }]);
+    expect(context.refusals).toEqual([{ reason: 'oversized', source: 'paste' }]);
+  });
+
+  test('capture that was on when the review opened returns when asked to resume', () => {
+    const context = fixture();
+    context.inner.focus();
+    context.input.capture();
+    paste(context, 'a\nb\n');
+    // The dialog took focus, which ended capture.
+    context.host.dispatchEvent(new FocusEvent('focusout', { relatedTarget: null }));
+    expect(context.input.captured).toBe(false);
+    context.input.cancelPaste();
+    expect(context.input.captured).toBe(false);
+    context.input.resumeCapture();
+    expect(context.input.captured).toBe(true);
+    // It resumes once: a second call finds nothing pending.
+    context.input.release();
+    context.input.resumeCapture();
+    expect(context.input.captured).toBe(false);
+  });
+
+  test('resuming does nothing when capture was off, or the view stopped taking input', () => {
+    const context = fixture();
+    context.inner.focus();
+    paste(context, 'a\nb\n');
+    context.input.cancelPaste();
+    context.input.resumeCapture();
+    expect(context.input.captured).toBe(false);
+    context.input.capture();
+    paste(context, 'c\nd\n');
+    context.input.cancelPaste();
+    context.settings.writable = false;
+    context.input.refresh();
+    context.input.resumeCapture();
+    expect(context.input.captured).toBe(false);
+  });
+
+  test('an accepted paste loses any bracket marker it carries when the engine brackets', () => {
+    const context = fixture();
+    context.engine.bracketedPaste = true;
+    paste(context, 'a\n\u001b[201~rm -rf ~\n\u001b[200~b');
+    context.input.acceptPaste();
+    expect(context.engine.pastes).toEqual(['a\nrm -rf ~\nb']);
+  });
+
+  test('removing a marker cannot assemble another from the text around it', () => {
+    const context = fixture();
+    context.engine.bracketedPaste = true;
+    paste(context, 'x\n\u001b[20\u001b[201~1~y');
+    context.input.acceptPaste();
+    expect(context.engine.pastes).toEqual(['x\ny']);
+  });
+
+  test('a paste is sent as read when the engine does not bracket', () => {
+    const context = fixture();
+    paste(context, 'a\n\u001b[201~b');
+    context.input.acceptPaste();
+    expect(context.engine.pastes).toEqual(['a\n\u001b[201~b']);
   });
 
   test('another paste while one is under review is ignored', () => {
@@ -619,6 +711,17 @@ describe('paste', () => {
     // The next press of the same key is ordinary input again.
     expect(press(context, 'keydown', { key: 'Enter', code: 'Enter' }).process).toBe(true);
     expect(press(context, 'keyup', { key: 'Enter', code: 'Enter' }).process).toBe(true);
+  });
+
+  test('a latched key whose keyup never arrives is forgotten when focus leaves the terminal', () => {
+    const context = fixture();
+    paste(context, 'a\nb\n');
+    document.dispatchEvent(keyEvent('keydown', { key: 'Enter', code: 'Enter' }));
+    context.input.acceptPaste();
+    // Focus goes elsewhere before the key comes up, so the keyup is never seen here.
+    context.inner.focus();
+    context.inner.blur();
+    expect(press(context, 'keydown', { key: 'Enter', code: 'Enter' }).process).toBe(true);
   });
 
   test('a key released before the review closed leaves no latch', () => {

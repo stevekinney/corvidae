@@ -215,6 +215,18 @@ describe('selection and paste', () => {
     expect(reports).toEqual([{ kind: 'text', data: '\u001b[200~rm -rf x\r\u001b[201~' }]);
   });
 
+  test('bracketedPaste follows the mode the program set, and is false once disposed', async () => {
+    const { captured } = mounted();
+    expect(captured.engine.bracketedPaste).toBe(false);
+    await captured.deliver([bytes('\u001b[?2004h')]);
+    expect(captured.engine.bracketedPaste).toBe(true);
+    await captured.deliver([bytes('\u001b[?2004l')]);
+    expect(captured.engine.bracketedPaste).toBe(false);
+    await captured.deliver([bytes('\u001b[?2004h')]);
+    captured.engine.dispose();
+    expect(captured.engine.bracketedPaste).toBe(false);
+  });
+
   test('a read-only engine takes no paste', () => {
     const { captured, reports } = mounted({ readOnly: true });
     captured.engine.paste('x');
