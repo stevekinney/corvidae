@@ -4679,8 +4679,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }),
     );
 
-    if (steeringIncarnation !== undefined) steeringRunIncarnations.set(runId, steeringIncarnation);
+    // Steered, and so counted as live for steering, only with a gate: the
+    // incarnation alone (still passed to fence the terminal save) does not
+    // make a run read commands or log its end.
     if (steeringIncarnation !== undefined && steeringGate !== undefined) {
+      steeringRunIncarnations.set(runId, steeringIncarnation);
       pollSessionSteering(sessionId, steeringIncarnation, runId);
     }
     if (steeringGate !== undefined) {
