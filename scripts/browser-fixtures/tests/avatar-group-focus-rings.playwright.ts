@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { fixtureRoute } from './overlay-fixture.ts';
+import { outerBands, parseBoxShadow } from './quiet-focus-rings-support.ts';
 
 const AVATAR_GROUP_ROUTE = fixtureRoute('avatar-group');
 const BASIC_EXAMPLE = '#example-mount-basic';
@@ -78,5 +79,10 @@ test.describe('avatar-group focus rings', () => {
     expect(paint.boxShadow).not.toBe('none');
     expect(boxShadowLayerCount(paint.boxShadow)).toBeGreaterThanOrEqual(2);
     expect(paint.ringWidth).not.toBe('');
+    // Updated for COR-1498: with a 0px offset the only painted band is the ring
+    // itself, exactly --cinder-ring-width wide.
+    expect(outerBands(parseBoxShadow(paint.boxShadow)).map((band) => band.spread)).toEqual([
+      Number.parseFloat(paint.ringWidth),
+    ]);
   });
 });
