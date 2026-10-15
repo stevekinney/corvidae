@@ -14,6 +14,7 @@
 import { join } from 'node:path';
 
 import { describeHostLoad } from './docker-baseline-runner.ts';
+import { incompleteRunReasons } from './suite-results.ts';
 import { startRendererRun } from './update-snapshots-docker.ts';
 
 export const SUITE_RESULTS_FILE_NAME = 'suite-results.json';
@@ -34,10 +35,16 @@ async function main(): Promise<number> {
       `  ${failure.screenshot ? 'screenshot' : 'behavioural'}: ${failure.title}\n`,
     );
   }
+  // A run that never reached its tests has no failures to list; say so rather than read as clean.
+  const incomplete =
+    results === undefined ? ['Playwright wrote no JSON report.'] : incompleteRunReasons(results);
+  if (incomplete.length > 0) {
+    process.stderr.write(`The visual run did not complete normally. ${incomplete.join(' ')}\n`);
+  }
   process.stdout.write(
     `Visual run against ${sha} exited ${exitCode} with ${failures.length} failing test(s). Host load: start ${describeHostLoad(hostLoad.start)}; end ${describeHostLoad(hostLoad.end)}. Results: ${resultsPath}\n`,
   );
-  return exitCode;
+  return incomplete.length > 0 && exitCode === 0 ? 1 : exitCode;
 }
 
 if (import.meta.main) {

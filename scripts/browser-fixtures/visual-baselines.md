@@ -50,7 +50,7 @@ Both accept `--source <ref>` (default `HEAD`) and forward any other arguments to
 - The only mount is an empty output directory under the temporary directory. The container copies the Linux baselines, the list of regenerated files, the fixture manifest, the JSON report, and Playwright's `test-results` into it, owned by the host user (`BASELINE_HOST_UID` and `BASELINE_HOST_GID`). The commit is passed as `BASELINE_SOURCE_SHA`, since the archive has no `.git`.
 - The container runs as `corvidae-baselines-<run id>` with `--rm` and `--init`. On SIGINT or SIGTERM the wrapper runs `docker kill` on that name, waits for it to exit, and exits `128 + signal`.
 
-`test:browser:visual:docker` runs the whole suite in block mode, exits with the suite's status, and writes `suite-results.json` (every failing test, screenshot or behavioural) into its run directory. There is no screenshot-only filter. Failure artefacts stay in the printed output directory.
+`test:browser:visual:docker` runs the whole suite in block mode, exits with the suite's status, and writes `suite-results.json` (every failing test, screenshot or behavioural) into its run directory. There is no screenshot-only filter. Failure artefacts stay in the printed output directory. A visual run that did not complete normally (see below) prints why on standard error and never exits 0.
 
 `test:browser:update:docker` first deletes every Linux baseline inside the container, because `--update-snapshots=all` does not rewrite a baseline that already matches within tolerance; every baseline a test uses is then written fresh. After the run it:
 
