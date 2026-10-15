@@ -151,6 +151,7 @@ function attachLandingPage(): ShellRun {
       {
         hydrate: hydrateShell,
         isHydrated: () => shellHydrated,
+        signal: teardown.signal,
         onError: (error) =>
           console.error('[cinder playground] failed to hydrate landing shell:', error),
       },
@@ -178,6 +179,7 @@ function attachLandingPage(): ShellRun {
   attachDeferredToggle(componentSearchTrigger, {
     hydrate: hydrateShell,
     isHydrated: () => shellHydrated,
+    signal: teardown.signal,
     onError: (error) =>
       console.error('[cinder playground] failed to hydrate landing shell:', error),
   });

@@ -293,6 +293,9 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
   // Visits between `visit()` starting and finishing: a history step that returns to the page on
   // screen while one is pending must not be mistaken for a change inside the document.
   let pendingVisits = 0;
+  // Visits past the point of no return, swapping the page in. While one runs, a new request is
+  // a native navigation: queuing behind a boot that may never finish would freeze the page.
+  let owningVisits = 0;
   const historyGeneration = createHistoryGeneration();
 
   history.scrollRestoration = 'manual';
@@ -394,6 +397,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       assertCurrent(ticket);
       // From here the navigation owns the page and runs to the end.
       ownsPage = true;
+      owningVisits += 1;
       await swapToLoaded(loaded, mode, progress);
     } catch (error) {
       if (error instanceof SupersededNavigationError || (!ownsPage && !ticket.isCurrent())) return;
@@ -401,6 +405,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       window.location[fallbackNavigationMethod(progress.historyWritten)](latestRequested);
     } finally {
       pendingVisits -= 1;
+      if (ownsPage) owningVisits -= 1;
       release();
     }
   }
@@ -424,7 +429,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
   const navigation: ProgressiveNavigation = {
     navigate(href) {
       const target = resolveInPageNavigation(href, new URL(window.location.href));
-      if (target === null) return native.navigate(href);
+      if (target === null || owningVisits > 0) return native.navigate(href);
       rememberScroll();
       return visit(target, { kind: 'push' });
     },
@@ -443,7 +448,7 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       },
       new URL(window.location.href),
     );
-    if (target === null) return;
+    if (target === null || owningVisits > 0) return;
     event.preventDefault();
     rememberScroll();
     void visit(target, { kind: 'push' });
@@ -485,7 +490,11 @@ export function installProgressiveNavigation(): ProgressiveNavigation {
       else if (destination.hash !== '') scrollToHashOrTop(destination.hash);
       return;
     }
-    if (!isCanonicalDocumentPath(destination.pathname) || destination.search !== '') {
+    if (
+      owningVisits > 0 ||
+      !isCanonicalDocumentPath(destination.pathname) ||
+      destination.search !== ''
+    ) {
       window.location.assign(destination.href);
       return;
     }

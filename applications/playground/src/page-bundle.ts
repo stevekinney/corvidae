@@ -232,7 +232,11 @@ function hydratePage(): Promise<void> {
 function hydrateAfter(event: Event, replay: () => void): void {
   event.preventDefault();
   void hydratePage()
-    .then(replay)
+    .then(() => {
+      // The page was swapped out while it hydrated: its replays belong to nothing.
+      if (disposed) return;
+      replay();
+    })
     .catch((error) => console.error('[cinder playground] failed to hydrate page:', error));
 }
 

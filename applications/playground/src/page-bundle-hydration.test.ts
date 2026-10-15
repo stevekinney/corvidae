@@ -132,4 +132,13 @@ describe('page bundle hydration policy', () => {
     expect(unmountBody).toContain('disposed = true;');
     expect(unmountBody).not.toContain('await ready');
   });
+
+  test('does not replay an early interaction once the page was disposed', async () => {
+    const source = await Bun.file(new URL('./page-bundle.ts', import.meta.url)).text();
+    const hydrateAfter = source.indexOf('function hydrateAfter(');
+    const body = source.slice(hydrateAfter, source.indexOf('\n}\n', hydrateAfter));
+
+    expect(body).toContain('if (disposed) return;');
+    expect(body.indexOf('if (disposed) return;')).toBeLessThan(body.indexOf('replay();'));
+  });
 });

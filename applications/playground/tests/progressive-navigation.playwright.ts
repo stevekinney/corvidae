@@ -428,7 +428,6 @@ test.describe('in-page navigation', () => {
     await page.locator('button[aria-label^="Preview theme:"]').click();
     await expect.poll(() => held.length).toBeGreaterThan(0);
 
-    await page.unroute('**/shell-bundle/**');
     await page.locator('nav.dx-nav a[href="/page/alert"]').click();
     await hydratedHeading(page, 'Alert');
     for (const route of held) await route.continue().catch(() => undefined);
@@ -528,6 +527,67 @@ test.describe('in-page navigation', () => {
     expect(await page.evaluate(() => history.length)).toBe(lengthBefore + 1);
     await page.goBack();
     await expect(page).toHaveURL(/\/page\/button$/);
+  });
+
+  test('a toggle clicked before hydration does not loop after the page is left', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.locator('#shell-root h1')).toHaveCount(1);
+    await markDocument(page);
+    const trigger = page.getByRole('button', { name: 'Search components' });
+    await trigger.evaluate((element) => {
+      const counter = { clicks: 0 };
+      (window as unknown as Record<string, unknown>)['__triggerClicks'] = counter;
+      element.addEventListener('click', () => {
+        counter.clicks += 1;
+      });
+    });
+    const held: Route[] = [];
+    await page.route('**/shell-bundle/**', async (route: Route) => {
+      held.push(route);
+    });
+
+    await trigger.click();
+    await expect.poll(() => held.length).toBeGreaterThan(0);
+    await page.locator('nav.dx-nav a[href="/page/alert"]').click();
+    await hydratedHeading(page, 'Alert');
+    for (const route of held) await route.continue().catch(() => undefined);
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+
+    const readClicks = () =>
+      page.evaluate(
+        () => (window as unknown as { __triggerClicks: { clicks: number } }).__triggerClicks.clicks,
+      );
+    expect(await readClicks()).toBe(1);
+    expect(await documentSurvived(page)).toBe(true);
+  });
+
+  test('a click while a visit is swapping the page in navigates natively', async ({ page }) => {
+    await page.goto('/page/button');
+    await hydratedHeading(page, 'Button');
+    await markDocument(page);
+    const held: Route[] = [];
+    await page.route('**/page-bundle/chat.js', async (route: Route) => {
+      held.push(route);
+    });
+
+    // The chat visit owns the page and its entry never arrives.
+    await sidebarLink(page, 'chat').click();
+    await expect.poll(() => held.length).toBeGreaterThan(0);
+    await expect(page).toHaveURL(/\/page\/chat$/);
+
+    await sidebarLink(page, 'alert').click();
+
+    await expect(page).toHaveURL(/\/page\/alert$/);
+    await hydratedHeading(page, 'Alert');
+    expect(await documentSurvived(page)).toBe(false);
+    for (const route of held) await route.abort().catch(() => undefined);
   });
 
   test('the home link swaps to the landing page and back', async ({ page }) => {
