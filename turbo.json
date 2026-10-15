@@ -94,9 +94,15 @@
     },
     "@lostgradient/bureau#test": {
       "dependsOn": ["transit"],
-      "outputs": [],
+      "outputs": ["test-output/junit/**"],
       "env": ["CODEX_CI", "NODE_ENV"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/documentation/runtime-contracts.md"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/documentation/runtime-contracts.md"
+      ]
     },
     "@lostgradient/weft#test": {
       "outputs": ["test-output/junit/**"],
