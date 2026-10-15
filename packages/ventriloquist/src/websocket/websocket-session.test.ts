@@ -259,22 +259,24 @@ describe('output', () => {
     });
   });
 
-  test('receipt alone never acknowledges output: a client that reads everything and acknowledges nothing overflows the budget', async () => {
+  test('receipt alone never acknowledges output: a client that reads everything and acknowledges nothing pauses the producer', async () => {
     await withClient(
       { server: { budgets: { outputQueueBytes: 64 * 1024 } } },
       async (harness, client) => {
         const chunk = new Uint8Array(40 * 1024).fill(0x41);
         harness.process.stream.push(chunk);
         await client.waitForKind('output', 0);
-        const delivered = client.messages.length;
         harness.process.stream.push(chunk);
-        const summary = await harness.session().closed;
-        expect(summary.cause).toBe('output-overflow');
-        expect(summary.quarantined).toBe(true);
-        // The first chunk was received and still counted as unparsed.
-        expect(delivered).toBeGreaterThanOrEqual(2);
-        expect(client.endpoint.outputBytes.consumed).toBe(0);
-        await client.closed;
+        harness.process.stream.push(chunk);
+        await client.waitFor(() => client.endpoint.outputBytes.received >= 64 * 1024);
+        const reads = harness.process.stream.readCount;
+        await Bun.sleep(100);
+        // Receiving freed nothing, so the host stopped reading rather than failing or dropping.
+        expect(client.endpoint.outputBytes).toEqual({ received: 64 * 1024, consumed: 0 });
+        expect(harness.process.stream.readCount).toBe(reads);
+        expect(harness.session().snapshot.closed).toBe(false);
+        client.sendResult(client.endpoint.consumeOutput(64 * 1024));
+        await client.waitFor(() => client.endpoint.outputBytes.received === 120 * 1024);
       },
     );
   });

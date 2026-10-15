@@ -1,10 +1,10 @@
 import type { ProcessBackend } from '../session/session-types.ts';
 import { attempt, combineOutcomes } from '../session/settle.ts';
-import { BoundedByteFeed } from './bounded-byte-feed.ts';
-import type { HostPlatform } from './host-platform.ts';
+import { createDeferredByteStream } from './deferred-byte-stream.ts';
 import {
   assembleHostedProcess,
   createOwnedProcess,
+  requireSupportedHost,
   resolveHostSettings,
   spawnOwnedProcess,
 } from './hosted-process.ts';
@@ -16,7 +16,9 @@ import {
   validateDimensions,
   validateProcessProfile,
 } from './process-validation.ts';
-import { GATE_STDIO, abandonGate, gatedCommand, releaseGate } from './pty-start-gate.ts';
+import { loadPtyDevice, type PtyDevice, type PtyPair } from './pty-device.ts';
+import { createPtyMaster, type PtyMaster } from './pty-master.ts';
+import { abandonGate, gateStdio, gatedCommand, releaseGate } from './pty-start-gate.ts';
 
 /**
  * Why the profile's executable cannot be run, or `undefined` when it can. A bare name is looked up on
@@ -33,48 +35,31 @@ function notRunnable(profile: ProcessProfile): string | undefined {
 }
 
 /**
- * Whether the terminal closing with `status` is the end of its output rather than a failure of it.
- * macOS closes a finished terminal with status 0. Linux's `read` on the master of a pseudo-terminal
- * returns `EIO` once every holder of the slave has closed it, which is that platform's end of
- * file, and Bun reports it as a close with status 1. Any other status is a failure on both.
+ * Create a PTY process. The helper opens the pseudo-terminal itself (libc through `bun:ffi`, see
+ * `pty-device.ts`) and spawns the child on its slave as its own session leader and process group.
+ * Bun's `terminal` option cannot be used because its reader cannot be paused: a producer such as
+ * `yes` overflowed the output budget however fast the consumer acknowledged. Here a worker thread
+ * reads the master only while the session is taking output (`pty-master.ts`), so a producer the
+ * session is not reading blocks in the kernel and host memory stays flat.
  *
- * The cost: Bun reports no errno, so a genuine read error that also closes with status 1 on Linux
- * cannot be told from that end of file and is read as the end of output, not as a failed source.
- * The process exit is tracked separately and is what tells a session how the process really ended.
- */
-function endsOutput(host: HostPlatform, status: number): boolean {
-  return status === 0 || (host.platform === 'linux' && status === 1);
-}
-
-/** The master side of a child's pseudo-terminal, as `Bun.Terminal` offers it. */
-type PtyTerminal = {
-  write(bytes: Uint8Array): number;
-  resize(columns: number, rows: number): void;
-  close(): void;
-};
-
-/**
- * Create a PTY process: `Bun.spawn({ terminal })`, which makes the child the leader of its own
- * session and process group. All of the process's output arrives as one combined stream, tagged
- * `pty`, and the helper decodes, splits and echoes nothing: the line discipline in the kernel is the
- * only thing between the process and the consumer. Input is written to the terminal as given and
- * resize changes its window size.
+ * All of the process's output arrives as one combined stream, tagged `pty`, and the helper decodes,
+ * splits and echoes nothing: the line discipline in the kernel is the only thing between the
+ * process and the consumer. Input is written to the master as given and resize changes its window
+ * size.
  *
- * Input is backpressured: `Terminal.write` accepts every byte and buffers what the process has not
- * read, and its `drain` callback reports the buffer flushed (Bun's `TerminalOptions.drain` and
- * `Terminal.write` documentation), so a write settles only when `drain` fires and the session's
- * input budget bounds what is buffered. If a terminal never drains, the session's acknowledgement
- * deadline ends the session. The terminal's data callback cannot be paused, and a write that Bun
- * has accepted says nothing about the output, so neither is used to infer the other. Output the session has not yet read is
- * bounded, and exceeding the bound fails the source visibly.
+ * Input is backpressured: the master is non-blocking, so what the child has not read is queued and
+ * retried, and a write settles only when the kernel has taken every byte. The session's input
+ * budget bounds what is queued, and its acknowledgement deadline ends a session whose terminal
+ * never takes it.
  *
  * The child does not run its command until `Bun.spawn` has returned (see `pty-start-gate.ts`, which
- * works around a Bun hang). So a missing or non-executable command is found after the spawn, before
- * the gate is released, and fails the start as `spawn-failed` exactly as a refused spawn does.
+ * works around a Bun hang and gives the child its controlling terminal). So a missing or
+ * non-executable command is found after the spawn, before the gate is released, and fails the
+ * start as `spawn-failed` exactly as a refused spawn does.
  *
- * End of file on the terminal ends the output source; the process exit is reported separately and in
- * either order. If this Bun does not return a terminal, the process is killed and reaped, and the start fails as
- * `unsupported-runtime`; a PTY never degrades to a pipe.
+ * End of output ends the output source; the process exit is reported separately and in either
+ * order. A host that cannot open a terminal this way (no libc binding, no C compiler, no worker
+ * thread) fails the start as `unsupported-runtime`; a PTY never degrades to a pipe.
  *
  * Nothing is spawned until the session starts the backend.
  */
@@ -86,122 +71,176 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
   validateDimensions(dimensions);
   const settings = resolveHostSettings(options);
   const owned = createOwnedProcess(settings);
+  const output = createDeferredByteStream();
   let startFailure: ProcessStartFailure | undefined;
-  let terminal: PtyTerminal | undefined;
-  const feed = new BoundedByteFeed(
-    settings.maximumBufferedOutputBytes,
-    () => undefined,
-    // Output nothing is reading is no longer kept, so the process producing it is ended.
-    () => void owned.terminate(),
-  );
-  /** Writes the terminal accepted but has not yet reported flushed, oldest first. */
-  const unflushed: { resolve(): void }[] = [];
-  const flushed = (): void => {
-    for (const write of unflushed.splice(0)) write.resolve();
-  };
-  // Closing the terminal flushes nothing, so a write still waiting is neither done nor failed: it
-  // is left unsettled, and the session reports it as unknown when it closes.
-  const abandonUnflushed = (): void => {
-    unflushed.length = 0;
+  let device: PtyDevice | undefined;
+  let pair: PtyPair | undefined;
+  let master: PtyMaster | undefined;
+
+  /** Record why the start failed, release whatever it had acquired, and throw. */
+  const failStart = async (
+    failure: ProcessStartFailure,
+    release: () => void | Promise<void>,
+  ): Promise<never> => {
+    startFailure = failure;
+    await attempt(async () => release());
+    throw failure;
   };
 
   const backend: ProcessBackend = {
     mode: 'pty',
     start: async () => {
-      let child;
       try {
-        child = spawnOwnedProcess(
-          settings,
-          gatedCommand([profile.executable, ...profile.argumentList]),
-          {
-            stdio: GATE_STDIO,
-            cwd: profile.workingDirectory,
-            env: { ...profile.environment },
-            terminal: {
-              cols: dimensions.columns,
-              rows: dimensions.rows,
-              data: (_terminal: unknown, bytes: Uint8Array) => feed.push(bytes),
-              exit: (_terminal: unknown, status: number) =>
-                endsOutput(settings.host, status)
-                  ? feed.end()
-                  : feed.fail(new Error(`the terminal closed with status ${status}`)),
-              drain: () => flushed(),
-            },
-          },
-        );
+        requireSupportedHost(settings);
       } catch (error) {
         startFailure = error as ProcessStartFailure;
         throw error;
       }
-      if (child.terminal === undefined) {
-        // Without a terminal the child is not a group leader, so it is killed directly. It stays
-        // owned until it has been reaped and its group swept, so cleanup cannot report a process
-        // that is still alive as gone.
-        owned.adopt(child);
+      let opened: PtyDevice;
+      try {
+        opened = (options.loadDevice ?? loadPtyDevice)();
+      } catch (cause) {
+        return failStart(
+          new ProcessStartFailure(
+            'unsupported-runtime',
+            'this host cannot open a pseudo-terminal through libc and the bundled C helper',
+            { cause },
+          ),
+          () => undefined,
+        );
+      }
+      device = opened;
+      let terminal: PtyPair | undefined;
+      let slave: number | undefined;
+      try {
+        terminal = opened.open();
+        slave = opened.openSlave(terminal.slavePath);
+        opened.setWindowSize(terminal, dimensions.columns, dimensions.rows);
+      } catch (cause) {
+        const partial = terminal;
+        const partialSlave = slave;
+        return failStart(
+          new ProcessStartFailure('spawn-failed', 'could not open a pseudo-terminal', { cause }),
+          () => {
+            if (partialSlave !== undefined) opened.close(partialSlave);
+            if (partial !== undefined) opened.close(partial.masterFd);
+          },
+        );
+      }
+      const opening = { terminal, slave };
+      let child;
+      try {
+        child = spawnOwnedProcess(
+          settings,
+          gatedCommand([profile.executable, ...profile.argumentList], opening.terminal.slavePath),
+          {
+            stdio: gateStdio(opening.slave),
+            cwd: profile.workingDirectory,
+            env: { ...profile.environment },
+            detached: true,
+          },
+        );
+      } catch (error) {
+        return failStart(error as ProcessStartFailure, () =>
+          opened.close(opening.terminal.masterFd),
+        );
+      } finally {
+        // The child holds its own copies. Keeping this one would stop the master from ever seeing the
+        // slave close, so the end of the output would never be reported.
+        opened.close(opening.slave);
+      }
+      // The child is held until the gate is released, so it cannot have run before `Bun.spawn`
+      // returned. It stays owned until it has been reaped and its group swept, so a failed start
+      // cannot report a process that is still alive as gone.
+      owned.adopt(child);
+      const abort = async (): Promise<void> => {
         child.kill('SIGKILL');
+        master?.discard();
         await child.exited;
         await owned.terminate();
-        startFailure = new ProcessStartFailure(
-          'unsupported-runtime',
-          'this Bun did not provide a terminal for the process',
+        // The descriptor is closed only after the thread reading it has stopped, so a reused
+        // descriptor number can never be read by it.
+        if (master === undefined) {
+          opened.close(opening.terminal.masterFd);
+        } else {
+          await master.stop();
+          master.close();
+        }
+        master = undefined;
+      };
+      try {
+        master = createPtyMaster({
+          descriptor: opening.terminal.masterFd,
+          device: opened,
+          endsWithIo: settings.host.platform === 'linux',
+          ...(options.createMasterWorker === undefined
+            ? {}
+            : { createWorker: options.createMasterWorker }),
+          ...(options.writeMaster === undefined ? {} : { write: options.writeMaster }),
+        });
+      } catch (cause) {
+        return failStart(
+          new ProcessStartFailure(
+            'unsupported-runtime',
+            'this Bun could not start the thread that reads a terminal',
+            { cause },
+          ),
+          abort,
         );
-        throw startFailure;
       }
-      owned.adopt(child);
-      // The child is held until the gate is released, so it cannot have run before `Bun.spawn`
-      // returned. A command that cannot be run is found here, before the release, and the child
-      // ends without having run anything.
+      // A command that cannot be run is found here, before the release, and the child ends without
+      // having run anything.
       const unrunnable = notRunnable(profile);
       const hasChannel = unrunnable === undefined ? releaseGate(child) : abandonGate(child);
       if (hasChannel && unrunnable === undefined) {
-        terminal = child.terminal as PtyTerminal;
-        return;
+        pair = opening.terminal;
+        output.attach(master.stream);
+        return undefined;
       }
-      child.kill('SIGKILL');
-      await child.exited;
-      await owned.terminate();
-      await attempt(() => (child.terminal as PtyTerminal).close());
-      startFailure = hasChannel
-        ? new ProcessStartFailure(
-            'spawn-failed',
-            `could not spawn ${profile.executable}: ${unrunnable}`,
-          )
-        : new ProcessStartFailure(
-            'unsupported-runtime',
-            'this Bun did not provide the channel that releases a terminal process',
-          );
-      throw startFailure;
+      return failStart(
+        hasChannel
+          ? new ProcessStartFailure(
+              'spawn-failed',
+              `could not spawn ${profile.executable}: ${unrunnable}`,
+            )
+          : new ProcessStartFailure(
+              'unsupported-runtime',
+              'this Bun did not provide the channel that releases a terminal process',
+            ),
+        abort,
+      );
     },
     write: async (bytes) => {
-      if (terminal === undefined) throw new Error('the process has no open terminal');
-      // Bun need not report a flush for no bytes, so an empty write would wait for a `drain` that
-      // may never come and be reported unknown at the acknowledgement deadline. There is nothing
-      // to flush, so it is done.
-      if (bytes.length === 0) return;
-      // The terminal accepts every byte and buffers what the process has not read, so accepting
-      // says nothing about how much is buffered. The operation stays unsettled until the terminal
-      // reports the buffer flushed, which keeps the session's input budget counting those bytes.
-      const flush = new Promise<void>((resolve) => unflushed.push({ resolve }));
-      terminal.write(bytes);
-      await flush;
+      if (master === undefined) throw new Error('the process has no open terminal');
+      await master.write(bytes);
     },
     resize: async (columns, rows) => {
-      if (terminal === undefined) throw new Error('the process has no open terminal');
-      terminal.resize(columns, rows);
+      if (device === undefined || pair === undefined || master === undefined) {
+        throw new Error('the process has no open terminal');
+      }
+      device.setWindowSize(pair, columns, rows);
     },
     cleanup: async () => {
+      const active = master;
+      // Output keeps being read and dropped while the group is ended: a terminal with unread output
+      // waits for it to drain before the last process holding it can finish closing.
+      active?.discard();
       const terminated = await owned.terminate();
-      const closed = await attempt(() => terminal?.close());
-      terminal = undefined;
-      abandonUnflushed();
-      return combineOutcomes([terminated, closed ? 'complete' : 'incomplete']);
+      // Never wait for the end of the output: a descendant that escaped the group can hold the
+      // terminal open indefinitely, so the reader is stopped here instead.
+      const stopped = active === undefined ? true : await active.stop();
+      const closed = await attempt(() => active?.close());
+      master = undefined;
+      pair = undefined;
+      await attempt(() => output.cancel());
+      return combineOutcomes([terminated, stopped && closed ? 'complete' : 'incomplete']);
     },
   };
 
   return assembleHostedProcess({
     mode: 'pty',
     backend,
-    sources: [{ kind: 'stream', channel: 'pty', stream: feed.stream }],
+    sources: [{ kind: 'stream', channel: 'pty', stream: output.stream }],
     owned,
     startFailure: () => startFailure,
   });

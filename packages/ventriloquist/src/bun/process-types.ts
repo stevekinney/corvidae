@@ -1,12 +1,9 @@
 import type { SessionClock } from '../session/session-clock.ts';
-import {
-  DEFAULT_SESSION_BUDGETS,
-  type OutputSource,
-  type ProcessBackend,
-  type TerminalDimensions,
-} from '../session/session-types.ts';
+import type { OutputSource, ProcessBackend, TerminalDimensions } from '../session/session-types.ts';
 import type { HostPlatform } from './host-platform.ts';
 import type { ProcessStartFailure } from './process-start-failure.ts';
+import type { PtyDevice } from './pty-device.ts';
+import type { MasterWorker, MasterWrite } from './pty-master.ts';
 
 /**
  * The server-owned shapes a Bun host uses to describe a process before it spawns one. A profile is
@@ -41,7 +38,6 @@ export type SpawnedProcess = {
   readonly stdin?: unknown;
   readonly stdout?: unknown;
   readonly stderr?: unknown;
-  readonly terminal?: unknown;
   /** The descriptors Bun opened for extra stdio entries, by position; only a gated PTY child uses them. */
   readonly stdio?: readonly unknown[] | undefined;
   kill(signal?: number | string): void;
@@ -72,12 +68,6 @@ export type ProcessHostOptions = {
    * `incomplete`. The descendant observation window from the security budgets; defaults to 2,000.
    */
   observationWindowMilliseconds?: number;
-  /**
-   * Output the host has received but the session has not yet read. Output cannot be paused, so
-   * the source fails visibly when more than this arrives unread. Defaults to the session's
-   * output queue budget.
-   */
-  maximumBufferedOutputBytes?: number;
 };
 
 /** A pipe process: stdout and stderr keep their identity, and stdin is optional. */
@@ -91,22 +81,25 @@ export type PipeProcessOptions = ProcessHostOptions & {
 export type PtyProcessOptions = ProcessHostOptions & {
   profile: ProcessProfile;
   dimensions: TerminalDimensions;
+  /**
+   * Binds the operating-system calls that open and size the terminal; throwing means this host
+   * cannot. Defaults to libc through `bun:ffi`.
+   */
+  loadDevice?: () => PtyDevice;
+  /** Starts the thread that reads the terminal's master. Defaults to the `Worker` in `pty-master-worker.ts`. */
+  createMasterWorker?: () => MasterWorker;
+  /** Writes input to the master without blocking. Defaults to `fs.writeSync`. */
+  writeMaster?: MasterWrite;
 };
 
 /**
- * How long cleanup waits and how much unread output a process may hold, each with its permitted
- * range. The observation window is the descendant observation window from the security budgets;
+ * How long cleanup waits, each with its permitted range. The observation window is the descendant observation window from the security budgets;
  * a TERM grace and an observation window together stay inside the session's cleanup deadline at
  * their defaults. Values outside a range are refused, never clamped.
  */
 export const PROCESS_BUDGETS = {
   terminationGraceMilliseconds: { default: 1_000, minimum: 1, maximum: 30_000 },
   observationWindowMilliseconds: { default: 2_000, minimum: 250, maximum: 30_000 },
-  maximumBufferedOutputBytes: {
-    default: DEFAULT_SESSION_BUDGETS.outputQueueBytes,
-    minimum: 1,
-    maximum: 16 * 1024 * 1024,
-  },
 } as const;
 
 /** The part of a `Session` a hosted process needs in order to report its exit. */

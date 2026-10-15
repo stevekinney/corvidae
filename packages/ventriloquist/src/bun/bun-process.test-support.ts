@@ -12,6 +12,7 @@ import { Session } from '../session/session.ts';
 import type { OutputMode } from './fixtures/terminal-output.ts';
 import { createPipeProcess } from './pipe-process.ts';
 import type { HostedProcess, ProcessHostOptions, ProcessProfile } from './process-types.ts';
+import type { MasterWrite } from './pty-master.ts';
 import { createPtyProcess } from './pty-process.ts';
 
 type Channel = 'pty' | 'stdout' | 'stderr';
@@ -106,15 +107,21 @@ export function channelOf(mode: OutputMode): Channel {
 export function hostFor(
   mode: OutputMode,
   profile: ProcessProfile,
-  extra: ProcessHostOptions & { acceptsInput?: boolean; columns?: number; rows?: number } = {},
+  extra: ProcessHostOptions & {
+    acceptsInput?: boolean;
+    columns?: number;
+    rows?: number;
+    writeMaster?: MasterWrite;
+  } = {},
 ): HostedProcess {
-  const { acceptsInput, columns, rows, ...hostOptions } = extra;
+  const { acceptsInput, columns, rows, writeMaster, ...hostOptions } = extra;
   const options = { terminationGraceMilliseconds: 100, ...hostOptions };
   return mode === 'pipe'
     ? createPipeProcess({ profile, acceptsInput: acceptsInput === true, ...options })
     : createPtyProcess({
         profile,
         dimensions: { columns: columns ?? 80, rows: rows ?? 24 },
+        ...(writeMaster === undefined ? {} : { writeMaster }),
         ...options,
       });
 }
