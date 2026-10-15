@@ -460,11 +460,14 @@ test('selected conversations and transcript boundaries use one flat divider syst
   }
 });
 
-test('artifact actions remain visible and panel headers stay compact', async ({
-  browser,
-}, testInfo) => {
-  for (const colorScheme of ['light', 'dark'] as const) {
-    for (const width of [320, 512, 848]) {
+// One test per colour scheme and width. Each case loads a full chat fixture and
+// drives two artifact layouts, so running all six in one test spent a single
+// 30 s budget on six cold loads and timed out under load for that reason alone.
+for (const colorScheme of ['light', 'dark'] as const) {
+  for (const width of [320, 512, 848]) {
+    test(`artifact actions remain visible and panel headers stay compact (${colorScheme}, ${width}px)`, async ({
+      browser,
+    }, testInfo) => {
       const { page, dispose } = await openChatFixture(browser, {
         colorScheme,
         viewport: { width, height: 820 },
@@ -610,9 +613,9 @@ test('artifact actions remain visible and panel headers stay compact', async ({
       } finally {
         await dispose();
       }
-    }
+    });
   }
-});
+}
 
 async function expectDocumentedChatSizing(
   shell: Locator,
