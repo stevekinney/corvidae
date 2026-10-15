@@ -16,7 +16,10 @@ describe('landing shell hydration policy', () => {
     // hydrate and no override store to apply: documentation routes show shipped Cinder.
     expect(source).not.toContain('color-token-overrides');
     expect(source).not.toContain('ColorTokenOverrides');
-    expect(source).not.toContain('attachDeferredToggle');
+    // The removed toolbar panels have no deferred toggles; the component search trigger keeps its.
+    expect(source).not.toContain('Color token panel');
+    expect(source).not.toContain('Token inspector');
+    expect(source).not.toContain('bootstrapDeferredToggle');
     expect(source).not.toContain('once: true');
   });
 
