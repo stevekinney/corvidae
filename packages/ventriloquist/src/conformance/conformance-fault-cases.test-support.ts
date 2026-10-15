@@ -1,6 +1,7 @@
 import { isAlive, waitUntilGone } from '../bun/bun-process.test-support.ts';
 import { shellProfile } from '../bun/fixtures/bun-pipe-stdin.ts';
 import { ENDLESS_OUTPUT, outputProfile, pidsIn } from '../bun/fixtures/terminal-output.ts';
+import type { ServerMessage } from '../protocol/messages.ts';
 import { DEFAULT_SESSION_BUDGETS } from '../session/session-types.ts';
 import {
   SECOND_SESSION_IDENTIFIER,
@@ -356,6 +357,45 @@ const fifoReserve: CaseDefinition = {
   },
 };
 
+const defaultCapacity: CaseDefinition = {
+  id: 'default-operation-capacity',
+  modes: ['pty'],
+  launch: () => ({ profile: shellProfile('true'), scripted: scriptedProcess() }),
+  async run({ rig, scripted }) {
+    const process = scripted!;
+    await rig.client.handshake();
+    process.stallWrites();
+    // With the backend stalled nothing drains: one operation is in flight and the FIFO holds the rest.
+    let accepted = 0;
+    let refusal: ServerMessage | undefined;
+    while (refusal === undefined && accepted <= 2 * DEFAULT_SESSION_BUDGETS.operationQueueLimit) {
+      const from = rig.client.messages.length;
+      rig.client.sendResult(rig.client.endpoint.input('k'));
+      const answer = await rig.client.waitFor(
+        (message) => message.kind === 'operation-ack' || message.kind === 'operation-failure',
+        from,
+      );
+      if (answer.kind === 'operation-ack') accepted += 1;
+      else refusal = answer;
+    }
+    const writesInFlight = process.written.length;
+    rig.client.sendResult(rig.client.endpoint.terminate());
+    const { cleanup } = await conclude(rig);
+    process.releaseWrites();
+    return [
+      check(
+        `the FIFO took ${accepted} operations before refusing: ${DEFAULT_SESSION_BUDGETS.operationQueueLimit} queued and one in flight`,
+        accepted === DEFAULT_SESSION_BUDGETS.operationQueueLimit + 1 && writesInFlight === 1,
+      ),
+      check(
+        'the next was refused visibly as fifo-full',
+        refusal?.kind === 'operation-failure' && refusal.code === 'fifo-full',
+      ),
+      check('stop was honored on reserved capacity', cleanup.outcome === 'complete'),
+    ];
+  },
+};
+
 const inputOverBudget: CaseDefinition = {
   id: 'input-over-budget',
   modes: ['pty'],
@@ -404,5 +444,6 @@ export const FAULT_CASES: readonly CaseDefinition[] = [
   idleConsumer,
   lostAcknowledgement,
   fifoReserve,
+  defaultCapacity,
   inputOverBudget,
 ];
