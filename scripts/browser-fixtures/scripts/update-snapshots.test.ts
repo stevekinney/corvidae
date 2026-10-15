@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { resolve } from 'node:path';
 
+import { SCENARIO_HANG_GUARD_MILLISECONDS } from '../../module-scope-scenario.test-support.ts';
 import { REPOSITORY_ROOT } from './baseline-provenance.ts';
 import {
   completedSuite,
@@ -51,20 +52,31 @@ describe('completedSuite', () => {
   });
 });
 
+// The refusal is the CLI's own behaviour, so its real process runs once at module scope, off
+// the per-test clock (COR-1507), with the shared hang guard. Without the variables only the
+// renderer image bakes in, the guard refuses on any host, including a plain jammy arm64 container.
+const outsideImageEnvironment: Record<string, string | undefined> = { ...process.env };
+delete outsideImageEnvironment['BASELINE_DOCKER'];
+delete outsideImageEnvironment['BASELINE_PLAYWRIGHT_VERSION'];
+const outsideImageChild = Bun.spawn(
+  ['bun', resolve(REPOSITORY_ROOT, 'scripts/browser-fixtures/scripts/update-snapshots.ts')],
+  {
+    cwd: REPOSITORY_ROOT,
+    env: outsideImageEnvironment,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  },
+);
+const [outsideImageExitCode, outsideImageStderr] = await Promise.all([
+  outsideImageChild.exited,
+  new Response(outsideImageChild.stderr).text(),
+]);
+
 describe('bun run test:browser:update outside the renderer image', () => {
-  it('exits non-zero with instructions to use the Docker path', async () => {
-    // Without the variables only the renderer image bakes in, the guard refuses on any
-    // host, including inside a plain jammy arm64 container.
-    const childEnvironment: Record<string, string | undefined> = { ...process.env };
-    delete childEnvironment['BASELINE_DOCKER'];
-    delete childEnvironment['BASELINE_PLAYWRIGHT_VERSION'];
-    const child = Bun.spawn(
-      ['bun', resolve(REPOSITORY_ROOT, 'scripts/browser-fixtures/scripts/update-snapshots.ts')],
-      { cwd: REPOSITORY_ROOT, env: childEnvironment, stdout: 'pipe', stderr: 'pipe' },
-    );
-    const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
-    expect(exitCode).not.toBe(0);
-    expect(stderr).toContain('Refusing to update visual baselines');
-    expect(stderr).toContain('bun run test:browser:update:docker');
+  it('exits non-zero with instructions to use the Docker path', () => {
+    expect(outsideImageExitCode).not.toBe(0);
+    expect(outsideImageStderr).toContain('Refusing to update visual baselines');
+    expect(outsideImageStderr).toContain('bun run test:browser:update:docker');
   });
 });
