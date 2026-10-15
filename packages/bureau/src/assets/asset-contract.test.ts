@@ -46,6 +46,7 @@ import {
   zipBytes,
 } from '../testing/asset-fixtures.test-support';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { inspectMediaFacts } from './media-inspection';
 import {
   AssetAccessDeniedError,
   AssetAdmissionError,
@@ -606,6 +607,33 @@ describe('admission validation', () => {
       { source: { kind: 'inline', bytes: pdfBytes(4) } },
     );
     expect(result).toMatchObject({ rejection: { code: 'page-count-exceeded' } });
+  });
+
+  it('counts PDF pages over every byte value exactly as the raw bytes read', () => {
+    // Page tokens next to each byte 0x80–0xFF: the single native decode must
+    // see the same whitespace, letters, and digits a byte-per-code-point read does.
+    const pdf = (separator: number) =>
+      Uint8Array.of(
+        ...textBytes('%PDF-1.4\n1 0 obj << /Type'),
+        separator,
+        ...textBytes('/Page'),
+        separator,
+        ...textBytes(' >> endobj\n2 0 obj << /Count'),
+        separator,
+        ...textBytes('7 >> endobj\n%%EOF\n'),
+      );
+    for (let separator = 0x80; separator <= 0xff; separator += 1) {
+      const raw = String.fromCharCode(...pdf(separator));
+      const pages = raw.match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length ?? 0;
+      const count = Number(/\/Count\s+(\d+)/.exec(raw)?.[1] ?? 0);
+      const expected = Math.max(pages, count);
+      expect(inspectMediaFacts(pdf(separator), 'application/pdf')).toEqual(
+        expected > 0 ? { pageCount: expected } : {},
+      );
+    }
+    // 0xA0 is whitespace and 0x8A (Š in windows-1252) is not an ASCII letter.
+    expect(inspectMediaFacts(pdf(0xa0), 'application/pdf')).toEqual({ pageCount: 7 });
+    expect(inspectMediaFacts(pdf(0x8a), 'application/pdf')).toEqual({});
   });
 });
 

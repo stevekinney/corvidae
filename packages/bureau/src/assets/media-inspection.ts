@@ -13,6 +13,7 @@ import type { MimeFamily, Modality } from 'conversationalist';
 import type { AssetMediaFacts } from './types';
 
 const textDecoder = new TextDecoder('utf-8', { fatal: true });
+const singleByteDecoder = new TextDecoder('latin1');
 
 function startsWith(bytes: Uint8Array, signature: readonly number[], offset = 0): boolean {
   if (bytes.byteLength < offset + signature.length) return false;
@@ -284,8 +285,13 @@ function webpDimensions(bytes: Uint8Array): AssetMediaFacts {
  * into compressed object streams, say — reports the count as unmeasured.
  */
 function pdfPageCount(bytes: Uint8Array): AssetMediaFacts {
-  let text = '';
-  for (const byte of bytes) text += String.fromCharCode(byte);
+  // One native decode, not a string built byte by byte: a PDF may be as large
+  // as `maxAssetBytes`, and per-byte concatenation over 100 MiB holds the event
+  // loop and allocates a node per byte. WHATWG `latin1` is windows-1252, which
+  // differs from a byte-per-code-point mapping only in 0x80–0x9F, and none of
+  // those characters is whitespace, an ASCII letter, or a digit, so the
+  // patterns below match exactly as they would over the raw bytes.
+  const text = singleByteDecoder.decode(bytes);
   const pages = text.match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length ?? 0;
   let pageCount = pages;
   for (const match of text.matchAll(/\/Count\s+(\d+)/g)) {
