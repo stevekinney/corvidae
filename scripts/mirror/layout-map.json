@@ -1,5 +1,5 @@
 {
-  "documentation": "Where each corvidae workspace lands in the public target that receives it. Corvidae's own directory is not the target's: `components/chat` is cinder's `packages/chat`, and `components/cinder` is cinder's `packages/components`. Without this table the transform would emit a second `components/**` tree beside the target's real `packages/**` one and duplicate every package, which the deletion rule cannot clean up because a path the transform does not emit is never pruned. `package-surface.json`'s `provenance.path` is deliberately not reused for this: it records where a package's published surface was vendored from, points `@lostgradient/operative` at a repository that no longer exists, and is `null` for the four packages that have never been published. Which target a workspace ships to is decided by `targetFor` in `manifests.ts`, so it is not repeated here; this table answers only where inside that target the workspace lands. `emit` carries the target-relative directory. `deferred` is a workspace whose placement is genuinely unresolved: the transform emits nothing for it and the sync refuses to run, naming the issue that must rule on it.",
+  "documentation": "Where each corvidae workspace lands in the public target that receives it. Corvidae's own directory is not the target's: `components/cinder` is cinder's `packages/components`, and `components/editor` is cinder's `packages/editor`. Without this table the transform would emit a second `components/**` tree beside the target's real `packages/**` one and duplicate every package, which the deletion rule cannot clean up because a path the transform does not emit is never pruned. `package-surface.json`'s `provenance.path` is deliberately not reused for this: it records where a package's published surface was vendored from, which is the upstream directory at the commit it was copied from rather than where the mirror writes the package today. Which target a workspace ships to is decided by `targetFor` in `manifests.ts`, so it is not repeated here; this table answers only where inside that target the workspace lands. `emit` carries the target-relative directory. `deferred` is a workspace whose placement is genuinely unresolved: the transform emits nothing for it and the sync refuses to run, naming the issue that must rule on it.",
   "workspaces": {
     "@lostgradient/weft": {
       "disposition": "emit",
@@ -14,10 +14,10 @@
       "reason": "Cinder publishes `@lostgradient/cinder` from `packages/components`, not from a directory named after the package. `target-owned.json` already carries a `fields` entry keyed to `packages/components/package.json` preserving cinder's `\"prepare\": \"cd ../.. && husky\"`; that entry can only match once this remap is in place."
     },
     "@lostgradient/chat": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "components/chat",
-      "targetDirectory": "packages/chat",
-      "reason": "Cinder publishes `@lostgradient/chat` from `packages/chat`."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/editor": {
       "disposition": "emit",
@@ -32,40 +32,40 @@
       "reason": "Routed to the cinder target, because `targetFor` gives the weft target exactly one member. It was `packages/weft-ui` in the weft monorepo it merged from and keeps that directory name here."
     },
     "armorer": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/armorer",
-      "targetDirectory": "packages/armorer",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/bureau": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/bureau",
-      "targetDirectory": "packages/bureau",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "conversationalist": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/conversationalist",
-      "targetDirectory": "packages/conversationalist",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/cryptography": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/cryptography",
-      "targetDirectory": "packages/cryptography",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/embeddings": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/embeddings",
-      "targetDirectory": "packages/embeddings",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/lifecycle": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/lifecycle",
-      "targetDirectory": "packages/lifecycle",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/markdown": {
       "disposition": "emit",
@@ -74,22 +74,22 @@
       "reason": "Cinder publishes `@lostgradient/markdown` from `packages/markdown`."
     },
     "@lostgradient/memory": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/memory",
-      "targetDirectory": "packages/memory",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/operative": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/operative",
-      "targetDirectory": "packages/operative",
-      "reason": "Library directory, unchanged downstream. Its `package-surface.json` provenance points at the retired agent-bureau repository, which is why that field is not the source of truth for layout."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/skills": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/skills",
-      "targetDirectory": "packages/skills",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/testing": {
       "disposition": "emit",
@@ -98,10 +98,10 @@
       "reason": "Cinder already carries `packages/testing` as its private `@cinder/testing` workspace, which is the same workspace under its old name."
     },
     "@lostgradient/tool-protocol": {
-      "disposition": "emit",
+      "disposition": "deferred",
       "corvidaeDirectory": "packages/tool-protocol",
-      "targetDirectory": "packages/tool-protocol",
-      "reason": "Library directory, unchanged downstream."
+      "issue": "COR-1432",
+      "reason": "Excluded from the mirror in `package-map.json` since the repository owner retired it from publication on 2026-10-14, so no placement is needed and the plan never consults this entry. `deferred` rather than a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     },
     "@lostgradient/typescript": {
       "disposition": "emit",

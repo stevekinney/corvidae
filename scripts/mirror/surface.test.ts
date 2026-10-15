@@ -189,9 +189,6 @@ function planText(plan: SurfacePlan, path: string): string {
  */
 const unresolvedByTarget: Record<MirrorTarget, readonly string[]> = {
   weft: [],
-  // COR-1287: the agent-bureau target's ten packages each resolve every subpath their emitted
-  // manifest names, so it joins weft with nothing accepted.
-  'agent-bureau': [],
   // COR-1196: the two promoted components' deprecated shims were once accepted here as
   // unresolved, which left the cinder plan unpublishable: stageSurface's assertPublishable refused
   // it outright. Published cinder 0.26.2 exports both `./experimental/*` subpaths, so dropping them
@@ -227,15 +224,16 @@ describe('published dependency edges', () => {
   }
 
   /**
-   * The defect's own shape, on the tree that has it: `chat` depends on two packages that both come
-   * after it in discovery order. Asserting the edges rather than the resulting step order keeps
-   * this test about what `planSurface` produces; `verify-steps.test.ts` owns the ordering itself.
+   * The defect's own shape, on the tree that has it: `editor` depends on cinder and on markdown,
+   * which comes after it in discovery order. (`chat` was the original example until it stopped
+   * publishing on 2026-10-14.) Asserting the edges rather than the resulting step order keeps this
+   * test about what `planSurface` produces; `verify-steps.test.ts` owns the ordering itself.
    */
-  test('cinder’s chat records its edges to cinder and markdown', () => {
+  test('cinder’s editor records its edges to cinder and markdown', () => {
     const { plan } = committedPlans.cinder;
-    const chat = plan.published.find((entry) => entry.publicName === '@lostgradient/chat');
-    expect(chat?.dependsOn).toContain('@lostgradient/cinder');
-    expect(chat?.dependsOn).toContain('@lostgradient/markdown');
+    const editor = plan.published.find((entry) => entry.publicName === '@lostgradient/editor');
+    expect(editor?.dependsOn).toContain('@lostgradient/cinder');
+    expect(editor?.dependsOn).toContain('@lostgradient/markdown');
   });
 });
 
@@ -273,8 +271,6 @@ describe('surface parity', () => {
   });
 
   /**
-   * COR-1287 split the `runtime-closure-forced` packages that had never published across two
-   * targets, all four landing in agent-bureau with the rest of that repository's source.
    * `@lostgradient/weft-ui` used to be cinder's one first-publish member; COR-1196 moved it to
    * `private-workspace`, which never reaches `plan.parity` at all (only a `publish-as` workspace
    * does), so cinder now has none. Asserted per target rather than merged back into one list,
@@ -282,9 +278,7 @@ describe('surface parity', () => {
    * member map exists to prevent, and a merged list would hide it.
    *
    * The expected set is derived from the committed `package-map.json` rather than written as a
-   * literal: COR-1198 published all four of agent-bureau's `runtime-closure-forced` packages
-   * (`@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`,
-   * `@lostgradient/tool-protocol`), so a literal list turned every one of those publishes into a
+   * literal: a literal list turned every first publish (COR-1198 published four at once) into a
    * test edit here — the same trap `weftRecordedVersion` in manifests.test.ts avoids for the same
    * reason. `targetFor` is the hand-authored routing table (`membersOf`), independent of
    * `isFirstPublish`/parity, so comparing its per-target grouping against what `committedPlans`
@@ -393,7 +387,6 @@ const declarationSubpathsByTarget: Readonly<Record<MirrorTarget, readonly string
     '@lostgradient/cinder ./styles/tokens',
     '@lostgradient/cinder ./styles/utilities',
   ],
-  'agent-bureau': [],
 };
 
 describe('declaration agreement', () => {
@@ -446,8 +439,8 @@ describe('emitted manifests', () => {
   test('every published package receives an exports map, a files allowlist and a build', async () => {
     const surface = await loadPackageSurface();
     const workspaces = await discoverWorkspaces(corvidaeRoot);
-    // The target's directory for each workspace, not corvidae's: `components/chat` is emitted as
-    // `packages/chat`, so looking the manifest up by corvidae's path would find nothing and the
+    // The target's directory for each workspace, not corvidae's: `components/editor` is emitted as
+    // `packages/editor`, so looking the manifest up by corvidae's path would find nothing and the
     // `checked` count below would be the assertion that noticed.
     const directories = new Map(
       await Promise.all(
@@ -495,7 +488,7 @@ describe('emitted manifests', () => {
 
   test('the build toolchain stays a catalog reference where the target has a catalog', () => {
     const { plan } = committedPlans.cinder;
-    const manifest = JSON.parse(planText(plan, 'packages/chat/package.json')) as {
+    const manifest = JSON.parse(planText(plan, 'packages/editor/package.json')) as {
       devDependencies?: Record<string, string>;
     };
     expect(manifest.devDependencies?.['svelte']).toBe('catalog:');
@@ -561,10 +554,9 @@ describe('emitted source', () => {
       ).exists();
       expect(emitted.length > 0, `${workspace.workspace} source`).toBe(carries);
     }
-    // The remap is what these paths are: corvidae keeps all four under `components/`.
+    // The remap is what these paths are: corvidae keeps all three under `components/`.
     for (const path of [
       'packages/components/src/index.ts',
-      'packages/chat/src/lib/index.ts',
       'packages/editor/src/lib/index.ts',
       'packages/weft-ui/src/index.ts',
     ]) {

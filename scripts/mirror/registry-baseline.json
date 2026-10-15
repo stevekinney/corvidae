@@ -2,45 +2,6 @@
   "documentation": "The subpath keys each published package exported in its latest registry version, committed so the surface-parity gate stays hermetic. Refresh with `bun scripts/mirror/refresh-registry-baseline.ts`; `--verify` diffs this file against the live registry. A package whose package-map.json `lastPublishedVersion` is null has no entry here by construction, and the gate treats its absence as a first publish rather than a parity failure.",
   "source": "https://registry.npmjs.org",
   "packages": {
-    "@lostgradient/chat": {
-      "workspace": "@lostgradient/chat",
-      "version": "0.16.0",
-      "fetchedAt": "2026-10-13",
-      "subpaths": [
-        ".",
-        "./composer-popover",
-        "./composer-popover/examples",
-        "./composer-popover/schema",
-        "./composer-popover/styles",
-        "./composer-popover/variables",
-        "./conversation-header",
-        "./conversation-header/examples",
-        "./conversation-header/schema",
-        "./conversation-header/styles",
-        "./conversation-header/variables",
-        "./conversation-list",
-        "./conversation-list/examples",
-        "./conversation-list/schema",
-        "./conversation-list/styles",
-        "./conversation-list/variables",
-        "./examples",
-        "./manifest",
-        "./navigation-rail",
-        "./navigation-rail/examples",
-        "./navigation-rail/schema",
-        "./navigation-rail/styles",
-        "./navigation-rail/variables",
-        "./package.json",
-        "./schema",
-        "./styles",
-        "./sub-session",
-        "./sub-session/examples",
-        "./sub-session/schema",
-        "./sub-session/styles",
-        "./sub-session/variables",
-        "./variables"
-      ]
-    },
     "@lostgradient/cinder": {
       "workspace": "@lostgradient/cinder",
       "version": "0.27.1",
@@ -1040,12 +1001,6 @@
         "./zoom-pan-viewer/variables"
       ]
     },
-    "@lostgradient/cryptography": {
-      "workspace": "@lostgradient/cryptography",
-      "version": "0.0.1",
-      "fetchedAt": "2026-10-13",
-      "subpaths": ["."]
-    },
     "@lostgradient/editor": {
       "workspace": "@lostgradient/editor",
       "version": "0.16.1",
@@ -1092,18 +1047,6 @@
         "./shared/anchor-types"
       ]
     },
-    "@lostgradient/embeddings": {
-      "workspace": "@lostgradient/embeddings",
-      "version": "0.0.1",
-      "fetchedAt": "2026-10-13",
-      "subpaths": ["."]
-    },
-    "@lostgradient/lifecycle": {
-      "workspace": "@lostgradient/lifecycle",
-      "version": "0.0.3",
-      "fetchedAt": "2026-10-14",
-      "subpaths": ["."]
-    },
     "@lostgradient/markdown": {
       "workspace": "@lostgradient/markdown",
       "version": "0.6.1",
@@ -1128,50 +1071,6 @@
         "./utilities/safe-url",
         "./utilities/sort-keys"
       ]
-    },
-    "@lostgradient/operative": {
-      "workspace": "@lostgradient/operative",
-      "version": "0.16.0",
-      "fetchedAt": "2026-10-13",
-      "subpaths": [
-        ".",
-        "./anthropic",
-        "./conditions",
-        "./durable",
-        "./gemini",
-        "./guardrails",
-        "./instrumentation",
-        "./liveness",
-        "./openai",
-        "./providers",
-        "./providers/anthropic",
-        "./providers/batches",
-        "./providers/batches/anthropic",
-        "./providers/batches/gemini",
-        "./providers/batches/openai",
-        "./providers/embeddings",
-        "./providers/embeddings/gemini",
-        "./providers/embeddings/ollama",
-        "./providers/embeddings/openai",
-        "./providers/embeddings/voyage",
-        "./providers/fallover",
-        "./providers/gemini",
-        "./providers/instrumentation",
-        "./providers/openai",
-        "./providers/routing",
-        "./providers/streaming",
-        "./providers/test",
-        "./retry",
-        "./store",
-        "./streaming",
-        "./test"
-      ]
-    },
-    "@lostgradient/tool-protocol": {
-      "workspace": "@lostgradient/tool-protocol",
-      "version": "0.0.3",
-      "fetchedAt": "2026-10-14",
-      "subpaths": ["."]
     },
     "@lostgradient/weft": {
       "workspace": "@lostgradient/weft",
@@ -1210,60 +1109,6 @@
         "./testing",
         "./worker-protocol",
         "./worker/generated-authoring"
-      ]
-    },
-    "armorer": {
-      "workspace": "armorer",
-      "version": "2.4.4",
-      "fetchedAt": "2026-10-14",
-      "subpaths": [
-        ".",
-        "./adapters/anthropic",
-        "./adapters/gemini",
-        "./adapters/open-ai/agents",
-        "./adapters/openai",
-        "./coding",
-        "./core",
-        "./idempotency",
-        "./inspect",
-        "./instrumentation",
-        "./lazy",
-        "./mcp",
-        "./middleware",
-        "./openapi",
-        "./query",
-        "./registry",
-        "./test",
-        "./tools",
-        "./truncation",
-        "./utilities"
-      ]
-    },
-    "conversationalist": {
-      "workspace": "conversationalist",
-      "version": "2.1.3",
-      "fetchedAt": "2026-10-14",
-      "subpaths": [
-        ".",
-        "./adapters/anthropic",
-        "./adapters/anthropic/sdk",
-        "./adapters/gemini",
-        "./adapters/openai",
-        "./composition",
-        "./context",
-        "./conversation",
-        "./export",
-        "./history",
-        "./markdown",
-        "./message",
-        "./projection",
-        "./redaction",
-        "./schemas",
-        "./sort",
-        "./streaming",
-        "./test",
-        "./utilities",
-        "./versioning"
       ]
     }
   }

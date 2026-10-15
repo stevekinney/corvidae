@@ -2,19 +2,6 @@ import { findInternalReadmeMarker } from './packaging.ts';
 
 /** Public component subpaths differ from corvidae's root-only private source packages. */
 const componentExports = {
-  chat: {
-    'chat-composer-popover': [
-      'composer-popover',
-      ['ChatComposerPopover', 'ChatComposerPopoverSelection'],
-    ],
-    'chat-conversation-header': ['conversation-header', ['ChatConversationHeader']],
-    'chat-conversation-list': [
-      'conversation-list',
-      ['ChatConversationList', 'ConversationSummary'],
-    ],
-    'chat-navigation-rail': ['navigation-rail', ['ChatNavigationRail']],
-    'chat-sub-session': ['sub-session', ['ChatSubSession']],
-  },
   editor: {
     'diff-review': ['diff-review', ['DiffReview']],
     'diff-review-comments': ['diff-review-comments', ['DiffReviewComments']],
@@ -27,7 +14,7 @@ const componentExports = {
 type ComponentWorkspace = keyof typeof componentExports;
 
 function isComponentWorkspace(value: string): value is ComponentWorkspace {
-  return value === 'chat' || value === 'editor';
+  return value === 'editor';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,7 +90,7 @@ function rewriteCodeImports(
   symbols: ReadonlyMap<string, string>,
 ): string {
   const namedImport =
-    /^([ \t]*)import( type)?\s*\{([^}]+)\}\s*from\s*(['"])(@lostgradient\/(?:chat|editor))\4;/gm;
+    /^([ \t]*)import( type)?\s*\{([^}]+)\}\s*from\s*(['"])(@lostgradient\/editor)\4;/gm;
   return code.replace(
     namedImport,
     (
@@ -143,9 +130,9 @@ function rewriteCodeImports(
   );
 }
 
-/** Translate only example JSON emitted to a public Chat or Editor package. */
+/** Translate only example JSON emitted to the public Editor package. */
 export function rewritePublishedComponentExamples(contents: Uint8Array, path: string): Uint8Array {
-  const match = /^packages\/(chat|editor)\/src\/lib\/components\/([^/]+)\/\2\.examples\.json$/.exec(
+  const match = /^packages\/(editor)\/src\/lib\/components\/([^/]+)\/\2\.examples\.json$/.exec(
     path,
   );
   if (!match) return contents;
@@ -156,7 +143,6 @@ export function rewritePublishedComponentExamples(contents: Uint8Array, path: st
     !isComponentWorkspace(workspaceName)
   )
     return contents;
-  if (component === 'chat') return contents;
   const specification = (
     componentExports[workspaceName] as Record<string, readonly [string, readonly string[]]>
   )[component];
@@ -205,7 +191,7 @@ export function rewritePublishedComponentExamples(contents: Uint8Array, path: st
 const fencedCodeBlock = /^([ \t]*)(`{3,}|~{3,})[^\n]*\n([\s\S]*?)^[ \t]*\2[`~]*[ \t]*$/gm;
 
 /**
- * Translate a component README emitted to a public Chat or Editor package.
+ * Translate a component README emitted to the public Editor package.
  *
  * The same file is read in two places: corvidae's playground renders it from workspace source,
  * where every component is a root export, and the public package ships it (the target's package
@@ -217,7 +203,7 @@ const fencedCodeBlock = /^([ \t]*)(`{3,}|~{3,})[^\n]*\n([\s\S]*?)^[ \t]*\2[`~]*[
  * refused here rather than shipped.
  */
 export function rewritePublishedComponentReadme(contents: Uint8Array, path: string): Uint8Array {
-  const match = /^packages\/(chat|editor)\/src\/lib\/components\/[^/]+\/README\.md$/.exec(path);
+  const match = /^packages\/(editor)\/src\/lib\/components\/[^/]+\/README\.md$/.exec(path);
   const workspaceName = match?.[1];
   if (workspaceName === undefined || !isComponentWorkspace(workspaceName)) return contents;
   const packageName = `@lostgradient/${workspaceName}`;
@@ -266,6 +252,6 @@ export function findBareRootComponentImport(
 }
 
 /** The subpath map for one public component package, for checks outside this module. */
-export function publicComponentSymbols(workspace: 'chat' | 'editor'): ReadonlyMap<string, string> {
+export function publicComponentSymbols(workspace: 'editor'): ReadonlyMap<string, string> {
   return importSubpaths(workspace);
 }

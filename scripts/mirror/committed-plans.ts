@@ -113,7 +113,7 @@ async function build(target: MirrorTarget, packageMap: PackageMap): Promise<Comm
 
 /**
  * Sequential and exhaustive: the work is CPU-bound, so planning both at once buys nothing, and a
- * `Record<MirrorTarget, …>` literal is what makes a third target a type error here rather than a
+ * `Record<MirrorTarget, …>` literal is what makes a new target a type error here rather than a
  * silently unplanned target in whichever test iterates `mirrorTargets`.
  */
 /**
@@ -126,5 +126,4 @@ export const packageMapForFixtures = await packageMapWithCurrentDigests();
 export const committedPlans: Readonly<Record<MirrorTarget, CommittedPlan>> = {
   cinder: await build('cinder', packageMapForFixtures),
   weft: await build('weft', packageMapForFixtures),
-  'agent-bureau': await build('agent-bureau', packageMapForFixtures),
 };
