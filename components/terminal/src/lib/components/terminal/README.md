@@ -49,6 +49,7 @@ The engine is private. The component never exposes the engine instance, its opti
 | `announceOutput` | Mirror output into the engine's bounded live region. Defaults to `false`. |
 | `onLinkActivate` | Turns links on and receives a visible HTTPS address the reader activated. |
 | `onTitleChange` | Receives the program-set title as bounded plain text. |
+| `mouseReporting` | Reports the mouse to a program that asks for it (tmux, vim), but only while key capture is on and the view is writable. Defaults to `false`: reports are dropped and the pointer selects text. |
 | `maximumPasteBytes` | The most paste text, in UTF-8 bytes, offered for review. Integer from 1 to 262144; anything else uses 65536. |
 | `onInputRefused` | Receives `{ reason, acceptedOperations?, totalOperations?, source? }` when input, or part of it, did not reach the wire. |
 
@@ -68,7 +69,9 @@ Nothing is queued, retried or replayed. A failure after part of an input was acc
 
 Keys are routed in the order the experience specification sets: a focused package overlay (the paste review), then reserved platform and host actions, then authorized terminal input. Capture starts off, so Tab and Shift+Tab move through the page; the `Capture terminal keys` button (`aria-pressed`) sends them to the shell instead, and `Ctrl+Shift+Escape` releases it. Bare Escape is always shell input unless the review owns it. Capture lasts only while focus is in the terminal, on the capture button, or on the Interrupt button, so pressing the pressed capture button turns it off, Interrupt returns focus to the terminal with capture kept, and capture returns after a paste review closes. Capture never ends up on a previous session.
 
-A multiline or control-bearing paste opens a review that shows its line breaks and controls, how long it is, and whether it ends in a newline, with Cancel and Paste. A paste over `maximumPasteBytes` is refused whole. An accepted paste goes through the engine, which converts line breaks to carriage returns and brackets it when the program asked for it, first removing any bracket marker the text carries so it cannot end the bracket early. The keys that close the review do not reach the shell.
+Mouse reports are off by default. A program can turn on the engine's mouse tracking at any time; the terminal never changes that mode, but sends the reports it produces (default, SGR and SGR-pixel encodings, including the raw bytes of the default one) only when `mouseReporting` is set, capture is on and the view is writable. Otherwise they are dropped without a refusal, and a press is handed to the engine as a selection gesture (Shift, or Option on a Mac), so the pointer selects text. A read-only view never reports the mouse.
+
+A multiline or control-bearing paste, and any paste while the program has bracketed paste on, opens a review that shows its line breaks and controls, how long it is, and whether it ends in a newline, with Cancel and Paste. A paste over `maximumPasteBytes` is refused whole. An accepted paste goes through the engine, which converts line breaks to carriage returns and brackets it when the program asked for it. The bytes are never rewritten: a pasted bracket terminator ends the protected paste early, and the review says so while bracketed paste is on (and that it is sent as typed while it is off). If the mode changes while the review is open, the review is shown again with the new warning before anything is sent. The keys that close the review do not reach the shell.
 
 ## Geometry
 

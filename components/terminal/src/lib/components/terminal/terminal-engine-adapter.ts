@@ -68,6 +68,8 @@ export function buildEngineOptions(
     allowProposedApi: false,
     convertEol: false,
     disableStdin: options.readOnly,
+    // Option-click selects on a Mac even while the program tracks the mouse, as Shift does elsewhere.
+    macOptionClickForcesSelection: true,
     cursorBlink: !options.reducedMotion && !options.readOnly,
     screenReaderMode: options.announceOutput,
     linkHandler: INERT_LINK_HANDLER,
@@ -150,6 +152,8 @@ export type RendererEngine = {
   paste(text: string): void;
   /** Whether the program asked for pastes to be bracketed, so the engine wraps them in markers. */
   readonly bracketedPaste: boolean;
+  /** Whether the program asked for mouse reports, so the engine turns pointer events into input. */
+  readonly mouseTracking: boolean;
   /** Move focus to the engine's input element. */
   focus(): void;
   /** Release the engine and its DOM. Safe to call twice. */
@@ -301,6 +305,9 @@ export function createRendererEngine(
     },
     hasSelection() {
       return terminal.hasSelection();
+    },
+    get mouseTracking() {
+      return !disposed && terminal.modes.mouseTrackingMode !== 'none';
     },
     get bracketedPaste() {
       return !disposed && terminal.modes.bracketedPasteMode;

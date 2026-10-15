@@ -40,6 +40,7 @@ export type FakeEngine = RendererEngine & {
   selection: boolean;
   pastes: string[];
   bracketedPaste: boolean;
+  mouseTracking: boolean;
   focusCount: number;
 };
 
@@ -61,6 +62,7 @@ export function createFakeEngine(initial: EngineCreateOptions): FakeEngine {
     selection: false,
     pastes: [],
     bracketedPaste: false,
+    mouseTracking: false,
     focusCount: 0,
     mount() {
       engine.calls.push('mount');

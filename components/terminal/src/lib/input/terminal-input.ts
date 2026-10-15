@@ -10,12 +10,13 @@ import {
   type TerminalInputController,
 } from './input-types.ts';
 import { routeKey } from './key-routing.ts';
-import { analyzePaste, reviewPaste, stripPasteBrackets, type PasteReview } from './paste-review.ts';
+import { isMouseReport } from './mouse-report.ts';
+import { analyzePaste, reviewPaste, type PasteReview } from './paste-review.ts';
 
 /** What the input path needs of the engine; the full adapter satisfies it. */
 export type InputEngine = Pick<
   RendererEngine,
-  'onInput' | 'setKeyHook' | 'hasSelection' | 'paste' | 'focus' | 'bracketedPaste'
+  'onInput' | 'setKeyHook' | 'hasSelection' | 'paste' | 'focus' | 'bracketedPaste' | 'mouseTracking'
 >;
 
 export type TerminalInputOptions = {
@@ -120,6 +121,9 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
   const document = host.ownerDocument;
 
   function refuse(refusal: InputRefusal): void {
+    // Capture only means something while the terminal can take input. Authority that was revoked
+    // or an input path that closed, with the state still `writable`, ends it as a lost state would.
+    if (refusal.reason === 'read-only' || refusal.reason === 'closed') setCaptured(false);
     options.onRefused(refusal);
   }
 
@@ -203,8 +207,18 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
   }
   document.addEventListener('keyup', releaseLatch);
 
+  /** Whether pointer events may become input right now: opted in, captured and able to send. */
+  function mouseReportingPermitted(): boolean {
+    return options.readSettings().mouseReporting && captured && refusalReason() === undefined;
+  }
+
   const stopInput = engine.onInput((report) => {
     if (disposed) return;
+    // A pointer report is neither typing nor a refusal worth telling anyone about: it is dropped,
+    // and the pointer does selection instead. A paste is never mistaken for one.
+    if (!pasting && engine.mouseTracking && isMouseReport(report) && !mouseReportingPermitted()) {
+      return;
+    }
     const bytes =
       report.kind === 'text' ? encodeTextReport(report.data) : encodeBinaryReport(report.data);
     if (bytes === undefined) {
@@ -296,13 +310,25 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     if (text === '') return;
     const limit = options.readSettings().maximumPasteBytes;
     const analysis = analyzePaste(text, limit);
-    if (!analysis.tooLarge && !analysis.needsReview) pasteThroughEngine(text);
-    else openReview(reviewPaste(text, limit, engine.bracketedPaste));
+    // Bracketed mode reviews every paste, even a plain line: its bytes go out between the markers.
+    if (!analysis.tooLarge && !analysis.needsReview && !engine.bracketedPaste) {
+      pasteThroughEngine(text);
+    } else {
+      openReview(reviewPaste(text, limit, engine.bracketedPaste));
+    }
+  }
+
+  /**
+   * Whether `value` is a DOM node, whichever realm made it. An element from a same-origin iframe is
+   * not an instance of this realm's `Node`, so the check cannot be `instanceof`.
+   */
+  function isNode(value: EventTarget | null): value is Node {
+    return value !== null && typeof (value as Partial<Node>).nodeType === 'number';
   }
 
   function focusLeft(next: EventTarget | null): void {
     const stayed =
-      next instanceof Node && (host.contains(next) || options.isTerminalControl?.(next) === true);
+      isNode(next) && (host.contains(next) || options.isTerminalControl?.(next) === true);
     if (!stayed) setCaptured(false);
   }
 
@@ -313,9 +339,50 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     focusLeft(event.relatedTarget);
   }
 
+  /**
+   * While the program tracks the mouse the engine reports every press instead of selecting, unless
+   * a modifier asks for selection (Shift, or Option on a Mac). When reporting is not permitted the
+   * press is handed to the engine again with that modifier, so native selection wins.
+   */
+  let rewriting = false;
+  function handleMouseDown(event: MouseEvent): void {
+    if (rewriting || event.button !== 0 || !engine.mouseTracking || mouseReportingPermitted()) {
+      return;
+    }
+    const mac = options.readSettings().platform === 'mac';
+    if (mac ? event.altKey : event.shiftKey) return;
+    event.stopImmediatePropagation();
+    event.preventDefault();
+    rewriting = true;
+    try {
+      event.target?.dispatchEvent(
+        new MouseEvent('mousedown', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          view: event.view,
+          detail: event.detail,
+          button: event.button,
+          buttons: event.buttons,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          screenX: event.screenX,
+          screenY: event.screenY,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: mac ? event.shiftKey : true,
+          altKey: mac ? true : event.altKey,
+        }),
+      );
+    } finally {
+      rewriting = false;
+    }
+  }
+
   // Capture phase on the host runs before the engine's own listeners on the nodes below it.
   host.addEventListener('paste', handlePaste, true);
   host.addEventListener('focusout', handleFocusOut);
+  host.addEventListener('mousedown', handleMouseDown, true);
 
   function capture(): boolean {
     if (refusalReason() !== undefined) return false;
@@ -346,6 +413,17 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     },
     acceptPaste() {
       const accepted = review;
+      if (accepted?.kind === 'confirm' && accepted.bracketedPaste !== engine.bracketedPaste) {
+        // The mode changed while the reader decided, so what they approved described another
+        // paste. Show it again as it would now go out; nothing is sent until they accept that.
+        review = reviewPaste(
+          accepted.text,
+          options.readSettings().maximumPasteBytes,
+          engine.bracketedPaste,
+        );
+        options.onReview(review);
+        return;
+      }
       closeReview();
       if (accepted?.kind !== 'confirm') return;
       // Authority can be revoked while the reader decides; the paste is then dropped, not queued.
@@ -358,8 +436,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
         refuse({ reason: 'oversized', source: 'paste' });
         return;
       }
-      // The review warned about any marker in the text; the bracket the engine adds must be the only one.
-      pasteThroughEngine(engine.bracketedPaste ? stripPasteBrackets(accepted.text) : accepted.text);
+      pasteThroughEngine(accepted.text);
     },
     cancelPaste: closeReview,
     refresh() {
@@ -380,6 +457,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
       engine.setKeyHook(undefined);
       host.removeEventListener('paste', handlePaste, true);
       host.removeEventListener('focusout', handleFocusOut);
+      host.removeEventListener('mousedown', handleMouseDown, true);
       document.removeEventListener('keyup', releaseLatch);
     },
   };

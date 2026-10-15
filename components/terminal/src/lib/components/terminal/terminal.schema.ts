@@ -64,6 +64,11 @@ const schema = {
       description:
         'Mirror engine output into a bounded screen-reader live region. Default `false`.',
     },
+    mouseReporting: {
+      type: 'boolean',
+      description:
+        'Send the mouse to the program (tmux, vim) as reports, while key capture is on and the view is writable. Default `false`: otherwise the pointer selects text and no report is sent.',
+    },
     maximumPasteBytes: {
       type: 'integer',
       minimum: 1,

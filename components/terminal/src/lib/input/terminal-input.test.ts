@@ -36,6 +36,7 @@ function fixture(
     settings?: Partial<InputSettings>;
     controller?: FakeInputController | undefined;
     withoutController?: boolean;
+    isTerminalControl?: (node: Node) => boolean;
   } = {},
 ): Fixture {
   const host = document.createElement('div');
@@ -55,6 +56,9 @@ function fixture(
     host,
     controller: options.withoutController ? undefined : controller,
     readSettings: () => settings,
+    ...(options.isTerminalControl === undefined
+      ? {}
+      : { isTerminalControl: options.isTerminalControl }),
     onCaptureChange: (captured) => captures.push(captured),
     onReview: (review) => reviews.push(review),
     onRefused: (refusal) => refusals.push(refusal),
@@ -204,6 +208,77 @@ describe('splitting input to the frame budget', () => {
     context.engine.report({ kind: 'binary', data: '\u0080\u0081\u0082' });
     expect(controller.sent).toEqual([]);
     expect(context.refusals).toEqual([{ reason: 'oversized' }]);
+  });
+});
+
+describe('focus checks across realms', () => {
+  /**
+   * An element from another realm (a same-origin iframe) is an instance of that realm's `Node` and
+   * `Element`, not of this module's. The happy-dom windows share their classes, so the globals are
+   * swapped for unrelated ones while `body` runs: every element is then foreign to them.
+   */
+  function inForeignRealm(body: () => void): void {
+    const realNode = globalThis.Node;
+    const realElement = globalThis.Element;
+    globalThis.Node = class ForeignNode {
+      readonly foreign = true;
+    } as unknown as typeof Node;
+    globalThis.Element = class ForeignElement {
+      readonly foreign = true;
+    } as unknown as typeof Element;
+    try {
+      body();
+    } finally {
+      globalThis.Node = realNode;
+      globalThis.Element = realElement;
+    }
+  }
+
+  function outsideElement(id: string): HTMLElement {
+    const element = document.createElement('button');
+    element.id = id;
+    document.body.append(element);
+    hosts.push(element);
+    return element;
+  }
+
+  test('the swapped globals make a real element foreign', () => {
+    inForeignRealm(() => expect(document.body instanceof Node).toBe(false));
+  });
+
+  test('focus moving to a terminal control from another realm keeps capture', () => {
+    const context = fixture({ isTerminalControl: (node) => 'id' in node && node.id === 'control' });
+    const control = outsideElement('control');
+    const elsewhere = outsideElement('elsewhere');
+    context.inner.focus();
+    context.input.capture();
+    inForeignRealm(() => {
+      context.input.focusLeft(control);
+      expect(context.input.captured).toBe(true);
+      context.input.focusLeft(elsewhere);
+    });
+    expect(context.input.captured).toBe(false);
+  });
+
+  test('focus moving to an element of another realm inside the host keeps capture', () => {
+    const context = fixture();
+    context.inner.focus();
+    context.input.capture();
+    const inside = document.createElement('input');
+    context.host.append(inside);
+    inForeignRealm(() => context.input.focusLeft(inside));
+    expect(context.input.captured).toBe(true);
+  });
+
+  test('focus moving to nothing, or to a non-node, releases capture', () => {
+    const context = fixture();
+    context.inner.focus();
+    context.input.capture();
+    context.input.focusLeft(null);
+    expect(context.input.captured).toBe(false);
+    context.input.capture();
+    context.input.focusLeft(window);
+    expect(context.input.captured).toBe(false);
   });
 });
 
@@ -646,21 +721,48 @@ describe('paste', () => {
     expect(context.input.captured).toBe(false);
   });
 
-  test('an accepted paste loses any bracket marker it carries when the engine brackets', () => {
+  test('an accepted paste is sent exactly as read, markers included, even when the engine brackets', () => {
     const context = fixture();
     context.engine.bracketedPaste = true;
     paste(context, 'a\n\u001b[201~rm -rf ~\n\u001b[200~b');
     context.input.acceptPaste();
-    expect(context.engine.pastes).toEqual(['a\nrm -rf ~\nb']);
+    expect(context.engine.pastes).toEqual(['a\n\u001b[201~rm -rf ~\n\u001b[200~b']);
   });
 
-  test('removing a marker cannot assemble another from the text around it', () => {
+  test('a plain single line is reviewed when the engine brackets, and not otherwise', () => {
     const context = fixture();
+    paste(context, 'ls -la');
+    expect(context.reviews).toEqual([]);
+    expect(context.engine.pastes).toEqual(['ls -la']);
     context.engine.bracketedPaste = true;
-    paste(context, 'x\n\u001b[20\u001b[201~1~y');
+    paste(context, 'ls -la');
+    expect(context.reviews).toHaveLength(1);
+    expect(context.engine.pastes).toEqual(['ls -la']);
     context.input.acceptPaste();
-    expect(context.engine.pastes).toEqual(['x\ny']);
+    expect(context.engine.pastes).toEqual(['ls -la', 'ls -la']);
   });
+
+  test.each([
+    [false, true],
+    [true, false],
+  ])(
+    'a review opened with bracketed paste %p is shown again, not sent, when the mode becomes %p',
+    (before, after) => {
+      const context = fixture();
+      context.engine.bracketedPaste = before;
+      paste(context, 'a\n\u001b[201~b\n');
+      expect(context.reviews).toHaveLength(1);
+      context.engine.bracketedPaste = after;
+      context.input.acceptPaste();
+      // What the reader approved described the old mode, so nothing is sent yet.
+      expect(context.engine.pastes).toEqual([]);
+      expect(context.reviews).toHaveLength(2);
+      expect(context.reviews.at(-1)).toMatchObject({ kind: 'confirm', bracketedPaste: after });
+      context.input.acceptPaste();
+      expect(context.engine.pastes).toEqual(['a\n\u001b[201~b\n']);
+      expect(context.reviews.at(-1)).toBeUndefined();
+    },
+  );
 
   test('a paste is sent as read when the engine does not bracket', () => {
     const context = fixture();

@@ -73,6 +73,11 @@ export type InputPlatform = 'mac' | 'other';
 export type InputSettings = {
   /** Whether the state accepts input at all (a `writable` view). */
   writable: boolean;
+  /**
+   * Whether the host enabled mouse reporting. Off by default: a mouse report is sent only when
+   * this is on, key capture is on and the view is writable.
+   */
+  mouseReporting: boolean;
   /** The configured paste limit in UTF-8 bytes; invalid values were already replaced. */
   maximumPasteBytes: number;
   platform: InputPlatform;

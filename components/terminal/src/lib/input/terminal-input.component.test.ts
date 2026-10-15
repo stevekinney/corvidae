@@ -394,6 +394,88 @@ describe('the Interrupt button', () => {
   });
 });
 
+describe('capture follows authority', () => {
+  test('revoked authority releases capture while the state stays writable, announced once', async () => {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+    });
+    const seen = recordAnnouncements(harness);
+    const capture = button('Capture terminal keys', harness.target);
+    capture.click();
+    harness.flush();
+    await waitFor(() => seen.length === 1, 'capture on');
+    controller.input.authorityRevoked = true;
+    typeKey(textarea, { key: 'a', code: 'KeyA', keyCode: 65 });
+    typeKey(textarea, { key: 'b', code: 'KeyB', keyCode: 66 });
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('false');
+    await waitFor(() => seen.length === 2, 'capture off');
+    await settle();
+    expect(seen).toEqual(['Terminal key capture on', 'Terminal key capture off']);
+  });
+
+  test('a controller that was closed releases capture too', async () => {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+    });
+    const capture = button('Capture terminal keys', harness.target);
+    capture.click();
+    harness.flush();
+    controller.input.terms = undefined;
+    typeKey(textarea, { key: 'a', code: 'KeyA', keyCode: 65 });
+    harness.flush();
+    expect(capture.getAttribute('aria-pressed')).toBe('false');
+  });
+});
+
+describe('mouse reporting', () => {
+  /** The gesture that makes the engine select instead of report: Shift, or Option on a Mac. */
+  const selects = (event: MouseEvent) => event.shiftKey || event.altKey;
+
+  async function pressWhileTracking(props: Partial<TerminalProps>, capture: boolean) {
+    const controller = wiredController();
+    const { harness } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+      ...props,
+    });
+    await deliverOutput(controller, '\u001b[?1000h\u001b[?1006h');
+    if (capture) {
+      button('Capture terminal keys', harness.target).click();
+      harness.flush();
+    }
+    const screen = required(harness, '.xterm');
+    const seen: MouseEvent[] = [];
+    screen.addEventListener('mousedown', (event) => seen.push(event));
+    screen.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }),
+    );
+    return seen;
+  }
+
+  test('is off by default: a press while the program tracks the mouse becomes a selection gesture', async () => {
+    const seen = await pressWhileTracking({}, true);
+    expect(seen.map(selects)).toEqual([true]);
+  });
+
+  test('when the host opts in, a captured terminal leaves the press to the program', async () => {
+    const seen = await pressWhileTracking({ mouseReporting: true }, true);
+    expect(seen.map(selects)).toEqual([false]);
+  });
+
+  test('when the host opts in, an uncaptured terminal still selects', async () => {
+    const seen = await pressWhileTracking({ mouseReporting: true }, false);
+    expect(seen.map(selects)).toEqual([true]);
+  });
+});
+
 describe('authority follows the state', () => {
   test('a read-only terminal sends nothing for typing, paste or query replies', async () => {
     const controller = wiredController();
@@ -677,7 +759,7 @@ describe('paste review', () => {
   });
 
   test.each([
-    [true, 'will be removed'],
+    [true, 'ends a protected paste early'],
     [false, 'sent as typed'],
   ])(
     'with bracketed paste %p the terminator warning says what happens to it',
@@ -696,7 +778,7 @@ describe('paste review', () => {
       const text = dialog()!.textContent ?? '';
       expect(text).toContain('bracketed paste terminator');
       expect(text).toContain(expected);
-      expect(text).not.toContain('ends a protected paste early');
+      expect(text).not.toContain('will be removed');
     },
   );
 
@@ -800,10 +882,53 @@ describe('paste review', () => {
     expect(controller.input.sent).toEqual([]);
   });
 
-  test('a single plain line is pasted straight through, bracketed or not', async () => {
+  test('a single plain line is pasted straight through when bracketed mode is off', async () => {
     const { controller } = await pasteReview('echo hi');
     expect(dialog()).toBeNull();
     expect(sentText(controller.input)).toBe('echo hi');
+  });
+
+  test('a single plain line is reviewed when bracketed mode is on', async () => {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+    });
+    await deliverOutput(controller, '\u001b[?2004h');
+    textarea.focus();
+    textarea.dispatchEvent(pasteEvent('echo hi'));
+    harness.flush();
+    await waitFor(() => dialog() !== null, 'the review');
+    expect(controller.input.sent).toEqual([]);
+    button('Paste', dialog()!).click();
+    await waitFor(() => dialog() === null, 'the review to close');
+    expect(sentText(controller.input)).toBe('\u001b[200~echo hi\u001b[201~');
+  });
+
+  test('a mode change while the review is open updates its warning before anything is sent', async () => {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+    });
+    textarea.focus();
+    textarea.dispatchEvent(pasteEvent('echo \u001b[201~x\n'));
+    harness.flush();
+    await waitFor(() => dialog() !== null, 'the review');
+    expect(dialog()!.textContent).toContain('sent as typed');
+    await deliverOutput(controller, '\u001b[?2004h');
+    button('Paste', dialog()!).click();
+    harness.flush();
+    await waitFor(
+      () => dialog()?.textContent?.includes('ends a protected paste early') === true,
+      'the warning to change',
+    );
+    expect(controller.input.sent).toEqual([]);
+    button('Paste', dialog()!).click();
+    await waitFor(() => dialog() === null, 'the review to close');
+    expect(sentText(controller.input)).toBe('\u001b[200~echo \u001b[201~x\r\u001b[201~');
   });
 
   test('revocation while the reader decides drops the paste and reports it', async () => {

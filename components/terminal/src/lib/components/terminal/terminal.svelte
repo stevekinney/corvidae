@@ -61,6 +61,7 @@
     onLinkActivate,
     onTitleChange,
     maximumPasteBytes,
+    mouseReporting = false,
     onInputRefused,
     class: customClassName,
     ...rest
@@ -139,6 +140,7 @@
   function readInputSettings(): InputSettings {
     return {
       writable: acceptsInput(effectiveState),
+      mouseReporting,
       maximumPasteBytes: resolvePasteLimit(maximumPasteBytes),
       platform: detectInputPlatform(),
     };
@@ -219,8 +221,9 @@
       host,
       controller: borrowed?.input,
       readSettings: readInputSettings,
+      // Not `instanceof Element`: the focus target may belong to another realm.
       isTerminalControl: (node) =>
-        node instanceof Element && (node.id === captureControlId || node.id === interruptControlId),
+        'id' in node && (node.id === captureControlId || node.id === interruptControlId),
       onCaptureChange: (next) => {
         captured = next;
         announcer.announce(next ? 'Terminal key capture on' : 'Terminal key capture off');
@@ -328,7 +331,7 @@
     {#if displayedReview.containsPasteTerminator}
       <p>
         {displayedReview.bracketedPaste
-          ? 'Contains the bracketed paste terminator, which will be removed so it cannot end the paste early.'
+          ? 'Contains the bracketed paste terminator, which ends a protected paste early.'
           : 'Contains the bracketed paste terminator. Bracketed paste is off, so it is sent as typed.'}
       </p>
     {/if}

@@ -227,6 +227,18 @@ describe('selection and paste', () => {
     expect(captured.engine.bracketedPaste).toBe(false);
   });
 
+  test('mouseTracking follows the mode the program set, and is false once disposed', async () => {
+    const { captured } = mounted();
+    expect(captured.engine.mouseTracking).toBe(false);
+    await captured.deliver([bytes('\u001b[?1000h')]);
+    expect(captured.engine.mouseTracking).toBe(true);
+    await captured.deliver([bytes('\u001b[?1000l')]);
+    expect(captured.engine.mouseTracking).toBe(false);
+    await captured.deliver([bytes('\u001b[?1003h')]);
+    captured.engine.dispose();
+    expect(captured.engine.mouseTracking).toBe(false);
+  });
+
   test('a read-only engine takes no paste', () => {
     const { captured, reports } = mounted({ readOnly: true });
     captured.engine.paste('x');

@@ -129,6 +129,13 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
   /** Mirror engine output into a bounded screen-reader live region. @default false */
   announceOutput?: boolean;
   /**
+   * Report the mouse to the program while a mode it set asks for it, but only while key capture is
+   * on and the view is writable. Otherwise pointer reports are dropped and the pointer selects
+   * text (Shift-drag, or Option-drag on a Mac). The mode the program set is never changed.
+   * @default false
+   */
+  mouseReporting?: boolean;
+  /**
    * Called with a visible HTTPS address the reader deliberately activated. Links are disabled
    * unless this is set; hidden OSC 8 destinations, paths, and other schemes are never offered.
    */

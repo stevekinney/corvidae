@@ -74,6 +74,43 @@ export function emitBinaryReport(terminal: XtermTerminal, data: string): void {
   Reflect.apply(trigger, service, [data]);
 }
 
+/** A mouse event as the engine's core takes it: zero-based cells, a button and an action. */
+export type MouseReportInit = {
+  button: 'left' | 'middle' | 'right' | 'none' | 'wheel';
+  action: 'up' | 'down' | 'move';
+  column?: number;
+  row?: number;
+};
+
+const MOUSE_BUTTONS = { left: 0, middle: 1, right: 2, none: 3, wheel: 4 } as const;
+const MOUSE_ACTIONS = { up: 0, down: 1, move: 32 } as const;
+
+/**
+ * Make the engine report a mouse event the way its DOM listeners do, through the core mouse
+ * service, so the report is encoded by the engine's own protocol and encoding for the mode the
+ * program set. Returns whether the engine produced a report.
+ */
+export function emitMouseReport(terminal: XtermTerminal, init: MouseReportInit): boolean {
+  const service: unknown = Reflect.get(engineCore(terminal), 'coreMouseService');
+  if (!isRecord(service)) throw new Error('The engine core mouse service is missing.');
+  const trigger: unknown = Reflect.get(service, 'triggerMouseEvent');
+  if (typeof trigger !== 'function') throw new Error('The engine cannot make a mouse report.');
+  const reported: unknown = Reflect.apply(trigger, service, [
+    {
+      col: init.column ?? 2,
+      row: init.row ?? 3,
+      x: 20,
+      y: 30,
+      button: MOUSE_BUTTONS[init.button],
+      action: MOUSE_ACTIONS[init.action],
+      ctrl: false,
+      alt: false,
+      shift: false,
+    },
+  ]);
+  return reported === true;
+}
+
 /** Record every scroll the engine asks its viewport for, in lines. */
 export function recordScrollRequests(terminal: XtermTerminal): number[] {
   const core = engineCore(terminal);
@@ -109,6 +146,7 @@ export type FakeInputEngine = InputEngine & {
   selection: boolean | Error;
   pastes: string[];
   bracketedPaste: boolean;
+  mouseTracking: boolean;
   focusTarget: HTMLElement | undefined;
   listeners: Set<(report: EngineInputReport) => void>;
 };
@@ -120,6 +158,7 @@ export function createFakeInputEngine(): FakeInputEngine {
     selection: false,
     pastes: [],
     bracketedPaste: false,
+    mouseTracking: false,
     focusTarget: undefined,
     listeners: new Set(),
     report(report) {
@@ -184,6 +223,7 @@ export function createInputSettings(
 ): InputSettings {
   return {
     writable: true,
+    mouseReporting: false,
     maximumPasteBytes: DEFAULT_MAXIMUM_PASTE_BYTES,
     platform: 'other',
     ...overrides,

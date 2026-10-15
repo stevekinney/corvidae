@@ -304,6 +304,7 @@ describe('a throwing key hook rejects the operation', () => {
         focus: () => engine.focus(),
         paste: (text) => engine.paste(text),
         bracketedPaste: engine.bracketedPaste,
+        mouseTracking: engine.mouseTracking,
         hasSelection: () => {
           throw new Error('selection exploded');
         },
@@ -334,16 +335,29 @@ describe('paste against the real engine', () => {
     expect(sentText(context.controller)).toBe('\u001b[200~echo one\recho two\r\u001b[201~');
   });
 
-  test('pasted bracket markers cannot end the bracket early: one opening, one closing', async () => {
+  test('a bracketed paste keeps its payload exactly, embedded markers included', async () => {
     const context = session();
     await context.captured.deliver([bytes('\u001b[?2004h')]);
     pasteInto(context, 'echo hi\n\u001b[201~rm -rf ~\n\u001b[200~echo done\n');
-    expect(context.reviews[0]).toMatchObject({ kind: 'confirm', containsPasteTerminator: true });
+    expect(context.reviews[0]).toMatchObject({
+      kind: 'confirm',
+      containsPasteTerminator: true,
+      bracketedPaste: true,
+    });
     context.input.acceptPaste();
-    const sent = sentText(context.controller);
-    expect(sent).toBe('\u001b[200~echo hi\rrm -rf ~\recho done\r\u001b[201~');
-    expect(sent.split('\u001b[200~')).toHaveLength(2);
-    expect(sent.split('\u001b[201~')).toHaveLength(2);
+    expect(sentText(context.controller)).toBe(
+      '\u001b[200~echo hi\r\u001b[201~rm -rf ~\r\u001b[200~echo done\r\u001b[201~',
+    );
+  });
+
+  test('a plain single line is reviewed when bracketed mode is on, and sent exactly once accepted', async () => {
+    const context = session();
+    await context.captured.deliver([bytes('\u001b[?2004h')]);
+    pasteInto(context, 'ls -la');
+    expect(context.controller.sent).toEqual([]);
+    expect(context.reviews[0]).toMatchObject({ kind: 'confirm', lines: 1 });
+    context.input.acceptPaste();
+    expect(sentText(context.controller)).toBe('\u001b[200~ls -la\u001b[201~');
   });
 
   test('without bracketed paste mode the text goes as pasted, markers included', () => {
