@@ -30,7 +30,7 @@
  */
 
 import { existsSync, lstatSync, realpathSync } from 'node:fs';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import {
   basename,
   dirname,
@@ -48,14 +48,16 @@ import {
   discoverSidebarComponents,
 } from '../src/discover.ts';
 import { readEnvironmentConfiguration } from '../src/environment-configuration.ts';
+import { prebuildPageBundlesInBatches } from '../src/page-bundle.ts';
 import { REPOSITORY_ROOT } from '../src/playground-paths.ts';
 import { handleRequest } from '../src/playground-server.ts';
 import { COMPOUND_COMPONENT_FAMILIES } from '../src/shell-app/compound-families.ts';
+import { createExportReport, EXPORT_REPORT_PATH, writeExportReport } from './export-report.ts';
+import { assertInitialRoutePayloadBudgets, assetUrlsFromHtml } from './initial-route-payload.ts';
 import { fingerprintStaticAssets } from './static-asset-fingerprints.ts';
 
 const PLAYGROUND_ROOT = join(import.meta.dirname, '..');
 const OUTPUT_DIRECTORY = join(PLAYGROUND_ROOT, 'build');
-const ORIGIN = 'https://playground.local';
 
 type StaticExportContext = {
   outputDirectory: string;
@@ -70,27 +72,6 @@ export type StaticExportOptions = {
   /** Test-only override. Real exports must supply PLAYGROUND_BASE_URL. */
   baseUrl?: string;
 };
-
-export type InitialRoutePayload = {
-  transferBytes: number;
-  decodedBytes: number;
-  urls: readonly string[];
-};
-
-type InitialRoutePayloadBudget = {
-  route: string;
-  transferBytes: number;
-  decodedBytes: number;
-};
-
-// These are production budgets for the first navigation. A route's deferred
-// scenario and Playground imports are intentionally excluded: they are not
-// requested until the reader opens an interactive surface.
-const INITIAL_ROUTE_PAYLOAD_BUDGETS: readonly InitialRoutePayloadBudget[] = [
-  { route: '/', transferBytes: 175_000, decodedBytes: 800_000 },
-  { route: '/page/button', transferBytes: 200_000, decodedBytes: 900_000 },
-  { route: '/page/chat', transferBytes: 700_000, decodedBytes: 3_250_000 },
-];
 
 /**
  * The exported site has no request-time server that can repair a bad canonical
@@ -306,147 +287,6 @@ async function writeFile(path: string, contents: string): Promise<void> {
 }
 
 /**
- * Elements whose `href`/`src` names a subresource the browser must fetch for the
- * page to render correctly, and which therefore has to exist as a static file.
- *
- * `<a>` is deliberately absent. An anchor is navigation, not a subresource, and
- * since the documentation pages became server-rendered their markup contains
- * example content with illustrative links — `SideNavigation.Item
- * href="/projects/atlas"` in `examples/side-navigation/basic.example.svelte`, for
- * instance. Those routes do not exist, and because `render()` throws on any
- * non-2xx response, crawling them failed the whole export with
- * `/projects/atlas → HTTP 404`.
- *
- * Every real route is enumerated explicitly by `runStaticExport` (`/page/<name>`
- * for all components and family children, the API and example-source routes), so scraping anchors added no coverage — only the risk of treating
- * demo content as a build requirement.
- */
-const ASSET_ELEMENTS = ['link', 'script', 'img', 'iframe', 'source'] as const;
-
-/**
- * Source for a regex matching an asset-bearing start tag, capturing its
- * root-relative `href`/`src`. Attribute order varies (`<link rel="stylesheet"
- * href="…">` vs `<link href="…" rel="…">`), so the URL is captured from anywhere
- * inside the tag.
- *
- * Held as a string and compiled per call: a shared `/g` regex carries `lastIndex`
- * between invocations, so a second call would silently resume mid-document.
- */
-const ASSET_REFERENCE_SOURCE = `<(?:${ASSET_ELEMENTS.join('|')})\\b[^>]*?\\b(?:href|src)="(/[^"]*)"`;
-
-/**
- * Pull every same-origin subresource URL the given HTML references — `<script
- * src>` bundles, `<link href>` stylesheets, and `<img>`/`<iframe>`/`<source>`
- * media — as root-relative paths. Navigation links are ignored; see
- * {@link ASSET_ELEMENTS}.
- */
-export function assetUrlsFromHtml(html: string): string[] {
-  const urls = new Set<string>();
-  const assetReference = new RegExp(ASSET_REFERENCE_SOURCE, 'gi');
-  let match: RegExpExecArray | null;
-  while ((match = assetReference.exec(html)) !== null) {
-    const url = match[1]!;
-    // Only crawlable GET routes — skip the SSE stream, which has no static form.
-    if (url === '/events') continue;
-    // Queries configure browser behavior but do not identify a second static
-    // file. Materialize `/page/button?preview=1` at the already-exported
-    // `/page/button` path instead of creating a literal `?preview=1` directory.
-    urls.add(new URL(url, ORIGIN).pathname);
-  }
-  return [...urls];
-}
-
-/** Static ESM imports are requested during initial evaluation; `import(...)` is not. */
-function staticJavaScriptImportUrls(javascript: string): string[] {
-  const urls = new Set<string>();
-  const imports = /(?:^|\n)\s*import\s*(?:[\s\S]*?\s+from\s+)?["'](\/[^"']+\.js)["'];?/g;
-  let match: RegExpExecArray | null;
-  while ((match = imports.exec(javascript)) !== null) urls.add(match[1]!);
-  return [...urls];
-}
-
-function stylesheetAssetUrls(stylesheet: string): string[] {
-  const urls = new Set<string>();
-  const imports = /@import\s+(?:url\(\s*)?["']?(\/[^"'\s)]+)["']?/g;
-  const references = /url\(\s*["']?(\/[^"'\s)]+)["']?\s*\)/g;
-  for (const expression of [imports, references]) {
-    let match: RegExpExecArray | null;
-    while ((match = expression.exec(stylesheet)) !== null) urls.add(match[1]!);
-  }
-  return [...urls];
-}
-
-function exportedHtmlPath(route: string, outputDirectory: string): string {
-  return outputPathFor(route, true, outputDirectory);
-}
-
-/**
- * Sum the files a production browser requests to render a route before any
- * reader-triggered dynamic import. Every asset is gzipped independently, which
- * matches HTTP content encoding rather than pretending one archive compresses
- * across request boundaries.
- */
-export async function initialRoutePayload(
-  route: string,
-  outputDirectory: string,
-): Promise<InitialRoutePayload> {
-  const queue = [{ url: route, filePath: exportedHtmlPath(route, outputDirectory), kind: 'html' }];
-  const visited = new Set<string>();
-  let transferBytes = 0;
-  let decodedBytes = 0;
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (visited.has(current.url)) continue;
-    visited.add(current.url);
-
-    const contents = new Uint8Array(await readFile(current.filePath));
-    transferBytes += Bun.gzipSync(contents).byteLength;
-    decodedBytes += contents.byteLength;
-
-    const text = new TextDecoder().decode(contents);
-    const dependencies =
-      current.kind === 'html'
-        ? assetUrlsFromHtml(text)
-        : current.kind === 'javascript'
-          ? staticJavaScriptImportUrls(text)
-          : stylesheetAssetUrls(text);
-    for (const url of dependencies) {
-      if (!url.startsWith('/')) continue;
-      const extension = url.split('?')[0]!.split('.').pop()?.toLowerCase();
-      queue.push({
-        url,
-        filePath: join(outputDirectory, url.slice(1)),
-        kind: extension === 'js' || extension === 'mjs' ? 'javascript' : 'stylesheet',
-      });
-    }
-  }
-
-  return { transferBytes, decodedBytes, urls: [...visited].toSorted() };
-}
-
-async function assertInitialRoutePayloadBudgets(
-  outputDirectory: string,
-  exportedRoutes: readonly string[],
-): Promise<void> {
-  for (const budget of INITIAL_ROUTE_PAYLOAD_BUDGETS) {
-    if (!exportedRoutes.includes(budget.route)) continue;
-    const payload = await initialRoutePayload(budget.route, outputDirectory);
-    if (
-      payload.transferBytes > budget.transferBytes ||
-      payload.decodedBytes > budget.decodedBytes
-    ) {
-      throw new Error(
-        `[static-export] ${budget.route} initial payload exceeds budget: ` +
-          `${payload.transferBytes}/${budget.transferBytes} transfer bytes, ` +
-          `${payload.decodedBytes}/${budget.decodedBytes} decoded bytes. ` +
-          `Assets: ${payload.urls.join(', ')}`,
-      );
-    }
-  }
-}
-
-/**
  * Pull the hashed-chunk URLs a built JS bundle imports. Bun emits chunks as
  * `<name>-<hash>.js` siblings under the same `/page-bundle/` or `/shell-bundle/`
  * prefix, referenced by `import`/`from` specifiers in the entry body.
@@ -532,7 +372,15 @@ async function renderCssGraph(entryPath: string, context: StaticExportContext): 
   }
 }
 
-export async function runStaticExport(options: StaticExportOptions = {}): Promise<Set<string>> {
+/** What one export produced: every written file's URL, and the canonical routes in sitemap order. */
+export type StaticExportResult = {
+  files: Set<string>;
+  routes: string[];
+};
+
+export async function runStaticExport(
+  options: StaticExportOptions = {},
+): Promise<StaticExportResult> {
   const start = Date.now();
   process.stdout.write('[static-export] rendering playground to build/…\n');
   const outputDirectory = assertSafeOutputDirectory(options.outputDirectory ?? OUTPUT_DIRECTORY);
@@ -596,6 +444,9 @@ export async function runStaticExport(options: StaticExportOptions = {}): Promis
 
   // Per-component: documentation page, page-bundle graph, manifest, sources.
   const documentationPages: { name: string; html: string }[] = [];
+  // Build every page bundle as shared graphs before the crawl, so each page's
+  // `/page-bundle/<name>.js` request is served from the cache (CIN-588).
+  await prebuildPageBundlesInBatches(documentationRoutes);
   for (const name of documentationRoutes) {
     const pageHtml = await render(`/page/${name}`, context);
     if (pageHtml !== null) {
@@ -656,7 +507,7 @@ export async function runStaticExport(options: StaticExportOptions = {}): Promis
   process.stdout.write(
     `[static-export] rendered ${context.rendered.size} files for ${sidebarComponents.length} components in ${seconds}s\n`,
   );
-  return context.rendered;
+  return { files: context.rendered, routes: canonicalRoutes };
 }
 
 /**
@@ -788,10 +639,30 @@ export function assertDocumentationPagesArePreRendered(
   );
 }
 
+/**
+ * The build entry: export `build/`, then record what was built in `build-report/export-report.json`
+ * beside it (never inside the served directory). Only this path writes the report, so a unit test
+ * that calls `runStaticExport` can never overwrite the real one.
+ */
+async function main(): Promise<void> {
+  const baseUrl = requireProductionBaseUrl();
+  const startedAt = performance.now();
+  const { routes } = await runStaticExport({ baseUrl });
+  const report = await createExportReport({
+    directory: OUTPUT_DIRECTORY,
+    routes,
+    exportDurationMilliseconds: Math.round(performance.now() - startedAt),
+    maximumResidentSetKibibytes: process.resourceUsage().maxRSS,
+  });
+  await writeExportReport(EXPORT_REPORT_PATH, report);
+  process.stdout.write(
+    `[static-export] build digest ${report.buildDigest}; report written to ${EXPORT_REPORT_PATH}\n`,
+  );
+}
+
 // Fire-and-forget: surface any failure as a non-zero exit so the build fails.
 if (import.meta.main) {
-  const baseUrl = requireProductionBaseUrl();
-  void runStaticExport({ baseUrl }).catch((error: unknown) => {
+  void main().catch((error: unknown) => {
     console.error(error);
     process.exit(1);
   });

@@ -5,6 +5,11 @@ export type DeferredToggleOptions = {
   isHydrated: () => boolean;
   /** Receives a failed hydration attempt. */
   onError: (error: unknown) => void;
+  /**
+   * Aborted when the page is swapped out. A replay after that point would click a button whose
+   * shell never hydrated, and the click would start another attempt: a loop.
+   */
+  signal?: AbortSignal;
 };
 
 /**
@@ -26,7 +31,7 @@ export type DeferredToggleOptions = {
  */
 export function attachDeferredToggle(
   toggle: HTMLButtonElement | null,
-  { hydrate, isHydrated, onError }: DeferredToggleOptions,
+  { hydrate, isHydrated, onError, signal }: DeferredToggleOptions,
 ): void {
   let attempting = false;
   toggle?.addEventListener('click', (event) => {
@@ -36,6 +41,7 @@ export function attachDeferredToggle(
     void hydrate()
       .then(() => {
         attempting = false;
+        if (signal?.aborted === true) return undefined;
         toggle.click();
         return undefined;
       })

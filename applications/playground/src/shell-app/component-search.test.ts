@@ -82,7 +82,21 @@ describe('navigateToComponent', () => {
   test('performs a document navigation to the canonical href', () => {
     const assigned: string[] = [];
     const location = { assign: (href: string) => assigned.push(href) } as unknown as Location;
-    navigateToComponent('/page/button', location);
+    navigateToComponent('/page/button', location, null);
     expect(assigned).toEqual(['/page/button']);
+  });
+
+  test('routes through the installed progressive navigation instead of assigning', () => {
+    const assigned: string[] = [];
+    const navigated: string[] = [];
+    const location = { assign: (href: string) => assigned.push(href) } as unknown as Location;
+    navigateToComponent('/page/button', location, {
+      navigate: (href) => {
+        navigated.push(href);
+        return Promise.resolve();
+      },
+    });
+    expect(navigated).toEqual(['/page/button']);
+    expect(assigned).toEqual([]);
   });
 });

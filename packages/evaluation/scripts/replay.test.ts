@@ -161,6 +161,7 @@ describe('replay (spawned bun process)', () => {
 });
 
 describe('runReplayCommand', () => {
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('calls no GenerateFunction and runs no agent while it replays', async () => {
     const recordId = await gateRun();
     let generateCalls = 0;
@@ -193,6 +194,7 @@ describe('runReplayCommand', () => {
     expect(agentRuns).toBe(0);
   });
 
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('replays a record by id and describes a mismatch on stderr', async () => {
     const recordId = await gateRun(fixtureGateFile('regressing'));
     const matched = await runInProcess([recordId, '--store', storePath]);
@@ -214,6 +216,7 @@ describe('runReplayCommand', () => {
     expect(mismatched.stderr).toContain('first mismatching field "decision"');
   });
 
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('exits 4 for a decision its recorded evidence contradicts, naming the field', async () => {
     const recordId = await gateRun(fixtureGateFile('regressing'));
     const tamperedId = `${recordId}-tampered`;
@@ -235,6 +238,7 @@ describe('runReplayCommand', () => {
     );
   });
 
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('exits 3 when the recorded evaluator module can no longer be resolved', async () => {
     // The module never exists on disk: the gate run builds it from the passing
     // fixture, so replay's own import of the recorded path fails as a deleted
@@ -252,6 +256,7 @@ describe('runReplayCommand', () => {
     expect(result.stderr).toContain('cannot be resolved');
   });
 
+  // spawn-free: the gate run receives an injected source revision, so it never runs git.
   test('exits 64 for an unknown record and 65 for a corrupt one', async () => {
     const recordId = await gateRun();
     const unknown = await runInProcess(['never-recorded', '--store', storePath]);

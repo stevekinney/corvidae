@@ -1,0 +1,22 @@
+{
+  "description": "Phase 1 gate rerun on the committed measurement code: a shell loop waited, polling every 30 s, until the 1-minute load average was at most 30 (3 x 10 logical processors), then ran the gates. Copied from the run log.",
+  "logPath": "/private/tmp/claude-501/-Users-stevekinney--agent-worktrees-claude-corvidae-cinder-playground-arch-perf-5edc29/97ce57da-fa8c-4eff-ab9a-d2164f26d327/scratchpad/gates-2.out",
+  "threshold": {
+    "factor": 3,
+    "logicalProcessors": 10,
+    "oneMinuteLoadAtMost": 30
+  },
+  "loadWaitSeconds": 6996,
+  "revision": "f165d12291077b319fdef857376125e9fb1bd66f",
+  "log": [
+    "load wait 6996s",
+    " 0:38  up 12 days,  8:03, 1 user, load averages: 29.69 68.76 93.34",
+    "turbo exit=0",
+    " 0:40  up 12 days,  8:05, 1 user, load averages: 37.59 55.76 84.17",
+    "test:self exit=0",
+    "root lint exit=0",
+    "prettier exit=0",
+    " 0:46  up 12 days,  8:11, 1 user, load averages: 27.70 38.77 65.92",
+    "gates-finished"
+  ]
+}
