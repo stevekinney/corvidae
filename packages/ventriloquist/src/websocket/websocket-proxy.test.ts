@@ -32,7 +32,8 @@ describe('trustedProxies', () => {
     const harness = behindProxy(['127.0.0.1']);
     try {
       const client = connect(harness, { headers: { 'X-Forwarded-Proto': 'https' } });
-      expect((await client.handshake()).sessionId).toBeString();
+      const capabilities = await client.handshake();
+      expect(capabilities.sessionId).toBeString();
     } finally {
       await harness.stop();
     }
