@@ -81,8 +81,18 @@ export type Phase = (typeof PHASES)[number];
 const PRODUCTION_BASE_URL = 'https://cinder.website';
 /** The Playwright configuration's fixed port; `test:browser` refuses to run if it is taken. */
 const PLAYWRIGHT_PORT = 5597;
-/** The Playwright configuration's existing web-server readiness limit, reused unchanged. */
-const SERVER_READY_DEADLINE_MILLISECONDS = 300_000;
+/**
+ * How long a server-readiness sample may take before it is censored as a miss. It is a measurement
+ * censor, not a test gate: on a contended host readiness exceeded the old 300 s cutoff at a load
+ * near 60, against 102-124 s on a quiet host (CIN-585). Owner-approved on 2026-10-15 (CIN-588);
+ * the production gate and test timeouts are unchanged.
+ */
+export const SERVER_READY_DEADLINE_MILLISECONDS = 900_000;
+
+/** Whether a readiness wait has run past the cutoff, so the sample is recorded as a miss. */
+export function readinessWaitExceeded(elapsedMilliseconds: number): boolean {
+  return elapsedMilliseconds > SERVER_READY_DEADLINE_MILLISECONDS;
+}
 const READY_POLL_INTERVAL_MILLISECONDS = 100;
 
 export type RunOptions = {
@@ -395,7 +405,7 @@ async function measureServerReady(context: SampleContext): Promise<ServerReadySa
     const port = await readPort(portFile);
     if (port !== null && (await isReady(port)))
       spawnToReadyMilliseconds = performance.now() - startedAt;
-    else if (performance.now() - startedAt > SERVER_READY_DEADLINE_MILLISECONDS) break;
+    else if (readinessWaitExceeded(performance.now() - startedAt)) break;
     else if (!isAlive(child.pid)) exitedEarly = true;
     else await Bun.sleep(READY_POLL_INTERVAL_MILLISECONDS);
   }
@@ -540,7 +550,7 @@ export const DEFINITIONS: Record<string, string> = {
   treePeakResidentBytes:
     'Largest sum of ps rss (KiB x 1024) across the child and its descendants, sampled every 100 ms by one observer for baseline and candidate.',
   spawnToReadyMilliseconds:
-    'Spawn of bun src/playground-server.ts to the first GET /ready answering 200 "ready", polled every 100 ms.',
+    'Spawn of bun src/playground-server.ts to the first GET /ready answering 200 "ready", polled every 100 ms. A sample still not ready after 900 s (owner-approved 2026-10-15; 300 s before CIN-588) is recorded as a miss.',
   jsHeap:
     'Chromium JS heap through CDP Runtime.getHeapUsage after HeapProfiler.collectGarbage; never summed with RSS.',
   hostLoad:

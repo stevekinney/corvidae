@@ -605,3 +605,17 @@ describe('memory-pressure validity (CIN-588 harness fix 5)', () => {
     );
   });
 });
+
+describe('a readiness slower than the old cutoff (CIN-588, owner-approved 2026-10-15)', () => {
+  it('records a 450 s readiness inside the 900 s cutoff instead of failing it', () => {
+    const slow = complete();
+    slow.serverReady[0] = {
+      ...slow.serverReady[0]!,
+      spawnToReadyMilliseconds: 450_000,
+      readyOutcome: 'ready',
+      readyDeadlineMilliseconds: 900_000,
+    };
+    expect(runFailures(slow)).toEqual([]);
+    expect(comparabilityProblems(slow, complete({ label: 'candidate' }, true))).toEqual([]);
+  });
+});

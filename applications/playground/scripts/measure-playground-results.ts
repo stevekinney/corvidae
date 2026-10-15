@@ -72,7 +72,7 @@ export type ServerReadySample = SampleBase & {
   /** Null when the server missed the readiness limit or exited first; see `readyOutcome`. */
   spawnToReadyMilliseconds: number | null;
   readyOutcome: 'ready' | 'deadline-exceeded' | 'exited';
-  /** The existing `playwright.config.ts` web-server limit, reused unchanged. */
+  /** The harness's readiness censor in force for this sample (900 s from CIN-588). */
   readyDeadlineMilliseconds: number;
   /** The owned tree observed from spawn until the first positive `/ready`. */
   treeUntilReady: RecordedTreeSeries;

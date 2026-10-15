@@ -10,6 +10,8 @@ import {
   parseCommandLine,
   PHASES,
   prerequisitesThenEnvironment,
+  readinessWaitExceeded,
+  SERVER_READY_DEADLINE_MILLISECONDS,
 } from './measure-playground.ts';
 
 const now = new Date('2026-10-13T12:34:56.789Z');
@@ -194,5 +196,20 @@ describe('record-only load gate by default (CIN-588 harness fix 5)', () => {
       '3',
     ]);
     expect(gated.command === 'run' && gated.maximumLoadFactor).toBe(3);
+  });
+});
+
+describe('server readiness cutoff (CIN-588, owner-approved 2026-10-15)', () => {
+  it('is a 900 s measurement censor', () => {
+    expect(SERVER_READY_DEADLINE_MILLISECONDS).toBe(900_000);
+  });
+
+  it('keeps waiting for a readiness slower than the old 300 s cutoff but inside 900 s', () => {
+    expect(readinessWaitExceeded(450_000)).toBe(false);
+    expect(readinessWaitExceeded(900_000)).toBe(false);
+  });
+
+  it('stops waiting, so the sample fails, only past 900 s', () => {
+    expect(readinessWaitExceeded(900_001)).toBe(true);
   });
 });
