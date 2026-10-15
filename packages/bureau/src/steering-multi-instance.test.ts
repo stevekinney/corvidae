@@ -1780,6 +1780,26 @@ describe('durable steering across two Bureau processes', () => {
         expect(endedPause.outcome).toBe('rejected');
         if (endedPause.outcome !== 'rejected') throw new Error('expected rejected');
         expect(endedPause.failure.reason).toBe('run-terminal');
+
+        // Nor does the lagging run count toward a conclusive listing: with
+        // it, one live workflow and one run still starting, two runs are
+        // live and an unscoped pause is ambiguous.
+        await appendSteeringLogEvent(
+          kv,
+          lagging,
+          laggingSession.incarnation,
+          await readSteeringLogHead(kv, lagging, laggingSession.incarnation),
+          { type: 'promoted', runId: 'still-starting', now: new Date().toISOString() },
+        );
+        const otherLive = { ...stillRunning, id: 'other-live' };
+        laggingList.mockImplementation(() => Promise.resolve({ items: [stillRunning, otherLive] }));
+        const mixed = await gapReader.submitSteeringCommand(lagging, {
+          principal: 'alice',
+          requestedValue: { target: 'pause' },
+        });
+        expect(mixed.outcome).toBe('rejected');
+        if (mixed.outcome !== 'rejected') throw new Error('expected rejected');
+        expect(mixed.failure.reason).toBe('run-ambiguous');
       } finally {
         laggingGet.mockRestore();
         laggingList.mockRestore();
@@ -1898,6 +1918,25 @@ describe('durable steering across two Bureau processes', () => {
     } finally {
       await writer.dispose();
       await reader?.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('records starting entries only where durable steering runs', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-non-durable-start-'));
+    const bureau = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createToolbox([]),
+      storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+      durableExecution: false,
+    });
+    try {
+      const sessionId = await startRunningSession(bureau);
+      const session = await bureau.getSession(sessionId);
+      expect(session?.metadata['steeringStartingRuns']).toBeUndefined();
+    } finally {
+      await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
   }, 60_000);

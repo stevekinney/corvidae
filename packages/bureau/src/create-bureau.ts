@@ -2124,7 +2124,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       existing.runIds.add(runId);
       return;
     }
-    if (existing !== undefined) stopSessionSteeringPoll(sessionId);
+    if (existing !== undefined) {
+      stopSessionSteeringPoll(sessionId);
+      // A new incarnation replaced the one it polled: that one was deleted,
+      // so nothing can resume its paused runs any more. Release them, as
+      // its own deletion poll would have.
+      if (existing.incarnation !== incarnation) {
+        existing.gate.settleForDeletion(runtimeServices.clock.nowISO());
+      }
+    }
     const timer = runtimeServices.timers.setInterval(() => {
       const poll = pollSteeringOnce(kv, sessionId);
       inFlightSteeringPolls.add(poll);
@@ -2208,6 +2216,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // Refused before it is written, never after: history no process could
       // log (a run's boundary outside its promotion, a version this gate
       // never issued) would leave the log unfoldable everywhere.
+      if (event.type === 'promoted' && cursor.history.runs.has(event.runId)) {
+        throw new BureauError(
+          `Run "${event.runId}" is already in the steering log of session "${sessionId}"; a run is promoted once.`,
+          'CONFLICT',
+        );
+      }
       if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) !== 'promoted') {
         throw new BureauError(
           `Run "${event.runId}" cannot log "${event.type}" in session "${sessionId}": the steering log has no live promotion of it.`,
@@ -3667,7 +3681,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // This run's own starting entry: durable steering counts it as
           // starting, until its `promoted` entry is logged and for a bounded
           // time, even when another run's save replaces `lastRunId`.
-          steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() },
+          ...(durableSteeringStore() === undefined
+            ? {}
+            : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
           lastUserMessage: request.message,
           // Always write these keys (null when absent) so a reused session never
           // inherits a stale cap from a previous run. A conditional spread would leave
@@ -3851,19 +3867,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const markStartFailed = async (error: unknown): Promise<void> => {
         if (steeringSession === undefined) return;
         try {
-          await runtime.sessionStore?.update(sessionId, (current) =>
-            current?.incarnation === steeringSession.incarnation &&
-            current.metadata['lastRunId'] === runId
-              ? {
-                  ...current,
-                  metadata: {
-                    ...current.metadata,
-                    lastRunStatus: 'error',
-                    lastError: serializeUnknownError(error),
-                  },
-                }
-              : undefined,
-          );
+          await runtime.sessionStore?.update(sessionId, (current) => {
+            if (current?.incarnation !== steeringSession.incarnation) return undefined;
+            // Never starting now, whichever run is the session's latest.
+            const starting = current.metadata['steeringStartingRuns'];
+            const stillStarting =
+              typeof starting === 'object' && starting !== null && !Array.isArray(starting)
+                ? Object.fromEntries(
+                    Object.entries(starting).filter(([startingRunId]) => startingRunId !== runId),
+                  )
+                : starting;
+            return {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                ...(stillStarting === undefined ? {} : { steeringStartingRuns: stillStarting }),
+                ...(current.metadata['lastRunId'] === runId
+                  ? { lastRunStatus: 'error', lastError: serializeUnknownError(error) }
+                  : {}),
+              },
+            };
+          });
         } catch (rollbackError) {
           diagnose({
             level: 'error',
@@ -8477,7 +8501,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     incarnation: string,
     namedRunId?: string,
   ): Promise<string[]> {
-    const live = new Set(liveSessionRunIdsOfIncarnation(sessionId, incarnation));
+    // A run whose `run-ended` this process has folded is over, whatever the
+    // engine still reports: its terminal state can lag the event. It is
+    // never counted, so it cannot make liveness look conclusive either.
+    const endedInLog = (runId: string) => {
+      const folded = steeringCursors.get(sessionId);
+      return folded?.incarnation === incarnation && folded.history.runs.get(runId) === 'ended';
+    };
+    const live = new Set<string>();
+    const countLive = (runId: string) => {
+      if (!endedInLog(runId)) live.add(runId);
+    };
+    for (const runId of liveSessionRunIdsOfIncarnation(sessionId, incarnation)) countLive(runId);
     const engine = runtime.durable?.engine;
     if (engine === undefined) return [...live].toSorted((left, right) => left.localeCompare(right));
     const tag = steeringSessionRunTag(sessionId, incarnation);
@@ -8489,18 +8524,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const workflow = await engine.get(runId);
       return workflow !== null && !isLiveSessionWorkflow(workflow);
     };
-    // A run whose `run-ended` this process has folded is over, whatever the
-    // engine still reports: its terminal state can lag the event, and a
-    // command bound to it now could never be applied or released.
-    const liveAndNotEnded = () => {
-      const folded = steeringCursors.get(sessionId);
-      return [...live]
-        .filter(
-          (runId) =>
-            folded?.incarnation !== incarnation || folded.history.runs.get(runId) !== 'ended',
-        )
-        .toSorted((left, right) => left.localeCompare(right));
-    };
+    const liveAndNotEnded = () => [...live].toSorted((left, right) => left.localeCompare(right));
     const isLiveSessionWorkflow = (workflow: {
       type: string;
       status: string;
@@ -8511,7 +8535,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       workflow.tags?.includes(tag) === true;
     if (namedRunId !== undefined && !live.has(namedRunId)) {
       const named = await engine.get(namedRunId);
-      if (named !== null && isLiveSessionWorkflow(named)) live.add(namedRunId);
+      if (named !== null && isLiveSessionWorkflow(named)) countLive(namedRunId);
     }
     // Already conclusive without the listing: the named run is live, or
     // unscoped, two runs already make it ambiguous.
@@ -8524,7 +8548,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       tags: [tag],
       limit: 2,
     });
-    for (const workflow of others.items) live.add(workflow.id);
+    for (const workflow of others.items) countLive(workflow.id);
     // A run is promoted in the log before its tagged workflow exists. Until
     // the engine has any record of it, it counts as starting from its own
     // `promoted` entry, folded into this session's cursor before admission —
@@ -8570,7 +8594,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               STEERING_RUN_START_WINDOW_MS &&
             !(await savedWorkflowHasEnded(savedRunId))
           ) {
-            live.add(savedRunId);
+            countLive(savedRunId);
           }
         }
       };
@@ -8592,7 +8616,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (known()) break;
         if (live.has(runId)) continue;
         const workflow = await engine.get(runId);
-        if (workflow === null || isLiveSessionWorkflow(workflow)) live.add(runId);
+        if (workflow === null || isLiveSessionWorkflow(workflow)) countLive(runId);
         else cursor.starting.delete(runId);
         if (runId === namedRunId) namedChecked = true;
       }
