@@ -385,21 +385,6 @@
       <div class="cinder-terminal__actions">
         <Button label="Retry" size="sm" onclick={retry} />
       </div>
-    {:else if recovery.length > 0}
-      <div
-        class="cinder-terminal__actions cinder-terminal__recovery"
-        role="group"
-        aria-label="Terminal recovery"
-      >
-        {#each recovery as action (action.id)}
-          <Button
-            label={action.label}
-            size="sm"
-            disabled={action.disabled}
-            onclick={(event) => activate(action.id, event)}
-          />
-        {/each}
-      </div>
     {:else if effectiveState === 'writable'}
       <div class="cinder-terminal__actions">
         <Button
@@ -423,6 +408,22 @@
           onmousedown={keepFocus}
           onfocusout={(event) => input?.focusLeft(event.relatedTarget)}
         />
+      </div>
+    {/if}
+    {#if recovery.length > 0}
+      <div
+        class="cinder-terminal__actions cinder-terminal__recovery"
+        role="group"
+        aria-label="Terminal recovery"
+      >
+        {#each recovery as action (action.id)}
+          <Button
+            label={action.label}
+            size="sm"
+            disabled={action.disabled}
+            onclick={(event) => activate(action.id, event)}
+          />
+        {/each}
       </div>
     {/if}
     <InspectionPanel {inspection} toolbarVisible={showEngine} restoreTarget={() => frameBody} />

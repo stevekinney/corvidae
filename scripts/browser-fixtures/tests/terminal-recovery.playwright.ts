@@ -4,6 +4,7 @@ import {
   captureButton,
   captureKeys,
   expect,
+  exportedText,
   focusTerminal,
   frames,
   test,
@@ -35,9 +36,9 @@ test.describe('each state offers the actions its row of the state table names', 
     ['denied', ['Try again', 'New session']],
     ['failed', ['Retry']],
     ['cleanup-incomplete', ['Check cleanup']],
-    ['writable', []],
-    ['read-only', []],
-    ['backpressured', []],
+    ['writable', ['New session']],
+    ['read-only', ['New session']],
+    ['backpressured', ['Cancel']],
   ];
 
   for (const [state, expected] of TABLE) {
@@ -48,6 +49,24 @@ test.describe('each state offers the actions its row of the state table names', 
       expect(await recoveryLabels(page)).toEqual(expected);
     });
   }
+
+  test('writable restarts explicitly and read-only shows the restart disabled', async ({
+    terminalPage,
+  }) => {
+    const writable = await openState(terminalPage, 'writable');
+    await expect(writable.getByRole('button', { name: 'Capture terminal keys' })).toBeVisible();
+    await writable.getByRole('button', { name: 'New session' }).click();
+    expect(await writable.evaluate(() => window.terminalLab!.events.actions)).toEqual([
+      'New session',
+    ]);
+    // No byte is sent by a restart: the host replaces the session, nothing is replayed.
+    expect(await writable.evaluate(() => window.terminalLab!.session.sent)).toEqual([]);
+    const readOnly = await openState(terminalPage, 'read-only');
+    const replace = readOnly.getByRole('button', { name: 'New session' });
+    await expect(replace).toBeDisabled();
+    await readOnly.evaluate(() => window.terminalLab!.setProps({ cleanupPending: true }));
+    await expect(replace).toBeDisabled();
+  });
 
   test('an action without a host handler is not rendered', async ({ terminalPage }) => {
     const page = await terminalPage.open({ query: { state: 'denied', quiet: true } });
@@ -134,6 +153,18 @@ test.describe('focus follows the action', () => {
     await write(page, 'late output\r\n');
     await frames(page);
     await expect(retry, 'arriving output does not move focus').toBeFocused();
+  });
+
+  test('Cancel while input is paused keeps focus and leaves the output readable', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'backpressured', { quiet: false });
+    await expect(page.getByText('Backpressure: input paused').first()).toBeVisible();
+    const cancel = page.getByRole('button', { name: 'Cancel' });
+    await cancel.click();
+    await expect(cancel).toBeFocused();
+    expect(await page.evaluate(() => window.terminalLab!.events.actions)).toEqual(['Cancel']);
+    expect(await exportedText(page)).toMatch(/bun run build/);
   });
 
   test('a button that survives the change keeps focus on every browser, even where a click does not focus it', async ({

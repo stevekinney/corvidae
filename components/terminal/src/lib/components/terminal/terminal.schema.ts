@@ -99,7 +99,7 @@ const schema = {
         name: 'onCancel',
         reason: 'function-or-snippet',
         description:
-          'Called when the reader activates `Cancel` in `loading` or `connecting`. The button renders only when this is provided; the host cancels construction or the connection and returns the state to `empty`.',
+          'Called when the reader activates `Cancel` in `loading`, `connecting` or `backpressured`. The button renders only when this is provided; the host cancels construction or the connection and returns the state to `empty`, or cancels the unsent operations while the output stays readable.',
       },
       {
         name: 'onCheckCleanup',
@@ -111,7 +111,7 @@ const schema = {
         name: 'onNewSession',
         reason: 'function-or-snippet',
         description:
-          'Called when the reader activates `New session` in `empty`, `exited`, `disconnected` or `denied`. The button renders only when this is provided, and is disabled while `cleanupPending` is set. It never resumes or replays a session.',
+          'Called when the reader activates `New session` in `empty`, `writable`, `exited`, `disconnected` or `denied`; `read-only` shows it disabled. The button renders only when this is provided, and is disabled while `cleanupPending` is set. It never resumes or replays a session.',
       },
       {
         name: 'onGeometryChange',

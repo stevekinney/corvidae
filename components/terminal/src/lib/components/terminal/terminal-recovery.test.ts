@@ -20,9 +20,9 @@ describe('recoveryActions follows the state table of the experience specificatio
     expect(labels('empty')).toEqual(['New session']);
     expect(labels('loading')).toEqual(['Cancel']);
     expect(labels('connecting')).toEqual(['Cancel']);
-    expect(labels('writable')).toEqual([]);
-    expect(labels('read-only')).toEqual([]);
-    expect(labels('backpressured')).toEqual([]);
+    expect(labels('writable')).toEqual(['New session']);
+    expect(labels('read-only')).toEqual(['New session']);
+    expect(labels('backpressured')).toEqual(['Cancel']);
     expect(labels('exited')).toEqual(['New session']);
     expect(labels('disconnected')).toEqual(['New session']);
     expect(labels('denied')).toEqual(['Try again', 'New session']);
@@ -32,6 +32,14 @@ describe('recoveryActions follows the state table of the experience specificatio
 
   test('engine-load-failed keeps its own Retry, which the host recovery request drives', () => {
     expect(labels('engine-load-failed')).toEqual([]);
+  });
+
+  test('a read-only view shows New session disabled whether or not cleanup is pending', () => {
+    for (const pending of [false, true]) {
+      const [action] = recoveryActions('read-only', ALL, pending);
+      expect(action).toEqual({ id: 'new-session', label: 'New session', disabled: true });
+    }
+    expect(recoveryActions('writable', ALL, false)[0]?.disabled).toBe(false);
   });
 
   test('an action is offered only when the host handles it', () => {
@@ -56,6 +64,9 @@ describe('recoveryActions follows the state table of the experience specificatio
     expect(blocked('denied')).toEqual({ 'try-again': false, 'new-session': true });
     expect(blocked('cleanup-incomplete')).toEqual({ 'check-cleanup': false });
     expect(blocked('connecting')).toEqual({ cancel: false });
+    // Cancelling unsent operations is not a replacement, so cleanup never blocks it.
+    expect(blocked('backpressured')).toEqual({ cancel: false });
+    expect(blocked('writable')).toEqual({ 'new-session': true });
     expect(recoveryActions('exited', ALL, false)[0]?.disabled).toBe(false);
   });
 });

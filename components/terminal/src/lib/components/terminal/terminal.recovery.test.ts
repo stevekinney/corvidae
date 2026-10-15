@@ -42,7 +42,14 @@ describe('recovery actions', () => {
   });
 
   test('a state with no handler renders no control at all', () => {
-    for (const state of ['empty', 'denied', 'failed', 'cleanup-incomplete'] as const) {
+    for (const state of [
+      'empty',
+      'denied',
+      'failed',
+      'cleanup-incomplete',
+      'writable',
+      'read-only',
+    ] as const) {
       const harness = mountHarness(Terminal, { title: 'Shell', state } satisfies TerminalProps);
       expect(buttons(harness), state).toEqual([]);
       expect(harness.target.querySelector('.cinder-terminal__recovery'), state).toBeNull();
@@ -79,7 +86,29 @@ describe('recovery actions', () => {
     clickIn('failed', 'Retry');
     clickIn('cleanup-incomplete', 'Check cleanup');
     clickIn('connecting', 'Cancel');
-    expect(calls).toEqual(['new', 'again', 'new', 'retry', 'check', 'cancel']);
+    clickIn('backpressured', 'Cancel');
+    expect(calls).toEqual(['new', 'again', 'new', 'retry', 'check', 'cancel', 'cancel']);
+  });
+
+  test('writable offers New session next to the capture controls, and read-only shows it disabled', () => {
+    let calls = 0;
+    const writable = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'writable',
+      onNewSession: () => (calls += 1),
+    } satisfies TerminalProps);
+    expect(buttons(writable)).toEqual(['New session']);
+    expect(button(writable, 'Capture terminal keys')).not.toBeNull();
+    button(writable, 'New session').click();
+    expect(calls).toBe(1);
+    const readOnly = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'read-only',
+      onNewSession: () => (calls += 1),
+    } satisfies TerminalProps);
+    expect(buttons(readOnly)).toEqual(['New session (disabled)']);
+    button(readOnly, 'New session').click();
+    expect(calls).toBe(1);
   });
 
   test('replacement waits for cleanup: the buttons show and cannot be used', () => {
@@ -140,6 +169,28 @@ describe('recovery actions', () => {
     await waitFor(
       () => document.activeElement === button(harness, 'New session'),
       'focus back on New session',
+    );
+  });
+
+  test('Cancel in backpressured keeps focus, leaves output readable, and follows the state when it goes', async () => {
+    const props = reactiveProps<TerminalProps>({
+      title: 'Shell',
+      state: 'backpressured',
+      onCancel: () => {},
+    });
+    const harness = mountHarness(Terminal, props);
+    expect(buttons(harness)).toEqual(['Cancel']);
+    expect(harness.target.querySelector('.cinder-terminal__viewport')).not.toBeNull();
+    const cancel = button(harness, 'Cancel');
+    cancel.click();
+    harness.flush();
+    expect(document.activeElement).toBe(cancel);
+    // The host answers by returning to writable, which has no action: focus falls to the frame.
+    props.state = 'writable';
+    harness.flush();
+    await waitFor(
+      () => document.activeElement === harness.target.querySelector('.cinder-terminal__body'),
+      'focus on the frame body',
     );
   });
 

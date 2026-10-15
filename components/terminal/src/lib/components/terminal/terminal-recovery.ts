@@ -21,12 +21,15 @@ const LABELS: Readonly<Record<RecoveryActionId, string>> = {
 /**
  * Which actions each state offers, in reading order. `engine-load-failed` is absent on purpose:
  * its `Retry` belongs to the host's recovery request and the frame's reload control, which the
- * component already renders. The states that keep a session running offer none.
+ * component already renders. `backpressured` offers `Cancel`, which cancels unsent operations while the output stays readable; `writable` offers `New session` for the explicit restart, and `read-only` shows it disabled.
  */
 const BY_STATE: Readonly<Partial<Record<TerminalState, readonly RecoveryActionId[]>>> = {
   empty: ['new-session'],
+  writable: ['new-session'],
+  'read-only': ['new-session'],
   loading: ['cancel'],
   connecting: ['cancel'],
+  backpressured: ['cancel'],
   exited: ['new-session'],
   disconnected: ['new-session'],
   denied: ['try-again', 'new-session'],
@@ -52,6 +55,9 @@ export function recoveryActions(
     .map((id) => ({
       id,
       label: LABELS[id],
-      disabled: cleanupPending && REPLACES_SESSION.has(id),
+      disabled:
+        (cleanupPending && REPLACES_SESSION.has(id)) ||
+        // A read-only view cannot be restarted until its attachment is cleaned up.
+        (state === 'read-only' && id === 'new-session'),
     }));
 }

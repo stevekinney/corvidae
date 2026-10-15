@@ -167,11 +167,12 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
    * allows it (`documentation/terminal/experience.md`). The component never starts, restarts,
    * cancels or checks anything itself: the host does, and answers by changing the state.
    *
-   * - `onNewSession`: `empty`, `exited`, `disconnected` and `denied`.
+   * - `onNewSession`: `empty`, `writable`, `exited`, `disconnected` and `denied`, and `read-only`
+   *   where it is disabled until the current attachment is cleaned up.
    * - `onTryAgain`: `denied`, repeating connection authorization only.
    * - `onRetry`: `failed`. For `engine-load-failed`, `onRecoveryRequest` is the handler.
    * - `onCheckCleanup`: `cleanup-incomplete`.
-   * - `onCancel`: `loading` and `connecting`.
+   * - `onCancel`: `loading`, `connecting` and `backpressured` (cancels unsent operations).
    */
   onNewSession?: () => void;
   onTryAgain?: () => void;
