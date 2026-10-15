@@ -223,7 +223,8 @@ test.describe('capture, focus and page navigation', () => {
 
     await captureKeys(page);
     await page.keyboard.press('Alt+Tab');
-    expect((await sentBytes(page)).length, 'with capture on the shell owns it').toBeGreaterThan(0);
+    const shellBytes = await sentBytes(page);
+    expect(shellBytes.length, 'with capture on the shell owns it').toBeGreaterThan(0);
     await expect(terminalInput(page)).toBeFocused();
   });
 
