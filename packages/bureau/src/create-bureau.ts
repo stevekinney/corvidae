@@ -2295,11 +2295,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const cursor = await enqueueSteering(sessionId, () =>
         catchUpSteering(kv, sessionId, session.incarnation),
       );
-      // Every durable run is promoted in its session's log before its
-      // workflow starts, so a recovered run the log never promoted (the log
-      // missing, emptied, or ended for it) means the log no longer describes
-      // it: resuming on a default gate would silently drop its steering.
       if (cursor.history.runs.get(runId) !== 'promoted') {
+        // A run `createRun` started durably is tagged with its session
+        // incarnation and promoted in its log before its workflow starts.
+        // Tagged but not promoted, the log no longer describes it (missing,
+        // emptied, or ended for it): resuming on a default gate would
+        // silently drop its steering, so it fails. A workflow without the
+        // tag was started elsewhere (catalog dispatch, a schedule) and never
+        // had steering; it resumes without a gate, as it always has.
+        const workflow = await runtime.durable?.engine.get(runId);
+        if (
+          workflow?.tags?.includes(steeringSessionRunTag(sessionId, session.incarnation)) !== true
+        ) {
+          return undefined;
+        }
         throw new SteeringLogCorruptError(
           `Steering log for session "${sessionId}" has no live promotion of recovered run "${runId}".`,
         );
