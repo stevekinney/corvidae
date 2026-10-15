@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
+import { systemClock } from '../session/session-clock.ts';
 import { flush } from '../session/session.test-support.ts';
 import { scenarioTest, settleScenarios } from './bun-process.test-support.ts';
 import {
@@ -226,6 +227,79 @@ describe('a group whose only member is a zombie', () => {
       }
     },
   );
+});
+
+/** A kill that refuses every signal with EPERM, as macOS does for a group of nothing but zombies. */
+function refusingKill(): never {
+  throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+}
+
+describe('terminating a group the host may not signal', () => {
+  // The real shape of the failure: on macOS kill(-group) answers EPERM for a zombie-only group, so
+  // a slow `ps` that still reports the group present let the KILL escalation throw, and cleanup
+  // was reported incomplete for a process that was already dead.
+  scenarioTest('ends a group whose only member is an unreaped zombie as complete', async () => {
+    const zombie = await startZombieGroup();
+    try {
+      const outcome = await terminateProcessGroup({
+        group: zombie.group,
+        operations: processGroupOperations,
+        clock: systemClock,
+        graceMilliseconds: 100,
+        observationMilliseconds: 1_000,
+        pollMilliseconds: 20,
+      });
+      expect(outcome).toBe('complete');
+      await processGroupOperations.signal(zombie.group, 'SIGKILL');
+    } finally {
+      await zombie.end();
+    }
+  });
+
+  test.each([
+    ['only zombies', ['Z', 'Z+']],
+    ['no members', []],
+  ])('treats EPERM as gone when the group has %s', async (_label, states) => {
+    const operations = createProcessGroupOperations(() => states, refusingKill);
+    await operations.signal(4242, 'SIGKILL');
+    const outcome = await terminateProcessGroup({
+      group: 4242,
+      operations,
+      clock: new ManualClock(),
+      graceMilliseconds: 100,
+      observationMilliseconds: 300,
+      pollMilliseconds: 20,
+    });
+    expect(outcome).toBe('complete');
+  });
+
+  test.each([
+    ['a live member', ['Z', 'S']],
+    ['members that cannot be read', undefined],
+  ])('still reports EPERM as incomplete when the group has %s', async (_label, states) => {
+    const operations = createProcessGroupOperations(() => states, refusingKill);
+    const refusal = await rejectionOf(Promise.resolve(operations.signal(4242, 'SIGTERM')));
+    expect((refusal as { code?: string }).code).toBe('EPERM');
+    const outcome = await terminateProcessGroup({
+      group: 4242,
+      operations,
+      clock: new ManualClock(),
+      graceMilliseconds: 100,
+      observationMilliseconds: 300,
+      pollMilliseconds: 20,
+    });
+    expect(outcome).toBe('incomplete');
+  });
+
+  test('raises any other failure to signal at once', () => {
+    const operations = createProcessGroupOperations(
+      () => [],
+      () => {
+        throw Object.assign(new Error('invalid'), { code: 'EINVAL' });
+      },
+    );
+    expect(() => operations.signal(4242, 'SIGTERM')).toThrow('invalid');
+  });
 });
 
 describe('the states of a group', () => {

@@ -3,8 +3,12 @@ import type { CancelTimer, SessionClock } from '../session/session-clock.ts';
 
 /** The operations on a process group that the helpers need, so cleanup can be driven without real signals. */
 export type ProcessGroupOperations = {
-  /** Signal every member of the group. A group that is already gone is not an error. */
-  signal(group: number, signal: 'SIGTERM' | 'SIGKILL'): void;
+  /**
+   * Signal every member of the group. A group that is already gone is not an error, nor is one whose
+   * only members are zombies, which some hosts refuse to signal. The check that tells those apart
+   * is asynchronous, so the result may be a promise.
+   */
+  signal(group: number, signal: 'SIGTERM' | 'SIGKILL'): void | Promise<void>;
   /**
    * Whether any member remains. A group this process may not signal still exists. It may need to
    * look at the process table, so it can be asynchronous.
@@ -68,18 +72,30 @@ export function createProcessGroupOperations(
   readStates: (
     group: number,
   ) => GroupMemberStates | undefined | Promise<GroupMemberStates | undefined>,
+  kill: (pid: number, signal: number | NodeJS.Signals) => unknown = (pid, signal) =>
+    process.kill(pid, signal),
 ): ProcessGroupOperations {
   return {
     signal(group, signal) {
       try {
-        process.kill(-group, signal);
+        kill(-group, signal);
       } catch (error) {
-        if (errorCode(error) !== 'ESRCH') throw error;
+        if (errorCode(error) === 'ESRCH') return undefined;
+        if (errorCode(error) !== 'EPERM') throw error;
+        // macOS answers EPERM, not ESRCH, for a group whose only members are zombies. That is gone,
+        // and only a probe that read the members and found no live one may say so; a group the host
+        // may not signal that still has a live member, or whose members cannot be read, is a real
+        // refusal.
+        return (async () => {
+          const states = await readStates(group);
+          if (states === undefined || states.some((state) => !state.startsWith('Z'))) throw error;
+        })();
       }
+      return undefined;
     },
     async exists(group) {
       try {
-        process.kill(-group, 0);
+        kill(-group, 0);
       } catch (error) {
         // A group this process may not signal still exists; only ESRCH says it does not.
         if (errorCode(error) === 'ESRCH') return false;
@@ -146,9 +162,12 @@ export async function terminateProcessGroup(
 ): Promise<CleanupOutcome> {
   const { group, operations, graceMilliseconds, observationMilliseconds } = termination;
   try {
-    operations.signal(group, 'SIGTERM');
+    // Awaited only when the signal is pending, so a synchronous signal adds no turn before the timers.
+    const termed = operations.signal(group, 'SIGTERM');
+    if (termed !== undefined) await termed;
     if (await waitForEmpty(termination, graceMilliseconds)) return 'complete';
-    operations.signal(group, 'SIGKILL');
+    const killed = operations.signal(group, 'SIGKILL');
+    if (killed !== undefined) await killed;
   } catch {
     return 'incomplete';
   }
