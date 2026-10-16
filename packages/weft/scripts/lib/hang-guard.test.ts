@@ -22,16 +22,18 @@ describe('the hang guard in Weft’s copy', () => {
 
   it('resumes ticking when fake timers end before the budget is spent', async () => {
     let fake = true;
-    let fired = false;
+    const started = performance.now();
     // The first tick, at 10 ms, finds fake timers and stops. They end at 20 ms, so the backstop
     // at 40 ms finds real timers and no tick running, and resumes ticking until the budget is spent.
-    afterAwakeTime(40, () => (fired = true), {
-      tickMilliseconds: 10,
-      fakeTimersActive: () => fake,
-    });
+    const fired = new Promise<number>((resolve) =>
+      afterAwakeTime(40, () => resolve(performance.now() - started), {
+        tickMilliseconds: 10,
+        fakeTimersActive: () => fake,
+      }),
+    );
     await Bun.sleep(20);
     fake = false;
-    while (!fired) await Bun.sleep(5);
-    expect(fired).toBe(true);
+    // Resumed ticks credit nothing for the stopped stretch, so the budget is spent after the backstop.
+    expect(await fired).toBeGreaterThan(40);
   });
 });
