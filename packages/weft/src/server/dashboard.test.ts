@@ -5,7 +5,7 @@
  * `distDir`.
  */
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,7 @@ import { MemoryStorage } from '../storage/memory.ts';
 import {
   dashboard,
   DASHBOARD_BUILD_COMMAND,
+  dashboardDirectory,
   DASHBOARD_SHELL_ROUTES,
   defaultDashboardDirectory,
   type DashboardOptions,
@@ -231,16 +232,21 @@ describe('dashboard', () => {
     expect(manifest.name).toBe('@lostgradient/weft');
   });
 
-  // The message a checkout without a dashboard build gets. Whether one exists is read when the
-  // test runs, not when the file loads: `scripts/build-dashboard.test.ts` writes the default
-  // directory in the same run, and serving that build is its test, not this one.
-  it('without distDir, names the default directory and the build command when it is not built', () => {
-    const defaultDirectory = join(PACKAGE_ROOT, 'dashboard');
-    const expectedMessage = `Weft's dashboard is not built: ${defaultDirectory} has no index.html. Build it by running \`bun scripts/build-dashboard.ts\` in the @lostgradient/weft package, or pass distDir.`;
-    expect(DASHBOARD_BUILD_COMMAND).toBe('bun scripts/build-dashboard.ts');
-    if (existsSync(join(defaultDirectory, 'index.html'))) return;
-    expect(() => dashboard({ engine, port: 0, unauthenticatedAccess: 'allow' })).toThrow(
-      expectedMessage,
-    );
+  it('serves distDir when given and the default directory when it is omitted', () => {
+    expect(dashboardDirectory(undefined)).toBe(defaultDashboardDirectory());
+    expect(dashboardDirectory(distDir)).toBe(distDir);
+  });
+
+  it('names the directory and the build command when distDir has no index.html', () => {
+    const emptyDirectory = mkdtempSync(join(tmpdir(), 'weft-dashboard-empty-'));
+    try {
+      expect(DASHBOARD_BUILD_COMMAND).toBe('bun scripts/build-dashboard.ts');
+      expect(() => startDashboard({ distDir: emptyDirectory })).toThrow(
+        `Weft's dashboard is not built: ${emptyDirectory} has no index.html. Build it by running \`bun scripts/build-dashboard.ts\` in the @lostgradient/weft package, or pass distDir.`,
+      );
+      expect(server).toBeUndefined();
+    } finally {
+      rmSync(emptyDirectory, { recursive: true, force: true });
+    }
   });
 });
