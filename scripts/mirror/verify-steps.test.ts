@@ -584,6 +584,22 @@ describe('packedBy determines how a published package is packed (COR-1196)', () 
     }
   });
 
+  test('each committed plan checks the exported VERSION of the package that declares one', () => {
+    const gated = (['cinder', 'weft'] as const).map((target) =>
+      buildVerifySteps(
+        {
+          installCommand: ['bun', 'install', '--frozen-lockfile'],
+          published: committedPlans[target].plan.published,
+          privateWorkspaces: [],
+        },
+        localEnvironment(),
+      )
+        .filter((step) => step.kind === 'version-constant')
+        .map((step) => step.publicName),
+    );
+    expect(gated).toEqual([['@lostgradient/cinder'], ['@lostgradient/weft']]);
+  });
+
   test("weft's committed plan carries no pack-script package, so its pack steps and rendered workflow are unchanged", () => {
     for (const target of [committedPlans.weft]) {
       const steps = buildVerifySteps(
