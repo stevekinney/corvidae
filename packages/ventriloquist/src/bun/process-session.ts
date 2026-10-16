@@ -132,6 +132,8 @@ export type SessionOperations = ProcessGroupOperations & {
    * leader that is already gone is not an error.
    */
   hangUp(session: number): void;
+  /** Release what was remembered of `session` across its cleanup. Call once the cleanup is final. */
+  forget(session: number): void;
 };
 
 function errorCode(error: unknown): unknown {
@@ -212,6 +214,12 @@ export function createSessionOperations(dependencies: {
 }): SessionOperations {
   const { readStates, sessionOf } = dependencies;
   const kill: Kill = dependencies.kill ?? ((pid, signal) => process.kill(pid, signal));
+  /**
+   * The pids seen as readable members of each session, for the whole cleanup of that session. A
+   * member that later turns unreadable is still a member however it has been reparented. A pid is
+   * dropped as soon as it is seen gone or outside the session, so a recycled pid inherits nothing.
+   */
+  const remembered = new Map<number, Set<number>>();
 
   /**
    * The live (non-zombie) members of `session`, or `undefined` when they cannot be read. A process
@@ -234,10 +242,23 @@ export function createSessionOperations(dependencies: {
         if (look !== 'gone') unreadable.push(look);
       }
     }
+    const memory = remembered.get(session) ?? new Set<number>();
+    remembered.set(session, memory);
+    const listed = new Map(states.map((entry) => [entry.pid, entry]));
+    for (const pid of memory) {
+      const entry = listed.get(pid);
+      // Gone, a zombie, or readable in another session: no longer a member to be remembered.
+      if (entry === undefined || isGone(entry.state)) memory.delete(pid);
+      else if (!members.includes(pid) && !unreadable.some((suspect) => suspect.pid === pid)) {
+        memory.delete(pid);
+      }
+    }
     const known = new Set(members);
-    return unreadable.some((suspect) => couldBelongTo(suspect, states, session, known))
-      ? undefined
-      : members;
+    const blocked = unreadable.some(
+      (suspect) => memory.has(suspect.pid) || couldBelongTo(suspect, states, session, known),
+    );
+    for (const pid of members) memory.add(pid);
+    return blocked ? undefined : members;
   }
 
   return {
@@ -289,6 +310,9 @@ export function createSessionOperations(dependencies: {
       for (const { pid, error } of refused) {
         if ((await lookAgain(pid, snapshots, readStates)) !== 'gone') throw error;
       }
+    },
+    forget(session) {
+      remembered.delete(session);
     },
     async exists(session) {
       const members = await liveMembers(session);

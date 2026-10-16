@@ -33,6 +33,8 @@ function harness(options: {
   tableGate?: Promise<void>;
   /** Whether the owned process hangs up its leader first, and whether that hang-up fails. */
   hangUp?: 'records' | 'fails';
+  /** Records the end of the termination, as the memory of a session is released. */
+  released?: string[];
 }): Harness {
   const exited = createDeferred<number>();
   const signals: string[] = [];
@@ -65,6 +67,9 @@ function harness(options: {
     graceMilliseconds: 100,
     observationMilliseconds: 300,
     ...(hangUp === undefined ? {} : { hangUp }),
+    ...(options.released === undefined
+      ? {}
+      : { release: (leader: number) => options.released?.push(`release:${leader}`) }),
     readProcessTable: async () => {
       tableReads += 1;
       await options.tableGate;
@@ -363,5 +368,26 @@ describe('OwnedProcess', () => {
     await endLeader(0, { groupEmpty: false });
     expect(await owned.terminate()).toBe('complete');
     expect(signals).toEqual(['SIGTERM']);
+  });
+
+  test('releases what it remembered of the session once the termination is final', async () => {
+    const released: string[] = [];
+    const { owned, child } = harness({ released });
+    owned.adopt(child);
+    expect(await owned.terminate()).toBe('complete');
+    expect(released).toEqual([`release:${LEADER}`]);
+  });
+
+  test('keeps it while a termination that left the session standing may be tried again', async () => {
+    const released: string[] = [];
+    const { owned, child, clock } = harness({ released, endsOn: 'never' });
+    owned.adopt(child);
+    const outcome = owned.terminate();
+    await flush();
+    clock.advance(100);
+    await flush();
+    clock.advance(300);
+    expect(await outcome).toBe('incomplete');
+    expect(released).toEqual([]);
   });
 });

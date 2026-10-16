@@ -421,6 +421,86 @@ describe('a process whose session cannot be read', () => {
   });
 });
 
+describe('a member remembered across a whole cleanup', () => {
+  const member: ProcessState = { pid: 600, parentPid: 500, group: 600, state: 'S' };
+  /** The member after its parent died: reparented to init, alone in its group, nothing readable above it. */
+  const orphaned: ProcessState = { pid: 600, parentPid: 1, group: 600, state: 'S' };
+  type Pass = { rows: ProcessState[]; readable: Record<number, number> };
+  const everyoneReadable: Pass = { rows: [LEADER_ROW, member], readable: { 500: 500, 600: 500 } };
+  const orphanUnreadable: Pass = { rows: [orphaned], readable: {} };
+  const nothing: Pass = { rows: [], readable: {} };
+
+  /** A host showing one pass until `show` changes it; a second look at the table sees the same pass. */
+  function host(first: Pass) {
+    let current = first;
+    const operations = createSessionOperations({
+      readStates: () => current.rows,
+      sessionOf: (pid) => {
+        const session = current.readable[pid];
+        if (session === undefined) throw new Error('could not be read');
+        return session;
+      },
+      kill: () => undefined,
+    });
+    return {
+      operations,
+      show: (next: Pass) => {
+        current = next;
+      },
+    };
+  }
+
+  test('blocks cleanup when it turns unreadable, though nothing links it to the session', async () => {
+    const { operations, show } = host(everyoneReadable);
+    expect(await operations.exists(SESSION)).toBe(true);
+    show(orphanUnreadable);
+    expect(await operations.exists(SESSION)).toBe(true);
+  });
+
+  test('is forgotten once it is seen gone, so a recycled pid inherits nothing', async () => {
+    const { operations, show } = host(everyoneReadable);
+    await operations.exists(SESSION);
+    show(nothing);
+    expect(await operations.exists(SESSION)).toBe(false);
+    show(orphanUnreadable);
+    expect(await operations.exists(SESSION)).toBe(false);
+  });
+
+  test('is forgotten once it is a zombie', async () => {
+    const { operations, show } = host(everyoneReadable);
+    await operations.exists(SESSION);
+    show({ rows: [{ ...member, state: 'Z' }], readable: {} });
+    expect(await operations.exists(SESSION)).toBe(false);
+    show(orphanUnreadable);
+    expect(await operations.exists(SESSION)).toBe(false);
+  });
+
+  test('is forgotten when it is readable in another session', async () => {
+    const { operations, show } = host(everyoneReadable);
+    await operations.exists(SESSION);
+    show({ rows: [orphaned], readable: { 600: 600 } });
+    expect(await operations.exists(SESSION)).toBe(false);
+    show(orphanUnreadable);
+    expect(await operations.exists(SESSION)).toBe(false);
+  });
+
+  test('is forgotten when the cleanup is over', async () => {
+    const { operations, show } = host(everyoneReadable);
+    await operations.exists(SESSION);
+    operations.forget(SESSION);
+    show(orphanUnreadable);
+    expect(await operations.exists(SESSION)).toBe(false);
+  });
+
+  test('also fails a signal pass', async () => {
+    const { operations, show } = host(everyoneReadable);
+    await operations.exists(SESSION);
+    show(orphanUnreadable);
+    const failure = await rejectionOf(Promise.resolve(operations.signal(SESSION, 'SIGKILL')));
+    expect((failure as Error).message).toBe('the process table could not be read');
+  });
+});
+
 describe('a session that cannot be read at signal time', () => {
   /** Listed as a member, then unreadable when it is about to be signaled; the follow-up read says what became of it. */
   function turning(afterwards: ProcessState[]) {

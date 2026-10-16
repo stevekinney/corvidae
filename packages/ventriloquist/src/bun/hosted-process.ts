@@ -69,6 +69,7 @@ export function createOwnedProcess(
         operations: sessionOperations,
         readProcessTable: () => readSessionTable(),
         hangUp: (leader) => sessionOperations.hangUp(leader),
+        release: (leader) => sessionOperations.forget(leader),
       })
     : new OwnedProcess({ ...timing, operations: processGroupOperations, readProcessTable });
 }

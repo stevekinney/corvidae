@@ -28,6 +28,11 @@ export type OwnedProcessOptions = {
    * depend on it.
    */
   readonly hangUp?: (leader: number) => void;
+  /**
+   * Called when a termination is final (anything but `incomplete`, which may be tried again), so
+   * what the operations remembered of the scope during it can be released.
+   */
+  readonly release?: (leader: number) => void;
 };
 
 /** The wire carries a signal as a nonempty name; a signal without a name of its own is spelled by its number. */
@@ -103,7 +108,11 @@ export class OwnedProcess {
   terminate(): Promise<CleanupOutcome> {
     // Nothing is owned yet, so nothing is remembered: a process adopted later is still to be ended.
     if (this.#child === undefined) return Promise.resolve('complete');
-    this.#termination ??= this.#terminate(this.#child);
+    const child = this.#child;
+    this.#termination ??= this.#terminate(child).then((outcome) => {
+      if (outcome !== 'incomplete') this.#options.release?.(child.pid);
+      return outcome;
+    });
     return this.#termination;
   }
 
