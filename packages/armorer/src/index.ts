@@ -257,6 +257,12 @@ export {
 // Embedding search API
 export { awaitToolEmbeddings, registerToolEmbeddings } from './core/registry/embeddings';
 export type { Embedder, EmbeddingEntry, EmbeddingVector } from './core/registry/embeddings';
+export {
+  computeEmbeddingVectorMagnitude,
+  cosineSimilarity,
+  isEmbeddingVector,
+} from './embedding-vector';
+export type { EmbeddingVectorLike, IsEmbeddingVectorOptions } from './embedding-vector';
 
 // Types
 export * from './adapters/anthropic';

@@ -13,14 +13,14 @@
  * uses when it runs as `tokens:generate`/`tokens:check`.
  */
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { expect, test } from 'bun:test';
 
 // COR-1334: the check regenerates every artifact and runs Prettier, which takes seconds on a
 // loaded machine. Running it here, at module scope, keeps that subprocess off bun's five-second
 // per-test clock; the test below only asserts on its settled result.
 const scriptPath = new URL('./generate-artifacts.ts', import.meta.url).pathname;
-const child = Bun.spawn(['bun', scriptPath, '--check'], {
-  timeout: 120_000,
+const child = spawnWithHangGuard(['bun', scriptPath, '--check'], {
   cwd: new URL('../..', import.meta.url).pathname,
   stdout: 'pipe',
   stderr: 'pipe',

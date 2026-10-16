@@ -1,5 +1,5 @@
-import { cosineSimilarity, type EmbeddingVectorLike } from '@lostgradient/embeddings';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { cosineSimilarity, type EmbeddingVectorLike } from 'armorer';
 
 import type { HybridSearchCandidate, VectorSearchResult } from './hybrid-search';
 import { mergeHybridResults } from './hybrid-search';

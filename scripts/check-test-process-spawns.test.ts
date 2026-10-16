@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import ts from 'typescript';
 
 import {
+  findDirectSpawns,
   findTestProcessSpawnViolations,
-  findUnboundedSpawns,
   resolveSpecifier,
 } from './check-test-process-spawns';
 
@@ -178,7 +178,7 @@ describe('spawning functions', () => {
       join(import.meta.dir, 'fixture.test.ts'),
       '@lostgradient/testing',
     );
-    expect(resolved?.endsWith(join('packages', 'testing', 'src', 'index.ts'))).toBe(true);
+    expect(resolved?.endsWith(join('testing', 'testing', 'src', 'index.ts'))).toBe(true);
   });
 });
 
@@ -216,7 +216,7 @@ describe('spawn-free exemptions', () => {
   });
 });
 
-test('skips scripts/benchmarks directories when collecting test files', async () => {
+test('collects test files and test-support modules, skipping scripts/benchmarks', async () => {
   const { collectTestFiles } = await import('./check-test-process-spawns');
   const directory = mkdtempSync(join(tmpdir(), 'check-test-process-spawns-collect-'));
   try {
@@ -224,9 +224,13 @@ test('skips scripts/benchmarks directories when collecting test files', async ()
     writeFileSync(join(directory, 'scripts', 'benchmarks', 'load.test.ts'), '');
     writeFileSync(join(directory, 'scripts', 'unit.test.ts'), '');
     writeFileSync(join(directory, 'scripts', 'view.test.tsx'), '');
+    // A support module's spawns run in the test process too (COR-1541 found an unguarded one).
+    writeFileSync(join(directory, 'scripts', 'cluster.test-support.ts'), '');
+    writeFileSync(join(directory, 'scripts', 'cluster.ts'), '');
     const paths: string[] = [];
     collectTestFiles(directory, paths);
     expect(paths.map((path) => path.slice(directory.length + 1)).toSorted()).toEqual([
+      join('scripts', 'cluster.test-support.ts'),
       join('scripts', 'unit.test.ts'),
       join('scripts', 'view.test.tsx'),
     ]);
@@ -235,48 +239,62 @@ test('skips scripts/benchmarks directories when collecting test files', async ()
   }
 });
 
-describe('spawn hang guards', () => {
-  const unbounded = (source: string): string[] =>
-    findUnboundedSpawns(
+describe('direct process API calls in a test file', () => {
+  const direct = (source: string): string[] =>
+    findDirectSpawns(
       ts.createSourceFile('fixture.test.ts', source, ts.ScriptTarget.Latest, true),
     ).map((violation) => violation.text);
 
   test.each([
-    ['an array-and-options spawn without timeout', "Bun.spawn(['bun'], { cwd: '/' });"],
-    ['a single-object spawn without timeout', "Bun.spawnSync({ cmd: ['git'] });"],
+    ['an array-and-options spawn', "Bun.spawn(['bun'], { cwd: '/' });"],
+    ['a single-object spawn', "Bun.spawnSync({ cmd: ['git'] });"],
     ['a spawn with no options at all', "Bun.spawnSync(['git', 'status']);"],
     ['a spawn whose options are a variable', "Bun.spawn(['bun'], options);"],
+    // Bun counts a host's sleep against `timeout` and kills the child on wake (COR-1541).
+    ['a spawn with a timeout', "Bun.spawn(['bun'], { cwd: '/', timeout: 120_000 });"],
+    ['a synchronous spawn with a timeout', "Bun.spawnSync({ cmd: ['git'], timeout: LIMIT });"],
     [
-      'a child_process call without timeout',
+      'a child_process call',
       "import { execFileSync } from 'node:child_process';\nexecFileSync('mkfifo', ['f']);",
     ],
-    [
-      'a child_process namespace call without timeout',
-      "import * as processes from 'node:child_process';\nprocesses.spawn('sleep', ['30'], { detached: true });",
-    ],
-    ['a Bun shell template, which takes no timeout', 'await Bun.$`git init`;'],
-    ['a $ shell template imported from bun', "import { $ } from 'bun';\nawait $`git init`;"],
-    ['a zero timeout, which Bun treats as none', "Bun.spawnSync(['git'], { timeout: 0 });"],
-    [
-      'a zero child_process timeout',
-      "import { execFileSync } from 'node:child_process';\nexecFileSync('sleep', ['30'], { timeout: 0 });",
-    ],
-    ['a negative timeout', "Bun.spawn(['git'], { timeout: -1 });"],
-    ['a spawnSync imported from bun', "import { spawnSync } from 'bun';\nspawnSync(['git']);"],
-  ])('reports %s', (_name, source) => {
-    expect(unbounded(source)).toHaveLength(1);
-  });
-
-  test.each([
-    ['a timeout in the options', "Bun.spawn(['bun'], { cwd: '/', timeout: 120_000 });"],
-    ['a timeout in a single-object spawn', "Bun.spawnSync({ cmd: ['git'], timeout: LIMIT });"],
     [
       'a child_process call with a timeout',
       "import { execFile } from 'node:child_process';\nexecFile('git', ['init'], { timeout: LIMIT }, () => {});",
     ],
+    [
+      'a child_process namespace call',
+      "import * as processes from 'node:child_process';\nprocesses.spawn('sleep', ['30'], { detached: true });",
+    ],
+    ['a Bun shell template', 'await Bun.$`git init`;'],
+    ['a $ shell template imported from bun', "import { $ } from 'bun';\nawait $`git init`;"],
+    ['a spawnSync imported from bun', "import { spawnSync } from 'bun';\nspawnSync(['git']);"],
+  ])('reports %s', (_name, source) => {
+    expect(direct(source)).toHaveLength(1);
+  });
+
+  test('names the helpers to use instead', () => {
+    expect(direct("Bun.spawnSync(['git']);")).toEqual([
+      '`Bun.spawnSync` in a test file; use spawnWithHangGuard or runWithHangGuard',
+    ]);
+  });
+
+  test.each([
     ['an unrelated spawn function', "spawn('x');"],
-    ['a timeout named by a variable', "Bun.spawn(['git'], { timeout });"],
+    [
+      'the hang-guarded helpers',
+      "import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';\nspawnWithHangGuard(['git']);\nawait runWithHangGuard(['git']);",
+    ],
   ])('accepts %s', (_name, source) => {
-    expect(unbounded(source)).toEqual([]);
+    expect(direct(source)).toEqual([]);
+  });
+
+  test('still reports the helpers inside a test body, through their module', () => {
+    const fixture = join(import.meta.dir, '..', 'packages', 'testing', 'src', 'fixture.test.ts');
+    expect(
+      inspectAt(
+        fixture,
+        "import { runWithHangGuard } from '@lostgradient/testing/hang-guard';\ntest('x', async () => { await runWithHangGuard(['git']); });",
+      ),
+    ).toHaveLength(1);
   });
 });

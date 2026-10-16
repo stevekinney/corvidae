@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { join, resolve } from 'node:path';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../testing/module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 
 // Isolated because it spawns a real `tsc --noEmit` subprocess: its wall-clock
 // cost is unbounded under CPU contention and cannot be made deterministic with
@@ -26,8 +23,7 @@ const scenario1 = await outcomeOf(async () => {
   // works in this worktree's layout (no local node_modules — deps resolve from
   // the project root) without relying on a PATH-provided executable.
   const tscPath = Bun.resolveSync('typescript/bin/tsc', TYPECHECK_FIXTURE_DIR);
-  const proc = Bun.spawn(['bun', tscPath, '-p', TYPECHECK_FIXTURE_DIR, '--noEmit'], {
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  const proc = spawnWithHangGuard(['bun', tscPath, '-p', TYPECHECK_FIXTURE_DIR, '--noEmit'], {
     stdout: 'pipe',
     stderr: 'pipe',
   });

@@ -3,11 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from './module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from './hang-guard.ts';
+import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -160,8 +157,7 @@ async function run(
       if (key.startsWith('TURBO_')) delete fixtureEnvironment[key];
     }
   }
-  const child = Bun.spawn(fixtureCommand, {
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  const child = spawnWithHangGuard(fixtureCommand, {
     cwd: directory,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -552,7 +548,7 @@ test('the evaluation coverage gate runs in the root coverage graph and caches it
   // entry would silently remove `@lostgradient/evaluation`'s 100 percent line and
   // function threshold from `bun run validate` without failing anything.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
-  const manifest = await Bun.file(join(root, 'packages/evaluation/package.json')).json();
+  const manifest = await Bun.file(join(root, 'testing/evaluation/package.json')).json();
   expect(manifest.scripts?.['test:coverage']).toContain('--coverage');
   expect(configuration.tasks['@lostgradient/evaluation#test:coverage']).toEqual({
     dependsOn: ['transit'],

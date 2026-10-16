@@ -1,5 +1,5 @@
-import type { ToolCallInput } from '@lostgradient/tool-protocol';
 import { parseOpenAIToolCalls } from 'armorer';
+import type { ToolCallInput } from 'armorer/protocol';
 import { toOpenAIMessagesGrouped } from 'conversationalist';
 
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';

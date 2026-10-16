@@ -3,7 +3,7 @@
  * over a real catalog.
  */
 import { createAgent, type GenerateFunction, type InputDetector } from '@lostgradient/operative';
-import { discoverSkills, type SkillCatalogRevision } from '@lostgradient/skills';
+import { discoverSkills, type SkillCatalogRevision } from './skills';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

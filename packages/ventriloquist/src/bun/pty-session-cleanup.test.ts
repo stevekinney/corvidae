@@ -1,6 +1,5 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect } from 'bun:test';
-
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
 import {
   bytesOnChannel,
@@ -63,10 +62,9 @@ async function launch(
 
 /** Start a process in a session of its own, as an unrelated program on the host would. */
 function startUnrelated(): { readonly pid: number; end(): void } {
-  const child = Bun.spawn(['sleep', '7919'], {
+  const child = spawnWithHangGuard(['sleep', '7919'], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   return { pid: child.pid, end: () => child.kill('SIGKILL') };
 }

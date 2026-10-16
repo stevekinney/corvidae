@@ -1,0 +1,37 @@
+{
+  "name": "@lostgradient/testing",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./coverage-ratchet": "./src/coverage-ratchet/index.ts",
+    "./hang-guard": "./src/hang-guard.ts"
+  },
+  "scripts": {
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='**/*.slow.test.ts' src",
+    "test:slow": "TZ=UTC LANG=en_US.UTF-8 bun test .slow.test.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src"
+  },
+  "dependencies": {
+    "svelte": "catalog:",
+    "zod": "catalog:",
+    "typescript": "catalog:",
+    "happy-dom": "catalog:",
+    "@testing-library/svelte": "catalog:",
+    "@playwright/test": "catalog:",
+    "@axe-core/playwright": "catalog:",
+    "postcss-value-parser": "catalog:",
+    "@lostgradient/environmentalist": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/typescript": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "pngjs": "catalog:",
+    "pixelmatch": "catalog:",
+    "@types/pngjs": "catalog:"
+  }
+}

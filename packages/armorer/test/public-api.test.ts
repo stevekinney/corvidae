@@ -65,8 +65,8 @@ describe('public API contract', () => {
     expect(root.normalizeTextQuery('  PUBLIC Tool  ')?.query).toBe('public tool');
   });
 
-  it('keeps the source package export map intentionally root-only', () => {
-    expect(pkg.exports).toEqual({ '.': './src/index.ts' });
+  it('exports the root and the dependency-free protocol subpath, nothing else', () => {
+    expect(pkg.exports).toEqual({ '.': './src/index.ts', './protocol': './src/protocol/index.ts' });
   });
 
   it('exposes lazy provider import helpers on createToolbox', () => {

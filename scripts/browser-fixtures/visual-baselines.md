@@ -1,6 +1,6 @@
 # Visual baselines
 
-This is the operator's guide for the committed Linux visual baselines that `CINDER_VISUAL_DIFF=block` compares against. It covers where they live, which renderer is authoritative, how to check and regenerate them, and how a refresh is reviewed. The tooling was ported from cinder's `packages/testing` and adapted for corvidae in COR-1512.
+This is the operator's guide for the committed Linux visual baselines that `CINDER_VISUAL_DIFF=block` compares against. It covers where they live, which renderer is authoritative, how to check and regenerate them, and how a refresh is reviewed. The tooling was ported from cinder's `testing/testing` and adapted for corvidae in COR-1512.
 
 ## Where baselines live
 
@@ -8,7 +8,7 @@ The browser suite writes and reads baselines at `scripts/browser-fixtures/snapsh
 
 `provenance.json` records how the set was rendered: the source commit (`renderedSourceSha`), the Playwright version, the operating system codename, the architecture, the renderer image tag, and the suite's exit code (`suiteExitCode`: 0 when every case passed, 1 when the run completed with failures). Only the update tooling writes it; never edit it by hand.
 
-The comparison tolerance is `maxDiffPixels: 2` at `threshold: 0.1`, declared once as `SNAPSHOT_DIFF_OPTIONS` in `packages/testing/src/helpers/screenshot.ts`. Changing it is out of scope for a baseline refresh.
+The comparison tolerance is `maxDiffPixels: 2` at `threshold: 0.1`, declared once as `SNAPSHOT_DIFF_OPTIONS` in `testing/testing/src/helpers/screenshot.ts`. Changing it is out of scope for a baseline refresh.
 
 ## The authoritative renderer
 

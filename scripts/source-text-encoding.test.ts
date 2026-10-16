@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { runWithHangGuard } from './hang-guard.ts';
 import { nulByteOffenders, nulOffsets } from './source-text-encoding';
 
 const root = join(import.meta.dir, '..');
@@ -15,13 +16,13 @@ const root = join(import.meta.dir, '..');
 async function scanExcludesFixture(directory: string) {
   const text = (value: string) => new TextEncoder().encode(value);
   const withNul = new Uint8Array([0x61, 0x00, 0x62, 0x00]);
-  const git = (...command: string[]) => {
-    const result = Bun.spawnSync(['git', ...command], { timeout: 120_000, cwd: directory });
+  const git = async (...command: string[]) => {
+    const result = await runWithHangGuard(['git', ...command], { cwd: directory });
     if (result.exitCode !== 0) {
       throw new Error(`git ${command.join(' ')} failed: ${result.stderr.toString()}`);
     }
   };
-  git('init', '--quiet');
+  await git('init', '--quiet');
   await Bun.write(join(directory, '.gitignore'), Bun.file(join(root, '.gitignore')));
   const fixtures: Record<string, Uint8Array> = {
     'packages/example/src/tracked.ts': withNul,
@@ -33,7 +34,7 @@ async function scanExcludesFixture(directory: string) {
   for (const [path, bytes] of Object.entries(fixtures)) {
     await Bun.write(join(directory, path), bytes);
   }
-  git('add', '--all');
+  await git('add', '--all');
   await rm(join(directory, 'packages/example/src/deleted.ts'));
   await Bun.write(join(directory, 'scripts/untracked.ts'), new Uint8Array([0x00]));
   await Bun.write(join(directory, 'scripts/excluded-locally.ts'), withNul);
@@ -43,7 +44,7 @@ async function scanExcludesFixture(directory: string) {
   await Bun.write(join(directory, '.git/info/exclude'), 'excluded-locally.ts\n');
   const globalExcludes = join(directory, 'global-excludes');
   await Bun.write(globalExcludes, 'excluded-globally.cts\n');
-  git('config', 'core.excludesFile', globalExcludes);
+  await git('config', 'core.excludesFile', globalExcludes);
   return nulByteOffenders(directory);
 }
 

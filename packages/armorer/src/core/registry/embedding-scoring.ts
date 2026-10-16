@@ -16,7 +16,7 @@ export function scoreEmbeddingMatch(
     const weight = query.weights[entry.field] ?? 0;
     if (weight <= 0) continue;
 
-    const sim = cosineSimilarity(
+    const sim = cosineSimilarityFromMagnitudes(
       queryEmbedding.vector,
       entry.vector,
       queryEmbedding.magnitude,
@@ -33,7 +33,12 @@ export function scoreEmbeddingMatch(
   return best;
 }
 
-export function cosineSimilarity(a: number[], b: number[], magA: number, magB: number): number {
+export function cosineSimilarityFromMagnitudes(
+  a: number[],
+  b: number[],
+  magA: number,
+  magB: number,
+): number {
   if (magA === 0 || magB === 0) return 0;
   let dot = 0;
   for (let i = 0; i < a.length; i++) {

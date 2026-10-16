@@ -35,12 +35,14 @@
  * covers only those inferred calls: a process API written in the test body is always reported.
  *
  * Moving a process to module scope takes it off the per-test clock, so nothing bounds it there:
- * a child that never exits would hold the whole run. Every direct process API call in a test
- * file, wherever it runs, must therefore pass `timeout` in an object-literal options argument
- * (the owner-approved 120-second hang guard, `SCENARIO_HANG_GUARD_MILLISECONDS` in the
- * module-scope scenario helpers), so the runtime kills a hung child. A spawn whose options are
- * not an object literal is reported too, because the guard cannot see what they hold. `Bun.$`
- * has no timeout option, so a test file uses `Bun.spawn` instead.
+ * a child that never exits would hold the whole run. A test file, or a `*.test-support.ts` module
+ * beside one, therefore never calls a process API directly, wherever the call runs; it starts
+ * every process through `spawnWithHangGuard` or
+ * `runWithHangGuard` (`@lostgradient/testing/hang-guard`, or its checked copies at
+ * `scripts/hang-guard.ts` and `packages/weft/scripts/lib/hang-guard.ts`). They kill a child after
+ * the owner-approved 120-second hang guard of awake time. Bun's own `timeout` option, which this
+ * guard used to require, counts time the host spent asleep and killed children on wake
+ * (COR-1541); a synchronous spawn blocks the thread, so no awake-time guard can run beside it.
  *
  * Blind spots, documented rather than claimed as covered:
  *
@@ -58,9 +60,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
+import { workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
-const SCANNED_DIRECTORIES = ['applications', 'components', 'packages', 'internal', 'scripts'];
+const SCANNED_DIRECTORIES = [...workspaceParentDirectories, 'scripts'];
 const SKIPPED_DIRECTORIES = new Set([
   'node_modules',
   'build',
@@ -592,69 +595,22 @@ export function findTestProcessSpawnViolations(
 }
 
 /**
- * Whether a `timeout` value can bound the child. Node and Bun treat `0` as no timeout, so a
- * literal must be positive; a name or expression is trusted, since only its runtime value is known.
+ * Process API calls written directly in a test file. Each one must go through the hang-guarded
+ * helpers instead, which also lets the test-body analysis above infer them from their module.
  */
-function isBoundingTimeout(property: ts.ObjectLiteralElementLike): boolean {
-  if (!ts.isPropertyAssignment(property)) return true;
-  const value = property.initializer;
-  if (ts.isNumericLiteral(value)) return Number(value.text.replaceAll('_', '')) > 0;
-  if (ts.isPrefixUnaryExpression(value) && value.operator === ts.SyntaxKind.MinusToken)
-    return false;
-  return true;
-}
-
-function hasTimeoutProperty(options: ts.Expression | undefined): boolean {
-  return (
-    options !== undefined &&
-    ts.isObjectLiteralExpression(options) &&
-    options.properties.some(
-      (property) =>
-        property.name !== undefined &&
-        (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
-        property.name.text === 'timeout' &&
-        isBoundingTimeout(property),
-    )
-  );
-}
-
-/** `Bun.spawn(cmd, options)` and `Bun.spawn({ cmd, … })` carry their options in a fixed place. */
-function bunSpawnHasTimeout(call: ts.CallExpression): boolean {
-  return hasTimeoutProperty(call.arguments.length === 1 ? call.arguments[0] : call.arguments[1]);
-}
-
-/**
- * A `node:child_process` function takes its options after an optional argument array, and
- * `exec`/`execFile` take a callback after them, so any object-literal argument holding `timeout`
- * counts.
- */
-function childProcessCallHasTimeout(call: ts.CallExpression): boolean {
-  return call.arguments.some((argument) => hasTimeoutProperty(argument));
-}
-
-/**
- * Direct process API calls that do not pass a `timeout` hang guard. `Bun.$` has no timeout
- * option, so a shell template in a test file is always reported: use `Bun.spawn` with one.
- */
-export function findUnboundedSpawns(sourceFile: ts.SourceFile): TestProcessSpawnViolation[] {
+export function findDirectSpawns(sourceFile: ts.SourceFile): TestProcessSpawnViolation[] {
   const imports = importedNames(sourceFile, sourceFile.fileName);
   const violations: TestProcessSpawnViolation[] = [];
-  const report = (node: ts.Node, text: string): void => {
-    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-    violations.push({ line: line + 1, text });
-  };
   walk(sourceFile, (node) => {
-    if (isBunSpawn(node, imports)) {
-      if (!bunSpawnHasTimeout(node)) {
-        report(node, `${calleeName(node.expression)} without a timeout hang guard`);
-      }
-    } else if (isChildProcessCall(node, imports)) {
-      if (!childProcessCallHasTimeout(node)) {
-        report(node, `${calleeName(node.expression)} without a timeout hang guard`);
-      }
-    } else if (isBunShell(node, imports)) {
-      report(node, 'Bun shell template, which cannot take a timeout hang guard; use Bun.spawn');
-    }
+    if (!isDirectSpawn(node, imports)) return;
+    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const name = ts.isTaggedTemplateExpression(node)
+      ? 'a Bun shell template'
+      : `\`${calleeName((node as ts.CallExpression).expression)}\``;
+    violations.push({
+      line: line + 1,
+      text: `${name} in a test file; use spawnWithHangGuard or runWithHangGuard`,
+    });
   });
   return violations;
 }
@@ -666,7 +622,7 @@ export function collectTestFiles(directory: string, paths: string[]): void {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
       if (entry.name === 'benchmarks' && basename(directory) === 'scripts') continue;
       collectTestFiles(path, paths);
-    } else if (entry.isFile() && /\.test\.tsx?$/.test(entry.name)) {
+    } else if (entry.isFile() && /\.test(?:-support)?\.tsx?$/.test(entry.name)) {
       paths.push(path);
     }
   }
@@ -685,7 +641,7 @@ function scan(): string[] {
     );
     for (const violation of [
       ...findTestProcessSpawnViolations(sourceFile),
-      ...findUnboundedSpawns(sourceFile),
+      ...findDirectSpawns(sourceFile),
     ]) {
       findings.push(`${relative(root, path)}:${violation.line} — ${violation.text}`);
     }
@@ -697,17 +653,18 @@ function main(): void {
   const findings = scan();
   if (findings.length === 0) {
     process.stdout.write(
-      'check-test-process-spawns — OK (no test body or hook starts a child process, and every test spawn has a timeout).\n',
+      'check-test-process-spawns — OK (no test body or hook starts a child process, and no test file calls a process API directly).\n',
     );
     return;
   }
   process.stderr.write(
     'check-test-process-spawns — a test starts a child process on the per-test clock, or a test\n' +
-      'file starts one without a timeout hang guard.\n' +
+      'file calls a process API directly instead of through the hang-guarded helpers.\n' +
       "A spawn inside a test pays the child's boot on Bun's five-second per-test clock and times\n" +
       'out on a loaded host. Call the logic in process when the child only runs repository code;\n' +
       'when the real process is the behavior, run it at module scope with top-level await and\n' +
-      'assert on the recorded result, and give every spawn in a test file a `timeout` hang guard.\n' +
+      'assert on the recorded result, and start every process in a test file with\n' +
+      'spawnWithHangGuard or runWithHangGuard, whose guard counts only awake time.\n' +
       'Never raise the per-test timeout.\n\n',
   );
   for (const finding of findings) process.stderr.write(`  ${finding}\n`);

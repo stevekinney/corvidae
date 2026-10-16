@@ -1,4 +1,4 @@
-import { cosineSimilarity } from '@lostgradient/embeddings';
+import { cosineSimilarity } from 'armorer';
 
 export interface MaximalMarginalRelevanceOptions {
   /** Tradeoff between relevance (1) and diversity (0). */

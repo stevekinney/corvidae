@@ -1,4 +1,4 @@
-import { cosineSimilarity, type EmbeddingVectorLike } from '@lostgradient/embeddings';
+import { cosineSimilarity, type EmbeddingVectorLike } from 'armorer';
 
 import {
   type MemoryRecord,

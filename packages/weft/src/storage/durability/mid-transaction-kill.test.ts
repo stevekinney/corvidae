@@ -33,11 +33,8 @@
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'bun:test';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../../testing/module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../../../scripts/lib/hang-guard.ts';
+import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
 
 import {
   availableAdapterSpecs,
@@ -417,9 +414,7 @@ for (const spec of availableAdapterSpecs()) {
     const databasePath = join(directory, 'weft.db');
     await Bun.write(entrypointPath, adapterBatchEntrypointSource(spec));
 
-    const child = Bun.spawn({
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-      cmd: ['bun', entrypointPath, databasePath],
+    const child = spawnWithHangGuard(['bun', entrypointPath, databasePath], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -470,9 +465,7 @@ for (const spec of availableBunNodeAdapterSpecs()) {
     const databasePath = join(directory, 'weft.db');
     await Bun.write(entrypointPath, rawInTransactionEntrypointSource(spec));
 
-    const child = Bun.spawn({
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-      cmd: ['bun', entrypointPath, databasePath],
+    const child = spawnWithHangGuard(['bun', entrypointPath, databasePath], {
       stdout: 'pipe',
       stderr: 'pipe',
     });

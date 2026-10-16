@@ -1,10 +1,6 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../src/testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../src/testing/module-scope-scenario.test-support.ts';
 import {
   assembleAllowanceLayers,
   assertNoAllowanceKeyIsCoverageIgnored,
@@ -21,6 +17,7 @@ import {
   runCoverageShard,
   workflowEventFeedUncoveredLines,
 } from './check-coverage.ts';
+import { spawnWithHangGuard } from './lib/hang-guard.ts';
 
 /** An already-closed byte stream, standing in for a spawned child's empty stdout/stderr. */
 function closedByteStream(): ReadableStream<Uint8Array> {
@@ -136,8 +133,7 @@ const scenario1 = await outcomeOf(async () => {
       ].join('\n'),
     );
 
-    const child = Bun.spawn(['bun', entry], {
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    const child = spawnWithHangGuard(['bun', entry], {
       cwd: root,
       stdout: 'pipe',
       stderr: 'pipe',
@@ -1054,9 +1050,9 @@ const ignorePatternParity = await outcomeOf(async () => {
       );
       await rm(join(root, 'coverage'), { recursive: true, force: true });
       // A spawned child, not `Bun.$`, so the scenario hang guard can kill a deadlocked run.
-      const coverageChild = Bun.spawn(
+      const coverageChild = spawnWithHangGuard(
         ['bun', 'test', '--coverage', '--coverage-reporter=lcov', '--coverage-dir=coverage'],
-        { cwd: root, stdout: 'ignore', stderr: 'pipe', timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+        { cwd: root, stdout: 'ignore', stderr: 'pipe' },
       );
       const [exitCode, stderr] = await Promise.all([
         coverageChild.exited,

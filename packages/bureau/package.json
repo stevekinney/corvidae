@@ -4,7 +4,8 @@
   "description": "The agent fleet brain: createBureau, runtime composition, durability, recovery, and agent assembly",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./skills": "./src/skills/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
@@ -13,21 +14,23 @@
     "test": "bun ../../scripts/bun-test-junit.ts"
   },
   "dependencies": {
-    "zod": "catalog:",
-    "@lostgradient/weft": "workspace:*",
-    "armorer": "workspace:*",
-    "conversationalist": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/memory": "workspace:*",
     "@lostgradient/operative": "workspace:*",
-    "@lostgradient/skills": "workspace:*",
-    "@lostgradient/tool-protocol": "workspace:*"
+    "@lostgradient/weft": "workspace:*",
+    "armorer": "workspace:*",
+    "conversationalist": "workspace:*",
+    "gray-matter": "catalog:",
+    "js-yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/bun": "catalog:",
-    "typescript": "catalog:",
     "@lostgradient/typescript": "workspace:*",
-    "oxlint": "catalog:"
+    "@lostgradient/testing": "workspace:*",
+    "@types/bun": "catalog:",
+    "@types/js-yaml": "catalog:",
+    "oxlint": "catalog:",
+    "typescript": "catalog:"
   }
 }

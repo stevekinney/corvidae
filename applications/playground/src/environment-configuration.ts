@@ -37,7 +37,7 @@ const keyByEnvironmentName: Record<string, keyof z.infer<typeof environmentSchem
 
 // Environmentalist's built-in `env` source reads nothing under the `browser`
 // export condition, which the playground's tests and bundles run under, so
-// this source reads `process.env` directly (the `packages/testing` precedent).
+// this source reads `process.env` directly (the `testing/testing` precedent).
 const environmentSource: Source = {
   id: 'corvidae-playground-process-env',
   kind: 'string',

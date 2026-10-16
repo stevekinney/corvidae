@@ -7,6 +7,7 @@
  *   - --json output shape and exit-code contracts (via Bun.spawn)
  */
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -41,8 +42,7 @@ function componentDirectory(name: string, experimental = false): string {
 type PromotionCheckResult = { stdout: string; stderr: string; exitCode: number };
 
 async function spawnPromotionCheck(args: string[]): Promise<PromotionCheckResult> {
-  const process = Bun.spawn(['bun', SCRIPT_FILE, ...args], {
-    timeout: 120_000,
+  const process = spawnWithHangGuard(['bun', SCRIPT_FILE, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
   });

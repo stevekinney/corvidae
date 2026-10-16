@@ -14,6 +14,7 @@
  * rather than pass vacuously.
  */
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 
 const PACKAGE_ROOT = new URL('../../../../', import.meta.url).pathname;
@@ -30,10 +31,9 @@ async function modulesLoadedBy(entry: string): Promise<string[]> {
     await import(${JSON.stringify(entryPath)});
     process.stdout.write(JSON.stringify(Object.keys(require.cache)));
   `;
-  const child = Bun.spawn(
+  const child = spawnWithHangGuard(
     [process.execPath, '--conditions', 'browser', '--conditions', 'svelte', '-e', childSource],
-    // `timeout` is a hang detector for a child that never exits, never a performance bound.
-    { cwd: PACKAGE_ROOT, stdout: 'pipe', stderr: 'pipe', timeout: 120_000 },
+    { cwd: PACKAGE_ROOT, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),

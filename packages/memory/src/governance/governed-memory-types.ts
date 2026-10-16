@@ -1,5 +1,5 @@
-import type { Embedder } from '@lostgradient/embeddings';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { Embedder } from 'armorer';
 
 import type { MemoryRecordStorage } from '../memory-record-storage';
 import type { TextSearchProvider } from '../text-search-provider';

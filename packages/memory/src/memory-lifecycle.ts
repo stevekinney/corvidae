@@ -1,4 +1,4 @@
-import type { Embedder } from '@lostgradient/embeddings';
+import type { Embedder } from 'armorer';
 
 import type { MemoryRecord, MemoryRecordScope, MemoryRecordStorage } from './memory-record-storage';
 import type { TextSearchProvider } from './text-search-provider';
