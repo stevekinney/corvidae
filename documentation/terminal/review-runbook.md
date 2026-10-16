@@ -49,23 +49,33 @@ Use the segmented `Profile` control at the top of the page.
 - `Full-screen program`: a small committed program on the alternate screen that counts the keys it receives (`Keys received: N`) and leaves on `q`. Used wherever a row asks whether a key reached the program: capture, overlays, control keys.
 - `Pipe demo`: standard output and standard error in two read-only views, exits with status 3.
 - `Replay`: a read-only replay of fixed bytes with color, Unicode, a carriage-return rewrite and scrollable length.
+- `Links`: a read-only fixture with visible HTTPS text, a hidden OSC 8 destination, a path, a command scheme, an insecure address and a download-looking address.
 - `Open read-only`: asks for a read-only grant for the current profile.
 - `Report the mouse`: lets the terminal send mouse reports (only while capture is on and the session is writable).
 - `Announce output`: mirrors output into a screen-reader live region.
 - `End session` and `Drop connection`: end the session cleanly, or close the socket as a lost network would.
 
-## Reaching the states
+## Review controls
 
-| State | How |
-| --- | --- |
-| writable | `Login shell`, after `Connected` appears |
-| read-only | Toggle `Open read-only`, or open `Replay` |
-| exited | In `Login shell`, type `exit` |
-| disconnected | `Drop connection` |
-| cleanup-incomplete | In `Login shell`, type `sleep 300 &`, then `End session`. The slot is quarantined; restart the server afterward and end the leftover `sleep` yourself (find it with `pgrep -x sleep` and `kill` that PID) |
-| failed | Stop the server with Ctrl+C, then activate `New session` in the page. Do this last, since it ends the run |
-| empty, loading, connecting | Momentary; see gap G1 in the evidence file |
-| denied, backpressured, engine-load-failed | No path; see gaps G3 to G5 |
+Expand `Review controls` on the page (collapsed by default). They change what the page shows or when it acts, and they never choose a command, argument, directory or environment: the server owns every profile. Each state below is either real (the page or server produced it) or injected (the page handed the terminal the state), and the page says which.
+
+| State | How | Real or injected |
+| --- | --- | --- |
+| empty | Open the page with `?autostart=off` after enrolling (add it to the clean address, `http://127.0.0.1:54240/?autostart=off`), or `Show empty` | Real |
+| loading | `Hold the next session at`, `Loading`; then `Start a session`. `Cancel` returns to empty; `Release held session` carries on | Real; the page waits before it asks the server for a session |
+| connecting | `Hold the next session at`, `Connecting`; then `Start a session`. `Cancel` and `Release held session` as above | Real; the page waits before it opens the socket |
+| writable | `Login shell`, after `Connected` appears | Real |
+| read-only | Toggle `Open read-only`, or open `Replay` | Real |
+| exited | In `Login shell`, type `exit` | Real |
+| disconnected | `Drop connection` | Real |
+| denied | `Make the next session end in`, `Denied`; then `Start a session`. `Try again` repeats it; set `Nothing` first to see it succeed | Real; the page sends a ticket the server never issued and the server denies the upgrade |
+| failed | `Make the next session end in`, `Failed`; then `Start a session`. `Retry` repeats it | Real; the page asks for a profile the server does not have and it answers `400` |
+| backpressured | `Inject backpressure`. `Cancel` keeps the session and its output (there are no unsent operations to cancel); `Clear the injected state` stands for capacity being acknowledged | Injected; a real stalled process failed the session instead of holding backpressure |
+| engine-load-failed | `Inject engine load failure`; the terminal's own `Retry` hands control back | Injected |
+| cleanup-incomplete | Injected: `Inject cleanup incomplete` ends the session first, and `Check cleanup` then reads the real result. Real: in `Login shell` type `sleep 300 &`, then `End session`; restart the server afterward and end the leftover `sleep` yourself (find it with `pgrep -x sleep` and `kill` that PID) | Both |
+| failed (transport) | Stop the server with Ctrl+C, then activate `New session`. Do this last, since it ends the run | Real |
+
+Other controls: `Theme` (`Light` or `Dark`) sets `data-theme` on the page, and `Open visible HTTPS links` turns on the terminal's link handling (off by default; the page opens a visible HTTPS address in a new tab without an opener and reports `Last link opened`). `Remove the toolbar in 8 seconds` is for the focus-fallback row: start it, open `Export` before the countdown ends, and the `Export` button disappears while the dialog stays open; close the dialog and watch where focus goes. It works by handing the terminal `engine-load-failed`, so use `Retry` or `Clear the injected state` afterward.
 
 A note on `Ctrl+C` inside `Full-screen program`: the program traps it and exits, so do not use it as a test key there unless you mean to leave.
 
@@ -105,7 +115,7 @@ Per task, what to listen for and where to look:
 
 ## Viewports, theme, motion, contrast
 
-Safari: Develop menu, Enter Responsive Design Mode, then type 375×900, 768×900, 1280×900. Chrome: DevTools, Toggle device toolbar, Dimensions Responsive. Theme: in the web inspector console run `document.documentElement.dataset.theme = 'dark'` (or `'light'`); there is no switch in the page. Reduce motion and Increase contrast: System Settings, Accessibility, Display. Forced colors: Chrome DevTools, Rendering, `forced-colors`. Contrast: Chrome DevTools color picker, or Xcode Accessibility Inspector.
+Safari: Develop menu, Enter Responsive Design Mode, then type 375×900, 768×900, 1280×900. Chrome: DevTools, Toggle device toolbar, Dimensions Responsive. Theme: `Review controls`, `Theme`. Reduce motion and Increase contrast: System Settings, Accessibility, Display; the terminal and Cinder follow the system setting, and the terminal stops its cursor blinking under Reduce motion. Forced colors: Chrome DevTools, Rendering, `Emulate CSS media feature forced-colors`; Safari has no forced-colors emulation, so for Safari record the result under macOS Increase contrast. Contrast: Chrome DevTools color picker, or Xcode Accessibility Inspector.
 
 ## Recording each row
 
@@ -119,7 +129,7 @@ For each row:
 - Write `pass` or `fail` in Outcome. A row passes only when the observation meets the expected observation and the pass condition. Anything else is `fail`.
 - For a `fail`, describe the finding in Finding and fix SHA and decide whether it is blocking.
 
-Fill the resting-states table the same way, and the gaps and inherent-limits sections last. Then fill the Acceptance block and the verdict section at the end of `components/terminal/src/lib/components/terminal/terminal.a11y.md`.
+Fill the resting-states table the same way, and the inherent-limits section last. Then fill the Acceptance block and the verdict section at the end of `components/terminal/src/lib/components/terminal/terminal.a11y.md`.
 
 ## Blocking findings
 
@@ -127,7 +137,7 @@ A blocking finding is one that makes a required task impossible, misleading, or 
 
 - Every blocking finding is fixed in source.
 - The fixed behavior is re-reviewed at the new SHA, in a new row suffixed `.r2` (and so on), with the fix SHA recorded on the failing row. Rebuild the example from that SHA first (`dev` rebuilds on start).
-- No required task is waived or turned into a follow-up. A row that cannot be performed (the gaps in the evidence file) is not passed by omission: either you accept a documented workaround as the evidence, or the application changes and the row is reviewed again.
+- No required task is waived or turned into a follow-up. A row you cannot perform is not passed by omission: the application changes and the row is reviewed again. A state the review controls inject rather than produce is recorded as injected, and you decide whether that is acceptable evidence for the row.
 - Automated axe or Playwright passes alone cannot close the issue.
 
 ## Checks the repository can run for you
