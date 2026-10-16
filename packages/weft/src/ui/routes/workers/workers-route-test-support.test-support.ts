@@ -43,6 +43,7 @@ export function taskLedgerDetailFixture() {
     attempt: 2,
     retryCount: 1,
     requeueCount: 1,
+    attempts: [],
   } as const;
 }
 

@@ -2,9 +2,10 @@
   /**
    * Critical-alerts band (plan §9.1, this track's brief): diagnostic chips
    * (`GET /api/v1/tasks/diagnostics`, scope `system:read`) + reviews-near-
-   * timeout (`listReviews`, scope `reviews:read`), each deep-linking. See
-   * `./critical-alerts.ts`'s module doc for why a "lease contested" chip is
-   * intentionally omitted (no backing operation — filed upstream).
+   * timeout (`listReviews`, scope `reviews:read`) + engine lease contested
+   * (`weft.system.lease`, scope `system:read`, COR-124), each deep-linking.
+   * A lease read that fails or returns a malformed payload shows no chip
+   * rather than a guessed one; the Health & lease tab renders that failure.
    *
    * Scope gating (plan §6): the principal store optimistically grants every
    * scope until a real `403` is observed, so both queries fire on mount;
@@ -22,8 +23,10 @@
   import { getPrincipalStore, isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { loadSystemLease } from '../../lib/system-lease.ts';
   import {
     buildDiagnosticChips,
+    buildLeaseContestedChip,
     buildReviewsNearTimeoutChip,
     type AlertChip,
   } from './critical-alerts.ts';
@@ -73,6 +76,13 @@
     refetchInterval: DIAGNOSTICS_POLL_INTERVAL_MS,
   }));
 
+  const leaseQuery = createQuery(() => ({
+    queryKey: queryKeys.systemLease(),
+    queryFn: () => loadSystemLease(client),
+    enabled: canReadSystem,
+    refetchInterval: DIAGNOSTICS_POLL_INTERVAL_MS,
+  }));
+
   const reviewsQuery = createQuery(() => ({
     queryKey: queryKeys.reviews.list({ status: 'pending' }),
     queryFn: () => client.listReviews({ status: 'pending' }),
@@ -99,7 +109,8 @@
    * exactly one real write.
    */
   $effect(() => {
-    if (canReadSystem && diagnosticsQuery.error && isForbidden(diagnosticsQuery.error)) {
+    const systemError = diagnosticsQuery.error ?? leaseQuery.error;
+    if (canReadSystem && systemError && isForbidden(systemError)) {
       principal.denyScope('system:read');
     }
   });
@@ -112,6 +123,8 @@
 
   const chips = $derived.by((): AlertChip[] => {
     const list: AlertChip[] = [];
+    const leaseChip = buildLeaseContestedChip(leaseQuery.data);
+    if (leaseChip) list.push(leaseChip);
     if (diagnosticsQuery.data) list.push(...buildDiagnosticChips(diagnosticsQuery.data.summary));
     if (reviewsQuery.data) {
       const pending = reviewsQuery.data.filter(isPendingReview);
@@ -126,8 +139,9 @@
   // pending, leaving it out of this derived value's dependency set.
   const isLoading = $derived.by(() => {
     const diagnosticsPending = canReadSystem && diagnosticsQuery.isPending;
+    const leasePending = canReadSystem && leaseQuery.isPending;
     const reviewsPending = canReadReviews && reviewsQuery.isPending;
-    return diagnosticsPending || reviewsPending;
+    return diagnosticsPending || leasePending || reviewsPending;
   });
 
   const bothScopesDenied = $derived(!canReadSystem && !canReadReviews);
