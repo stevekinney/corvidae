@@ -5,7 +5,7 @@
    * timeout (`listReviews`, scope `reviews:read`), each deep-linking. See
    * `./critical-alerts.ts`'s module doc for why a "lease contested" chip is
    * intentionally omitted (COR-124 admits only worker-diagnostics and
-   * task-detail lease fields; engine lease health is on System → Health).
+   * task-detail lease fields; engine lease health is outside its scope).
    *
    * Scope gating (plan §6): the principal store optimistically grants every
    * scope until a real `403` is observed, so both queries fire on mount;

@@ -89,8 +89,8 @@ describe('Dashboard', () => {
 
   // COR-124 admits a critical-alerts chip only when it is backed by
   // `weft.workers.diagnostics` or `weft.tasks.get` fields. Engine lease health
-  // lives on the System route's Health & lease tab, so even a contested
-  // `weft.system.lease` never reaches the band, and the Dashboard never asks.
+  // is outside that scope, so even a contested `weft.system.lease` never
+  // reaches the band, and the Dashboard never asks.
   test('never shows or requests a weft.system.lease chip, even when the lease is contested', async () => {
     scripted = new ScriptedFetch();
     scripted.routeUrl('/v1/health', { status: 'ok' });

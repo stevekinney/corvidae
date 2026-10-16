@@ -16,8 +16,8 @@
  * yields a fleet-level contested signal without inference (the per-task
  * deadlines need one `weft.tasks.get` per task, and expired in-flight leases
  * already surface here as `staleInflight`). The engine's own ownership lease
- * (`weft.system.lease`) is shown on the System route's Health & lease tab
- * instead. A "workers draining" chip stays out of this band's scope — worker
+ * (`weft.system.lease`) is outside COR-124's scope and is not read by this
+ * band. A "workers draining" chip stays out of this band's scope — worker
  * fleet counts are the Workers card-slot's own data to surface.
  */
 import type { PendingReviewEntry } from '@lostgradient/weft';
