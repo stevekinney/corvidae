@@ -1,15 +1,12 @@
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 
+import { HANG_GUARD_MILLISECONDS } from '../../../scripts/lib/hang-guard.ts';
 import {
   advanceTimersByTime,
   restoreRealTimers,
   useFakeTimers,
 } from '../../testing/fake-timers.test-support.ts';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { ChildProcessRealm } from './child-process-realm.ts';
 import type { RevisionRealmActivation } from './revision-realm.ts';
@@ -43,7 +40,7 @@ afterAll(() => {
 /** `outcomeOf` that crashes the realms a hung scenario created as soon as its guard fires. */
 async function realmScenario(scenario: () => Promise<void>): Promise<unknown> {
   const firstRealm = createdRealms.length;
-  return outcomeOf(scenario, SCENARIO_HANG_GUARD_MILLISECONDS, () => {
+  return outcomeOf(scenario, HANG_GUARD_MILLISECONDS, () => {
     for (const realm of createdRealms.slice(firstRealm)) realm.crash();
   });
 }

@@ -1,7 +1,7 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { resolve } from 'node:path';
 
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '../../module-scope-scenario.test-support.ts';
 import { REPOSITORY_ROOT } from './baseline-provenance.ts';
 import {
   WEB_SERVER_TIMEOUT_REPORT,
@@ -83,14 +83,13 @@ describe('provenanceRefusal (COR-1537)', () => {
 const outsideImageEnvironment: Record<string, string | undefined> = { ...process.env };
 delete outsideImageEnvironment['BASELINE_DOCKER'];
 delete outsideImageEnvironment['BASELINE_PLAYWRIGHT_VERSION'];
-const outsideImageChild = Bun.spawn(
+const outsideImageChild = spawnWithHangGuard(
   ['bun', resolve(REPOSITORY_ROOT, 'scripts/browser-fixtures/scripts/update-snapshots.ts')],
   {
     cwd: REPOSITORY_ROOT,
     env: outsideImageEnvironment,
     stdout: 'pipe',
     stderr: 'pipe',
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   },
 );
 const [outsideImageExitCode, outsideImageStderr] = await Promise.all([

@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -58,11 +59,13 @@ async function humanWaitScenario(backend: Backend, scope: ScenarioScope): Promis
 
   try {
     // Premise: the child died from SIGKILL and left its marker.
-    const child = Bun.spawn(['bun', CHILD, 'human-wait-parked', backend, storagePath, markerPath], {
-      timeout: 120_000,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    const child = spawnWithHangGuard(
+      ['bun', CHILD, 'human-wait-parked', backend, storagePath, markerPath],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
     scope.onHang(() => child.kill());
     await child.exited;
     const stderr = await new Response(child.stderr).text();

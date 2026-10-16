@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import type { GenerateFunction } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -124,7 +125,7 @@ async function spawnChild(
   readonly exitCode: number | null;
   stderr: string;
 }> {
-  const child = Bun.spawn(
+  const child = spawnWithHangGuard(
     [
       'bun',
       CHILD,
@@ -134,7 +135,7 @@ async function spawnChild(
       scenario.markerPath,
       ...(variant === undefined ? [] : [variant]),
     ],
-    { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
+    { stdout: 'pipe', stderr: 'pipe' },
   );
   scenario.onCleanup(() => child.kill());
   await child.exited;

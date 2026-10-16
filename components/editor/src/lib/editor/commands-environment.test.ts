@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { expect, test } from 'bun:test';
 
 const cases = [
@@ -9,7 +10,7 @@ const cases = [
 // here at module scope, off the per-test clock, and the tests only assert.
 const results = await Promise.all(
   cases.map(async ([condition, nodeEnvironment]) => {
-    const child = Bun.spawn(
+    const child = spawnWithHangGuard(
       [
         process.execPath,
         '--conditions',
@@ -24,8 +25,6 @@ const results = await Promise.all(
         env: { ...process.env, NODE_ENV: nodeEnvironment },
         stdout: 'pipe',
         stderr: 'pipe',
-        // A hang detector for a child that never exits, never a performance bound.
-        timeout: 120_000,
       },
     );
     const [stdout, stderr, exitCode] = await Promise.all([

@@ -16,6 +16,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
 import { Engine } from '../core/engine.ts';
 import {
   decodeRemoteTaskRecord,
@@ -31,11 +32,7 @@ import {
   waitForCondition,
   waitForRealTimersForTesting,
 } from '../testing/fake-timers.test-support.ts';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import {
   killAndReboot,
   spawnServerSubprocess,
@@ -1344,7 +1341,7 @@ process.on('SIGINT', () => void stop(0));
 
 const inFlightRestartOutcome = await outcomeOf(
   recoverInFlightTaskAcrossSigkill,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
+  HANG_GUARD_MILLISECONDS,
   async () => {
     await Promise.all(inFlightRestartHandles.splice(0).map((handle) => handle.stop()));
   },

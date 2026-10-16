@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+
 import {
   AGENT_SKILLS_SPECIFICATION_REPOSITORY,
   AGENT_SKILLS_SPECIFICATION_REVISION,
@@ -76,8 +78,7 @@ const referenceExitCodes = new Map<string, number>();
 if (validatorCommand !== undefined) {
   for (const fixture of CONFORMANCE_CORPUS) {
     const skillDirectory = await materialize(fixture.directoryName, fixture.skillMarkdown);
-    const child = Bun.spawn([...validatorCommand, 'validate', skillDirectory], {
-      timeout: 120_000,
+    const child = spawnWithHangGuard([...validatorCommand, 'validate', skillDirectory], {
       stderr: 'pipe',
       stdout: 'pipe',
     });

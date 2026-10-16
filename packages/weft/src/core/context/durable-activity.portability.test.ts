@@ -4,11 +4,9 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { describe, it } from 'bun:test';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../../testing/module-scope-scenario.test-support.ts';
+
+import { runWithHangGuard } from '../../../scripts/lib/hang-guard.ts';
+import { outcomeOf, rethrow } from '../../testing/module-scope-scenario.test-support.ts';
 
 interface BunEntrypointResult {
   exitCode: number | null;
@@ -18,14 +16,8 @@ interface BunEntrypointResult {
 
 const textDecoder = new TextDecoder();
 
-function runBunEntrypoint(entrypoint: string): BunEntrypointResult {
-  const result = Bun.spawnSync({
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    cmd: [process.execPath, entrypoint],
-    cwd: process.cwd(),
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
+async function runBunEntrypoint(entrypoint: string): Promise<BunEntrypointResult> {
+  const result = await runWithHangGuard([process.execPath, entrypoint], { cwd: process.cwd() });
   return {
     exitCode: result.exitCode,
     stderr: textDecoder.decode(result.stderr),
@@ -63,9 +55,8 @@ const scenario1 = await outcomeOf(async () => {
       ].join('\n'),
     );
 
-    const buildResult = Bun.spawnSync({
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-      cmd: [
+    const buildResult = await runWithHangGuard(
+      [
         process.execPath,
         'build',
         '--target=browser',
@@ -78,10 +69,8 @@ const scenario1 = await outcomeOf(async () => {
         '--external=@neondatabase/serverless',
         entrypoint,
       ],
-      cwd: process.cwd(),
-      stderr: 'pipe',
-      stdout: 'pipe',
-    });
+      { cwd: process.cwd() },
+    );
     expectEntrypointSuccess({
       exitCode: buildResult.exitCode,
       stderr: textDecoder.decode(buildResult.stderr),
@@ -96,7 +85,7 @@ const scenario1 = await outcomeOf(async () => {
         `await import(${JSON.stringify(pathToFileURL(outputPath).href)});`,
       ].join('\n'),
     );
-    expectEntrypointSuccess(runBunEntrypoint(runner));
+    expectEntrypointSuccess(await runBunEntrypoint(runner));
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
@@ -143,7 +132,7 @@ const scenario2 = await outcomeOf(async () => {
       ].join('\n'),
     );
 
-    expectEntrypointSuccess(runBunEntrypoint(runner));
+    expectEntrypointSuccess(await runBunEntrypoint(runner));
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
@@ -215,7 +204,7 @@ const scenario3 = await outcomeOf(async () => {
       ].join('\n'),
     );
 
-    expectEntrypointSuccess(runBunEntrypoint(runner));
+    expectEntrypointSuccess(await runBunEntrypoint(runner));
   } finally {
     await rm(directory, { force: true, recursive: true });
   }

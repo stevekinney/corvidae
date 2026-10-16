@@ -3,12 +3,13 @@
  * Each case here races the code under test against a watchdog, so a regression shows up as a
  * failure instead of a stalled test process.
  */
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 
 import { interruptRunner, readProcessTable, signalTarget } from './static-playground-processes.ts';
 
@@ -42,7 +43,7 @@ async function watchdog<T>(work: Promise<T>, milliseconds: number): Promise<T | 
 const standInRunnerEndsAtItsWaitBudget = await outcomeOf(async () => {
   const record = await mkdtemp(join(tmpdir(), 'bounded-wait-record-'));
   try {
-    const standIn = Bun.spawn(
+    const standIn = spawnWithHangGuard(
       [
         process.execPath,
         STAND_IN_RUNNER,
@@ -58,7 +59,6 @@ const standInRunnerEndsAtItsWaitBudget = await outcomeOf(async () => {
         stdout: 'ignore',
         stderr: 'pipe',
         detached: true,
-        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       },
     );
 

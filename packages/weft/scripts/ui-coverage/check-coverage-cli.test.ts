@@ -13,11 +13,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import packageJson from '../../package.json' with { type: 'json' };
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../../src/testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../../src/testing/module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../lib/hang-guard.ts';
 import {
   checkUiCoverage,
   measureUiCoverage,
@@ -62,11 +59,10 @@ const belowFloor = await outcomeOf(async () => {
         `});`,
       ].join('\n'),
     );
-    const child = Bun.spawn([process.execPath, entry], {
+    const child = spawnWithHangGuard([process.execPath, entry], {
       cwd: directory,
       stdout: 'pipe',
       stderr: 'pipe',
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     expect(exitCode).toBe(1);

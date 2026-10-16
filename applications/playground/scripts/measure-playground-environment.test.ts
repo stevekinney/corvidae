@@ -1,4 +1,5 @@
-import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -111,10 +112,9 @@ const untrackedContentIsFingerprinted = await outcomeOf(async () => {
   const repository = await mkdtemp(join(tmpdir(), 'measure-playground-source-'));
 
   async function git(...args: string[]): Promise<void> {
-    const child = Bun.spawn(['git', '-C', repository, ...args], {
+    const child = spawnWithHangGuard(['git', '-C', repository, ...args], {
       stdout: 'ignore',
       stderr: 'pipe',
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     if ((await child.exited) !== 0) throw new Error(await new Response(child.stderr).text());
   }
@@ -169,10 +169,9 @@ const excludedResultsStayOutOfTheFingerprint = await outcomeOf(async () => {
   const repository = await mkdtemp(join(tmpdir(), 'measure-playground-exclusion-'));
 
   async function git(...args: string[]): Promise<void> {
-    const child = Bun.spawn(['git', '-C', repository, ...args], {
+    const child = spawnWithHangGuard(['git', '-C', repository, ...args], {
       stdout: 'ignore',
       stderr: 'pipe',
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     if ((await child.exited) !== 0) throw new Error(await new Response(child.stderr).text());
   }

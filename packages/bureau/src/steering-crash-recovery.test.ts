@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { resolveStorage, textValueStore } from '@lostgradient/weft';
 import { stopWhen } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
+import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -50,9 +51,6 @@ interface Marker {
   }[];
 }
 
-/** Each scenario's hang guard; a scenario that stops making progress fails rather than hangs. */
-const HANG_GUARD_MILLISECONDS = 120_000;
-
 /** Runs the crash child to its own SIGKILL and returns the marker it wrote. */
 async function runCrashingChild(
   scope: ScenarioScope,
@@ -62,8 +60,7 @@ async function runCrashingChild(
 ): Promise<Marker> {
   const storagePath = join(directory, 'bureau.sqlite');
   const markerPath = join(directory, `${name}.json`);
-  const child = Bun.spawn(['bun', CHILD, storagePath, markerPath, ...args], {
-    timeout: HANG_GUARD_MILLISECONDS,
+  const child = spawnWithHangGuard(['bun', CHILD, storagePath, markerPath, ...args], {
     stdout: 'pipe',
     stderr: 'pipe',
   });

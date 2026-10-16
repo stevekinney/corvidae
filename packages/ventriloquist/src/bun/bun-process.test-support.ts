@@ -80,7 +80,7 @@ export function requireCallingFile(stack: string, what: string): string {
  * Start a scenario: a body that starts real processes. Bun gives a test body five seconds, and a
  * child's boot spends that on a loaded host, so the body runs at module scope, where no per-test
  * clock applies, and its test (`scenarioResult`) only reports what it recorded. `outcomeOf` fails a
- * body that never settles after `SCENARIO_HANG_GUARD_MILLISECONDS`. Scenarios run one after another
+ * body that never settles after `HANG_GUARD_MILLISECONDS`. Scenarios run one after another
  * in definition order, and every session and process the body tracked is cleaned up when it ends.
  *
  * It must be called at module scope, before the file's `await settleScenarios()`. Bun runs a

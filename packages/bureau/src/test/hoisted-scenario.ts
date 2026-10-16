@@ -12,6 +12,7 @@
  * the state, and when the state is not yet true it waits for the bureau to say something changed.
  */
 import type { Subscription } from '@lostgradient/lifecycle';
+import { afterAwakeTime } from '@lostgradient/testing/hang-guard';
 
 import type { Bureau } from '../types';
 
@@ -33,7 +34,9 @@ export interface ScenarioOutcome {
 /**
  * Runs `run`, capturing its failure. `hangGuardMilliseconds` is the only time bound: it is the
  * per-test timeout the scenario's tests had before they were hoisted, kept solely so a genuine
- * hang fails the scenario instead of stalling the file. It does not bound any wait for a state
+ * hang fails the scenario instead of stalling the file. It counts only time the process was awake
+ * (`@lostgradient/testing/hang-guard`, COR-1541), so a host that sleeps mid-scenario does not fail
+ * it on wake. It does not bound any wait for a state
  * change, which `waitForBureauState` makes by event. When the guard wins, the releases the
  * scenario registered on its {@link ScenarioScope} run before this returns, so the next scenario
  * starts with nothing of this one still alive.
@@ -44,10 +47,10 @@ export async function settleScenario(
 ): Promise<ScenarioOutcome> {
   const releases: Array<() => unknown> = [];
   const scope: ScenarioScope = { onHang: (release) => void releases.push(release) };
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel: (() => void) | undefined;
   let hung = false;
   const hang = new Promise<ScenarioOutcome>((resolve) => {
-    timer = setTimeout(() => {
+    cancel = afterAwakeTime(hangGuardMilliseconds, () => {
       hung = true;
       resolve({
         failed: true,
@@ -55,7 +58,7 @@ export async function settleScenario(
           `the scenario made no progress within the ${hangGuardMilliseconds}ms hang guard`,
         ),
       });
-    }, hangGuardMilliseconds);
+    });
   });
   const finished = (async (): Promise<ScenarioOutcome> => {
     try {
@@ -82,7 +85,7 @@ export async function settleScenario(
     }
     return outcome;
   } finally {
-    clearTimeout(timer);
+    cancel?.();
   }
 }
 

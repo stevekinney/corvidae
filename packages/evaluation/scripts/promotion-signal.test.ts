@@ -1,3 +1,4 @@
+import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -45,9 +46,8 @@ const DECIDED_AT = '2026-09-28T12:00:00.000Z';
 const ISSUED_AT = '2026-09-28T13:00:00.000Z';
 const RECORD_KEY_PREFIX = 'evaluation-history/records/';
 
-function gitIn(cwd: string, ...args: string[]): string {
-  return Bun.spawnSync(['git', ...args], {
-    timeout: 120_000,
+async function gitIn(cwd: string, ...args: string[]): Promise<string> {
+  const result = await runWithHangGuard(['git', ...args], {
     cwd,
     env: {
       ...process.env,
@@ -56,14 +56,13 @@ function gitIn(cwd: string, ...args: string[]): string {
       GIT_COMMITTER_NAME: 'Fixture',
       GIT_COMMITTER_EMAIL: 'fixture@example.test',
     },
-  })
-    .stdout.toString()
-    .trim();
+  });
+  return result.stdout.toString().trim();
 }
 
 // Every `git` process this file needs runs at module scope, so none boots inside a test's budget.
-const HEAD = gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD');
-const HEAD_PACKAGE_TREE = gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation');
+const HEAD = await gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD');
+const HEAD_PACKAGE_TREE = await gitIn(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD:packages/evaluation');
 
 let directory: string;
 let storePath: string;
@@ -95,11 +94,13 @@ interface Report {
 }
 
 async function spawnScript(script: string, args: readonly string[]): Promise<CommandResult> {
-  const child = Bun.spawn([process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, script, ...args], {
-    timeout: 120_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const child = spawnWithHangGuard(
+    [process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, script, ...args],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -673,19 +674,19 @@ const gitScenario = await (async () => {
   );
   await writeFile(join(repository, 'packages', 'alpha', 'package.json'), '{"name":"alpha"}');
   await writeFile(join(repository, 'packages', 'broken', 'package.json'), '{ not json');
-  gitIn(repository, 'init', '--quiet');
+  await gitIn(repository, 'init', '--quiet');
   const beforeFirstCommit = await gitPackageSourceRevision('alpha', 'HEAD', repository);
-  gitIn(repository, 'add', '.');
-  gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'first');
-  const first = gitIn(repository, 'rev-parse', 'HEAD');
+  await gitIn(repository, 'add', '.');
+  await gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'first');
+  const first = await gitIn(repository, 'rev-parse', 'HEAD');
   await writeFile(join(repository, 'packages', 'alpha', 'index.ts'), 'export {};\n');
-  gitIn(repository, 'add', '.');
-  gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'second');
+  await gitIn(repository, 'add', '.');
+  await gitIn(repository, 'commit', '--quiet', '--no-gpg-sign', '-m', 'second');
 
   return {
     beforeFirstCommit,
     tree: await gitPackageSourceRevision('alpha', first, repository),
-    expectedTree: gitIn(repository, 'rev-parse', `${first}:packages/alpha`),
+    expectedTree: await gitIn(repository, 'rev-parse', `${first}:packages/alpha`),
     atHead: await gitPackageSourceRevision('alpha', 'HEAD', repository),
     missingWorkspace: await gitPackageSourceRevision('missing', 'HEAD', repository),
     unknownRevision: await gitPackageSourceRevision('alpha', OTHER_REVISION, repository),

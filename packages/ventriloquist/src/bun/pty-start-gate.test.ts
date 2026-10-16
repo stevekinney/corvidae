@@ -1,4 +1,4 @@
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 import { closeSync, existsSync, fstatSync, mkdtempSync, openSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -50,10 +50,9 @@ function spawnGated(command: string[]) {
   const pair = device.open();
   const slave = device.openSlave(pair.slavePath);
   device.setWindowSize(pair, 80, 24);
-  const child = Bun.spawn(gatedCommand(command, pair.slavePath), {
+  const child = spawnWithHangGuard(gatedCommand(command, pair.slavePath), {
     stdio: gateStdio(slave),
     detached: true,
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   device.close(slave);
   children.push(child);

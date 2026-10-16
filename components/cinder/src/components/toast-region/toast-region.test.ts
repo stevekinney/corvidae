@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, jest, test } from 'bun:test';
@@ -25,7 +26,11 @@ const SVELTE_SERVER_ENTRY = new URL(
 
 // The real server process is the behavior under test (SSR without DOM globals), so it runs once at
 // module scope, off bun's per-test clock; the test below only asserts on the settled result.
-function renderServerRegion(): { exitCode: number; stderr: string; ssrHtml: string } {
+async function renderServerRegion(): Promise<{
+  exitCode: number | null;
+  stderr: string;
+  ssrHtml: string;
+}> {
   const script = `
       import { rm, writeFile } from 'node:fs/promises';
       import { dirname, join } from 'node:path';
@@ -50,19 +55,13 @@ function renderServerRegion(): { exitCode: number; stderr: string; ssrHtml: stri
         await rm(file, { force: true });
       }
     `;
-  const result = Bun.spawnSync({
-    timeout: 120_000,
-    cmd: ['bun', '-e', script],
-    cwd: REPOSITORY_ROOT,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const result = await runWithHangGuard(['bun', '-e', script], { cwd: REPOSITORY_ROOT });
   const stderr = new TextDecoder().decode(result.stderr);
   const ssrHtml = new TextDecoder().decode(result.stdout);
   return { exitCode: result.exitCode, stderr, ssrHtml };
 }
 
-const serverRender = renderServerRegion();
+const serverRender = await renderServerRegion();
 
 let mockedPerformanceNow = 0;
 

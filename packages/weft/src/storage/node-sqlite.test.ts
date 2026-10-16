@@ -3,12 +3,10 @@ import { existsSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
+import { runWithHangGuard, spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 import { resolveCliEnvironment } from '../runtime/environment-configuration.ts';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
 
@@ -302,18 +300,15 @@ it('supports the adapter behavior under Bun when a database constructor is injec
   expect([...fake.preparedSql]).toContain('SELECT value FROM kv WHERE key = ?');
 });
 
-function resolveNativeNode(searchPath: string): string {
+async function resolveNativeNode(searchPath: string): Promise<string> {
   for (const directory of searchPath.split(delimiter).filter(existsSync)) {
     const candidate = Bun.which('node', { PATH: directory });
     if (candidate === null) continue;
-    const identity = Bun.spawnSync(
-      [
-        candidate,
-        '--eval',
-        'process.stdout.write(process.versions.bun ? "bun" : process.release.name)',
-      ],
-      { timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
-    );
+    const identity = await runWithHangGuard([
+      candidate,
+      '--eval',
+      'process.stdout.write(process.versions.bun ? "bun" : process.release.name)',
+    ]);
     if (identity.exitCode === 0 && identity.stdout.toString() === 'node') return candidate;
   }
   throw new Error('Native SQLite integration requires Node.js.');
@@ -326,12 +321,10 @@ const scenario1 = await outcomeOf(async () => {
   const directory = mkdtempSync(join(tmpdir(), 'weft-node-runtime-'));
   try {
     symlinkSync(process.execPath, join(directory, 'node'));
-    const runtime = resolveNativeNode(
+    const runtime = await resolveNativeNode(
       [directory, resolveCliEnvironment().path ?? ''].join(delimiter),
     );
-    const identity = Bun.spawnSync([runtime, '-p', 'typeof process.versions.bun'], {
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    });
+    const identity = await runWithHangGuard([runtime, '-p', 'typeof process.versions.bun']);
     expect(identity.exitCode).toBe(0);
     expect(identity.stdout.toString().trim()).toBe('undefined');
   } finally {
@@ -345,7 +338,7 @@ const scenario2 = await outcomeOf(async () => {
   const directory = mkdtempSync(join(tmpdir(), 'weft-node-runtime-'));
   try {
     symlinkSync(process.execPath, join(directory, 'node'));
-    expect(() => resolveNativeNode(directory)).toThrow(
+    expect(await throwingRejectionOf(resolveNativeNode(directory))).toThrow(
       'Native SQLite integration requires Node.js.',
     );
   } finally {
@@ -388,19 +381,20 @@ const scenario3 = await outcomeOf(async () => {
     ...process.env,
     PATH: (resolveCliEnvironment().path ?? '').split(delimiter).filter(existsSync).join(delimiter),
   };
-  const runtime = resolveNativeNode(environment.PATH);
-  const child = Bun.spawn({
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    cmd: [
+  const runtime = await resolveNativeNode(environment.PATH);
+  const child = spawnWithHangGuard(
+    [
       runtime,
       '--test',
       '--test-reporter=tap',
       new URL('./node-sqlite-native.integration.ts', import.meta.url).pathname,
     ],
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: environment,
-  });
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: environment,
+    },
+  );
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),

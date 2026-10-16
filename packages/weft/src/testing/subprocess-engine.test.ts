@@ -3,14 +3,11 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
 import { HttpClient } from '../client/http-client.ts';
 import type { WorkflowState } from '../core/types.ts';
 import { sleepForTesting } from './fake-timers.test-support.ts';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from './module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from './promise-outcome.test-support.ts';
 import {
   killAndReboot,
@@ -40,7 +37,7 @@ afterEach(stopHandlesAndRemoveFixtures);
 
 /** `outcomeOf` that stops a hung scenario's servers and removes its fixtures when its guard fires. */
 function serverScenario(scenario: () => Promise<void>): Promise<unknown> {
-  return outcomeOf(scenario, SCENARIO_HANG_GUARD_MILLISECONDS, stopHandlesAndRemoveFixtures);
+  return outcomeOf(scenario, HANG_GUARD_MILLISECONDS, stopHandlesAndRemoveFixtures);
 }
 
 function createFixturePath(name: string): string {
