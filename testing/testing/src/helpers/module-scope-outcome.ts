@@ -5,11 +5,12 @@
  * still fails under the test that owns it.
  *
  * Module scope has no per-test timeout, so a scenario that never settles would otherwise hold the
- * whole run. `SCENARIO_HANG_GUARD_MILLISECONDS` turns that hang into a failure of the scenario's
- * test. It is a uniform hang detector, set far above any healthy run on a loaded host and never a
+ * whole run. `HANG_GUARD_MILLISECONDS` of awake time turns that hang into a failure of the
+ * scenario's test; `../hang-guard.ts` explains why the guard counts only time the process was
+ * awake. It is a uniform hang detector, set far above any healthy run on a loaded host and never a
  * performance bound; a scenario that needs a larger budget passes it explicitly.
  */
-export const SCENARIO_HANG_GUARD_MILLISECONDS = 120_000;
+import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from '../hang-guard.ts';
 
 /** The outcome `outcomeOf` records when a scenario does not settle before its hang guard. */
 export class ScenarioHangError extends Error {
@@ -22,13 +23,12 @@ export class ScenarioHangError extends Error {
 /** Run `scenario` and return what it threw, or `undefined` when it finished. */
 export async function outcomeOf(
   scenario: () => Promise<void> | void,
-  hangGuardMilliseconds = SCENARIO_HANG_GUARD_MILLISECONDS,
+  hangGuardMilliseconds = HANG_GUARD_MILLISECONDS,
 ): Promise<unknown> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel: (() => void) | undefined;
   const hang = new Promise<ScenarioHangError>((resolve) => {
-    timer = setTimeout(
-      () => resolve(new ScenarioHangError(hangGuardMilliseconds)),
-      hangGuardMilliseconds,
+    cancel = afterAwakeTime(hangGuardMilliseconds, () =>
+      resolve(new ScenarioHangError(hangGuardMilliseconds)),
     );
   });
   try {
@@ -42,7 +42,7 @@ export async function outcomeOf(
       hang,
     ]);
   } finally {
-    clearTimeout(timer);
+    cancel?.();
   }
 }
 

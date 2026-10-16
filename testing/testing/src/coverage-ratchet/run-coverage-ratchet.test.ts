@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { runWithHangGuard } from '../hang-guard.ts';
 import { outcomeOf, rethrow } from '../helpers/module-scope-outcome.ts';
 import { rejectionOf } from '../helpers/promise-outcome.ts';
 import { EXPECTED_SOURCE_GLOBS, runCoverageRatchet } from './run-coverage-ratchet.ts';
@@ -183,19 +184,19 @@ describe('runCoverageRatchet', () => {
 describe('checkCoverageRatchet', async () => {
   // Run in a child process: it records its outcome on `process.exitCode`, which a test runner would
   // otherwise read as its own.
-  function runCheck(root: string) {
+  async function runCheck(root: string) {
     const caller = join(root, 'check.ts');
     writeFileSync(
       caller,
       `import { checkCoverageRatchet } from ${JSON.stringify(join(import.meta.dir, 'run-coverage-ratchet.ts'))};\n` +
         `await checkCoverageRatchet({ packageRoot: ${JSON.stringify(root)} });\n`,
     );
-    return Bun.spawnSync([process.execPath, caller], { timeout: 120_000 });
+    return runWithHangGuard([process.execPath, caller]);
   }
 
   // Each check is a real child process, so it runs once at module scope, off the per-test clock.
-  const holdingThresholdsOutcome = await outcomeOf(() => {
-    const result = runCheck(packageFixture({ lines: 1, functions: 1 }, covered));
+  const holdingThresholdsOutcome = await outcomeOf(async () => {
+    const result = await runCheck(packageFixture({ lines: 1, functions: 1 }, covered));
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toContain('Coverage ratchet (1 files)');
     expect(result.stderr.toString()).toBe('');
@@ -203,8 +204,8 @@ describe('checkCoverageRatchet', async () => {
   test('prints the summary and exits 0 when every threshold holds', () =>
     rethrow(holdingThresholdsOutcome));
 
-  const missedThresholdOutcome = await outcomeOf(() => {
-    const result = runCheck(packageFixture({ lines: 1, functions: 1 }, underThreshold));
+  const missedThresholdOutcome = await outcomeOf(async () => {
+    const result = await runCheck(packageFixture({ lines: 1, functions: 1 }, underThreshold));
     expect(result.exitCode).toBe(1);
     expect(result.stderr.toString()).toContain('Failed: runtime');
     expect(result.stdout.toString()).toBe('');

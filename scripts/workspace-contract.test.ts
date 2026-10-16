@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
-import { workspaceDirectories as mirrorWorkspaceDirectories } from './mirror/target-definitions.ts';
+import { runWithHangGuard } from './hang-guard.ts';
 import {
   directoryGlob,
   verificationWorkspaceDirectories,
@@ -144,11 +144,8 @@ async function listVersionedFixtureSource() {
         await Bun.write(join(directory, workspace, path), '');
       }
     }
-    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], {
-      timeout: 120_000,
-      cwd: directory,
-    });
-    const listed = Bun.spawnSync(
+    const initialized = await runWithHangGuard(['git', 'init', '--quiet'], { cwd: directory });
+    const listed = await runWithHangGuard(
       [
         'git',
         '-c',
@@ -159,7 +156,7 @@ async function listVersionedFixtureSource() {
         '--others',
         '--exclude-standard',
       ],
-      { timeout: 120_000, cwd: directory },
+      { cwd: directory },
     );
     return { initialized, listed };
   } finally {
@@ -204,7 +201,7 @@ describe('internal workspace architecture', () => {
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
     expect(scripts['test:self']).toBe(
-      'bun scripts/bun-test-junit.ts --report-name=self ./scripts/*.test.ts ./scripts/mirror/*.test.ts ./scripts/terminal/*.test.ts',
+      'bun scripts/bun-test-junit.ts --report-name=self ./scripts/*.test.ts ./scripts/terminal/*.test.ts',
     );
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
@@ -430,10 +427,6 @@ describe('internal workspace architecture', () => {
       ...workspaceParentDirectories.map((directory) => `${directory}/*`),
       'scripts/browser-fixtures',
     ]);
-  });
-
-  test('the mirror discovers workspaces in exactly the shared directories', () => {
-    expect([...mirrorWorkspaceDirectories]).toEqual([...workspaceParentDirectories]);
   });
 
   test('libraries and components name verification workspaces only as development dependencies', async () => {

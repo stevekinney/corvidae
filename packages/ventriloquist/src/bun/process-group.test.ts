@@ -1,6 +1,7 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 
-import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { rejectionOf } from '@lostgradient/testing';
 
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { systemClock } from '../session/session-clock.ts';
@@ -165,10 +166,9 @@ describe('terminateProcessGroup', () => {
 });
 
 const scenario1 = scenario('signals a real group and sees it empty', async () => {
-  const child = Bun.spawn(['sleep', '7919'], {
+  const child = spawnWithHangGuard(['sleep', '7919'], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   expect(await processGroupOperations.exists(child.pid)).toBe(true);
   processGroupOperations.signal(child.pid, 'SIGTERM');
@@ -196,7 +196,7 @@ describe('processGroupOperations', () => {
  * init does to every orphan it never collects.
  */
 async function startZombieGroup(): Promise<{ readonly group: number; end(): Promise<void> }> {
-  const parent = Bun.spawn(
+  const parent = spawnWithHangGuard(
     [
       'perl',
       '-e',
@@ -206,7 +206,6 @@ async function startZombieGroup(): Promise<{ readonly group: number; end(): Prom
       stdout: 'pipe',
       stderr: 'ignore',
       stdin: 'ignore',
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     },
   );
   const reader = parent.stdout.getReader();
@@ -248,10 +247,9 @@ const scenario2 = scenario('is empty, though kill(-group, 0) still reports it', 
 const scenario3 = scenario(
   'is present while any member is not a zombie, and when its members cannot be read',
   async () => {
-    const leader = Bun.spawn(['sleep', '7919'], {
+    const leader = spawnWithHangGuard(['sleep', '7919'], {
       detached: true,
       stdio: ['ignore', 'ignore', 'ignore'],
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     try {
       const exists = (reading: readonly string[] | undefined): Promise<boolean> | boolean =>
@@ -355,10 +353,9 @@ describe('terminating a group the host may not signal', () => {
 });
 
 const scenario5 = scenario('are read from the running host', async () => {
-  const leader = Bun.spawn(['sleep', '7919'], {
+  const leader = spawnWithHangGuard(['sleep', '7919'], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   try {
     expect(await readGroupMemberStates(leader.pid)).toEqual([expect.stringMatching(/^[A-Y]/)]);

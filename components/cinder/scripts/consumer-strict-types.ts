@@ -58,7 +58,7 @@
  * AGENTS.md ("Shared source libraries export TypeScript source directly").
  * The actual `dist/**\/*.svelte.d.ts` this defect was reported against is
  * produced by `svelte-package` in the separate, publish-only `cinder`
- * repository the mirror clones (`scripts/mirror/publish-rehearsal.ts`), which
+ * repository the mirror clones (`corvidae-mirror/src/publish-rehearsal.ts`), which
  * this workspace cannot run. What `svelte-package` mechanically emits for
  * every component is `declare const X: import('svelte').Component<Props, {},
  * Bindings>;`, built from that component's own exported Props type and its

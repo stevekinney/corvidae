@@ -1,3 +1,4 @@
+import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -22,12 +23,8 @@ import { runReplayCommand } from './replay';
 
 const PACKAGE_DIRECTORY = join(import.meta.dir, '..');
 // The revision is incidental to a replay, so it is read once here and injected into the gate run.
-const HEAD = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
-  timeout: 120_000,
-  cwd: PACKAGE_DIRECTORY,
-})
-  .stdout.toString()
-  .trim();
+const headRun = await runWithHangGuard(['git', 'rev-parse', 'HEAD'], { cwd: PACKAGE_DIRECTORY });
+const HEAD = headRun.stdout.toString().trim();
 
 let directory: string;
 let storePath: string;
@@ -48,11 +45,13 @@ interface CommandResult {
 }
 
 async function spawnScript(script: string, args: readonly string[]): Promise<CommandResult> {
-  const child = Bun.spawn([process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, script, ...args], {
-    timeout: 120_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const child = spawnWithHangGuard(
+    [process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, script, ...args],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),

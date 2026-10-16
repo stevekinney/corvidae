@@ -307,7 +307,7 @@ describe('consumer fixture: component style imported without the base', () => {
   // `./button/styles` were all exported. Corvidae's manifests keep a one-key
   // `exports` map by COR-1186's ruling, pinned by
   // `scripts/workspace-contract.test.ts`, so that assertion cannot hold here.
-  // The equivalent boundary is enforced instead by `scripts/mirror/surface.ts`,
+  // The equivalent boundary is enforced instead by `corvidae-mirror/src/surface.ts`,
   // whose coverage gate fails when a published subpath — `./styles/guard`
   // among them — names a target with no source in this checkout.
 });

@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { resolve } from 'node:path';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../testing/module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 
 // Spawns a real `tsc --noEmit` subprocess against an isolated tsconfig, on
 // purpose: it is the only way to reproduce a genuinely unaugmented
@@ -24,8 +21,7 @@ const FIXTURE_DIR = resolve(import.meta.dir, '__fixtures__/no-workflow-registry'
 
 const scenario1 = await outcomeOf(async () => {
   const tscPath = Bun.resolveSync('typescript/bin/tsc', FIXTURE_DIR);
-  const proc = Bun.spawn(['bun', tscPath, '-p', FIXTURE_DIR, '--noEmit'], {
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  const proc = spawnWithHangGuard(['bun', tscPath, '-p', FIXTURE_DIR, '--noEmit'], {
     stdout: 'pipe',
     stderr: 'pipe',
   });

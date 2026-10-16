@@ -1,3 +1,4 @@
+import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir, userInfo } from 'node:os';
@@ -54,9 +55,9 @@ interface CommandResult {
 
 /** The documented `--filter` form, from the repository root, in a separate `bun` process. */
 async function spawnFilteredGate(...args: string[]): Promise<CommandResult> {
-  const child = Bun.spawn(
+  const child = spawnWithHangGuard(
     [process.execPath, 'run', '--filter=@lostgradient/evaluation', 'release-gate', '--', ...args],
-    { timeout: 120_000, cwd: REPOSITORY_ROOT, stdout: 'pipe', stderr: 'pipe' },
+    { cwd: REPOSITORY_ROOT, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -607,9 +608,8 @@ describe('runReleaseGateCommand', () => {
 
 // These tests drive `git` itself (the functions under test spawn it), so the repository, its
 // commits and every lookup run once here at module scope to stay off the per-test clock.
-function repositoryGit(repository: string, ...args: string[]): string {
-  return Bun.spawnSync(['git', ...args], {
-    timeout: 120_000,
+async function repositoryGit(repository: string, ...args: string[]): Promise<string> {
+  const result = await runWithHangGuard(['git', ...args], {
     cwd: repository,
     env: {
       ...process.env,
@@ -618,20 +618,19 @@ function repositoryGit(repository: string, ...args: string[]): string {
       GIT_COMMITTER_NAME: 'Fixture',
       GIT_COMMITTER_EMAIL: 'fixture@example.test',
     },
-  })
-    .stdout.toString()
-    .trim();
+  });
+  return result.stdout.toString().trim();
 }
 
-const checkedOutHead = repositoryGit(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD');
+const checkedOutHead = await repositoryGit(PACKAGE_DIRECTORY, 'rev-parse', 'HEAD');
 const gitScenarioDirectory = await mkdtemp(join(tmpdir(), 'release-gate-git-'));
 const gitScenario = await (async () => {
   const distanceRepository = join(gitScenarioDirectory, 'distance');
   await mkdir(distanceRepository);
-  repositoryGit(distanceRepository, 'init', '--quiet');
+  await repositoryGit(distanceRepository, 'init', '--quiet');
   const revisions: string[] = [];
   for (const message of ['first', 'second', 'third']) {
-    repositoryGit(
+    await repositoryGit(
       distanceRepository,
       'commit',
       '--quiet',
@@ -640,14 +639,14 @@ const gitScenario = await (async () => {
       '-m',
       message,
     );
-    revisions.push(repositoryGit(distanceRepository, 'rev-parse', 'HEAD'));
+    revisions.push(await repositoryGit(distanceRepository, 'rev-parse', 'HEAD'));
   }
 
   const headRepository = join(gitScenarioDirectory, 'head');
   await mkdir(headRepository);
-  repositoryGit(headRepository, 'init', '--quiet');
+  await repositoryGit(headRepository, 'init', '--quiet');
   const headBeforeCommit = gitHeadRevision(headRepository);
-  repositoryGit(
+  await repositoryGit(
     headRepository,
     'commit',
     '--quiet',
@@ -664,7 +663,7 @@ const gitScenario = await (async () => {
     distanceOutsideRepository: gitRevisionDistance(revisions[0]!, revisions[1]!),
     headBeforeCommit,
     headAfterCommit: gitHeadRevision(headRepository),
-    expectedHead: repositoryGit(headRepository, 'rev-parse', 'HEAD'),
+    expectedHead: await repositoryGit(headRepository, 'rev-parse', 'HEAD'),
     headOutsideRepository: gitHeadRevision(gitScenarioDirectory),
     headOfCheckout: gitHeadRevision(),
   };

@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -44,9 +45,7 @@ async function runPrettierOverridesProbe(): Promise<{
   );
 
   try {
-    const subprocess = Bun.spawn({
-      timeout: 120_000,
-      cmd: [process.execPath, scriptPath],
+    const subprocess = spawnWithHangGuard([process.execPath, scriptPath], {
       cwd: repositoryRoot,
       stdout: 'pipe',
       stderr: 'pipe',

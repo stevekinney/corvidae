@@ -1,7 +1,7 @@
 import { closeSync, constants, openSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 
 import { shellProfile } from '../bun/fixtures/bun-pipe-stdin.ts';
 import type { ServerMessage } from '../protocol/messages.ts';
@@ -39,9 +39,9 @@ let launches = 0;
  * and the output is exactly the input; in canonical mode the kernel discards what overflows instead
  * of holding the writer back.
  */
-function nonReadingChild(mode: ProcessMode, scratch: string): CaseLaunch {
+async function nonReadingChild(mode: ProcessMode, scratch: string): Promise<CaseLaunch> {
   const gate = join(scratch, `release-held-input-${launches++}`);
-  const made = Bun.spawnSync(['mkfifo', gate], { timeout: SCENARIO_HANG_GUARD_MILLISECONDS });
+  const made = await runWithHangGuard(['mkfifo', gate]);
   if (made.exitCode !== 0) throw new Error('mkfifo failed');
   const prepare = mode === 'pty' ? 'stty raw -echo; ' : '';
   return {
@@ -265,8 +265,8 @@ const revokeWhileHeld: CaseDefinition = {
   comparable: false,
   scope: 'the two paths are not compared: see held-input-backpressure',
   modes: ['pipe', 'pty'],
-  launch: (mode, scratch) => ({
-    ...nonReadingChild(mode, scratch),
+  launch: async (mode, scratch) => ({
+    ...(await nonReadingChild(mode, scratch)),
     rig: { lifetimeMilliseconds: 20_000 },
   }),
   async run({ rig }) {

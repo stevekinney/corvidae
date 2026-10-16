@@ -22,7 +22,7 @@ describe('cosineSimilarity', () => {
   });
 
   it('throws a RangeError when vector lengths differ', () => {
-    // cosineSimilarity comes from `@lostgradient/embeddings`, whose contract throws
+    // cosineSimilarity comes from Armorer's embedding utilities, whose contract throws
     // RangeError on a length mismatch (previously a generic Error).
     expect(() => cosineSimilarity([1, 0], [1, 0, 0])).toThrow(RangeError);
   });

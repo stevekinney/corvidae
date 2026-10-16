@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@lostgradient/typescript": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
     "@types/bun": "catalog:",
     "@types/js-yaml": "catalog:",
     "oxlint": "catalog:",

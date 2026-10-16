@@ -33,12 +33,9 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 
+import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 import { sleepForTesting } from '../testing/fake-timers.test-support.ts';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 
 const REVISION_MODULE_NAME = 'revision.ts';
 
@@ -142,13 +139,14 @@ async function recoverAcrossWatchRestart(): Promise<void> {
     const databasePath = join(directory, 'weft.db');
 
     let stdoutText = '';
-    const watchProcess = Bun.spawn({
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-      cmd: ['bun', '--watch', entrypoint, '--database', databasePath],
-      cwd: directory,
-      stdout: 'pipe',
-      stderr: 'inherit',
-    });
+    const watchProcess = spawnWithHangGuard(
+      ['bun', '--watch', entrypoint, '--database', databasePath],
+      {
+        cwd: directory,
+        stdout: 'pipe',
+        stderr: 'inherit',
+      },
+    );
     subprocess = watchProcess;
     stdoutReaderTask = (async () => {
       const decoder = new TextDecoder();

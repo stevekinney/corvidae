@@ -83,7 +83,7 @@ export function resolveResponseFormat(schema: ZodType | undefined): ResponseForm
  * provider whose native structured-output mode returns a decoded object
  * instead of a JSON string). Enforces the recursive {@link isJSONValue}
  * contract (finite numbers, dense arrays, no cycles, no exotic objects —
- * see `@lostgradient/tool-protocol`'s `assertJSONValue`) BEFORE handing the candidate
+ * see `armorer/protocol`'s `assertJSONValue`) BEFORE handing the candidate
  * to the schema: a candidate that fails it is a {@link NonJsonOutputError},
  * since it did not describe a value JSON can even represent. A candidate
  * that passes but fails the schema is an {@link OutputValidationError}.

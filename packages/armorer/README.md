@@ -41,7 +41,7 @@ A tool combines metadata, an input schema, and an execute function. A toolbox re
 
 ## Project Role
 
-`armorer` is Corvidae's action layer. `@lostgradient/operative` uses it to execute tool calls during an agent run and to send tool declarations to providers. `@lostgradient/skills` and `@lostgradient/memory` expose their capabilities as toolboxes, while host applications decide how to surface the composed tool set through an API or interface.
+`armorer` is Corvidae's action layer. `@lostgradient/operative` uses it to execute tool calls during an agent run and to send tool declarations to providers. Bureau's skills subsystem and `@lostgradient/memory` expose their capabilities as toolboxes, while host applications decide how to surface the composed tool set through an API or interface.
 
 ## Features
 

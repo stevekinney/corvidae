@@ -21,6 +21,7 @@ import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen } from '@lostgradient/operative';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox } from 'armorer';
 import type { Subprocess } from 'bun';
 import { describe, expect, it } from 'bun:test';
@@ -125,11 +126,13 @@ async function recoveryScenario(backend: Backend, scope: ScenarioScope): Promise
 
   try {
     // Premise: the child died from SIGKILL and left its marker.
-    const child = Bun.spawn(['bun', CHILD, 'park-after-step-0', backend, storagePath, markerPath], {
-      timeout: 120_000,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    const child = spawnWithHangGuard(
+      ['bun', CHILD, 'park-after-step-0', backend, storagePath, markerPath],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
     scope.onHang(() => child.kill());
     await child.exited;
     const crashedAt = runtime.clock.now();
@@ -304,8 +307,7 @@ async function relaunchScenario(backend: Backend, scope: ScenarioScope): Promise
     rmSync(directory, { recursive: true, force: true });
   });
   const spawnChild = (scenario: string): Subprocess<'ignore', 'ignore', 'pipe'> => {
-    const child = Bun.spawn(['bun', CHILD, scenario, backend, storagePath, markerPath], {
-      timeout: 120_000,
+    const child = spawnWithHangGuard(['bun', CHILD, scenario, backend, storagePath, markerPath], {
       stdin: 'ignore',
       stdout: 'ignore',
       stderr: 'pipe',

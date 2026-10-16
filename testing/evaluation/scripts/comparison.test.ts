@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -50,9 +51,9 @@ async function run(
 
 /** Runs the package's `comparison` script in its own `bun` process through the `--cwd` form. */
 async function spawnComparison(...args: string[]): Promise<CommandResult> {
-  const child = Bun.spawn(
+  const child = spawnWithHangGuard(
     [process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, 'comparison', ...args],
-    { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
+    { stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),

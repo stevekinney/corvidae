@@ -10,8 +10,8 @@ export const CODE_HIGHLIGHTER_ROOT_PATH = join(
   'src',
   'code-highlighter-root.svelte',
 );
-/** The mirror's package map, where each documented package's `lastPublishedVersion` is recorded. */
-export const PACKAGE_MAP_PATH = join(REPOSITORY_ROOT, 'scripts', 'mirror', 'package-map.json');
+/** Where each documented package's last published version is recorded. */
+export const PUBLISHED_VERSIONS_PATH = join(PLAYGROUND_ROOT, 'published-versions.json');
 
 export function relativeImportSpecifier(fromDirectory: string, targetPath: string): string {
   const relativePath = relative(fromDirectory, targetPath).replaceAll(sep, '/');

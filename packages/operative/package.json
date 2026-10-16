@@ -28,7 +28,8 @@
     "@types/bun": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "oxlint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "@lostgradient/testing": "workspace:*"
   },
   "private": true
 }

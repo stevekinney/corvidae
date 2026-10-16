@@ -25,7 +25,7 @@ Provider factories such as `createAnthropicProvider`, `createOpenAIProvider`, an
 
 ## Project Role
 
-`@lostgradient/bureau` composes Operative runs and scheduler tasks. `@lostgradient/memory` and `@lostgradient/skills` attach through hooks and tools, `armorer` supplies validated actions, and `conversationalist` supplies the conversation model. Applications own request handling and other runtime composition.
+`@lostgradient/bureau` composes Operative runs and scheduler tasks. `@lostgradient/memory` and Bureau's skills subsystem attach through hooks and tools, `armorer` supplies validated actions, and `conversationalist` supplies the conversation model. Applications own request handling and other runtime composition.
 
 ## Quick Start
 

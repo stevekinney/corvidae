@@ -1,9 +1,10 @@
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 
 import {
   checkBoundaries,
@@ -762,34 +763,34 @@ const boundariesHoldForThisPackage = await outcomeOf(() => {
   expect(formatViolations(checkBoundaries(realPackageRoot))).toBe('');
 });
 
-const forbiddenBunEntryFailsCommandLine = await outcomeOf(() => {
+const forbiddenBunEntryFailsCommandLine = await outcomeOf(async () => {
   const { packageRoot } = workspaceFixture({
     'src/lib/forbidden.ts':
       "import { spawn } from '@lostgradient/ventriloquist/bun';\nexport { spawn };\n",
   });
-  const result = Bun.spawnSync(
+  const result = await runWithHangGuard(
     [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root', packageRoot],
-    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+    { cwd: realPackageRoot },
   );
   expect(result.exitCode).toBe(1);
   expect(result.stderr.toString()).toContain('src/lib/forbidden.ts:1');
   expect(result.stderr.toString()).toContain('@lostgradient/ventriloquist/bun is a Bun host entry');
 });
 
-const cleanPackagePassesCommandLine = await outcomeOf(() => {
+const cleanPackagePassesCommandLine = await outcomeOf(async () => {
   const { packageRoot } = workspaceFixture();
-  const result = Bun.spawnSync(
+  const result = await runWithHangGuard(
     [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root', packageRoot],
-    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+    { cwd: realPackageRoot },
   );
   expect(result.stderr.toString()).toBe('');
   expect(result.exitCode).toBe(0);
 });
 
-const packageRootRequiresPath = await outcomeOf(() => {
-  const result = Bun.spawnSync(
+const packageRootRequiresPath = await outcomeOf(async () => {
+  const result = await runWithHangGuard(
     [process.execPath, join(import.meta.dir, 'check-boundaries.ts'), '--package-root'],
-    { cwd: realPackageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+    { cwd: realPackageRoot },
   );
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr.toString()).toContain('--package-root requires a path argument');

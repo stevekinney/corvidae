@@ -1,6 +1,7 @@
 import { describe, expect } from 'bun:test';
 
-import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { rejectionOf } from '@lostgradient/testing';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
 import { createDeferred } from '../session/fixtures/deferred.ts';
 import { flush, utf8 } from '../session/session.test-support.ts';
@@ -35,10 +36,7 @@ function spawnWith(
   alter: (child: ReturnType<typeof Bun.spawn>, options: Record<string, unknown>) => SpawnedProcess,
 ): SpawnProcess {
   return (command, options) =>
-    alter(
-      Bun.spawn(command, { ...(options as object), timeout: SCENARIO_HANG_GUARD_MILLISECONDS }),
-      options,
-    );
+    alter(spawnWithHangGuard(command, { ...(options as object) }), options);
 }
 
 /** A process that reports through the real one but takes the parts a test replaces. */

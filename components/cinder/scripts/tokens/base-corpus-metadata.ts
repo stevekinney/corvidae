@@ -53,7 +53,7 @@ export const BASE_SOURCE_DIGEST = ${JSON.stringify(digest)};
   });
   // The published version is not known to the workspace, which carries none. The mirror
   // transform rewrites this one literal to the composed manifest's version at sync time
-  // (`versionConstants` in scripts/mirror/source.ts), so it must keep exactly this shape.
+  // (`versionConstants` in corvidae-mirror/src/source.ts), so it must keep exactly this shape.
   const version = `/**
  * GENERATED FILE. Do not edit by hand.
  *
