@@ -354,13 +354,21 @@ describe('TaskLedgerDetailView — lease clocks', () => {
     expect(container.querySelector('[data-state="expired"]')).toBeNull();
   });
 
+  test('by default judges a task heartbeat by the 60s task-diagnostics threshold', () => {
+    const task = leasedTask({ lastHeartbeatAt: NOW - 90_000 });
+    const { container } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
+    const heartbeat = within(clock(container, 'heartbeat'));
+    expect(heartbeat.getByText('Stale')).not.toBeNull();
+    expect(heartbeat.getByText('Stale after 1m without a heartbeat.')).not.toBeNull();
+  });
+
   test('marks a running attempt stale once its heartbeat age passes the configured threshold', () => {
     const task = leasedTask({ lastHeartbeatAt: NOW - 200_000 });
     const stale = render(TaskLedgerDetailView, { props: { task, now: NOW } });
     const heartbeat = within(clock(stale.container, 'heartbeat'));
     expect(heartbeat.getByText('Stale')).not.toBeNull();
     expect(heartbeat.getByText(iso(NOW - 200_000))).not.toBeNull();
-    expect(heartbeat.getByText('Stale after 2m without a heartbeat.')).not.toBeNull();
+    expect(heartbeat.getByText('Stale after 1m without a heartbeat.')).not.toBeNull();
     stale.unmount();
 
     const relaxed = render(TaskLedgerDetailView, {

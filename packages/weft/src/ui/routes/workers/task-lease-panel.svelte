@@ -14,8 +14,10 @@
     describeCancellation,
     exactTimestamp,
   } from './task-attempt-evidence.ts';
-  import type { TaskLedgerDetail } from './worker-catalog-types.ts';
-  import { HEARTBEAT_STALE_AFTER_MS } from './worker-presentation.ts';
+  import {
+    TASK_HEARTBEAT_STALE_AFTER_MS,
+    type TaskLedgerDetail,
+  } from './worker-catalog-types.ts';
 
   interface TaskLeasePanelProps {
     readonly task: TaskLedgerDetail;
@@ -27,7 +29,7 @@
   let {
     task,
     now,
-    staleHeartbeatAfterMs = HEARTBEAT_STALE_AFTER_MS,
+    staleHeartbeatAfterMs = TASK_HEARTBEAT_STALE_AFTER_MS,
   }: TaskLeasePanelProps = $props();
 
   const RUNNING_STATES: ReadonlySet<TaskLedgerDetail['state']> = new Set([
