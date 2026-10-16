@@ -39,7 +39,7 @@ production-gate-results/
 coverage/
 playwright-report/
 test-results/
-/packages/testing/screenshots/
+/testing/testing/screenshots/
 .playwright/
 test-output/
 *.lcov

@@ -6,7 +6,7 @@
 
 - Represents conversation state as immutable, JSON-safe `ConversationHistory` values.
 - Provides a mutable `Conversation` runtime for undo, redo, branching, events, and provider import/export.
-- Materializes tool calls and tool results through the shared `@lostgradient/tool-protocol` contracts.
+- Materializes tool calls and tool results through the shared tool protocol contracts that `armorer/protocol` exports.
 - Converts conversations to and from OpenAI, Anthropic, and Gemini message formats.
 - Supports streaming messages, compaction, redaction, Markdown export, templates, and deterministic test helpers.
 
@@ -66,7 +66,7 @@ const openAIRequest = await conversation.toProvider('openai');
 - **`ConversationHistory`**: immutable, JSON-safe conversation data.
 - **`Conversation`**: runtime history manager with undo, redo, branching, event emission, provider import/export helpers, and convenience wrappers around the immutable helpers.
 - **`Message`**: ordered conversation entry with roles such as `user`, `assistant`, `system`, `developer`, `tool-call`, `tool-result`, and `snapshot`.
-- **`ToolCall`** and **`ToolResult`**: canonical, JSON-safe tool interaction payloads shared with `armorer` through `@lostgradient/tool-protocol`.
+- **`ToolCall`** and **`ToolResult`**: canonical, JSON-safe tool interaction payloads shared with `armorer` through its `armorer/protocol` subpath.
 
 ### State integrity and restoration
 
@@ -972,7 +972,7 @@ const results = await toolbox.execute(toolCalls, { stream: true });
 conversationHistory = await appendToolResultsAsync(conversationHistory, results);
 ```
 
-Shared tool types and materializers are provided by `@lostgradient/tool-protocol` and re-exported by both packages.
+Shared tool types and materializers are provided by `armorer/protocol`, a dependency-free subpath of Armorer, and re-exported by both packages.
 
 ## Events
 

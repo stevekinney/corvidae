@@ -53,7 +53,7 @@
       "inputs": [
         "package.json",
         "bun.lock",
-        "{applications,components,packages,internal}/*/package.json",
+        "{applications,components,packages,testing,internal}/*/package.json",
         "scripts/browser-fixtures/package.json"
       ]
     },

@@ -33,7 +33,7 @@ import { decodeChatStreamEvent, encodeChatStreamEvent } from './stream-event-cod
  * Standard exact-type-equality check (the `<G>() => ...` double-conditional
  * form), robust against the naive `A extends B ? B extends A : false` form's
  * distributive-conditional edge cases. See
- * `packages/skills/src/package-graph.test-d.ts` for this repository's other
+ * `packages/bureau/src/skills/package-graph.test-d.ts` for this repository's other
  * use of a bidirectional structural assertion across a package boundary.
  */
 type IfEquals<T, U, Y = true, N = false> =

@@ -15,7 +15,7 @@
       "path": "../lifecycle/tsconfig.source.json"
     },
     {
-      "path": "../tool-protocol/tsconfig.source.json"
+      "path": "../armorer/tsconfig.source.json"
     }
   ]
 }

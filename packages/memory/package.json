@@ -18,7 +18,6 @@
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
-    "@lostgradient/embeddings": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*"
   },
   "devDependencies": {

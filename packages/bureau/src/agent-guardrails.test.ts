@@ -22,7 +22,7 @@ import {
   type InputDetector,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
 } from '@lostgradient/operative';
-import { discoverSkills, type SkillCatalogRevision } from '@lostgradient/skills';
+import { discoverSkills, type SkillCatalogRevision } from './skills';
 import { afterAll, describe, expect, it } from 'bun:test';
 
 import { createAgentSkills } from './agent-skills';

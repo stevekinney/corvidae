@@ -12,25 +12,22 @@
   "exclude": ["node_modules", "coverage", "**/*.test.ts", "**/*.test-d.ts", "**/*.bench.ts"],
   "references": [
     {
-      "path": "../armorer/tsconfig.source.json"
-    },
-    {
-      "path": "../conversationalist/tsconfig.source.json"
-    },
-    {
       "path": "../cryptography/tsconfig.source.json"
-    },
-    {
-      "path": "../embeddings/tsconfig.source.json"
     },
     {
       "path": "../lifecycle/tsconfig.source.json"
     },
     {
-      "path": "../tool-protocol/tsconfig.source.json"
+      "path": "../../testing/testing/tsconfig.source.json"
     },
     {
       "path": "../weft/tsconfig.source.json"
+    },
+    {
+      "path": "../armorer/tsconfig.source.json"
+    },
+    {
+      "path": "../conversationalist/tsconfig.source.json"
     }
   ]
 }

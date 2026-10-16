@@ -90,7 +90,7 @@ describe('Footer', () => {
     // CIN-124 still real. Asserted against the shipped CSS source (not
     // computed styles) because this test does not load a real CSS engine;
     // the resting layout math itself is covered by
-    // packages/testing/tests/footer-layout.playwright.ts.
+    // scripts/browser-fixtures/tests/footer-layout.playwright.ts.
     const css = await Bun.file(new URL('./footer.css', import.meta.url)).text();
 
     // Derived from tokens-base.css rather than transcribed. A hard-coded map duplicates

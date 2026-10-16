@@ -1,4 +1,4 @@
-import type { ToolPolicy } from '@lostgradient/tool-protocol';
+import type { ToolPolicy } from 'armorer/protocol';
 
 export type { ToolPolicy };
 

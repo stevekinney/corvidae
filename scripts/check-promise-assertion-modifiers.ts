@@ -33,9 +33,10 @@
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import ts from 'typescript';
+import { workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
-const SCANNED_DIRECTORIES = ['applications', 'components', 'packages', 'internal', 'scripts'];
+const SCANNED_DIRECTORIES = [...workspaceParentDirectories, 'scripts'];
 // Installed dependencies and generated output, mirroring `.gitignore`. Dot
 // directories (`.svelte-kit`, `.turbo`) are skipped wholesale.
 const SKIPPED_DIRECTORIES = new Set([
@@ -60,7 +61,7 @@ const SCANNED_FILE_PATTERN = /(?<!\.d)\.tsx?$/;
  */
 export const EXEMPT_FILES = new Set(['scripts/bun-matchers.test.ts']);
 
-export const CANONICAL_PROMISE_OUTCOME = 'packages/testing/src/helpers/promise-outcome.ts';
+export const CANONICAL_PROMISE_OUTCOME = 'testing/testing/src/helpers/promise-outcome.ts';
 
 /** Byte-identical copies of the canonical module, one per package that cannot import it. */
 export const PROMISE_OUTCOME_COPIES = [
@@ -70,7 +71,6 @@ export const PROMISE_OUTCOME_COPIES = [
   'packages/lifecycle/src/testing/promise-outcome.test-support.ts',
   'packages/memory/src/testing/promise-outcome.test-support.ts',
   'packages/operative/src/testing/promise-outcome.test-support.ts',
-  'packages/skills/src/testing/promise-outcome.test-support.ts',
   'packages/weft/src/testing/promise-outcome.test-support.ts',
   'scripts/promise-outcome.test-support.ts',
 ];

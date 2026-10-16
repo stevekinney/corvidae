@@ -548,7 +548,7 @@ test('the evaluation coverage gate runs in the root coverage graph and caches it
   // entry would silently remove `@lostgradient/evaluation`'s 100 percent line and
   // function threshold from `bun run validate` without failing anything.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
-  const manifest = await Bun.file(join(root, 'packages/evaluation/package.json')).json();
+  const manifest = await Bun.file(join(root, 'testing/evaluation/package.json')).json();
   expect(manifest.scripts?.['test:coverage']).toContain('--coverage');
   expect(configuration.tasks['@lostgradient/evaluation#test:coverage']).toMatchObject({
     dependsOn: ['transit'],

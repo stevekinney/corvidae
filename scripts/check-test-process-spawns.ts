@@ -60,9 +60,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
+import { workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
-const SCANNED_DIRECTORIES = ['applications', 'components', 'packages', 'internal', 'scripts'];
+const SCANNED_DIRECTORIES = [...workspaceParentDirectories, 'scripts'];
 const SKIPPED_DIRECTORIES = new Set([
   'node_modules',
   'build',

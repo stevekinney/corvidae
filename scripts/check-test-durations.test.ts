@@ -11,6 +11,7 @@ import {
   parseJunit,
   verdict,
 } from './check-test-durations.ts';
+import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 
 const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites>
@@ -234,7 +235,7 @@ describe('turbo cache inputs for the wrapped test tasks', () => {
     };
     const unhashed: string[] = [];
     for await (const manifestPath of new Bun.Glob(
-      '{applications,components,packages}/*/package.json',
+      `${directoryGlob(workspaceParentDirectories)}/*/package.json`,
     ).scan(root)) {
       const manifest = (await Bun.file(join(root, manifestPath)).json()) as {
         name: string;

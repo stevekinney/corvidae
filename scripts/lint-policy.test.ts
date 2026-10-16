@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 
 import { spawnWithHangGuard } from './hang-guard.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -24,7 +25,7 @@ const root = join(import.meta.dir, '..');
  */
 function nestedConfigurationsUnder(directory: string): string[] {
   const glob = new Bun.Glob(
-    '{applications,components,packages,internal,scripts}/**/.oxlintrc.json',
+    `${directoryGlob([...workspaceParentDirectories, 'scripts'])}/**/.oxlintrc.json`,
   );
   return [...glob.scanSync({ cwd: directory, dot: true, onlyFiles: true })]
     .filter((path) =>

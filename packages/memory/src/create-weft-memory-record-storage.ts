@@ -1,4 +1,3 @@
-import { cosineSimilarity, type EmbeddingVectorLike } from '@lostgradient/embeddings';
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type Storage,
@@ -6,6 +5,7 @@ import {
   storageDeletePrefix,
   storageKeys,
 } from '@lostgradient/weft';
+import { cosineSimilarity, type EmbeddingVectorLike } from 'armorer';
 import { z } from 'zod';
 
 import {

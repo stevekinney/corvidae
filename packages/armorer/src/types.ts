@@ -14,7 +14,7 @@ import type {
   ToolErrorInput as SharedToolErrorInput,
   ToolResult as SharedToolResult,
   ToolResultInput as SharedToolResultInput,
-} from '@lostgradient/tool-protocol';
+} from './protocol';
 
 import type { ApprovalBindingPayload } from './approval-binding';
 

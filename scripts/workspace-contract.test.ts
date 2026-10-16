@@ -6,19 +6,22 @@ import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
 import { runWithHangGuard } from './hang-guard.ts';
+import {
+  directoryGlob,
+  verificationWorkspaceDirectories,
+  workspaceParentDirectories,
+} from './workspace-directories.ts';
 import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
+const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'bureau',
   'operative',
   'armorer',
   'conversationalist',
   'memory',
-  'skills',
-  'tool-protocol',
-  'embeddings',
   'cryptography',
   'evaluation',
   'lifecycle',
@@ -54,13 +57,10 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/markdown',
   '@lostgradient/operative',
   '@lostgradient/cryptography',
-  '@lostgradient/embeddings',
   '@lostgradient/evaluation',
-  '@lostgradient/tool-protocol',
   '@lostgradient/lifecycle',
   '@lostgradient/bureau',
   '@lostgradient/memory',
-  '@lostgradient/skills',
   '@lostgradient/testing',
   '@lostgradient/typescript',
   '@lostgradient/playground',
@@ -96,7 +96,7 @@ async function readManifest(path: string): Promise<Manifest> {
 async function libraryApplicationConfigurations(): Promise<string[]> {
   const paths: string[] = [];
   const configurations = new Bun.Glob(
-    '{packages,components}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}',
+    `${directoryGlob(workspaceParentDirectories.filter((directory) => !['applications', 'internal'].includes(directory)))}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}`,
   );
   for await (const path of configurations.scan({ cwd: root, onlyFiles: true })) {
     if (!path.split('/').includes('node_modules')) paths.push(path);
@@ -106,7 +106,7 @@ async function libraryApplicationConfigurations(): Promise<string[]> {
 
 async function workspaceManifests(): Promise<Map<string, Manifest>> {
   const manifests = new Map<string, Manifest>();
-  for (const directory of ['applications', 'components', 'packages', 'internal']) {
+  for (const directory of workspaceParentDirectories) {
     for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const path = join(directory, entry.name);
@@ -255,7 +255,7 @@ describe('internal workspace architecture', () => {
 
   test('every package and application has a README', async () => {
     for await (const manifestPath of new Bun.Glob(
-      '{applications,components,packages,internal}/*/package.json',
+      `${directoryGlob(workspaceParentDirectories)}/*/package.json`,
     ).scan(root)) {
       const directory = dirname(manifestPath);
       const readme = Bun.file(join(root, directory, 'README.md'));
@@ -266,7 +266,7 @@ describe('internal workspace architecture', () => {
 
   test('every executable workspace exposes consistent Bun quality scripts', async () => {
     for await (const manifestPath of new Bun.Glob(
-      '{applications,components,packages}/*/package.json',
+      `${directoryGlob(workspaceParentDirectories.filter((directory) => directory !== 'internal'))}/*/package.json`,
     ).scan(root)) {
       const directory = dirname(manifestPath);
       const manifest = await readManifest(directory);
@@ -422,7 +422,12 @@ describe('internal workspace architecture', () => {
 
   for (const library of libraries) {
     test(`${library} exposes source without a build or publication contract`, async () => {
-      const directory = `${componentLibraries.includes(library) ? 'components' : 'packages'}/${library}`;
+      const parent = componentLibraries.includes(library)
+        ? 'components'
+        : verificationLibraries.includes(library)
+          ? 'testing'
+          : 'packages';
+      const directory = `${parent}/${library}`;
       const manifest = await readManifest(directory);
       expect(manifest.name).toBe(publicWorkspaceName(library));
       expect(manifest.private).toBe(true);
@@ -448,6 +453,53 @@ describe('internal workspace architecture', () => {
       expect(manifest.types).toBeUndefined();
     });
   }
+
+  test('the root workspaces field lists exactly the shared workspace directories', async () => {
+    const manifest = (await readManifest('.')) as Manifest & { workspaces?: string[] };
+    expect(manifest.workspaces).toEqual([
+      ...workspaceParentDirectories.map((directory) => `${directory}/*`),
+      'scripts/browser-fixtures',
+    ]);
+  });
+
+  test('libraries and components name verification workspaces only as development dependencies', async () => {
+    // Everything under `testing/` exists to check other code. A runtime or peer edge from a library
+    // or component would carry verification tooling into whatever depends on that workspace, so
+    // those may name it only in devDependencies. Applications are endpoints nothing depends on: the
+    // playground's dev server and static exporter run Testing's Svelte plugin and fixture loaders,
+    // and its own manifest test requires that runtime edge to stay in `dependencies`.
+    const applicationNames = new Set<string>();
+    for (const entry of await readdir(join(root, 'applications'), { withFileTypes: true })) {
+      const path = join('applications', entry.name);
+      if (entry.isDirectory() && (await Bun.file(join(root, path, 'package.json')).exists())) {
+        const manifest = await readManifest(path);
+        applicationNames.add(manifest.name);
+      }
+    }
+    const verificationNames = new Set<string>();
+    for (const directory of verificationWorkspaceDirectories) {
+      for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const path = join(directory, entry.name);
+        if (await Bun.file(join(root, path, 'package.json')).exists()) {
+          const manifest = await readManifest(path);
+          verificationNames.add(manifest.name);
+        }
+      }
+    }
+    expect(verificationNames.size).toBeGreaterThan(0);
+    const offending: string[] = [];
+    const manifests = await workspaceManifests();
+    for (const manifest of manifests.values()) {
+      if (applicationNames.has(manifest.name)) continue;
+      for (const field of ['dependencies', 'peerDependencies'] as const) {
+        for (const name of Object.keys(manifest[field] ?? {})) {
+          if (verificationNames.has(name)) offending.push(`${manifest.name} ${field} -> ${name}`);
+        }
+      }
+    }
+    expect(offending).toEqual([]);
+  });
 
   test('every internal edge resolves and uses workspace:*', async () => {
     // The discriminator between an internal edge and an external dependency can no longer be a

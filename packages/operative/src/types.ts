@@ -3,8 +3,8 @@ import type {
   HookRegistry,
   RuntimeServices,
 } from '@lostgradient/lifecycle';
-import type { JSONValue, ToolCall, ToolCallInput } from '@lostgradient/tool-protocol';
 import type { AnyToolbox, ToolExecuteOptions, ToolExecutionResult } from 'armorer';
+import type { JSONValue, ToolCall, ToolCallInput } from 'armorer/protocol';
 import type {
   CompactionScheduler,
   Conversation,
@@ -27,8 +27,8 @@ import type { SelectionGate } from './selection-gate';
 import type { LiveStreamEvent } from './streaming/types';
 import type { ResponseFormat, ToolChoice } from './structured-output/types';
 
-export type { JSONValue, ToolCall, ToolCallInput } from '@lostgradient/tool-protocol';
 export type { AnyToolbox, Toolbox, ToolExecuteOptions, ToolExecutionResult } from 'armorer';
+export type { JSONValue, ToolCall, ToolCallInput } from 'armorer/protocol';
 export type { Conversation, ConversationHistory, TokenUsage } from 'conversationalist';
 
 /**

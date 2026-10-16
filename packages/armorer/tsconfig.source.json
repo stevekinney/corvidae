@@ -15,13 +15,7 @@
       "path": "../cryptography/tsconfig.source.json"
     },
     {
-      "path": "../embeddings/tsconfig.source.json"
-    },
-    {
       "path": "../lifecycle/tsconfig.source.json"
-    },
-    {
-      "path": "../tool-protocol/tsconfig.source.json"
     }
   ]
 }

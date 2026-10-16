@@ -1,5 +1,5 @@
-import type { JSONValue, ToolCall } from '@lostgradient/tool-protocol';
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
+import type { JSONValue, ToolCall } from 'armorer/protocol';
 import type {
   ConversationSnapshot,
   DocumentContent,

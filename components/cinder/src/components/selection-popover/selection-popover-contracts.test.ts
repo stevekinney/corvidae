@@ -32,7 +32,7 @@ describe('SelectionPopover', () => {
     // immediately after opening. The real mechanism is that a drag-select
     // gesture reaching the viewport edge triggers the browser's native
     // autoscroll-while-selecting behavior — confirmed with a real Chromium
-    // Playwright repro (packages/testing/tests/selection-popover-drag-
+    // Playwright repro (scripts/browser-fixtures/tests/selection-popover-drag-
     // dismissal.playwright.ts) — which fires real `scroll` events on
     // `window` WHILE the pointer button is still held, i.e. as part of the
     // very selection gesture that is opening this popover. This test
