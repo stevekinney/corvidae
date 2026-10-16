@@ -61,3 +61,16 @@ New output follows only while the viewport shows the live bottom. A reader who s
 ## Output is inert
 
 Terminal output is text. HTML, script, and escape sequences never become DOM or run code; a hidden OSC 8 destination is never offered or opened; OSC 52 clipboard requests and window-control requests are ignored; a program-set title reaches the host only as bounded plain text. Links are off unless the host handles `onLinkActivate`, and then only visible HTTPS text is offered.
+
+## Human review verdict
+
+The human design and accessibility review (COR-471) is performed by the named reviewer with VoiceOver in Safari and Chrome against `applications/terminal-example`. The task rows, versions, screenshots, findings, inherent limits, and acceptance are recorded in [`documentation/terminal/review-evidence.md`](../../../../../../documentation/terminal/review-evidence.md); the procedure is in [`documentation/terminal/review-runbook.md`](../../../../../../documentation/terminal/review-runbook.md). Automated browser and axe passes do not satisfy this verdict. The fields below stay blank until the reviewer records them.
+
+| Field                              | Value |
+| ---------------------------------- | ----- |
+| Reviewer                           |       |
+| Date                               |       |
+| Reviewed source SHA                |       |
+| Engine version                     |       |
+| Verdict (accepted or not accepted) |       |
+| Blocking findings open             |       |
