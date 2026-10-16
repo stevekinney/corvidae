@@ -65,6 +65,25 @@ describe('afterAwakeTime', () => {
     expect(fired).toBeGreaterThanOrEqual(100);
   });
 
+  it('keeps its ticks out of a leak tracker that wraps the global setTimeout', async () => {
+    // Ventriloquist's conformance cells and `trackTimers` count what the global schedules while
+    // the code under test runs; a guard ticking through it was reported as that code's leak.
+    const original = globalThis.setTimeout;
+    let scheduled = 0;
+    globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+      scheduled += 1;
+      return original(...args);
+    }) as typeof setTimeout;
+    try {
+      let fired = false;
+      afterAwakeTime(30, () => (fired = true), { tickMilliseconds: 5 });
+      while (!fired) await Bun.sleep(5);
+    } finally {
+      globalThis.setTimeout = original;
+    }
+    expect(scheduled).toBe(0);
+  });
+
   it('never fires once cancelled', async () => {
     let fired = false;
     const cancel = afterAwakeTime(20, () => (fired = true), { tickMilliseconds: 5 });

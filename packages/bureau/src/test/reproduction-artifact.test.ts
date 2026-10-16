@@ -9,6 +9,7 @@ import {
   readReproductionArtifact,
   writeReproductionArtifact,
 } from '@lostgradient/operative';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -152,8 +153,7 @@ async function assembleDeterministicCase(
 // The assembler discovers `git rev-parse HEAD` once and caches it, so the one real `git` process
 // this file needs runs here at module scope, ahead of the tests, to stay off the per-test clock.
 // The 120-second timeout is a hang guard, so a stuck `git` fails the file instead of holding it.
-const revisionProcess = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
-  timeout: 120_000,
+const revisionProcess = spawnWithHangGuard(['git', 'rev-parse', 'HEAD'], {
   stdout: 'pipe',
   stderr: 'pipe',
 });

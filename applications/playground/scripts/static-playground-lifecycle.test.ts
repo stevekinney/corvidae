@@ -12,7 +12,8 @@
  * "Gone" tolerates a zombie unless `PLAYGROUND_LIFECYCLE_REQUIRE_REAPED=1`, which the Linux
  * `docker run --init` recipe sets so captured processes must also have been reaped.
  */
-import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -85,11 +86,10 @@ async function startCase(
 ): Promise<RunningCase> {
   const record = await mkdtemp(join(tmpdir(), 'static-lifecycle-record-'));
   const output = await mkdtemp(join(tmpdir(), 'static-lifecycle-output-'));
-  const sentinel = Bun.spawn(['/bin/sh', '-c', 'while :; do sleep 1; done'], {
+  const sentinel = spawnWithHangGuard(['/bin/sh', '-c', 'while :; do sleep 1; done'], {
     stdio: ['ignore', 'ignore', 'ignore'],
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
-  const driver = Bun.spawn(
+  const driver = spawnWithHangGuard(
     [
       process.execPath,
       DRIVER,
@@ -105,7 +105,6 @@ async function startCase(
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     },
   );
   let stdout = '';

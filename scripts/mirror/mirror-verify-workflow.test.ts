@@ -3,11 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../module-scope-scenario.test-support.ts';
+import { runWithHangGuard } from '../hang-guard.ts';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   createWorkflowVerifyEnvironment,
@@ -90,11 +87,9 @@ async function withFixture(
 
 describe('shellWord', async () => {
   /** What bash hands the command for each word, which is the only oracle that matters. */
-  function throughBash(words: readonly string[]): string[] {
+  async function throughBash(words: readonly string[]): Promise<string[]> {
     const line = `printf '%s\\n' ${words.map(shellWord).join(' ')}`;
-    const result = Bun.spawnSync(['bash', '-c', line], {
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    });
+    const result = await runWithHangGuard(['bash', '-c', line]);
     expect(result.exitCode).toBe(0);
     return result.stdout.toString().replace(/\n$/, '').split('\n');
   }
@@ -111,9 +106,9 @@ describe('shellWord', async () => {
   });
 
   // Bash is a real process, so the scenario runs once at module scope, off the per-test clock.
-  const awkwardWordsOutcome = await outcomeOf(() => {
+  const awkwardWordsOutcome = await outcomeOf(async () => {
     const words = ["it's", 'a b', 'x; rm -rf y', '$HOME', '"quoted"', ''];
-    expect(throughBash(words)).toEqual(words);
+    expect(await throughBash(words)).toEqual(words);
   });
   test('spaces, quotes, operators and the empty string reach the command intact', () =>
     rethrow(awkwardWordsOutcome));
@@ -296,8 +291,7 @@ describe('renderMirrorVerifyWorkflow', async () => {
       try {
         for (const step of writeSteps) {
           expect(step.run?.length).toBeLessThan(20_000);
-          const result = Bun.spawnSync(['bash', '-euc', step.run ?? ''], {
-            timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+          const result = await runWithHangGuard(['bash', '-euc', step.run ?? ''], {
             cwd: consumerDirectory,
           });
           expect(result.exitCode, result.stderr.toString()).toBe(0);
@@ -468,8 +462,7 @@ describe('renderMirrorVerifyWorkflow', async () => {
         expect(relocations.length).toBe(published.length);
         for (const step of relocations) {
           const script = (step.run ?? '').replaceAll('${{ runner.temp }}', runner);
-          const shell = Bun.spawnSync(['bash', '-euc', script], {
-            timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+          const shell = await runWithHangGuard(['bash', '-euc', script], {
             cwd: join(runner, 'clone', step['working-directory'] ?? '.'),
           });
           expect({

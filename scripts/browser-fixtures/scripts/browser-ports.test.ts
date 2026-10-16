@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { expect, test } from 'bun:test';
 import { browserPorts } from './browser-ports.ts';
 
@@ -85,8 +86,7 @@ async function allocateFromConcurrentProcesses() {
     listener.stop();
   `;
   const children = Array.from({ length: 4 }, () =>
-    Bun.spawn([process.execPath, '-e', childSource], {
-      timeout: 120_000,
+    spawnWithHangGuard([process.execPath, '-e', childSource], {
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',

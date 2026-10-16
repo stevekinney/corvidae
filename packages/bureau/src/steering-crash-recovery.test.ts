@@ -20,6 +20,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { resolveStorage } from '@lostgradient/weft';
 import { afterAll, describe, expect, it } from 'bun:test';
 
@@ -34,8 +35,7 @@ const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-crash-'));
 const storagePath = join(directory, 'bureau.sqlite');
 const markerPath = join(directory, 'admitted.json');
 const signalOrStderr = await (async () => {
-  const child = Bun.spawn(['bun', CHILD, storagePath, markerPath], {
-    timeout: 120_000,
+  const child = spawnWithHangGuard(['bun', CHILD, storagePath, markerPath], {
     stdout: 'pipe',
     stderr: 'pipe',
   });

@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync } from 'node:fs';
 
-import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { rejectionOf } from '@lostgradient/testing';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
 import { trackRealTimers } from '../conformance/conformance.test-support.ts';
 import type { ByteReader } from '../session/session-types.ts';
@@ -74,10 +75,7 @@ function recordingSpawn(
   const calls: { command: string[]; options: Record<string, unknown> }[] = [];
   const spawn: SpawnProcess = (command, options) => {
     calls.push({ command, options });
-    return alter(
-      Bun.spawn(command, { ...(options as object), timeout: SCENARIO_HANG_GUARD_MILLISECONDS }),
-      options,
-    );
+    return alter(spawnWithHangGuard(command, { ...(options as object) }), options);
   };
   return { spawn, calls };
 }

@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { copyFile, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -240,7 +241,7 @@ describe('memory-lifecycle baseline', () => {
 const spawnedDirectory = await mkdtemp(join(tmpdir(), 'memory-lifecycle-command-spawn-'));
 const spawnedRun = await (async () => {
   try {
-    const child = Bun.spawn(
+    const child = spawnWithHangGuard(
       [
         process.execPath,
         'run',
@@ -251,7 +252,7 @@ const spawnedRun = await (async () => {
         '--artifacts-dir',
         join(spawnedDirectory, 'spawned'),
       ],
-      { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
+      { stdout: 'pipe', stderr: 'pipe' },
     );
     const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
     return { stdout, exitCode };

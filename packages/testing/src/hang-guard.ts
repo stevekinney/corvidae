@@ -39,6 +39,14 @@ export const HANG_GUARD_MILLISECONDS = 120_000;
 
 const TICK_MILLISECONDS = 1_000;
 
+/**
+ * The host's timer functions as this module found them. Leak checks (`trackTimers`, Ventriloquist's
+ * conformance cells) wrap `globalThis.setTimeout` while the code under test runs and count what is
+ * still pending, and a guard re-arms its tick once a second, so a guard that called the global
+ * would be counted as the code's leak. The guard's own timers are never the code under test.
+ */
+const { setTimeout: hostSetTimeout, clearTimeout: hostClearTimeout } = globalThis;
+
 export interface AwakeTimeOptions {
   /** Whether fake timers are installed, so real time cannot be measured. Defaults to never. */
   fakeTimersActive?: () => boolean;
@@ -70,8 +78,8 @@ export function afterAwakeTime(
 
   const cancel = (): void => {
     settled = true;
-    clearTimeout(tick);
-    clearTimeout(backstop);
+    hostClearTimeout(tick);
+    hostClearTimeout(backstop);
   };
   const elapse = (): void => {
     if (settled) return;
@@ -80,7 +88,7 @@ export function afterAwakeTime(
   };
   const scheduleTick = (): void => {
     const interval = Math.max(1, Math.min(tickMilliseconds, milliseconds - credited));
-    tick = setTimeout(() => {
+    tick = hostSetTimeout(() => {
       tick = undefined;
       if (settled) return;
       // A timer armed now would be fake, and the clock is frozen: leave it to the backstop.
@@ -93,7 +101,7 @@ export function afterAwakeTime(
     }, interval);
   };
   const armBackstop = (delay: number): void => {
-    backstop = setTimeout(() => {
+    backstop = hostSetTimeout(() => {
       if (settled) return;
       if (fakeTimersActive()) {
         elapse();
@@ -166,7 +174,7 @@ export async function runWithHangGuard<const In extends SpawnOptions.Writable = 
     ...options,
     stdout: 'pipe',
     stderr: 'pipe',
-  } as HangGuardedSpawnOptions<In, 'pipe', 'pipe'>);
+  });
   const [stdout, stderr] = await Promise.all([
     new Response(child.stdout).arrayBuffer(),
     new Response(child.stderr).arrayBuffer(),

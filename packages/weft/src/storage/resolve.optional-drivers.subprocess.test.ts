@@ -3,24 +3,20 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   OPTIONAL_STORAGE_DRIVER_ENTRIES,
   withOptionalStorageDriversAbsent,
 } from './block-optional-storage-drivers.test-support.ts';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 
 const weftRoot = import.meta.dir + '/../..';
 
 async function runFixture(relativePath: string): Promise<{ exitCode: number; stderr: string }> {
   return withOptionalStorageDriversAbsent(weftRoot, async (sandboxRoot) => {
-    const proc = Bun.spawn(['bun', relativePath], {
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    const proc = spawnWithHangGuard(['bun', relativePath], {
       cwd: sandboxRoot,
       stdout: 'pipe',
       stderr: 'pipe',

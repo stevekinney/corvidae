@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '../module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../hang-guard.ts';
 import { shellWord } from './mirror-verify-workflow.ts';
 import { applyVersionConstants, versionConstants } from './source.ts';
 import type { PublishedPackage } from './surface.ts';
@@ -50,11 +50,10 @@ async function runGate(
   );
   if (contents !== undefined) await Bun.write(join(directory, cinderVersionFile), contents);
   const line = ['bun', '-e', versionConstantScript, cinderVersionFile].map(shellWord).join(' ');
-  const child = Bun.spawn(['sh', '-c', line], {
+  const child = spawnWithHangGuard(['sh', '-c', line], {
     cwd: directory,
     stdout: 'pipe',
     stderr: 'pipe',
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),

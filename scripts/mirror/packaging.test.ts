@@ -3,11 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../hang-guard.ts';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import {
   assertTarballsPublishable,
@@ -64,8 +61,7 @@ describe('runCommand credential isolation', async () => {
             })
           : await (async () => {
               const script = `import {runCommand} from ${JSON.stringify(join(import.meta.dir, 'packaging.ts'))}; const result = await runCommand([process.execPath, '-e', ${JSON.stringify(child)}], {cwd: process.cwd()}); process.stdout.write(result.stdout); process.exit(result.exitCode);`;
-              const processResult = Bun.spawn([process.execPath, '-e', script], {
-                timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+              const processResult = spawnWithHangGuard([process.execPath, '-e', script], {
                 cwd: corvidaeRoot,
                 env: environment,
                 stdout: 'pipe',

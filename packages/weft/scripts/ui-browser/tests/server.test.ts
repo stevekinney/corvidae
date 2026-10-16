@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { spawnWithHangGuard } from '../../lib/hang-guard.ts';
 import { DEV_API_KEY } from '../dev-credentials.ts';
 import {
   authorizedHeaders,
@@ -614,7 +615,7 @@ const startupFailure = await (async () => {
       '<script type="module" src="./missing.ts"></script>',
     );
     const serverModule = fileURLToPath(new URL('../server.ts', import.meta.url));
-    const child = Bun.spawn(
+    const child = spawnWithHangGuard(
       [
         process.execPath,
         '--eval',
@@ -624,7 +625,7 @@ await startBrowserHost({ directory: ${JSON.stringify(directory)}, outputDirector
   () => { console.log('Startup rejected'); },
 );`,
       ],
-      { cwd: directory, stdout: 'pipe', stderr: 'pipe', timeout: 120_000 },
+      { cwd: directory, stdout: 'pipe', stderr: 'pipe' },
     );
     const [exitCode, stdout, stderr] = await Promise.all([
       child.exited,

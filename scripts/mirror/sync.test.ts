@@ -3,11 +3,8 @@ import { chmod, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../hang-guard.ts';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { loadPackageMap } from './package-map.ts';
 import { runCommand } from './packaging.ts';
@@ -200,8 +197,7 @@ describe('direct push credentials', async () => {
           }),
         });
       `;
-      const process_ = Bun.spawn(['bun', '-e', script], {
-        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+      const process_ = spawnWithHangGuard(['bun', '-e', script], {
         cwd: join(import.meta.dir, '../..'),
         env: {
           ...Bun.env,

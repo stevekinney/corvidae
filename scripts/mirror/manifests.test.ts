@@ -2,11 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../hang-guard.ts';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { DeferredWorkspaceError, layoutFor } from './layout-map.ts';
 import {
@@ -1296,12 +1293,14 @@ describe('lockfile generation', async () => {
         expect(staged.written).toContain('packages/components/package.json');
         expect(await Bun.file(join(directory, 'bun.lock')).exists()).toBe(true);
 
-        const frozen = Bun.spawn(['bun', 'install', '--frozen-lockfile', '--ignore-scripts'], {
-          timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-          cwd: directory,
-          stdout: 'pipe',
-          stderr: 'pipe',
-        });
+        const frozen = spawnWithHangGuard(
+          ['bun', 'install', '--frozen-lockfile', '--ignore-scripts'],
+          {
+            cwd: directory,
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        );
         expect(await frozen.exited).toBe(0);
       } finally {
         await rm(directory, { recursive: true, force: true });

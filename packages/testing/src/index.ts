@@ -17,8 +17,8 @@ export * from './svelte-plugin.ts';
 export * from './visual-fixtures.ts';
 
 export {
-  afterAwakeTime,
   HANG_GUARD_MILLISECONDS,
+  afterAwakeTime,
   runWithHangGuard,
   spawnWithHangGuard,
 } from './hang-guard.ts';

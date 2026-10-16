@@ -4,11 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create, Pax } from 'tar';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from '../hang-guard.ts';
+import { outcomeOf, rethrow } from '../module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
 import { readPackagePayload } from './package-payload.ts';
 
@@ -213,7 +210,7 @@ test('rejects absolute paths, backslashes, hard links, and FIFOs', async () => {
 // A fresh `bun -e` child with a faked platform is the behavior; it runs at module scope, off the per-test clock.
 const outcome1 = await outcomeOf(async () => {
   const archive = typedTarball('package\\file.js', 0x30);
-  const child = Bun.spawn(
+  const child = spawnWithHangGuard(
     [
       process.execPath,
       '-e',
@@ -225,7 +222,6 @@ const outcome1 = await outcomeOf(async () => {
       Buffer.from(archive).toString('base64'),
     ],
     {
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       env: { ...Bun.env, TESTING_TAR_FAKE_PLATFORM: 'win32' },
       stdout: 'pipe',
       stderr: 'pipe',

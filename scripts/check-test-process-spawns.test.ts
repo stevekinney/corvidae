@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import ts from 'typescript';
 
 import {
-  findTestProcessSpawnViolations,
   findDirectSpawns,
+  findTestProcessSpawnViolations,
   resolveSpecifier,
 } from './check-test-process-spawns';
 
