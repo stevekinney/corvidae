@@ -1,10 +1,10 @@
 {
   "schemaVersion": 2,
   "componentScope": "all",
-  "renderedSourceSha": "c48adf254c7d960db65980feb547282c549aff06",
+  "renderedSourceSha": "6d9d5924915b8c6ae4f9d8868700ab18f50adae7",
   "playwrightVersion": "1.63.0",
   "osCodename": "jammy",
   "architecture": "arm64",
   "dockerImageTag": "corvidae-browser-fixtures:1.63.0-jammy-arm64",
-  "suiteExitCode": 1
+  "suiteExitCode": 0
 }

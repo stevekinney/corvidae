@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { committedPlans } from './committed-plans.ts';
-import { planSource } from './source.ts';
+import { additionalSourceRoots, planSource, validationInputs } from './source.ts';
 import type { MirrorTarget } from './target-definitions.ts';
 import {
   assertNoSourceEscapes,
@@ -230,50 +230,47 @@ describe('a tsconfig’s `extends`', () => {
 });
 
 describe('a declared additional source root', () => {
-  const weftUi = {
-    workspace: '@lostgradient/weft-ui',
-    corvidaeDirectory: 'components/weft-ui',
-    targetDirectory: 'packages/weft-ui',
+  const weft = {
+    workspace: '@lostgradient/weft',
+    corvidaeDirectory: 'packages/weft',
+    targetDirectory: 'packages/weft',
   } as const;
 
   /**
-   * `@lostgradient/weft-ui` declares a DOM harness its route suites import from outside `src/`,
-   * plus twelve workflow fixtures. A declared file corvidae does not carry is a refusal, so every
-   * fixture carries all thirteen; only the harness carries a real edge.
+   * `@lostgradient/weft` declares the Svelte compile plugin its UI's test preload imports from
+   * outside `src/` (`scripts/lib/svelte-plugin.ts`, and the `./environment-configuration.ts` it
+   * imports), among the other files it declares. A declared file corvidae does not carry is a
+   * refusal, so every fixture carries all of them; only the preload and the plugin carry real
+   * edges. Until COR-1455 folded the UI into Weft, this was `@lostgradient/weft-ui`'s DOM harness.
    */
   const declaredFixtures = Object.fromEntries(
     [
-      'async-activity',
-      'children',
-      'coordination',
-      'failures',
-      'finalizer',
-      'history',
-      'restart-lineage',
-      'reviews',
-      'saga',
-      'schedules',
-      'tagged',
-      'workflows',
-    ].map((name) => [`components/weft-ui/fixtures/${name}.ts`, 'export {};\n']),
+      ...(additionalSourceRoots['@lostgradient/weft'] ?? []).flatMap((cluster) => cluster.paths),
+      ...(validationInputs['@lostgradient/weft'] ?? []).flatMap((cluster) => cluster.paths),
+    ].map((path) => [`packages/weft/${path}`, `// ${path}\n`]),
   );
+  const preload = {
+    'packages/weft/src/ui/tests/setup.ts':
+      "import { sveltePlugin } from '../../../scripts/lib/svelte-plugin.ts';\nexport const used = sveltePlugin;\n",
+  };
 
   test('satisfies the gate, because the declared file is emitted beside the source', async () => {
     await withTree(
       {
-        'components/weft-ui/src/routes/runs.test.ts':
-          "import { dom } from '../../tests/dom-test-support';\nexport const used = dom;\n",
-        'components/weft-ui/tests/dom-test-support.ts': 'export const dom = true;\n',
-        'components/weft-ui/tests/setup.ts': 'export {};\n',
         ...declaredFixtures,
+        ...preload,
+        'packages/weft/scripts/lib/svelte-plugin.ts':
+          "import { environmentConfiguration } from './environment-configuration.ts';\nexport const sveltePlugin = environmentConfiguration;\n",
+        'packages/weft/scripts/lib/environment-configuration.ts':
+          'export const environmentConfiguration = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [weftUi]);
-        expect(Object.keys(plan.files)).toContain('packages/weft-ui/tests/dom-test-support.ts');
+        const plan = await planSource(root, [weft]);
+        expect(Object.keys(plan.files)).toContain('packages/weft/scripts/lib/svelte-plugin.ts');
         expect(findSourceEscapes(plan.files)).toEqual([]);
         // Declaration is emission, not deletion authority: the prune scope is still `src/` alone,
-        // so nothing else under the target's own `tests/` can be removed by a sync.
-        expect(plan.ownedPrefixes).toEqual(['packages/weft-ui/src']);
+        // so nothing else under the target's own `scripts/` can be removed by a sync.
+        expect(plan.ownedPrefixes).toEqual(['packages/weft/src']);
       },
     );
   });
@@ -281,20 +278,19 @@ describe('a declared additional source root', () => {
   test('is not a bypass: the declared file’s own imports are checked the same way', async () => {
     await withTree(
       {
-        'components/weft-ui/src/routes/runs.test.ts':
-          "import { dom } from '../../tests/dom-test-support';\nexport const used = dom;\n",
-        'components/weft-ui/tests/dom-test-support.ts': "export { dom } from '../vendor/dom.ts';\n",
-        'components/weft-ui/vendor/dom.ts': 'export const dom = true;\n',
-        'components/weft-ui/tests/setup.ts': 'export {};\n',
         ...declaredFixtures,
+        ...preload,
+        'packages/weft/scripts/lib/svelte-plugin.ts':
+          "export { sveltePlugin } from '../copied/svelte.ts';\n",
+        'packages/weft/scripts/copied/svelte.ts': 'export const sveltePlugin = true;\n',
       },
       async (root) => {
-        const plan = await planSource(root, [weftUi]);
+        const plan = await planSource(root, [weft]);
         expect(findSourceEscapes(plan.files)).toEqual([
           {
-            file: 'packages/weft-ui/tests/dom-test-support.ts',
-            specifier: '../vendor/dom.ts',
-            resolved: 'packages/weft-ui/vendor/dom.ts',
+            file: 'packages/weft/scripts/lib/svelte-plugin.ts',
+            specifier: '../copied/svelte.ts',
+            resolved: 'packages/weft/scripts/copied/svelte.ts',
           },
         ]);
       },

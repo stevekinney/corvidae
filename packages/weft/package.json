@@ -17,18 +17,24 @@
     ".": "./src/index.ts",
     "./worker": "./src/worker/index.ts",
     "./worker/authoring": "./src/worker/authoring.ts",
-    "./worker/generated-authoring": "./src/worker/generated-authoring.ts"
+    "./worker/generated-authoring": "./src/worker/generated-authoring.ts",
+    "./ui": "./src/ui/index.ts"
   },
   "scripts": {
-    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error && bun scripts/check-lint-disables.ts && bun scripts/check-implementation-file-sizes.ts && bun scripts/check-import-cycles.ts && bun scripts/check-internal-imports.ts && bun scripts/check-engine-internals-field-access.ts && bun scripts/check-revision-keyed-lookups.ts && bun scripts/check-definition-vocabulary.ts && bun scripts/check-catalog-completeness.ts && bun scripts/check-type-ergonomics.ts",
-    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
-    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='scripts/benchmarks/activity-completions.test.ts' --path-ignore-patterns='scripts/benchmarks/bun-sql.test.ts' --path-ignore-patterns='scripts/benchmarks/cold-start.test.ts' --path-ignore-patterns='scripts/benchmarks/load-growth-memory.test.ts' --path-ignore-patterns='scripts/benchmarks/memory-footprint-growth.test.ts' --path-ignore-patterns='scripts/benchmarks/memory-per-workflow.test.ts' --path-ignore-patterns='scripts/benchmarks/recovery.test.ts' --path-ignore-patterns='scripts/benchmarks/token-stream-latency.test.ts' --path-ignore-patterns='scripts/benchmarks/worker-spawn.test.ts' --path-ignore-patterns='scripts/benchmarks/workflow-starts.test.ts'",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error --ignore-pattern='src/ui/**' --ignore-pattern='scripts/ui-browser/**' --ignore-pattern='scripts/ui-coverage/**' && oxlint -c ../../.oxlintrc.json --deny-warnings --type-aware --tsconfig ./tsconfig.ui.json src/ui scripts/ui-browser scripts/ui-coverage && bun scripts/check-lint-disables.ts && bun scripts/check-implementation-file-sizes.ts && bun scripts/check-import-cycles.ts && bun scripts/check-internal-imports.ts && bun scripts/check-engine-internals-field-access.ts && bun scripts/check-revision-keyed-lookups.ts && bun scripts/check-definition-vocabulary.ts && bun scripts/check-catalog-completeness.ts && bun scripts/check-type-ergonomics.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json --ignore-pattern='src/ui/**' --ignore-pattern='scripts/ui-browser/**' --ignore-pattern='scripts/ui-coverage/**' && oxlint -c ../../.oxlintrc.json --deny-warnings --fix --type-aware --tsconfig ./tsconfig.ui.json src/ui scripts/ui-browser scripts/ui-coverage",
+    "test": "bun ../../scripts/bun-test-junit.ts --path-ignore-patterns='scripts/benchmarks/activity-completions.test.ts' --path-ignore-patterns='scripts/benchmarks/bun-sql.test.ts' --path-ignore-patterns='scripts/benchmarks/cold-start.test.ts' --path-ignore-patterns='scripts/benchmarks/load-growth-memory.test.ts' --path-ignore-patterns='scripts/benchmarks/memory-footprint-growth.test.ts' --path-ignore-patterns='scripts/benchmarks/memory-per-workflow.test.ts' --path-ignore-patterns='scripts/benchmarks/recovery.test.ts' --path-ignore-patterns='scripts/benchmarks/token-stream-latency.test.ts' --path-ignore-patterns='scripts/benchmarks/worker-spawn.test.ts' --path-ignore-patterns='scripts/benchmarks/workflow-starts.test.ts' --path-ignore-patterns='src/ui/**' --path-ignore-patterns='scripts/ui-browser/**' --path-ignore-patterns='scripts/ui-coverage/**' && bun ../../scripts/bun-test-junit.ts --report-name=ui --config=./bunfig.ui.toml --conditions browser --conditions svelte src/ui scripts/ui-browser scripts/ui-coverage",
     "test:benchmarks": "bun test ./scripts/benchmarks ./scripts/benchmarks/speculation.bench.ts ./scripts/benchmarks/cli-start.bench.ts ./scripts/benchmarks/sleep-accuracy.bench.ts",
-    "test:coverage": "bun scripts/check-coverage.ts",
+    "test:coverage": "bun scripts/check-coverage.ts && bun scripts/ui-coverage/check-coverage-cli.ts",
     "test:browser": "WEFT_BROWSER_SMOKE=1 bun test ./src/storage/indexeddb-browser.test.ts ./src/storage/web-extension-browser.test.ts ./src/service-worker/service-worker-browser.test.ts ./src/client/http-client-browser.test.ts",
-    "typecheck": "tsc --noEmit && bun run typecheck:fixtures && bun ../../scripts/typecheck-contracts.ts && bun run typecheck:documentation",
+    "typecheck": "tsc --noEmit && bun run typecheck:fixtures && bun ../../scripts/typecheck-contracts.ts && bun run typecheck:documentation && bun run typecheck:ui",
     "typecheck:documentation": "bun scripts/check-documentation-code-blocks.ts",
-    "typecheck:fixtures": "tsc --noEmit -p src/cli/__fixtures__/codegen/typecheck/tsconfig.json"
+    "typecheck:fixtures": "tsc --noEmit -p src/cli/__fixtures__/codegen/typecheck/tsconfig.json",
+    "typecheck:ui": "svelte-check --workspace . --tsconfig ./tsconfig.ui.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.ui.json --fail-on-warnings",
+    "test:ui-browser": "bun --bun playwright test --config scripts/ui-browser/playwright.config.ts",
+    "test:ui-deployment": "bun --config=./bunfig.ui.toml test scripts/ui-browser/tests/deployment",
+    "dev:ui-browser": "bun --watch scripts/ui-browser/server.ts",
+    "dev:ui-server": "bun --watch scripts/ui-browser/dev-server.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "catalog:",
@@ -44,13 +50,29 @@
     "@lostgradient/environmentalist": "catalog:"
   },
   "devDependencies": {
+    "@axe-core/playwright": "catalog:",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/markdown": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@shikijs/langs": "catalog:",
+    "@shikijs/themes": "catalog:",
+    "@tanstack/svelte-query": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/svelte": "catalog:",
     "@types/bun": "catalog:",
     "@types/pg": "catalog:",
+    "cron-parser": "catalog:",
     "fake-indexeddb": "catalog:",
+    "happy-dom": "catalog:",
+    "lucide-svelte": "catalog:",
     "oxlint": "catalog:",
     "playwright": "catalog:",
     "prettier": "catalog:",
+    "prettier-plugin-svelte": "catalog:",
+    "svelte": "catalog:",
+    "svelte-check": "catalog:",
     "typescript": "catalog:"
   },
   "sideEffects": false

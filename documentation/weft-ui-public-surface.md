@@ -4,7 +4,7 @@ COR-1447. This document records the published surface of `@lostgradient/weft/ui`
 
 The architecture is settled by the owner rulings on the Weft UI project (P-COR-82): the UI ships inside `@lostgradient/weft`, `dashboard()` in Weft's root entry serves the prebuilt dashboard, and `@lostgradient/weft/ui` exports the Svelte components. Engine code never imports the UI.
 
-Evidence was gathered at corvidae `bd09f203` with Bun 1.4.2 and Node 26.9.0, except the size measurement, which used COR-1456's branch (see [Size budget](#size-budget)). Source paths are given before the move, as `components/weft-ui/src/…`. After COR-1455 the same files live under `packages/weft/src/ui/…`, and the published paths below use the post-move layout.
+Evidence was gathered at corvidae `bd09f203` with Bun 1.4.2 and Node 26.9.0, except the size measurement, which used COR-1456's branch (see [Size budget](#size-budget)). The evidence predates COR-1455, which moved the UI from its own workspace into Weft; source paths below are given at their post-move locations under `packages/weft/src/ui/…` (the move changed no file's content), and the published paths use the same layout.
 
 ## Decisions at a glance
 
@@ -23,7 +23,7 @@ Evidence was gathered at corvidae `bd09f203` with Bun 1.4.2 and Node 26.9.0, exc
 
 **Decision:** `@lostgradient/weft/ui` exports exactly the names in the block below. The four shared layers, `lib/client.ts`, `lib/query.ts`, `lib/router.svelte.ts`, and `lib/live-source/index.ts`, are public Weft API under semver, as is every other name in the block. The runtime configuration in `lib/config.ts` stays exported, as today. Sub-views and shell parts stay private.
 
-**Rationale:** The owner ruled in the COR-901 session (recorded on COR-901's "Decision recorded (2026-10-13)" comment, in corvidae#189, and on COR-1447) that the four layers are public so a separate Bureau UI application can reuse them. The components are the whole application and one view per dashboard area. The layer names were enumerated with the TypeScript checker from `components/weft-ui/src/lib/{client.ts,query.ts,router.svelte.ts,live-source/index.ts,config.ts}` at `bd09f203`.
+**Rationale:** The owner ruled in the COR-901 session (recorded on COR-901's "Decision recorded (2026-10-13)" comment, in corvidae#189, and on COR-1447) that the four layers are public so a separate Bureau UI application can reuse them. The components are the whole application and one view per dashboard area. The layer names were enumerated with the TypeScript checker from `packages/weft/src/ui/lib/{client.ts,query.ts,router.svelte.ts,live-source/index.ts,config.ts}` (the same modules, before the move) at `bd09f203`.
 
 ```text
 computeReconnectDelayMs
@@ -152,13 +152,13 @@ Weft is `packedBy: "files"` (`scripts/mirror/package-surface.json`), so every ta
 
 ## CSS
 
-**Decision:** `./ui` keeps its side-effect `import './styles/index.css'` (today the first line of `components/weft-ui/src/index.ts`). Weft's `sideEffects` changes from `false` to `["**/*.css"]` in both `packages/weft/package.json` and Weft's entry in `scripts/mirror/package-surface.json`, the value Cinder publishes. There is no separate stylesheet subpath.
+**Decision:** `./ui` keeps its side-effect `import './styles/index.css'` (today the first line of `packages/weft/src/ui/index.ts`). Weft's `sideEffects` changes from `false` to `["**/*.css"]` in both `packages/weft/package.json` and Weft's entry in `scripts/mirror/package-surface.json`, the value Cinder publishes. There is no separate stylesheet subpath.
 
 **Rationale:** For JavaScript modules `["**/*.css"]` is identical to `false`, so every engine and UI module stays tree-shakable. It only stops bundlers that honor `sideEffects` from dropping the stylesheet import, and with it the UI's styles. Engine modules import no CSS, so engine consumers see no change.
 
 Consequences:
 
-- Importing anything from `./ui` brings the UI's stylesheet. `components/weft-ui/src/styles/index.css` carries document-level rules (`html, body { height: 100% }`, `body { margin: 0 }`, and `:root` color-scheme), so a host page that imports only `queryKeys` gets those rules too.
+- Importing anything from `./ui` brings the UI's stylesheet. `packages/weft/src/ui/styles/index.css` carries document-level rules (`html, body { height: 100% }`, `body { margin: 0 }`, and `:root` color-scheme), so a host page that imports only `queryKeys` gets those rules too.
 - Components that import their own stylesheets keep working (`routes/workflows/detail/workflow-detail.svelte` imports `./workflow-detail.css`).
 - The compiled client build `dist/ui/index.js` keeps the stylesheet import for the consumer's bundler. The server build cannot carry it (see [Resolution, measured](#resolution-measured)).
 
@@ -166,7 +166,7 @@ Consequences:
 
 **Decision:** There is no `./ui/static` subpath. The prebuilt files ship in the package's `dashboard/` directory. `dashboard()` from Weft's root entry serves it by default (COR-1448), and its `distDir` option covers custom locations.
 
-**Rationale:** The project rulings defer host adapters and path-prefix mounting. `router.href` is the identity, "a seam for a future base path" (`components/weft-ui/src/lib/router.svelte.ts`), so the files work only at an origin root, which `dashboard()` already serves. Because no subpath names them, the file layout inside `dashboard/` (COR-1450's hashed output) is not public API.
+**Rationale:** The project rulings defer host adapters and path-prefix mounting. `router.href` is the identity, "a seam for a future base path" (`packages/weft/src/ui/lib/router.svelte.ts`), so the files work only at an origin root, which `dashboard()` already serves. Because no subpath names them, the file layout inside `dashboard/` (COR-1450's hashed output) is not public API.
 
 ## Optional peer dependencies
 
@@ -221,11 +221,11 @@ Why the numbers differ:
 
 ### Method, for COR-1450 to reproduce
 
-The measurement compiled the source the weft-ui development host compiles: entry `components/weft-ui/scripts/browser/index.html` (which loads `main.ts` and mounts the app), at corvidae `f8d6df87` (branch `cor-1456`), with Bun 1.4.2. It called `Bun.build` with the options of `buildBrowser` in `packages/testing/src/build-browser.ts`, switched to production and minified:
+The measurement compiled the source the weft-ui development host compiles: entry `packages/weft/scripts/ui-browser/index.html` (which loads `main.ts` and mounts the app; before the move it was the UI workspace's `scripts/browser/index.html`), at corvidae `f8d6df87` (branch `cor-1456`), with Bun 1.4.2. It called `Bun.build` with the options of `buildBrowser` in `packages/testing/src/build-browser.ts`, switched to production and minified:
 
 ```ts
 await Bun.build({
-  entrypoints: ['components/weft-ui/scripts/browser/index.html'],
+  entrypoints: ['packages/weft/scripts/ui-browser/index.html'],
   outdir,
   conditions: ['browser', 'svelte', 'unwasm'],
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },

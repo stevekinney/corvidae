@@ -28,6 +28,7 @@ type Fixture = {
   captures: boolean[];
   mouse: Array<[boolean, boolean]>;
   reviews: Array<PasteReview | undefined>;
+  copies: number[];
 };
 
 const hosts: HTMLElement[] = [];
@@ -54,6 +55,7 @@ function fixture(
   const captures: boolean[] = [];
   const mouse: Array<[boolean, boolean]> = [];
   const reviews: Array<PasteReview | undefined> = [];
+  const copies: number[] = [];
   const input = createTerminalInput({
     engine,
     host,
@@ -66,8 +68,21 @@ function fixture(
     onCaptureChange: (captured) => captures.push(captured),
     onReview: (review) => reviews.push(review),
     onRefused: (refusal) => refusals.push(refusal),
+    onCopy: () => copies.push(copies.length + 1),
   });
-  return { host, inner, engine, controller, input, settings, refusals, captures, mouse, reviews };
+  return {
+    host,
+    inner,
+    engine,
+    controller,
+    input,
+    settings,
+    refusals,
+    captures,
+    mouse,
+    reviews,
+    copies,
+  };
 }
 
 afterEach(() => {
@@ -971,5 +986,81 @@ describe('dispose', () => {
     expect(event.defaultPrevented).toBe(false);
     context.input.capture();
     expect(context.input.captured).toBe(false);
+  });
+});
+
+describe('copying the terminal selection', () => {
+  test('the copy chord with a selection reports the copy on keydown only, and the copy event that follows is not reported again', () => {
+    const context = fixture();
+    context.engine.selection = true;
+    const keydown = keyEvent('keydown', { key: 'c', ctrlKey: true });
+    expect(context.engine.hook!(keydown)).toBe(false);
+    expect(keydown.defaultPrevented).toBe(false);
+    context.engine.hook!(keyEvent('keyup', { key: 'c', ctrlKey: true }));
+    expect(context.copies).toEqual([1]);
+    context.inner.dispatchEvent(new Event('copy', { bubbles: true, cancelable: true }));
+    expect(context.copies).toEqual([1]);
+    expect(context.controller.sent).toEqual([]);
+  });
+
+  test('the copy chord with no selection reports nothing', () => {
+    const context = fixture({ settings: { platform: 'mac' } });
+    context.engine.selection = false;
+    context.engine.hook!(keyEvent('keydown', { key: 'c', metaKey: true }));
+    expect(context.copies).toEqual([]);
+  });
+
+  const copyEvent = () => new Event('copy', { bubbles: true, cancelable: true });
+
+  test('reports a copy of the engine selection once, and leaves the native copy alone', () => {
+    const context = fixture();
+    context.engine.selection = true;
+    const event = copyEvent();
+    context.inner.dispatchEvent(event);
+    expect(context.copies).toEqual([1]);
+    expect(event.defaultPrevented).toBe(false);
+    expect(context.controller.sent).toEqual([]);
+    expect(context.refusals).toEqual([]);
+  });
+
+  test('reports each copy, so a second copy is announced again', () => {
+    const context = fixture();
+    context.engine.selection = true;
+    context.inner.dispatchEvent(copyEvent());
+    context.inner.dispatchEvent(copyEvent());
+    expect(context.copies).toEqual([1, 2]);
+  });
+
+  test('says nothing when the engine has no selection', () => {
+    const context = fixture();
+    context.engine.selection = false;
+    context.inner.dispatchEvent(copyEvent());
+    expect(context.copies).toEqual([]);
+  });
+
+  test('says nothing for a copy that began outside the terminal', () => {
+    const context = fixture();
+    context.engine.selection = true;
+    const outside = document.createElement('p');
+    document.body.append(outside);
+    outside.dispatchEvent(copyEvent());
+    outside.remove();
+    expect(context.copies).toEqual([]);
+  });
+
+  test('reports a copy from a view that takes no input, and still sends nothing', () => {
+    const context = fixture({ settings: { writable: false } });
+    context.engine.selection = true;
+    context.inner.dispatchEvent(copyEvent());
+    expect(context.copies).toEqual([1]);
+    expect(context.controller.sent).toEqual([]);
+  });
+
+  test('stops listening once disposed', () => {
+    const context = fixture();
+    context.engine.selection = true;
+    context.input.dispose();
+    context.inner.dispatchEvent(copyEvent());
+    expect(context.copies).toEqual([]);
   });
 });

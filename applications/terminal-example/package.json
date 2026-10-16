@@ -1,0 +1,31 @@
+{
+  "name": "@lostgradient/terminal-example",
+  "private": true,
+  "description": "A local browser terminal backed by a Bun PTY, built from @lostgradient/terminal and @lostgradient/ventriloquist.",
+  "type": "module",
+  "scripts": {
+    "build": "NODE_ENV=production bun scripts/build.ts",
+    "dev": "bun scripts/build.ts --development && bun src/server/main.ts",
+    "start": "bun src/server/main.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts tests playwright.config.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts tests playwright.config.ts",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings",
+    "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts src scripts",
+    "test:browser": "bun scripts/build.ts && bun --bun playwright test --config playwright.config.ts"
+  },
+  "dependencies": {
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/terminal": "workspace:*",
+    "@lostgradient/ventriloquist": "workspace:*",
+    "svelte": "catalog:"
+  },
+  "devDependencies": {
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/typescript": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@types/bun": "catalog:",
+    "oxlint": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -50,6 +50,8 @@ export type TerminalInputOptions = {
   onReview: (review: PasteReview | undefined) => void;
   /** Input, or part of it, did not reach the wire. Nothing is retried. */
   onRefused: (refusal: InputRefusal) => void;
+  /** The reader copied the engine's selection. Called once per copy; the native copy is untouched. */
+  onCopy?: () => void;
 };
 
 export type TerminalInput = {
@@ -296,6 +298,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
     if (event.type === 'keydown') {
       if (decision.effect === 'release-capture') setCaptured(false);
       else if (decision.effect === 'interrupt') send(Uint8Array.of(INTERRUPT_BYTE), 'text');
+      else if (decision.effect === 'copy-selection') noteCopy(event.timeStamp);
     }
     return decision.process;
   }
@@ -405,6 +408,27 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
   }
 
   // Capture phase on the host runs before the engine's own listeners on the nodes below it.
+  // A copy that began in the engine and has a selection is the reader copying terminal output.
+  // The event is only observed: the engine and the browser complete the copy themselves.
+  // Some engines raise no `copy` event for their own selection (Chromium), so the copy chord is
+  // also a source. A `copy` event that follows the chord within this window is the same copy.
+  const SAME_COPY_MILLISECONDS = 500;
+  let lastChordCopy = Number.NEGATIVE_INFINITY;
+
+  function noteCopy(timeStamp: number): void {
+    lastChordCopy = timeStamp;
+    options.onCopy?.();
+  }
+
+  function handleCopy(event: Event): void {
+    if (disposed) return;
+    if (event.timeStamp - lastChordCopy < SAME_COPY_MILLISECONDS) return;
+    const target = event.target;
+    if (!isNode(target) || !host.contains(target)) return;
+    if (engine.hasSelection()) options.onCopy?.();
+  }
+
+  host.addEventListener('copy', handleCopy);
   host.addEventListener('paste', handlePaste, true);
   host.addEventListener('focusout', handleFocusOut);
   host.addEventListener('mousedown', handleMouseDown, true);
@@ -483,6 +507,7 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
       stopModeChanges();
       stopInput();
       engine.setKeyHook(undefined);
+      host.removeEventListener('copy', handleCopy);
       host.removeEventListener('paste', handlePaste, true);
       host.removeEventListener('focusout', handleFocusOut);
       host.removeEventListener('mousedown', handleMouseDown, true);

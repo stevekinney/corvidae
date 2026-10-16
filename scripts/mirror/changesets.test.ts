@@ -100,13 +100,21 @@ describe('validateChangeset', () => {
     expect((error as Error).message).toContain('@lostgradient/not-a-package');
   });
 
-  test.each(['@lostgradient/weft-ui', '@lostgradient/testing', '@lostgradient/typescript'])(
+  test.each(['@lostgradient/testing', '@lostgradient/typescript'])(
     'rejects the private workspace %s',
     async (name) => {
       const error = await rejectionOf(validateChangeset(changeset([`"${name}": patch`])));
       expect(error).toBeInstanceOf(ChangesetError);
     },
   );
+
+  test('rejects @lostgradient/weft-ui, a workspace no longer, since COR-1455 folded it into Weft', async () => {
+    const error = await rejectionOf(
+      validateChangeset(changeset(['"@lostgradient/weft-ui": patch'])),
+    );
+    expect(error).toBeInstanceOf(ChangesetError);
+    expect((error as Error).message).toContain('@lostgradient/weft-ui');
+  });
 
   /**
    * The owner stopped publishing these on 2026-10-14. A changeset naming one has no mirror to

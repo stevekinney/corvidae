@@ -17,8 +17,22 @@ export type OwnedProcessOptions = {
   readonly clock: SessionClock;
   readonly graceMilliseconds: number;
   readonly observationMilliseconds: number;
-  /** Reads the process table, to find descendants that left the owned group. */
+  /**
+   * Reads the process table, to find descendants that left the owned scope. Each record's `group`
+   * is the scope id the operations work on: a process group, or a session.
+   */
   readonly readProcessTable: () => Promise<ProcessRecord[]>;
+  /**
+   * Asked once per termination, before the first TERM, to hang up the leader so it can end its own
+   * jobs. Only a session has one; a failure is swallowed, because the sweep that follows does not
+   * depend on it.
+   */
+  readonly hangUp?: (leader: number) => void;
+  /**
+   * Called when a termination is final (anything but `incomplete`, which may be tried again), so
+   * what the operations remembered of the scope during it can be released.
+   */
+  readonly release?: (leader: number) => void;
 };
 
 /** The wire carries a signal as a nonempty name; a signal without a name of its own is spelled by its number. */
@@ -29,11 +43,14 @@ function signalName(signal: string | number | null): string | null {
 }
 
 /**
- * One spawned process and the process group it leads. The helpers start every process as its own
- * group leader, so the group is exactly the process and the descendants that stayed in it, and
- * ending the group ends all of them. That is the whole of what cleanup can own; descendants that
- * started a group or session of their own, and anything left behind by a host crash, are outside
- * it and are reported as `unknown`, never as clean.
+ * One spawned process and the scope it leads. The helpers start every process as its own group
+ * leader, and a PTY child as its own session leader as well. For a pipe the scope is the group:
+ * exactly the process and the descendants that stayed in it, and ending the group ends all of them.
+ * For a PTY it is the whole session, which also holds the jobs a shell puts in groups of their own.
+ * That is the whole of what cleanup can own; descendants that started a group (a pipe) or a session
+ * (either) of their own, and anything left behind by a host crash, are outside it and are reported
+ * as `unknown`, never as clean. In the rest of this file "group" means that scope, and a scope's id
+ * is its leader's pid.
  *
  * What cleanup can observe of that is limited, and it says so. An escaped descendant is found by
  * walking parent links in the process table, which works only while its ancestors are alive: once
@@ -91,7 +108,11 @@ export class OwnedProcess {
   terminate(): Promise<CleanupOutcome> {
     // Nothing is owned yet, so nothing is remembered: a process adopted later is still to be ended.
     if (this.#child === undefined) return Promise.resolve('complete');
-    this.#termination ??= this.#terminate(this.#child);
+    const child = this.#child;
+    this.#termination ??= this.#terminate(child).then((outcome) => {
+      if (outcome !== 'incomplete') this.#options.release?.(child.pid);
+      return outcome;
+    });
     return this.#termination;
   }
 
@@ -104,7 +125,24 @@ export class OwnedProcess {
     // That group's number can belong to an unrelated group by now, so it is not signaled.
     if (this.#exiting) await this.#exit;
     if (this.#exited && this.#emptyAtExit) return scope;
-    const { operations, clock, graceMilliseconds, observationMilliseconds } = this.#options;
+    const { operations, clock, graceMilliseconds, observationMilliseconds, hangUp } = this.#options;
+    // A leader known to have exited is never hung up: its pid may belong to another process by now.
+    if (hangUp !== undefined && !this.#exited) {
+      let hungUp = true;
+      try {
+        hangUp(child.pid);
+      } catch {
+        // A courtesy only: the TERM and KILL sweep below is what ends the scope.
+        hungUp = false;
+      }
+      if (hungUp) {
+        await this.#headStart();
+        // The leader may have exited, and its session emptied, during the head start; then the
+        // number is no longer one to sweep.
+        if (this.#exiting) await this.#exit;
+        if (this.#exited && this.#emptyAtExit) return scope;
+      }
+    }
     const ended = await terminateProcessGroup({
       group: child.pid,
       operations,
@@ -121,6 +159,20 @@ export class OwnedProcess {
     // number, so a later call may try again.
     if (ended !== 'complete') this.#termination = undefined;
     return outcome;
+  }
+
+  /**
+   * Give the hung-up leader one poll tick to forward the hangup to its jobs before the sweep, or
+   * less if the leader exits first. Bounded and on the injected clock, so nothing waits on a leader
+   * that ignores the hangup.
+   */
+  async #headStart(): Promise<void> {
+    let cancel: (() => void) | undefined;
+    const tick = new Promise<void>((resolve) => {
+      cancel = this.#options.clock.schedule(resolve, POLL_MILLISECONDS);
+    });
+    await Promise.race([tick, this.#exit]);
+    cancel?.();
   }
 
   async #observeScope(root: number): Promise<CleanupOutcome> {

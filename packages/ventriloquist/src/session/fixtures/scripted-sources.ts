@@ -64,6 +64,8 @@ export type ScriptedStream = {
   /** How many times the reader was canceled, and whether its lock was released. */
   readonly cancelCount: number;
   readonly lockReleased: boolean;
+  /** How many times the session asked the stream for a chunk: a paused source is not asked. */
+  readonly readCount: number;
 };
 
 /** An owned stream. `cancel: 'absent'` models a reader that cannot be canceled at all. */
@@ -75,8 +77,12 @@ export function createScriptedStream(
   const behavior = options.cancel ?? 'resolve';
   let cancelCount = 0;
   let lockReleased = false;
+  let readCount = 0;
   const reader: ByteReader = {
-    read: () => feed.next(),
+    read: () => {
+      readCount += 1;
+      return feed.next();
+    },
     releaseLock: () => {
       options.releaseLock?.();
       lockReleased = true;
@@ -103,6 +109,9 @@ export function createScriptedStream(
     },
     get lockReleased() {
       return lockReleased;
+    },
+    get readCount() {
+      return readCount;
     },
   };
 }

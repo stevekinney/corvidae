@@ -79,15 +79,11 @@
       "persistent": true,
       "cache": false
     },
-    "dev:browser": {
+    "@lostgradient/weft#dev:ui-server": {
       "persistent": true,
       "cache": false
     },
-    "dev:server": {
-      "persistent": true,
-      "cache": false
-    },
-    "@lostgradient/weft-ui#dev:browser": {
+    "@lostgradient/weft#dev:ui-browser": {
       "persistent": true,
       "cache": false,
       "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]
@@ -110,7 +106,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
-        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
+        "$TURBO_ROOT$/documentation/weft-ui-public-surface.md"
       ],
       "dependsOn": ["transit"],
       "env": [

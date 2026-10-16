@@ -126,7 +126,13 @@ export type CloseCause =
 /** Whether every accepted output byte reached a parse completion before the session closed. */
 export type DrainResult = {
   readonly state: 'drained' | 'truncated';
-  /** Output the consumer was never given, or was given but never reported parsed. */
+  /**
+   * Output the session had read and the consumer was never given, or was given but never reported
+   * parsed. It does not include what a paused producer still held when the session closed: output a
+   * pipe's kernel buffer, a terminal's queue or the reader's look-ahead had not delivered is never
+   * read after a revoke, and the host cannot know its size, so `drained` means every byte the
+   * session read was accounted for, not that the process had nothing left to say.
+   */
   readonly unavailableBytes: number;
 };
 

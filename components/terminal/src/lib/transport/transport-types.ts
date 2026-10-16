@@ -3,6 +3,7 @@ import type {
   CleanupOutcome,
   FailureCode,
   FailureReason,
+  OutputChannel,
   RequestedMode,
 } from '@lostgradient/ventriloquist';
 
@@ -53,8 +54,18 @@ export type CleanupResult = {
   readonly source: 'host' | 'local';
 };
 
-/** Receives one chunk of output bytes. Call `parsed` exactly once, when the bytes were parsed. */
-export type OutputListener = (chunk: Uint8Array, parsed: () => void) => void;
+/**
+ * Receives one chunk of output bytes. Call `parsed` exactly once, when the bytes were parsed.
+ * `channel` says which stream the host read the chunk from: `pty` for a terminal's one combined
+ * stream, `stdout` or `stderr` for a pipe, which keeps the two apart. Order holds within a channel
+ * and never across channels, and a listener that wants one channel must still report the other
+ * channel's chunks parsed, because acknowledgement counts every byte in delivery order.
+ */
+export type OutputListener = (
+  chunk: Uint8Array,
+  parsed: () => void,
+  channel: OutputChannel,
+) => void;
 
 export type TerminalTransportEvent =
   | {

@@ -3,6 +3,7 @@ import type { OutputSource, ProcessBackend } from '../session/session-types.ts';
 import { isSupportedHost, type HostPlatform } from './host-platform.ts';
 import { OwnedProcess } from './owned-process.ts';
 import { processGroupOperations, readProcessTable } from './process-group.ts';
+import { readSessionTable, sessionOperations } from './process-session.ts';
 import { ProcessStartFailure } from './process-start-failure.ts';
 import {
   PROCESS_BUDGETS,
@@ -21,7 +22,6 @@ export type ResolvedHostSettings = {
   readonly clock: SessionClock;
   readonly graceMilliseconds: number;
   readonly observationMilliseconds: number;
-  readonly maximumBufferedOutputBytes: number;
 };
 
 /** Validate the host options and fill in the defaults. A setting outside its range is refused, never clamped. */
@@ -44,33 +44,41 @@ export function resolveHostSettings(options: ProcessHostOptions): ResolvedHostSe
       'observationWindowMilliseconds',
       options.observationWindowMilliseconds,
     ),
-    maximumBufferedOutputBytes: settled(
-      'maximumBufferedOutputBytes',
-      options.maximumBufferedOutputBytes,
-    ),
   };
 }
 
-export function createOwnedProcess(settings: ResolvedHostSettings): OwnedProcess {
-  return new OwnedProcess({
-    operations: processGroupOperations,
+/**
+ * What cleanup owns. A pipe has no terminal, so its guarantee is the process group. A PTY child is
+ * a session leader, and a shell on a terminal puts each background job in a group of its own, so a
+ * PTY owns the whole session.
+ */
+export type CleanupScope = 'group' | 'session';
+
+export function createOwnedProcess(
+  settings: ResolvedHostSettings,
+  scope: CleanupScope = 'group',
+): OwnedProcess {
+  const timing = {
     clock: settings.clock,
     graceMilliseconds: settings.graceMilliseconds,
     observationMilliseconds: settings.observationMilliseconds,
-    readProcessTable,
-  });
+  };
+  return scope === 'session'
+    ? new OwnedProcess({
+        ...timing,
+        operations: sessionOperations,
+        readProcessTable: () => readSessionTable(),
+        hangUp: (leader) => sessionOperations.hangUp(leader),
+        release: (leader) => sessionOperations.forget(leader),
+      })
+    : new OwnedProcess({ ...timing, operations: processGroupOperations, readProcessTable });
 }
 
 /**
- * Check the host against the supported matrix, then spawn. A host outside the matrix is
- * `unsupported-runtime`, for a pipe as much as a PTY, and is never retried in another mode; a spawn
- * the operating system refuses, such as a missing executable or working directory, is `spawn-failed`.
+ * Check the host against the supported matrix. A host outside it is `unsupported-runtime`, for a
+ * pipe as much as a PTY, and is never retried in another mode.
  */
-export function spawnOwnedProcess(
-  settings: ResolvedHostSettings,
-  command: string[],
-  spawnOptions: Record<string, unknown>,
-): SpawnedProcess {
+export function requireSupportedHost(settings: ResolvedHostSettings): void {
   const { platform, architecture } = settings.host;
   if (!isSupportedHost(settings.host)) {
     throw new ProcessStartFailure(
@@ -78,6 +86,18 @@ export function spawnOwnedProcess(
       `terminal processes run on macOS and Linux, on x64 and arm64; this host is ${platform}/${architecture}`,
     );
   }
+}
+
+/**
+ * Check the host, then spawn. A spawn the operating system refuses, such as a missing executable
+ * or working directory, is `spawn-failed`.
+ */
+export function spawnOwnedProcess(
+  settings: ResolvedHostSettings,
+  command: string[],
+  spawnOptions: Record<string, unknown>,
+): SpawnedProcess {
+  requireSupportedHost(settings);
   try {
     return settings.spawn(command, spawnOptions);
   } catch (cause) {

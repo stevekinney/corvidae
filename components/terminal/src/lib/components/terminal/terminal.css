@@ -30,6 +30,16 @@
     color: var(--cinder-status-danger-text);
   }
 
+  /* The viewport's non-scrolling frame: it takes the flex space the viewport used to, and carries
+     the focus ring so the ring stays put when the viewport scrolls. */
+  .cinder-terminal__screen {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-block-size: 0;
+  }
+
   .cinder-terminal__viewport {
     flex: 1;
     min-block-size: 0;
@@ -52,7 +62,15 @@
     overflow: auto;
   }
 
-  .cinder-terminal__viewport:focus-within {
+  /* The ring is an overlay on the frame, not the viewport's own shadow: the engine's scrollable
+     element fills the viewport, and an inset shadow paints under it, where it would show only at
+     the edges the engine does not cover. It is on the frame and not the viewport so that it does
+     not scroll away with an owner grid larger than the viewport. */
+  .cinder-terminal__screen:focus-within::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
     outline: var(--cinder-ring-width) solid transparent;
     outline-offset: calc(-1 * var(--cinder-ring-width));
     box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
@@ -60,6 +78,7 @@
 
   .cinder-terminal__actions {
     display: flex;
+    flex-wrap: wrap;
     padding: var(--cinder-space-2) var(--cinder-space-3);
     gap: var(--cinder-space-2);
   }
@@ -117,7 +136,7 @@
   }
 
   @media (forced-colors: active) {
-    .cinder-terminal__viewport:focus-within {
+    .cinder-terminal__screen:focus-within::after {
       outline-color: Highlight;
       box-shadow: none;
     }
@@ -129,4 +148,11 @@
       color: CanvasText;
     }
   }
+}
+
+/* The engine's stylesheet gives its scrollable viewport an opaque black background and no layer, so
+   a rule inside a layer cannot replace it. That viewport covers the engine element's padding, the
+   reader's inset, so without this the inset shows as a black frame around the themed screen. */
+.cinder-terminal__viewport .xterm .xterm-viewport {
+  background-color: var(--cinder-surface-inset);
 }

@@ -69,9 +69,12 @@ test('the executable repository has no unregistered environment reads', async ()
 test('registers runtime and script boundaries separately', () => {
   expect(boundaryKind('packages/operative/src/environment-configuration.ts')).toBe('runtime');
   expect(boundaryKind('applications/playground/src/environment-configuration.ts')).toBe('runtime');
-  expect(boundaryKind('components/weft-ui/scripts/browser/environment-configuration.ts')).toBe(
+  expect(boundaryKind('packages/weft/scripts/ui-browser/environment-configuration.ts')).toBe(
     'script',
   );
+  // Weft's byte-identical copy of `@lostgradient/testing`'s module, for the Svelte compile plugin
+  // the UI's test preload and browser host import (scripts/check-svelte-plugin-copies.ts).
+  expect(boundaryKind('packages/weft/scripts/lib/environment-configuration.ts')).toBe('script');
   expect(boundaryKind('scripts/environment-configuration.ts')).toBe('script');
   expect(
     boundaryKind('packages/bureau/src/test/signal-shutdown/environment-configuration.ts'),

@@ -279,12 +279,27 @@ const slowConsumer: Variant[] = [
         harness.process.stream.push(new Uint8Array(40 * 1024).fill(0x41));
         await client.waitForKind('output');
         harness.process.stream.push(new Uint8Array(40 * 1024).fill(0x42));
-        const summary = await harness.session().closed;
+        harness.process.stream.push(new Uint8Array(40 * 1024).fill(0x43));
+        // The budget fills and the host stops reading the producer; nothing is dropped and nothing fails.
+        await client.waitFor(() => client.endpoint.outputBytes.received >= 64 * 1024);
+        const reads = harness.process.stream.readCount;
+        await Bun.sleep(100);
+        const held = client.endpoint.outputBytes.received;
+        const session = harness.session();
+        const stillReading = harness.process.stream.readCount !== reads;
+        // Acknowledging what arrived is what releases the rest.
+        client.sendResult(client.endpoint.consumeOutput(held));
+        await client.waitFor(() => client.endpoint.outputBytes.received >= 120 * 1024);
         return [
-          check('the session failed visibly on overflow', summary.cause === 'output-overflow'),
-          check('the slot is quarantined', summary.quarantined),
-          check('the client acknowledged nothing', client.endpoint.outputBytes.consumed === 0),
-          check('the process was cleaned up once', harness.process.cleanups === 1),
+          check('the session stayed open', !session.snapshot.closed),
+          check('the host held no more than the budget', held <= 64 * 1024),
+          check('the producer was not read while the budget was full', !stillReading),
+          check('the client acknowledged nothing before the pause', held > 0),
+          check(
+            'acknowledging released the rest, byte for byte',
+            client.endpoint.outputBytes.received === 120 * 1024,
+          ),
+          check('the process was not cleaned up', harness.process.cleanups === 0),
         ];
       }),
   },

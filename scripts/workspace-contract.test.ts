@@ -8,7 +8,7 @@ import ts from 'typescript';
 import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
-const componentLibraries = ['cinder', 'chat', 'editor', 'weft-ui', 'terminal'];
+const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
 const libraries = [
   'bureau',
   'operative',
@@ -22,7 +22,6 @@ const libraries = [
   'evaluation',
   'lifecycle',
   'weft',
-  'weft-ui',
   'cinder',
   'chat',
   'editor',
@@ -48,7 +47,6 @@ function publicWorkspaceName(directoryName: string): string {
 /** The complete, exact set of current workspace names, per the COR-1284 ruling. */
 const expectedWorkspaceNames = new Set([
   '@lostgradient/weft',
-  '@lostgradient/weft-ui',
   '@lostgradient/cinder',
   '@lostgradient/chat',
   '@lostgradient/editor',
@@ -66,6 +64,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/typescript',
   '@lostgradient/playground',
   '@lostgradient/terminal',
+  '@lostgradient/terminal-example',
   '@lostgradient/ventriloquist',
   'armorer',
   'conversationalist',

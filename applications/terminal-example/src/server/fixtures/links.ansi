@@ -1,0 +1,25 @@
+Links fixture: the terminal never opens a link unless the host turns links on.
+
+Visible HTTPS text (the only thing a host may open):
+  https://example.com/visible-link
+  see https://example.com/docs/terminal.
+
+OSC 8 hidden destination (the label is shown, the target is never read):
+  ]8;;https://hidden.example/secret\hidden destination label]8;;\
+
+A path:
+  /etc/hosts
+  ./notes/readme.md
+
+A command scheme:
+  command:workbench.action.openSettings
+  vscode://file/etc/hosts
+
+Not HTTPS:
+  http://example.com/insecure
+  javascript:alert(1)
+
+A download-looking address (visible HTTPS text, so it follows the same rule):
+  https://example.com/archive.zip?download=1
+
+Fixture complete.

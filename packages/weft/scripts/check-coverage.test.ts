@@ -59,12 +59,24 @@ const benchmarkExclusions = await outcomeOf(async () => {
     'scripts/benchmarks/token-stream-latency.test.ts',
     'scripts/benchmarks/worker-spawn.test.ts',
     'scripts/benchmarks/workflow-starts.test.ts',
+    'src/ui/**',
+    'scripts/ui-browser/**',
+    'scripts/ui-coverage/**',
   ]);
   const files = await listCoverageTestFiles();
   for (const path of excluded) expect(files).not.toContain(path);
   // The benchmark directory's unit tests are not measurement runs and stay in the shard.
   expect(files).toContain('scripts/benchmarks/coverage-mode.test.ts');
   expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');
+});
+
+const uiExclusions = await outcomeOf(async () => {
+  const files = await listCoverageTestFiles();
+  const uiTrees = ['src/ui/', 'scripts/ui-browser/', 'scripts/ui-coverage/'];
+  expect(files.filter((file) => uiTrees.some((tree) => file.startsWith(tree)))).toEqual([]);
+  // The engine's own tests around the UI's trees stay in the shard.
+  expect(files).toContain('tests/ui-boundary.test.ts');
+  expect(files).toContain('scripts/check-coverage.test.ts');
 });
 
 describe('listCoverageTestFiles', () => {
@@ -77,8 +89,16 @@ describe('listCoverageTestFiles', () => {
    * the two cannot drift. Pinned against the concrete list so a script edit that drops one is a
    * visible change here rather than a silently widened shard.
    */
-  it('excludes exactly the measurement benchmarks the test script excludes', () =>
+  it('excludes exactly the measurement benchmarks and UI trees the test script excludes', () =>
     rethrow(benchmarkExclusions));
+
+  /**
+   * The UI's tests run in the `test` script's second invocation and are gated by the UI's ratchet
+   * (`scripts/ui-coverage/`), so the engine shard, read from the same exclusions as globs, holds
+   * no path under any of the UI's three trees.
+   */
+  it('lists no test under src/ui, scripts/ui-browser, or scripts/ui-coverage', () =>
+    rethrow(uiExclusions));
 });
 
 // The pipe scenario below runs the coverage CLI in a real child process, which takes seconds on a

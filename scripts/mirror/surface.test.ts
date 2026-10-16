@@ -377,11 +377,10 @@ describe('surface parity', () => {
   test('cinder is regenerated to the full published surface, not a subset', () => {
     const { plan } = committedPlans.cinder;
     const result = plan.parity.find((entry) => entry.publicName === '@lostgradient/cinder');
-    expect(result?.baselineVersion).toBe('0.27.1');
+    expect(result?.baselineVersion).toBe('0.28.0');
     expect(result?.missing).toEqual([]);
-    // `./tokens/runtime` (COR-491) is the first subpath the registry baseline has not seen; it
-    // joins the baseline when that version is published and the baseline is refreshed.
-    expect(result?.added).toEqual(['./tokens/runtime']);
+    // 0.28.0 published `./tokens/runtime` (COR-491), so the refreshed baseline has every subpath.
+    expect(result?.added).toEqual([]);
   });
 
   /**
@@ -668,12 +667,8 @@ describe('emitted source', () => {
       ).exists();
       expect(emitted.length > 0, `${workspace.workspace} source`).toBe(carries);
     }
-    // The remap is what these paths are: corvidae keeps all three under `components/`.
-    for (const path of [
-      'packages/components/src/index.ts',
-      'packages/editor/src/lib/index.ts',
-      'packages/weft-ui/src/index.ts',
-    ]) {
+    // The remap is what these paths are: corvidae keeps both under `components/`.
+    for (const path of ['packages/components/src/index.ts', 'packages/editor/src/lib/index.ts']) {
       expect(plan.files[path], path).toBeDefined();
     }
     expect(
@@ -714,30 +709,41 @@ describe('emitted source', () => {
         false,
       ]);
     }
-    // The two development-only workspaces, plus `@lostgradient/weft-ui` since COR-1196 ruled it
-    // held back for API design rather than published. bureau, memory and skills were excluded
+    // The two development-only workspaces. `@lostgradient/weft-ui` was the third from COR-1196
+    // until COR-1455 folded the UI into Weft. bureau, memory and skills were excluded
     // from the mirror entirely by the repository owner once it was clear that `private-workspace`
     // still ships source to the *public* mirror repository, which would have made three
     // never-published packages public for the first time.
     expect(plan.privateWorkspaces.map((entry) => entry.publicName).toSorted()).toEqual([
       '@lostgradient/testing',
       '@lostgradient/typescript',
-      '@lostgradient/weft-ui',
     ]);
   });
 
   /**
-   * COR-1196: the ruling itself, pinned directly rather than left to be inferred from the private
-   * workspace count above. `package-map.json` is what a sync reads to decide this, but the plan is
-   * what a downstream consumer (`verify-steps.ts`, the mirror-verify workflow) actually sees, so
-   * this asserts the ruling took effect there too.
+   * COR-1455: the UI is part of `@lostgradient/weft` (the Weft UI project's owner ruling), so it
+   * ships in the weft target's source under `packages/weft/src/ui`, with the Svelte compile plugin
+   * its test preload imports, and the cinder target no longer carries a workspace for it at all.
+   * Pinned on the plans rather than inferred from the map, because the plans are what a sync
+   * writes and what the mirror-verify workflow sees.
    */
-  test('weft-ui ships as unpublished source, not a published package', () => {
-    const { plan } = committedPlans.cinder;
-    expect(plan.published.map((entry) => entry.publicName)).not.toContain('@lostgradient/weft-ui');
-    expect(plan.privateWorkspaces.map((entry) => entry.publicName)).toContain(
-      '@lostgradient/weft-ui',
-    );
+  test('the UI ships in Weft’s source, and the cinder target carries no workspace for it', () => {
+    const cinder = committedPlans.cinder.plan;
+    for (const entries of [cinder.published, cinder.privateWorkspaces]) {
+      expect(entries.map((entry) => entry.publicName)).not.toContain('@lostgradient/weft-ui');
+    }
+    expect(
+      Object.keys(cinder.files).filter((path) => path.startsWith('packages/weft-ui/')),
+    ).toEqual([]);
+    const weft = committedPlans.weft.plan;
+    for (const path of [
+      'packages/weft/src/ui/index.ts',
+      'packages/weft/src/ui/tests/setup.ts',
+      'packages/weft/scripts/lib/svelte-plugin.ts',
+      'packages/weft/scripts/lib/environment-configuration.ts',
+    ]) {
+      expect(weft.files[path], path).toBeDefined();
+    }
   });
 });
 

@@ -52,7 +52,7 @@ const scenario2 = await outcomeOf(async () => {
   try {
     await createWorkspace(directory);
     const cases = [
-      { name: 'weft-ui', task: 'dev:browser', variable: 'WEFT_UI_PORT' },
+      { name: 'weft', task: 'dev:ui-browser', variable: 'WEFT_UI_PORT' },
       { name: 'weft', task: 'test', variable: 'WEFT_EVENT_DISPATCH_ARCHITECTURE_BENCHMARK' },
       { name: 'cinder', task: 'test', variable: 'CINDER_SVG_DATA_URI_ROOTS' },
     ];

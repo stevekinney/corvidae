@@ -84,11 +84,11 @@ describe('structure', () => {
     expect(required(harness, '[role="region"]').getAttribute('data-testid')).toBe('terminal');
   });
 
-  test('shows the frame recovery control only for a non-empty error and a handler', () => {
+  test('shows the frame recovery control only for an engine failure with a non-empty error and a handler', () => {
     let requests = 0;
     const withError = mountHarness(Terminal, {
       title: 'Shell',
-      state: 'failed',
+      state: 'engine-load-failed',
       error: 'Could not start the shell.',
       onRecoveryRequest: () => {
         requests += 1;
@@ -99,7 +99,7 @@ describe('structure', () => {
     );
     required(withError, '.cinder-terminal-frame__reload').click();
     expect(requests).toBe(1);
-    const without = mountHarness(Terminal, { title: 'Shell', state: 'failed' });
+    const without = mountHarness(Terminal, { title: 'Shell', state: 'engine-load-failed' });
     expect(query(without, '[role="alert"]')).toBeNull();
   });
 });

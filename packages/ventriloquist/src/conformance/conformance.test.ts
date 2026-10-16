@@ -27,6 +27,8 @@ import { CONTROL_CASES } from './conformance-control-cases.test-support.ts';
 import { CORPUS_CASES } from './conformance-corpus-cases.test-support.ts';
 import { FAULT_CASES } from './conformance-fault-cases.test-support.ts';
 import { descriptorStability } from './conformance-leak-cases.test-support.ts';
+import { PAUSE_CASES } from './conformance-pause-cases.test-support.ts';
+import { SESSION_CASES } from './conformance-session-cases.test-support.ts';
 import { SOURCE_CASES } from './conformance-source-cases.test-support.ts';
 import {
   HOST_CELL,
@@ -55,7 +57,9 @@ const FAMILIES: readonly { readonly family: string; readonly cases: readonly Cas
     { family: 'behavior', cases: BEHAVIOR_CASES },
     { family: 'corpus', cases: CORPUS_CASES },
     { family: 'sources', cases: SOURCE_CASES },
+    { family: 'pause', cases: PAUSE_CASES },
     { family: 'faults', cases: FAULT_CASES },
+    { family: 'session', cases: SESSION_CASES },
   ];
 
 type Cell = {
@@ -278,6 +282,7 @@ describe('the conformance matrix', () => {
       'control-leak-detectors',
       'owned-source-release',
       'hanging-cancellation',
+      'output-overflow',
     ]) {
       const ids = EXPECTED_CELL_IDS.filter((id) => id.endsWith(`:${name}`));
       expect(ids.length, name).toBeGreaterThan(0);

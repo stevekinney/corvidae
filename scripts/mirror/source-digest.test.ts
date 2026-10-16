@@ -482,9 +482,12 @@ describe('the guard against the real workspaces', async () => {
     return { ...map, workspaces: { ...map.workspaces, [workspace]: updated } };
   };
 
-  // The one cross-target edge left since the agent-bureau target was retired: cinder's
-  // `@lostgradient/weft-ui` depends on `@lostgradient/weft`.
-  const staleEdgeCases = [['cinder', '@lostgradient/weft']] as const;
+  // The cross-target edges left since the agent-bureau target was retired and the UI moved into
+  // Weft (COR-1455): the UI's development edges from Weft to Cinder and Markdown.
+  const staleEdgeCases = [
+    ['weft', '@lostgradient/cinder'],
+    ['weft', '@lostgradient/markdown'],
+  ] as const;
   const staleEdgeOutcomes = new Map<string, unknown>();
   // Planning a surface starts real processes, so each case runs at module scope, off the per-test clock.
   for (const [target, dependency] of staleEdgeCases) {

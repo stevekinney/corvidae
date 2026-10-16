@@ -5,7 +5,7 @@ import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/tes
 import { ManualClock } from '../session/fixtures/manual-clock.ts';
 import { systemClock } from '../session/session-clock.ts';
 import { flush } from '../session/session.test-support.ts';
-import { scenarioTest, settleScenarios } from './bun-process.test-support.ts';
+import { scenario, scenarioResult, settleScenarios } from './bun-process.test-support.ts';
 import {
   createProcessGroupOperations,
   descendantsOutsideGroup,
@@ -111,6 +111,44 @@ describe('terminateProcessGroup', () => {
     expect(clock.pendingTimers).toBe(0);
   });
 
+  test('never has two probes in flight, and the last look waits for the one that is', async () => {
+    const clock = new ManualClock();
+    const probes: { resolve(present: boolean): void }[] = [];
+    let inFlight = 0;
+    let overlapped = false;
+    const done = terminateProcessGroup({
+      ...termination(scriptedGroup(), clock),
+      operations: {
+        signal: () => undefined,
+        exists: () =>
+          new Promise<boolean>((resolve) => {
+            inFlight += 1;
+            overlapped ||= inFlight > 1;
+            probes.push({
+              resolve: (present) => {
+                inFlight -= 1;
+                resolve(present);
+              },
+            });
+          }),
+      },
+    });
+    await flush();
+    // The first probe is still reading the process table when the grace passes.
+    clock.advance(100);
+    await flush();
+    expect(probes).toHaveLength(1);
+    probes[0]?.resolve(true);
+    await flush();
+    // Only now does the deadline look once more, and it sees the group gone.
+    expect(probes).toHaveLength(2);
+    probes[1]?.resolve(false);
+    expect(await done).toBe('complete');
+    expect(overlapped).toBe(false);
+    expect(inFlight).toBe(0);
+    expect(clock.pendingTimers).toBe(0);
+  });
+
   test('is incomplete when the group cannot be signaled', async () => {
     const clock = new ManualClock();
     const outcome = await terminateProcessGroup({
@@ -126,6 +164,18 @@ describe('terminateProcessGroup', () => {
   });
 });
 
+const scenario1 = scenario('signals a real group and sees it empty', async () => {
+  const child = Bun.spawn(['sleep', '7919'], {
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  });
+  expect(await processGroupOperations.exists(child.pid)).toBe(true);
+  processGroupOperations.signal(child.pid, 'SIGTERM');
+  expect(await child.exited).toBe(143);
+  expect(await processGroupOperations.exists(child.pid)).toBe(false);
+});
+
 describe('processGroupOperations', () => {
   test('a group that does not exist is absent, and signaling it is not an error', async () => {
     expect(await processGroupOperations.exists(NO_SUCH_GROUP)).toBe(false);
@@ -136,17 +186,7 @@ describe('processGroupOperations', () => {
     expect(() => processGroupOperations.signal(4242, 'SIGNOPE' as unknown as 'SIGTERM')).toThrow();
   });
 
-  scenarioTest('signals a real group and sees it empty', async () => {
-    const child = Bun.spawn(['sleep', '7919'], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    });
-    expect(await processGroupOperations.exists(child.pid)).toBe(true);
-    processGroupOperations.signal(child.pid, 'SIGTERM');
-    expect(await child.exited).toBe(143);
-    expect(await processGroupOperations.exists(child.pid)).toBe(false);
-  });
+  scenarioResult('signals a real group and sees it empty', scenario1);
 });
 
 /**
@@ -188,44 +228,51 @@ async function startZombieGroup(): Promise<{ readonly group: number; end(): Prom
   throw new Error(`process group ${group} never became a zombie`);
 }
 
-describe('a group whose only member is a zombie', () => {
-  scenarioTest('is empty, though kill(-group, 0) still reports it', async () => {
-    const zombie = await startZombieGroup();
+const scenario2 = scenario('is empty, though kill(-group, 0) still reports it', async () => {
+  const zombie = await startZombieGroup();
+  try {
+    // The premise: the operating system still answers for the group (EPERM on macOS, success on Linux).
+    let signalable = true;
     try {
-      // The premise: the operating system still answers for the group (EPERM on macOS, success on Linux).
-      let signalable = true;
-      try {
-        process.kill(-zombie.group, 0);
-      } catch (error) {
-        signalable = (error as { code?: unknown }).code === 'EPERM';
-      }
-      expect(signalable).toBe(true);
-      expect(await processGroupOperations.exists(zombie.group)).toBe(false);
-    } finally {
-      await zombie.end();
+      process.kill(-zombie.group, 0);
+    } catch (error) {
+      signalable = (error as { code?: unknown }).code === 'EPERM';
     }
-  });
+    expect(signalable).toBe(true);
+    expect(await processGroupOperations.exists(zombie.group)).toBe(false);
+  } finally {
+    await zombie.end();
+  }
+});
 
-  scenarioTest(
+const scenario3 = scenario(
+  'is present while any member is not a zombie, and when its members cannot be read',
+  async () => {
+    const leader = Bun.spawn(['sleep', '7919'], {
+      detached: true,
+      stdio: ['ignore', 'ignore', 'ignore'],
+      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    });
+    try {
+      const exists = (reading: readonly string[] | undefined): Promise<boolean> | boolean =>
+        createProcessGroupOperations(() => reading).exists(leader.pid);
+      expect(await exists(['Z', 'S'])).toBe(true);
+      expect(await exists(['Z', 'Z'])).toBe(false);
+      expect(await exists([])).toBe(false);
+      expect(await exists(undefined)).toBe(true);
+    } finally {
+      leader.kill('SIGKILL');
+      await leader.exited;
+    }
+  },
+);
+
+describe('a group whose only member is a zombie', () => {
+  scenarioResult('is empty, though kill(-group, 0) still reports it', scenario2);
+
+  scenarioResult(
     'is present while any member is not a zombie, and when its members cannot be read',
-    async () => {
-      const leader = Bun.spawn(['sleep', '7919'], {
-        detached: true,
-        stdio: ['ignore', 'ignore', 'ignore'],
-        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-      });
-      try {
-        const exists = (reading: readonly string[] | undefined): Promise<boolean> | boolean =>
-          createProcessGroupOperations(() => reading).exists(leader.pid);
-        expect(await exists(['Z', 'S'])).toBe(true);
-        expect(await exists(['Z', 'Z'])).toBe(false);
-        expect(await exists([])).toBe(false);
-        expect(await exists(undefined)).toBe(true);
-      } finally {
-        leader.kill('SIGKILL');
-        await leader.exited;
-      }
-    },
+    scenario3,
   );
 });
 
@@ -234,11 +281,9 @@ function refusingKill(): never {
   throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
 }
 
-describe('terminating a group the host may not signal', () => {
-  // The real shape of the failure: on macOS kill(-group) answers EPERM for a zombie-only group, so
-  // a slow `ps` that still reports the group present let the KILL escalation throw, and cleanup
-  // was reported incomplete for a process that was already dead.
-  scenarioTest('ends a group whose only member is an unreaped zombie as complete', async () => {
+const scenario4 = scenario(
+  'ends a group whose only member is an unreaped zombie as complete',
+  async () => {
     const zombie = await startZombieGroup();
     try {
       const outcome = await terminateProcessGroup({
@@ -254,7 +299,14 @@ describe('terminating a group the host may not signal', () => {
     } finally {
       await zombie.end();
     }
-  });
+  },
+);
+
+describe('terminating a group the host may not signal', () => {
+  // The real shape of the failure: on macOS kill(-group) answers EPERM for a zombie-only group, so
+  // a slow `ps` that still reports the group present let the KILL escalation throw, and cleanup
+  // was reported incomplete for a process that was already dead.
+  scenarioResult('ends a group whose only member is an unreaped zombie as complete', scenario4);
 
   test.each([
     ['only zombies', ['Z', 'Z+']],
@@ -302,6 +354,29 @@ describe('terminating a group the host may not signal', () => {
   });
 });
 
+const scenario5 = scenario('are read from the running host', async () => {
+  const leader = Bun.spawn(['sleep', '7919'], {
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  });
+  try {
+    expect(await readGroupMemberStates(leader.pid)).toEqual([expect.stringMatching(/^[A-Y]/)]);
+  } finally {
+    leader.kill('SIGKILL');
+    await leader.exited;
+  }
+});
+
+const scenario6 = scenario(
+  'are unknown when the command fails, cannot run, or prints something unreadable',
+  async () => {
+    expect(await readGroupMemberStates(1, ['sh', '-c', 'exit 3'])).toBeUndefined();
+    expect(await readGroupMemberStates(1, ['/nonexistent/ventriloquist-ps'])).toBeUndefined();
+    expect(await readGroupMemberStates(1, ['echo', 'not a table'])).toBeUndefined();
+  },
+);
+
 describe('the states of a group', () => {
   test('are read from rows of group and state, for the one group asked about', () => {
     expect(parseGroupMemberStates(' 10 Ss\n10 Z+\n 11 R\n\n', 10)).toEqual(['Ss', 'Z+']);
@@ -312,28 +387,22 @@ describe('the states of a group', () => {
     expect(() => parseGroupMemberStates(row, 10)).toThrow('unreadable process state row');
   });
 
-  scenarioTest('are read from the running host', async () => {
-    const leader = Bun.spawn(['sleep', '7919'], {
-      detached: true,
-      stdio: ['ignore', 'ignore', 'ignore'],
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    });
-    try {
-      expect(await readGroupMemberStates(leader.pid)).toEqual([expect.stringMatching(/^[A-Y]/)]);
-    } finally {
-      leader.kill('SIGKILL');
-      await leader.exited;
-    }
-  });
+  scenarioResult('are read from the running host', scenario5);
 
-  scenarioTest(
+  scenarioResult(
     'are unknown when the command fails, cannot run, or prints something unreadable',
-    async () => {
-      expect(await readGroupMemberStates(1, ['sh', '-c', 'exit 3'])).toBeUndefined();
-      expect(await readGroupMemberStates(1, ['/nonexistent/ventriloquist-ps'])).toBeUndefined();
-      expect(await readGroupMemberStates(1, ['echo', 'not a table'])).toBeUndefined();
-    },
+    scenario6,
   );
+});
+
+const scenario7 = scenario('is read from the running host and includes this process', async () => {
+  const table = await readProcessTable();
+  expect(table).toContainEqual(expect.objectContaining({ pid: process.pid }));
+});
+
+const scenario8 = scenario('a failing command refuses the read rather than guessing', async () => {
+  const failure = await rejectionOf(readProcessTable(['sh', '-c', 'exit 3']));
+  expect((failure as Error).message).toBe('ps exited with 3');
 });
 
 describe('the process table', () => {
@@ -349,15 +418,9 @@ describe('the process table', () => {
     expect(() => parseProcessTable(row)).toThrow('unreadable process table row');
   });
 
-  scenarioTest('is read from the running host and includes this process', async () => {
-    const table = await readProcessTable();
-    expect(table).toContainEqual(expect.objectContaining({ pid: process.pid }));
-  });
+  scenarioResult('is read from the running host and includes this process', scenario7);
 
-  scenarioTest('a failing command refuses the read rather than guessing', async () => {
-    const failure = await rejectionOf(readProcessTable(['sh', '-c', 'exit 3']));
-    expect((failure as Error).message).toBe('ps exited with 3');
-  });
+  scenarioResult('a failing command refuses the read rather than guessing', scenario8);
 });
 
 describe('descendantsOutsideGroup', () => {

@@ -362,6 +362,18 @@ describe('the Interrupt button', () => {
     expect(seen).toEqual(['Terminal key capture on']);
   });
 
+  test('a pointer press on either control does not take focus from the terminal', async () => {
+    // Safari does not focus a clicked button, so the press itself moved focus to the page and
+    // ended capture (COR-474). Cancelling the press keeps focus; the click still activates.
+    const controller = wiredController();
+    const { harness } = await mountReady({ title: 'Shell', state: 'writable', controller });
+    for (const label of ['Capture terminal keys', 'Interrupt']) {
+      const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+      button(label, harness.target).dispatchEvent(press);
+      expect(press.defaultPrevented, label).toBe(true);
+    }
+  });
+
   test('focus leaving it for the page releases capture', async () => {
     const controller = wiredController();
     const { harness } = await mountReady({ title: 'Shell', state: 'writable', controller });
@@ -1033,5 +1045,83 @@ describe('paste review', () => {
     await waitFor(() => dialog() === null, 'the review to close');
     expect(controller.input.sent).toEqual([]);
     expect(refusals).toEqual([{ reason: 'read-only', source: 'paste' }]);
+  });
+});
+
+describe('copying the terminal selection', () => {
+  async function withSelection(state: 'writable' | 'read-only') {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({ title: 'Shell', state, controller });
+    await deliverOutput(controller, 'alpha beta');
+    // Searching selects the match in the engine, which is a selection the engine owns.
+    button('Search', harness.target).click();
+    await waitFor(
+      () => query(harness, '.cinder-terminal__search textarea') !== null,
+      'the search field',
+    );
+    const field = required(harness, '.cinder-terminal__search textarea') as HTMLTextAreaElement;
+    field.value = 'beta';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    harness.flush();
+    // Typing is searched after a pause of 150 ms.
+    await waitFor(
+      () => required(harness, '.cinder-terminal__search-status').textContent?.trim() === '1 match.',
+      'the search to run',
+    );
+    button('Next match', harness.target).click();
+    harness.flush();
+    return { controller, harness, textarea };
+  }
+
+  const copyEvent = () => new Event('copy', { bubbles: true, cancelable: true });
+
+  /** Every distinct message any polite region showed; the open search has a status region too. */
+  function recordEveryAnnouncement(harness: MountedHarness): string[] {
+    const seen: string[] = [];
+    const last = new Map<Element, string>();
+    const observer = new MutationObserver(() => {
+      for (const region of harness.target.querySelectorAll('[aria-live="polite"]')) {
+        const text = region.textContent?.trim() ?? '';
+        if (text !== '' && text !== last.get(region)) seen.push(text);
+        last.set(region, text);
+      }
+    });
+    observer.observe(harness.target, { childList: true, characterData: true, subtree: true });
+    return seen;
+  }
+
+  test('announces once, sends no byte, and leaves the native copy to the browser', async () => {
+    const { controller, harness, textarea } = await withSelection('writable');
+    const seen = recordEveryAnnouncement(harness);
+    textarea.dispatchEvent(copyEvent());
+    harness.flush();
+    await waitFor(() => seen.includes('Terminal selection copied'), 'the copy announcement');
+    await settle();
+    await settle();
+    expect(seen.filter((text) => text === 'Terminal selection copied')).toHaveLength(1);
+    expect(sentBytes(controller.input)).toEqual([]);
+  });
+
+  test('announces from a read-only view too', async () => {
+    const { harness, textarea } = await withSelection('read-only');
+    const seen = recordEveryAnnouncement(harness);
+    textarea.dispatchEvent(copyEvent());
+    harness.flush();
+    await waitFor(() => seen.includes('Terminal selection copied'), 'the copy announcement');
+  });
+
+  test('says nothing when nothing is selected', async () => {
+    const controller = wiredController();
+    const { harness, textarea } = await mountReady({
+      title: 'Shell',
+      state: 'writable',
+      controller,
+    });
+    const seen = recordEveryAnnouncement(harness);
+    textarea.dispatchEvent(copyEvent());
+    harness.flush();
+    await settle();
+    await settle();
+    expect(seen).not.toContain('Terminal selection copied');
   });
 });

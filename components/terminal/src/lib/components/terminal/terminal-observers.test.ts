@@ -145,9 +145,21 @@ describe('watchElementSize', () => {
   });
 });
 
+type FakeFace = { family: string; style: string; weight: string; status: string };
+
+/** A font set the test drives: its faces are iterable, and it raises the events a browser does. */
+function fakeFontSet(ready: Promise<void>, faces: FakeFace[] = []) {
+  return Object.assign(new EventTarget(), {
+    ready,
+    faces,
+    [Symbol.iterator]: () => faces[Symbol.iterator](),
+  });
+}
+
 describe('watchFontLoading', () => {
-  test('reports loading done and the initial ready promise, and stops on dispose', async () => {
-    const fonts = Object.assign(new EventTarget(), { ready: Promise.resolve() });
+  test('reports the initial ready promise and a loading that finished, and stops on dispose', async () => {
+    const face: FakeFace = { family: 'Mono', style: 'normal', weight: '400', status: 'loading' };
+    const fonts = fakeFontSet(Promise.resolve(), [face]);
     Object.defineProperty(document, 'fonts', { value: fonts, configurable: true });
     try {
       let changes = 0;
@@ -157,9 +169,11 @@ describe('watchFontLoading', () => {
       await fonts.ready;
       await Promise.resolve();
       expect(changes).toBe(1);
+      face.status = 'loaded';
       fonts.dispatchEvent(new Event('loadingdone'));
       expect(changes).toBe(2);
       stop();
+      face.status = 'error';
       fonts.dispatchEvent(new Event('loadingdone'));
       expect(changes).toBe(2);
     } finally {
@@ -167,13 +181,69 @@ describe('watchFontLoading', () => {
     }
   });
 
+  test('a face that loads without loadingdone is still reported once it settles (WebKit)', async () => {
+    // WebKit raised `loading` for a face its own text pulled in and never raised `loadingdone`,
+    // so the grid kept the old cell size (COR-474).
+    const face: FakeFace = { family: 'Mono', style: 'normal', weight: '400', status: 'unloaded' };
+    let settle: () => void = () => {};
+    const fonts = fakeFontSet(Promise.resolve(), [face]);
+    Object.defineProperty(document, 'fonts', { value: fonts, configurable: true });
+    try {
+      let changes = 0;
+      watchFontLoading(() => {
+        changes += 1;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(changes).toBe(1);
+      face.status = 'loading';
+      fonts.ready = new Promise<void>((resolve) => {
+        settle = resolve;
+      });
+      fonts.dispatchEvent(new Event('loading'));
+      expect(changes).toBe(1);
+      face.status = 'loaded';
+      settle();
+      await fonts.ready;
+      await Promise.resolve();
+      expect(changes).toBe(2);
+    } finally {
+      Reflect.deleteProperty(document, 'fonts');
+    }
+  });
+
+  test('a signal that finds the same faces in the same states reports nothing new', async () => {
+    // Measuring again can make the browser raise font events of its own; reporting each one would
+    // measure again, forever.
+    const face: FakeFace = { family: 'Mono', style: 'normal', weight: '400', status: 'loaded' };
+    const fonts = fakeFontSet(Promise.resolve(), [face]);
+    Object.defineProperty(document, 'fonts', { value: fonts, configurable: true });
+    try {
+      let changes = 0;
+      watchFontLoading(() => {
+        changes += 1;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(changes).toBe(1);
+      for (let round = 0; round < 3; round += 1) {
+        fonts.dispatchEvent(new Event('loading'));
+        fonts.dispatchEvent(new Event('loadingdone'));
+        await fonts.ready;
+      }
+      expect(changes).toBe(1);
+    } finally {
+      Reflect.deleteProperty(document, 'fonts');
+    }
+  });
+
   test('a ready promise that settles after dispose reports nothing', async () => {
     let settle: () => void = () => {};
-    const fonts = Object.assign(new EventTarget(), {
-      ready: new Promise<void>((resolve) => {
+    const fonts = fakeFontSet(
+      new Promise<void>((resolve) => {
         settle = resolve;
       }),
-    });
+    );
     Object.defineProperty(document, 'fonts', { value: fonts, configurable: true });
     try {
       let changes = 0;

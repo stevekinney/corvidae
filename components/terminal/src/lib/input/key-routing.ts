@@ -33,7 +33,7 @@ export type KeyRouteContext = {
   hasSelection: () => boolean;
 };
 
-export type KeyEffect = 'release-capture' | 'interrupt';
+export type KeyEffect = 'release-capture' | 'interrupt' | 'copy-selection';
 
 export type KeyDecision = {
   /** Whether the engine should process the event. */
@@ -100,7 +100,7 @@ export function routeKey(event: KeyEventLike, context: KeyRouteContext): KeyDeci
   }
   if (isCopyChord(event, context.platform)) {
     // A selection always wins: native copy, and the interrupt chord is not an interrupt.
-    if (context.hasSelection()) return LEAVE_TO_BROWSER;
+    if (context.hasSelection()) return { ...LEAVE_TO_BROWSER, effect: 'copy-selection' };
     // Without one, Cmd+C is the Mac interrupt; Ctrl+C reaches the engine, which sends ETX itself.
     if (context.platform === 'other') return context.writable ? TO_ENGINE : LEAVE_TO_BROWSER;
     return context.writable
@@ -113,7 +113,11 @@ export function routeKey(event: KeyEventLike, context: KeyRouteContext): KeyDeci
 
   // 3. Authorized terminal input. A view that takes none leaves Tab to the page and lets the
   //    engine scroll; the engine and the sender both refuse to send anything from it.
+  const holdsTab = context.writable && context.captured;
   const isTab = event.key === 'Tab' && !event.ctrlKey && !event.altKey && !event.metaKey;
-  if (isTab && !(context.writable && context.captured)) return LEAVE_TO_BROWSER;
+  if (isTab && !holdsTab) return LEAVE_TO_BROWSER;
+  // Safari on a Mac moves focus through buttons and links only with Option held, so without
+  // capture Option+Tab is the page's too; on other platforms it is reserved above already.
+  if (event.key === 'Tab' && event.altKey && !holdsTab) return LEAVE_TO_BROWSER;
   return TO_ENGINE;
 }

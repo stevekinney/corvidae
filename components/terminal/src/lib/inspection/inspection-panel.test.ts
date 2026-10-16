@@ -415,6 +415,40 @@ describe('accessible output', () => {
     );
   });
 
+  test('a restore that finishes late does not take focus the reader already moved on', async () => {
+    // The dialog hands focus back to Export, and the panel restores it again when the exit
+    // finishes. A reader who moved focus to the terminal in between must keep it (COR-474: the
+    // full-reset browser spec lost focus to that second restore in about two runs in three).
+    const controller = wired();
+    const harness = await mountReady({ title: 'Shell', state: 'writable', controller });
+    await send(controller, 'text');
+    await openSnapshot(harness);
+    const elsewhere = document.createElement('button');
+    elsewhere.textContent = 'Elsewhere';
+    document.body.append(elsewhere);
+    try {
+      const trigger = button('Export', harness.target);
+      // The dialog returns focus to Export as its exit completes; the panel's own restore follows
+      // a tick later. The reader moves on in between, inside the dialog's own focus return.
+      const moveOn = (event: FocusEvent): void => {
+        if (event.target === trigger) elsewhere.focus();
+      };
+      document.addEventListener('focusin', moveOn);
+      try {
+        button('Close', dialog()!).click();
+        harness.flush();
+        await waitFor(() => document.activeElement === elsewhere, 'focus to move on');
+        await waitFor(() => dialog() === null, 'the dialog to close');
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        expect(document.activeElement?.textContent?.trim()).toBe('Elsewhere');
+      } finally {
+        document.removeEventListener('focusin', moveOn);
+      }
+    } finally {
+      elsewhere.remove();
+    }
+  });
+
   test('Escape closes it, and reopening captures what is there now', async () => {
     const controller = wired();
     const harness = await mountReady({ title: 'Shell', state: 'writable', controller });

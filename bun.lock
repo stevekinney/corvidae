@@ -69,6 +69,24 @@
         "typescript": "catalog:",
       },
     },
+    "applications/terminal-example": {
+      "name": "@lostgradient/terminal-example",
+      "dependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/terminal": "workspace:*",
+        "@lostgradient/ventriloquist": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@playwright/test": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/chat": {
       "name": "@lostgradient/chat",
       "dependencies": {
@@ -98,7 +116,6 @@
     },
     "components/cinder": {
       "name": "@lostgradient/cinder",
-      "version": "0.0.0",
       "dependencies": {
         "@floating-ui/dom": "catalog:",
         "@lostgradient/markdown": "workspace:*",
@@ -202,39 +219,6 @@
         "oxlint": "catalog:",
         "svelte-check": "catalog:",
         "typescript": "catalog:",
-      },
-    },
-    "components/weft-ui": {
-      "name": "@lostgradient/weft-ui",
-      "dependencies": {
-        "@lostgradient/cinder": "workspace:*",
-        "@lostgradient/markdown": "workspace:*",
-        "@lostgradient/weft": "workspace:*",
-        "@shikijs/langs": "catalog:",
-        "@shikijs/themes": "catalog:",
-        "@tanstack/svelte-query": "catalog:",
-        "cron-parser": "catalog:",
-        "lucide-svelte": "catalog:",
-        "svelte": "catalog:",
-      },
-      "devDependencies": {
-        "@axe-core/playwright": "catalog:",
-        "@lostgradient/environmentalist": "catalog:",
-        "@lostgradient/testing": "workspace:*",
-        "@lostgradient/typescript": "workspace:*",
-        "@playwright/test": "catalog:",
-        "@testing-library/dom": "catalog:",
-        "@testing-library/jest-dom": "catalog:",
-        "@testing-library/svelte": "catalog:",
-        "@types/bun": "catalog:",
-        "fake-indexeddb": "catalog:",
-        "happy-dom": "catalog:",
-        "oxlint": "catalog:",
-        "prettier": "catalog:",
-        "prettier-plugin-svelte": "catalog:",
-        "svelte-check": "catalog:",
-        "typescript": "catalog:",
-        "zod": "catalog:",
       },
     },
     "internal/typescript": {
@@ -512,13 +496,29 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@axe-core/playwright": "catalog:",
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/markdown": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
+        "@playwright/test": "catalog:",
+        "@shikijs/langs": "catalog:",
+        "@shikijs/themes": "catalog:",
+        "@tanstack/svelte-query": "catalog:",
+        "@testing-library/dom": "catalog:",
+        "@testing-library/jest-dom": "catalog:",
+        "@testing-library/svelte": "catalog:",
         "@types/bun": "catalog:",
         "@types/pg": "catalog:",
+        "cron-parser": "catalog:",
         "fake-indexeddb": "catalog:",
+        "happy-dom": "catalog:",
+        "lucide-svelte": "catalog:",
         "oxlint": "catalog:",
         "playwright": "catalog:",
         "prettier": "catalog:",
+        "prettier-plugin-svelte": "catalog:",
+        "svelte": "catalog:",
+        "svelte-check": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -528,6 +528,7 @@
         "@lostgradient/chat": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/editor": "workspace:*",
+        "@lostgradient/terminal": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "conversationalist": "workspace:*",
@@ -817,6 +818,8 @@
 
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 
+    "@lostgradient/terminal-example": ["@lostgradient/terminal-example@workspace:applications/terminal-example"],
+
     "@lostgradient/testing": ["@lostgradient/testing@workspace:packages/testing"],
 
     "@lostgradient/tool-protocol": ["@lostgradient/tool-protocol@workspace:packages/tool-protocol"],
@@ -826,8 +829,6 @@
     "@lostgradient/ventriloquist": ["@lostgradient/ventriloquist@workspace:packages/ventriloquist"],
 
     "@lostgradient/weft": ["@lostgradient/weft@workspace:packages/weft"],
-
-    "@lostgradient/weft-ui": ["@lostgradient/weft-ui@workspace:components/weft-ui"],
 
     "@marijn/find-cluster-break": ["@marijn/find-cluster-break@1.0.4", "", {}, "sha512-Wy0V7+SGUjnF9/TkiM1hKVDPj7jKXduPNboMVtHTA8dySMURWqfg/JZ9E2Sq8JgSJmkl7k7Qe9FLeMSrSraWmQ=="],
 

@@ -251,8 +251,14 @@
       {
         "directory": "packages/weft-ui",
         "target": "weft",
-        "reason": "The monorepo is weft-ui's home. `layout-map.json` routes `@lostgradient/weft-ui` to the cinder target, so the weft sync has never written this directory and weft's copy has drifted away from corvidae's: it hand-writes `TimeRange` as an optional-property object under a comment claiming the two are structurally identical, which `exactOptionalPropertyTypes` falsifies, and a live dry run failed weft's own `ui-typecheck` and `ui-e2e` on it. Nothing external depends on either copy — `@lostgradient/weft-ui` returns 404 on the registry and was never published — so the drifted copy is removed rather than reconciled. Retired rather than deferred because deferring emits nothing and leaves the directory in place, which is the state that produced the failure.",
+        "reason": "The monorepo is weft-ui's home. Until COR-1455 folded the UI into `packages/weft` (as `src/ui`), `layout-map.json` routed `@lostgradient/weft-ui` to the cinder target, so the weft sync has never written this directory and weft's copy has drifted away from corvidae's: it hand-writes `TimeRange` as an optional-property object under a comment claiming the two are structurally identical, which `exactOptionalPropertyTypes` falsifies, and a live dry run failed weft's own `ui-typecheck` and `ui-e2e` on it. Nothing external depends on either copy — `@lostgradient/weft-ui` returns 404 on the registry and was never published — so the drifted copy is removed rather than reconciled. Retired rather than deferred because deferring emits nothing and leaves the directory in place, which is the state that produced the failure.",
         "issue": "COR-1192"
+      },
+      {
+        "directory": "packages/weft-ui",
+        "target": "cinder",
+        "reason": "COR-1455 moved the UI out of its own workspace into `packages/weft` (`src/ui`, with its browser tooling and coverage ratchet under `scripts/ui-browser` and `scripts/ui-coverage`), by the Weft UI project's owner ruling (2026-10-13) that the UI is part of `@lostgradient/weft` and has no mirror of its own. Corvidae has no `@lostgradient/weft-ui` workspace any more, so no cinder sync writes this directory again, and the copy the cinder mirror carries is unpublished source (`@lostgradient/weft-ui` returns 404 on the registry) that would stay behind unmaintained beside the Weft mirror's live copy. Retired rather than left in place, because a sync prunes only beneath the prefixes it writes and the plan no longer names this one. Out of band: the directory's one target-owned file, its `CHANGELOG.md`, which `collectRetiredPaths` would refuse to delete, was already removed in the cinder repository's own commit `f46fcf9c` (\"Delete the target-owned files left in packages/chat and packages/weft-ui\"). The only other file there that names `packages/weft-ui` is the transform-emitted `mirror-verify.yaml`, which the same sync regenerates without it.",
+        "issue": "COR-1455"
       },
       {
         "directory": ".github/workflows/ci.yaml",
