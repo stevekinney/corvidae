@@ -275,7 +275,7 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
       return page(
         401,
         'Open the start URL',
-        'This terminal starts shells on this machine, so it needs the start URL the server printed when it started. Open that address in your browser.',
+        'This terminal starts shells on this machine, so it needs the start URL the server printed when it started. Open that address in your browser. A browser that sends no fetch metadata (Safari before 16.4, for example) cannot enroll, so use a current Chromium, Firefox or Safari.',
       );
     }
     if (!sameSecret(token, options.startToken)) {

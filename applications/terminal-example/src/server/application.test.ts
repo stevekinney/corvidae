@@ -463,6 +463,7 @@ describe('enrollment', () => {
     expect(application.store.browserCount).toBe(0);
     const text = await response.text();
     expect(text).toContain('start');
+    expect(text).toContain('fetch metadata');
     expect(text).not.toContain(TOKEN);
     expect(response.headers.get('content-security-policy')).toBe(CONTENT_SECURITY_POLICY);
   });

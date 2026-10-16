@@ -14,7 +14,7 @@ bun run --filter=@lostgradient/terminal-example dev
 
 - `bun run --filter=@lostgradient/terminal-example build` bundles the client into `build/` and does nothing else. It is the only task that writes there.
 - `bun run --filter=@lostgradient/terminal-example start` serves an existing `build/`. It refuses to start, and says to build first, when there is none.
-- `--hostname`, `--port`, `--start-token` and `--browsers` go after the command, for example `bun src/server/main.ts --port 54300` from this directory. The port must be a whole number from 1 to 65535: the one origin the server accepts is decided before it listens, so `0` is not allowed. `--start-token` (at least 16 characters) chooses the token instead of a random one, which a script needs and which then shows in the process list; `--browsers` is how many browsers the start URL admits.
+- `--hostname`, `--port`, `--start-token` and `--browsers` go after the command, for example `bun src/server/main.ts --port 54300` from this directory. The port must be a whole number from 1 to 65535: the one origin the server accepts is decided before it listens, so `0` is not allowed. `--start-token` (at least 16 characters) chooses the token instead of a random one, which a script needs and which then shows in the process list; `--browsers` is how many browsers the start URL admits. With more than one, the `/?token=…` URL can stay in a browser's history while admissions remain, so anyone with access to that history can still enroll with it until they are all spent or the server restarts.
 
 Binding anything but a loopback address (`127.0.0.1`, `::1` or `localhost`) fails before a socket exists. The message names the address and the allowed ones, and the exit code is `2`:
 
@@ -28,7 +28,7 @@ Any process on this machine can reach a loopback port, and a web page you visit 
 
 The token admits one browser by default, which is the choice this example makes (the alternative is binding it to a first browser and refusing others): the first enrollment spends it, a second browser gets `403` and is told to restart the server, and the browser that already holds the cookie can open the URL again without spending anything. `--browsers 3` admits three. Restarting the server makes a new token and forgets every browser.
 
-The consequence of sharing the start URL, in a chat, a screenshot or a shell history, is that whoever opens it first gets a shell as you on this machine. Treat it like a password. The token is compared in constant time and never appears in a response.
+The consequence of sharing the start URL, in a chat, a screenshot or a shell history, is that whoever opens it first gets a shell as you on this machine. Treat it like a password. Enrollment needs a browser that sends fetch metadata (`Sec-Fetch-Site` and `Sec-Fetch-Dest`), which current Chromium, Firefox and Safari 16.4 or later do. An older browser, such as Safari before 16.4, cannot enroll, and the page it is shown says so as a possible reason. The token is compared in constant time and never appears in a response.
 
 The Ctrl+C that stops the server first revokes every session and waits for each process to be cleaned up.
 
