@@ -6,6 +6,39 @@
 
 Declare `"@lostgradient/ventriloquist": "workspace:*"` in the consuming workspace's dependencies and run `bun install` from the Corvidae root. The package is private and exports TypeScript source directly, so there is no build step.
 
+## Use it inside corvidae
+
+The [terminal example application](../../applications/terminal-example/README.md) is the reference host: run `bun run --filter=@lostgradient/terminal-example dev` from the Corvidae root and open the address it prints. Its `src/server/application.ts` wires this package to `Bun.serve` the way every host does:
+
+```ts
+import {
+  createBunProcessFactory,
+  createTerminalWebSocketServer,
+  type SocketData,
+} from '@lostgradient/ventriloquist/websocket';
+
+const terminal = createTerminalWebSocketServer({
+  host: {
+    authenticate: (request) => readYourCookie(request), // { ok, subject, expiresInMilliseconds } or a denial
+    authorize: (request) => decideTheLaunch(request), // a grant and the whole server-owned launch, or a denial
+  },
+  createProcess: createBunProcessFactory(),
+  allowedOrigins: ['http://127.0.0.1:54240'],
+  allowInsecureLoopback: true, // development only, and only with `boundHostname`
+  boundHostname: '127.0.0.1',
+  slotFor: (subject) => yourSlotForThatSubject(subject),
+});
+
+Bun.serve<SocketData>({
+  port: 54240,
+  hostname: '127.0.0.1',
+  fetch: (request, server) => terminal.handleUpgrade(request, server),
+  websocket: terminal.websocket,
+});
+```
+
+Behind a TLS-terminating proxy, drop the loopback switch and list the proxy's exact addresses in `trustedProxies` instead. Pick the mode in `authorize`: `pty` for a shell or a full-screen program, `pipe` when standard output and standard error must stay apart. The browser half is [`@lostgradient/terminal`](../../components/terminal/README.md).
+
 ## Entry points
 
 - `@lostgradient/ventriloquist`: the platform-neutral wire protocol and session core. It has no Bun, Node, DOM, process, filesystem, or WebSocket implementation dependency, so browser code may import it.
