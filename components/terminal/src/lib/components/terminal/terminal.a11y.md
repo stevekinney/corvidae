@@ -42,6 +42,10 @@ Arriving output, a state change, and mounting never move focus. The engine's inp
 
 Recovery actions are Cinder buttons in a group labelled `Terminal recovery`, in the order the state table gives. They are native buttons: Enter and Space activate them, and they are ordinary tab stops. A button that cannot be used yet (`New session` and `Retry` while cleanup is pending) is disabled rather than hidden, so the reader can see why replacement waits; the state message says why. After activation focus stays on the button when it is still there. When the new state removes it, focus moves to the first action of the new state's group (`Cancel` after `New session`, `New session` after `Cancel`) or to the frame, and arriving output never moves focus. `Capture terminal keys` is a toggle: `aria-pressed` carries the state and the pressed button takes Cinder's filled accent face.
 
+## Copying the selection
+
+Copying the engine's selection (Cmd+C on a Mac, Ctrl+C elsewhere, or the browser's copy command) announces `Terminal selection copied` once through the polite status region. Selecting alone announces nothing, a copy of other page content announces nothing, and a copy with no selection is the interrupt chord, which is not a copy. The announcement is made from the copy chord, because Chromium raises no `copy` event for the engine's selection, and from a `copy` event that has no chord before it; a `copy` event within half a second of the chord is the same copy and is not announced again. The terminal observes the copy and does not take part in it: the browser and the engine complete it, and no byte is sent. A read-only view announces too.
+
 ## Output tools
 
 The toolbar is a labelled group of buttons. `Search` is a disclosure (`aria-expanded`); its field is a labelled `Textarea`, and its status line (`role="status"`) reports `Match 2 of 7`, `No matches`, a wrap, or that only the most recent part of the output was searched. Enter steps to the next match, Shift+Enter inserts a line break, and Escape closes the search and returns focus to `Search`.

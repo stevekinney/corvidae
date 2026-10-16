@@ -43,7 +43,7 @@ The page renders the `Terminal` component and offers six server-owned profiles. 
 
 - `links`: a read-only replay of a committed fixture (`src/server/fixtures/links.ansi`) with visible HTTPS text, a hidden OSC 8 destination, a path, a command scheme, an insecure address and a download-looking address, for reviewing the host-enabled link behavior.
 
-- `escaped`: a committed `sh` program that starts a process which leaves the terminal session on purpose (through `perl`, because macOS has no `setsid` command) and prints its process identifier. Ending the session reports `Cleanup incomplete`, the real path, and the process stays alive until you end it.
+- `escaped`: a committed `sh` program that starts a process which leaves the terminal session on purpose (through `perl`, because macOS has no `setsid` command) and prints its process identifier. The process is `sleep 300`, so it ends by itself after 300 seconds; a `kill <pid>` after that reports `No such process`, which is fine. Ending the session reports `Cleanup incomplete`, the real path, and the process stays alive until you end it.
 
 The contract froze the identifiers `shell`, `readonly-output` and `diagnostic`; `fullscreen`, `links` and `escaped` are the behaviors this example adds. A profile with no input channel (`diagnostic` and `readonly-output`) is granted read-only whatever the page asks for.
 

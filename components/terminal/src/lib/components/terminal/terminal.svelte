@@ -288,6 +288,7 @@
         if (next !== undefined) displayedReview = next;
         reviewOpen = next !== undefined;
       },
+      onCopy: () => announcer.announce('Terminal selection copied'),
       onRefused: (refusal) => {
         refusalAnnouncer.refused(refusal);
         onInputRefused?.(refusal);

@@ -49,7 +49,7 @@ Use the segmented `Profile` control at the top of the page.
 - `Full-screen program`: a small committed program on the alternate screen that counts the keys it receives (`Keys received: N`) and leaves on `q`. Used wherever a row asks whether a key reached the program: capture, overlays, control keys.
 - `Pipe demo`: standard output and standard error in two read-only views, exits with status 3.
 - `Replay`: a read-only replay of fixed bytes with color, Unicode, a carriage-return rewrite and scrollable length.
-- `Escaped job`: starts a process that leaves the terminal session on purpose and prints `escaped=<pid>`. `End session` then produces the real `Cleanup incomplete`.
+- `Escaped job`: starts a process that leaves the terminal session on purpose and prints `escaped=<pid>`. `End session` then produces the real `Cleanup incomplete`. The escaped process is `sleep 300`, so it ends by itself after 300 seconds and `kill <pid>` afterward may report `No such process`, which is fine.
 - `Links`: a read-only fixture with visible HTTPS text, a hidden OSC 8 destination, a path, a command scheme, an insecure address and a download-looking address.
 - `Open read-only`: asks for a read-only grant for the current profile.
 - `Report the mouse`: lets the terminal send mouse reports (only while capture is on and the session is writable).
@@ -73,7 +73,7 @@ Expand `Review controls` on the page (collapsed by default). They change what th
 | failed | `Make the next session end in`, `Failed`; then `Start a session`. `Retry` repeats it | Real; the page asks for a profile the server does not have and it answers `400` |
 | backpressured | `Inject backpressure`. `Cancel` keeps the session and its output (there are no unsent operations to cancel); `Clear the injected state` stands for capacity being acknowledged | Injected; a real stalled process failed the session instead of holding backpressure |
 | engine-load-failed | `Inject engine load failure`; the terminal's own `Retry` hands control back | Injected |
-| cleanup-incomplete | Real: choose `Escaped job`, wait for `escaped=<pid>`, activate `End session`, and the slot is quarantined with no `New session`; afterward `kill <pid>` and restart the server (Ctrl+C, then start it again for a new start URL). Injected: `Inject cleanup incomplete` ends the session first, and `Check cleanup` then reads the real, complete result | Both |
+| cleanup-incomplete | Real: choose `Escaped job`, wait for `escaped=<pid>`, activate `End session`, and the slot is quarantined with no `New session`; afterward `kill <pid>` (it may already be gone after 300 seconds) and restart the server (Ctrl+C, then start it again for a new start URL). Injected: `Inject cleanup incomplete` ends the session first, and `Check cleanup` then reads the real, complete result | Both |
 | failed (transport) | Stop the server with Ctrl+C, then activate `New session`. Do this last, since it ends the run | Real |
 
 Other controls: `Theme` (`Light` or `Dark`) sets `data-theme` on the page, and `Open visible HTTPS links` turns on the terminal's link handling (off by default; the page opens a visible HTTPS address in a new tab without an opener and reports `Last link opened`). `Remove the toolbar in 8 seconds` is for the focus-fallback row: start it, open `Export` before the countdown ends, and the `Export` button disappears while the dialog stays open; close the dialog and watch where focus goes. It works by handing the terminal `engine-load-failed`, so use `Retry` or `Clear the injected state` afterward.

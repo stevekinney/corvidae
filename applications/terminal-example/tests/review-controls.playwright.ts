@@ -142,16 +142,25 @@ test('an injected cleanup-incomplete ends the session first, offers Check cleanu
 test('the escaped job profile reaches the real Cleanup incomplete, and the escaped process is still there', async ({
   page,
 }) => {
-  await enroll(page);
-  await connected(page);
-  await openControls(page);
-  await choose(page, 'Escaped job');
-  // The expanded controls push the terminal below the fold, where the engine does not repaint, so
-  // collapse them to bring it into view.
-  await page.getByRole('button', { name: 'Review controls' }).first().click();
-  await expect(screen(page)).toHaveText(/escaped=\d+/);
-  const escaped = Number(/escaped=(\d+)/.exec(await screen(page).innerText())?.[1]);
+  // Whatever fails, the process this test started is ended in `finally`, from whatever pid the
+  // screen printed before the failure.
+  const printedPid = async (): Promise<number | undefined> => {
+    const text = await screen(page)
+      .innerText()
+      .catch(() => '');
+    const match = /escaped=(\d+)/.exec(text);
+    return match === null ? undefined : Number(match[1]);
+  };
   try {
+    await enroll(page);
+    await connected(page);
+    await openControls(page);
+    await choose(page, 'Escaped job');
+    // The expanded controls push the terminal below the fold, where the engine does not repaint, so
+    // collapse them to bring it into view.
+    await page.getByRole('button', { name: 'Review controls' }).first().click();
+    await expect.poll(printedPid).toBeDefined();
+    const escaped = (await printedPid()) as number;
     await page.getByRole('button', { name: 'End session' }).click();
     // The host cannot prove a process that left the session is gone, so it quarantines the slot.
     await expect(status(page, 'Cleanup incomplete')).toBeVisible({ timeout: 20_000 });
@@ -159,10 +168,13 @@ test('the escaped job profile reaches the real Cleanup incomplete, and the escap
     expect(isAlive(escaped)).toBe(true);
   } finally {
     // This process belongs to the test, which started it and ends it.
-    try {
-      process.kill(escaped, 'SIGKILL');
-    } catch {
-      // It already ended.
+    const escaped = await printedPid();
+    if (escaped !== undefined) {
+      try {
+        process.kill(escaped, 'SIGKILL');
+      } catch {
+        // It already ended.
+      }
     }
   }
 });

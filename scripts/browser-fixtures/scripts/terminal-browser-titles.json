@@ -13,6 +13,7 @@
     "capture, focus and page navigation › capture belongs to the live session: a replaced session starts with it off",
     "capture, focus and page navigation › keys typed outside the terminal reach nothing, and capture ends when focus leaves",
     "capture, focus and page navigation › on a Mac, Option+Tab leaves the terminal while capture is off and goes to the shell while it is on",
+    "interrupt and copy › copying the selection announces it once and sends nothing",
     "interrupt and copy › the Interrupt control sends one ETX byte and keeps capture and focus",
     "interrupt and copy › the copy chord interrupts only when nothing is selected",
     "paste review › a paste over the limit is refused whole and nothing is sent",

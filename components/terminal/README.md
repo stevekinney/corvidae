@@ -117,6 +117,8 @@ A non-empty selection always wins. Ctrl+C on Linux and Cmd+C on a Mac copy it, n
 
 ## Paste review
 
+Copying the engine's selection announces `Terminal selection copied` once, and the copy itself is left to the browser; see the [component accessibility notes](./src/lib/components/terminal/terminal.a11y.md).
+
 A paste that is multiline, carries control characters, or arrives while the program has bracketed paste on opens a review before any byte is sent. It shows the line breaks and controls, the length and whether it ends in a newline. Cancel sends nothing; Paste sends the bytes as the engine converts them, never rewritten, and says when a pasted bracket terminator would end the protected paste early. A paste over `maximumPasteBytes` (64 KiB unless the host sets 1 to 256 KiB) is refused whole.
 
 ## Read-only authority

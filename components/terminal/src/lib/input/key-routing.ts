@@ -33,7 +33,7 @@ export type KeyRouteContext = {
   hasSelection: () => boolean;
 };
 
-export type KeyEffect = 'release-capture' | 'interrupt';
+export type KeyEffect = 'release-capture' | 'interrupt' | 'copy-selection';
 
 export type KeyDecision = {
   /** Whether the engine should process the event. */
@@ -100,7 +100,7 @@ export function routeKey(event: KeyEventLike, context: KeyRouteContext): KeyDeci
   }
   if (isCopyChord(event, context.platform)) {
     // A selection always wins: native copy, and the interrupt chord is not an interrupt.
-    if (context.hasSelection()) return LEAVE_TO_BROWSER;
+    if (context.hasSelection()) return { ...LEAVE_TO_BROWSER, effect: 'copy-selection' };
     // Without one, Cmd+C is the Mac interrupt; Ctrl+C reaches the engine, which sends ETX itself.
     if (context.platform === 'other') return context.writable ? TO_ENGINE : LEAVE_TO_BROWSER;
     return context.writable
