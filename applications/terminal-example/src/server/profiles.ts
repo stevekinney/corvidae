@@ -15,6 +15,7 @@ export const REPLAY_FIXTURE = join(FIXTURES, 'replay.ansi');
 export const FULLSCREEN_PROGRAM = join(FIXTURES, 'fullscreen.sh');
 export const DIAGNOSTIC_PROGRAM = join(FIXTURES, 'diagnostic.sh');
 export const ESCAPED_PROGRAM = join(FIXTURES, 'escaped.sh');
+export const STALLED_PROGRAM = join(FIXTURES, 'stalled.sh');
 export const LINKS_FIXTURE = join(FIXTURES, 'links.ansi');
 
 /** Who the shell runs as, read from the operating system rather than from the page. */
@@ -131,6 +132,21 @@ export function resolveProfile(
           },
           dimensions: DEFAULT_DIMENSIONS,
           acceptsInput: false,
+        },
+      };
+    case 'stalled':
+    case 'stalled-long':
+      return {
+        grant,
+        launch: {
+          mode: 'pty',
+          profile: {
+            executable: '/bin/sh',
+            argumentList: [STALLED_PROGRAM, identifier === 'stalled' ? '10' : '90'],
+            workingDirectory: FIXTURES,
+            environment: programEnvironment(context),
+          },
+          dimensions: DEFAULT_DIMENSIONS,
         },
       };
     case 'escaped':

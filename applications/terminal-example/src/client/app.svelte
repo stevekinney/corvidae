@@ -53,10 +53,7 @@
     onTryAgain: () => void model.begin(),
     onRetry: () => void model.begin(),
     onCheckCleanup: () => void checkCleanup(),
-    // Injected backpressure has nothing to cancel: no operation is unsent, and the output stays.
-    onCancel: () => {
-      if (injected !== 'backpressured') model.cancel();
-    },
+    onCancel: () => model.cancel(),
   };
 
   onMount(() => {
@@ -74,6 +71,20 @@
   async function checkCleanup(): Promise<void> {
     await model.checkCleanup();
     if (injected === 'cleanup-incomplete') injected = undefined;
+  }
+
+  const LONG_LINE_CHARACTERS = 60_000;
+  let copyStatus = $state('Nothing copied.');
+
+  /** Put one long single line on the clipboard: under the paste limit, so it skips the paste review. */
+  async function copyLongLine(): Promise<void> {
+    const line = '0123456789'.repeat(LONG_LINE_CHARACTERS / 10);
+    try {
+      await navigator.clipboard.writeText(line);
+      copyStatus = `Copied ${line.length} characters on one line. Paste them into the terminal.`;
+    } catch {
+      copyStatus = 'The browser did not allow copying. Allow clipboard access and try again.';
+    }
   }
 
   function chooseTheme(value: unknown): void {
@@ -236,20 +247,16 @@
 
       <div class="review-group" role="group" aria-label="Backpressure and cleanup">
         <p>
-          Injected: the page passes the terminal a backpressured or cleanup-incomplete state. A real
-          stall does not hold: when a process stopped reading, the host failed the session instead
-          of staying backpressured, so backpressure cannot be held for review. While backpressure is
-          injected, Cancel has no unsent operations to cancel and the output stays readable; Clear
-          the injected state is the capacity acknowledgement. The Escaped job profile makes cleanup
-          incomplete real. Injecting it ends the session first, so Check cleanup reports the real,
-          complete result.
+          Backpressure is real. Choose the Stalled input (long, for screen-reader review) profile,
+          copy a long line, and paste it into the terminal: the program is not reading, so the host
+          holds the input, the terminal shows Backpressure: input paused, and the output stays
+          readable. When the program reads again, after 90 seconds, the terminal returns to
+          Connected. There is no Cancel in that state, because nothing is waiting to be sent.
+          Cleanup incomplete is real too: the Escaped job profile makes it, and injecting it here
+          ends the session first, so Check cleanup reports the real, complete result.
         </p>
-        <Button
-          variant="secondary"
-          label="Inject backpressure"
-          disabled={model.state !== 'writable'}
-          onclick={() => (injected = 'backpressured')}
-        />
+        <Button variant="secondary" label="Copy a long line" onclick={() => void copyLongLine()} />
+        <p data-testid="copy-status">{copyStatus}</p>
         <Button
           variant="secondary"
           label="Inject cleanup incomplete"

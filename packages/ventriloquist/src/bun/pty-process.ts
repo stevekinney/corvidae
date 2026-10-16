@@ -48,9 +48,11 @@ function notRunnable(profile: ProcessProfile): string | undefined {
  * size.
  *
  * Input is backpressured: the master is non-blocking, so what the child has not read is queued and
- * retried, and a write settles only when the kernel has taken every byte. The session's input
- * budget bounds what is queued, and its acknowledgement deadline ends a session whose terminal
- * never takes it.
+ * retried, and a write settles only when the kernel has taken every byte. While the child is not
+ * reading, the write reports itself held, which keeps it off the acknowledgement deadline: the
+ * session refuses new input and the held bytes are delivered in order once the child reads. The
+ * session's input budget bounds what is queued. A terminal that hung up is not held, so its write
+ * still ends the session as unknown delivery at the deadline.
  *
  * The child does not run its command until `Bun.spawn` has returned (see `pty-start-gate.ts`, which
  * works around a Bun hang and gives the child its controlling terminal). So a missing or
@@ -222,9 +224,9 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
         abort,
       );
     },
-    write: async (bytes) => {
+    write: async (bytes, hold) => {
       if (master === undefined) throw new Error('the process has no open terminal');
-      await master.write(bytes);
+      await master.write(bytes, hold);
     },
     resize: async (columns, rows) => {
       if (device === undefined || pair === undefined || master === undefined) {

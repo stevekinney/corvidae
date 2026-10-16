@@ -172,7 +172,7 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
    * - `onTryAgain`: `denied`, repeating connection authorization only.
    * - `onRetry`: `failed`. For `engine-load-failed`, `onRecoveryRequest` is the handler.
    * - `onCheckCleanup`: `cleanup-incomplete`.
-   * - `onCancel`: `loading`, `connecting` and `backpressured` (cancels unsent operations).
+   * - `onCancel`: `loading` and `connecting`.
    */
   onNewSession?: () => void;
   onTryAgain?: () => void;

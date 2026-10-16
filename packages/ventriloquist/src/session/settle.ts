@@ -8,6 +8,14 @@ export type Settled<Value> =
   | { readonly kind: 'timeout' }
   | { readonly kind: 'canceled' };
 
+/** Lets a running operation suspend its own deadline while it is known to be waiting, not lost. */
+export type DeadlineControl = {
+  /** Stop the deadline clock. The operation keeps running and can still settle. */
+  suspend(): void;
+  /** Start the full deadline over, after a `suspend`. Does nothing when the clock is running. */
+  resume(): void;
+};
+
 export type Settling<Value> = {
   readonly outcome: Promise<Settled<Value>>;
   /** Stop waiting: clear the deadline timer and settle the outcome as `canceled`. A late result is ignored. */
@@ -22,18 +30,35 @@ export type Settling<Value> = {
 export function settleWithin<Value>(
   clock: SessionClock,
   deadlineMilliseconds: number,
-  operation: () => Value | Promise<Value>,
+  operation: (control: DeadlineControl) => Value | Promise<Value>,
 ): Settling<Value> {
   let cancel!: () => void;
   const outcome = new Promise<Settled<Value>>((resolve) => {
-    const cancelTimer = clock.schedule(() => resolve({ kind: 'timeout' }), deadlineMilliseconds);
+    let finished = false;
+    let suspended = false;
+    const arm = (): (() => void) =>
+      clock.schedule(() => resolve({ kind: 'timeout' }), deadlineMilliseconds);
+    let cancelTimer = arm();
     const complete = (result: Settled<Value>): void => {
+      finished = true;
       cancelTimer();
       resolve(result);
     };
     cancel = () => complete({ kind: 'canceled' });
+    const control: DeadlineControl = {
+      suspend: () => {
+        if (finished || suspended) return;
+        suspended = true;
+        cancelTimer();
+      },
+      resume: () => {
+        if (finished || !suspended) return;
+        suspended = false;
+        cancelTimer = arm();
+      },
+    };
     try {
-      Promise.resolve(operation()).then(
+      Promise.resolve(operation(control)).then(
         (value) => complete({ kind: 'value', value }),
         (error: unknown) => complete({ kind: 'rejected', error }),
       );

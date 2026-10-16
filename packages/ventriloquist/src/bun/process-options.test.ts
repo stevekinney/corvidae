@@ -18,6 +18,7 @@ import {
 } from './bun-process.test-support.ts';
 import { PIPE_STDIN_FIXTURES, shellProfile } from './fixtures/bun-pipe-stdin.ts';
 import { PTY_FIXTURES } from './fixtures/bun-pty.ts';
+import { loadPipeDevice, type PipeDevice } from './pipe-device.ts';
 import { createPipeProcess } from './pipe-process.ts';
 import { ProcessStartFailure } from './process-start-failure.ts';
 import type { HostedProcess, SpawnedProcess, SpawnProcess } from './process-types.ts';
@@ -455,27 +456,27 @@ describe('using a process before it is open, or after it is released', () => {
 const scenario14 = scenario(
   'a pipe whose input cannot be closed is incomplete, though its process is ended',
   async () => {
-    const { spawn } = recordingSpawn((child) => ({
-      pid: child.pid,
-      exited: child.exited,
-      get signalCode() {
-        return child.signalCode;
+    const real = loadPipeDevice();
+    let writeEnd: number | undefined;
+    const device: PipeDevice = {
+      open: () => {
+        const pair = real.open();
+        writeEnd = pair.writeFd;
+        return pair;
       },
-      kill: (signal) => child.kill(signal),
-      stdin: {
-        write: () => 0,
-        flush: () => 0,
-        end: () => Promise.reject(new Error('end failed')),
+      close: (descriptor) => {
+        if (descriptor !== writeEnd) return real.close(descriptor);
+        // The descriptor is released for real, then the close is reported as failed.
+        real.close(descriptor);
+        throw new Error('close failed');
       },
-      stdout: child.stdout,
-      stderr: child.stderr,
-    }));
+    };
     const hosted = trackHostedProcess(
       createPipeProcess({
         profile: shellProfile('sleep 7919'),
         acceptsInput: true,
         terminationGraceMilliseconds: 100,
-        spawn,
+        loadDevice: () => device,
       }),
     );
     await hosted.backend.start();

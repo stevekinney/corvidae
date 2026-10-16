@@ -163,6 +163,7 @@
   function readInputSettings(): InputSettings {
     return {
       writable: acceptsInput(effectiveState),
+      paused: effectiveState === 'backpressured',
       mouseReporting,
       maximumPasteBytes: resolvePasteLimit(maximumPasteBytes),
       platform: detectInputPlatform(),
