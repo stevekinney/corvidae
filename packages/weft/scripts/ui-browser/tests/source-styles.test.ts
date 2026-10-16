@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const expectedImportedSelectors = [
@@ -33,5 +34,35 @@ test('source styles compile without discarded imports or other CSS warnings', as
     }
   } finally {
     await rm(outputDirectory, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The page canvas and the shell paint the background every route sits on. A
+ * stale token name there resolves to nothing, the shell falls back to the
+ * browser canvas, and axe measures dark-theme text against white (COR-124).
+ */
+test('the page canvas and shell paint with tokens Cinder defines', async () => {
+  const cinderSource = dirname(Bun.resolveSync('@lostgradient/cinder', import.meta.dir));
+  const tokens = await Bun.file(join(cinderSource, 'styles/tokens-base.css')).text();
+  const defined = new Set(
+    Array.from(tokens.matchAll(/(--cinder-[a-z0-9-]+)\s*:/g), (match) => match[1]),
+  );
+  const sources = [
+    { file: '../../../src/ui/styles/index.css', selector: 'body' },
+    { file: '../../../src/ui/styles/foundation.css', selector: '.weft-shell' },
+  ];
+  for (const { file, selector } of sources) {
+    const css = await Bun.file(fileURLToPath(new URL(file, import.meta.url))).text();
+    const rules = new RegExp(`(?:^|\\n)${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`, 'g');
+    const declarations = Array.from(css.matchAll(rules), (match) => match[1] ?? '').join('\n');
+    const used = Array.from(
+      declarations.matchAll(/(?:background|color)\s*:\s*var\((--cinder-[a-z0-9-]+)\)/g),
+      (match) => match[1],
+    );
+    expect(used.length, `${selector} paints a background and a text color`).toBe(2);
+    for (const token of used) {
+      expect(defined.has(token ?? ''), `${selector} uses undefined ${token}`).toBe(true);
+    }
   }
 });

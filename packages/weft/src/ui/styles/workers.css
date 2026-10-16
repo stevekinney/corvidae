@@ -683,7 +683,7 @@
 
 .weft-drain-dialog__target {
   font-family: var(--cinder-font-mono);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 /* ---------------------------------------------------------------------- */

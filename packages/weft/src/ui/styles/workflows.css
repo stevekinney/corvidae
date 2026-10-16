@@ -103,7 +103,7 @@
   border: 1px solid var(--cinder-accent);
   border-radius: var(--cinder-radius-full);
   background: color-mix(in oklch, var(--cinder-accent), transparent 90%);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
   font: inherit;
   font-size: var(--cinder-text-xs);
   font-weight: 600;
@@ -299,7 +299,7 @@
   min-width: 160px;
   margin: 0;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 /* Pagination */

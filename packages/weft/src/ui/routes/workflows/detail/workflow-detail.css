@@ -181,7 +181,7 @@
   flex: 1 1 auto;
   margin: 0;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -260,7 +260,7 @@
 .weft-overview-tab__failure-explanation {
   margin: 0 0 10px;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 .weft-overview-tab__pending-result {

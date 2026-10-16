@@ -287,7 +287,7 @@
   }
 
   .weft-restart-dialog__error {
-    color: var(--cinder-danger-text, var(--cinder-text));
+    color: var(--cinder-danger-text, var(--cinder-text-default));
     font-size: var(--cinder-text-xs);
   }
 </style>
