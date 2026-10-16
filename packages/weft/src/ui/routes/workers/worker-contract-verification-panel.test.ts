@@ -168,4 +168,26 @@ describe('WorkerContractVerificationPanel', () => {
     ).not.toBeNull();
     expect(mismatch.queryByText('Strict payload boundary rejected a value')).toBeNull();
   });
+
+  test('a worker that advertises no workflows says so', () => {
+    const { getByText } = renderPanel({ diagnostics: workerManifest({}) });
+    expect(getByText('This worker advertises no workflows.')).not.toBeNull();
+    expect(getByText('2 registry workflows not served by this worker')).not.toBeNull();
+  });
+
+  test('a workflow the registry has no active revision of is explained', () => {
+    const { getByText } = renderPanel({
+      diagnostics: workerManifest({
+        ghost: {
+          workflowVersion: '0.0.0',
+          workflowRevision: 'ghost-rev',
+          contractHash: 'sha256:ghost',
+          activities: {},
+        },
+      }),
+    });
+    expect(getByText('Not in registry')).not.toBeNull();
+    expect(getByText(/registry has no active revision of this workflow/)).not.toBeNull();
+    expect(getByText('Neither the worker nor the registry declares activities.')).not.toBeNull();
+  });
 });
