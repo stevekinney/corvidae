@@ -31,7 +31,7 @@ export function isTimestamp(value: unknown): value is number {
 }
 
 function isCount(value: unknown): boolean {
-  return Number.isInteger(value) && (value as number) >= 0;
+  return isFiniteNumber(value) && Number.isInteger(value) && value >= 0;
 }
 
 function optional(value: unknown, check: (candidate: unknown) => boolean): boolean {
