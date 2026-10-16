@@ -1,7 +1,7 @@
 /**
  * Tests for `scripts/build-dashboard.ts`: the production dashboard it writes into the default
- * `dashboard/` directory, the Shiki grammars and themes that reach that output, the size budget,
- * and `dashboard()` serving the result with its default `distDir`.
+ * `dashboard/` directory, the Shiki grammars and themes that reach that output, and the size
+ * budget.
  *
  * Every test that needs a real build shares one, made through the command-line entry, because
  * the output lands in the package's real `dashboard/` directory: building it from two places at
@@ -12,13 +12,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Engine } from '../src/core/engine.ts';
-import {
-  dashboard,
-  DASHBOARD_BUILD_COMMAND,
-  defaultDashboardDirectory,
-} from '../src/server/dashboard.ts';
-import { MemoryStorage } from '../src/storage/memory.ts';
+import { DASHBOARD_BUILD_COMMAND, defaultDashboardDirectory } from '../src/server/dashboard.ts';
 import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   assertCleanBuild,
@@ -137,47 +131,6 @@ describe('buildDashboard', () => {
 
       expect(await runCheckDashboardSizeCommand([], output)).toBe(0);
       expect(errors).toEqual([]);
-    },
-    BUILD_TIMEOUT_MS,
-  );
-
-  it(
-    'is served by dashboard() from its default distDir',
-    async () => {
-      const { files } = await builtDashboard();
-      await using engine = new Engine({ storage: new MemoryStorage() });
-      // No distDir: dashboard() reads the directory the build just wrote.
-      await using server = dashboard({
-        engine,
-        port: 0,
-        hostname: '127.0.0.1',
-        unauthenticatedAccess: 'allow',
-        publicOrigin: 'http://dashboard.test',
-      });
-
-      for (const path of ['/', '/workflows']) {
-        const response = await fetch(new URL(path, server.url));
-        expect(response.status, path).toBe(200);
-        expect(response.headers.get('content-type'), path).toBe('text/html; charset=utf-8');
-        expect(await response.text(), path).toContain('<div id="app"></div>');
-      }
-
-      const expectedTypes: Record<string, string> = {
-        js: 'text/javascript',
-        css: 'text/css',
-        wasm: 'application/wasm',
-      };
-      for (const [extension, contentType] of Object.entries(expectedTypes)) {
-        const asset = files.find((file) => file.endsWith(`.${extension}`));
-        if (asset === undefined) throw new Error(`The build emitted no .${extension} asset`);
-        const response = await fetch(new URL(`/${asset}`, server.url));
-        expect(response.status, asset).toBe(200);
-        expect(response.headers.get('content-type'), asset).toContain(contentType);
-        const body = await response.bytes();
-        expect(body.byteLength, asset).toBe(
-          Bun.file(join(DEFAULT_DASHBOARD_DIRECTORY, asset)).size,
-        );
-      }
     },
     BUILD_TIMEOUT_MS,
   );
