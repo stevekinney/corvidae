@@ -17,6 +17,7 @@ import {
   selectionProblems,
   TERMINAL_FILE_FILTER,
   TERMINAL_PROJECTS,
+  terminalEnvironment,
   titlesByFile,
   type PlaywrightReport,
   type TitleManifest,
@@ -35,7 +36,7 @@ function playwright(args: string[], environment: Record<string, string> = {}) {
     [process.execPath, '--bun', 'playwright', 'test', '--config', configuration, ...args],
     {
       cwd: root,
-      env: { ...process.env, ...environment },
+      env: { ...terminalEnvironment(process.env), ...environment },
       stdout: 'pipe',
       stderr: 'inherit',
     },
@@ -92,7 +93,7 @@ async function main(): Promise<number> {
       ],
       {
         cwd: root,
-        env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath },
+        env: { ...terminalEnvironment(process.env), PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath },
         stdout: 'inherit',
         stderr: 'inherit',
       },

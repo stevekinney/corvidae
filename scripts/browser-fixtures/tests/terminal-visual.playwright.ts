@@ -1,4 +1,9 @@
-import { loadManifest, THEMES, VIEWPORTS } from '@lostgradient/testing';
+import {
+  isScreenshotInComponentScope,
+  loadManifest,
+  THEMES,
+  VIEWPORTS,
+} from '@lostgradient/testing';
 
 import { TERMINAL_FIXTURE_NAMES } from '../src/fixtures/terminal/scenarios.ts';
 import { expect, test } from './component-page-fixture.ts';
@@ -14,6 +19,12 @@ import { runFixtureSweep } from './component-sweep.ts';
 const entry = loadManifest().find((candidate) => candidate.slug === 'terminal');
 expect(entry, 'the terminal fixture group must be in the fixture manifest').toBeDefined();
 const fixtures = entry?.fixtures ?? [];
+
+test('the screenshot scope includes the terminal, so every cell captures an image', () => {
+  // A leftover CINDER_TEST_COMPONENTS that leaves the terminal out makes the capture helper skip
+  // every image while every cell still passes.
+  expect(isScreenshotInComponentScope('terminal')).toBe(true);
+});
 
 test('every required terminal visual fixture is in the manifest', () => {
   expect(fixtures.map((fixture) => fixture.name).toSorted()).toEqual(

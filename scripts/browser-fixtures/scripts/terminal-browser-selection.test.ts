@@ -8,6 +8,7 @@ import {
   TERMINAL_FILE_FILTER,
   TERMINAL_PROJECTS,
   TERMINAL_VISUAL_SPEC,
+  terminalEnvironment,
   titlesByFile,
   type SelectedTest,
 } from './terminal-browser-selection.ts';
@@ -23,7 +24,7 @@ function full(): SelectedTest[] {
       }
     }
   }
-  for (let index = 0; index < 2 * 3 * FIXTURES + 1; index += 1) {
+  for (let index = 0; index < 2 * 3 * FIXTURES + 2; index += 1) {
     tests.push({
       file: TERMINAL_VISUAL_SPEC,
       project: 'chromium',
@@ -79,7 +80,7 @@ describe('the required terminal selection', () => {
   test('a lost baseline cell, an extra browser for the baselines, and a skip are problems', () => {
     const lost = full();
     lost.pop();
-    expect(selectionProblems(lost, FIXTURES).join('\n')).toContain('the matrix needs 19');
+    expect(selectionProblems(lost, FIXTURES).join('\n')).toContain('the matrix needs 20');
     const extra = [
       ...full(),
       {
@@ -116,6 +117,16 @@ describe('the required terminal selection', () => {
 
   test('an empty selection fails', () => {
     expect(selectionProblems([], FIXTURES).length).toBeGreaterThan(0);
+  });
+});
+
+describe('the terminal environment', () => {
+  test('forces the component scope to the terminal, whatever was set', () => {
+    expect(terminalEnvironment({ CINDER_TEST_COMPONENTS: 'button,card', KEEP: 'yes' })).toEqual({
+      CINDER_TEST_COMPONENTS: 'terminal',
+      KEEP: 'yes',
+    });
+    expect(terminalEnvironment({})['CINDER_TEST_COMPONENTS']).toBe('terminal');
   });
 });
 

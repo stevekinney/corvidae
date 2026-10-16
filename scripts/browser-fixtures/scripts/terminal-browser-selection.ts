@@ -16,6 +16,16 @@ export const TERMINAL_PROJECTS = ['chromium', 'firefox-terminal', 'webkit-termin
  */
 export const TERMINAL_FILE_FILTER = String.raw`/tests/terminal-[^/]*\.playwright\.ts$`;
 
+/**
+ * The environment the terminal run needs. `CINDER_TEST_COMPONENTS` limits which components the
+ * screenshot helper captures, and a leftover scope that leaves out `terminal` makes it skip every
+ * terminal image while every guard still passes. This command is about the terminal, so the scope
+ * is forced to it whatever the caller had set.
+ */
+export function terminalEnvironment(base: Readonly<Record<string, string | undefined>>) {
+  return { ...base, CINDER_TEST_COMPONENTS: 'terminal' };
+}
+
 /** Specs every one of the three browsers must run. */
 export const TERMINAL_BEHAVIORAL_SPECS = [
   'terminal-failure.playwright.ts',
@@ -118,10 +128,10 @@ export function selectionProblems(
   const sweep = tests.filter(
     (test) => test.file === TERMINAL_VISUAL_SPEC && test.project === 'chromium',
   ).length;
-  const required = THEME_COUNT * VIEWPORT_COUNT * fixtureCount + 1;
+  const required = THEME_COUNT * VIEWPORT_COUNT * fixtureCount + 2;
   if (sweep !== required) {
     problems.push(
-      `${TERMINAL_VISUAL_SPEC} selects ${sweep} chromium tests but the matrix needs ${required} (${fixtureCount} fixtures, both themes, three viewports, and the manifest check)`,
+      `${TERMINAL_VISUAL_SPEC} selects ${sweep} chromium tests but the matrix needs ${required} (${fixtureCount} fixtures, both themes, three viewports, the manifest check and the scope check)`,
     );
   }
   for (const project of ['firefox-terminal', 'webkit-terminal']) {

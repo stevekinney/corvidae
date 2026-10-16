@@ -69,6 +69,7 @@
   ],
   "terminal-recovery.playwright.ts": [
     "capture is visible on its control › the pressed capture button looks different from the resting one",
+    "each state offers the actions its row of the state table names › a failure shows exactly one recovery control, with every handler and an error message",
     "each state offers the actions its row of the state table names › an action without a host handler is not rendered",
     "each state offers the actions its row of the state table names › backpressured offers Cancel",
     "each state offers the actions its row of the state table names › cleanup-incomplete offers Check cleanup",
@@ -208,7 +209,8 @@
     "terminal › light-tablet-snapshot-modal",
     "terminal › light-tablet-snapshot-modal-stale",
     "terminal › light-tablet-snapshot-modal-truncated",
-    "terminal › light-tablet-writable"
+    "terminal › light-tablet-writable",
+    "the screenshot scope includes the terminal, so every cell captures an image"
   ],
   "terminal-vt.playwright.ts": [
     "ANSI and VT state › a full reset returns modes and the screen to their start state",
