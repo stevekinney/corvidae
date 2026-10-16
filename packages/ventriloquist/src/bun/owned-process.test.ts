@@ -290,17 +290,43 @@ describe('OwnedProcess', () => {
     expect(await outcome).toBe('unknown');
   });
 
-  test('hangs up the leader before the first TERM, and only then', async () => {
-    const { owned, child, signals } = harness({ hangUp: 'records' });
+  test('hangs up the leader, gives it one poll tick, and only then sends TERM', async () => {
+    const { owned, child, clock, signals } = harness({ hangUp: 'records' });
     owned.adopt(child);
-    expect(await owned.terminate()).toBe('complete');
+    const outcome = owned.terminate();
+    await flush();
+    expect(signals).toEqual([`hangUp:${LEADER}`]);
+    clock.advance(19);
+    await flush();
+    expect(signals).toEqual([`hangUp:${LEADER}`]);
+    clock.advance(1);
+    expect(await outcome).toBe('complete');
     expect(signals).toEqual([`hangUp:${LEADER}`, 'SIGTERM']);
   });
 
-  test('hangs up the leader once, not again for a second termination of an emptied group', async () => {
-    const { owned, child, signals } = harness({ hangUp: 'records' });
+  test('does not wait out the tick once the leader has exited', async () => {
+    const { owned, child, clock, endLeader, signals } = harness({
+      hangUp: 'records',
+      endsOn: 'SIGTERM',
+    });
     owned.adopt(child);
-    await owned.terminate();
+    const outcome = owned.terminate();
+    await flush();
+    expect(signals).toEqual([`hangUp:${LEADER}`]);
+    // The shell hung up its jobs and left; a job it did not reach still holds the session.
+    await endLeader(0, { groupEmpty: false });
+    expect(await outcome).toBe('complete');
+    expect(signals).toEqual([`hangUp:${LEADER}`, 'SIGTERM']);
+    expect(clock.pendingTimers).toBe(0);
+  });
+
+  test('hangs up the leader once, not again for a second termination of an emptied group', async () => {
+    const { owned, child, clock, signals } = harness({ hangUp: 'records' });
+    owned.adopt(child);
+    const first = owned.terminate();
+    await flush();
+    clock.advance(20);
+    await first;
     await owned.terminate();
     expect(signals).toEqual([`hangUp:${LEADER}`, 'SIGTERM']);
   });
@@ -313,15 +339,7 @@ describe('OwnedProcess', () => {
     expect(signals).toEqual([]);
   });
 
-  test('sweeps a session that outlived its leader, hanging up what is left of the leader', async () => {
-    const { owned, child, endLeader, signals } = harness({ hangUp: 'records' });
-    owned.adopt(child);
-    await endLeader(0, { groupEmpty: false });
-    expect(await owned.terminate()).toBe('complete');
-    expect(signals).toEqual([`hangUp:${LEADER}`, 'SIGTERM']);
-  });
-
-  test('a hang-up that fails does not stop the sweep', async () => {
+  test('a hang-up that fails does not stop the sweep, and costs no head start', async () => {
     const { owned, child, signals } = harness({ hangUp: 'fails' });
     owned.adopt(child);
     expect(await owned.terminate()).toBe('complete');

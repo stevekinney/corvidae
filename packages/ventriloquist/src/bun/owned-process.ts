@@ -117,10 +117,15 @@ export class OwnedProcess {
     if (this.#exiting) await this.#exit;
     if (this.#exited && this.#emptyAtExit) return scope;
     const { operations, clock, graceMilliseconds, observationMilliseconds, hangUp } = this.#options;
-    try {
-      hangUp?.(child.pid);
-    } catch {
-      // A courtesy only: the TERM and KILL sweep below is what ends the scope.
+    if (hangUp !== undefined) {
+      let hungUp = true;
+      try {
+        hangUp(child.pid);
+      } catch {
+        // A courtesy only: the TERM and KILL sweep below is what ends the scope.
+        hungUp = false;
+      }
+      if (hungUp) await this.#headStart();
     }
     const ended = await terminateProcessGroup({
       group: child.pid,
@@ -138,6 +143,20 @@ export class OwnedProcess {
     // number, so a later call may try again.
     if (ended !== 'complete') this.#termination = undefined;
     return outcome;
+  }
+
+  /**
+   * Give the hung-up leader one poll tick to forward the hangup to its jobs before the sweep, or
+   * less if the leader exits first. Bounded and on the injected clock, so nothing waits on a leader
+   * that ignores the hangup.
+   */
+  async #headStart(): Promise<void> {
+    let cancel: (() => void) | undefined;
+    const tick = new Promise<void>((resolve) => {
+      cancel = this.#options.clock.schedule(resolve, POLL_MILLISECONDS);
+    });
+    await Promise.race([tick, this.#exit]);
+    cancel?.();
   }
 
   async #observeScope(root: number): Promise<CleanupOutcome> {

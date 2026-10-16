@@ -1,5 +1,5 @@
-import { outcomeOf, rethrow } from '@lostgradient/testing';
-import { test } from 'bun:test';
+import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { afterAll, test } from 'bun:test';
 
 import { systemClock } from '../session/session-clock.ts';
 import type {
@@ -7,7 +7,7 @@ import type {
   SessionAttachment,
   SessionBudgets,
 } from '../session/session-types.ts';
-import { Recorder, SESSION_ID, expectAttached } from '../session/session.test-support.ts';
+import { expectAttached, Recorder, SESSION_ID } from '../session/session.test-support.ts';
 import { Session } from '../session/session.ts';
 import type { OutputMode } from './fixtures/terminal-output.ts';
 import { createPipeProcess } from './pipe-process.ts';
@@ -52,7 +52,15 @@ let scenarioQueue: Promise<unknown> = Promise.resolve();
  * clock applies, and the test only rethrows what it recorded (`outcomeOf` fails a body that never
  * settles after `SCENARIO_HANG_GUARD_MILLISECONDS`). Scenarios run in definition order, and every
  * session and process the body tracked is cleaned up when it ends. Call `settleScenarios` with
- * top-level `await` at the end of the file so every body has finished before any test runs.
+ * top-level `await` at the end of the file.
+ *
+ * Bun runs a `describe` callback after the module body, so a scenario defined inside one starts
+ * after that `await` has returned, and its test begins while the scenario is still running. The
+ * test therefore waits for its scenario, and that wait is bounded by the hang guard (the scenario is
+ * itself abandoned after it), not by Bun's five seconds: the five seconds are for work done in the
+ * test, and none is. The scenarios of tests a name filter did not select still run, so
+ * `settleScenarios` also registers a file hook that waits for all of them and their cleanup before
+ * the run may end.
  */
 export function scenarioTest(name: string, body: () => Promise<void> | void): void {
   const outcome = scenarioQueue.then(() =>
@@ -65,11 +73,24 @@ export function scenarioTest(name: string, body: () => Promise<void> | void): vo
     }),
   );
   scenarioQueue = outcome;
-  test(name, async () => rethrow(await outcome));
+  test(name, async () => rethrow(await outcome), SCENARIO_TEST_TIMEOUT_MILLISECONDS);
+}
+
+/** The hang guard plus the turns the rethrow needs, so the guard, not Bun's clock, ends a hung scenario. */
+const SCENARIO_TEST_TIMEOUT_MILLISECONDS = SCENARIO_HANG_GUARD_MILLISECONDS + 10_000;
+
+/** Wait until the queue stops growing: a scenario can be defined while an earlier one runs. */
+async function drainScenarios(): Promise<void> {
+  let last: Promise<unknown>;
+  do {
+    last = scenarioQueue;
+    await last;
+  } while (last !== scenarioQueue);
 }
 
 /** Wait for every scenario defined so far; `await` it at module scope after the last definition. */
 export async function settleScenarios(): Promise<void> {
+  afterAll(drainScenarios, SCENARIO_TEST_TIMEOUT_MILLISECONDS);
   await scenarioQueue;
 }
 
