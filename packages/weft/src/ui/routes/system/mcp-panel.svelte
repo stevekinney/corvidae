@@ -172,8 +172,8 @@
     flex-direction: column;
     gap: 6px;
     padding: 14px 16px;
-    background: var(--cinder-color-warning-bg);
-    border: 1px solid var(--cinder-color-warning-border);
+    background: var(--cinder-status-warning-background);
+    border: 1px solid var(--cinder-status-warning-border);
     border-radius: var(--cinder-radius-lg);
     font-size: var(--cinder-text-sm);
   }

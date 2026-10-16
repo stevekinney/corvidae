@@ -176,6 +176,6 @@
   }
 
   .weft-schedules-dashboard-card__segment-count[data-warning] {
-    color: var(--cinder-color-warning-fg);
+    color: var(--cinder-status-warning-text);
   }
 </style>

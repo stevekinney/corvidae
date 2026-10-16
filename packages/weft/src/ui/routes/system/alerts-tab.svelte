@@ -137,9 +137,9 @@
   };
 
   const EDGE_COLOR: Readonly<Record<AlertRowState, string>> = {
-    firing: 'var(--cinder-danger)',
+    firing: 'var(--cinder-status-danger-solid)',
     resolved: 'var(--cinder-border)',
-    warning: 'var(--cinder-warning)',
+    warning: 'var(--cinder-status-warning-solid)',
   };
 
   function detailsHref(row: AlertRow): string {
@@ -330,7 +330,7 @@
    * exactly like CSS `opacity`, in gamma-encoded sRGB — a naive
    * `color-mix(in oklch, …)` stand-in reads noticeably higher and is NOT
    * trustworthy near a 4.5:1 threshold), both themes: the row's title
-   * inherits `--cinder-text`, which holds AA at 0.6 opacity (4.71:1 light /
+   * inherits `--cinder-text-default`, which holds AA at 0.6 opacity (4.71:1 light /
    * 5.30:1 dark) — but `.weft-alerts-tab__row-detail` (`--cinder-text-subtle`)
    * and `.weft-alerts-tab__row-time` (`--cinder-text-disabled`) were
    * ALREADY marginal at full opacity and dropped to ~3:1 once dimmed, under

@@ -52,15 +52,15 @@
 }
 
 .weft-workers-callout--warning {
-  background: var(--cinder-color-warning-bg);
-  border-color: var(--cinder-color-warning-border);
-  color: var(--cinder-color-warning-fg);
+  background: var(--cinder-status-warning-background);
+  border-color: var(--cinder-status-warning-border);
+  color: var(--cinder-status-warning-text);
 }
 
 .weft-workers-callout--danger {
-  background: var(--cinder-color-danger-bg);
-  border-color: var(--cinder-color-danger-border);
-  color: var(--cinder-color-danger-fg);
+  background: var(--cinder-status-danger-background);
+  border-color: var(--cinder-status-danger-border);
+  color: var(--cinder-status-danger-text);
 }
 
 .weft-workers-stat-card {
@@ -85,7 +85,7 @@
 }
 
 .weft-workers-stat-card__value--warning {
-  color: var(--cinder-color-warning-fg);
+  color: var(--cinder-status-warning-text);
 }
 
 .weft-workers-stat-card__value-secondary {
@@ -540,15 +540,15 @@
 }
 
 .weft-diagnostic-card--warning {
-  background: var(--cinder-color-warning-bg);
-  border: 1px solid var(--cinder-color-warning-border);
+  background: var(--cinder-status-warning-background);
+  border: 1px solid var(--cinder-status-warning-border);
   border-radius: var(--cinder-radius-lg);
   padding: 14px 16px;
 }
 
 .weft-diagnostic-card--danger {
-  background: var(--cinder-color-danger-bg);
-  border: 1px solid var(--cinder-color-danger-border);
+  background: var(--cinder-status-danger-background);
+  border: 1px solid var(--cinder-status-danger-border);
   border-radius: var(--cinder-radius-lg);
   padding: 14px 16px;
 }
@@ -717,7 +717,7 @@
   margin: 0;
   padding: 12px 15px;
   font-size: var(--cinder-text-xs);
-  color: var(--cinder-color-danger-fg);
+  color: var(--cinder-status-danger-text);
 }
 
 /* ---------------------------------------------------------------------- */

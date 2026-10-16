@@ -66,3 +66,27 @@ test('the page canvas and shell paint with tokens Cinder defines', async () => {
     }
   }
 });
+
+/**
+ * A `var(--cinder-…)` that names a token Cinder never defines resolves to
+ * nothing: the declaration silently falls back to its initial or inherited
+ * value, so a warning band loses its fill or a status edge disappears
+ * (COR-124). Every `--cinder-*` name anywhere in Weft's UI CSS and Svelte
+ * source, comments included, must be one Cinder's token sheet declares.
+ */
+test('every --cinder-* token in Weft UI source is one Cinder defines', async () => {
+  const cinderSource = dirname(Bun.resolveSync('@lostgradient/cinder', import.meta.dir));
+  const tokens = await Bun.file(join(cinderSource, 'styles/tokens-base.css')).text();
+  const defined = new Set(
+    Array.from(tokens.matchAll(/(--cinder-[a-z0-9-]+)\s*:/g), (match) => match[1]),
+  );
+  const uiSource = fileURLToPath(new URL('../../../src/ui/', import.meta.url));
+  const undefinedReferences: string[] = [];
+  for await (const file of new Bun.Glob('**/*.{css,svelte}').scan(uiSource)) {
+    const text = await Bun.file(join(uiSource, file)).text();
+    for (const match of text.matchAll(/--cinder-[a-z0-9-]+/g)) {
+      if (!defined.has(match[0])) undefinedReferences.push(`${file}: ${match[0]}`);
+    }
+  }
+  expect(undefinedReferences).toEqual([]);
+});

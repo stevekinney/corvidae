@@ -335,7 +335,7 @@
   .weft-bulk-dialog__fault {
     margin: 0;
     font-size: var(--cinder-text-sm);
-    color: var(--cinder-color-danger-fg);
+    color: var(--cinder-status-danger-text);
   }
 
   .weft-bulk-dialog__progress {
