@@ -48,7 +48,7 @@ export async function outcomeOf(
   hangGuardMilliseconds = HANG_GUARD_MILLISECONDS,
   onHang?: () => void | Promise<void>,
 ): Promise<unknown> {
-  let cancel = (): void => {};
+  let cancel: (() => void) | undefined;
   const hang = new Promise<Error>((resolve) => {
     // The guard is armed before the scenario runs, so its backstop stays real and fires even if
     // the scenario installs fake timers. An abandoned scenario never reaches its own `finally`, so
@@ -79,7 +79,7 @@ export async function outcomeOf(
     }
     return outcome;
   } finally {
-    cancel();
+    cancel?.();
   }
 }
 

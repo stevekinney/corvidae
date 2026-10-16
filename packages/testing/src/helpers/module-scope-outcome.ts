@@ -25,7 +25,7 @@ export async function outcomeOf(
   scenario: () => Promise<void> | void,
   hangGuardMilliseconds = HANG_GUARD_MILLISECONDS,
 ): Promise<unknown> {
-  let cancel = (): void => {};
+  let cancel: (() => void) | undefined;
   const hang = new Promise<ScenarioHangError>((resolve) => {
     cancel = afterAwakeTime(hangGuardMilliseconds, () =>
       resolve(new ScenarioHangError(hangGuardMilliseconds)),
@@ -42,7 +42,7 @@ export async function outcomeOf(
       hang,
     ]);
   } finally {
-    cancel();
+    cancel?.();
   }
 }
 
