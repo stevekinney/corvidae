@@ -61,12 +61,12 @@ const settledFiles = new Set<string>();
 /** The path of the first stack frame outside this module, which is the test file calling in. */
 function callingFile(): string {
   const frames = (new Error().stack ?? '').split('\n').slice(1);
-  for (const frame of frames) {
-    const match = /\(?((?:file:\/\/)?\/[^():]+?)(?::\d+){1,2}\)?$/.exec(frame.trim());
-    const path = match?.[1];
-    if (path !== undefined && !path.endsWith('bun-process.test-support.ts')) return path;
-  }
-  return '';
+  const paths = frames.map(
+    (frame) => /\(?((?:file:\/\/)?\/[^():]+?)(?::\d+){1,2}\)?$/.exec(frame.trim())?.[1],
+  );
+  return (
+    paths.find((path) => path !== undefined && !path.endsWith('bun-process.test-support.ts')) ?? ''
+  );
 }
 
 /**
@@ -104,6 +104,13 @@ export function scenario(name: string, body: () => Promise<void> | void): Scenar
   return { name, outcome, settled: () => finished };
 }
 
+/** Fail loudly if a scenario is still running: its test must never be the one waiting for it. */
+export function expectSettled(started: Scenario): void {
+  if (!started.settled()) {
+    throw new Error(`scenario "${started.name}" had not settled when its test began`);
+  }
+}
+
 /**
  * Register the test that reports a scenario. It runs after every module-scope scenario of its file
  * has settled, so it waits on nothing and the per-test clock covers no process work; it fails
@@ -111,9 +118,7 @@ export function scenario(name: string, body: () => Promise<void> | void): Scenar
  */
 export function scenarioResult(name: string, started: Scenario): void {
   test(name, async () => {
-    if (!started.settled()) {
-      throw new Error(`scenario "${started.name}" had not settled when its test began`);
-    }
+    expectSettled(started);
     rethrow(await started.outcome);
   });
 }

@@ -1,8 +1,13 @@
-import { describe, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
-import { scenario, scenarioResult, settleScenarios } from './bun-process.test-support.ts';
+import {
+  expectSettled,
+  scenario,
+  scenarioResult,
+  settleScenarios,
+} from './bun-process.test-support.ts';
 
 /** The pids of processes whose command line contains `needle`, found from the process table. */
 function pidsRunning(needle: string): number[] {
@@ -70,6 +75,22 @@ const scenario3 = scenario(
 );
 
 describe('scenarios', () => {
+  test('refuse to start once the file has settled, naming the scenario', () => {
+    expect(() => scenario('late', () => undefined)).toThrow(
+      'scenario "late" was started after settleScenarios()',
+    );
+  });
+
+  test('are reported only once they have settled', () => {
+    const running = {
+      name: 'busy',
+      outcome: new Promise<never>(() => undefined),
+      settled: () => false,
+    };
+    expect(() => expectSettled(running)).toThrow('scenario "busy" had not settled');
+    expect(() => expectSettled({ ...running, settled: () => true })).not.toThrow();
+  });
+
   scenarioResult(scenario2.name, scenario2);
   scenarioResult(scenario3.name, scenario3);
 });
