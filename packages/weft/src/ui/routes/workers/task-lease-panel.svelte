@@ -114,7 +114,7 @@
 </section>
 
 <section
-  class="weft-workers-panel"
+  class="weft-workers-panel weft-task-cancellation"
   aria-labelledby="task-cancellation-heading"
   data-cancellation={cancellation.status}
 >
