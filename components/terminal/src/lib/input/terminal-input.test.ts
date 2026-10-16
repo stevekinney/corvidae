@@ -163,6 +163,14 @@ describe('authority is enforced in the client', () => {
     expect(sentText(context.controller)).toBe('a');
   });
 
+  test('a view that is backpressured refuses input as paused, not read-only, whatever the cause of the pause', () => {
+    const context = fixture({ settings: { writable: false, paused: true } });
+    context.engine.report({ kind: 'text', data: 'a' });
+    context.host.querySelector('textarea')!.dispatchEvent(pasteEvent('x\ny'));
+    expect(context.controller.sent).toEqual([]);
+    expect(context.refusals).toEqual([{ reason: 'paused' }, { reason: 'paused', source: 'paste' }]);
+  });
+
   test('a controller that revoked authority gets nothing', () => {
     const context = fixture();
     context.controller.authorityRevoked = true;

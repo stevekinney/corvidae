@@ -1,6 +1,12 @@
 import { writeSync } from 'node:fs';
 
-import type { ByteReader, ByteReadResult, ByteStream } from '../session/session-types.ts';
+import type {
+  ByteReader,
+  ByteReadResult,
+  ByteStream,
+  InputHold,
+} from '../session/session-types.ts';
+import { createInputWriter, type DescriptorWrite } from './input-writer.ts';
 import type { PtyDevice } from './pty-device.ts';
 import {
   MASTER_FLAG_COUNT,
@@ -20,7 +26,7 @@ export type MasterWorker = {
 };
 
 /** Writes `bytes` from `offset` to the master without blocking; throws an error with an errno `code`. */
-export type MasterWrite = (descriptor: number, bytes: Uint8Array, offset: number) => number;
+export type MasterWrite = DescriptorWrite;
 
 export type PtyMasterOptions = {
   readonly descriptor: number;
@@ -40,8 +46,11 @@ export type PtyMaster = {
    * Write input. The master is non-blocking, so what the child has not read is queued here and
    * retried; the returned promise settles when every byte is in the kernel. Input to a terminal
    * whose other end is gone never settles, and the session reports it as unknown at close.
+   * `hold` is told when the write is waiting only because the child has not read what is already
+   * queued (`held`), and when it stops waiting without having finished (`resumed`): progress, or a
+   * terminal that hung up, which is then a lost write rather than a held one.
    */
-  write(bytes: Uint8Array): Promise<void>;
+  write(bytes: Uint8Array, hold?: InputHold): Promise<void>;
   /** Keep reading but drop the output, so a terminal that is closing can drain. */
   discard(): void;
   /** End the worker and wait for it; `false` means it did not answer in time and was terminated. */
@@ -56,8 +65,6 @@ export type PtyMaster = {
   close(): void;
 };
 
-const WRITE_RETRY_MILLISECONDS = [1, 2, 4, 8, 16];
-
 const defaultWrite: MasterWrite = (descriptor, bytes, offset) =>
   writeSync(descriptor, bytes, offset, bytes.length - offset, null);
 
@@ -70,13 +77,6 @@ function isHungUp(error: unknown): boolean {
   const code = (error as { readonly code?: string }).code;
   return code === 'EIO' || code === 'EPIPE' || code === 'ENXIO';
 }
-
-type QueuedWrite = {
-  readonly bytes: Uint8Array;
-  offset: number;
-  resolve(): void;
-  reject(error: unknown): void;
-};
 
 type Ending = { readonly how: MasterEnd; readonly code?: string };
 
@@ -195,58 +195,12 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
   };
 
   // ---- input ---------------------------------------------------------------------------------
-  const pending: QueuedWrite[] = [];
-  let retryTimer: ReturnType<typeof setTimeout> | undefined;
-  let retries = 0;
-
-  const flush = (): void => {
-    retryTimer = undefined;
-    for (;;) {
-      if (closed || pending.length === 0) return;
-      const head = pending[0] as QueuedWrite;
-      try {
-        head.offset += writeBytes(descriptor, head.bytes, head.offset);
-      } catch (error) {
-        const code = (error as { readonly code?: string }).code;
-        if (code === 'EAGAIN') {
-          // The child has not read what is already queued: wait, longer each time, and try again.
-          const delay = WRITE_RETRY_MILLISECONDS[
-            Math.min(retries, WRITE_RETRY_MILLISECONDS.length - 1)
-          ] as number;
-          retries += 1;
-          retryTimer = setTimeout(flush, delay);
-          return;
-        }
-        // A terminal whose other end is gone will never take this write: it stays unsettled.
-        if (isHungUp(error)) return;
-        pending.shift()?.reject(error);
-        continue;
-      }
-      retries = 0;
-      if (head.offset >= head.bytes.length) {
-        pending.shift();
-        head.resolve();
-      }
-    }
-  };
-
-  const dropInput = (): void => {
-    closed = true;
-    if (retryTimer !== undefined) clearTimeout(retryTimer);
-    retryTimer = undefined;
-    pending.length = 0;
-  };
+  const input = createInputWriter({ descriptor, write: writeBytes, isHungUp });
 
   // ---- ending ----------------------------------------------------------------------------------
   return {
     stream,
-    write: (bytes) => {
-      if (bytes.length === 0) return Promise.resolve();
-      return new Promise<void>((resolve, reject) => {
-        pending.push({ bytes: bytes.slice(), offset: 0, resolve, reject });
-        if (pending.length === 1 && retryTimer === undefined) flush();
-      });
-    },
+    write: (bytes, hold) => input.write(bytes, hold),
     discard: () => {
       Atomics.store(flags, MASTER_FLAGS.discard, 1);
       Atomics.notify(flags, MASTER_FLAGS.inflight);
@@ -267,10 +221,14 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
       worker.terminate();
       return graceful;
     },
-    abandon: dropInput,
+    abandon: () => {
+      closed = true;
+      input.abandon();
+    },
     close: () => {
       if (closed) return;
-      dropInput();
+      closed = true;
+      input.abandon();
       device.close(descriptor);
     },
   };

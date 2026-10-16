@@ -40,7 +40,9 @@ const TRANSPORT_FAILURE_CLOSE_CODE = describeFailure('transport-failed').closeCo
 
 /** The wire code an operation refused before queueing is reported under. */
 function failureCodeFor(reason: InputFailureReason): 'fifo-full' | 'read-only' {
-  return reason === 'fifo-full' || reason === 'input-overflow' ? 'fifo-full' : 'read-only';
+  return reason === 'fifo-full' || reason === 'input-overflow' || reason === 'input-held'
+    ? 'fifo-full'
+    : 'read-only';
 }
 
 /**

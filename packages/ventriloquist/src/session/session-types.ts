@@ -78,6 +78,7 @@ export type InputFailureReason =
   | 'input-disabled'
   | 'invalid-dimensions'
   | 'input-overflow'
+  | 'input-held'
   | 'fifo-full';
 
 /** Outcome reported at the host-FIFO boundary; an expired acknowledgement is `unknown`, never success. */
@@ -206,6 +207,11 @@ export type SessionAttachment = {
   outputParsed(chunkId: number): boolean;
   /** The consumer reports a cumulative accepted-byte count it has parsed; returns chunks released. */
   outputParsedThrough(cumulativeBytes: number): number;
+  /**
+   * Whether the backend is holding a submitted write because the process is not reading. While it is,
+   * new input and resize are refused as `input-held`, and the held write is not on a deadline.
+   */
+  readonly inputHeld: boolean;
   /** Reset the liveness deadline. It grants no authority and does nothing on a revoked attachment. */
   heartbeat(): boolean;
   stop(): StopReceipt;
@@ -291,6 +297,14 @@ export type OutputSource =
       subscribe(deliver: (bytes: Uint8Array) => void, end: () => void): () => void | Promise<void>;
     };
 
+/** How a backend tells the session that one write is held by the child, not lost. */
+export type InputHold = {
+  /** The write is queued and the child is not reading: the outcome is pending, not unknown. */
+  held(): void;
+  /** The write is no longer waiting on the child, but has not completed. The deadline starts over. */
+  resumed(): void;
+};
+
 /**
  * The host's process: launched by `start`, driven by `write` and `resize`, and released by
  * `cleanup`, which is the owner's cleanup policy and reports how far it got. A backend reports its
@@ -306,7 +320,13 @@ export type ProcessBackend = {
    */
   readonly acceptsInput?: boolean;
   start(): Promise<void>;
-  write(bytes: Uint8Array): Promise<void>;
+  /**
+   * Write input. The promise settles when the process has taken every byte. When the write is only
+   * waiting because the child is not reading (a full terminal queue, a full pipe), call `hold.held()`
+   * so the session stops counting the wait toward the acknowledgement deadline, and `hold.resumed()`
+   * if the wait ends without the write completing. A write that is neither settled nor held is lost.
+   */
+  write(bytes: Uint8Array, hold?: InputHold): Promise<void>;
   resize?(columns: number, rows: number): Promise<void>;
   cleanup(): Promise<CleanupOutcome>;
 };

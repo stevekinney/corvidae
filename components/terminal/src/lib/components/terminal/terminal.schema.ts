@@ -99,7 +99,7 @@ const schema = {
         name: 'onCancel',
         reason: 'function-or-snippet',
         description:
-          'Called when the reader activates `Cancel` in `loading`, `connecting` or `backpressured`. The button renders only when this is provided; the host cancels construction or the connection and returns the state to `empty`, or cancels the unsent operations while the output stays readable.',
+          'Called when the reader activates `Cancel` in `loading` or `connecting`. The button renders only when this is provided; the host cancels construction or the connection and returns the state to `empty`.',
       },
       {
         name: 'onCheckCleanup',

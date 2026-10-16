@@ -1,6 +1,8 @@
 import type { SessionClock } from '../session/session-clock.ts';
 import type { OutputSource, ProcessBackend, TerminalDimensions } from '../session/session-types.ts';
 import type { HostPlatform } from './host-platform.ts';
+import type { DescriptorWrite } from './input-writer.ts';
+import type { PipeDevice } from './pipe-device.ts';
 import type { ProcessStartFailure } from './process-start-failure.ts';
 import type { PtyDevice } from './pty-device.ts';
 import type { MasterWorker, MasterWrite } from './pty-master.ts';
@@ -75,6 +77,13 @@ export type PipeProcessOptions = ProcessHostOptions & {
   profile: ProcessProfile;
   /** Whether the host opens stdin for input; omitted means the process has no input channel. */
   acceptsInput?: boolean;
+  /**
+   * Binds the operating-system calls that open the input pipe; throwing means this host cannot.
+   * Defaults to libc through `bun:ffi`.
+   */
+  loadDevice?: () => PipeDevice;
+  /** Writes input to the pipe without blocking. Defaults to `fs.writeSync`. */
+  writeInput?: DescriptorWrite;
 };
 
 /** A PTY process: one combined terminal stream, started at validated dimensions. */

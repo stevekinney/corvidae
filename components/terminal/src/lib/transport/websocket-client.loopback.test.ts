@@ -52,7 +52,8 @@ afterEach(async () => {
   for (const loopback of running.splice(0)) await loopback.stop();
 });
 
-function startLoopback(window = 256): Loopback {
+/** `held` makes every write wait on a child that is not reading until the deferred is resolved. */
+function startLoopback(window = 256, held?: ReturnType<typeof createDeferred<void>>): Loopback {
   const clock = new ManualClock();
   const slot = new SessionSlot();
   const stream = createScriptedStream('pty');
@@ -62,13 +63,15 @@ function startLoopback(window = 256): Loopback {
   const sockets: BrowserSocket[] = [];
   let cleanups = 0;
   const backend = createScriptedBackend({
-    write: (bytes) => {
+    write: (bytes, hold) => {
       written.push(new TextDecoder().decode(bytes));
       for (const waiter of waiters.splice(0)) {
         if (written.length >= waiter.count) waiter.resolve();
         else waiters.push(waiter);
       }
-      return Promise.resolve();
+      if (held === undefined) return Promise.resolve();
+      hold?.held();
+      return held.promise;
     },
     cleanup: () => {
       cleanups += 1;
@@ -142,6 +145,8 @@ function startLoopback(window = 256): Loopback {
     createClient: (options = {}) =>
       new TerminalWebSocketClient({
         url,
+        probeInitialMilliseconds: 5,
+        probeMaximumMilliseconds: 20,
         sessionId: SESSION_IDENTIFIER,
         ticket: TICKET,
         allowInsecureLoopback: true,
@@ -355,6 +360,36 @@ describe('backpressure over a real socket', () => {
     expect(await client.sendInput('d')).toMatchObject({ status: 'accepted' });
     await loopback.writes(3);
     expect(loopback.written).toEqual(['a', 'b', 'd']);
+    client.close();
+  });
+});
+
+describe('input a real socket carries to a process that is not reading', () => {
+  test('is accepted, then held: the view goes backpressured without failing, and recovers when the process reads', async () => {
+    const drained = createDeferred<void>();
+    const loopback = startLoopback(256, drained);
+    const client = loopback.createClient();
+    const events: TerminalTransportEvent[] = [];
+    client.subscribe((event) => events.push(event));
+    await client.connect();
+    expect(await client.sendInput('a long paste')).toMatchObject({ status: 'accepted' });
+    // Nothing more was typed, and the client still learns that the host is holding its input.
+    await reaches(client, 'backpressured');
+    expect(await client.sendInput('refused')).toMatchObject({
+      status: 'refused',
+      code: 'fifo-full',
+    });
+    expect(loopback.session().snapshot.closed).toBe(false);
+    drained.resolve();
+    await reaches(client, 'writable');
+    expect(await client.sendInput('after')).toMatchObject({ status: 'accepted' });
+    await loopback.writes(2);
+    // The capacity probe is an empty write; it carries no byte for the process.
+    expect(loopback.written.filter((text) => text !== '')).toEqual(['a long paste', 'after']);
+    expect(
+      events.some((event) => event.type === 'operation-failure' && event.code !== 'fifo-full'),
+    ).toBe(false);
+    expect(client.state).toBe('writable');
     client.close();
   });
 });

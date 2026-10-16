@@ -11,6 +11,7 @@ import {
   loginShell,
   REPLAY_FIXTURE,
   resolveProfile,
+  STALLED_PROGRAM,
   type ProfileContext,
 } from './profiles.ts';
 
@@ -28,6 +29,8 @@ describe('the profile table', () => {
       'links',
       'readonly-output',
       'shell',
+      'stalled',
+      'stalled-long',
     ]);
     for (const identifier of PROFILE_IDENTIFIERS) {
       const description = PROFILE_DESCRIPTIONS[identifier];
@@ -102,6 +105,23 @@ describe('the profile table', () => {
     expect(program).toContain('escaped=$$');
   });
 
+  test('the stalled program puts its terminal in raw mode, stops reading, and then discards what it is sent', () => {
+    const launch = resolveProfile('stalled', false, context)?.launch;
+    expect(launch?.mode).toBe('pty');
+    expect(launch?.profile.argumentList).toEqual([STALLED_PROGRAM, '10']);
+    expect(resolveProfile('stalled-long', false, context)?.launch.profile.argumentList).toEqual([
+      STALLED_PROGRAM,
+      '90',
+    ]);
+    const program = readFileSync(STALLED_PROGRAM, 'utf8');
+    expect(program).toStartWith('#!/bin/sh\n');
+    // Raw mode, because in canonical mode the line discipline discards what overflows instead of
+    // making the writer wait; echo off, so nothing the terminal is sent is echoed back.
+    expect(program).toContain('stty raw -echo');
+    expect(program).toContain('sleep "$1"');
+    expect(program).toContain('exec cat >/dev/null');
+  });
+
   test('the links fixture carries every kind of address the review needs', () => {
     expect(resolveProfile('links', false, context)?.launch.profile).toMatchObject({
       executable: '/bin/cat',
@@ -116,11 +136,17 @@ describe('the profile table', () => {
   });
 
   test('every committed program and fixture exists, and the programs are executable by sh', () => {
-    for (const path of [REPLAY_FIXTURE, LINKS_FIXTURE, FULLSCREEN_PROGRAM, DIAGNOSTIC_PROGRAM]) {
+    for (const path of [
+      REPLAY_FIXTURE,
+      LINKS_FIXTURE,
+      FULLSCREEN_PROGRAM,
+      DIAGNOSTIC_PROGRAM,
+      STALLED_PROGRAM,
+    ]) {
       expect(existsSync(path)).toBe(true);
       expect(statSync(path).isFile()).toBe(true);
     }
-    for (const path of [FULLSCREEN_PROGRAM, DIAGNOSTIC_PROGRAM, ESCAPED_PROGRAM]) {
+    for (const path of [FULLSCREEN_PROGRAM, DIAGNOSTIC_PROGRAM, ESCAPED_PROGRAM, STALLED_PROGRAM]) {
       expect(readFileSync(path, 'utf8')).toStartWith('#!/bin/sh\n');
     }
   });
@@ -132,6 +158,8 @@ describe('the profile table', () => {
       'readonly-output',
       'links',
       'escaped',
+      'stalled',
+      'stalled-long',
     ] as const) {
       expect(resolveProfile(identifier, false, context)?.launch.profile.environment).toEqual({
         TERM: 'xterm-256color',

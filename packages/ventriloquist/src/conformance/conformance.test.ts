@@ -26,6 +26,7 @@ import {
 import { CONTROL_CASES } from './conformance-control-cases.test-support.ts';
 import { CORPUS_CASES } from './conformance-corpus-cases.test-support.ts';
 import { FAULT_CASES } from './conformance-fault-cases.test-support.ts';
+import { HELD_INPUT_CASES } from './conformance-held-input-cases.test-support.ts';
 import { descriptorStability } from './conformance-leak-cases.test-support.ts';
 import { PAUSE_CASES } from './conformance-pause-cases.test-support.ts';
 import { SESSION_CASES } from './conformance-session-cases.test-support.ts';
@@ -58,6 +59,7 @@ const FAMILIES: readonly { readonly family: string; readonly cases: readonly Cas
     { family: 'corpus', cases: CORPUS_CASES },
     { family: 'sources', cases: SOURCE_CASES },
     { family: 'pause', cases: PAUSE_CASES },
+    { family: 'held-input', cases: HELD_INPUT_CASES },
     { family: 'faults', cases: FAULT_CASES },
     { family: 'session', cases: SESSION_CASES },
   ];

@@ -260,7 +260,10 @@ describe('a host that refuses with fifo-full', () => {
     expect(subject.fromClient()).toEqual([]);
     subject.serve(subject.host.acknowledgeOperation(1));
     expect(subject.client.state).toBe('writable');
-    expect(subject.clock.pendingTimers).toBe(0);
+    // The settle probe is armed behind the acknowledgement, and sends nothing while `b` is unanswered.
+    expect(subject.clock.pendingTimers).toBe(1);
+    subject.clock.advance(250);
+    expect(subject.fromClient()).toEqual([]);
   });
 
   test('stops probing when the transport ends, or the client closes or stops', async () => {
@@ -405,4 +408,93 @@ test('the endpoint used here is the real protocol client', () => {
     new ClientEndpoint({ sessionId: 'x', requestedMode: 'interactive', token: 't' }).phase,
   ).toBe('idle');
   expect(WRITABLE.input).toBe(true);
+});
+
+describe('input the host accepted and then holds', () => {
+  const empty = (message: { kind: string; payload?: Uint8Array }) =>
+    message.kind === 'input' && message.payload?.length === 0;
+
+  async function afterInput(): Promise<Rig> {
+    const subject = await windowOf(8);
+    const sending = subject.client.sendInput('paste');
+    subject.fromClient();
+    subject.serve(subject.host.acknowledgeOperation(1));
+    await sending;
+    return subject;
+  }
+
+  test('once the user stops, one empty input asks whether the host kept up, and an accepted one changes nothing', async () => {
+    const subject = await afterInput();
+    const events: TerminalTransportEvent[] = [];
+    subject.client.subscribe((event) => events.push(event));
+    subject.clock.advance(249);
+    expect(subject.fromClient()).toEqual([]);
+    subject.clock.advance(1);
+    const [probe] = subject.fromClient();
+    expect(probe).toMatchObject({ kind: 'input', sequence: 2 });
+    expect(empty(probe as never)).toBe(true);
+    subject.serve(subject.host.acknowledgeOperation(2));
+    expect(subject.client.state).toBe('writable');
+    expect(events).toEqual([]);
+    expect(subject.clock.pendingTimers).toBe(0);
+    subject.clock.advance(60_000);
+    expect(subject.fromClient()).toEqual([]);
+  });
+
+  test('a probe the host refuses as held makes the view backpressured, and the pause probe takes over', async () => {
+    const subject = await afterInput();
+    const states: TerminalTransportState[] = [];
+    subject.client.subscribe((event) => {
+      if (event.type === 'state') states.push(event.state);
+    });
+    subject.clock.advance(250);
+    subject.fromClient();
+    subject.serve(subject.host.failOperation(2, 'fifo-full', 'input-held'));
+    expect(subject.client.state).toBe('backpressured');
+    expect(states).toEqual(['backpressured']);
+    // New input is refused locally while it holds, and nothing the user typed is sent.
+    expect(subject.client.input.input(new TextEncoder().encode('x')).ok).toBe(false);
+    expect(typed(subject)).toEqual([]);
+    subject.clock.advance(250);
+    const [next] = subject.fromClient();
+    expect(next).toMatchObject({ kind: 'input', sequence: 3 });
+    subject.serve(subject.host.acknowledgeOperation(3));
+    expect(subject.client.state).toBe('writable');
+  });
+
+  test('typing again before the question is asked postpones it', async () => {
+    const subject = await afterInput();
+    subject.clock.advance(200);
+    const more = subject.client.sendInput('more');
+    subject.clock.advance(1_000);
+    const sent = subject.fromClient();
+    expect(sent).toHaveLength(1);
+    expect(sent.filter(empty as never)).toEqual([]);
+    subject.serve(subject.host.acknowledgeOperation(2));
+    await more;
+    subject.clock.advance(249);
+    expect(subject.fromClient()).toEqual([]);
+    subject.clock.advance(1);
+    expect(subject.fromClient().filter(empty as never)).toHaveLength(1);
+  });
+
+  test('is not asked once the client is no longer writable or the transport ended', async () => {
+    const paused = await afterInput();
+    paused.clock.advance(250);
+    paused.fromClient();
+    paused.serve(paused.host.failOperation(2, 'fifo-full', 'input-held'));
+    expect(paused.client.state).toBe('backpressured');
+    const ended = await afterInput();
+    ended.socket().drop(1006);
+    expect(ended.clock.pendingTimers).toBe(0);
+    ended.clock.advance(60_000);
+    expect(ended.fromClient().filter((message) => message.kind === 'input')).toEqual([]);
+  });
+
+  test('is not sent by a client that has been stopped', async () => {
+    const subject = await afterInput();
+    void subject.client.stop();
+    subject.clock.advance(60_000);
+    expect(subject.fromClient().filter(empty as never)).toEqual([]);
+  });
 });

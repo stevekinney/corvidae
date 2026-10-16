@@ -1,5 +1,5 @@
 import type { CleanupOutcome } from '../../protocol/messages.ts';
-import type { ProcessBackend } from '../session-types.ts';
+import type { InputHold, ProcessBackend } from '../session-types.ts';
 
 export type BackendCall =
   | { readonly call: 'start' }
@@ -11,7 +11,7 @@ export type ScriptedBackendOptions = {
   readonly mode?: 'pty' | 'pipe';
   /** Without it `start` resolves at once. Return a pending promise to hold the process in `starting`. */
   readonly start?: () => Promise<void>;
-  readonly write?: (bytes: Uint8Array) => Promise<void>;
+  readonly write?: (bytes: Uint8Array, hold: InputHold | undefined) => Promise<void>;
   readonly resize?: (columns: number, rows: number) => Promise<void>;
   readonly cleanup?: () => Promise<CleanupOutcome>;
 };
@@ -36,9 +36,9 @@ export function createScriptedBackend(options: ScriptedBackendOptions = {}): Scr
       calls.push({ call: 'start' });
       return options.start?.() ?? Promise.resolve();
     },
-    write: (bytes) => {
+    write: (bytes, hold) => {
       calls.push({ call: 'write', bytes });
-      return options.write?.(bytes) ?? Promise.resolve();
+      return options.write?.(bytes, hold) ?? Promise.resolve();
     },
     cleanup: () => {
       calls.push({ call: 'cleanup' });

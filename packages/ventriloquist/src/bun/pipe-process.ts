@@ -1,3 +1,5 @@
+import { writeSync } from 'node:fs';
+
 import type { ProcessBackend } from '../session/session-types.ts';
 import { attempt, combineOutcomes } from '../session/settle.ts';
 import { createDeferredByteStream } from './deferred-byte-stream.ts';
@@ -7,16 +9,15 @@ import {
   resolveHostSettings,
   spawnOwnedProcess,
 } from './hosted-process.ts';
+import { createInputWriter, type DescriptorWrite, type InputWriter } from './input-writer.ts';
+import { loadPipeDevice, type PipeDevice, type PipePair } from './pipe-device.ts';
 import { ProcessStartFailure } from './process-start-failure.ts';
 import type { HostedProcess, PipeProcessOptions } from './process-types.ts';
 import { snapshotProfile, validateProcessProfile } from './process-validation.ts';
 
-/** The writable end of a child's stdin, as Bun's `FileSink` offers it. */
-type InputSink = {
-  write(bytes: Uint8Array): number | Promise<number>;
-  flush(): number | Promise<number>;
-  end(): number | Promise<number>;
-};
+/** Write to a descriptor without blocking, the way `fs.writeSync` does. */
+const writeDescriptor: DescriptorWrite = (descriptor, bytes, offset) =>
+  writeSync(descriptor, bytes, offset, bytes.length - offset, null);
 
 /**
  * Create a pipe process: `Bun.spawn` with piped stdio, run as its own process group. Standard
@@ -37,7 +38,9 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
   const acceptsInput = options.acceptsInput === true;
   const owned = createOwnedProcess(settings);
   let startFailure: ProcessStartFailure | undefined;
-  let input: InputSink | undefined;
+  let device: PipeDevice | undefined;
+  let inputEnd: PipePair | undefined;
+  let input: InputWriter | undefined;
   // Neither channel is buffered here: each is read only when the session asks, so a child nobody
   // reads blocks on its pipe, and the session's one output budget bounds both channels together.
   const outputs = { stdout: createDeferredByteStream(), stderr: createDeferredByteStream() };
@@ -49,38 +52,80 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
     mode: 'pipe',
     acceptsInput,
     start: async () => {
+      // The child's input is a pipe this process holds the write end of, not Bun's stdin sink: the
+      // sink buffers without a bound the session can see, so a child that never reads would hold
+      // half a mebibyte. With the descriptor, the kernel's pipe buffer is the only buffer.
+      let pipe: PipePair | undefined;
+      if (acceptsInput) {
+        try {
+          device = (options.loadDevice ?? loadPipeDevice)();
+        } catch (cause) {
+          startFailure = new ProcessStartFailure(
+            'unsupported-runtime',
+            'this host cannot open a pipe through libc and the bundled C helper',
+            { cause },
+          );
+          throw startFailure;
+        }
+        try {
+          pipe = device.open();
+        } catch (cause) {
+          startFailure = new ProcessStartFailure('spawn-failed', 'could not open an input pipe', {
+            cause,
+          });
+          throw startFailure;
+        }
+      }
       let child;
       try {
         child = spawnOwnedProcess(settings, [profile.executable, ...profile.argumentList], {
           cwd: profile.workingDirectory,
           env: { ...profile.environment },
-          stdin: acceptsInput ? 'pipe' : 'ignore',
+          stdin: pipe === undefined ? 'ignore' : pipe.readFd,
           stdout: 'pipe',
           stderr: 'pipe',
           detached: true,
         });
       } catch (error) {
         startFailure = error as ProcessStartFailure;
+        if (pipe !== undefined) {
+          device?.close(pipe.readFd);
+          device?.close(pipe.writeFd);
+        }
         throw error;
       }
+      // Bun duplicates the descriptor into the child and leaves this one open (checked: it is still
+      // valid after the spawn). It is closed here, once: keeping it would leave a reader on the pipe
+      // after the child is gone, so a write would never see EPIPE.
+      if (pipe !== undefined) device?.close(pipe.readFd);
       owned.adopt(child);
-      input = acceptsInput ? (child.stdin as InputSink) : undefined;
+      if (pipe !== undefined) {
+        inputEnd = pipe;
+        input = createInputWriter({
+          descriptor: pipe.writeFd,
+          write: options.writeInput ?? writeDescriptor,
+          // A closed reader is an ordinary failure of the write: the child is gone.
+          isHungUp: () => false,
+        });
+      }
       // No `await` may come between the spawn and these two calls: see `DeferredByteStream.attach`.
       outputs.stdout.attach(child.stdout as ReadableStream<Uint8Array>);
       outputs.stderr.attach(child.stderr as ReadableStream<Uint8Array>);
     },
-    write: async (bytes) => {
-      if (input === undefined) throw new Error('the process has no open input');
-      await input.write(bytes);
-      await input.flush();
+    write: (bytes, hold) => {
+      if (input === undefined) return Promise.reject(new Error('the process has no open input'));
+      return input.write(bytes, hold);
     },
     cleanup: async () => {
-      // Termination starts first and runs alongside the close of stdin: closing flushes buffered
-      // input, which waits on a child that has stopped reading, and must not hold the signal back.
+      // What is queued is dropped before the child is signaled: whether any of it arrived cannot be
+      // known, so the write stays unsettled and the session reports unknown delivery.
+      input?.abandon();
       const terminating = owned.terminate();
-      const sink = input;
+      const end = inputEnd;
       input = undefined;
-      const closing = attempt(() => sink?.end());
+      inputEnd = undefined;
+      // Closing the write end is the child's end of file, and releases the descriptor.
+      const closing = attempt(() => (end === undefined ? undefined : device?.close(end.writeFd)));
       const terminated = await terminating;
       const closed = await closing;
       const released = await attempt(releaseOutputs);

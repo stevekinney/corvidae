@@ -674,6 +674,15 @@ describe('dropped input is announced', () => {
     expect(seen).toEqual(['Terminal input paused. Keystrokes are not being sent.']);
   });
 
+  test('a paste into a view that is backpressured is announced as paused, never read-only', async () => {
+    // The engine takes no keystrokes while the view is not writable, so only a paste reaches the input path.
+    const { harness, textarea, controller, seen } = await mountWritable({ state: 'backpressured' });
+    textarea.dispatchEvent(pasteEvent('a line'));
+    await waitFor(() => announcement(harness) !== '', 'the announcement');
+    expect(seen).toEqual(['Terminal input paused. Keystrokes are not being sent.']);
+    expect(controller.input.sent).toEqual([]);
+  });
+
   test('an input too large for one frame is announced', async () => {
     const { harness, controller, textarea, seen } = await mountWritable();
     controller.input.terms = { maxFrameBytes: 2, maxQueuedOperations: 1 };

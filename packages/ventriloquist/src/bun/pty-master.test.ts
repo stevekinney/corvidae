@@ -312,6 +312,53 @@ describe('writing a master', () => {
     expect(run.taken).toEqual(['good!']);
   });
 
+  function reports() {
+    const log: string[] = [];
+    return { log, hold: { held: () => log.push('held'), resumed: () => log.push('resumed') } };
+  }
+
+  test('reports one hold while the kernel refuses with EAGAIN, and none when it takes the write', async () => {
+    const quiet = reports();
+    const takes = recordingWrite((): number => 3);
+    await master({ write: takes.write }).created.write(new TextEncoder().encode('abc'), quiet.hold);
+    expect(quiet.log).toEqual([]);
+    const held = reports();
+    const run = recordingWrite((call) => (call <= 4 ? 'EAGAIN' : 100));
+    await master({ write: run.write }).created.write(new TextEncoder().encode('abc'), held.hold);
+    expect(held.log).toEqual(['held']);
+  });
+
+  test('reports the hold over when the kernel takes some of the write, and again if it refuses more', async () => {
+    const run = recordingWrite((call) =>
+      call === 1 ? 'EAGAIN' : call === 2 ? 2 : call === 3 ? 'EAGAIN' : 100,
+    );
+    const { log, hold } = reports();
+    await master({ write: run.write }).created.write(new TextEncoder().encode('abcdef'), hold);
+    expect(log).toEqual(['held', 'resumed', 'held']);
+    expect(run.taken).toEqual(['ab', 'cdef']);
+  });
+
+  test('a terminal that hangs up while the write is held makes it a lost write, not a held one', async () => {
+    const run = recordingWrite((call) => (call === 1 ? 'EAGAIN' : 'EIO'));
+    const { log, hold } = reports();
+    const outcome = await Promise.race([
+      master({ write: run.write })
+        .created.write(new TextEncoder().encode('lost'), hold)
+        .then(() => 'settled'),
+      Bun.sleep(60).then(() => 'unsettled'),
+    ]);
+    expect(outcome).toBe('unsettled');
+    expect(log).toEqual(['held', 'resumed']);
+  });
+
+  test('a terminal that hangs up without a prior hold reports nothing', async () => {
+    const run = recordingWrite(() => 'EIO');
+    const { log, hold } = reports();
+    void master({ write: run.write }).created.write(new TextEncoder().encode('lost'), hold);
+    await Bun.sleep(30);
+    expect(log).toEqual([]);
+  });
+
   test('closing abandons a write that is waiting to be retried', async () => {
     const run = recordingWrite((): string => 'EAGAIN');
     const { created } = master({ write: run.write });

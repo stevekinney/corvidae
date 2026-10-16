@@ -221,7 +221,7 @@ export function observeProcess(hosted: HostedProcess): ObservedProcess {
       started.resolve();
       return hosted.backend.start();
     },
-    write: (bytes) => hosted.backend.write(bytes),
+    write: (bytes, hold) => hosted.backend.write(bytes, hold),
     cleanup: () => hosted.backend.cleanup(),
     ...(hosted.backend.resize === undefined
       ? {}
