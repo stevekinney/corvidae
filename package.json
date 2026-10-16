@@ -133,7 +133,7 @@
     "coverage": "bun scripts/run-exclusively.ts 'turbo run test:coverage'",
     "dev": "turbo run dev",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format:check": "prettier --check --cache --cache-strategy content .",
     "lint": "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint && bun run lint:styles'",
     "lint:fix": "turbo run lint:fix",
     "preflight": "bun install --frozen-lockfile",
