@@ -217,8 +217,9 @@ test.describe('capture, focus and page navigation', () => {
       'the terminal leaves Option+Tab to the page while capture is off',
     ).toEqual([false]);
     expect(await sentBytes(page)).toEqual([]);
-    // Firefox does not move focus on Option+Tab whatever the page does, so focus is read elsewhere.
-    if (browserName !== 'firefox') {
+    // Only Safari moves focus on Option+Tab on every host: Firefox never does, and Chromium does
+    // not on Linux, where the window manager owns the chord. The page's own handling is asserted above.
+    if (browserName === 'webkit') {
       await expect(terminalInput(page)).not.toBeFocused();
     }
 
