@@ -4,7 +4,7 @@
   "packages": {
     "@lostgradient/cinder": {
       "workspace": "@lostgradient/cinder",
-      "version": "0.28.0",
+      "version": "0.29.0",
       "fetchedAt": "2026-10-16",
       "subpaths": [
         ".",
@@ -1004,7 +1004,7 @@
     },
     "@lostgradient/editor": {
       "workspace": "@lostgradient/editor",
-      "version": "0.17.0",
+      "version": "0.18.0",
       "fetchedAt": "2026-10-16",
       "subpaths": [
         ".",

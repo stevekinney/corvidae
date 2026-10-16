@@ -377,7 +377,7 @@ describe('surface parity', () => {
   test('cinder is regenerated to the full published surface, not a subset', () => {
     const { plan } = committedPlans.cinder;
     const result = plan.parity.find((entry) => entry.publicName === '@lostgradient/cinder');
-    expect(result?.baselineVersion).toBe('0.28.0');
+    expect(result?.baselineVersion).toBe('0.29.0');
     expect(result?.missing).toEqual([]);
     // 0.28.0 published `./tokens/runtime` (COR-491), so the refreshed baseline has every subpath.
     expect(result?.added).toEqual([]);

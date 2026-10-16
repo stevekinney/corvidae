@@ -74,11 +74,11 @@ describe('DR-9 diff-review release surface', () => {
     if (range === undefined) return;
     // 0.26.2 is the last version vendored into package-surface.json before DR-3 (COR-515) added
     // SourceDiffViewer's activeFileOccurrence/onfileschange/focusFile/focusAnchor annotation hooks;
-    // 0.27.0 is the minimum version DR-9 records as carrying them. Editor 0.17.0 widened the peer
-    // to ^0.28.0 when Cinder 0.28.0 published, so the floor now sits above both.
+    // 0.27.0 is the minimum version DR-9 records as carrying them. Editor 0.18.0 widened the peer
+    // to ^0.29.0 when Cinder 0.29.0 published, so the floor now sits above both.
     expect(Bun.semver.satisfies('0.26.2', range)).toBe(false);
-    expect(Bun.semver.satisfies('0.27.1', range)).toBe(false);
-    expect(Bun.semver.satisfies('0.28.0', range)).toBe(true);
+    expect(Bun.semver.satisfies('0.28.0', range)).toBe(false);
+    expect(Bun.semver.satisfies('0.29.0', range)).toBe(true);
   });
 
   test("the editor's Markdown peer range excludes versions that predate the flat root exports", () => {
