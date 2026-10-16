@@ -115,7 +115,7 @@ Four dashboard issues own work that no `tracked` row can carry today. COR-166 (c
 | `feed:workflow-events:sse` | exposed | `src/ui/lib/live-source/workflow-tail-source.svelte.ts` |  | `src/ui/lib/live-source/workflow-tail-source.test.ts` |  |  |
 | `feed:workflow-events:websocket` | exposed | `src/ui/lib/live-source/workflow-tail-source.svelte.ts` |  | `src/ui/lib/live-source/workflow-tail-source.test.ts` |  |  |
 | `feed:fleet-events:sse` | exposed | `src/ui/lib/live-source/fleet-event-source.svelte.ts` |  | `src/ui/lib/live-source/fleet-event-source.test.ts` |  |  |
-| `feed:fleet-events:websocket` | not-in-dashboard |  |  |  |  | The dashboard reads the fleet feed over SSE, which carries the same events and filters as the `weft.events.subscribe` WebSocket subscription. |
+| `feed:fleet-events:websocket` | not-in-dashboard |  |  |  |  | The dashboard reads the fleet feed over SSE, which carries the same fleet events as the `weft.events.subscribe` WebSocket subscription. |
 | `metrics:prometheus` | not-in-dashboard |  |  |  |  | `GET /v1/metrics` serves Prometheus text for a scraper, and the Metrics tab reads the same collector as JSON through `weft.system.metrics`. |
 | `traces:opentelemetry` | not-in-dashboard |  |  |  |  | Weft exports traces to an OpenTelemetry collector and does not serve them, so there is nothing for the dashboard to read. |
 | `audit:authentication` | tracked |  |  |  | COR-1465 |  |
