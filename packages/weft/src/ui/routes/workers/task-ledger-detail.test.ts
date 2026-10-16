@@ -402,6 +402,76 @@ describe('TaskLedgerDetailView — out-of-order attempt claims', () => {
   });
 });
 
+describe('TaskLedgerDetailView — attempt build identity', () => {
+  function identity(overrides: Record<string, unknown>) {
+    return {
+      workerId: 'worker-a',
+      manifestDigest: 'sha256:manifest',
+      sdkVersion: '1.0.0',
+      runtimeName: 'bun',
+      runtimeVersion: '1.3.0',
+      deploymentName: 'payments',
+      buildId: 'build-41',
+      artifactDigest: 'sha256:artifact-41',
+      workflowType: 'orders',
+      workflowRevision: 'rev-6',
+      activityName: 'chargeCard',
+      activityContractHash: 'sha256:contract',
+      protocolVersion: 1,
+      ...overrides,
+    };
+  }
+
+  test('a retry across builds shows each attempt’s deployment, build, artifact, and revision', () => {
+    const task = leasedTask({
+      attempts: [
+        attemptRecord({ attempt: 1, executionIdentity: identity({}) }),
+        attemptRecord({
+          attempt: 2,
+          claimedAt: NOW - 10_000,
+          disposition: 'leased',
+          dispositionAt: NOW - 10_000,
+          executionIdentity: identity({
+            workerId: 'worker-b',
+            deploymentName: 'payments-v2',
+            buildId: 'build-42',
+            artifactDigest: 'sha256:artifact-42',
+            workflowRevision: 'rev-7',
+          }),
+        }),
+      ],
+    });
+    const { container } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
+
+    const first = within(attemptEntry(container, 1));
+    expect(first.getByText('payments')).not.toBeNull();
+    expect(first.getByText('build-41')).not.toBeNull();
+    expect(first.getByText('sha256:artifact-41')).not.toBeNull();
+    expect(first.getByText('rev-6')).not.toBeNull();
+    const second = within(attemptEntry(container, 2));
+    expect(second.getByText('payments-v2')).not.toBeNull();
+    expect(second.getByText('build-42')).not.toBeNull();
+    expect(second.getByText('sha256:artifact-42')).not.toBeNull();
+    expect(second.getByText('rev-7')).not.toBeNull();
+  });
+
+  test('an attempt without a recorded identity says so instead of inventing a build', () => {
+    const task = leasedTask();
+    const { container } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
+
+    expect(within(attemptEntry(container, 2)).getByText('Build identity')).not.toBeNull();
+    expect(within(attemptEntry(container, 2)).getAllByText('Not recorded')).not.toHaveLength(0);
+  });
+
+  test('a drifted execution identity renders the task ledger as malformed', () => {
+    expect(() =>
+      leasedTask({
+        attempts: [attemptRecord({ attempt: 2, executionIdentity: { workerId: 7 } })],
+      }),
+    ).toThrow(MalformedTaskLedgerError);
+  });
+});
+
 describe('TaskLedgerDetailView — cancellation evidence', () => {
   test('a cancelling task whose owning attempt is still leased is requested, not acknowledged', () => {
     const task = leasedTask({

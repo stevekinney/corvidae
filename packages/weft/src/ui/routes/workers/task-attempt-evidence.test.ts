@@ -14,6 +14,22 @@ import type { TaskAttemptRecord, TaskLedgerDetail } from './worker-catalog-types
 
 const NOW = 1_700_000_000_000;
 
+const EXECUTION_IDENTITY = {
+  workerId: 'worker-a',
+  manifestDigest: 'sha256:manifest',
+  sdkVersion: '1.0.0',
+  runtimeName: 'bun',
+  runtimeVersion: '1.3.0',
+  deploymentName: 'payments',
+  buildId: 'build-42',
+  artifactDigest: 'sha256:artifact',
+  workflowType: 'orders',
+  workflowRevision: 'rev-7',
+  activityName: 'charge',
+  activityContractHash: 'sha256:contract',
+  protocolVersion: 1,
+} as const;
+
 function attempt(overrides: Partial<TaskAttemptRecord> = {}): TaskAttemptRecord {
   return {
     attempt: 1,
@@ -54,6 +70,22 @@ describe('attempt record validation', () => {
     expect(isTaskAttemptRecord({ ...attempt(), dispositionReason: 7 })).toBe(false);
     expect(isTaskAttemptRecord({ ...attempt(), lastHeartbeatAt: Number.NaN })).toBe(false);
     expect(isTaskAttemptRecord({ ...attempt(), executionIdentity: 'worker-a' })).toBe(false);
+  });
+
+  test('accepts an attempt whose execution identity has its full published shape', () => {
+    expect(isTaskAttemptRecord({ ...attempt(), executionIdentity: EXECUTION_IDENTITY })).toBe(true);
+  });
+
+  test('rejects an execution identity that drifts from its published shape', () => {
+    const drifted = [
+      {},
+      { ...EXECUTION_IDENTITY, workerId: 7 },
+      { ...EXECUTION_IDENTITY, buildId: undefined },
+      { ...EXECUTION_IDENTITY, protocolVersion: '1' },
+    ];
+    for (const executionIdentity of drifted) {
+      expect(isTaskAttemptRecord({ ...attempt(), executionIdentity })).toBe(false);
+    }
     expect(isTaskAttemptRecord(null)).toBe(false);
     expect(isTaskAttemptList({})).toBe(false);
     expect(isTaskAttemptList([attempt(), { attempt: 2 }])).toBe(false);

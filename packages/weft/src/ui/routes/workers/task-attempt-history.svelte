@@ -81,6 +81,14 @@
             ? 'Not recorded'
             : `Generation ${record.sessionGeneration}`,
       },
+      ...(record.executionIdentity
+        ? [
+            { term: 'Deployment', definition: record.executionIdentity.deploymentName },
+            { term: 'Build', definition: record.executionIdentity.buildId },
+            { term: 'Artifact', definition: record.executionIdentity.artifactDigest },
+            { term: 'Workflow revision', definition: record.executionIdentity.workflowRevision },
+          ]
+        : [{ term: 'Build identity', definition: 'Not recorded' }]),
       {
         term: 'Attempt heartbeat',
         definition:

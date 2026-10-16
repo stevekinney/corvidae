@@ -54,6 +54,31 @@ function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string';
 }
 
+/** Every string field of Weft's published `WorkerExecutionIdentity` (`executionIdentitySchema`). */
+const EXECUTION_IDENTITY_STRING_FIELDS = [
+  'workerId',
+  'manifestDigest',
+  'sdkVersion',
+  'runtimeName',
+  'runtimeVersion',
+  'deploymentName',
+  'buildId',
+  'artifactDigest',
+  'workflowType',
+  'workflowRevision',
+  'activityName',
+  'activityContractHash',
+] as const;
+
+/** An attempt's observed identity is always complete, so a partial one is drift. */
+function isExecutionIdentity(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    EXECUTION_IDENTITY_STRING_FIELDS.every((field) => typeof value[field] === 'string') &&
+    isFiniteNumber(value['protocolVersion'])
+  );
+}
+
 /** Validates one attempt record at the dashboard's trust boundary. */
 export function isTaskAttemptRecord(value: unknown): value is TaskAttemptRecord {
   return (
@@ -67,7 +92,7 @@ export function isTaskAttemptRecord(value: unknown): value is TaskAttemptRecord 
     isOptionalString(value['dispositionReason']) &&
     isOptionalNumber(value['lastHeartbeatAt']) &&
     isOptionalNumber(value['sessionGeneration']) &&
-    (value['executionIdentity'] === undefined || isRecord(value['executionIdentity']))
+    (value['executionIdentity'] === undefined || isExecutionIdentity(value['executionIdentity']))
   );
 }
 
