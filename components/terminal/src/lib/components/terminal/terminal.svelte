@@ -137,7 +137,11 @@
     // transition into the state) and the chip stays visible but quiet.
     announceStatus: false,
     ...(error === undefined ? {} : { error }),
-    ...(onRecoveryRequest === undefined ? {} : { onReloadRequest: retry }),
+    // The frame's Reload is the engine failure's one control. Elsewhere a failure's control is the
+    // recovery group (`Retry`, `Try again`, ...), so both never show for one failure.
+    ...(onRecoveryRequest === undefined || effectiveState !== 'engine-load-failed'
+      ? {}
+      : { onReloadRequest: retry }),
   });
 
   function readSettings(): AttachmentSettings {

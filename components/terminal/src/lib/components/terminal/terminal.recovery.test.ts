@@ -252,4 +252,35 @@ describe('recovery actions', () => {
     harness.flush();
     await waitFor(() => document.activeElement === button(harness, 'Cancel'), 'focus on Cancel');
   });
+
+  test('a failure offers one recovery control: the frame reload gives way to Retry outside engine-load-failed', () => {
+    const calls: string[] = [];
+    const harness = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'failed',
+      error: 'The process lost its session',
+      onRecoveryRequest: () => {
+        calls.push('reload');
+      },
+      onRetry: () => {
+        calls.push('retry');
+      },
+    } satisfies TerminalProps);
+    const names = [...harness.target.querySelectorAll('button')].map((b) => b.textContent?.trim());
+    expect(names.filter((name) => name === 'Reload' || name === 'Retry')).toEqual(['Retry']);
+    button(harness, 'Retry').click();
+    expect(calls).toEqual(['retry']);
+  });
+
+  test('engine-load-failed keeps the frame reload as its one control', () => {
+    const harness = mountHarness(Terminal, {
+      title: 'Shell',
+      state: 'engine-load-failed',
+      error: 'The engine could not load',
+      onRecoveryRequest: () => {},
+      onRetry: () => {},
+    } satisfies TerminalProps);
+    const names = [...harness.target.querySelectorAll('button')].map((b) => b.textContent?.trim());
+    expect(names.filter((name) => name === 'Reload' || name === 'Retry')).toEqual(['Reload']);
+  });
 });

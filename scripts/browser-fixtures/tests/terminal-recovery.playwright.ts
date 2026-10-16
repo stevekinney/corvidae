@@ -68,6 +68,29 @@ test.describe('each state offers the actions its row of the state table names', 
     await expect(replace).toBeDisabled();
   });
 
+  test('a failure shows exactly one recovery control, with every handler and an error message', async ({
+    terminalPage,
+  }) => {
+    const states: Array<[string, string]> = [
+      ['failed', 'Retry'],
+      ['engine-load-failed', 'Reload'],
+    ];
+    for (const [state, expected] of states) {
+      const page = await openState(terminalPage, state, {
+        recovery: true,
+        error: 'The session could not continue',
+      });
+      const controls = await page
+        .locator('button')
+        .evaluateAll((buttons) =>
+          buttons
+            .map((button) => button.textContent?.trim() ?? '')
+            .filter((name) => name === 'Reload' || name === 'Retry'),
+        );
+      expect(controls, state).toEqual([expected]);
+    }
+  });
+
   test('an action without a host handler is not rendered', async ({ terminalPage }) => {
     const page = await terminalPage.open({ query: { state: 'denied', quiet: true } });
     await expect(group(page)).toHaveCount(0);
