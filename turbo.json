@@ -79,15 +79,11 @@
       "persistent": true,
       "cache": false
     },
-    "dev:browser": {
+    "@lostgradient/weft#dev:ui-server": {
       "persistent": true,
       "cache": false
     },
-    "dev:server": {
-      "persistent": true,
-      "cache": false
-    },
-    "@lostgradient/weft-ui#dev:browser": {
+    "@lostgradient/weft#dev:ui-browser": {
       "persistent": true,
       "cache": false,
       "passThroughEnv": ["WEFT_UI_PORT", "WEFT_API_BASE_URL"]

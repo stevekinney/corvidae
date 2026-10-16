@@ -4,6 +4,7 @@ import { decodeFrame, encodeFrame } from '../protocol/frame-codec.ts';
 import type { ClientMessage } from '../protocol/messages.ts';
 import { createDeferred } from './fixtures/deferred.ts';
 import { createFixtureTransport, type FixtureTransport } from './fixtures/fixture-transport.ts';
+import { createScriptedSubscription } from './fixtures/scripted-sources.ts';
 import {
   createHarness,
   flush,
@@ -282,9 +283,13 @@ const ROWS: Row[] = [
     name: 'output overflow',
     cite: '"Output queue ... overflow revokes the generation and quarantines cleanup"; "cleanup-incomplete ... explicit incomplete result ... 1000"',
     run: async () => {
-      const scenario = await connected({ budgets: { outputQueueBytes: 65_536 } });
-      scenario.harness.stream.push(new Uint8Array(40_000));
-      scenario.harness.stream.push(new Uint8Array(40_000));
+      const pushed = createScriptedSubscription('pty');
+      const scenario = await connected({
+        sources: [pushed.source],
+        budgets: { outputQueueBytes: 65_536 },
+      });
+      pushed.push(new Uint8Array(40_000));
+      pushed.push(new Uint8Array(40_000));
       return finished(scenario);
     },
     frames: ['capabilities', 'output', 'cleanup-result'],

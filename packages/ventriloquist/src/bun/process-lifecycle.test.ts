@@ -190,16 +190,32 @@ for (const mode of MODES)
     }
 
     scenarioTest(
-      'that fills the output the consumer never parses fails the session visibly and is still ended',
+      'that fills the output the consumer never parses is paused, not failed, and is still ended on request',
       async () => {
         const run = runHosted(hostFor(mode, outputProfile(mode, ENDLESS_OUTPUT)), {
           parseOutput: false,
           budgets: { outputQueueBytes: 64 * 1024 },
         });
-        const summary: SessionClosedSummary = await run.session.closed;
-        expect(summary).toMatchObject({ cause: 'output-overflow', quarantined: true });
-        expect(summary.drain.state).toBe('truncated');
+        await run.waitForOutput(channelOf(mode), /leader=\d+ /);
         const { leader } = pidsIn(textOf(bytesOnChannel(run.recorder, channelOf(mode))));
+        // The budget fills and the session stops reading, so the producer blocks in the kernel.
+        let delivered = bytesOnChannel(run.recorder, channelOf(mode)).length;
+        for (let settled = 0; settled < 3;) {
+          await Bun.sleep(100);
+          const now = bytesOnChannel(run.recorder, channelOf(mode)).length;
+          settled = now === delivered ? settled + 1 : 0;
+          delivered = now;
+        }
+        expect(delivered).toBeLessThanOrEqual(64 * 1024);
+        expect(delivered).toBeGreaterThan(32 * 1024);
+        expect(run.recorder.ofType('attachmentRevoked')).toEqual([]);
+        expect(isAlive(leader as number)).toBe(true);
+        const summary: SessionClosedSummary = await run.session.dispose();
+        expect(summary).toMatchObject({
+          cause: 'host-dispose',
+          cleanup: 'complete',
+          quarantined: false,
+        });
         expect(isAlive(leader as number)).toBe(false);
       },
     );

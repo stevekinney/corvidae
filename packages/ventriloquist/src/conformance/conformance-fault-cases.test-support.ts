@@ -1,7 +1,10 @@
 import { isAlive, waitUntilGone } from '../bun/bun-process.test-support.ts';
 import { shellProfile } from '../bun/fixtures/bun-pipe-stdin.ts';
-import { ENDLESS_OUTPUT, outputProfile, pidsIn } from '../bun/fixtures/terminal-output.ts';
+import { outputProfile, pidsIn } from '../bun/fixtures/terminal-output.ts';
+import type { HostedProcess } from '../bun/process-types.ts';
 import type { ServerMessage } from '../protocol/messages.ts';
+import { createScriptedBackend } from '../session/fixtures/scripted-backend.ts';
+import { createScriptedSubscription } from '../session/fixtures/scripted-sources.ts';
 import { DEFAULT_SESSION_BUDGETS } from '../session/session-types.ts';
 import {
   SECOND_SESSION_IDENTIFIER,
@@ -13,6 +16,7 @@ import {
   conclude,
   textOn,
   type CaseDefinition,
+  type CaseLaunch,
 } from './conformance-cases.test-support.ts';
 import { check } from './conformance.test-support.ts';
 
@@ -185,38 +189,55 @@ const stopUnderBacklog: CaseDefinition = {
   },
 };
 
+/**
+ * A source the host can only be pushed output from, such as a borrowed subscription, cannot be
+ * paused, so the output budget cannot hold it back and the only bounded failure left is the
+ * visible one. A real pipe or PTY is never this: its reads are pulled (see the `flood-*` and
+ * `stalled-consumer-*` cells), which is why this cell is scripted.
+ */
+function pushedOutput(): CaseLaunch {
+  const pushed = createScriptedSubscription('stdout');
+  const hosted: HostedProcess = {
+    mode: 'pipe',
+    backend: createScriptedBackend({ mode: 'pipe' }),
+    sources: [pushed.source],
+    startFailure: undefined,
+    reportExitTo: async (receiver) => {
+      await receiver.start();
+    },
+  };
+  return { profile: shellProfile('true'), hosted, state: pushed };
+}
+
 const outputOverflow: CaseDefinition = {
   id: 'output-overflow',
-  modes: ['pipe', 'pty'],
-  launch: () => ({ profile: shellProfile(ENDLESS_OUTPUT) }),
-  async run({ rig }) {
+  modes: ['scripted'],
+  launch: () => pushedOutput(),
+  async run({ rig, launched }) {
+    const pushed = launched.state as ReturnType<typeof createScriptedSubscription>;
     // A consumer that never reports a chunk parsed, as a hidden or hung page never does.
     rig.pauseConsuming();
     await rig.client.handshake();
-    const { leader } = pidsIn(await rig.client.waitForOutput(/leader=\d+ /));
+    const chunk = new Uint8Array(DEFAULT_SESSION_BUDGETS.outputQueueBytes / 2 + 1).fill(0x61);
+    pushed.push(chunk);
+    pushed.push(chunk);
+    pushed.push(chunk);
     const { cleanup, closeCode } = await conclude(rig);
     const summary = await rig.session().closed;
-    await waitUntilGone(leader as number);
     const { received, consumed } = rig.client.endpoint.outputBytes;
     return [
       check(
-        `output stopped at the queue budget (${received} of ${DEFAULT_SESSION_BUDGETS.outputQueueBytes} bytes unparsed)`,
-        received <= DEFAULT_SESSION_BUDGETS.outputQueueBytes,
-      ),
-      check(
-        `the budget was reached, not stopped early (${summary.drain.unavailableBytes} bytes offered against ${DEFAULT_SESSION_BUDGETS.outputQueueBytes}, ${received} delivered)`,
-        consumed === 0 &&
-          received > DEFAULT_SESSION_BUDGETS.outputQueueBytes / 2 &&
-          summary.drain.unavailableBytes > DEFAULT_SESSION_BUDGETS.outputQueueBytes,
+        `delivery stopped at the queue budget (${received} of ${DEFAULT_SESSION_BUDGETS.outputQueueBytes} bytes unparsed)`,
+        received <= DEFAULT_SESSION_BUDGETS.outputQueueBytes && received > 0 && consumed === 0,
       ),
       check('the failure is visible as the cause', summary.cause === 'output-overflow'),
       check(
         'the bytes it could not deliver are counted',
-        summary.drain.state === 'truncated' && summary.drain.unavailableBytes > 0,
+        summary.drain.state === 'truncated' &&
+          summary.drain.unavailableBytes > DEFAULT_SESSION_BUDGETS.outputQueueBytes,
       ),
       check('cleanup is reported as incomplete, never complete', cleanup.outcome === 'incomplete'),
       check('the slot is quarantined', summary.quarantined),
-      check('the producer is gone', !isAlive(leader as number)),
       check('the transport closed', closeCode !== undefined),
     ];
   },

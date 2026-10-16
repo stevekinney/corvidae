@@ -26,7 +26,7 @@ Defaults are intentionally below the largest passing probe values and include op
 | Host operation FIFO | 256 operations | 1–4,096 | Host; reserved control capacity is excluded from this count. |
 | Reserved control capacity | 8 operations | 1–64 | Host; stop, revoke, and cleanup cannot be starved by user input. |
 | Input queue | 64 KiB | 1–1 MiB | Package/host boundary; overflow is visible typed `input-overflow`. |
-| Output queue | 1 MiB | 64 KiB–16 MiB | Host; overflow revokes the generation and quarantines cleanup. |
+| Output queue | 1 MiB | 64 KiB–16 MiB | Host; a pipe or PTY is read only while the queue has room, so the producer blocks in the kernel. Overflow revokes the generation and quarantines cleanup only for a source that cannot be paused. |
 | Scrollback | 10,000 lines | 1,000–100,000 lines | Package; bounded eviction, never unbounded retention. |
 | Single paste | 64 KiB | 1–256 KiB | Package; larger pastes fail without partial replay. |
 | Export | 1 MiB | 64 KiB–16 MiB | Package; export is bounded and reports truncation as failure. |
@@ -49,7 +49,18 @@ The probe must establish a control result for each workload before interpreting 
 
 ## Transport, paste, and shutdown proofs
 
-Pipe mode must prove that stdout and stderr remain separate and that the readable stream exposes no pause/resume authority; backpressure is implemented by the host reader and bounded queue. PTY mode must prove resize, input, PTY EOF, and process exit as separate ordered events. `stop` revokes authority first, reserves control capacity, cancels unsent operations, closes input, terminates the owned process group, closes PTY/pipe handles, observes descendants, and emits exactly one cleanup result. Submitted operations are not retracted and lost acknowledgements are unknown delivery.
+Pipe mode must prove that stdout and stderr remain separate and that the host stops reading them when the output queue is full: a subprocess pipe is read through a pull-based reader taken in the same turn as the spawn, so an unread producer blocks on the kernel's pipe buffer. PTY mode reads the master through a worker thread behind a 256 KiB credit window, so an unread terminal fills the kernel's terminal queue and blocks its writer. Both channels of one process share the one output queue. PTY mode must prove resize, input, PTY EOF, and process exit as separate ordered events. `stop` revokes authority first, reserves control capacity, cancels unsent operations, closes input, terminates the owned process group, closes PTY/pipe handles, observes descendants, and emits exactly one cleanup result. Submitted operations are not retracted and lost acknowledgements are unknown delivery.
+
+Output pause bounds, by design and by measurement (`test:conformance` cells `flood-yes`, `flood-cat`, `stalled-consumer-pauses`, `stalled-consumer-completes`, `stop-while-paused`, `revoke-while-paused`, `input-while-paused` and `cleanup-kills-paused-producer`; `test:benchmarks` cells `flood-throughput-*`, `pause-latency-*`, `resume-latency-*` and `paused-memory-*`):
+
+- The host holds at most the output queue limit plus one source chunk per source that it has read and not yet been able to hand over (a pipe chunk was up to 256 KiB on both hosts; a PTY chunk is at most 64 KiB, and the worker reads at most 256 KiB ahead of the session).
+- A paused producer is not ended and not failed. It resumes when `output-consumed` has freed at least 64 KiB, or a quarter of the queue if that is smaller, and a source with less room waits for it, so a small queue still moves.
+- A freed queue is delivered in turns, not in one run: a pull-based source gives the event loop a turn after every 16 KiB it delivers, so one flooding session cannot hold the loop (and the client sharing it) for the milliseconds a megabyte of frames takes to build and send. Measured on macOS with client and host in one process, that took the WebSocket resume p50 for a PTY from about 8.7 ms to about 0.7 ms.
+- `drain.unavailableBytes` counts output the host had already read. Output a paused producer had not yet delivered when the session closed (in the kernel's pipe or terminal buffer, or in the reader's look-ahead) is not counted: it is never read after a revoke, and its size cannot be known without reading it.
+- Pausing does not delay control. Stop, revocation and disposal end a paused process group, and on macOS cleanup reads and discards the terminal while it ends the group, because closing a terminal with unread output otherwise waits for it to drain (about 600 ms measured).
+- `output-overflow` still applies to a borrowed subscription: its chunks arrive whether or not they are wanted, so the first one that does not fit fails the session and quarantines cleanup. Bytes already read are counted as unavailable, never dropped silently.
+- Each PTY session costs one worker thread, two descriptors on macOS and about four on Linux, and about 3 MiB of resident memory, and adds no process: the gate shell becomes the command.
+- The PTY master is opened through libc (`posix_openpt`) with a C wrapper compiled by Bun's `cc` for the variadic `ioctl` and `fcntl` calls, which Bun's plain FFI mis-calls on Apple arm64. A host whose libc is neither glibc nor libSystem, or whose Bun cannot compile the wrapper, fails the start as `unsupported-runtime`.
 
 The probe records the boundary of these proofs. It cannot prove cleanup of detached descendants, resources held by a crashed host, or a host-level sandbox. Those outcomes become `unknown`, revoke and quarantine the attachment, and require a host-authorized clearance attestation before replacement.
 

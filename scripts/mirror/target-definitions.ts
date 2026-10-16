@@ -35,7 +35,6 @@ export const targetDefinitions = {
       '@lostgradient/cinder',
       '@lostgradient/editor',
       '@lostgradient/markdown',
-      '@lostgradient/weft-ui',
       '@lostgradient/testing',
       '@lostgradient/typescript',
     ],

@@ -105,6 +105,52 @@ describe('upper bounds on a duration', () => {
   });
 });
 
+describe('upper bounds asserted through a boolean', () => {
+  test.each([
+    [
+      'check()',
+      'const start = performance.now();\ncheck("fast", performance.now() - start < 4000);',
+    ],
+    [
+      'a conjunction inside check()',
+      'const start = performance.now();\nconst elapsed = performance.now() - start;\ncheck("fast", done && elapsed <= 4000);',
+    ],
+    ['assert()', 'const start = performance.now();\nassert(performance.now() - start < 5);'],
+    [
+      'expect(...).toBe(true)',
+      'const start = performance.now();\nconst elapsed = performance.now() - start;\nexpect(elapsed < 10).toBe(true);',
+    ],
+    [
+      'a bound written first',
+      'const start = performance.now();\ncheck("fast", 4000 > performance.now() - start);',
+    ],
+  ])('reports a comparison inside %s', (_name, source) => {
+    expect(inspect(source).length).toBeGreaterThan(0);
+  });
+
+  test.each([
+    [
+      'a polling loop',
+      'const start = performance.now();\nwhile (performance.now() - start < 5000) await tick();',
+    ],
+    [
+      'a for loop',
+      'const start = performance.now();\nfor (; performance.now() - start < 5000; ) await tick();',
+    ],
+    [
+      'an if',
+      'const start = performance.now();\nif (performance.now() - start < 5000) await tick();',
+    ],
+    [
+      'a lower bound',
+      'const start = performance.now();\ncheck("waited", performance.now() - start >= 100);',
+    ],
+    ['values that are not durations', 'check("order", first < second);'],
+  ])('accepts %s', (_name, source) => {
+    expect(inspect(source)).toEqual([]);
+  });
+});
+
 describe('rates and ratios', () => {
   test.each([
     ['a rate with a lower bound', 'expect((count / elapsed) * 1000).toBeGreaterThan(50);'],
@@ -192,14 +238,6 @@ describe('assertions the guard accepts', () => {
       'const start = performance.now();\nexpect(performance.now() - start).toBeCloseTo(5, 0);',
     ],
     [
-      'a duration compared through a boolean',
-      'const start = performance.now();\nexpect(performance.now() - start <= budget).toBe(true);',
-    ],
-    [
-      'a duration compared through assert',
-      'const start = performance.now();\nassert(performance.now() - start < 5);',
-    ],
-    [
       'a duration asserted with an exact matcher on a faked clock',
       'const start = Date.now();\nvi.advance(50);\nexpect(Date.now() - start).toBe(50);',
     ],
@@ -219,6 +257,8 @@ describe('test file discovery', () => {
       for (const path of [
         'packages/weft/src/worker/index.test.ts',
         'packages/weft/src/worker/helper.ts',
+        'packages/ventriloquist/src/conformance/cases.test-support.ts',
+        'packages/ventriloquist/scripts/benchmarks/helper.test-support.ts',
         'components/cinder/scripts/stylelint/z-index-scale.test.ts',
         'components/cinder/scripts/benchmarks/z-index-scale.bench.ts',
         'packages/markdown/src/render.bench.ts',
@@ -240,6 +280,7 @@ describe('test file discovery', () => {
       expect(paths.map((path) => relative(directory, path)).toSorted()).toEqual([
         'components/cinder/scripts/stylelint/z-index-scale.test.ts',
         'packages/markdown/src/benchmarks/not-a-scripts-directory.test.ts',
+        'packages/ventriloquist/src/conformance/cases.test-support.ts',
         'packages/weft/src/worker/index.test.ts',
         'scripts/root-check.test.ts',
       ]);

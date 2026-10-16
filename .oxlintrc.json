@@ -83,7 +83,7 @@
   ],
   "overrides": [
     {
-      "files": ["**/components/*/src/**"],
+      "files": ["**/components/*/src/**", "**/packages/weft/src/ui/**"],
       "excludeFiles": [
         "**/components/*/src/**/*.test.*",
         "**/components/*/src/**/*.spec.*",
@@ -96,7 +96,20 @@
         "**/components/*/src/**/tests/**",
         "**/components/*/src/**/__tests__/**",
         "**/components/*/src/**/__fixtures__/**",
-        "**/components/*/src/**/__test-helpers__/**"
+        "**/components/*/src/**/__test-helpers__/**",
+        "**/packages/weft/src/ui/**/*.test.*",
+        "**/packages/weft/src/ui/**/*.spec.*",
+        "**/packages/weft/src/ui/**/*.test-d.ts",
+        "**/packages/weft/src/ui/**/*.type-test.ts",
+        "**/packages/weft/src/ui/**/*.playwright.ts",
+        "**/packages/weft/src/ui/**/*-test-*.ts",
+        "**/packages/weft/src/ui/**/*.test-support.ts",
+        "**/packages/weft/src/ui/**/test/**",
+        "**/packages/weft/src/ui/**/tests/**",
+        "**/packages/weft/src/ui/**/__tests__/**",
+        "**/packages/weft/src/ui/**/__fixtures__/**",
+        "**/packages/weft/src/ui/**/__test-helpers__/**",
+        "**/packages/weft/src/ui/fixtures/**"
       ],
       "env": {
         "browser": true,
@@ -160,13 +173,21 @@
       }
     },
     {
-      "files": ["**/components/*/src/**", "**/packages/markdown/src/**"],
+      "files": [
+        "**/components/*/src/**",
+        "**/packages/markdown/src/**",
+        "**/packages/weft/src/ui/**"
+      ],
       "rules": {
         "typescript/no-unsafe-type-assertion": "error"
       }
     },
     {
-      "files": ["**/components/*/src/**", "**/packages/markdown/src/**"],
+      "files": [
+        "**/components/*/src/**",
+        "**/packages/markdown/src/**",
+        "**/packages/weft/src/ui/**"
+      ],
       "rules": {
         "unicorn/no-array-sort": "off",
         "unicorn/no-array-reverse": "off"

@@ -89,8 +89,10 @@ const workspaces: Record<string, Record<string, unknown>> = {
     dependencies: { '@lostgradient/markdown': 'workspace:*', svelte: 'catalog:' },
     devDependencies: { '@lostgradient/typescript': 'workspace:*' },
   },
-  'components/weft-ui': {
-    name: '@lostgradient/weft-ui',
+  // Editor does not depend on Weft in the real tree; this edge stands in for any cinder-target
+  // workspace that would, now that the UI that did (COR-1455) is part of Weft itself.
+  'components/editor': {
+    name: '@lostgradient/editor',
     private: true,
     dependencies: { '@lostgradient/cinder': 'workspace:*', '@lostgradient/weft': 'workspace:*' },
   },
@@ -531,7 +533,7 @@ describe('workspace and catalog resolution', () => {
     const plan = await planFor('cinder');
     // `applications/playground` is absent deliberately: `package-map.json` excludes it, so nothing
     // is emitted for it at all. The test below is what holds that.
-    const dependencies = parse(plan, 'packages/weft-ui/package.json')['dependencies'] as Record<
+    const dependencies = parse(plan, 'packages/editor/package.json')['dependencies'] as Record<
       string,
       string
     >;
@@ -595,21 +597,37 @@ describe('workspace and catalog resolution', () => {
   });
 
   test('a cross-target edge to a private workspace outside development-only tooling is refused', async () => {
-    // COR-1196: `@lostgradient/weft-ui` is `private-workspace` with basis `held-for-api-design`
-    // in the real map, not `development-only`, so an edge to it cannot be silently dropped the
-    // way `@lostgradient/typescript`'s devDependencies edge can (see "the weft target drops its
-    // development-only edge" above). Nothing in the real tree declares this edge — this pins the
-    // refusal the code path takes if one ever did, which was previously untested.
+    // A `private-workspace` whose basis is not `development-only` cannot have an edge to it
+    // silently dropped the way `@lostgradient/typescript`'s devDependencies edge can (see "the
+    // weft target drops its development-only edge" above), not even a devDependencies edge. The
+    // real map's example was `@lostgradient/weft-ui` (basis `held-for-api-design`, COR-1196) until
+    // COR-1455 folded it into Weft, so an overridden map rules Markdown one, the way
+    // `packageMapWithNeverPublished` stands in for a never-published package.
     await withTree(
       corvidaeFixture({
         'packages/weft/package.json': {
           name: '@lostgradient/weft',
           private: true,
-          dependencies: { '@lostgradient/weft-ui': 'workspace:*' },
+          devDependencies: { '@lostgradient/markdown': 'workspace:*' },
         },
       }),
       async (root) => {
-        const plan = planManifests({ corvidaeRoot: root, target: 'weft' });
+        const map = await packageMapWithCurrentDigests(root);
+        const plan = planManifests({
+          corvidaeRoot: root,
+          target: 'weft',
+          packageMap: {
+            ...map,
+            workspaces: {
+              ...map.workspaces,
+              '@lostgradient/markdown': {
+                disposition: 'private-workspace',
+                basis: 'held-for-api-design',
+                reason: 'Fixture: a private workspace held back for API design.',
+              },
+            },
+          },
+        });
         expect(await throwingRejectionOf(plan)).toThrow(ManifestTransformError);
         expect(await throwingRejectionOf(plan)).toThrow(
           /only a devDependencies edge to development-only tooling can be dropped/,
@@ -1005,11 +1023,12 @@ describe('composition against a manifest the target already carries', () => {
     const versioned: Record<string, unknown> = {};
     for (const manifest of Object.values(workspaces)) {
       if (manifest['name'] === '@lostgradient/weft') continue;
-      // `@lostgradient/weft-ui` is `private-workspace` in the real map (COR-1196) with no
+      // `@lostgradient/typescript` is `private-workspace` in the real map with no
       // `lastPublishedVersion` to seed from, so it is the one workspace the target clone
       // deliberately does not carry — the property this test pins (only the truly-missing one
-      // counts as a first publish) holds regardless of a workspace's publish disposition.
-      if (manifest['name'] === '@lostgradient/weft-ui') continue;
+      // counts as a first publish) holds regardless of a workspace's publish disposition. It was
+      // `@lostgradient/weft-ui` until COR-1455 folded that workspace into Weft.
+      if (manifest['name'] === '@lostgradient/typescript') continue;
       const layout = await layoutFor(String(manifest['name']));
       // The clone is the target's tree, so its manifests sit at the target's own paths.
       if (layout.disposition !== 'emit') continue;
@@ -1027,7 +1046,7 @@ describe('composition against a manifest the target already carries', () => {
     }
     await withTree(versioned, async (targetDirectory) => {
       const plan = await planFor('cinder', { targetDirectory });
-      expect(plan.firstPublish).toEqual(['@lostgradient/weft-ui']);
+      expect(plan.firstPublish).toEqual(['@lostgradient/typescript']);
       const cinder = parse(plan, 'packages/components/package.json');
       expect(cinder['version']).toBe('1.2.3');
       expect((cinder['scripts'] as Record<string, string>)['prepare']).toBe('cd ../.. && husky');
@@ -1041,7 +1060,6 @@ describe('composition against a manifest the target already carries', () => {
       const versioned: Record<string, unknown> = {};
       for (const manifest of Object.values(workspaces)) {
         if (manifest['name'] === '@lostgradient/weft') continue;
-        if (manifest['name'] === '@lostgradient/weft-ui') continue;
         const layout = await layoutFor(String(manifest['name']));
         if (layout.disposition !== 'emit') continue;
         versioned[`${layout.targetDirectory}/package.json`] = {
@@ -1225,8 +1243,8 @@ describe('the excluded playground application', () => {
     expect(plan.emitted.map((entry) => entry.targetDirectory).toSorted()).toEqual([
       'internal/typescript',
       'packages/components',
+      'packages/editor',
       'packages/markdown',
-      'packages/weft-ui',
     ]);
   });
 });

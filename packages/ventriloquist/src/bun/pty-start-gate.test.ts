@@ -1,12 +1,14 @@
 import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdtempSync, openSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { scenarioTest, settleScenarios } from './bun-process.test-support.ts';
 import type { SpawnedProcess } from './process-types.ts';
-import { GATE_STDIO, abandonGate, gatedCommand, releaseGate } from './pty-start-gate.ts';
+import { loadPtyDevice } from './pty-device.ts';
+import { createPtyMaster } from './pty-master.ts';
+import { abandonGate, gateStdio, gatedCommand, releaseGate } from './pty-start-gate.ts';
 
 const directories: string[] = [];
 const children: ReturnType<typeof Bun.spawn>[] = [];
@@ -34,30 +36,51 @@ function workspace(): string {
   return directory;
 }
 
-/** Spawn a gated child on a terminal, as the PTY helper does, collecting what it prints. */
+/**
+ * Spawn a gated child on a terminal this test opened, as the PTY helper does, and read what it prints
+ * once it has ended.
+ */
 function spawnGated(command: string[]) {
-  const output: string[] = [];
-  const child = Bun.spawn(gatedCommand(command), {
-    stdio: GATE_STDIO as never,
+  const device = loadPtyDevice();
+  const pair = device.open();
+  const slave = device.openSlave(pair.slavePath);
+  device.setWindowSize(pair, 80, 24);
+  const child = Bun.spawn(gatedCommand(command, pair.slavePath), {
+    stdio: gateStdio(slave),
+    detached: true,
     timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    terminal: {
-      cols: 80,
-      rows: 24,
-      data: (_terminal: unknown, bytes: Uint8Array) => output.push(new TextDecoder().decode(bytes)),
-    },
   });
+  device.close(slave);
   children.push(child);
+  const master = createPtyMaster({
+    descriptor: pair.masterFd,
+    device,
+    endsWithIo: process.platform === 'linux',
+  });
+  /** Everything the child printed, read to the end of the terminal. */
+  const output = async (): Promise<string> => {
+    const reader = master.stream.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    for (let result = await reader.read(); !result.done; result = await reader.read()) {
+      text += decoder.decode(result.value, { stream: true });
+    }
+    await master.stop();
+    master.close();
+    return text;
+  };
   return { child, output, process: child as unknown as SpawnedProcess };
 }
 
 describe('the PTY start gate', () => {
   gateScenario('the command does not run unless the gate is released', async () => {
     const marker = join(workspace(), 'ran');
-    const { child, process } = spawnGated(['sh', '-c', `printf ran > '${marker}'`]);
+    const { child, output, process } = spawnGated(['sh', '-c', `printf ran > '${marker}'`]);
     // Abandoning the gate is end of file on the release channel, which ends the shell without
     // running the command. The command running at all would leave the marker.
     expect(abandonGate(process)).toBe(true);
     expect(await child.exited).not.toBe(0);
+    await output();
     expect(existsSync(marker)).toBe(false);
   });
 
@@ -71,10 +94,31 @@ describe('the PTY start gate', () => {
       ]);
       expect(releaseGate(process)).toBe(true);
       expect(await child.exited).toBe(0);
-      const text = output.join('');
+      const text = await output();
       expect(text).toMatch(/\/dev\/\S+/);
       expect(text).toContain(`pid=${child.pid}`);
       expect(text.replace(/\s+/g, ' ')).toContain(`${child.pid} `);
+    },
+  );
+
+  gateScenario(
+    'the command leads its session and its terminal is its controlling terminal',
+    async () => {
+      const { child, output, process } = spawnGated([
+        'sh',
+        '-c',
+        'ps -o pid=,pgid=,tpgid= -p $$; (printf controlling > /dev/tty) 2>&1',
+      ]);
+      expect(releaseGate(process)).toBe(true);
+      expect(await child.exited).toBe(0);
+      const printed = await output();
+      const text = printed.replace(/\r/g, '');
+      // A process that leads its group, whose group is the terminal's foreground group, owns the terminal.
+      const [pid, group, foreground] = text.trim().split(/\s+/);
+      expect(Number(pid)).toBe(child.pid);
+      expect(group).toBe(pid as string);
+      expect(foreground).toBe(pid as string);
+      expect(text).toContain('controlling');
     },
   );
 
@@ -86,7 +130,30 @@ describe('the PTY start gate', () => {
     ]);
     releaseGate(process);
     await child.exited;
-    expect(output.join('')).toBe('closed');
+    expect(await output()).toBe('closed');
+  });
+
+  // spawn-free: the child is a plain object holding a descriptor, so only the closing runs.
+  test('the release channel is closed once, however many times the gate is released or abandoned', () => {
+    const channel = openSync('/dev/null', 'r');
+    const child = {
+      pid: 1,
+      exited: Promise.resolve(0),
+      signalCode: null,
+      stdio: [null, null, null, channel],
+      kill() {},
+    };
+    expect(abandonGate(child)).toBe(true);
+    // The number is free now, and the next descriptor opened takes it; closing it again would close that one.
+    const reused = openSync('/dev/null', 'r');
+    try {
+      expect(reused).toBe(channel);
+      expect(abandonGate(child)).toBe(true);
+      expect(releaseGate(child)).toBe(true);
+      expect(() => fstatSync(reused)).not.toThrow();
+    } finally {
+      closeSync(reused);
+    }
   });
 
   // spawn-free: the child is a plain object with no process behind it, so only the descriptor lookup runs.
