@@ -109,7 +109,7 @@ describe('the engine and the UI', () => {
     const importer = join(sourceRoot, 'server', 'example.ts');
     const fixture = [
       "import { router } from '../ui/lib/router.svelte.ts';",
-      "export { WeftConsole } from '../ui/index.ts';",
+      "export { WeftDashboard } from '../ui/index.ts';",
       "import type { RouteState } from '@lostgradient/weft/ui';",
       "const ui = await import('../ui');",
       "// import { nothing } from '../ui/lib/client.ts';",

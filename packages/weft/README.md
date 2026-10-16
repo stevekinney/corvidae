@@ -475,6 +475,51 @@ await using server = serve({
 });
 ```
 
+### Dashboard Components
+
+`@lostgradient/weft/ui` exports the dashboard as [Svelte](https://svelte.dev/) 5 components, for an application that builds its own page instead of serving the prebuilt one. Importing anything from it also imports the dashboard's stylesheet.
+
+- `WeftDashboard` is the whole application: it reads the runtime configuration, creates the client, resolves the caller's principal, asks for an API key when the server requires one, and renders every area behind its own sidebar and router.
+- `DashboardView`, `WorkflowsView`, `ReviewsView`, `WorkersView`, `SchedulesView`, `StorageView`, and `SystemView` are the dashboard's areas, one component each. None takes props.
+- The building blocks those components share are exported too: the client helpers (`createClient`, `setApiKey`, `provideClient`, `getClient`), the runtime configuration (`readRuntimeConfig`), the [TanStack Query](https://tanstack.com/query) helpers (`createQueryClient`, `queryKeys`), the History API router (`router`, `matchRoute`, `workflowDetailPath`), and the live sources (`FleetEventSource`, `WorkflowTailSource`, `PollingSource`, and their helpers).
+
+Mount `WeftDashboard` on a page that serves Weft's API on the same origin, or describe another origin in a `weft-ui-config` JSON element:
+
+```typescript
+import { mount } from 'svelte';
+
+import { WeftDashboard } from '@lostgradient/weft/ui';
+
+const target = document.getElementById('app');
+if (!target) throw new Error('The page has no #app element.');
+mount(WeftDashboard, { target });
+```
+
+A view renders anywhere below a client and a query client. It resolves the caller's principal itself, and opens its own live connection and toast region when no `WeftDashboard` above it already did. Views read the current location from `router`, so `WorkflowsView` shows one workflow's detail at `/workflows/:id`:
+
+```svelte
+<script lang="ts">
+  import { QueryClientProvider } from '@tanstack/svelte-query';
+
+  import {
+    WorkflowsView,
+    createClient,
+    createQueryClient,
+    provideClient,
+    readRuntimeConfig,
+  } from '@lostgradient/weft/ui';
+
+  provideClient(createClient(readRuntimeConfig()));
+  const queryClient = createQueryClient();
+</script>
+
+<QueryClientProvider client={queryClient}>
+  <WorkflowsView />
+</QueryClientProvider>
+```
+
+The components need `svelte`, `@lostgradient/cinder`, `@lostgradient/markdown`, `@tanstack/svelte-query`, `cron-parser`, and the icon and syntax-highlighting packages they import. `dashboard()` needs none of them. [The UI's guide](documentation/ui/README.md) covers the runtime configuration and development.
+
 ### Remote Workers
 
 Workers can connect to the server over WebSocket, pull tasks, execute activities, and report results back. The same activity code runs inline in development and remote in production—no API changes.

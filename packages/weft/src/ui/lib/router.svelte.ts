@@ -5,10 +5,13 @@
  * rune-backed `{ route, params, search }` triple (`router.current`);
  * `navigate()`/`back()`/`forward()`/`href()` are the only way surfaces
  * should touch `window.history`, so the whole app agrees on one history-API
- * story with no SvelteKit involved. `window` is always present — this is an
- * SPA with no SSR entry point (plan §1.2) and every test file gets a
- * happy-dom `window` from `tests/setup.ts` — so this module reads it
- * directly rather than guarding a case that can't occur.
+ * story with no SvelteKit involved.
+ *
+ * `window` is read lazily, on the router's first use, never at module
+ * evaluation: `@lostgradient/weft/ui` exports `router`, and a server render
+ * or a Node consumer that imports the entry without a DOM must not throw just
+ * because this module was evaluated (`documentation/weft-ui-public-surface.md`,
+ * open question 4).
  */
 import { routes, type RouteDefinition } from '../app/routes.ts';
 
@@ -92,20 +95,44 @@ export function matchRoute(
   return found ? { pattern: found.definition.pattern, params: found.params } : null;
 }
 
-class ConsoleRouter {
-  pathname = $state(window.location.pathname);
-  #searchString = $state(window.location.search);
+/**
+ * The type of {@link router}. Not exported by name: it is public only as the
+ * structure `router` exposes (`documentation/weft-ui-public-surface.md`).
+ */
+class DashboardRouter {
+  // `undefined` until the router itself observes a location change
+  // (`navigate()` or a `popstate`). Until then the getters read
+  // `window.location` directly, so a first read never writes reactive state:
+  // a write from inside a template or `$derived` read is an unsafe mutation
+  // in Svelte 5.
+  #pathname = $state<string | undefined>(undefined);
+  #searchString = $state<string | undefined>(undefined);
+  #listening = false;
 
-  constructor() {
+  /** Subscribes to `popstate` on first use, so evaluating this module never touches `window`. */
+  #listen(): void {
+    if (this.#listening) return;
+    this.#listening = true;
     window.addEventListener('popstate', () => {
-      this.pathname = window.location.pathname;
-      this.#searchString = window.location.search;
+      this.#syncFromLocation();
     });
+  }
+
+  #syncFromLocation(): void {
+    this.#pathname = window.location.pathname;
+    this.#searchString = window.location.search;
+  }
+
+  /** The current location's pathname, live. */
+  get pathname(): string {
+    this.#listen();
+    return this.#pathname ?? window.location.pathname;
   }
 
   /** The current location's query string, live (not a frozen snapshot). */
   get search(): URLSearchParams {
-    return new URLSearchParams(this.#searchString);
+    this.#listen();
+    return new URLSearchParams(this.#searchString ?? window.location.search);
   }
 
   /** The route matching the current `pathname`, or `null` for an unowned path. */
@@ -138,22 +165,24 @@ class ConsoleRouter {
    * `window.location` rather than re-parsed here.
    */
   navigate(path: string, options?: { readonly replace?: boolean }): void {
+    this.#listen();
     if (options?.replace) {
       window.history.replaceState(null, '', path);
     } else {
       window.history.pushState(null, '', path);
     }
-    this.pathname = window.location.pathname;
-    this.#searchString = window.location.search;
+    this.#syncFromLocation();
   }
 
   /** Goes back one entry in browser history (mirrors the browser's back button). */
   back(): void {
+    this.#listen();
     window.history.back();
   }
 
   /** Goes forward one entry in browser history (mirrors the browser's forward button). */
   forward(): void {
+    this.#listen();
     window.history.forward();
   }
 
@@ -163,4 +192,4 @@ class ConsoleRouter {
   }
 }
 
-export const router = new ConsoleRouter();
+export const router = new DashboardRouter();

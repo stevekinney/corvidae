@@ -28,7 +28,7 @@ import { Window } from 'happy-dom';
 // entry also re-exports the app shell (`app/app.svelte`), which this file does not render and the
 // recorded `src/app` floor never measured; the shell is replaced before the entry loads, so it is
 // not evaluated here and the entry's own lines and both functions under test are real.
-mock.module('../../../../src/ui/app/app.svelte', () => ({ default: function WeftConsole() {} }));
+mock.module('../../../../src/ui/app/app.svelte', () => ({ default: function WeftDashboard() {} }));
 const { createClient, readRuntimeConfig } = await import('@lostgradient/weft/ui');
 
 const CONFIG_ELEMENT_ID = 'weft-ui-config';
