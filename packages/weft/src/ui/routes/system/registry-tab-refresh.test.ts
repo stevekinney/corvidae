@@ -10,7 +10,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import RegistryTab from './registry-tab.svelte';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
-import { realClient, ScriptedFetch } from './system-test-support.test-support.ts';
+import {
+  realClient,
+  ScriptedFetch,
+  withContractHashes,
+} from './system-test-support.test-support.ts';
 
 let scripted: ScriptedFetch | undefined;
 
@@ -65,7 +69,7 @@ function refetchIntervalOf(
 describe('RegistryTab registry query', () => {
   test('refreshes on the same cadence as the worker and manifest queries', async () => {
     scripted = new ScriptedFetch();
-    scripted.enqueueJsonRpcResult(SNAPSHOT);
+    scripted.enqueueJsonRpcResult(await withContractHashes(SNAPSHOT));
     const { findByText, queryClient } = renderRegistryTab(scripted);
     expect(await findByText('order-processing')).not.toBeNull();
 
@@ -76,10 +80,12 @@ describe('RegistryTab registry query', () => {
 
   test('reports a malformed snapshot through the validated loader', async () => {
     scripted = new ScriptedFetch();
-    scripted.enqueueJsonRpcResult({
-      ...SNAPSHOT,
-      workflows: [...SNAPSHOT.workflows, SNAPSHOT.workflows[0]],
-    });
+    scripted.enqueueJsonRpcResult(
+      await withContractHashes({
+        ...SNAPSHOT,
+        workflows: [...SNAPSHOT.workflows, SNAPSHOT.workflows[0]],
+      }),
+    );
     const { findByText } = renderRegistryTab(scripted, { retry: false });
 
     expect(await findByText('Malformed server response')).not.toBeNull();
@@ -88,7 +94,7 @@ describe('RegistryTab registry query', () => {
 
   test('keeps the last snapshot on screen when a background refresh fails', async () => {
     scripted = new ScriptedFetch();
-    scripted.enqueueJsonRpcResult(SNAPSHOT);
+    scripted.enqueueJsonRpcResult(await withContractHashes(SNAPSHOT));
     scripted.enqueueJson(
       {
         jsonrpc: '2.0',

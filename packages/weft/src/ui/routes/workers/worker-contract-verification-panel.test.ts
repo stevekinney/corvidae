@@ -107,11 +107,20 @@ describe('WorkerContractVerificationPanel', () => {
     ).not.toBeNull();
   });
 
-  test('empty state: a registry with no workflow revisions', async () => {
-    const { findByText } = renderPanel({
+  test('an empty but valid registry still verifies: every advertised workflow is unregistered', async () => {
+    const { findByText, queryByText } = renderPanel({
       registry: { ...registrySnapshot(), workflows: [], activeRevisions: {} },
     });
-    expect(await findByText('No registry snapshot yet')).not.toBeNull();
+    expect(await findByText('Drift · manifest differs from registry')).not.toBeNull();
+    expect(await findByText('checkout')).not.toBeNull();
+    expect(queryByText('No registry snapshot yet')).toBeNull();
+  });
+
+  test('a manifest not yet fetched (and not loading) has its own state', async () => {
+    const { findByText, queryByText, queryByRole } = renderPanel({ diagnostics: undefined });
+    expect(await findByText('No manifest evidence yet')).not.toBeNull();
+    expect(queryByRole('status', { name: 'Loading contract verification' })).toBeNull();
+    expect(queryByText('No registry snapshot yet')).toBeNull();
   });
 
   test('stale state keeps cached evidence with the neutral refreshing badge', async () => {

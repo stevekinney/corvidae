@@ -15,7 +15,18 @@
  * (`buildRegistrySnapshot` in `src/core/registry-snapshot.ts`), and codegen
  * omits such a name rather than failing. Verification resolves it the same
  * way, by omission.
+ *
+ * ## Canonical validation
+ *
+ * {@link parseRegistrySnapshot} accepts only the registry wire version this
+ * build understands (`REGISTRY_VERSION`) and runs every manifest through
+ * Weft's public `parseWorkflowRevisionManifest`, which recomputes each
+ * `contractHash` from the contract instead of trusting the supplied value,
+ * so verification never compares a worker with a hash the registry did not
+ * earn.
  */
+import { parseWorkflowRevisionManifest, REGISTRY_VERSION } from '@lostgradient/weft';
+
 import type {
   RegistrySnapshotSource,
   WorkflowRevisionManifestSource,
@@ -68,10 +79,10 @@ function hasUniqueManifestIdentities(
  * A type guard, so the snapshot is passed through whole: the Registry tab
  * shares its query key and reads the rest of each contract.
  */
-export function isRegistrySnapshot(value: unknown): value is RegistrySnapshotSource {
+function isRegistrySnapshot(value: unknown): value is RegistrySnapshotSource {
   if (
     !isRecord(value) ||
-    typeof value['registryVersion'] !== 'number' ||
+    value['registryVersion'] !== REGISTRY_VERSION ||
     !Array.isArray(value['workflows']) ||
     !isStringRecord(value['activeRevisions']) ||
     !isRecord(value['activities'])
@@ -80,4 +91,16 @@ export function isRegistrySnapshot(value: unknown): value is RegistrySnapshotSou
   }
   const workflows: readonly unknown[] = value['workflows'];
   return workflows.every(isWorkflowManifest) && hasUniqueManifestIdentities(workflows);
+}
+
+/**
+ * {@link isRegistrySnapshot}, then canonical validation of every manifest.
+ * Throws {@link MalformedRegistrySnapshotError}; resolves to the snapshot
+ * itself, whole, so the Registry tab can read the rest of each contract.
+ */
+export async function parseRegistrySnapshot(value: unknown): Promise<RegistrySnapshotSource> {
+  if (!isRegistrySnapshot(value)) throw new MalformedRegistrySnapshotError();
+  const results = await Promise.all(value.workflows.map(parseWorkflowRevisionManifest));
+  if (results.some((result) => !result.ok)) throw new MalformedRegistrySnapshotError();
+  return value;
 }

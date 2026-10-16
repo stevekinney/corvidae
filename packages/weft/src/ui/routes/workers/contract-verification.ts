@@ -26,7 +26,16 @@
  * strict JSON (`WorkerJsonValidationError`, `src/worker/strict-json.ts`) and
  * reports the error's message to the server. {@link classifyContractFailure}
  * recognizes that error by its name, or by the message vocabulary that
- * module emits; it never re-runs the validation rules. A contract mismatch is
+ * module emits; it never re-runs the validation rules.
+ *
+ * Only the name is unambiguous. Both worker transports record a failed
+ * task's `error.message` alone, so a task-ledger error string carries no
+ * discriminator: activity code that throws `price: number must be finite`
+ * reads exactly like a strict-boundary rejection. A message-only match is
+ * therefore `confirmed: false`, and the notice hedges instead of asserting
+ * that the worker rejected the value. Carrying a discriminator through the
+ * worker protocol and ledger would change Weft's runtime, which is outside
+ * this dashboard surface. A contract mismatch is
  * a `Conflict` fault carrying `compatibilityReasons`
  * (`compatibility-verdict.ts`).
  */
@@ -366,7 +375,13 @@ export function verificationCommands(context: VerificationCommandContext): Verif
 // ---------------------------------------------------------------------------
 
 export type ContractFailure =
-  | Readonly<{ kind: 'strict-payload'; path: string; message: string }>
+  | Readonly<{
+      kind: 'strict-payload';
+      path: string;
+      message: string;
+      /** `true` only when the error names `WorkerJsonValidationError`; a message-only match may be an activity's own error. */
+      confirmed: boolean;
+    }>
   | Readonly<{ kind: 'contract-mismatch'; reasons: readonly string[] }>;
 
 const STRICT_PAYLOAD_ERROR_NAME = 'WorkerJsonValidationError';
@@ -389,7 +404,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function strictPayloadFromMessage(message: string): ContractFailure | undefined {
   const match = STRICT_PAYLOAD_MESSAGE.exec(message);
   if (match === null) return undefined;
-  return { kind: 'strict-payload', path: match[1]!, message: match[2]! };
+  return { kind: 'strict-payload', path: match[1]!, message: match[2]!, confirmed: false };
 }
 
 function strictPayloadFromRecord(record: Record<string, unknown>): ContractFailure | undefined {
@@ -402,9 +417,13 @@ function strictPayloadFromRecord(record: Record<string, unknown>): ContractFailu
       kind: 'strict-payload',
       path: record['path'],
       message: message.startsWith(prefix) ? message.slice(prefix.length) : message,
+      confirmed: true,
     };
   }
-  return strictPayloadFromMessage(message) ?? { kind: 'strict-payload', path: 'payload', message };
+  const match = strictPayloadFromMessage(message);
+  return match === undefined
+    ? { kind: 'strict-payload', path: 'payload', message, confirmed: true }
+    : { ...match, confirmed: true };
 }
 
 /**

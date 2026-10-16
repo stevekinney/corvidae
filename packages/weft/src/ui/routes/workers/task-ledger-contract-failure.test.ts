@@ -27,7 +27,7 @@ function failedTask(error: string) {
 }
 
 describe('task ledger strict payload failures (COR-162)', () => {
-  test('a strict payload-boundary rejection is called out with its path', () => {
+  test('strict-boundary vocabulary in a ledger error is hedged, with its path', () => {
     const { getByText, queryByText } = render(TaskLedgerDetailView, {
       props: {
         task: failedTask('activity result.total: number must be finite'),
@@ -35,9 +35,22 @@ describe('task ledger strict payload failures (COR-162)', () => {
       },
     });
 
-    expect(getByText('Strict payload boundary rejected a value')).not.toBeNull();
+    expect(getByText('Possible strict payload rejection')).not.toBeNull();
     expect(getByText('activity result.total')).not.toBeNull();
+    expect(queryByText('Strict payload boundary rejected a value')).toBeNull();
     expect(queryByText('Contract mismatch')).toBeNull();
+  });
+
+  test('an activity that throws strict-boundary wording is not asserted to be a worker rejection', () => {
+    // Both transports record only `error.message`, so this application error
+    // is indistinguishable from a strict-json rejection in the ledger.
+    const { container, getByText, queryByText } = render(TaskLedgerDetailView, {
+      props: { task: failedTask('price: number must be finite'), now: NOW },
+    });
+
+    expect(getByText('Possible strict payload rejection')).not.toBeNull();
+    expect(queryByText('Strict payload boundary rejected a value')).toBeNull();
+    expect(container.textContent).not.toContain('The worker could not send');
   });
 
   test('an ordinary activity failure keeps only its error text', () => {

@@ -1,5 +1,5 @@
 /** Shared fixtures for the COR-162 contract-verification tests. */
-import { activityContractHash } from '@lostgradient/weft';
+import { activityContractHash, contractHash } from '@lostgradient/weft';
 
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
 import { registryActivityContractHashes } from './contract-verification.ts';
@@ -15,6 +15,23 @@ const CHARGE_CONTRACT = {
 /** The real `activityContractHash` of the active `checkout` revision's `charge` and `reserve` activities. */
 export const CHARGE_HASH = await activityContractHash(CHARGE_CONTRACT);
 export const RESERVE_HASH = await activityContractHash({});
+
+const OLD_CHECKOUT_CONTRACT = {
+  name: 'checkout',
+  workflowVersion: '1.0.0',
+  activities: { charge: {} },
+};
+const CHECKOUT_CONTRACT = {
+  name: 'checkout',
+  workflowVersion: '2.0.0',
+  activities: { charge: CHARGE_CONTRACT, reserve: {} },
+};
+const REFUND_CONTRACT = { name: 'refund', workflowVersion: '1.0.0' };
+
+/** Real `contractHash` values, so the snapshot passes `parseWorkflowRevisionManifest`. */
+export const CHECKOUT_CONTRACT_HASH = await contractHash(CHECKOUT_CONTRACT);
+const OLD_CHECKOUT_CONTRACT_HASH = await contractHash(OLD_CHECKOUT_CONTRACT);
+const REFUND_CONTRACT_HASH = await contractHash(REFUND_CONTRACT);
 
 export function workerManifest(
   workflows: WorkerWorkflows,
@@ -50,7 +67,7 @@ export function matchingCheckout(): WorkerWorkflows[string] {
   return {
     workflowVersion: '2.0.0',
     workflowRevision: 'rev-2',
-    contractHash: 'sha256:checkout-contract',
+    contractHash: CHECKOUT_CONTRACT_HASH,
     activities: {
       charge: { contractHash: CHARGE_HASH, implementationRevision: 'impl-1' },
       reserve: { contractHash: RESERVE_HASH, implementationRevision: 'impl-1' },
@@ -71,28 +88,24 @@ export function registrySnapshot(): RegistrySnapshotSource {
         name: 'checkout',
         workflowVersion: '1.0.0',
         revision: 'rev-1',
-        contractHash: 'sha256:old-checkout-contract',
-        contract: { name: 'checkout', workflowVersion: '1.0.0', activities: { charge: {} } },
+        contractHash: OLD_CHECKOUT_CONTRACT_HASH,
+        contract: OLD_CHECKOUT_CONTRACT,
       },
       {
         manifestVersion: 1,
         name: 'checkout',
         workflowVersion: '2.0.0',
         revision: 'rev-2',
-        contractHash: 'sha256:checkout-contract',
-        contract: {
-          name: 'checkout',
-          workflowVersion: '2.0.0',
-          activities: { charge: CHARGE_CONTRACT, reserve: {} },
-        },
+        contractHash: CHECKOUT_CONTRACT_HASH,
+        contract: CHECKOUT_CONTRACT,
       },
       {
         manifestVersion: 1,
         name: 'refund',
         workflowVersion: '1.0.0',
         revision: 'refund-rev',
-        contractHash: 'sha256:refund-contract',
-        contract: { name: 'refund', workflowVersion: '1.0.0' },
+        contractHash: REFUND_CONTRACT_HASH,
+        contract: REFUND_CONTRACT,
       },
     ],
     activeRevisions: { checkout: 'rev-2', refund: 'refund-rev' },

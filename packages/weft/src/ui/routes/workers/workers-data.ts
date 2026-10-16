@@ -33,7 +33,7 @@ import {
 
 import { queryKeys } from '../../lib/query.ts';
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
-import { isRegistrySnapshot, MalformedRegistrySnapshotError } from './registry-snapshot-guard.ts';
+import { parseRegistrySnapshot } from './registry-snapshot-guard.ts';
 import {
   DEFAULT_TASK_DIAGNOSTICS_INPUT,
   type TaskDiagnosticsOutput,
@@ -178,9 +178,7 @@ export async function loadFleetManifestDiagnostics(
 export async function loadRegistrySnapshot(
   client: WorkersOperations,
 ): Promise<RegistrySnapshotSource> {
-  const snapshot: unknown = await client.operations['weft.system.registry']({});
-  if (!isRegistrySnapshot(snapshot)) throw new MalformedRegistrySnapshotError();
-  return snapshot;
+  return parseRegistrySnapshot(await client.operations['weft.system.registry']({}));
 }
 
 /** Bounded, server-owned evidence for recently rejected registration attempts. */

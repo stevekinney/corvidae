@@ -85,6 +85,82 @@ test('operator reads every serving worker’s verification from a registry entry
   await checkA11y('system — registry contract verification');
 });
 
+/**
+ * Failure states, each reached by answering the worker-manifest read with a
+ * JSON-RPC fault, so every notice is checked for text (not color alone) and
+ * by `checkA11y`.
+ */
+const FAILURES = [
+  {
+    name: 'strict payload rejection',
+    error: {
+      code: -32602,
+      message: 'Unprocessable',
+      data: {
+        httpStatus: 422,
+        name: 'WorkerJsonValidationError',
+        path: 'activity result.total',
+        message: 'activity result.total: number must be finite',
+      },
+    },
+    title: 'Strict payload boundary rejected a value',
+  },
+  {
+    name: 'contract mismatch',
+    error: {
+      code: -32000,
+      message: 'Conflict',
+      data: {
+        httpStatus: 409,
+        weftCode: 'Conflict',
+        compatibilityReasons: ['contract-hash-mismatch'],
+      },
+    },
+    title: 'Contract mismatch',
+  },
+  {
+    name: 'server fault',
+    error: {
+      code: -32004,
+      message: 'Worker manifest unavailable',
+      data: { httpStatus: 404, weftCode: 'NotFound' },
+    },
+    title: 'Not found',
+  },
+] as const;
+
+async function failWorkerDiagnostics(page: Page, error: unknown): Promise<void> {
+  await page.route('**/jsonrpc', async (route) => {
+    const request: unknown = route.request().postDataJSON();
+    const body = request as { id?: unknown; method?: unknown } | null;
+    if (body?.method !== 'weft.workers.diagnostics') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ jsonrpc: '2.0', id: body.id ?? null, error }),
+    });
+  });
+}
+
+for (const failure of FAILURES) {
+  test(`the ${failure.name} state reads in text and passes accessibility checks`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await failWorkerDiagnostics(page, failure.error);
+    await page.goto('/workers?tab=list&worker=e2e-fleet-worker-1');
+
+    const verification = page.getByRole('region', { name: 'Contract verification' });
+    await expect(verification.getByText(failure.title, { exact: true })).toBeVisible();
+    await expect(verification.getByText('Verified · manifest matches registry')).toHaveCount(0);
+
+    await checkA11y(`workers — contract verification ${failure.name}`);
+  });
+}
+
 const SURFACES = [
   {
     name: 'worker detail',

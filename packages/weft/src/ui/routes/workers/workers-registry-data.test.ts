@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { HttpClient } from '@lostgradient/weft';
+import { HttpClient, REGISTRY_VERSION } from '@lostgradient/weft';
 
 import { rejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { registrySnapshot } from './contract-verification.test-support.ts';
@@ -65,5 +65,48 @@ describe('registry snapshot for contract verification', () => {
     };
 
     expect(await loadRegistrySnapshot(clientReturning(snapshot))).toBe(snapshot);
+  });
+
+  test('accepts only the registry wire version this build understands', async () => {
+    for (const registryVersion of [REGISTRY_VERSION - 1, REGISTRY_VERSION + 1]) {
+      const snapshot = { ...registrySnapshot(), registryVersion };
+      expect(await rejectionOf(loadRegistrySnapshot(clientReturning(snapshot)))).toBeInstanceOf(
+        MalformedRegistrySnapshotError,
+      );
+    }
+  });
+
+  test('rejects a manifest whose contract changed under its supplied contract hash', async () => {
+    // The supplied hash still equals a worker's advertised one; only the
+    // canonical parser's recomputation notices the contract moved.
+    const snapshot = registrySnapshot();
+    const [old, active, refund] = snapshot.workflows;
+    const tampered = {
+      ...snapshot,
+      workflows: [
+        old!,
+        { ...active!, contract: { ...active!.contract, activities: { charge: {} } } },
+        refund!,
+      ],
+    };
+
+    expect(await rejectionOf(loadRegistrySnapshot(clientReturning(tampered)))).toBeInstanceOf(
+      MalformedRegistrySnapshotError,
+    );
+  });
+
+  test('rejects a manifest the canonical parser refuses', async () => {
+    const snapshot = registrySnapshot();
+    const unsupported = {
+      ...snapshot,
+      workflows: [
+        { ...snapshot.workflows[0]!, manifestVersion: 99 },
+        ...snapshot.workflows.slice(1),
+      ],
+    };
+
+    expect(await rejectionOf(loadRegistrySnapshot(clientReturning(unsupported)))).toBeInstanceOf(
+      MalformedRegistrySnapshotError,
+    );
   });
 });

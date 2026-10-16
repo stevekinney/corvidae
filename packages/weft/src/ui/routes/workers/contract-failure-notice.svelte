@@ -18,7 +18,17 @@
   let { failure }: ContractFailureNoticeProps = $props();
 </script>
 
-{#if failure.kind === 'strict-payload'}
+{#if failure.kind === 'strict-payload' && !failure.confirmed}
+  <Callout variant="warning" semantic="note" title="Possible strict payload rejection">
+    <p>
+      This looks like a strict payload rejection of <code>{failure.path}</code>: {failure.message}.
+      The task ledger keeps only the error text, so it cannot show whether the worker's strict JSON
+      boundary or the activity itself raised it. If the activity returned this value, return plain
+      JSON values (no <code>undefined</code>, non-finite numbers, <code>-0</code>,
+      <code>BigInt</code>, functions, or class instances).
+    </p>
+  </Callout>
+{:else if failure.kind === 'strict-payload'}
   <Callout variant="warning" semantic="note" title="Strict payload boundary rejected a value">
     <p>
       The worker could not send <code>{failure.path}</code> as strict JSON: {failure.message}. This

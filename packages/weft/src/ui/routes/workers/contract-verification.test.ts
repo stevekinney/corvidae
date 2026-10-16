@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import { KNOWN_COMPATIBILITY_REASONS } from '../system/compatibility-verdict.ts';
 import {
   CHARGE_HASH,
+  CHECKOUT_CONTRACT_HASH,
   matchingCheckout,
   REGISTRY_HASHES,
   registrySnapshot,
@@ -75,7 +76,7 @@ describe('verifyWorkerContracts', () => {
       {
         reason: 'contract-hash-mismatch',
         worker: 'sha256:old-checkout-contract',
-        registry: 'sha256:checkout-contract',
+        registry: CHECKOUT_CONTRACT_HASH,
       },
     ]);
   });
@@ -307,6 +308,7 @@ describe('classifyContractFailure', () => {
       kind: 'strict-payload',
       path: 'activity result.total',
       message: 'number must be finite',
+      confirmed: false,
     });
     expect(
       classifyContractFailure('activity result.items[2]: undefined is not valid worker JSON'),
@@ -314,11 +316,13 @@ describe('classifyContractFailure', () => {
       kind: 'strict-payload',
       path: 'activity result.items[2]',
       message: 'undefined is not valid worker JSON',
+      confirmed: false,
     });
     expect(classifyContractFailure('activity result: Map is not a plain JSON object')).toEqual({
       kind: 'strict-payload',
       path: 'activity result',
       message: 'Map is not a plain JSON object',
+      confirmed: false,
     });
   });
 
@@ -329,6 +333,7 @@ describe('classifyContractFailure', () => {
       kind: 'strict-payload',
       path: 'activity result["a: b"]',
       message: 'undefined is not valid worker JSON',
+      confirmed: false,
     });
     expect(
       classifyContractFailure('value["x: y"][0]: sparse array slot is not valid worker JSON'),
@@ -336,6 +341,7 @@ describe('classifyContractFailure', () => {
       kind: 'strict-payload',
       path: 'value["x: y"][0]',
       message: 'sparse array slot is not valid worker JSON',
+      confirmed: false,
     });
   });
 
@@ -348,6 +354,7 @@ describe('classifyContractFailure', () => {
       kind: 'strict-payload',
       path: 'details.at',
       message: 'symbol is not valid worker JSON',
+      confirmed: true,
     });
     expect(
       classifyContractFailure({
@@ -359,6 +366,7 @@ describe('classifyContractFailure', () => {
       kind: 'strict-payload',
       path: 'value',
       message: 'BigInt is not valid worker JSON',
+      confirmed: true,
     });
   });
 
@@ -375,6 +383,7 @@ describe('classifyContractFailure', () => {
       kind: 'strict-payload',
       path: 'activity result.when',
       message: 'function is not valid worker JSON',
+      confirmed: true,
     });
   });
 

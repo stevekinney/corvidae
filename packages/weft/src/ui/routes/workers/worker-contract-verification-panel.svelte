@@ -76,10 +76,15 @@
       title="No accepted manifest"
       description="The server has no accepted manifest for this worker, so there is nothing to verify."
     />
-  {:else if registry === undefined || registry.workflows.length === 0}
+  {:else if diagnostics === undefined}
+    <EmptyState
+      title="No manifest evidence yet"
+      description="This worker's accepted manifest has not been fetched, so there is nothing to verify yet."
+    />
+  {:else if registry === undefined}
     <EmptyState
       title="No registry snapshot yet"
-      description="The registry has no workflow revisions to compare this worker's manifest with."
+      description="No registry snapshot has been fetched to compare this worker's manifest with."
     />
   {:else if verification}
     {#if error}
