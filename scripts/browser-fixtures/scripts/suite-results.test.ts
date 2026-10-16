@@ -4,8 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  WEB_SERVER_TIMEOUT,
+  WEB_SERVER_TIMEOUT_REPORT,
+  passed,
+  playwrightReport,
+} from './playwright-report.test-support.ts';
+import {
   compareWithControl,
   decideApply,
+  incompleteRunReasons,
   isScreenshotFailure,
   nonPassingTests,
   renderControlComparison,
@@ -24,8 +31,20 @@ const REPORT = JSON.stringify({
       title: 'tree.playwright.ts',
       file: 'tree.playwright.ts',
       specs: [
-        { title: 'renders', file: 'tree.playwright.ts', line: 4, tests: [{ status: 'expected' }] },
-        { title: 'scrolls', file: 'tree.playwright.ts', line: 9, tests: [{ status: 'skipped' }] },
+        {
+          title: 'renders',
+          file: 'tree.playwright.ts',
+          line: 4,
+          tests: [{ status: 'expected', results: [{ status: 'passed' }] }],
+        },
+        {
+          title: 'scrolls',
+          file: 'tree.playwright.ts',
+          line: 9,
+          tests: [
+            { status: 'skipped', expectedStatus: 'skipped', results: [{ status: 'skipped' }] },
+          ],
+        },
       ],
       suites: [
         {
@@ -84,7 +103,7 @@ const REPORT = JSON.stringify({
               title: 'dark-desktop-primary',
               file: 'components.playwright.ts',
               line: 723,
-              tests: [{ status: 'flaky' }],
+              tests: [{ status: 'flaky', results: [{ status: 'failed' }, { status: 'passed' }] }],
             },
           ],
         },
@@ -121,6 +140,10 @@ describe('summarizePlaywrightResults', () => {
       ],
       flakyTests: ['components.playwright.ts › button › dark-desktop-primary'],
       skippedTests: [{ title: 'tree.playwright.ts › scrolls', file: 'tree.playwright.ts' }],
+      globalErrors: [],
+      selected: 5,
+      executed: 4,
+      notRun: [],
     });
   });
 
@@ -159,6 +182,10 @@ const behavioural: SuiteResults = {
   ],
   flakyTests: [],
   skippedTests: [],
+  globalErrors: [],
+  selected: 11,
+  executed: 11,
+  notRun: [],
 };
 const screenshot: SuiteResults = {
   ...behavioural,
@@ -169,7 +196,13 @@ const screenshot: SuiteResults = {
 
 describe('decideApply', () => {
   it('applies a passing suite', () => {
-    expect(decideApply(0, undefined, false).apply).toBe(true);
+    expect(decideApply(0, { ...behavioural, unexpected: 0, failures: [] }, false).apply).toBe(true);
+  });
+
+  it('never applies a run without a Playwright report, even one that exited 0', () => {
+    const decision = decideApply(0, undefined, true);
+    expect(decision.apply).toBe(false);
+    expect(decision.reason).toContain('no Playwright report');
   });
 
   it('refuses behavioural failures without the explicit flag, and names the flag', () => {
@@ -191,6 +224,100 @@ describe('decideApply', () => {
   });
 });
 
+describe('a run that did not complete normally (COR-1537)', () => {
+  it('reads a webServer timeout as a global error with nothing selected or executed', () => {
+    const results = summarizePlaywrightResults(WEB_SERVER_TIMEOUT_REPORT);
+    expect(results.globalErrors).toEqual([WEB_SERVER_TIMEOUT]);
+    expect(results.selected).toBe(0);
+    expect(results.executed).toBe(0);
+    expect(results.failures).toEqual([]);
+    expect(incompleteRunReasons(results)).toEqual([
+      `Playwright reported 1 error outside any test: ${WEB_SERVER_TIMEOUT}`,
+      'Playwright selected no tests.',
+      'No test executed.',
+    ]);
+  });
+
+  it('never applies a webServer timeout, whatever the exit code or the flag', () => {
+    const results = summarizePlaywrightResults(WEB_SERVER_TIMEOUT_REPORT);
+    for (const exitCode of [0, 1]) {
+      for (const accept of [false, true]) {
+        const decision = decideApply(exitCode, results, accept);
+        expect(decision.apply).toBe(false);
+        expect(decision.reason).toContain('did not complete normally');
+        expect(decision.reason).toContain('config.webServer');
+      }
+    }
+  });
+
+  it('refuses a run in which no selected test executed', () => {
+    const results = summarizePlaywrightResults(
+      playwrightReport([
+        { title: 'a', results: [] },
+        { title: 'b', results: [] },
+      ]),
+    );
+    expect(results.selected).toBe(2);
+    expect(results.executed).toBe(0);
+    const decision = decideApply(1, results, true);
+    expect(decision.apply).toBe(false);
+    expect(decision.reason).toContain('No test executed.');
+    expect(decision.reason).toContain('2 of 2 selected tests never ran');
+  });
+
+  it('refuses a run in which some selected tests never ran, were interrupted, or did not run', () => {
+    const results = summarizePlaywrightResults(
+      playwrightReport([
+        passed('ran'),
+        { title: 'never started', results: [] },
+        { title: 'interrupted', results: [{ status: 'interrupted' }] },
+        { title: 'did not run', results: [{ status: 'skipped' }] },
+      ]),
+    );
+    expect(results.executed).toBe(1);
+    expect(results.notRun).toEqual([
+      'components.playwright.ts › did not run',
+      'components.playwright.ts › interrupted',
+      'components.playwright.ts › never started',
+    ]);
+    const decision = decideApply(0, results, true);
+    expect(decision.apply).toBe(false);
+    expect(decision.reason).toContain('3 of 4 selected tests never ran');
+    expect(decision.reason).toContain('components.playwright.ts › never started');
+  });
+
+  it('still applies a complete run whose skips were declared by the tests themselves', () => {
+    const results = summarizePlaywrightResults(
+      playwrightReport([
+        passed('ran'),
+        {
+          title: 'skipped on purpose',
+          expectedStatus: 'skipped',
+          results: [{ status: 'skipped' }],
+        },
+      ]),
+    );
+    expect(incompleteRunReasons(results)).toEqual([]);
+    expect(decideApply(0, results, false)).toEqual({ apply: true, reason: 'The suite passed.' });
+  });
+
+  it('never lets an incomplete visual run or control pass the stability rule', () => {
+    const empty = summarizePlaywrightResults(WEB_SERVER_TIMEOUT_REPORT);
+    const comparison = compareWithControl(empty, behavioural);
+    expect(comparison.passes).toBe(false);
+    expect(comparison.incompleteRun).toContain('No test executed.');
+    expect(compareWithControl(behavioural, empty).passes).toBe(false);
+    const markdown = renderControlComparison(
+      comparison,
+      { label: 'B', results: empty },
+      { label: 'main', results: behavioural },
+    );
+    expect(markdown).toContain('### The run did not complete normally\n\n- Playwright reported');
+    expect(markdown).toContain('\n- No test executed.\n');
+    expect(markdown).toContain('Verdict: fails');
+  });
+});
+
 describe('compareWithControl', () => {
   it('passes when every run failure also fails on the control and none is a screenshot', () => {
     const control: SuiteResults = {
@@ -202,6 +329,8 @@ describe('compareWithControl', () => {
       onlyInRun: [],
       onlyInControl: ['b › shot'],
       screenshotFailuresInRun: [],
+      incompleteRun: [],
+      incompleteControl: [],
       passes: true,
     });
   });
