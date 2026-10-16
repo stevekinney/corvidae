@@ -20,12 +20,12 @@ describe('a run that selects tests by name', () => {
   scenarioTest(
     'ends every scenario it started, including those of tests it did not select',
     async () => {
-      const token = `7919.${Math.floor(Math.random() * 1_000_000)}`;
+      // The fixture names its process after the pid of the run that starts it, which is this one.
+      const token = `7919.${process.pid}`;
       const run = Bun.spawn(
         [process.execPath, 'test', './scripts/filtered-run-fixture.ts', '-t', 'finishes at once'],
         {
           cwd: new URL('../..', import.meta.url).pathname,
-          env: { ...process.env, FILTERED_RUN_TOKEN: token },
           stdout: 'ignore',
           stderr: 'ignore',
           timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
