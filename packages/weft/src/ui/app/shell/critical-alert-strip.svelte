@@ -6,7 +6,7 @@
    * `NotificationStore.dismissCritical`, which marks it read (it stays
    * visible, dimmed, in the bell dropdown) rather than deleting it.
    */
-  import { Siren, X } from 'lucide-svelte';
+  import { Siren, X } from '@lucide/svelte';
 
   import { router } from '../../lib/router.svelte.ts';
   import type { NotificationStore } from '../notifications.svelte.ts';

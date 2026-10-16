@@ -1005,7 +1005,7 @@ function resolvePropTypeInfo(
 // The projects are per package, not one for the whole playground, because
 // ts-morph keeps every file a program resolved as a root of every later program
 // in the same `Project`, and `removeSourceFile` releases only the synthetic file.
-// Chat's types reach Cinder's barrel and, through it, every `lucide-svelte` icon
+// Chat's types reach Cinder's barrel and, through it, every `@lucide/svelte` icon
 // declaration (about 3,700 files). In one shared project that graph stayed a root
 // for the rest of the run, so every Cinder analysis after the first Chat one cost
 // about 300 ms instead of about 40 ms, and the full 211-component manifest took

@@ -13,7 +13,7 @@
    * reopen the navigation drawer on a small viewport once it's closed —
    * `Sidebar` itself renders no trigger of its own below that width.
    */
-  import { Menu, Monitor, Moon, Search, Shield, Sun } from 'lucide-svelte';
+  import { Menu, Monitor, Moon, Search, Shield, Sun } from '@lucide/svelte';
 
   import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
   import type { PrincipalStore } from '../../lib/scopes.svelte.ts';

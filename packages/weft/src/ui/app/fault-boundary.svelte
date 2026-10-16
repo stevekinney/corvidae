@@ -6,7 +6,7 @@
    *
    * One `FaultDisplay`-style banner for all six treatments (design reference:
    * `design/Weft Patterns.dc.html` "Fault / error banner · six fault codes"),
-   * matched here with Cinder `Badge` + `lucide-svelte` icons + Cinder tokens
+   * matched here with Cinder `Badge` + `@lucide/svelte` icons + Cinder tokens
    * rather than hand-rolled color values. `Internal` additionally shows a
    * collapsible stack trace when the caught error is NOT an `HttpClientError`
    * (i.e. a rendering bug the boundary caught directly, never a wire fault) —
@@ -22,10 +22,10 @@
    * banner's own Retry button, on explicit user action — calling `reset()`
    * from `onerror` would just re-run the same failing subtree synchronously.
    */
-  import type { ComponentType, Snippet, SvelteComponent } from 'svelte';
+  import type { Snippet } from 'svelte';
 
   import { Badge, Button, Collapsible } from '@lostgradient/cinder';
-  import type { IconProps } from 'lucide-svelte';
+  import type { LucideIcon } from '@lucide/svelte';
   import {
     CircleSlash,
     CircleX,
@@ -33,7 +33,7 @@
     Lock,
     SearchX,
     ServerCrash,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   import { HttpClientError } from '@lostgradient/weft';
 
@@ -73,14 +73,9 @@
 
   /**
    * Icon per treatment kind, matching the design reference's fault-banner
-   * icons verbatim. Typed via `ComponentType<SvelteComponent<...>>` (Svelte
-   * 5's legacy-interop type), not `Component<IconProps>` — `lucide-svelte`
-   * still ships icons as `SvelteComponentTyped` classes, not Svelte 5's
-   * native functional component shape.
+   * icons verbatim.
    */
-  const FAULT_ICON: Readonly<
-    Record<FaultTreatmentKind, ComponentType<SvelteComponent<IconProps>>>
-  > = {
+  const FAULT_ICON: Readonly<Record<FaultTreatmentKind, LucideIcon>> = {
     'not-found': SearchX,
     conflict: GitPullRequestClosed,
     invalid: CircleX,

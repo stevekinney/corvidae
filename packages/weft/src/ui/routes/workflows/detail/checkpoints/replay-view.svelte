@@ -9,7 +9,7 @@
   import { DescriptionList, EmptyState, PayloadInspector, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient } from '@lostgradient/weft';
-  import { Rewind } from 'lucide-svelte';
+  import { Rewind } from '@lucide/svelte';
 
   import { getPrincipalStore, scopeGate } from '../../../../lib/scopes.svelte.ts';
   import { formatBytes } from '../../../../lib/format/index.ts';

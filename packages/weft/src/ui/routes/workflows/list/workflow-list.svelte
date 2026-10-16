@@ -5,7 +5,7 @@
    * pagination, and every Appendix-B state (loading/empty×2/denied/fault)
    * around the child components built for this track.
    */
-  import { ChartBar, GitBranch, Plus } from 'lucide-svelte';
+  import { ChartBar, GitBranch, Plus } from '@lucide/svelte';
   import { Button, ConnectionIndicator, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';

@@ -17,9 +17,8 @@
     Lock,
     SearchX,
     ServerCrash,
-    type IconProps,
-  } from 'lucide-svelte';
-  import type { ComponentType, SvelteComponent } from 'svelte';
+    type LucideIcon,
+  } from '@lucide/svelte';
 
   import {
     FAULT_TREATMENT_TITLE,
@@ -34,9 +33,7 @@
 
   let { error, onRetry }: Props = $props();
 
-  const FAULT_ICON: Readonly<
-    Record<FaultTreatmentKind, ComponentType<SvelteComponent<IconProps>>>
-  > = {
+  const FAULT_ICON: Readonly<Record<FaultTreatmentKind, LucideIcon>> = {
     'not-found': SearchX,
     conflict: GitPullRequestClosed,
     invalid: CircleX,

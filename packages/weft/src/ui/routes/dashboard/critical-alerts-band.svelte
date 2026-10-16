@@ -15,7 +15,7 @@
    */
   import type { HttpClient, PendingReviewEntry, ReviewListEntry } from '@lostgradient/weft';
 
-  import { Lock } from 'lucide-svelte';
+  import { Lock } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';

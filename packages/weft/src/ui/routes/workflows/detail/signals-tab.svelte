@@ -10,7 +10,7 @@
   import { Badge, Button, Input, JsonEditor, Skeleton } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
-  import { Radio } from 'lucide-svelte';
+  import { Radio } from '@lucide/svelte';
 
   import { formatRelativeTime } from '../../../lib/format/index.ts';
   import { signalHistoryFromTimeline, workflowTimelineQueryKey } from './workflow-timeline-data.ts';

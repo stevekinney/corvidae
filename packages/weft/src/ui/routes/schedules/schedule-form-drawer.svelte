@@ -7,7 +7,7 @@
    * `schedule-form-fields.svelte`.
    */
   import { Button, Drawer, Skeleton } from '@lostgradient/cinder';
-  import { CalendarPlus, Lock } from 'lucide-svelte';
+  import { CalendarPlus, Lock } from '@lucide/svelte';
 
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';

@@ -72,7 +72,7 @@
    */
   import { Badge, Button, Input, Select, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
-  import { ChevronDown, ChevronRight, GitFork } from 'lucide-svelte';
+  import { ChevronDown, ChevronRight, GitFork } from '@lucide/svelte';
 
   import { faultTreatment } from '../../../../lib/faults.ts';
   import { formatRelativeTime, truncateId } from '../../../../lib/format/index.ts';

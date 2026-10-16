@@ -31,7 +31,7 @@
     Skeleton,
     StatusDot,
   } from '@lostgradient/cinder';
-  import { Info, Pause, Pencil, Play, XCircle } from 'lucide-svelte';
+  import { CircleX, Info, Pause, Pencil, Play } from '@lucide/svelte';
 
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -200,7 +200,7 @@
             title={writeGate.title}
             onclick={() => (cancelDialogOpen = true)}
           >
-            <XCircle aria-hidden="true" size={14} /> Cancel
+            <CircleX aria-hidden="true" size={14} /> Cancel
           </Button>
         {/if}
       </div>

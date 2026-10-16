@@ -1,6 +1,6 @@
 <script lang="ts">
   /** Renders the lucide icon named by a `WorkflowStatusBadgeIcon` (plan §10.1). Split out of `workflow-status-badge.ts` because that module stays a plain, framework-free `.ts` file per the console's logic/UI split. */
-  import { Ban, CircleCheck, CircleX, Clock, Pause, Play, TimerOff } from 'lucide-svelte';
+  import { Ban, CircleCheck, CircleX, Clock, Pause, Play, TimerOff } from '@lucide/svelte';
 
   import type { WorkflowStatusBadgeIcon } from './workflow-status-badge.ts';
 

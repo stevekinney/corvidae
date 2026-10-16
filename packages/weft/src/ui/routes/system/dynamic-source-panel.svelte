@@ -30,7 +30,7 @@
    * failed (`preload-workflow-revision.ts`'s own catch says so explicitly).
    */
   import { Badge, Button, Checkbox, Input } from '@lostgradient/cinder';
-  import { AlertTriangle, Ban, CheckCircle2 } from 'lucide-svelte';
+  import { Ban, CircleCheck, TriangleAlert } from '@lucide/svelte';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
@@ -335,7 +335,7 @@
       {#if outcome !== null}
         {#if outcome.kind === 'installed'}
           <p class="weft-dynamic-source__outcome weft-dynamic-source__outcome--ok" role="status">
-            <CheckCircle2 aria-hidden="true" size={16} />
+            <CircleCheck aria-hidden="true" size={16} />
             <span>
               Revision "{outcome.revision}" is installed in the workflow catalog. A Load state of
               Idle above means this panel's last observation did not see an active load; another
@@ -359,7 +359,7 @@
           </div>
         {:else}
           <p class="weft-dynamic-source__outcome weft-dynamic-source__outcome--bad" role="alert">
-            <AlertTriangle aria-hidden="true" size={16} />
+            <TriangleAlert aria-hidden="true" size={16} />
             <span>{outcome.message}</span>
           </p>
         {/if}

@@ -10,7 +10,7 @@
    * loaded module is reused for every later open.
    */
   import { Button } from '@lostgradient/cinder';
-  import Search from 'lucide-svelte/icons/search';
+  import Search from '@lucide/svelte/icons/search';
   import { tick, type Component } from 'svelte';
 
   import {

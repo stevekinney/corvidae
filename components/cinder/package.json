@@ -27,6 +27,7 @@
   "dependencies": {
     "@floating-ui/dom": "catalog:",
     "@lostgradient/markdown": "workspace:*",
+    "@lucide/svelte": "catalog:",
     "@shikijs/engine-oniguruma": "catalog:",
     "@shikijs/langs": "catalog:",
     "@shikijs/themes": "catalog:",
@@ -38,7 +39,6 @@
     "esm-env": "catalog:",
     "json-schema-library": "catalog:",
     "libphonenumber-js": "catalog:",
-    "lucide-svelte": "catalog:",
     "postcss-value-parser": "catalog:",
     "qrcode": "catalog:",
     "shiki": "catalog:",

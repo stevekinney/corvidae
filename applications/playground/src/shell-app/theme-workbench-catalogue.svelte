@@ -9,7 +9,7 @@
    * Selecting a row is the only thing that changes the selected token.
    */
   import { Chip, Input } from '@lostgradient/cinder';
-  import Check from 'lucide-svelte/icons/check';
+  import Check from '@lucide/svelte/icons/check';
 
   import {
     filterRows,

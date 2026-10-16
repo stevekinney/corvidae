@@ -6,9 +6,9 @@
 
 <script lang="ts">
   import { Container, Grid } from '@lostgradient/cinder';
-  import Accessibility from 'lucide-svelte/icons/accessibility';
-  import Palette from 'lucide-svelte/icons/palette';
-  import Zap from 'lucide-svelte/icons/zap';
+  import Accessibility from '@lucide/svelte/icons/accessibility';
+  import Palette from '@lucide/svelte/icons/palette';
+  import Zap from '@lucide/svelte/icons/zap';
 
   const items = [
     {

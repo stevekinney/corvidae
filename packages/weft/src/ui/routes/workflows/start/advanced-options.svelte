@@ -5,7 +5,7 @@
    * section on the Configure step; controlled by the parent so its value
    * survives the Form/JSON mode toggle.
    */
-  import { Plus, X } from 'lucide-svelte';
+  import { Plus, X } from '@lucide/svelte';
   import { Collapsible, Input, TagInput } from '@lostgradient/cinder';
 
   import type { AdvancedStartOptionsInput } from './start-wizard-state.ts';

@@ -16,17 +16,17 @@
     Toggle,
     Tooltip,
   } from '@lostgradient/cinder';
-  import Accessibility from 'lucide-svelte/icons/accessibility';
-  import ArrowUpRight from 'lucide-svelte/icons/arrow-up-right';
-  import Check from 'lucide-svelte/icons/check';
-  import Copy from 'lucide-svelte/icons/copy';
-  import Github from 'lucide-svelte/icons/github';
-  import Moon from 'lucide-svelte/icons/moon';
-  import ShieldCheck from 'lucide-svelte/icons/shield-check';
-  import Sliders from 'lucide-svelte/icons/sliders-horizontal';
-  import SwatchBook from 'lucide-svelte/icons/swatch-book';
-  import Sun from 'lucide-svelte/icons/sun';
-  import X from 'lucide-svelte/icons/x';
+  import Accessibility from '@lucide/svelte/icons/accessibility';
+  import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
+  import Check from '@lucide/svelte/icons/check';
+  import Copy from '@lucide/svelte/icons/copy';
+  import Moon from '@lucide/svelte/icons/moon';
+  import ShieldCheck from '@lucide/svelte/icons/shield-check';
+  import Sliders from '@lucide/svelte/icons/sliders-horizontal';
+  import SwatchBook from '@lucide/svelte/icons/swatch-book';
+  import Sun from '@lucide/svelte/icons/sun';
+  import X from '@lucide/svelte/icons/x';
+  import GithubMark from './github-mark.svelte';
   import { COMPOUND_COMPONENT_PARENTS } from './shell-app/compound-families.ts';
   import ComponentSearch from './shell-app/component-search.svelte';
   import { humanizeComponentName } from './shell-app/humanize.ts';
@@ -2139,7 +2139,7 @@
               rel="noreferrer"
               aria-label="View source on GitHub"
             >
-              <Github size={17} strokeWidth={1.5} aria-hidden="true" />
+              <GithubMark size={17} strokeWidth={1.5} aria-hidden="true" />
             </a>
           </Tooltip>
           <Tooltip text={themeToggleLabel} placement="bottom">

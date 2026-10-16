@@ -7,7 +7,7 @@
    */
   import { Button, EmptyState, Input, Skeleton } from '@lostgradient/cinder';
   import type { StorageConnection } from './storage-client.ts';
-  import { ArrowRight, Search } from 'lucide-svelte';
+  import { ArrowRight, Search } from '@lucide/svelte';
 
   import { createMutation } from '@tanstack/svelte-query';
 

@@ -35,7 +35,7 @@
    * `workflows:admin` `adminGate` prop for one consistent bar-wide rule —
    * over-restrictive relative to the wire contract, never under.
    */
-  import { RotateCw, Tags, Trash2, XCircle } from 'lucide-svelte';
+  import { CircleX, RotateCw, Tags, Trash } from '@lucide/svelte';
   import { Button, Checkbox, Input, Select, Textarea, Tooltip } from '@lostgradient/cinder';
   import type { SelectOption } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
@@ -216,7 +216,7 @@
             disabled={!actionsEnabled}
             onclick={() => (activeAction = 'cancel')}
           >
-            <XCircle aria-hidden="true" size={14} />
+            <CircleX aria-hidden="true" size={14} />
             Cancel
           </Button>
         </Tooltip>
@@ -250,7 +250,7 @@
             disabled={!actionsEnabled}
             onclick={() => (activeAction = 'delete')}
           >
-            <Trash2 aria-hidden="true" size={14} />
+            <Trash aria-hidden="true" size={14} />
             Delete
           </Button>
         </Tooltip>
@@ -261,7 +261,7 @@
             disabled={!actionsEnabled}
             onclick={() => (activeAction = 'purge')}
           >
-            <Trash2 aria-hidden="true" size={14} />
+            <Trash aria-hidden="true" size={14} />
             Purge
           </Button>
         </Tooltip>

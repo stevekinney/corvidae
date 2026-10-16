@@ -22,7 +22,7 @@
     Toggle,
     type ScheduleValue,
   } from '@lostgradient/cinder';
-  import { TriangleAlert } from 'lucide-svelte';
+  import { TriangleAlert } from '@lucide/svelte';
   import { untrack } from 'svelte';
 
   import type { ScheduleOverlapPolicy, ScheduleRevisionPolicy } from '@lostgradient/weft';

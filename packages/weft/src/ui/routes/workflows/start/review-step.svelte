@@ -7,7 +7,7 @@
    * panel). Other faults surface through the shared
    * `query-fault-banner.svelte` from the list track.
    */
-  import { CircleCheck, GitPullRequestClosed } from 'lucide-svelte';
+  import { CircleCheck, GitPullRequestClosed } from '@lucide/svelte';
   import { DescriptionList, PayloadInspector } from '@lostgradient/cinder';
 
   import { truncateId } from '../../../lib/format/index.ts';

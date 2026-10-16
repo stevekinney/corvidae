@@ -37,7 +37,7 @@
    * on the page, via `createActiveRevisionComparisons` — so this component
    * still needs no query client and renders standalone.
    */
-  import { Copy } from 'lucide-svelte';
+  import { Copy } from '@lucide/svelte';
   import { Badge, CopyButton, Table, Tooltip } from '@lostgradient/cinder';
   import type { WorkflowSummary } from '@lostgradient/weft';
 

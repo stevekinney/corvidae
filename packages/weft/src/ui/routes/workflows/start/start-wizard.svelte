@@ -6,7 +6,7 @@
    * gracefully degraded — see `type-step.svelte`); submits via
    * `client.start()` (`workflows:write`).
    */
-  import { X } from 'lucide-svelte';
+  import { X } from '@lucide/svelte';
   import { Steps } from '@lostgradient/cinder';
   import type { StepItem } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';

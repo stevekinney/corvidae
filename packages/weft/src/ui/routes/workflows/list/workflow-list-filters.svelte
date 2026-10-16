@@ -29,7 +29,7 @@
     TagInput,
     type AppliedFilter,
   } from '@lostgradient/cinder';
-  import { SlidersHorizontal } from 'lucide-svelte';
+  import { SlidersHorizontal } from '@lucide/svelte';
   import type { WorkflowStatus } from '@lostgradient/weft';
 
   import type { WorkflowListQuery } from '../../../lib/filters.ts';

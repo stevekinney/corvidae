@@ -5,9 +5,9 @@
    * completed / archive").
    */
   import { Badge } from '@lostgradient/cinder';
-  import CircleCheck from 'lucide-svelte/icons/circle-check';
-  import CircleDot from 'lucide-svelte/icons/circle-dot';
-  import CircleX from 'lucide-svelte/icons/circle-x';
+  import CircleCheck from '@lucide/svelte/icons/circle-check';
+  import CircleDot from '@lucide/svelte/icons/circle-dot';
+  import CircleX from '@lucide/svelte/icons/circle-x';
   import type { CompletedReviewEntry } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';

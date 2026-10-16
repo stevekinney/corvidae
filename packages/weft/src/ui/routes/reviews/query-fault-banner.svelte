@@ -19,7 +19,7 @@
     Lock,
     SearchX,
     ServerCrash,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   import {
     FAULT_TREATMENT_TITLE,

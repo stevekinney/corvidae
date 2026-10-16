@@ -26,7 +26,7 @@
   } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
-  import { CircleX, Plus, X } from 'lucide-svelte';
+  import { CircleX, Plus, X } from '@lucide/svelte';
 
   import { queryKeys } from '../../../lib/query.ts';
   import {
