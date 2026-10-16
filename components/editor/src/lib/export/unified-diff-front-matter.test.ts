@@ -4,8 +4,8 @@
 
 import { computeLineDiff, groupIntoHunks } from '@lostgradient/markdown';
 import { outcomeOf, rethrow } from '@lostgradient/testing';
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,24 +24,22 @@ function createState(original: string, current: string): ReviewState {
   };
 }
 
-function gitApplyCheck(originalDocument: string, diff: string): { ok: boolean; error: string } {
+async function gitApplyCheck(
+  originalDocument: string,
+  diff: string,
+): Promise<{ ok: boolean; error: string }> {
   const directory = mkdtempSync(join(tmpdir(), 'unified-diff-'));
   try {
-    // `timeout` is a hang detector for a child that never exits, never a performance bound.
-    execFileSync('git', ['init', '--quiet'], { cwd: directory, timeout: 120_000 });
+    const initialized = await runWithHangGuard(['git', 'init', '--quiet'], { cwd: directory });
+    if (!initialized.success) return { ok: false, error: initialized.stderr.toString() };
     writeFileSync(join(directory, 'document.md'), originalDocument);
     writeFileSync(join(directory, 'patch.diff'), diff);
-    execFileSync('git', ['apply', '--check', 'patch.diff'], {
+    const checked = await runWithHangGuard(['git', 'apply', '--check', 'patch.diff'], {
       cwd: directory,
-      stdio: 'pipe',
-      timeout: 120_000,
     });
-    return { ok: true, error: '' };
-  } catch (error) {
-    const stderr =
-      error && typeof error === 'object' && 'stderr' in error ? error.stderr : undefined;
-    const message = typeof stderr === 'string' ? stderr : String(error);
-    return { ok: false, error: message };
+    return checked.success
+      ? { ok: true, error: '' }
+      : { ok: false, error: checked.stderr.toString() };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -66,19 +64,19 @@ const frontMatterCurrent = frontMatterOriginal.replace('draft: true', 'draft: fa
 
 // Each scenario runs a real `git apply --check`, so it runs here at module scope, off Bun's
 // five-second per-test clock; its test rethrows whatever the scenario threw.
-const frontMatterPatchApplies = await outcomeOf(() => {
+const frontMatterPatchApplies = await outcomeOf(async () => {
   const { diff } = generateUnifiedDiff(createState(frontMatterOriginal, frontMatterCurrent));
 
-  const applied = gitApplyCheck(frontMatterOriginal, diff);
+  const applied = await gitApplyCheck(frontMatterOriginal, diff);
   expect(applied.error).toBe('');
   expect(applied.ok).toBe(true);
 });
 
-const frontMatterBodyEditApplies = await outcomeOf(() => {
+const frontMatterBodyEditApplies = await outcomeOf(async () => {
   const edited = frontMatterOriginal.replace('- Ship the thing', '- Ship the thing on time');
   const { diff } = generateUnifiedDiff(createState(frontMatterOriginal, edited));
 
-  const applied = gitApplyCheck(frontMatterOriginal, diff);
+  const applied = await gitApplyCheck(frontMatterOriginal, diff);
   expect(applied.error).toBe('');
   expect(applied.ok).toBe(true);
   // Line 8 is the blank line after the closing fence: the seven front-matter
@@ -86,7 +84,7 @@ const frontMatterBodyEditApplies = await outcomeOf(() => {
   expect(diff).toContain('@@ -8,5 +8,5 @@');
 });
 
-const collapsedBlankRunApplies = await outcomeOf(() => {
+const collapsedBlankRunApplies = await outcomeOf(async () => {
   // normalizeDocument() collapses the run of 3 blank lines to 1, so the
   // normalized document is 2 lines shorter than the source above the edit.
   // With no context lines to obscure it, the header must point at line 5
@@ -98,12 +96,12 @@ const collapsedBlankRunApplies = await outcomeOf(() => {
   const { diff } = generateUnifiedDiff(createState(original, current), { contextLines: 0 });
 
   expect(diff).toContain('@@ -5,1 +5,1 @@');
-  const applied = gitApplyCheck(original, diff);
+  const applied = await gitApplyCheck(original, diff);
   expect(applied.error).toBe('');
   expect(applied.ok).toBe(true);
 });
 
-const collapsedRunDefaultContextApplies = await outcomeOf(() => {
+const collapsedRunDefaultContextApplies = await outcomeOf(async () => {
   const original = [
     'Intro',
     '',
@@ -124,12 +122,12 @@ const collapsedRunDefaultContextApplies = await outcomeOf(() => {
   // lines earlier than normalized-space would report, since normalization
   // collapsed the 3-blank-line run after "Intro" down to one.
   expect(diff).toContain('@@ -6,4 +6,4 @@');
-  const applied = gitApplyCheck(original, diff);
+  const applied = await gitApplyCheck(original, diff);
   expect(applied.error).toBe('');
   expect(applied.ok).toBe(true);
 });
 
-const falsePositiveFrontMatterApplies = await outcomeOf(() => {
+const falsePositiveFrontMatterApplies = await outcomeOf(async () => {
   // Before cinder#1325, this `---`-opening span (invalid YAML: an
   // unclosed bracket) would have been classified as front matter and
   // preserved byte-for-byte by normalizeDocument -- no blank-line
@@ -147,7 +145,7 @@ const falsePositiveFrontMatterApplies = await outcomeOf(() => {
   // blank-line case, now that the `---` span itself is ordinary body
   // content the normalizer actually reaches.
   expect(diff).toContain('@@ -7,1 +7,1 @@');
-  const applied = gitApplyCheck(original, diff);
+  const applied = await gitApplyCheck(original, diff);
   expect(applied.error).toBe('');
   expect(applied.ok).toBe(true);
 });

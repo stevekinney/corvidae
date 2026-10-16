@@ -1,5 +1,4 @@
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
-
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { isAlive } from '../bun/bun-process.test-support.ts';
 import { shellProfile } from '../bun/fixtures/bun-pipe-stdin.ts';
 import { pidsIn } from '../bun/fixtures/terminal-output.ts';
@@ -20,13 +19,12 @@ import { check } from './conformance.test-support.ts';
  * prove is what the session does to the sources it was given when it closes.
  */
 function spawnPrinter() {
-  return Bun.spawn(['sh', '-c', 'printf \'child=%s \' "$$"; exec sleep 7919'], {
+  return spawnWithHangGuard(['sh', '-c', 'printf \'child=%s \' "$$"; exec sleep 7919'], {
     cwd: '/',
     env: { PATH: '/usr/bin:/bin' },
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'ignore',
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
 }
 

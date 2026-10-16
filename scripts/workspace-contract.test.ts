@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
+import { runWithHangGuard } from './hang-guard.ts';
 import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
@@ -143,11 +144,8 @@ async function listVersionedFixtureSource() {
         await Bun.write(join(directory, workspace, path), '');
       }
     }
-    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], {
-      timeout: 120_000,
-      cwd: directory,
-    });
-    const listed = Bun.spawnSync(
+    const initialized = await runWithHangGuard(['git', 'init', '--quiet'], { cwd: directory });
+    const listed = await runWithHangGuard(
       [
         'git',
         '-c',
@@ -158,7 +156,7 @@ async function listVersionedFixtureSource() {
         '--others',
         '--exclude-standard',
       ],
-      { timeout: 120_000, cwd: directory },
+      { cwd: directory },
     );
     return { initialized, listed };
   } finally {

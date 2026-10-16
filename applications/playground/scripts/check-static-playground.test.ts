@@ -1,4 +1,5 @@
-import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
+import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -54,11 +55,10 @@ async function runGate(
 ): Promise<GateRun> {
   const output = await mkdtemp(join(tmpdir(), 'static-gate-test-'));
   try {
-    const gate = Bun.spawn([...command, '--output', output], {
+    const gate = spawnWithHangGuard([...command, '--output', output], {
       env: environment,
       stdout: 'pipe',
       stderr: 'pipe',
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
     });
     let stdout = '';
     void (async () => {
@@ -212,7 +212,7 @@ const connectionStringPasswordIsScanned = await outcomeOf(async () => {
 const nestedOutputDirectoryIsRefused = await outcomeOf(async () => {
   const served = await mkdtemp(join(tmpdir(), 'static-gate-served-'));
   try {
-    const gate = Bun.spawn(
+    const gate = spawnWithHangGuard(
       [
         process.execPath,
         CHECK,
@@ -226,7 +226,6 @@ const nestedOutputDirectoryIsRefused = await outcomeOf(async () => {
         env: readScrubbedEnvironment(),
         stdout: 'pipe',
         stderr: 'pipe',
-        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       },
     );
     const exitCode = await exitedWithin(gate, GATE_RUN_MILLISECONDS);
@@ -316,18 +315,13 @@ const defaultOutputAvoidsPlaywrightDirectories = await outcomeOf(async () => {
   const playgroundRoot = join(import.meta.dirname, '..');
   // The configuration deletes `NO_COLOR` from its process when loaded, so read it in a child
   // rather than let that leak into this file's gate runs.
-  const loaded = Bun.spawnSync(
+  const loaded = await runWithHangGuard(
     [
       process.execPath,
       '-e',
       "const { default: c } = await import('./playwright.config.ts'); console.log(JSON.stringify([c.outputDir ?? null, ...(c.projects ?? []).map((p) => p.outputDir ?? null)]))",
     ],
-    {
-      cwd: playgroundRoot,
-      stdout: 'pipe',
-      stderr: 'pipe',
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    },
+    { cwd: playgroundRoot },
   );
   expect(loaded.exitCode).toBe(0);
   const [configured, ...projects] = JSON.parse(loaded.stdout.toString()) as (string | null)[];

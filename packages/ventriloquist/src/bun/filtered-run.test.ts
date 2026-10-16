@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { runWithHangGuard, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 
 import {
   callingFileOf,
@@ -12,11 +12,9 @@ import {
 } from './bun-process.test-support.ts';
 
 /** The pids of processes whose command line contains `needle`, found from the process table. */
-function pidsRunning(needle: string): number[] {
-  const table = Bun.spawnSync(['ps', '-A', '-o', 'pid=,command='], {
-    stdout: 'pipe',
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-  }).stdout.toString();
+async function pidsRunning(needle: string): Promise<number[]> {
+  const listing = await runWithHangGuard(['ps', '-A', '-o', 'pid=,command=']);
+  const table = listing.stdout.toString();
   return table
     .split('\n')
     .filter((line) => line.includes(needle))
@@ -28,17 +26,16 @@ const scenario1 = scenario(
   async () => {
     // The fixture names its process after the pid of the run that starts it, which is this one.
     const token = `7919.${process.pid}`;
-    const run = Bun.spawn(
+    const run = spawnWithHangGuard(
       [process.execPath, 'test', './scripts/filtered-run-fixture.ts', '-t', 'finishes at once'],
       {
         cwd: new URL('../..', import.meta.url).pathname,
         stdout: 'ignore',
         stderr: 'ignore',
-        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       },
     );
     expect(await run.exited).toBe(0);
-    const survivors = pidsRunning(`sleep ${token}`);
+    const survivors = await pidsRunning(`sleep ${token}`);
     // The run recorded its own token, so these are its processes and nobody else's.
     for (const pid of survivors) process.kill(pid, 'SIGKILL');
     expect(survivors).toEqual([]);
@@ -47,11 +44,10 @@ const scenario1 = scenario(
 
 /** Run a fixture under `bun test` and return how it ended and everything it printed. */
 async function runFixture(file: string): Promise<{ exitCode: number; output: string }> {
-  const run = Bun.spawn([process.execPath, 'test', file], {
+  const run = spawnWithHangGuard([process.execPath, 'test', file], {
     cwd: new URL('../..', import.meta.url).pathname,
     stdout: 'pipe',
     stderr: 'pipe',
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   const [out, err, exitCode] = await Promise.all([
     new Response(run.stdout).text(),

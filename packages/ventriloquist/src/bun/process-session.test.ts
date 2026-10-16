@@ -1,6 +1,7 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 
-import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { rejectionOf } from '@lostgradient/testing';
 
 import { systemClock } from '../session/session-clock.ts';
 import {
@@ -659,17 +660,18 @@ describe('the host session lookup', () => {
 
 /** Start a session leader that has a job in a group of its own, and an unrelated process in another session. */
 function startSessions() {
-  const leader = Bun.spawn(['sh', '-c', 'set -m; sleep 7919 & printf "job=%s\\n" "$!"; wait'], {
-    detached: true,
-    stdout: 'pipe',
-    stderr: 'ignore',
-    stdin: 'ignore',
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-  });
-  const unrelated = Bun.spawn(['sleep', '7919'], {
+  const leader = spawnWithHangGuard(
+    ['sh', '-c', 'set -m; sleep 7919 & printf "job=%s\\n" "$!"; wait'],
+    {
+      detached: true,
+      stdout: 'pipe',
+      stderr: 'ignore',
+      stdin: 'ignore',
+    },
+  );
+  const unrelated = spawnWithHangGuard(['sleep', '7919'], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   return { leader, unrelated };
 }

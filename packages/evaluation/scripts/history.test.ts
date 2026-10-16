@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -77,9 +78,9 @@ interface CommandResult {
 
 /** Runs the package's `history` script in a separate `bun` process, as a person would. */
 async function spawnHistory(...args: string[]): Promise<CommandResult> {
-  const child = Bun.spawn(
+  const child = spawnWithHangGuard(
     [process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, 'history', ...args],
-    { timeout: 120_000, stdout: 'pipe', stderr: 'pipe' },
+    { stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),

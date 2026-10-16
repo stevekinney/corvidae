@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -81,13 +82,11 @@ async function runServerProbe(
   source: string,
   input: Record<string, string> | undefined,
 ): Promise<{ status: number; output: string; errors: string }> {
-  const child = Bun.spawn([process.execPath, '--eval', source], {
+  const child = spawnWithHangGuard([process.execPath, '--eval', source], {
     cwd: packageRoot,
     stdin: input ? new TextEncoder().encode(JSON.stringify(input)) : undefined,
     stdout: 'pipe',
     stderr: 'pipe',
-    // A hang detector for a child that never exits, never a performance bound.
-    timeout: 120_000,
   });
   const [status, output, errors] = await Promise.all([
     child.exited,

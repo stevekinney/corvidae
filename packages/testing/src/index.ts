@@ -17,11 +17,12 @@ export * from './svelte-plugin.ts';
 export * from './visual-fixtures.ts';
 
 export {
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-  ScenarioHangError,
-  outcomeOf,
-  rethrow,
-} from './helpers/module-scope-outcome.ts';
+  HANG_GUARD_MILLISECONDS,
+  afterAwakeTime,
+  runWithHangGuard,
+  spawnWithHangGuard,
+} from './hang-guard.ts';
+export { ScenarioHangError, outcomeOf, rethrow } from './helpers/module-scope-outcome.ts';
 export { rejectionOf, throwingRejectionOf } from './helpers/promise-outcome.ts';
 export { requiredInstance, requiredValue } from './helpers/required-value.ts';
 

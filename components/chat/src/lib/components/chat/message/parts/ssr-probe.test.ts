@@ -4,6 +4,7 @@ import {
   prepareSvelteServerSource,
   rethrow,
 } from '@lostgradient/testing';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -26,8 +27,8 @@ const utilitiesImport = await outcomeOf(async () => {
   // module location.
   const utilitiesPath = resolve(import.meta.dir, '..', '..', 'utilities', 'utilities.ts');
   const utilitiesUrl = pathToFileURL(utilitiesPath).href;
-  const probe = Bun.spawn({
-    cmd: [
+  const probe = spawnWithHangGuard(
+    [
       process.execPath,
       '-e',
       [
@@ -36,11 +37,8 @@ const utilitiesImport = await outcomeOf(async () => {
         `await import(${JSON.stringify(utilitiesUrl)});`,
       ].join(''),
     ],
-    stderr: 'pipe',
-    stdout: 'pipe',
-    // A hang detector for a child that never exits, never a performance bound.
-    timeout: 120_000,
-  });
+    { stderr: 'pipe', stdout: 'pipe' },
+  );
 
   const [exitCode, stderr] = await Promise.all([probe.exited, new Response(probe.stderr).text()]);
 

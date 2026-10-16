@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -100,9 +101,9 @@ async function runPlatformNoticeRatchet(): Promise<RatchetRun> {
     ].join('\n'),
   );
 
-  const child = Bun.spawn(
+  const child = spawnWithHangGuard(
     ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
-    { timeout: 120_000, cwd: import.meta.dir, stdout: 'pipe', stderr: 'pipe' },
+    { cwd: import.meta.dir, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -140,9 +141,9 @@ async function runSupportImportRatchet(): Promise<RatchetRun> {
     ].join('\n'),
   );
 
-  const child = Bun.spawn(
+  const child = spawnWithHangGuard(
     ['bun', 'check-coverage-ratchet.ts', '--package-root', scratchDirectory],
-    { timeout: 120_000, cwd: import.meta.dir, stdout: 'pipe', stderr: 'pipe' },
+    { cwd: import.meta.dir, stdout: 'pipe', stderr: 'pipe' },
   );
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),

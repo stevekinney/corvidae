@@ -59,12 +59,9 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import type { Browser, BrowserContext } from 'playwright';
 import { chromium } from 'playwright';
 
+import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 import { browserSmokeEnabled } from '../testing/browser-smoke-gate.test-support.ts';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 
 const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -89,14 +86,13 @@ async function buildClientScript(): Promise<string> {
   );
 
   try {
-    const proc = Bun.spawn(
+    const proc = spawnWithHangGuard(
       ['bun', 'build', entryPath, '--target=browser', '--format=esm', `--outfile=${outfilePath}`],
       // The scenario hang guard: a stalled build is killed rather than holding the smoke run.
       {
         cwd: repositoryRoot,
         stdout: 'pipe',
         stderr: 'pipe',
-        timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
       },
     );
     const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);

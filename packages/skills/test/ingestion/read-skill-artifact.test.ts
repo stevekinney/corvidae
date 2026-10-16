@@ -3,6 +3,8 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
+
 import { decodeArtifactText, findArtifactEntry } from '../../src/artifact';
 import { readSkillArtifact } from '../../src/ingestion/read-skill-artifact';
 
@@ -42,7 +44,7 @@ const fifoRoot = await mkdtemp(join(tmpdir(), 'corvidae-skill-artifact-fifo-'));
 const fifoSkill = join(fifoRoot, 'pdf-processing');
 await write(fifoSkill, 'SKILL.md', MANIFEST);
 await mkdir(join(fifoSkill, 'assets'), { recursive: true });
-const fifoMade = Bun.spawnSync(['mkfifo', join(fifoSkill, 'assets/pipe')], { timeout: 120_000 });
+const fifoMade = await runWithHangGuard(['mkfifo', join(fifoSkill, 'assets/pipe')]);
 
 afterAll(async () => {
   await rm(fifoRoot, { recursive: true, force: true });

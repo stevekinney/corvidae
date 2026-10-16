@@ -1,15 +1,11 @@
 import type { Subprocess } from 'bun';
 import { describe, expect, test } from 'bun:test';
-import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from './module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from './hang-guard.ts';
+import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import { rejectionOf } from './promise-outcome.test-support.ts';
 import {
   acquireHostLock,
@@ -101,7 +97,7 @@ function killGroup(processGroup: number | undefined): void {
 
 /** The pid of a process that has already exited, so nothing can be holding a lock under it. */
 async function exitedPid(): Promise<number> {
-  const child = Bun.spawn(['true'], { timeout: SCENARIO_HANG_GUARD_MILLISECONDS });
+  const child = spawnWithHangGuard(['true']);
   await child.exited;
   return child.pid;
 }
@@ -128,9 +124,8 @@ process.exitCode = await runExclusively({
 });
 `,
   );
-  const wrapper = Bun.spawn([process.execPath, fixture, scratch.lockDirectory, script], {
+  const wrapper = spawnWithHangGuard([process.execPath, fixture, scratch.lockDirectory, script], {
     stdio: ['ignore', 'ignore', 'inherit'],
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
   });
   scratch.onCleanup(() => wrapper.kill('SIGKILL'));
   for (;;) {
@@ -231,15 +226,14 @@ const reclaimsOwnerlessDirectory = await inScratchDirectory(async (scratch) => {
 
 const staysHeldWhileGroupRuns = await inScratchDirectory(async (scratch) => {
   const { lockDirectory } = scratch;
-  const group = spawn('sleep', ['30'], {
+  const group = spawnWithHangGuard(['sleep', '30'], {
     detached: true,
-    stdio: 'ignore',
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+    stdio: ['ignore', 'ignore', 'ignore'],
   });
   scratch.onCleanup(() => killGroup(group.pid));
   await writeLock(scratch, {
     ...holder(scratch, await exitedPid()),
-    processGroup: group.pid!,
+    processGroup: group.pid,
     token: 'orphaned',
   });
   const controller = new AbortController();

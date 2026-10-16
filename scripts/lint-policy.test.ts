@@ -3,11 +3,8 @@ import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from './module-scope-scenario.test-support.ts';
+import { spawnWithHangGuard } from './hang-guard.ts';
+import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -106,14 +103,14 @@ async function lintImport(
         }),
       );
     }
-    const process = Bun.spawn(
+    const process = spawnWithHangGuard(
       [
         join(root, 'node_modules/.bin/oxlint'),
         '--deny-warnings',
         ...(typeAware ? ['--type-aware', '--tsconfig', configurationPath] : []),
         directory,
       ],
-      { timeout: SCENARIO_HANG_GUARD_MILLISECONDS, cwd: root, stdout: 'pipe', stderr: 'pipe' },
+      { cwd: root, stdout: 'pipe', stderr: 'pipe' },
     );
     const [exitCode, stdout, stderr] = await Promise.all([
       process.exited,
@@ -415,12 +412,14 @@ async function compileContract(
         ...(configurationName === 'base.json' ? { compilerOptions: { types: ['bun'] } } : {}),
       }),
     );
-    const process = Bun.spawn([join(root, 'node_modules/.bin/tsc'), '--project', configuration], {
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-      cwd: root,
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
+    const process = spawnWithHangGuard(
+      [join(root, 'node_modules/.bin/tsc'), '--project', configuration],
+      {
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    );
     const [exitCode, stdout, stderr] = await Promise.all([
       process.exited,
       new Response(process.stdout).text(),

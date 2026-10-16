@@ -1,3 +1,4 @@
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 
 const publicEntryPoint = new URL('./index.ts', import.meta.url).href;
@@ -32,8 +33,7 @@ const source = `
 
 // A fresh process with no DOM is the behavior under test, so it runs once here at module scope to
 // stay off the per-test clock.
-const child = Bun.spawn([process.execPath, '--eval', source], {
-  timeout: 120_000,
+const child = spawnWithHangGuard([process.execPath, '--eval', source], {
   stdout: 'pipe',
   stderr: 'pipe',
 });

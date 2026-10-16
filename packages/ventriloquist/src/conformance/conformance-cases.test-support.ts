@@ -70,7 +70,7 @@ export type CaseDefinition = {
   /** Which combinations this case covers and why the rest are impossible or covered elsewhere. */
   readonly scope?: string;
   readonly paths?: readonly TransportPath[];
-  launch(mode: ProcessMode, scratch: string): CaseLaunch;
+  launch(mode: ProcessMode, scratch: string): CaseLaunch | Promise<CaseLaunch>;
   run(context: CaseContext): Promise<readonly Check[]>;
 };
 
@@ -116,7 +116,7 @@ export async function runCell(
 ): Promise<CellResult> {
   // A scripted cell's backend is a script; the rig still needs a terminal-shaped mode to be built with.
   const mode: ProcessMode = cellMode === 'scripted' ? 'pty' : cellMode;
-  const launch = definition.launch(mode, scratch);
+  const launch = await definition.launch(mode, scratch);
   const hosted =
     launch.hosted ??
     launch.scripted?.hosted ??

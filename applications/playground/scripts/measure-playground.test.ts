@@ -1,4 +1,5 @@
-import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
 import { join } from 'node:path';
 
@@ -93,7 +94,7 @@ describe('parseCommandLine', () => {
 
 /** Reading `cpuTime` needs a real subprocess, so the body runs at module scope. */
 const subprocessCpuTimeBecomesANumber = await outcomeOf(async () => {
-  const child = Bun.spawn(['true'], { timeout: SCENARIO_HANG_GUARD_MILLISECONDS });
+  const child = spawnWithHangGuard(['true']);
   await child.exited;
   const user: unknown = child.resourceUsage()?.cpuTime.user;
   expect(typeof user).toBe('bigint');
