@@ -11,6 +11,18 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 - Treat file length as review guidance, including in imported tests. Enforce classic cyclomatic complexity of at most 100 in implementation and tests, or 300 under `scripts/`. Keep executable repository tooling in its owning workspace’s `scripts/` directory; required tool configuration and application entrypoints retain their documented locations. Require a concrete ownership, duplication, or correctness benefit before restructuring code. Keep correctness, types, tests, and builds enforced. Prefer platform and Bun primitives over new abstractions or dependencies.
 - Do not add compatibility, migration, shim, adapter, or re-export layers while the template is pre-release unless the requirement explicitly demands one.
 
+## Review guidelines
+
+This software is pre-1.0 and still being prototyped, so the goal is to move fast on stable infrastructure: spend review effort where a mistake is expensive to undo, and keep everything else simple. These rules apply to human reviewers, review bots, and the agents answering them. `.github/copilot-instructions.md` carries the short form for Copilot.
+
+- Sort by reversibility. A _two-way door_ is internal code or a private source package that a later change can cheaply alter; prefer the simple version and do not harden it against hypotheticals. A _one-way door_ is a persisted format or schema, a wire protocol, an exported surface the mirrors publish, or an immutable changeset; review those closely and ask whether the design paints the project into a corner.
+- Find root causes. Ask what class of defect a finding is and grep for its siblings. Fix the class once, with a regression test, lint rule, or type constraint, or decline the finding as a one-off. Do not patch instances one at a time. A finding earns this treatment only if it would plausibly recur or sits on a one-way door.
+- Block on correctness. Defects in correctness, data loss, concurrency, state transitions, boundary validation, or a one-way door block a merge. Style, naming, contrived edge cases, and speculative hardening of internal code do not.
+- Take one fix pass. After the first round of fixes, a new review comment gets action only if it is a regression the fixes introduced or a serious defect on a one-way door. Anything else is advisory: reply with a one-line reason and resolve the thread.
+- Stop patching a repeating class. If a later round surfaces another instance of an earlier round's class, the causal model was wrong. Reassess the shared cause instead of adding another patch.
+- Prefer a guard to a comment. When the same class of finding recurs across pull requests, the repository is missing a guard. Add the lint rule, type constraint, or test.
+- Gate on local checks. A pull request merges when `bun run validate` passes at the head that contains current `origin/main` and no review thread names a serious defect. Do not wait for bots to go quiet.
+
 ## Workspace and dependencies
 
 - `applications/*` contains deployable applications; `components/*` contains browser component libraries; `packages/*` contains other shared libraries; `internal/*` contains repository configuration; `scripts/browser-fixtures` is a private workspace that only declares the workspaces the root browser fixtures import. Every workspace is named `@lostgradient/*`, except `armorer` and `conversationalist`, which carry their unscoped npm names.
