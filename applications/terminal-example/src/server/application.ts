@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { join, normalize, sep } from 'node:path';
 
 import {
@@ -19,11 +20,12 @@ import { ConfigurationError, servedOrigin, type ServerConfiguration } from './co
 import { SECURITY_HEADERS } from './content-security-policy.ts';
 import { readHostEnvironment } from './environment-configuration.ts';
 import { localUser, resolveProfile, type ProfileContext } from './profiles.ts';
-import { SessionStore } from './session-store.ts';
+import { cookieNameForPort, SessionStore } from './session-store.ts';
 
 /** How long `POST /session` waits for the previous session of the same browser to finish cleanup. */
 export const DEFAULT_SESSION_WAIT_MILLISECONDS = 15_000;
-const MAXIMUM_REQUEST_BODY_BYTES = 1024;
+/** The largest `POST /session` body, in bytes. A real body is under a hundred. */
+export const MAXIMUM_REQUEST_BODY_BYTES = 1024;
 
 export type ApplicationOptions = {
   readonly configuration: ServerConfiguration;
@@ -35,6 +37,14 @@ export type ApplicationOptions = {
   readonly createProcess: CreateProcess;
   readonly store?: SessionStore;
   readonly sessionWaitMilliseconds?: number;
+  /**
+   * The secret in the startup URL. A browser enrolls only by navigating to `/?token=…` with it, so
+   * a process that merely reaches the loopback port (or a web page that makes the browser reach
+   * it) gets no cookie and no shell.
+   */
+  readonly startToken: string;
+  /** How many browsers the token admits before the server must be restarted. Defaults to the configuration's. */
+  readonly browsers?: number;
 };
 
 export type Application = {
@@ -94,6 +104,30 @@ function parseSessionRequest(text: string): SessionRequest | undefined {
   return { profile, readOnly };
 }
 
+function page(status: number, heading: string, text: string): Response {
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Terminal example</title></head><body><main><h1>${heading}</h1><p>${text}</p></main></body></html>`;
+  return new Response(html, {
+    status,
+    headers: { ...SECURITY_HEADERS, 'content-type': 'text/html; charset=utf-8' },
+  });
+}
+
+function sameSecret(given: string, expected: string): boolean {
+  const left = createHash('sha256').update(given).digest();
+  const right = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(left, right);
+}
+
+/** A navigation the user made to this page, as the browser reports it. A script or another site cannot forge these headers. */
+function isTopLevelNavigation(request: Request): boolean {
+  const site = request.headers.get('sec-fetch-site');
+  return (
+    request.method === 'GET' &&
+    (site === 'none' || site === 'same-origin') &&
+    request.headers.get('sec-fetch-dest') === 'document'
+  );
+}
+
 function wait(milliseconds: number): { promise: Promise<'timeout'>; cancel(): void } {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const promise = new Promise<'timeout'>((resolve) => {
@@ -110,7 +144,10 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     host: readHostEnvironment(),
     user: localUser(),
   };
-  const store = options.store ?? new SessionStore();
+  const store =
+    options.store ??
+    new SessionStore({ cookieName: cookieNameForPort(options.configuration.port) });
+  let admissionsLeft = options.browsers ?? options.configuration.browsers;
   const sessionWait = options.sessionWaitMilliseconds ?? DEFAULT_SESSION_WAIT_MILLISECONDS;
 
   const terminal = createTerminalWebSocketServer({
@@ -154,8 +191,15 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
     if (!(request.headers.get('content-type') ?? '').startsWith('application/json')) {
       return json(415, { error: 'content-type' });
     }
-    const text = await request.text();
-    if (text.length > MAXIMUM_REQUEST_BODY_BYTES) return json(413, { error: 'too-large' });
+    // Judge the size from the declared length before reading anything, then again from what arrived.
+    const declared = request.headers.get('content-length');
+    if (declared === null) return json(411, { error: 'length-required' });
+    if (!/^\d+$/.test(declared)) return json(400, { error: 'content-length' });
+    if (Number(declared) > MAXIMUM_REQUEST_BODY_BYTES) return json(413, { error: 'too-large' });
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    if (bytes.byteLength > MAXIMUM_REQUEST_BODY_BYTES) return json(413, { error: 'too-large' });
+    if (bytes.byteLength !== Number(declared)) return json(400, { error: 'content-length' });
+    const text = new TextDecoder().decode(bytes);
     const parsed = parseSessionRequest(text);
     if (parsed === undefined) return json(400, { error: 'request' });
     if (resolveProfile(parsed.profile, parsed.readOnly, context) === undefined) {
@@ -202,14 +246,71 @@ export async function createApplication(options: ApplicationOptions): Promise<Ap
         : json(200, { slot: slotStatus(subject) });
     }
     if (method !== 'GET' && method !== 'HEAD') return plain(405, { allow: 'GET, HEAD' });
-    const requested = path === '/' ? '/index.html' : normalize(path).split(sep).join('/');
-    const file = files.get(requested);
+    if (path === '/' || path === '/index.html') return document(request, url, method);
+    const file = files.get(normalize(path).split(sep).join('/'));
     if (file === undefined) return plain(404);
-    const headers: Record<string, string> = { ...SECURITY_HEADERS };
-    if (requested === '/index.html' && store.identify(request) === undefined) {
-      headers['set-cookie'] = store.enroll();
+    return new Response(method === 'HEAD' ? null : Bun.file(file), {
+      headers: { ...SECURITY_HEADERS },
+    });
+  }
+
+  /**
+   * The page itself. An enrolled browser gets it. Anyone else gets an explanation, and the one way
+   * to enroll is a top-level navigation that carries the start token from the startup URL.
+   */
+  function document(request: Request, url: URL, method: string): Response {
+    const token = url.searchParams.get('token');
+    const identified = store.identify(request) !== undefined;
+    if (identified && token !== null) {
+      // Already enrolled: the token spends nothing, and the address bar is cleaned.
+      return new Response(null, { status: 303, headers: { ...SECURITY_HEADERS, location: '/' } });
     }
-    return new Response(method === 'HEAD' ? null : Bun.file(file), { headers });
+    if (identified) {
+      const file = files.get('/index.html') as string;
+      return new Response(method === 'HEAD' ? null : Bun.file(file), {
+        headers: { ...SECURITY_HEADERS },
+      });
+    }
+    if (token === null || !isTopLevelNavigation(request)) {
+      return page(
+        401,
+        'Open the start URL',
+        'This terminal starts shells on this machine, so it needs the start URL the server printed when it started. Open that address in your browser.',
+      );
+    }
+    if (!sameSecret(token, options.startToken)) {
+      return page(
+        403,
+        'That start URL is not right',
+        'The token in the address does not match this server. Use the start URL the server printed when it started.',
+      );
+    }
+    if (admissionsLeft <= 0) {
+      return page(
+        403,
+        'The start URL has been used',
+        'It admits a limited number of browsers and they are all taken. To let another browser in, restart the server and use the new start URL.',
+      );
+    }
+    const enrollment = store.enroll();
+    if (!enrollment.ok) {
+      return enrollment.reason === 'full'
+        ? page(
+            503,
+            'The server is full',
+            'Every browser it remembers has a session that cannot be ended safely, so it will not take another. Restart the server.',
+          )
+        : page(
+            429,
+            'Too many browsers',
+            'Browsers are enrolling too fast. Wait a minute and try again.',
+          );
+    }
+    admissionsLeft -= 1;
+    return new Response(null, {
+      status: 303,
+      headers: { ...SECURITY_HEADERS, location: '/', 'set-cookie': enrollment.setCookie },
+    });
   }
 
   return {

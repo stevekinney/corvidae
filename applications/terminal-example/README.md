@@ -10,17 +10,25 @@ From the corvidae root, after `bun install --frozen-lockfile`:
 bun run --filter=@lostgradient/terminal-example dev
 ```
 
-`dev` builds the client and then starts the server, which prints `Terminal example listening on http://127.0.0.1:54240`. Open that address. There is no file watcher: stop the server with Ctrl+C and run `dev` again after a change.
+`dev` builds the client and then starts the server, which prints the address it listens on and a _start URL_ such as `http://127.0.0.1:54240/?token=…`. Open the start URL, not the bare address: it carries a random token the server made when it started, the browser trades it for a session cookie, and the address bar is then cleaned to `http://127.0.0.1:54240/`. Opening the bare address without having done that shows a page that says where to find the start URL. There is no file watcher: stop the server with Ctrl+C and run `dev` again after a change.
 
 - `bun run --filter=@lostgradient/terminal-example build` bundles the client into `build/` and does nothing else. It is the only task that writes there.
 - `bun run --filter=@lostgradient/terminal-example start` serves an existing `build/`. It refuses to start, and says to build first, when there is none.
-- `--hostname` and `--port` go after the command, for example `bun src/server/main.ts --port 54300` from this directory. The port must be a whole number from 1 to 65535: the one origin the server accepts is decided before it listens, so `0` is not allowed.
+- `--hostname`, `--port`, `--start-token` and `--browsers` go after the command, for example `bun src/server/main.ts --port 54300` from this directory. The port must be a whole number from 1 to 65535: the one origin the server accepts is decided before it listens, so `0` is not allowed. `--start-token` (at least 16 characters) chooses the token instead of a random one, which a script needs and which then shows in the process list; `--browsers` is how many browsers the start URL admits.
 
 Binding anything but a loopback address (`127.0.0.1`, `::1` or `localhost`) fails before a socket exists. The message names the address and the allowed ones, and the exit code is `2`:
 
 ```sh
 bun src/server/main.ts --hostname 0.0.0.0
 ```
+
+### The start URL
+
+Any process on this machine can reach a loopback port, and a web page you visit can make your browser reach it too, so the port alone is not a credential. The start URL is. A browser is enrolled only by a top-level navigation (the browser's own `Sec-Fetch-Site` is `none` or `same-origin`, and `Sec-Fetch-Dest` is `document`; a page on another site cannot forge either) to `/?token=…` with the right token. Anything else, with or without a token, gets a page that explains and no cookie, and no `HEAD` request enrolls.
+
+The token admits one browser by default, which is the choice this example makes (the alternative is binding it to a first browser and refusing others): the first enrollment spends it, a second browser gets `403` and is told to restart the server, and the browser that already holds the cookie can open the URL again without spending anything. `--browsers 3` admits three. Restarting the server makes a new token and forgets every browser.
+
+The consequence of sharing the start URL, in a chat, a screenshot or a shell history, is that whoever opens it first gets a shell as you on this machine. Treat it like a password. The token is compared in constant time and never appears in a response.
 
 The Ctrl+C that stops the server first revokes every session and waits for each process to be cleaned up.
 
@@ -48,7 +56,8 @@ What to try, each of which `bun run --filter=@lostgradient/terminal-example test
 
 ```
 browser                                         Bun server (127.0.0.1)
-GET /                          ───────────────▶ serves build/index.html, Set-Cookie (HttpOnly)
+GET /?token=… (top-level)       ───────────────▶ token checked, Set-Cookie (HttpOnly), 303 to /
+GET /                          ───────────────▶ serves build/index.html to an enrolled browser
 POST /session {profile,readOnly} ─────────────▶ waits for the last session's cleanup, issues {sessionId, ticket}
 new WebSocket(/terminal?profile=…) ───────────▶ origin, cookie, profile name: then upgrade
 hello {sessionId, token: ticket} ─────────────▶ ticket redeemed once, profile resolved, process started
@@ -57,8 +66,8 @@ output, input, resize, acknowledgements ◀────▶  one attachment, one 
 
 - `src/server/application.ts` is the request handler. It checks the `Host` header against the served authority (a different name is a `421`, which is how DNS rebinding arrives), serves only the files the build wrote, and routes `/terminal` to `createTerminalWebSocketServer` from `@lostgradient/ventriloquist/websocket`.
 - **One origin.** `allowedOrigins` holds the served origin and nothing else, and `allowInsecureLoopback` is on with `boundHostname` set to the address given to `Bun.serve`, which the package requires for that switch. A `null`, missing, foreign or different-port origin is refused before authentication. `trustedProxies` is left empty: there is no proxy, so the scheme comes from the URL and an `X-Forwarded-Proto` header is never read.
-- **The cookie.** `GET /` gives each browser an unguessable `terminal-example-session` cookie that is `HttpOnly` (page script cannot read it) and `SameSite=Strict`, and has no `Secure` attribute only because the example serves plain HTTP on loopback. It identifies the browser; the server remembers it, with that browser's one terminal slot (`slotFor`), in `src/server/session-store.ts`. Nothing is persisted: restarting the server forgets every browser.
-- **The ticket.** Because script cannot read the cookie, `POST /session` is how the page asks for a session. It needs the cookie, the served origin and a JSON body of exactly `profile` and `readOnly`, and it answers with a fresh session identity and a one-time ticket, which the page sends as the `hello` token. The server redeems it once, for that browser and that session, within 30 seconds. The upgrade URL carries only `?profile=`; the package refuses any other query key.
+- **The cookie.** The start URL gives each browser an unguessable `terminal-example-session-<port>` cookie that is `HttpOnly` (page script cannot read it) and `SameSite=Strict`, and has no `Secure` attribute only because the example serves plain HTTP on loopback. The port is in the name so two instances on one host do not overwrite each other's cookie. It identifies the browser; the server remembers it, with that browser's one terminal slot (`slotFor`), in `src/server/session-store.ts`, up to 32 browsers and 60 enrollments a minute. A browser whose slot holds a live or quarantined session is never forgotten to make room: a newcomer is refused with `503 The server is full` instead. Nothing is persisted: restarting the server forgets every browser.
+- **The ticket.** Because script cannot read the cookie, `POST /session` is how the page asks for a session. It needs the cookie, the served origin and a JSON body of exactly `profile` and `readOnly`, at most 1024 bytes (it answers `411` without a `Content-Length`, and `413` on a declared or actual length over the limit before reading more, and the listener itself caps any request body at 4 KiB), and it answers with a fresh session identity and a one-time ticket, which the page sends as the `hello` token. The server redeems it once, for that browser and that session, within 30 seconds. The upgrade URL carries only `?profile=`; the package refuses any other query key.
 - **Profiles are the server's.** `src/server/profiles.ts` turns an identifier into a launch: the mode, the executable, its arguments, the directory and the whole environment. Nothing the page sends reaches a process.
 - **One session per browser.** A reload or a restart arrives while the last shell is still being cleaned up, so `POST /session` waits for that cleanup (up to 15 seconds, then `409`) before issuing the next ticket. `GET /session/status` reports `free`, `busy` or `quarantined`, which the page polls after a session ends so `New session` is offered only when it will work.
 - **Cleanup.** A closed page, a dropped socket, `End session` and Ctrl+C on the server all end the session's whole process group with `TERM` and then `KILL`.
@@ -86,7 +95,7 @@ default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:
 ## Tests
 
 - `bun run --filter=@lostgradient/terminal-example test` runs the colocated unit tests: the configuration, the cookie and ticket store, the profile table and fixture, the policy, every route and refusal of the request handler (with a stand-in for the process, so no shell starts), and the client's request and channel code.
-- `bun run --filter=@lostgradient/terminal-example test:browser` builds the client and runs the Playwright checks (`bun --bun playwright test`) against the built application on loopback, in Chromium. It starts the server with `SHELL=/bin/sh` so a personal shell configuration cannot change what the checks see, on port 54241. It needs Chromium (`bunx playwright install chromium`). The checks:
+- `bun run --filter=@lostgradient/terminal-example test:browser` builds the client and runs the Playwright checks (`bun --bun playwright test`) against the built application on loopback, in Chromium. It starts the server with `SHELL=/bin/sh` so a personal shell configuration cannot change what the checks see. The ports and the start token are chosen free and random when the Playwright configuration first loads, so concurrent runs on one host do not collide. It needs Chromium (`bunx playwright install chromium`). The checks:
   - type into the login shell and see the output, with no policy violation;
   - resize: narrowing the viewport changes the size `stty` reports;
   - reload into a new session and the old shell ends;
@@ -95,6 +104,7 @@ default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:
   - a `hello` needs a ticket issued to this browser for this session, once;
   - the policy, the cookie flags, and a foreign origin on `POST /session`;
   - the non-loopback refusal and its exit code;
+  - the start URL: no token or a wrong one enrolls nothing, a page on another origin cannot enroll the browser, the printed URL opens the terminal, it admits one browser (or `--browsers` many), and the request body is bounded;
   - the four profiles, read-only mode, disconnect, exit and restart, paste review, search and export, and the background-job limit.
 
 The Playwright checks are a separate script rather than part of `test`, like the playground's `test:browser` and the root `test:browser:terminal`: browser suites with real shells and a fixed port are explicit commands and are not part of the turbo `test` or `validate` graph.

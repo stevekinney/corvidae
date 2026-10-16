@@ -2,8 +2,12 @@ import { join } from 'node:path';
 
 import { createBunProcessFactory, type SocketData } from '@lostgradient/ventriloquist/websocket';
 
-import { createApplication } from './application.ts';
+import { createApplication, MAXIMUM_REQUEST_BODY_BYTES } from './application.ts';
 import { ConfigurationError, parseConfiguration } from './configuration.ts';
+
+function randomToken(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+}
 
 /** `bun run build` writes here; the server serves it. */
 const BUILD_DIRECTORY = join(import.meta.dirname, '..', '..', 'build');
@@ -15,14 +19,18 @@ const BUILD_DIRECTORY = join(import.meta.dirname, '..', '..', 'build');
  */
 async function main(): Promise<void> {
   const configuration = parseConfiguration(process.argv.slice(2));
+  const startToken = configuration.startToken ?? randomToken();
   const application = await createApplication({
     configuration,
     buildDirectory: BUILD_DIRECTORY,
     createProcess: createBunProcessFactory(),
+    startToken,
   });
   const server = Bun.serve<SocketData>({
     port: configuration.port,
     hostname: configuration.hostname,
+    // Bun refuses a larger body with a 413 before the handler runs.
+    maxRequestBodySize: MAXIMUM_REQUEST_BODY_BYTES * 4,
     fetch: (request, listener) => application.fetch(request, listener),
     websocket: application.websocket,
   });
@@ -50,7 +58,10 @@ async function main(): Promise<void> {
   }
 
   process.stdout.write(
-    `Terminal example listening on ${application.origin}\nIt starts shells on this machine and accepts connections from this machine only. Press Ctrl+C to stop.\n`,
+    `Terminal example listening on ${application.origin}\n` +
+      `Open ${application.origin}/?token=${startToken}\n` +
+      `That address carries the start token: anyone who has it can open a shell as you on this machine, so treat it like a password. It admits ${configuration.browsers} browser${configuration.browsers === 1 ? '' : 's'}; restart the server for another.\n` +
+      'The server starts shells on this machine and accepts connections from this machine only. Press Ctrl+C to stop.\n',
   );
 }
 

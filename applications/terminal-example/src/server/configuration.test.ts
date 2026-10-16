@@ -20,16 +20,19 @@ function refusal(argumentsList: string[]): string {
 
 describe('parseConfiguration', () => {
   test('defaults to 127.0.0.1 and the documented port', () => {
-    expect(parseConfiguration([])).toEqual({ hostname: DEFAULT_HOSTNAME, port: DEFAULT_PORT });
+    expect(parseConfiguration([])).toMatchObject({
+      hostname: DEFAULT_HOSTNAME,
+      port: DEFAULT_PORT,
+    });
     expect(DEFAULT_HOSTNAME).toBe('127.0.0.1');
   });
 
   test('accepts loopback hostnames in both flag forms', () => {
-    expect(parseConfiguration(['--hostname', 'localhost', '--port', '8080'])).toEqual({
+    expect(parseConfiguration(['--hostname', 'localhost', '--port', '8080'])).toMatchObject({
       hostname: 'localhost',
       port: 8080,
     });
-    expect(parseConfiguration(['--hostname=127.0.0.2', '--port=9'])).toEqual({
+    expect(parseConfiguration(['--hostname=127.0.0.2', '--port=9'])).toMatchObject({
       hostname: '127.0.0.2',
       port: 9,
     });
@@ -62,9 +65,32 @@ describe('parseConfiguration', () => {
   });
 });
 
+describe('the start token and the browsers it admits', () => {
+  test('defaults to no chosen token and one browser', () => {
+    expect(parseConfiguration([])).toMatchObject({ startToken: undefined, browsers: 1 });
+  });
+
+  test('takes a chosen token and a number of browsers', () => {
+    expect(
+      parseConfiguration(['--start-token', 'a-token-of-some-length', '--browsers', '64']),
+    ).toMatchObject({ startToken: 'a-token-of-some-length', browsers: 64 });
+  });
+
+  test('refuses a token too short to guard anything, and a bad browser count', () => {
+    expect(refusal(['--start-token', 'short'])).toContain('at least 16');
+    expect(refusal(['--browsers', '0'])).toContain('Invalid --browsers');
+    expect(refusal(['--browsers', '1000'])).toContain('Invalid --browsers');
+    expect(refusal(['--browsers', 'many'])).toContain('Invalid --browsers');
+  });
+});
+
 describe('servedOrigin', () => {
   test('is the one origin a browser sees', () => {
-    expect(servedOrigin({ hostname: '127.0.0.1', port: 54240 })).toBe('http://127.0.0.1:54240');
-    expect(servedOrigin({ hostname: '::1', port: 80 })).toBe('http://[::1]:80');
+    expect(
+      servedOrigin({ hostname: '127.0.0.1', port: 54240, startToken: undefined, browsers: 1 }),
+    ).toBe('http://127.0.0.1:54240');
+    expect(servedOrigin({ hostname: '::1', port: 80, startToken: undefined, browsers: 1 })).toBe(
+      'http://[::1]:80',
+    );
   });
 });

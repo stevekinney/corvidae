@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
+import { START_TOKEN } from './origin.ts';
+
 /** The rows the engine has drawn, as the text a reader would see. */
 export function screen(page: Page, scope: Locator | Page = page): Locator {
   return scope.locator('.cinder-terminal__viewport .xterm-rows');
@@ -56,4 +58,31 @@ export async function recordViolations(page: Page): Promise<string[]> {
   });
   page.on('pageerror', (error) => violations.push(error.message));
   return violations;
+}
+
+/**
+ * Enroll this page's browser the way the startup URL does: a top-level navigation carrying the
+ * start token, which sets the cookie and redirects to the clean address. Returns that page's response.
+ */
+export async function enroll(page: Page) {
+  const response = await page.goto(`/?token=${START_TOKEN}`);
+  expect(new URL(page.url()).search).toBe('');
+  return response;
+}
+
+/**
+ * Enroll without a browser, for the checks that speak to the server directly. A non-browser can
+ * write any fetch metadata it likes, which is exactly why the start token, not the metadata, is
+ * what admits it. Returns the cookie as a browser would send it back.
+ */
+export async function enrollWithoutBrowser(origin: string, token: string): Promise<string> {
+  const response = await fetch(`${origin}/?token=${token}`, {
+    redirect: 'manual',
+    headers: { 'sec-fetch-site': 'none', 'sec-fetch-dest': 'document' },
+  });
+  const cookie = (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+  if (response.status !== 303 || cookie === '') {
+    throw new Error(`the server did not enroll the client (${response.status})`);
+  }
+  return cookie;
 }

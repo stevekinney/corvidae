@@ -1,6 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { connected, isAlive, screen, shellPid, terminalInput, typeLine } from './support.ts';
+import {
+  connected,
+  enroll,
+  isAlive,
+  screen,
+  shellPid,
+  terminalInput,
+  typeLine,
+} from './support.ts';
 
 async function pasteIntoTerminal(page: Page, text: string): Promise<void> {
   await terminalInput(page).evaluate((target, pasted) => {
@@ -15,7 +23,7 @@ async function pasteIntoTerminal(page: Page, text: string): Promise<void> {
 test('a dropped connection freezes input, cleans up the process and replays nothing', async ({
   page,
 }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   const first = await shellPid(page, 'before');
   await page.getByRole('button', { name: 'Drop connection' }).click();
@@ -39,7 +47,7 @@ test('a dropped connection freezes input, cleans up the process and replays noth
 });
 
 test('a process that exits ends the session, and restart is a new one', async ({ page }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   const first = await shellPid(page, 'old');
   await typeLine(page, 'exit 3');
@@ -52,7 +60,7 @@ test('a process that exits ends the session, and restart is a new one', async ({
 });
 
 test('a pasted line break is reviewed before it reaches the shell', async ({ page }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   await pasteIntoTerminal(page, 'echo pasted-one\necho pasted-two\n');
   const dialog = page.getByRole('dialog', { name: 'Review paste' });
@@ -64,7 +72,7 @@ test('a pasted line break is reviewed before it reaches the shell', async ({ pag
 });
 
 test('search finds output, and export offers the accessible snapshot', async ({ page }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   await typeLine(page, 'echo needle-in-the-output');
   await expect(screen(page)).toContainText('needle-in-the-output');
@@ -84,7 +92,7 @@ test('a background job is beyond the cleanup, and the server says so', async ({
   page,
   context,
 }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   await typeLine(page, 'sleep 300 & echo job=$!');
   await expect(screen(page)).toHaveText(/job=\d+/);
@@ -104,7 +112,7 @@ test('a background job is beyond the cleanup, and the server says so', async ({
       )
       .toBe('quarantined');
     const second = await context.newPage();
-    await second.goto('/');
+    await enroll(second);
     await expect(second.getByText('Cleanup incomplete').first()).toBeVisible();
     await expect(second.getByRole('button', { name: 'New session' })).toHaveCount(0);
   } finally {

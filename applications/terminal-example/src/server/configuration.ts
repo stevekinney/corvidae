@@ -3,9 +3,16 @@ import { isLoopbackListener } from '@lostgradient/ventriloquist/websocket';
 export const DEFAULT_HOSTNAME = '127.0.0.1';
 export const DEFAULT_PORT = 54240;
 
+export const MINIMUM_START_TOKEN_LENGTH = 16;
+export const MAXIMUM_BROWSERS_PER_TOKEN = 256;
+
 export type ServerConfiguration = {
   readonly hostname: string;
   readonly port: number;
+  /** A start token the caller chose (tests do); absent, the server makes a random one. */
+  readonly startToken: string | undefined;
+  /** How many browsers the start URL admits before the server has to be restarted. */
+  readonly browsers: number;
 };
 
 /** A refusal the person who started the server should read: the message is the whole explanation. */
@@ -42,10 +49,12 @@ function flagValue(argumentsList: readonly string[], name: string): string | und
  * socket exists, and the transport refuses it again if this check is ever bypassed.
  */
 export function parseConfiguration(argumentsList: readonly string[]): ServerConfiguration {
-  const known = new Set(['--hostname', '--port']);
+  const known = new Set(['--hostname', '--port', '--start-token', '--browsers']);
   for (const argument of argumentsList) {
     if (argument.startsWith('--') && !known.has(argument.split('=')[0] as string)) {
-      throw new ConfigurationError(`Unknown option ${argument}. Use --hostname and --port.`);
+      throw new ConfigurationError(
+        `Unknown option ${argument}. Use --hostname, --port, --start-token and --browsers.`,
+      );
     }
   }
   const requested = flagValue(argumentsList, 'hostname') ?? DEFAULT_HOSTNAME;
@@ -68,7 +77,24 @@ export function parseConfiguration(argumentsList: readonly string[]): ServerConf
       `Invalid port ${JSON.stringify(portText)}. Use a whole number from 1 to 65535; the served origin must be known before the server starts, so 0 is not allowed.`,
     );
   }
-  return { hostname, port };
+  const startToken = flagValue(argumentsList, 'start-token');
+  if (startToken !== undefined && startToken.length < MINIMUM_START_TOKEN_LENGTH) {
+    throw new ConfigurationError(
+      `--start-token needs at least ${MINIMUM_START_TOKEN_LENGTH} characters, or leave it out and the server makes a random one.`,
+    );
+  }
+  const browsersText = flagValue(argumentsList, 'browsers');
+  const browsers = browsersText === undefined ? 1 : Number(browsersText);
+  if (
+    (browsersText !== undefined && !/^\d+$/.test(browsersText)) ||
+    browsers < 1 ||
+    browsers > MAXIMUM_BROWSERS_PER_TOKEN
+  ) {
+    throw new ConfigurationError(
+      `Invalid --browsers ${JSON.stringify(browsersText)}. Use a whole number from 1 to ${MAXIMUM_BROWSERS_PER_TOKEN}.`,
+    );
+  }
+  return { hostname, port, startToken, browsers };
 }
 
 /** The origin a browser sees for this listener, and the only origin the upgrade will accept. */

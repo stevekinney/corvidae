@@ -1,13 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { connected, screen, terminalInput } from './support.ts';
+import { connected, enroll, screen, terminalInput } from './support.ts';
 
 async function chooseProfile(page: Page, label: string): Promise<void> {
   await page.getByRole('radio', { name: label }).click();
 }
 
 test('the full-screen program uses the alternate screen and leaves it on q', async ({ page }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   await chooseProfile(page, 'Full-screen program');
   await expect(screen(page)).toContainText('Keys received: 0');
@@ -23,7 +23,7 @@ test('the full-screen program uses the alternate screen and leaves it on q', asy
 test('the pipe demo keeps standard output and standard error in separate views', async ({
   page,
 }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   await chooseProfile(page, 'Pipe demo');
   const output = page.locator('.stage').filter({ hasText: 'Standard output' });
@@ -37,7 +37,7 @@ test('the pipe demo keeps standard output and standard error in separate views',
 });
 
 test('the replay shows the same bytes every time and takes no input', async ({ page }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   await chooseProfile(page, 'Replay');
   await expect(page.getByText('Read-only').first()).toBeVisible();
@@ -50,7 +50,7 @@ test('the replay shows the same bytes every time and takes no input', async ({ p
 });
 
 test('read-only mode sends nothing to the shell', async ({ page }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   await page.getByRole('switch', { name: 'Open read-only' }).click();
   await expect(page.getByText('Read-only').first()).toBeVisible();

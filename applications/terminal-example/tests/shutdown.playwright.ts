@@ -1,9 +1,10 @@
 import { ClientEndpoint } from '@lostgradient/ventriloquist';
 import { expect, test } from '@playwright/test';
 
-import { isAlive } from './support.ts';
+import { OWN_SERVER_PORT, START_TOKEN } from './origin.ts';
+import { enrollWithoutBrowser, isAlive } from './support.ts';
 
-const PORT = 54248;
+const PORT = OWN_SERVER_PORT;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 
 /** The identifiers of a process's children, which `pgrep -P` reads the same way on macOS and Linux. */
@@ -19,13 +20,16 @@ async function childrenOf(pid: number): Promise<number[]> {
 }
 
 test('stopping the server with a session open ends the session and its process', async () => {
-  const server = Bun.spawn(['bun', 'src/server/main.ts', '--port', String(PORT)], {
-    cwd: import.meta.dirname.replace(/\/tests$/, ''),
-    env: { ...process.env, SHELL: '/bin/sh' },
-    stdout: 'pipe',
-    stderr: 'inherit',
-    timeout: 60_000,
-  });
+  const server = Bun.spawn(
+    ['bun', 'src/server/main.ts', '--port', String(PORT), '--start-token', START_TOKEN],
+    {
+      cwd: import.meta.dirname.replace(/\/tests$/, ''),
+      env: { ...process.env, SHELL: '/bin/sh' },
+      stdout: 'pipe',
+      stderr: 'inherit',
+      timeout: 60_000,
+    },
+  );
   try {
     const reader = server.stdout.getReader();
     let banner = '';
@@ -34,8 +38,7 @@ test('stopping the server with a session open ends the session and its process',
       if (done) throw new Error('the server ended before it listened');
       banner += new TextDecoder().decode(value);
     }
-    const page = await fetch(`${ORIGIN}/`);
-    const cookie = (page.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    const cookie = await enrollWithoutBrowser(ORIGIN, START_TOKEN);
     const issued = await fetch(`${ORIGIN}/session`, {
       method: 'POST',
       headers: { cookie, origin: ORIGIN, 'content-type': 'application/json' },

@@ -1,10 +1,18 @@
 import { expect, test } from '@playwright/test';
 
-import { connected, isAlive, recordViolations, screen, shellPid, typeLine } from './support.ts';
+import {
+  connected,
+  enroll,
+  isAlive,
+  recordViolations,
+  screen,
+  shellPid,
+  typeLine,
+} from './support.ts';
 
 test('types into the login shell and sees the output', async ({ page }) => {
   const problems = await recordViolations(page);
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   await typeLine(page, 'echo answer-$((6 * 7))');
   await expect(screen(page)).toContainText('answer-42');
@@ -14,7 +22,7 @@ test('types into the login shell and sees the output', async ({ page }) => {
 
 test('resizes the process when the viewport changes', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   const readSize = async (marker: string): Promise<[number, number]> => {
     await typeLine(page, `echo ${marker}=$(stty size | tr ' ' x)`);
@@ -39,7 +47,7 @@ test('resizes the process when the viewport changes', async ({ page }) => {
 });
 
 test('reloading starts a new session and ends the old process', async ({ page }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   const first = await shellPid(page, 'before');
   await page.reload();
@@ -53,7 +61,7 @@ test('reloading starts a new session and ends the old process', async ({ page })
 });
 
 test('no child process survives after the page closes', async ({ page }) => {
-  await page.goto('/');
+  await enroll(page);
   await connected(page);
   const shell = await shellPid(page, 'shell');
   // A foreground child that keeps running, which the shell would otherwise leave to the terminal.

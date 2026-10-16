@@ -8,7 +8,7 @@ Declare `"@lostgradient/ventriloquist": "workspace:*"` in the consuming workspac
 
 ## Use it inside corvidae
 
-The [terminal example application](../../applications/terminal-example/README.md) is the reference host: run `bun run --filter=@lostgradient/terminal-example dev` from the Corvidae root and open the address it prints. Its `src/server/application.ts` wires this package to `Bun.serve` the way every host does:
+The [terminal example application](../../applications/terminal-example/README.md) is the reference host: run `bun run --filter=@lostgradient/terminal-example dev` from the Corvidae root and open the start URL it prints. Its `src/server/application.ts` wires this package to `Bun.serve` the way every host does:
 
 ```ts
 import { SessionSlot } from '@lostgradient/ventriloquist';

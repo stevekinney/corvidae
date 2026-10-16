@@ -6,18 +6,25 @@ import { join } from 'node:path';
 import type { SessionSlot } from '@lostgradient/ventriloquist';
 import type { CreateProcess, UpgradeServer } from '@lostgradient/ventriloquist/websocket';
 
-import { createApplication, type Application } from './application.ts';
+import { createApplication, MAXIMUM_REQUEST_BODY_BYTES, type Application } from './application.ts';
 import { ConfigurationError } from './configuration.ts';
 import { CONTENT_SECURITY_POLICY } from './content-security-policy.ts';
 import type { ProfileContext } from './profiles.ts';
 import { SessionStore } from './session-store.ts';
 
-const configuration = { hostname: '127.0.0.1', port: 54299 } as const;
+const configuration = {
+  hostname: '127.0.0.1',
+  port: 54299,
+  startToken: undefined,
+  browsers: 1,
+} as const;
 const ORIGIN = 'http://127.0.0.1:54299';
 const context: ProfileContext = {
   host: { shell: '/bin/sh', path: undefined, language: undefined },
   user: { username: 'ada', homeDirectory: '/home/ada', shell: undefined },
 };
+const TOKEN = 'start-token-for-the-tests';
+const TOP_LEVEL = { 'sec-fetch-site': 'none', 'sec-fetch-dest': 'document' };
 const noProcess: CreateProcess = () => {
   throw new Error('a request test must not start a process');
 };
@@ -52,6 +59,7 @@ function build(
     store?: SessionStore;
     context?: ProfileContext;
     sessionWaitMilliseconds?: number;
+    browsers?: number;
   } = {},
 ): Promise<Application> {
   return createApplication({
@@ -59,6 +67,8 @@ function build(
     buildDirectory: directory,
     createProcess: noProcess,
     context: options.context ?? context,
+    startToken: TOKEN,
+    browsers: options.browsers ?? 100,
     ...(options.store === undefined ? {} : { store: options.store }),
     ...(options.sessionWaitMilliseconds === undefined
       ? {}
@@ -77,15 +87,25 @@ function request(
 }
 
 async function enrolled(application: Application): Promise<string> {
-  const response = await application.fetch(request('/'), fakeServer());
+  const response = await application.fetch(
+    request(`/?token=${TOKEN}`, { headers: TOP_LEVEL }),
+    fakeServer(),
+  );
   return (response?.headers.get('set-cookie') ?? '').split(';')[0] as string;
 }
 
 function sessionRequest(cookie: string, body: unknown, headers: Record<string, string> = {}) {
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
   return request('/session', {
     method: 'POST',
-    headers: { cookie, origin: ORIGIN, 'content-type': 'application/json', ...headers },
-    body: typeof body === 'string' ? body : JSON.stringify(body),
+    headers: {
+      cookie,
+      origin: ORIGIN,
+      'content-type': 'application/json',
+      'content-length': String(Buffer.byteLength(text)),
+      ...headers,
+    },
+    body: text,
   });
 }
 
@@ -98,6 +118,7 @@ describe('starting', () => {
         buildDirectory: empty,
         createProcess: noProcess,
         context,
+        startToken: TOKEN,
       }).catch((error: unknown) => error);
       expect(failure).toBeInstanceOf(ConfigurationError);
       expect((failure as Error).message).toContain('bun run build');
@@ -113,21 +134,19 @@ describe('starting', () => {
 });
 
 describe('serving the page', () => {
-  test('serves the build with the policy, and enrolls a browser once', async () => {
+  test('serves the build with the policy to a browser that is enrolled', async () => {
     const application = await build();
-    const first = (await application.fetch(request('/'), fakeServer())) as Response;
-    expect(first.status).toBe(200);
-    expect(first.headers.get('content-security-policy')).toBe(CONTENT_SECURITY_POLICY);
-    expect(first.headers.get('x-content-type-options')).toBe('nosniff');
-    expect(first.headers.get('content-type')).toContain('text/html');
-    expect(await first.text()).toContain('<title>example</title>');
-    const cookie = (first.headers.get('set-cookie') ?? '').split(';')[0] as string;
-    expect(first.headers.get('set-cookie')).toContain('HttpOnly');
-    const second = (await application.fetch(
-      request('/', { headers: { cookie } }),
+    const cookie = await enrolled(application);
+    const page = (await application.fetch(
+      request('/', { headers: { cookie, ...TOP_LEVEL } }),
       fakeServer(),
     )) as Response;
-    expect(second.headers.get('set-cookie')).toBeNull();
+    expect(page.status).toBe(200);
+    expect(page.headers.get('content-security-policy')).toBe(CONTENT_SECURITY_POLICY);
+    expect(page.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(page.headers.get('content-type')).toContain('text/html');
+    expect(await page.text()).toContain('<title>example</title>');
+    expect(page.headers.get('set-cookie')).toBeNull();
     expect(application.store.browserCount).toBe(1);
   });
 
@@ -414,5 +433,246 @@ describe('the upgrade', () => {
       const response = await upgrade(`/terminal?${query}`, { cookie, origin: ORIGIN }, application);
       expect(response?.status, query).toBe(400);
     }
+  });
+});
+
+describe('enrollment', () => {
+  async function visit(
+    application: Application,
+    path: string,
+    headers: Record<string, string>,
+    method = 'GET',
+  ) {
+    return (await application.fetch(request(path, { method, headers }), fakeServer())) as Response;
+  }
+
+  async function statusOf(
+    application: Application,
+    path: string,
+    headers: Record<string, string>,
+  ): Promise<number> {
+    const response = await visit(application, path, headers);
+    return response.status;
+  }
+
+  test('needs the start token: without one nothing is enrolled and the page says how to get one', async () => {
+    const application = await build();
+    const response = await visit(application, '/', TOP_LEVEL);
+    expect(response.status).toBe(401);
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(application.store.browserCount).toBe(0);
+    const text = await response.text();
+    expect(text).toContain('start');
+    expect(text).not.toContain(TOKEN);
+    expect(response.headers.get('content-security-policy')).toBe(CONTENT_SECURITY_POLICY);
+  });
+
+  test('refuses a wrong token, however it is spelled', async () => {
+    const application = await build();
+    for (const token of ['wrong', TOKEN.slice(0, -1), `${TOKEN}x`, '', TOKEN.toUpperCase()]) {
+      const response = await visit(application, `/?token=${token}`, TOP_LEVEL);
+      expect(response.status, token).toBe(403);
+      expect(response.headers.get('set-cookie')).toBeNull();
+    }
+    expect(application.store.browserCount).toBe(0);
+  });
+
+  test('enrolls on a top-level navigation with the token, and redirects to a clean URL', async () => {
+    const application = await build();
+    const response = await visit(application, `/?token=${TOKEN}`, TOP_LEVEL);
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/');
+    const cookie = response.headers.get('set-cookie') ?? '';
+    expect(cookie).toStartWith('terminal-example-session-54299=');
+    expect(cookie).toContain('HttpOnly');
+    expect(application.store.browserCount).toBe(1);
+    const followed = await visit(application, '/', {
+      cookie: cookie.split(';')[0] as string,
+      ...TOP_LEVEL,
+    });
+    expect(followed.status).toBe(200);
+  });
+
+  test('also accepts a same-origin navigation', async () => {
+    const application = await build();
+    const response = await visit(application, `/?token=${TOKEN}`, {
+      'sec-fetch-site': 'same-origin',
+      'sec-fetch-dest': 'document',
+    });
+    expect(response.status).toBe(303);
+  });
+
+  test.each([
+    ['a cross-site request', { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': 'document' }],
+    ['a same-site request', { 'sec-fetch-site': 'same-site', 'sec-fetch-dest': 'document' }],
+    ['a no-cors subresource fetch', { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': 'empty' }],
+    ['an image', { 'sec-fetch-site': 'none', 'sec-fetch-dest': 'image' }],
+    ['an iframe', { 'sec-fetch-site': 'none', 'sec-fetch-dest': 'iframe' }],
+    ['a request with no fetch metadata', {}],
+  ])('does not enroll %s, even with the token', async (_name, headers) => {
+    const application = await build();
+    const response = await visit(application, `/?token=${TOKEN}`, headers);
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(response.status).toBe(401);
+    expect(application.store.browserCount).toBe(0);
+  });
+
+  test('does not enroll on HEAD', async () => {
+    const application = await build();
+    const response = await visit(application, `/?token=${TOKEN}`, TOP_LEVEL, 'HEAD');
+    expect(response.headers.get('set-cookie')).toBeNull();
+    expect(application.store.browserCount).toBe(0);
+  });
+
+  test('admits one browser per token by default, and a second is told to restart the server', async () => {
+    const application = await build({ browsers: 1 });
+    expect(await statusOf(application, `/?token=${TOKEN}`, TOP_LEVEL)).toBe(303);
+    const second = await visit(application, `/?token=${TOKEN}`, TOP_LEVEL);
+    expect(second.status).toBe(403);
+    expect(second.headers.get('set-cookie')).toBeNull();
+    expect(await second.text()).toContain('restart');
+    expect(application.store.browserCount).toBe(1);
+  });
+
+  test('lets the browser that holds the cookie carry the token again without spending it', async () => {
+    const application = await build({ browsers: 1 });
+    const first = await visit(application, `/?token=${TOKEN}`, TOP_LEVEL);
+    const cookie = (first.headers.get('set-cookie') ?? '').split(';')[0] as string;
+    const again = await visit(application, `/?token=${TOKEN}`, { cookie, ...TOP_LEVEL });
+    expect(again.status).toBe(303);
+    expect(again.headers.get('location')).toBe('/');
+    expect(again.headers.get('set-cookie')).toBeNull();
+    expect(application.store.browserCount).toBe(1);
+  });
+
+  test('admits as many browsers as the server was started for', async () => {
+    const application = await build({ browsers: 2 });
+    const statuses: number[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      statuses.push(await statusOf(application, `/?token=${TOKEN}`, TOP_LEVEL));
+    }
+    expect(statuses).toEqual([303, 303, 403]);
+  });
+
+  test('says so when the store cannot take another browser, and sets no cookie', async () => {
+    const store = new SessionStore({
+      maximumBrowsers: 1,
+      enrollmentsPerWindow: 1000,
+      // Every browser's slot holds a live session, so none can be forgotten to make room.
+      createSlot: () =>
+        ({
+          current: { snapshot: { closed: false, quarantined: false } },
+        }) as unknown as SessionSlot,
+    });
+    const application = await build({ store, browsers: 2 });
+    expect(await statusOf(application, `/?token=${TOKEN}`, TOP_LEVEL)).toBe(303);
+    const refused = await visit(application, `/?token=${TOKEN}`, TOP_LEVEL);
+    expect(refused.status).toBe(503);
+    expect(refused.headers.get('set-cookie')).toBeNull();
+    expect(await refused.text()).toContain('full');
+    expect(store.browserCount).toBe(1);
+  });
+
+  test('answers 429 when browsers enroll too fast', async () => {
+    const store = new SessionStore({ enrollmentsPerWindow: 1 });
+    const application = await build({ store, browsers: 10 });
+    expect(await statusOf(application, `/?token=${TOKEN}`, TOP_LEVEL)).toBe(303);
+    expect(await statusOf(application, `/?token=${TOKEN}`, TOP_LEVEL)).toBe(429);
+  });
+});
+
+describe('the request body', () => {
+  async function post(
+    application: Application,
+    cookie: string,
+    init: Omit<RequestInit, 'headers'> & { headers: Record<string, string> },
+  ) {
+    return (await application.fetch(
+      request('/session', {
+        method: 'POST',
+        ...init,
+        headers: { cookie, origin: ORIGIN, 'content-type': 'application/json', ...init.headers },
+      }),
+      fakeServer(),
+    )) as Response;
+  }
+
+  test('is refused on its declared length before it is read', async () => {
+    const application = await build();
+    const cookie = await enrolled(application);
+    const incoming = request('/session', {
+      method: 'POST',
+      headers: {
+        cookie,
+        origin: ORIGIN,
+        'content-type': 'application/json',
+        'content-length': '5000',
+      },
+      body: '{}',
+    });
+    let read = false;
+    for (const name of ['arrayBuffer', 'text', 'json', 'blob', 'bytes', 'formData'] as const) {
+      Object.defineProperty(incoming, name, {
+        value: () => {
+          read = true;
+          return Promise.reject(new Error('the body must not be read'));
+        },
+      });
+    }
+    Object.defineProperty(incoming, 'body', {
+      get() {
+        read = true;
+        return null;
+      },
+    });
+    const response = (await application.fetch(incoming, fakeServer())) as Response;
+    expect(response.status).toBe(413);
+    expect(read).toBe(false);
+  });
+
+  test('needs a declared length', async () => {
+    const application = await build();
+    const cookie = await enrolled(application);
+    const response = await post(application, cookie, { headers: {}, body: '{}' });
+    expect(response.status).toBe(411);
+  });
+
+  test('counts bytes, not UTF-16 units', async () => {
+    const application = await build();
+    const cookie = await enrolled(application);
+    const body = '\u00e9'.repeat(600);
+    expect(body.length).toBeLessThan(MAXIMUM_REQUEST_BODY_BYTES);
+    const response = await post(application, cookie, {
+      headers: { 'content-length': String(Buffer.byteLength(body)) },
+      body,
+    });
+    expect(response.status).toBe(413);
+  });
+
+  test('is refused when it is longer than it declared', async () => {
+    const application = await build();
+    const cookie = await enrolled(application);
+    const body = JSON.stringify({ profile: 'shell', readOnly: false, padding: 'x'.repeat(2000) });
+    const response = await post(application, cookie, { headers: { 'content-length': '10' }, body });
+    expect(response.status).toBe(413);
+  });
+
+  test('is refused for a malformed length', async () => {
+    const application = await build();
+    const cookie = await enrolled(application);
+    for (const value of ['-1', 'abc', '1e3', '']) {
+      const response = await post(application, cookie, {
+        headers: { 'content-length': value },
+        body: '{}',
+      });
+      expect([400, 411]).toContain(response.status);
+    }
+  });
+});
+
+describe('the cookie name', () => {
+  test('carries the port, so two instances on one host keep separate cookies', async () => {
+    const application = await build();
+    expect(application.store.cookieName).toBe('terminal-example-session-54299');
   });
 });

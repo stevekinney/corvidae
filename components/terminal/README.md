@@ -8,7 +8,7 @@ Declare `"@lostgradient/terminal": "workspace:*"` in the consuming workspace's d
 
 ## Use it inside corvidae
 
-The [terminal example application](../../applications/terminal-example/README.md) is the reference. Run `bun run --filter=@lostgradient/terminal-example dev` from the Corvidae root and open the address it prints to get a working terminal backed by a Bun PTY. Its `src/client/` shows the browser half of the wiring below and its `src/server/` the host half.
+The [terminal example application](../../applications/terminal-example/README.md) is the reference. Run `bun run --filter=@lostgradient/terminal-example dev` from the Corvidae root and open the start URL it prints to get a working terminal backed by a Bun PTY. Its `src/client/` shows the browser half of the wiring below and its `src/server/` the host half.
 
 The page side is one `Terminal` and one `TerminalWebSocketClient` per session:
 
