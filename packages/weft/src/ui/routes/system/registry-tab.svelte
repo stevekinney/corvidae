@@ -151,7 +151,17 @@
   {@const activityRows = registryActivityRows(query.data)}
   {@const selectedRow = workflowRows.find((row) => row.type === selectedType)}
   {#if selectedRow}
-    <RegistryDetail row={selectedRow} onBack={() => (selectedType = null)} />
+    <RegistryDetail
+      row={selectedRow}
+      onBack={() => (selectedType = null)}
+      registry={query.data}
+      manifests={{
+        diagnostics: manifestsQuery.data,
+        loading: workersQuery.isPending || manifestsQuery.isPending,
+        refreshing: manifestsQuery.isFetching && manifestsQuery.data !== undefined,
+        error: workersQuery.error ?? manifestsQuery.error ?? null,
+      }}
+    />
   {:else}
     <div class="weft-registry-list">
       <div class="weft-registry-list__header">

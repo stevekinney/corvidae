@@ -64,6 +64,7 @@
     taskQueuesListQuery,
     workersListQuery,
     loadFleetManifestDiagnostics,
+    loadRegistrySnapshot,
     loadWorkerRegistrationRejections,
     invalidateWorkerSurfaceQueries,
   } from './workers-data.ts';
@@ -109,6 +110,13 @@
     queryKey: queryKeys.workers.manifests(workerIds),
     queryFn: () => loadFleetManifestDiagnostics(client, workerIds),
     enabled: !locked && !workersQuery.isPending,
+    refetchInterval: 30_000,
+  }));
+  // Worker detail's contract verification (COR-162); shared with System → Registry.
+  const registryQuery = createQuery(() => ({
+    queryKey: queryKeys.registry(),
+    queryFn: () => loadRegistrySnapshot(client),
+    enabled: !locked && router.search.get('worker') !== null,
     refetchInterval: 30_000,
   }));
   const rejectionsQuery = createQuery(() => ({
@@ -354,6 +362,10 @@
             manifestLoading={manifestQuery.isPending}
             manifestRefreshing={manifestQuery.isFetching && manifestQuery.data !== undefined}
             manifestError={manifestQuery.error ?? null}
+            registry={registryQuery.data}
+            registryLoading={registryQuery.isPending}
+            registryRefreshing={registryQuery.isFetching && registryQuery.data !== undefined}
+            registryError={registryQuery.error ?? null}
           />
         {:else}
           <WorkerListView workers={workersQuery.data?.items ?? []} />
