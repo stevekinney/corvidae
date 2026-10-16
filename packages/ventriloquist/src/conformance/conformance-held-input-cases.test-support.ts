@@ -1,4 +1,7 @@
+import { closeSync, openSync } from 'node:fs';
 import { join } from 'node:path';
+
+import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
 import { shellProfile } from '../bun/fixtures/bun-pipe-stdin.ts';
 import type { ServerMessage } from '../protocol/messages.ts';
@@ -25,19 +28,21 @@ const FINAL_MARKER = 'END';
 let launches = 0;
 
 /**
- * A child that is not reading its input until a file appears, then copies it to its output. A
+ * A child that is not reading its input until something is written to a named pipe, then copies it
+ * to its output. It waits in `read`, which forks nothing: a polling loop forks a `sleep` every few
+ * milliseconds, and a process created while cleanup sweeps the session is a descendant it cannot
+ * prove gone, which reports cleanup `unknown` for a reason that has nothing to do with held input. A
  * terminal is put in raw mode first, so the line discipline neither echoes nor edits what arrives
  * and the output is exactly the input; in canonical mode the kernel discards what overflows instead
  * of holding the writer back.
  */
 function nonReadingChild(mode: ProcessMode, scratch: string): CaseLaunch {
   const gate = join(scratch, `release-held-input-${launches++}`);
+  const made = Bun.spawnSync(['mkfifo', gate], { timeout: SCENARIO_HANG_GUARD_MILLISECONDS });
+  if (made.exitCode !== 0) throw new Error('mkfifo failed');
   const prepare = mode === 'pty' ? 'stty raw -echo; ' : '';
   return {
-    profile: shellProfile(
-      `${prepare}printf ready; until [ -e "$1" ]; do sleep 0.05; done; exec cat`,
-      [gate],
-    ),
+    profile: shellProfile(`${prepare}printf ready; read -r _ < "$1"; exec cat`, [gate]),
     acceptsInput: true,
     state: gate,
     rig: { lifetimeMilliseconds: 600_000 },
@@ -176,7 +181,8 @@ const heldInputBackpressure: CaseDefinition = {
   async run({ rig, launched, mode }) {
     const held = await holdInput(rig);
     const refusals = rig.client.messages.filter((message) => message.kind === 'operation-failure');
-    await Bun.write(gateOf(launched), '');
+    // Opening the named pipe for writing waits for the child's read, then the child reads end of file.
+    closeSync(openSync(gateOf(launched), 'w'));
     const expected = expectedOutput(held.pastes);
     await outputReaches(rig, expected.length);
     const writable = await untilAccepted(rig, FINAL_MARKER);
