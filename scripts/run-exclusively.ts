@@ -28,13 +28,20 @@
  * matches the lock currently held runs its command directly, so `validate` can hold the lock for
  * its whole chain without its own stages queueing behind it.
  *
+ * The wrapped command also gets two Turborepo defaults, each only when the caller has not set it.
+ * `TURBO_CACHE_DIR` points at one cache inside the Git common directory, so a task one worktree ran
+ * replays in every other worktree instead of each checkout starting cold. `TURBO_CONCURRENCY` scales
+ * with the host's memory, one task per 16 GiB: a single type-check peaks near 5 GB, and Turborepo's
+ * own default of ten such tasks at once exhausts even a 64 GB host. A stage that passes
+ * `--concurrency` itself still wins, since the flag overrides the variable.
+ *
  * Usage: `bun scripts/run-exclusively.ts '<shell command>' [arguments...]`. Arguments reach the
  * command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes them.
  */
 
 import { spawn } from 'node:child_process';
 import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
-import { constants } from 'node:os';
+import { constants, cpus, totalmem } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
 import { rootScriptEnvironment } from './environment-configuration';
@@ -43,6 +50,32 @@ export const ownerFileName = 'owner.json';
 
 /** Names the held lock's token in the environment of the command that runs under it. */
 export const heldLockTokenVariable = 'CORVIDAE_HOST_LOCK_TOKEN';
+
+/** Host memory budgeted to each concurrently running Turborepo task. */
+const memoryPerTurborepoTask = 16 * 1024 ** 3;
+
+/**
+ * `environment` with the shared Turborepo cache and a memory-scaled task concurrency filled in
+ * where the caller has not chosen its own.
+ */
+export function withTurborepoDefaults(
+  environment: Readonly<Record<string, string | undefined>>,
+  gitCommonDirectory: string,
+  host: { readonly totalMemoryBytes: number; readonly processors: number } = {
+    totalMemoryBytes: totalmem(),
+    processors: cpus().length,
+  },
+): Record<string, string | undefined> {
+  const concurrency = Math.max(
+    1,
+    Math.min(host.processors, Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask)),
+  );
+  return {
+    ...environment,
+    TURBO_CACHE_DIR: environment['TURBO_CACHE_DIR'] || join(gitCommonDirectory, 'turbo-cache'),
+    TURBO_CONCURRENCY: environment['TURBO_CONCURRENCY'] || String(concurrency),
+  };
+}
 
 /** The directory of waiting tickets beside the lock. */
 export function queueDirectoryFor(lockDirectory: string): string {
@@ -489,16 +522,10 @@ async function runInProcessGroup(
 ): Promise<number> {
   const args = options.args ?? [];
   const command = args.length === 0 ? options.script : `${options.script} "$@"`;
+  const environment = options.environment ?? rootScriptEnvironment();
   const child = spawn('sh', ['-c', command, 'sh', ...args], {
     detached: true,
-    ...(token === undefined
-      ? {}
-      : {
-          env: {
-            ...(options.environment ?? rootScriptEnvironment()),
-            [heldLockTokenVariable]: token,
-          },
-        }),
+    env: token === undefined ? environment : { ...environment, [heldLockTokenVariable]: token },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
@@ -535,8 +562,8 @@ async function runInProcessGroup(
   }
 }
 
-/** The lock directory inside this repository's Git common directory, shared by every worktree. */
-async function hostLockDirectory(): Promise<string> {
+/** This repository's Git common directory, which every worktree shares. */
+async function gitCommonDirectory(): Promise<string> {
   const git = Bun.spawn(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
     stdout: 'pipe',
     stderr: 'ignore',
@@ -547,7 +574,7 @@ async function hostLockDirectory(): Promise<string> {
     throw new Error('run-exclusively must run inside a Git checkout of this repository');
   }
   if (!isAbsolute(output)) throw new Error(`git returned a relative common directory: ${output}`);
-  return join(output, 'corvidae-host-lock');
+  return output;
 }
 
 if (import.meta.main) {
@@ -558,6 +585,19 @@ if (import.meta.main) {
     );
     process.exitCode = 64;
   } else {
-    process.exitCode = await runExclusively({ lockDirectory: hostLockDirectory(), script, args });
+    const commonDirectoryLookup = gitCommonDirectory();
+    const commonDirectory = await commonDirectoryLookup.catch(() => undefined);
+    process.exitCode = await runExclusively({
+      // A failed lookup still reaches `runExclusively`, which reports it and runs unlocked.
+      lockDirectory: commonDirectoryLookup.then((directory) =>
+        join(directory, 'corvidae-host-lock'),
+      ),
+      script,
+      args,
+      environment:
+        commonDirectory === undefined
+          ? rootScriptEnvironment()
+          : withTurborepoDefaults(rootScriptEnvironment(), commonDirectory),
+    });
   }
 }

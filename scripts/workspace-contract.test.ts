@@ -170,6 +170,13 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
+    const coverageReplacesTest = [...(await workspaceManifests()).values()]
+      .filter((manifest) =>
+        manifest.scripts?.['test:coverage']?.includes('scripts/bun-test-junit.ts'),
+      )
+      .map((manifest) => manifest.name)
+      .toSorted();
+    expect(coverageReplacesTest.length).toBeGreaterThan(0);
     // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
     // instead of rejoining the queue at every stage. Its stages find the lock held by their parent
     // and reuse it rather than queueing behind it.
@@ -180,7 +187,9 @@ describe('internal workspace architecture', () => {
     expect(validationStages).toEqual([
       'bun run lint',
       'bun run typecheck',
-      'bun run test',
+      // A workspace whose coverage run is its fast suite plus instrumentation, and writes the same
+      // JUnit report, runs that suite once, in `coverage`, rather than twice.
+      `bun run test ${coverageReplacesTest.map((workspace) => `--filter=!${workspace}`).join(' ')}`,
       // COR-1499: slow correctness tests run serially after the fast phase, then the duration report
       // (warnings only) reads the fast phase's reports.
       'bun run test:slow',
@@ -192,12 +201,17 @@ describe('internal workspace architecture', () => {
     ]);
     // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
     // agent sessions stop oversubscribing it and timing out unrelated tests.
-    for (const stage of ['lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
+    for (const stage of ['check', 'lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
       expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
     }
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
     expect(scripts['test']).toBe(
       "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures --concurrency=1'",
+    );
+    // The development loop: only the workspaces a change can affect, judged against the default
+    // branch, with tests kept serial as in the gate. `validate` stays the full gate.
+    expect(scripts['check']).toBe(
+      "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint typecheck --affected && turbo run test:self test test:browser-fixtures --affected --concurrency=1'",
     );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under

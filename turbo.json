@@ -142,7 +142,13 @@
     },
     "@lostgradient/evaluation#test:coverage": {
       "dependsOn": ["transit"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**", "test-output/junit/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
+      ]
     },
     "@lostgradient/chat#test:coverage": {
       "dependsOn": ["transit"],
@@ -191,23 +197,29 @@
     },
     "@lostgradient/ventriloquist#test:coverage": {
       "dependsOn": ["transit"],
-      "outputs": ["coverage/**", "test-results/**"],
+      "outputs": ["coverage/**", "test-results/**", "test-output/junit/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
-        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
+        "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
       ]
     },
     "@lostgradient/cinder#test:coverage": {
       "dependsOn": ["transit"],
-      "outputs": ["coverage/**"],
+      "outputs": ["coverage/**", "test-output/junit/**"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
-        "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
+        "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
+        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
+        "$TURBO_ROOT$/scripts/check-test-durations.ts",
+        "$TURBO_ROOT$/scripts/test-duration-allowlist.json"
       ]
     },
     "@lostgradient/cinder#test": {
