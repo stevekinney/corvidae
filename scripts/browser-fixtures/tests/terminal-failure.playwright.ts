@@ -2,6 +2,8 @@ import { prepareSvelteServerSource, renderSvelteOnServer } from '@lostgradient/t
 import type { Browser, Page, Route } from '@playwright/test';
 import { resolve } from 'node:path';
 
+import { environmentConfiguration } from '../environment-configuration.ts';
+
 import {
   captureButton,
   expect,
@@ -56,7 +58,7 @@ async function scoutScripts(browser: Browser): Promise<Scripts> {
     });
     const entry = terminalEntry();
     const hash = entry.fixtures!.find((fixture) => fixture.name === 'lab')!.fixtureContentHash;
-    const base = process.env['BROWSER_FIXTURE_URL'] ?? '';
+    const base = environmentConfiguration().browserFixtureUrl ?? '';
     await page.goto(`${base}${entry.route}?fixture=lab&fixtureContentHash=${hash}&quiet=1`);
     await terminalReady(page);
     const scripts: Scripts = { engine: [], other: [] };
