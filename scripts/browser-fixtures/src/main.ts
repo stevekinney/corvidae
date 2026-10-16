@@ -29,6 +29,7 @@ import type { VisualFixture } from '@lostgradient/testing';
 import type { FixtureModuleMaps } from './fixture-loader.ts';
 
 import * as generatedModules from '../.playwright/fixture-modules.ts';
+import CodeHighlighterRoot from './code-highlighter-root.svelte';
 import { loadFixture } from './fixture-loader.ts';
 import { applySnapshotMode, isSnapshotMode } from './snapshot-mode.ts';
 
@@ -93,7 +94,10 @@ async function start(): Promise<void> {
   );
   const Component = fixtureComponent ?? components[componentName];
   if (Component === undefined) throw new Error(`Component '${componentName}' was not found.`);
-  mount(Component, { target: mountTarget, props: fixtureProps(fixture) });
+  mount(CodeHighlighterRoot, {
+    target: mountTarget,
+    props: { component: Component, componentProps: fixtureProps(fixture) },
+  });
   flushSync();
 }
 
