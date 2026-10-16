@@ -6,7 +6,7 @@
  * longer the draft's is stale and is rebuilt rather than exported.
  */
 
-import { CINDER_BASE } from '@lostgradient/cinder/tokens/runtime';
+import { cinderThemeBase, isShippedBase } from './theme-builder-base.ts';
 import { buildAccessibilityReport, countReport, exportReadiness } from './theme-check-engine.ts';
 import type { AccessibilityReport, ExportReadiness, ReportCounts } from './theme-check-types.ts';
 import type { ThemeEvaluation, ThemeEvaluator } from './theme-draft-evaluation.ts';
@@ -35,7 +35,12 @@ export async function takeExportSnapshot(
   draft: ThemeDraft,
   evaluator: ThemeEvaluator,
 ): Promise<ExportSnapshot> {
-  const { envelope, revision } = draft;
+  const { revision } = draft;
+  const baseIsCurrent = isShippedBase(draft.envelope.base);
+  // A base with this build's digest is this build's base, whatever label it was saved under: a
+  // draft restored from before the Playground stamped Cinder's published version says
+  // `workspace` (COR-231). Every artifact is made from the snapshot, so export it relabelled.
+  const envelope = baseIsCurrent ? { ...draft.envelope, base: cinderThemeBase() } : draft.envelope;
   const entries = await Promise.all(
     THEME_CONTEXT_IDS.map(
       async (context) => [context, await evaluator.evaluate(envelope, revision, context)] as const,
@@ -54,9 +59,7 @@ export async function takeExportSnapshot(
     report,
     readiness: exportReadiness(report, true, false),
     counts: countReport(report),
-    baseIsCurrent:
-      envelope.base.sourceDigest === CINDER_BASE.sourceDigest &&
-      envelope.base.packageVersion === CINDER_BASE.packageVersion,
+    baseIsCurrent,
     sourceIsValid: entries.every(([, evaluation]) => evaluation.ok),
   };
 }

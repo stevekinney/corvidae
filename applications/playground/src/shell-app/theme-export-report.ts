@@ -5,8 +5,7 @@
  * never a certification, and it contains no timestamp so the same revision reports the same.
  */
 
-import { CINDER_BASE } from '@lostgradient/cinder/tokens/runtime';
-
+import { isShippedBase } from './theme-builder-base.ts';
 import { reportFindings } from './theme-check-engine.ts';
 import { THEME_CONTEXT_IDS } from './theme-draft-types.ts';
 import { themeFileSlug } from './theme-envelope.ts';
@@ -43,9 +42,7 @@ export function buildValidationReport(
     cinderBase: {
       packageVersion: envelope.base.packageVersion,
       sourceDigest: envelope.base.sourceDigest,
-      matchesThisBuild:
-        envelope.base.sourceDigest === CINDER_BASE.sourceDigest &&
-        envelope.base.packageVersion === CINDER_BASE.packageVersion,
+      matchesThisBuild: isShippedBase(envelope.base),
     },
     sourceValidity: report.sourceValidity,
     findings: {

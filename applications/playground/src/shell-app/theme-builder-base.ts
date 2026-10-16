@@ -17,7 +17,12 @@ export function cinderThemeBase(): ThemeBase {
   };
 }
 
-/** True when an embedded base is the one this build of Cinder ships. */
+/**
+ * True when an embedded base is the one this build of Cinder ships. The source digest is the
+ * identity: it hashes the resolver and documents only, while the package version is a label that
+ * read `workspace` before the Playground stamped the published one, and that a published package
+ * can carry from an earlier release with the same corpus.
+ */
 export function isShippedBase(base: ThemeBase): boolean {
   return base.sourceDigest === CINDER_BASE.sourceDigest;
 }

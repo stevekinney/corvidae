@@ -8,7 +8,7 @@
 
 import { CINDER_BASE, computeSourceDigest } from '@lostgradient/cinder/tokens/runtime';
 
-import { cinderThemeBase } from './theme-builder-base.ts';
+import { cinderThemeBase, isShippedBase } from './theme-builder-base.ts';
 import {
   checkDocumentLimits,
   checkFileSize,
@@ -197,9 +197,11 @@ async function classifyEnvelope(
     currentPackageVersion: CINDER_BASE.packageVersion,
     currentSourceDigest: CINDER_BASE.sourceDigest,
   };
-  const compatible =
-    envelope.base.sourceDigest === CINDER_BASE.sourceDigest &&
-    envelope.base.packageVersion === CINDER_BASE.packageVersion;
+  // The digest is the base's identity; the version only labels it. A file exported before the
+  // Playground stamped Cinder's published version names its base `workspace`, and one exported
+  // from a published package may carry a version this build does not, yet the same digest is the
+  // same corpus either way.
+  const compatible = isShippedBase(envelope.base);
   const base = { ...comparison, compatible };
   const facts = envelopeFacts(envelope);
   const axes = envelopeAxes(envelope);

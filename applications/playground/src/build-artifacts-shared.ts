@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { cinderPackageVersionPlugin } from './cinder-package-version-plugin.ts';
 import { PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { playgroundSveltePlugin } from './playground-svelte-plugin.ts';
 
@@ -94,7 +95,10 @@ export async function writeGeneratedEntries(
 }
 
 export const SHARED_BUILD_OPTIONS = {
-  plugins: [playgroundSveltePlugin({ generate: 'client', injectCss: true })],
+  plugins: [
+    playgroundSveltePlugin({ generate: 'client', injectCss: true }),
+    cinderPackageVersionPlugin(),
+  ],
   // Follow only the `@lostgradient/cinder` root exports a page actually
   // imports. Without it, every page bundle walks every module the root
   // re-exports, including `fullShikiHighlighter`'s `shiki/langs` and

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { PLAYGROUND_IMPORT_OPTIMIZATION, coordinatedBuild } from './build-artifacts-shared.ts';
+import { cinderPackageVersionPlugin } from './cinder-package-version-plugin.ts';
 import type { ComponentDocumentationPayload } from './component-documentation-types.ts';
 import { PLAYGROUND_ROOT, PLAYGROUND_TEMP_ROOT } from './playground-paths.ts';
 import { playgroundSveltePlugin } from './playground-svelte-plugin.ts';
@@ -115,7 +116,7 @@ export async function loadShellServerRenderer(): Promise<ShellServerRendererLoad
     const result = await coordinatedBuild(() =>
       Bun.build({
         entrypoints: [join(PLAYGROUND_ROOT, 'src', 'shell-app', 'shell-server-entry.ts')],
-        plugins: [playgroundSveltePlugin({ generate: 'server' })],
+        plugins: [playgroundSveltePlugin({ generate: 'server' }), cinderPackageVersionPlugin()],
         optimizeImports: PLAYGROUND_IMPORT_OPTIMIZATION,
         target: 'bun',
         format: 'esm',
@@ -253,7 +254,7 @@ export function loadPageServerRenderer(): Promise<PageServerRendererLoadResult> 
       const result = await coordinatedBuild(() =>
         Bun.build({
           entrypoints: [join(PLAYGROUND_ROOT, 'src', 'page-server-entry.ts')],
-          plugins: [playgroundSveltePlugin({ generate: 'server' })],
+          plugins: [playgroundSveltePlugin({ generate: 'server' }), cinderPackageVersionPlugin()],
           optimizeImports: PLAYGROUND_IMPORT_OPTIMIZATION,
           target: 'bun',
           format: 'esm',

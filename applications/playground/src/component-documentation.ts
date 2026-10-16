@@ -18,6 +18,7 @@ import {
 } from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
 import { PACKAGE_MAP_PATH } from './playground-paths.ts';
+import { readLastPublishedVersion } from './published-version.ts';
 import {
   addReadmeHeadingAnchors,
   readmeAnchorId,
@@ -183,12 +184,9 @@ function isRawPackageManifest(value: unknown): value is RawPackageManifest {
  * error the manifest shape check uses, since a package the map does not record
  * is just as unusable here.
  */
-async function readLastPublishedVersion(componentSource: ComponentSource): Promise<string> {
-  const packageMap: unknown = await Bun.file(PACKAGE_MAP_PATH).json();
-  const workspaces = isObject(packageMap) ? packageMap['workspaces'] : undefined;
-  const entry = isObject(workspaces) ? workspaces[componentSource.packageName] : undefined;
-  const version = isObject(entry) ? entry['lastPublishedVersion'] : undefined;
-  if (typeof version !== 'string') {
+async function readDocumentedVersion(componentSource: ComponentSource): Promise<string> {
+  const version = await readLastPublishedVersion(componentSource.packageName);
+  if (version === undefined) {
     throw new ComponentDocumentationError(
       'malformed-components-manifest',
       `${PACKAGE_MAP_PATH} records no lastPublishedVersion for ${componentSource.packageName}`,
@@ -207,7 +205,7 @@ export async function loadPackageManifestForDocumentation(
       `${componentSource.manifestPath} does not match the documentation manifest shape`,
     );
   }
-  const version = await readLastPublishedVersion(componentSource);
+  const version = await readDocumentedVersion(componentSource);
   return { ...raw, package: { version } };
 }
 
