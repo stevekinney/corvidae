@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
+import { documentsForResolutionOrder } from '../../src/tokens/runtime/context-order.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
-import { buildResolvedContexts, documentsForResolutionOrder } from './resolved-contexts.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
+import { buildResolvedContexts } from './resolved-contexts.ts';
 function motionFixture() {
   const baseDocument: TokenDocument = {
     duration: {

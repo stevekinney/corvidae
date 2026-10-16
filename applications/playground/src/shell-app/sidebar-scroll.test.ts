@@ -4,7 +4,7 @@
  * - `readSidebarScroll` / `writeSidebarScroll` wrap `sessionStorage` access in
  *   try/catch so a thrown access (private mode, disabled storage, quota) never
  *   breaks scrolling. We stub `sessionStorage` at the global level per case,
- *   mirroring how `preview-store.test.ts` stubs `localStorage`.
+ *   stubbing the global the same way `component-page-theme.test.ts` does.
  * - `persistScrollPosition` is the attachment: on attach it restores the saved
  *   offset; on scroll it persists (debounced); on teardown it clears the timer
  *   and removes the listener. We drive it with a fake element so we can assert

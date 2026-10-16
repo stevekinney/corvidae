@@ -126,4 +126,52 @@ describe('VirtualList — only the active sticky row is held at the edge', () =>
     // And not on the bare sticky attribute, which every mounted header carries.
     expect(source).not.toContain("[data-cinder-sticky='true'] {\n    position: sticky;");
   });
+
+  test('turns native scroll anchoring off where the list owns the scroll, and only there', async () => {
+    // A row pinning leaves flow, and native anchoring then scrolls the list back by
+    // its size (COR-1523), so a list scrolling its own container opts out. Under
+    // `windowScroll` the page owns the scroll and keeps its anchoring, except under
+    // `dynamicSize`, whose rule must come later to win at equal specificity. The
+    // container case is also asserted on the computed value in a real browser, in
+    // `scripts/browser-fixtures/tests/virtual-list-sticky.playwright.ts`.
+    const source = await Bun.file(new URL('./virtual-list.css', import.meta.url).pathname).text();
+    const ruleBody = (selector: string): string => {
+      const start = source.indexOf(`${selector} {`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      return source.slice(start, source.indexOf('\n  }', start));
+    };
+    const ruleStart = (selector: string): number => source.indexOf(`${selector} {`);
+
+    expect(ruleBody('  .cinder-virtual-list')).toContain('overflow-anchor: none;');
+    expect(ruleBody(".cinder-virtual-list[data-cinder-window-scroll='true']")).toContain(
+      'overflow-anchor: auto;',
+    );
+    expect(ruleBody(".cinder-virtual-list[data-cinder-dynamic-size='true']")).toContain(
+      'overflow-anchor: none;',
+    );
+    // A window-scrolled list keeps page anchoring with sticky rows too: a header
+    // pinning no longer shifts layout (COR-1535), so no rule singles them out.
+    expect(source).not.toContain('data-cinder-sticky-rows');
+    expect(ruleStart(".cinder-virtual-list[data-cinder-dynamic-size='true']")).toBeGreaterThan(
+      ruleStart(".cinder-virtual-list[data-cinder-window-scroll='true']"),
+    );
+  });
+
+  test('never lets the geometry it writes inline transition', async () => {
+    // Reduced motion forces a 0.01ms duration onto every element with the property
+    // list left at `all`, so a written inset otherwise lands a frame late (COR-1535).
+    // Asserted on computed values in a real browser in
+    // `scripts/browser-fixtures/tests/virtual-list.playwright.ts`.
+    const source = await Bun.file(new URL('./virtual-list.css', import.meta.url).pathname).text();
+    const selector = [
+      '.cinder-virtual-list__spacer',
+      '.cinder-virtual-list__window',
+      '.cinder-virtual-list__row',
+    ].join(',\n  ');
+    const start = source.indexOf(`  ${selector} {`);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(source.slice(start, source.indexOf('\n  }', start))).toContain(
+      'transition-property: none;',
+    );
+  });
 });

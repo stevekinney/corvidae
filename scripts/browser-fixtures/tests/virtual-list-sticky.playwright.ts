@@ -100,6 +100,13 @@ test.describe('Sticky headers and keyboard navigation', () => {
     await expect.poll(async () => offsetWithinList(page, 50)).toBe(0);
     const headerBox = await header.boundingBox();
     expect(Math.round(headerBox?.height ?? 0)).toBe(rowHeight);
+
+    // A list scrolling its own container owns its scroll anchor, fixed-height rows
+    // included: native anchoring once scrolled it back a row as a header pinned
+    // (COR-1523), and nothing inside the container needs it.
+    expect(
+      await listLocator(page).evaluate((element) => getComputedStyle(element).overflowAnchor),
+    ).toBe('none');
   });
 
   test('lands an arrow destination below the header rather than under it', async ({

@@ -202,6 +202,10 @@ describe('buildBaselineDiffReport', () => {
         ],
         flakyTests: [],
         skippedTests: [],
+        globalErrors: [],
+        selected: 1,
+        executed: 1,
+        notRun: [],
       },
       decision: { apply: true, reason: 'Applied with 1 accepted behavioural failure(s).' },
     };

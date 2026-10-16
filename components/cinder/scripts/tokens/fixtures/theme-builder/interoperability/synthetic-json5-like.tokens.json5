@@ -1,0 +1,6 @@
+{
+  // JSON5-style tokens: comments, unquoted keys, trailing commas.
+  color: {
+    brand: { $type: 'color', $value: '#336699', },
+  },
+}

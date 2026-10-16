@@ -138,6 +138,7 @@ describe('computeExports', () => {
         'src/tokens/cinder.resolver.json': '{}\n',
         'src/tokens/color.tokens.json': '{}\n',
         'src/tokens/resolved/light.json': '{}\n',
+        'src/tokens/runtime/index.ts': 'export {};\n',
         'src/tokens/registry.generated.ts': 'export {};\n',
       },
       (packageRoot) => {
@@ -148,6 +149,7 @@ describe('computeExports', () => {
           './tokens/resolver',
           './tokens/color',
           './tokens/resolved/light',
+          './tokens/runtime',
           './tokens/registry',
         ]);
       },

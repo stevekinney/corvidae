@@ -684,3 +684,124 @@ test.describe('Virtual list - COR-374 coalesces held keyboard navigation during 
     }
   });
 });
+
+test.describe('Virtual list - COR-1523 window-scrolled sticky headers keep keyboard steps', () => {
+  // The page scrolls here, not the list. The active header leaves flow when it pins
+  // as its index leaves the rendered window, and the page's native scroll anchoring
+  // then pulled the page back a row, undoing a keyboard step that nothing in the
+  // list re-issues any more. The shift came from the window's inset landing a frame
+  // late under reduced motion (COR-1535); with that gone the page keeps its
+  // anchoring, which this list leaves on.
+  const mountSelector = '#example-mount-sticky-headers-window-scroll';
+  const itemHeight = 40;
+
+  test('N rapid ArrowDown presses advance N rows through a header pinning', async ({
+    componentPage,
+  }) => {
+    const page = await componentPage.open({
+      entry: getEntry('virtual-list'),
+      theme: lightTheme,
+      viewport: desktopViewport,
+      fixtureName: 'assertion',
+    });
+    const list = page.locator(`${mountSelector} .cinder-virtual-list`);
+    await list.scrollIntoViewIfNeeded();
+    const listTop = await list.evaluate(
+      (element) => element.getBoundingClientRect().top + window.scrollY,
+    );
+    await page.evaluate((top) => window.scrollTo(0, top), listTop);
+    // Header 0 sits at the leading edge with row 1 just below it.
+    // Compared rounded on both sides: the list can start on a fractional pixel.
+    await expect
+      .poll(() => page.evaluate(() => Math.round(window.scrollY)))
+      .toBe(Math.round(listTop));
+    await expect
+      .poll(() => renderedIndices(page, mountSelector).then((indices) => indices.includes(1)))
+      .toBe(true);
+    await list.evaluate((element) => element.focus({ preventScroll: true }));
+    // The page's anchoring is on, so a shift as the header pins would show here.
+    expect(await list.evaluate((element) => getComputedStyle(element).overflowAnchor)).toBe('auto');
+
+    const presses = 10;
+    for (let index = 0; index < presses; index += 1) {
+      await page.keyboard.press('ArrowDown');
+      await page.waitForTimeout(40);
+    }
+
+    // Row 11 under the 40px header, past the point where header 0 has pinned.
+    await expect
+      .poll(() => page.evaluate(() => Math.round(window.scrollY)), { timeout: 3_000 })
+      .toBe(Math.round(listTop + presses * itemHeight));
+    await page.waitForTimeout(250);
+    expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(
+      Math.round(listTop + presses * itemHeight),
+    );
+  });
+});
+
+test.describe('Virtual list - COR-1535 geometry applies in the frame it is written', () => {
+  // Reduced motion (which `themeContextOptions` emulates) sets every element's
+  // `transition-duration` to 0.01ms while `transition-property` stays `all`, so an
+  // element that declared no transition at all animates every property change. Its
+  // computed value then holds the old one until the next frame. The window's inset
+  // lagging a frame behind a sticky row that had already left flow is the shift that
+  // page anchoring corrected in COR-1523.
+  const mountSelector = '#example-mount-sticky-headers-window-scroll';
+
+  test('the window, pinned row and spacer take their inline geometry at once', async ({
+    componentPage,
+  }) => {
+    const page = await componentPage.open({
+      entry: getEntry('virtual-list'),
+      theme: lightTheme,
+      viewport: desktopViewport,
+      fixtureName: 'assertion',
+    });
+    expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(
+      true,
+    );
+    const list = page.locator(`${mountSelector} .cinder-virtual-list`);
+    await list.scrollIntoViewIfNeeded();
+    const listTop = await list.evaluate(
+      (element) => element.getBoundingClientRect().top + window.scrollY,
+    );
+    await page.evaluate((top) => window.scrollTo(0, top), listTop);
+    await expect
+      .poll(() => renderedIndices(page, mountSelector).then((indices) => indices.includes(1)))
+      .toBe(true);
+
+    // Row 70, twenty rows into section 2: past the overscan, so header 50 is pinned. Read in
+    // the same task as the write, after the component's synchronous update: a
+    // transition would leave the computed value at the old offset here.
+    const geometry = await list.evaluate(async (element, top) => {
+      window.scrollTo(0, top + 2_800);
+      await new Promise<void>((resolve) => {
+        new MutationObserver((_, observer) => {
+          observer.disconnect();
+          resolve();
+        }).observe(element, { subtree: true, attributes: true, childList: true });
+      });
+      const parts = ['__spacer', '__window'].map(
+        (suffix) => element.querySelector(`.cinder-virtual-list${suffix}`) as HTMLElement,
+      );
+      const pinned = element.querySelector<HTMLElement>('[data-cinder-sticky-pinned="true"]');
+      const rows = [...element.querySelectorAll<HTMLElement>('.cinder-virtual-list__row')];
+      const [spacer, rendered] = parts as [HTMLElement, HTMLElement];
+      return {
+        pinned: pinned !== null,
+        windowInset: [rendered.style.insetBlockStart, getComputedStyle(rendered).insetBlockStart],
+        pinnedInset: pinned
+          ? [pinned.style.insetBlockStart, getComputedStyle(pinned).insetBlockStart]
+          : null,
+        spacerSize: [spacer.style.blockSize, getComputedStyle(spacer).blockSize],
+        animations: [spacer, rendered, ...rows].flatMap((node) => node.getAnimations()).length,
+      };
+    }, listTop);
+
+    expect(geometry.pinned).toBe(true);
+    expect(geometry.windowInset[1]).toBe(geometry.windowInset[0]);
+    expect(geometry.pinnedInset?.[1]).toBe(geometry.pinnedInset?.[0]);
+    expect(geometry.spacerSize[1]).toBe(geometry.spacerSize[0]);
+    expect(geometry.animations).toBe(0);
+  });
+});

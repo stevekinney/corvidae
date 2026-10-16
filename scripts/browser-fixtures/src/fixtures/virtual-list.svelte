@@ -7,6 +7,7 @@
   import HorizontalStickyHeaders from './virtual-list/horizontal-sticky-headers.svelte';
   import StickyHeaders from './virtual-list/sticky-headers.svelte';
   import StickyHeadersSmoothScroll from './virtual-list/sticky-headers-smooth-scroll.svelte';
+  import StickyHeadersWindowScroll from './virtual-list/sticky-headers-window-scroll.svelte';
   import TenThousand from './virtual-list/ten-thousand.svelte';
 </script>
 
@@ -19,3 +20,5 @@
 <div id="example-mount-adaptive-overscan"><AdaptiveOverscan /></div>
 <div id="example-mount-adaptive-overscan-dynamic-size"><AdaptiveOverscanDynamicSize /></div>
 <div id="example-mount-horizontal-sticky-header-clip"><HorizontalStickyHeaderClip /></div>
+<!-- Last, since it lays out its full virtual height in the document and pushes nothing below it. -->
+<div id="example-mount-sticky-headers-window-scroll"><StickyHeadersWindowScroll /></div>

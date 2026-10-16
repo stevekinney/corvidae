@@ -1,0 +1,15 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "type": {
+    "body": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": ["Inter", "sans-serif"],
+        "fontSize": { "value": 1, "unit": "em" },
+        "fontWeight": 400,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.5
+      }
+    }
+  }
+}

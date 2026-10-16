@@ -6,7 +6,10 @@
  * report and applies only the baselines whose pixels changed, added and renamed
  * ones, and provenance, and deletes orphans. A suite that completed with
  * behavioural failures is applied only with `--accept-behavioural-failures`; a
- * screenshot failure never is. Ported from cinder's wrapper and rewritten for
+ * screenshot failure never is. A run that did not complete normally (no report,
+ * a webServer or globalSetup error, no executed test, or selected tests that
+ * never ran) is never applied and deletes nothing, and orphans are deleted only
+ * after a full, unfiltered run that regenerated baselines (COR-1537). Ported from cinder's wrapper and rewritten for
  * isolation (COR-1512); see `scripts/browser-fixtures/visual-baselines.md`.
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -55,6 +58,7 @@ import {
   CONTAINER_RESULTS_PATH,
   RESULTS_FILE_NAME,
   decideApply,
+  incompleteRunReasons,
   nonPassingTests,
   summarizePlaywrightResults,
   type SuiteResults,
@@ -69,6 +73,8 @@ export async function startRendererRun(
   sha: string;
   runDirectory: string;
   acceptBehaviouralFailures: boolean;
+  /** Arguments forwarded to Playwright: any of them may narrow the selection. */
+  forwarded: readonly string[];
   results: SuiteResults | undefined;
   hostLoad: { start: HostLoadReading; end: HostLoadReading };
 }> {
@@ -122,15 +128,27 @@ export async function startRendererRun(
     sha,
     runDirectory,
     acceptBehaviouralFailures: options.acceptBehaviouralFailures,
+    forwarded: options.forwarded,
     results: readSuiteResults(outputDirectory),
     hostLoad: { start: loadAtStart, end: loadAtEnd },
   };
 }
 
-/** The container's Playwright JSON report, summarized; undefined when the run produced none. */
+/**
+ * The container's Playwright JSON report, summarized; undefined when the run produced none.
+ * A report a crashed run left truncated throws, so nothing downstream reads it as empty.
+ */
 export function readSuiteResults(outputDirectory: string): SuiteResults | undefined {
   const path = join(outputDirectory, RESULTS_FILE_NAME);
-  return existsSync(path) ? summarizePlaywrightResults(readFileSync(path, 'utf8')) : undefined;
+  if (!existsSync(path)) return undefined;
+  try {
+    return summarizePlaywrightResults(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `${path} is not a complete Playwright JSON report; nothing is applied (${error instanceof Error ? error.message : String(error)}).`,
+      { cause: error },
+    );
+  }
 }
 
 /** The fixture names the rendered commit's manifest declares, per component. */
@@ -157,21 +175,40 @@ async function readSpecSources(directory: string): Promise<Map<string, string>> 
   );
 }
 
-async function main(): Promise<number> {
-  const run = await startRendererRun('update', process.argv.slice(2));
+export type UpdateRun = Awaited<ReturnType<typeof startRendererRun>>;
+
+/** Where an update run applies: the working tree's Linux baselines, and how to read the committed ones. */
+export type UpdateRunTarget = {
+  baselineDirectory: string;
+  /** Extracts the Linux baselines and specs of `sha` (never the working tree) under `destination`. */
+  extractCommitted: (sha: string, destination: string) => void;
+};
+
+type Output = { stdout: (text: string) => void; stderr: (text: string) => void };
+
+/** Decide, report, and apply a finished update run. Returns the wrapper's exit code. */
+export async function applyUpdateRun(
+  run: UpdateRun,
+  target: UpdateRunTarget,
+  output: Output,
+): Promise<number> {
   const { exitCode, sha, runDirectory, hostLoad, results } = run;
   const decision = decideApply(exitCode, results, run.acceptBehaviouralFailures);
-  process.stdout.write(`${decision.reason}\n`);
-  if (results === undefined) return exitCode === 0 ? 1 : exitCode;
+  const failed = exitCode === 0 ? 1 : exitCode;
+  // An incomplete run's output says nothing about which baselines exist: every baseline it
+  // never reached would read as an orphan. Refuse before building a report from it.
+  if (results === undefined || incompleteRunReasons(results).length > 0) {
+    output.stderr(`${decision.reason}\n`);
+    return failed;
+  }
+  output.stdout(`${decision.reason}\n`);
 
   const outputDirectory = join(runDirectory, 'out');
   // Outside the repository: Playwright clears scripts/browser-fixtures/test-results on every run.
   const reportDirectory = join(runDirectory, 'report');
   const oldRoot = join(runDirectory, 'committed');
   await mkdir(oldRoot, { recursive: true });
-  const oldArchive = join(runDirectory, 'committed.tar');
-  archiveCommit(sha, oldArchive, [LINUX_BASELINE_DIRECTORY, 'scripts/browser-fixtures/tests']);
-  extractArchive(oldArchive, oldRoot);
+  target.extractCommitted(sha, oldRoot);
 
   const manifestPath = join(outputDirectory, 'manifest.json');
   const specSources = await readSpecSources(join(oldRoot, 'scripts/browser-fixtures/tests'));
@@ -200,29 +237,57 @@ async function main(): Promise<number> {
     `Visual baseline refresh rendered from ${sha}`,
     { hostLoad, suite: { exitCode, results, decision } },
   );
-  process.stdout.write(`Report: ${written.markdown}\n`);
-  if (!decision.apply) return exitCode === 0 ? 1 : exitCode;
+  output.stdout(`Report: ${written.markdown}\n`);
+  if (!decision.apply) return failed;
 
   // Provenance must come from this run: the in-container writer records the archived commit.
   const provenance = parseBaselineProvenance(
     readFileSync(join(outputDirectory, 'linux', PROVENANCE_FILE_NAME), 'utf8'),
   );
   if (provenance.renderedSourceSha !== sha || provenance.suiteExitCode !== exitCode) {
-    process.stderr.write('provenance.json was not written by this run; nothing is applied.\n');
+    output.stderr('provenance.json was not written by this run; nothing is applied.\n');
     return 1;
   }
+  const orphans = filesToDelete(report);
+  if (regenerated.length === 0 && orphans.length > 0) {
+    output.stderr(
+      `The run regenerated no baseline, so all ${orphans.length} committed baselines read as orphans; nothing is applied or deleted.\n`,
+    );
+    return 1;
+  }
+  // Only a full, unfiltered run proves a baseline has no test: a scoped run never selects the rest.
+  const fullRun = provenance.componentScope === 'all' && run.forwarded.length === 0;
+  const deleted = fullRun ? orphans : [];
   const applied = filesToApply(report);
-  const deleted = filesToDelete(report);
-  await applyBaselines(
-    join(outputDirectory, 'linux'),
-    resolve(REPOSITORY_ROOT, LINUX_BASELINE_DIRECTORY),
-    applied,
-    deleted,
-  );
-  process.stdout.write(
+  await applyBaselines(join(outputDirectory, 'linux'), target.baselineDirectory, applied, deleted);
+  output.stdout(
     `Applied ${applied.length} baselines and provenance.json; deleted ${deleted.length} orphans; kept ${report.restored.length} restored baselines.\n`,
   );
+  if (!fullRun && orphans.length > 0) {
+    output.stdout(
+      `The run was scoped (component scope ${JSON.stringify(provenance.componentScope)}, Playwright arguments ${JSON.stringify(run.forwarded)}), so it kept ${orphans.length} orphan${orphans.length === 1 ? '' : 's'}; delete them only after a full, unfiltered run.\n`,
+    );
+  }
   return 0;
+}
+
+async function main(): Promise<number> {
+  const run = await startRendererRun('update', process.argv.slice(2));
+  return applyUpdateRun(
+    run,
+    {
+      baselineDirectory: resolve(REPOSITORY_ROOT, LINUX_BASELINE_DIRECTORY),
+      extractCommitted: (sha, destination) => {
+        const archive = join(run.runDirectory, 'committed.tar');
+        archiveCommit(sha, archive, [LINUX_BASELINE_DIRECTORY, 'scripts/browser-fixtures/tests']);
+        extractArchive(archive, destination);
+      },
+    },
+    {
+      stdout: (text) => process.stdout.write(text),
+      stderr: (text) => process.stderr.write(text),
+    },
+  );
 }
 
 if (import.meta.main) {

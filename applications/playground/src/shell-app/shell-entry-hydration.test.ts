@@ -9,13 +9,17 @@ describe('landing shell hydration policy', () => {
     expect(source).not.toContain('shellHydration ??=');
   });
 
-  test('wires every deferred toolbar button through the retryable bootstrap', async () => {
+  test('applies no color override to the documentation page and has no deferred panel toggles', async () => {
     const source = await Bun.file(new URL('./shell-entry.ts', import.meta.url)).text();
 
-    // The bootstrap's own behavior, including a retry after a failed attempt, is
-    // covered by deferred-toggle.test.ts; this pins that the entry uses it rather
-    // than registering a listener that removes itself.
-    expect(source).toContain("import { attachDeferredToggle } from './deferred-toggle.ts'");
+    // The color panel is a link into the theme builder now, so the landing page has no panel to
+    // hydrate and no override store to apply: documentation routes show shipped Cinder.
+    expect(source).not.toContain('color-token-overrides');
+    expect(source).not.toContain('ColorTokenOverrides');
+    // The removed toolbar panels have no deferred toggles; the component search trigger keeps its.
+    expect(source).not.toContain('Color token panel');
+    expect(source).not.toContain('Token inspector');
+    expect(source).not.toContain('bootstrapDeferredToggle');
     expect(source).not.toContain('once: true');
   });
 
@@ -35,7 +39,7 @@ describe('landing shell hydration policy', () => {
   test('follows an operating system theme change on the unhydrated landing page', async () => {
     const source = await Bun.file(new URL('./shell-entry.ts', import.meta.url)).text();
 
-    // The toggle's label and the session color overrides must follow a system theme switch the way a
+    // The toggle's label must follow a system theme switch the way a
     // click does, or the first click afterwards picks the theme from stale state.
     expect(source).toContain('followSystemTheme,');
     expect(source).toContain('followSystemTheme((systemTheme) => {');

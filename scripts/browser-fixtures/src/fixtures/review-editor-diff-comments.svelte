@@ -59,8 +59,11 @@
         prefix: '',
         suffix: '\n- Ship dashboard',
         status: 'anchored',
-        from: 0,
-        to: 0,
+        // The quote's ProseMirror range, so the first sync decorates it. A 0/0
+        // seed waits for the plugin's 300 ms deferred re-anchor, and a small
+        // screenshot can settle before it lands (COR-1536).
+        from: 18,
+        to: 28,
       },
       comments: [
         {

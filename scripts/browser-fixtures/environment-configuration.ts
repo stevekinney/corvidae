@@ -23,6 +23,8 @@ const schema = z.object({
     .optional()
     .meta({ env: 'CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY' }),
   fixtureHostMode: z.string().optional().meta({ env: 'FIXTURE_HOST_MODE' }),
+  // Where Playwright's JSON reporter writes; the update entry point reads the report back.
+  playwrightJsonOutputFile: z.string().optional().meta({ env: 'PLAYWRIGHT_JSON_OUTPUT_FILE' }),
   tmpdir: z.string().optional().meta({ env: 'TMPDIR' }),
 });
 
@@ -39,6 +41,7 @@ function selectedEnvironment(): Record<string, string> {
     'CINDER_UPDATE_SEAM_AUDIT',
     'CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY',
     'FIXTURE_HOST_MODE',
+    'PLAYWRIGHT_JSON_OUTPUT_FILE',
     'TMPDIR',
   ];
   return Object.fromEntries(

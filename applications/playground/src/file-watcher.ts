@@ -26,6 +26,7 @@ import { bundleEntryByKey } from './scenario-bundle.ts';
 import { resetShellBuildPromise } from './shell-bundle.ts';
 import { triggerReload } from './sse-broadcast.ts';
 import { resetPageServerRendererPromise, resetShellRendererWarmupState } from './ssr-renderer.ts';
+import { invalidateThemeBuilderBundles } from './theme-builder-bundle.ts';
 
 /**
  * The blast radius of a watched change, computed once per debounce window.
@@ -171,6 +172,9 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   // fires the event that causes the browser to re-request — guarantees any
   // post-invalidation request starts a genuinely new build instead.
   scenarioBuildPromiseByKey.clear();
+  // The theme builder bundles import both the shell sources and the examples, so every
+  // tier of change can affect them. Rebuilding is lazy, on the next request.
+  invalidateThemeBuilderBundles();
 
   if (scope.kind === 'examples') {
     for (const name of scope.names) {
@@ -183,8 +187,7 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   }
 
   // `shell`-scope and `components`-scope changes share the same clearing
-  // footprint because `shell-app/color-token-panel.svelte` (rendered by
-  // `shell.svelte`) imports Button, ColorPicker, Input, and Popover from the
+  // footprint because `shell-app/shell.svelte` imports Button from the
   // `@lostgradient/cinder` package root. A components-package change can still
   // affect the shell's compiled output.
   // The only difference between the two scopes is
@@ -192,7 +195,7 @@ export function invalidateCachesForChange(scope: ChangeScope): void {
   // canonical shell now owns README and prop metadata as well as the preview,
   // so reloading only the iframe would leave that outer documentation stale.
   // Session-only shell state is persisted before navigation, so the document
-  // refresh does not discard filters or color-token overrides.
+  // refresh does not discard filters.
   pageEntryByName.clear();
   clearPageArtifacts();
   pageBuildPromiseByKey.clear();

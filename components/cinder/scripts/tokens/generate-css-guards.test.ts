@@ -1,9 +1,9 @@
 import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
-import { type CorpusEntry } from './corpus.ts';
+import { type CorpusEntry } from '../../src/tokens/runtime/corpus.ts';
+import { assertUniqueOverrideCssProperties } from '../../src/tokens/runtime/css-support.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
-import { assertUniqueOverrideCssProperties } from './css-support.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
 const colorValue = (lightness: number) => ({
   colorSpace: 'oklch',
   components: [lightness, 0.1, 250],

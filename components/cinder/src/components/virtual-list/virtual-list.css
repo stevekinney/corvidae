@@ -9,6 +9,24 @@
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
     contain: layout paint;
+
+    /*
+     * A list that owns its scroll container owns its scroll anchor too: the
+     * rendered window is positioned from the container's scroll offset, so
+     * whatever the browser picks as its own anchor moves only because the
+     * component moved it.
+     *
+     * Native anchoring can then only fight it. It once did: under reduced motion
+     * the window's inset landed a frame after a pinning sticky row left flow, and
+     * the browser scrolled the list back a row to hold its anchor, undoing a
+     * keyboard press that had just landed (COR-1523). The geometry no longer lags
+     * (see the `transition-property` rule below, COR-1535), but nothing inside
+     * this container needs the browser's anchor, so any later shift of the same
+     * kind cannot turn into the list scrolling itself.
+     *
+     * `windowScroll` gives that back below: there the page scrolls, not the list.
+     */
+    overflow-anchor: none;
   }
 
   /*
@@ -29,25 +47,30 @@
    * establishes the scroll container that subtree's offsets are positioned
    * within a document sense of "contained," and dropping it here would cost
    * nothing this mode needs.
+   *
+   * Native anchoring stays available to the page. The document's scroll
+   * position is not this component's: when content above the list changes
+   * height, the browser's anchor is what keeps the reader on the same rows, and
+   * the component's `documentOffset` is only re-measured on a window scroll or
+   * resize, so excluding the list's rows from anchor selection could jump the
+   * viewport with nothing here to notice. Dynamic sizing still opts out below.
    */
   .cinder-virtual-list[data-cinder-window-scroll='true'] {
     block-size: auto;
     overflow: visible;
+    overflow-anchor: auto;
   }
 
   /*
-   * Dynamic sizing anchors the viewport itself: when a measured row above the
-   * fold turns out to differ from its estimate, the component adds that delta to
-   * the scroll offset before paint.
-   *
-   * A browser with native scroll anchoring would ALSO adjust scrollTop to hold
-   * its own anchor when that row resizes, and the manual correction then applies
-   * the same delta on top of the browser's — over-scrolling by the row's size
+   * Dynamic sizing anchors the viewport itself, in either mode: when a measured
+   * row above the fold turns out to differ from its estimate, the component adds
+   * that delta to the scroll offset before paint. A browser anchoring natively
+   * would apply the same delta on top, over-scrolling by the row's size
    * difference every time an image loads or a line wraps. Only one of the two can
    * own the anchor, and this component owns it.
    *
-   * Scoped to dynamic mode: fixed-height rows never resize, so native anchoring
-   * has nothing to act on there and the default is left alone.
+   * Written after the `windowScroll` rule at the same specificity, so a
+   * window-scrolled list with dynamic sizing still opts out.
    */
   .cinder-virtual-list[data-cinder-dynamic-size='true'] {
     overflow-anchor: none;
@@ -113,6 +136,29 @@
   /* Rows are sized along the inline axis; flex must not shrink them to fit. */
   .cinder-virtual-list[data-cinder-orientation='horizontal'] .cinder-virtual-list__row {
     flex: 0 0 auto;
+  }
+
+  /*
+   * The elements whose geometry the component writes inline never transition it.
+   *
+   * Reduced motion (`foundation.css`) sets every element's `transition-duration` to
+   * 0.01ms and leaves `transition-property` at its initial `all`, so an element that
+   * declared no transition animates every property change anyway — and a running
+   * transition holds the old computed value until the next frame samples it. Here
+   * that held the window's inset, the pinned row's inset and the spacer's size a
+   * frame behind each scroll, while `position`, which cannot animate, changed at
+   * once: as the active sticky row pinned and left flow, every row sat a header
+   * higher for a frame, and the page's native scroll anchoring scrolled back by
+   * that much to compensate (COR-1535). Every window advance painted a row off,
+   * sticky rows or not.
+   *
+   * Only `transition-property` is set. The duration stays the reduced-motion rule's
+   * to force; with no property to apply it to, nothing here animates.
+   */
+  .cinder-virtual-list__spacer,
+  .cinder-virtual-list__window,
+  .cinder-virtual-list__row {
+    transition-property: none;
   }
 
   .cinder-virtual-list__spacer {
