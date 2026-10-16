@@ -415,22 +415,13 @@ test('the root package depends on no workspace but its compiler configuration', 
 
 test('the preflight and global inputs name files, not the whole repository', async () => {
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
-  // Every task depends on `//#preflight`, so its inputs are part of every task key. It checks
-  // that the install matches the lockfile, so exactly the manifests and the lockfile belong in it.
-  const inputs: string[] = configuration.tasks['//#preflight']?.inputs ?? [];
-  const manifest = await Bun.file(join(root, 'package.json')).json();
-  const manifests = ['package.json', 'bun.lock'];
-  for (const pattern of manifest.workspaces as string[]) {
-    for await (const path of new Bun.Glob(`${pattern}/package.json`).scan(root))
-      manifests.push(path);
-  }
-  for (const path of manifests) {
-    expect(
-      inputs.some((input) => new Bun.Glob(input).match(path)),
-      path,
-    ).toBe(true);
-  }
-  for (const input of inputs) expect(input, input).toMatch(/(?:package\.json|bun\.lock)$/);
+  // Every task depends on `//#preflight`, so its inputs are part of every task key. It never caches,
+  // so it re-verifies the install against the lockfile on every run whatever its inputs are; the
+  // inputs only decide which edits re-key every task. The lockfile changes whenever any dependency
+  // does. A manifest edit that leaves it alone (a script, a field) re-keys only that package and its
+  // dependents, through `transit`, rather than the whole repository. No inputs at all would mean
+  // Turborepo's default, every file in the repository.
+  expect(configuration.tasks['//#preflight']?.inputs).toEqual(['bun.lock']);
   // A directory glob in `globalDependencies` invalidates every task when anything under it changes.
   for (const dependency of configuration.globalDependencies as string[]) {
     expect(dependency, dependency).not.toContain('*');

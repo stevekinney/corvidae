@@ -50,12 +50,7 @@
     },
     "//#preflight": {
       "cache": false,
-      "inputs": [
-        "package.json",
-        "bun.lock",
-        "{applications,components,packages,testing,internal}/*/package.json",
-        "scripts/browser-fixtures/package.json"
-      ]
+      "inputs": ["bun.lock"]
     },
     "transit": {
       "dependsOn": ["//#preflight", "^transit"]
