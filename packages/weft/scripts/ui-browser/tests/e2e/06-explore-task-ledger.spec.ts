@@ -143,24 +143,36 @@ test('an acknowledged cancellation is attributed to the owning attempt', async (
   await checkA11y('workers—task with acknowledged cancellation');
 });
 
-test('task ledger remains usable at supported widths in both themes', async ({ page }) => {
-  for (const theme of ['light', 'dark'] as const) {
+for (const theme of ['light', 'dark'] as const) {
+  test(`task ledger remains usable at supported widths in the ${theme} theme`, async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.addInitScript((selectedTheme) => {
+      localStorage.setItem('weft-ui-theme', selectedTheme);
+    }, theme);
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize(viewport);
-      await page.addInitScript((selectedTheme) => {
-        localStorage.setItem('weft-ui-theme', selectedTheme);
-      }, theme);
       await openTask(page, E2E_TASK_OPERATION_ID);
 
+      const label = `${E2E_TASK_OPERATION_ID} (${theme}, ${viewport.width}px)`;
       await expect(region(page, 'Lease clocks')).toBeVisible();
       await expect(region(page, 'Attempt history')).toBeVisible();
+      await expect(region(page, 'Cancellation evidence')).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-        true,
+      await expectNoHorizontalOverflow(region(page, 'Lease clocks'), `${label} lease clocks`);
+      await expectNoHorizontalOverflow(
+        region(page, 'Cancellation evidence'),
+        `${label} cancellation evidence`,
       );
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        `${label} page width`,
+      ).toBe(true);
+      await checkA11y(label);
     }
-  }
-});
+  });
+}
 
 for (const theme of ['light', 'dark'] as const) {
   for (const operationId of EVIDENCE_TASKS) {
