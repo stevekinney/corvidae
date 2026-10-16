@@ -32,6 +32,7 @@ import {
 } from '@tanstack/svelte-query';
 
 import { queryKeys } from '../../lib/query.ts';
+import { isTaskAttemptList } from './task-attempt-evidence.ts';
 import {
   DEFAULT_TASK_DIAGNOSTICS_INPUT,
   type TaskDiagnosticsOutput,
@@ -86,10 +87,26 @@ function hasValidTaskLedgerHeaderKeys(value: Record<string, unknown>): boolean {
   );
 }
 
+function hasValidTaskLedgerLeaseFields(value: Record<string, unknown>): boolean {
+  return ['leaseDeadline', 'attemptDeadline', 'lastHeartbeatAt', 'scheduleToCloseDeadline'].every(
+    (field) =>
+      value[field] === undefined ||
+      (typeof value[field] === 'number' && Number.isFinite(value[field])),
+  );
+}
+
+/** A `weft.tasks.get` response the dashboard refuses to render, distinct from a transport or server fault. */
+export class MalformedTaskLedgerError extends Error {
+  constructor() {
+    super('Weft returned a malformed task ledger response.');
+    this.name = 'MalformedTaskLedgerError';
+  }
+}
+
 /** Validates the generated operation's currently-unknown output at the Console trust boundary. */
 export function parseTaskLedgerDetail(value: unknown): TaskLedgerDetail {
   if (!isTaskLedgerDetail(value)) {
-    throw new Error('Weft returned a malformed task ledger response.');
+    throw new MalformedTaskLedgerError();
   }
   return value;
 }
@@ -101,7 +118,9 @@ function isTaskLedgerDetail(value: unknown): value is TaskLedgerDetail {
     !TASK_LEDGER_STATES.has(value['state']) ||
     !hasRequiredTaskLedgerStrings(value) ||
     !hasRequiredTaskLedgerNumbers(value) ||
-    !hasValidTaskLedgerHeaderKeys(value)
+    !hasValidTaskLedgerHeaderKeys(value) ||
+    !hasValidTaskLedgerLeaseFields(value) ||
+    !isTaskAttemptList(value['attempts'])
   ) {
     return false;
   }

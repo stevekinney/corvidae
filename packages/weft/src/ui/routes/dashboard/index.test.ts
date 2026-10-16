@@ -77,13 +77,64 @@ describe('Dashboard', () => {
       limit: 50,
     });
     scripted.routeUrl('/reviews', { items: [] });
+    scripted.routeJsonRpcMethod('weft.system.lease', {
+      mode: 'none',
+      status: 'disabled',
+      holdsLease: false,
+    });
     const client = realClient();
 
-    const { getByText, getAllByText } = render(DashboardIndexHarness, { props: { client } });
+    const { getByText, getAllByText, queryByText } = render(DashboardIndexHarness, {
+      props: { client },
+    });
 
     await waitFor(() => expect(getByText('Workflows by status')).not.toBeNull());
     expect(getAllByText('9').length).toBeGreaterThan(0);
     expect(getByText('Failures by category')).not.toBeNull();
     expect(getByText('Recent activity')).not.toBeNull();
+    expect(queryByText(/Engine lease contested/)).toBeNull();
+  });
+
+  test('wires a contested engine lease into the critical-alerts band', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeUrl('/v1/health', { status: 'ok' });
+    scripted.routeJsonRpcMethod('weft.workflows.aggregate', {
+      total: 1,
+      groups: [{ key: 'running', count: 1 }],
+      truncated: false,
+    });
+    scripted.routeJsonRpcMethod('weft.tasks.diagnostics', {
+      items: [],
+      summary: {
+        stuckQueued: 0,
+        staleInflight: 0,
+        retryStorms: 0,
+        allWorkersAtCapacity: 0,
+        deadLettered: 0,
+        delayed: 0,
+        unadoptedTerminal: 0,
+      },
+      limit: 50,
+    });
+    scripted.routeUrl('/reviews', { items: [] });
+    scripted.routeJsonRpcMethod('weft.system.lease', {
+      mode: 'lease',
+      status: 'contested',
+      holdsLease: false,
+      holderId: 'engine-b',
+      heldSince: 1,
+      expiresAt: 3,
+      lastRenewedAt: 2,
+      fencingEpoch: 9,
+      lossReason: 'deposed',
+    });
+    const client = realClient();
+
+    const { findByText } = render(DashboardIndexHarness, { props: { client } });
+
+    const chip = await findByText('Engine lease contested · deposed', undefined, {
+      timeout: 3_000,
+    });
+    expect(chip.closest('a')?.getAttribute('href')).toBe('/system?tab=health');
   });
 });
