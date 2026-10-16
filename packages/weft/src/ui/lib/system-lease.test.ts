@@ -64,6 +64,20 @@ describe('weft.system.lease', () => {
     expect(() => parseSystemLease(null)).toThrow('malformed engine lease response');
   });
 
+  test('rejects lease instants outside the ECMAScript Date range instead of throwing a RangeError', () => {
+    for (const field of ['heldSince', 'expiresAt', 'lastRenewedAt'] as const) {
+      for (const outOfRange of [1e20, -1e20, 8.64e15 + 1]) {
+        expect(
+          () => parseSystemLease({ ...CONTESTED, [field]: outOfRange }),
+          `${field}: ${outOfRange}`,
+        ).toThrow(MalformedSystemLeaseError);
+      }
+      // The range bounds themselves are representable dates.
+      const atBound = parseSystemLease({ ...CONTESTED, [field]: -8.64e15 });
+      expect(new Date(atBound[field] as number).toISOString()).toBe('-271821-04-20T00:00:00.000Z');
+    }
+  });
+
   test("accepts each of EngineLeaseHealth's coherent shapes", () => {
     const { lossReason: _lossReason, ...holder } = CONTESTED;
     const coherent: unknown[] = [

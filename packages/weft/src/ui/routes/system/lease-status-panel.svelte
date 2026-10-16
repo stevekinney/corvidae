@@ -2,8 +2,8 @@
   /**
    * Engine ownership-lease status from `weft.system.lease` (COR-124). This
    * tab is the dashboard's only reader of that operation. Loading,
-   * malformed response, and server faults are explicit; a failed read never
-   * renders as healthy.
+   * malformed response, and server faults are explicit; a failed read,
+   * including a failed refetch over a cached reading, never renders a status.
    */
   import { Alert, Badge, DescriptionList, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -25,7 +25,12 @@
     refetchInterval: 30_000,
   }));
 
-  const presentation = $derived(leaseQuery.data ? leaseStatusPresentation(leaseQuery.data) : null);
+  // A failed background refetch keeps the cached lease beside the error; the
+  // last reading is no longer current, so the badge and details are dropped
+  // rather than shown confidently above the fault.
+  const presentation = $derived(
+    leaseQuery.data && !leaseQuery.isError ? leaseStatusPresentation(leaseQuery.data) : null,
+  );
 
   function instant(value: number | undefined): string {
     return value === undefined ? 'Not reported' : new Date(value).toISOString();

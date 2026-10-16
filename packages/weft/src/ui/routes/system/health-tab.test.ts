@@ -7,7 +7,7 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import ToastHost from '../../app/toast-host.svelte';
-import { createQueryClient } from '../../lib/query.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import HealthTab from './health-tab.svelte';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
 import { realClient, ScriptedFetch } from './system-test-support.test-support.ts';
@@ -157,6 +157,35 @@ describe('HealthTab', () => {
     const { findByText, queryByText, unmount } = await renderHealthTab(queryClientWithoutRetries());
     expect(await findByText('Malformed server response')).not.toBeNull();
     expect(queryByText('Healthy')).toBeNull();
+    unmount();
+  });
+
+  test('a failed background refetch drops the cached healthy badge instead of showing it above the fault', async () => {
+    scripted = scriptedWithLease({
+      mode: 'lease',
+      status: 'healthy',
+      holdsLease: true,
+      holderId: 'engine-a',
+      heldSince: 1_700_000_000_000,
+      expiresAt: 1_700_000_030_000,
+      lastRenewedAt: 1_700_000_010_000,
+      fencingEpoch: 3,
+    });
+    routeBaseline(scripted);
+    const queryClient = queryClientWithoutRetries();
+    const { findByText, queryByText, unmount } = await renderHealthTab(queryClient);
+    expect(await findByText('Healthy')).not.toBeNull();
+    // Later routes win: the next lease read faults while the healthy reading stays cached.
+    scripted.routeJsonRpcError('weft.system.lease', {
+      code: -32000,
+      message: 'Forbidden',
+      data: { httpStatus: 403 },
+    });
+    await queryClient.refetchQueries({ queryKey: queryKeys.systemLease() });
+    expect(queryClient.getQueryData(queryKeys.systemLease())).toBeDefined();
+    expect(await findByText('Not authorized')).not.toBeNull();
+    expect(queryByText('Healthy')).toBeNull();
+    expect(queryByText('engine-a')).toBeNull();
     unmount();
   });
 

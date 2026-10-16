@@ -8,7 +8,8 @@
  *
  * The response is validated here, at the dashboard's trust boundary, so a
  * drifted payload surfaces as an explicit malformed-response state rather
- * than a misleading "healthy" reading.
+ * than a misleading "healthy" reading. Lease instants must also fall inside
+ * the ECMAScript Date range, so formatting one can never throw.
  *
  * @module
  */
@@ -41,6 +42,16 @@ function isOptionalNumber(value: unknown): boolean {
 }
 
 const HOLDER_TIMING_FIELDS = ['heldSince', 'expiresAt', 'lastRenewedAt', 'fencingEpoch'] as const;
+const LEASE_INSTANT_FIELDS = ['heldSince', 'expiresAt', 'lastRenewedAt'] as const;
+
+/** The ECMAScript time value range: a larger magnitude makes `new Date(t).toISOString()` throw. */
+const MAX_DATE_TIME_VALUE = 8.64e15;
+
+function isOptionalInstant(value: unknown): boolean {
+  return (
+    value === undefined || (typeof value === 'number' && Math.abs(value) <= MAX_DATE_TIME_VALUE)
+  );
+}
 
 function hasHolderEvidence(value: Record<string, unknown>): boolean {
   return (
@@ -100,6 +111,7 @@ function isSystemLease(value: unknown): value is SystemLease {
       value['lossReason'] === 'deposed' ||
       value['lossReason'] === 'renewal-unconfirmable') &&
     HOLDER_TIMING_FIELDS.every((field) => isOptionalNumber(value[field])) &&
+    LEASE_INSTANT_FIELDS.every((field) => isOptionalInstant(value[field])) &&
     isCoherentLease(value)
   );
 }
