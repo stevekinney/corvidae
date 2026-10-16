@@ -2367,6 +2367,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           'CONFLICT',
         );
       }
+      // Another process ended the run first: one that adopted it after this
+      // process lost it, or ended its own view of it at the same moment. The
+      // log has settled the run, so this process's later boundary for it
+      // has nothing to record, and logging it would make the log unfoldable.
+      if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) === 'ended') return;
       if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) !== 'promoted') {
         throw new BureauError(
           `Run "${event.runId}" cannot log "${event.type}" in session "${sessionId}": the steering log has no live promotion of it.`,
