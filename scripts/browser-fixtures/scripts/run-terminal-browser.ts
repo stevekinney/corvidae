@@ -36,7 +36,7 @@ function playwright(args: string[], environment: Record<string, string> = {}) {
     [process.execPath, '--bun', 'playwright', 'test', '--config', configuration, ...args],
     {
       cwd: root,
-      env: { ...terminalEnvironment(process.env), ...environment },
+      env: { ...process.env, ...terminalEnvironment(), ...environment },
       stdout: 'pipe',
       stderr: 'inherit',
     },
@@ -93,7 +93,7 @@ async function main(): Promise<number> {
       ],
       {
         cwd: root,
-        env: { ...terminalEnvironment(process.env), PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath },
+        env: { ...process.env, ...terminalEnvironment(), PLAYWRIGHT_JSON_OUTPUT_FILE: reportPath },
         stdout: 'inherit',
         stderr: 'inherit',
       },

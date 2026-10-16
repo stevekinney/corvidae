@@ -139,7 +139,8 @@
 
   const runStep = async (step: FixtureStep): Promise<void> => {
     if (step === 'capture') {
-      (await untilButton('Capture terminal keys')).click();
+      const captureControl = await untilButton('Capture terminal keys');
+      captureControl.click();
       // The shared sweep blurs the focused element once the page is visible, which releases
       // capture as it should. Capture again after that one blur so the resting state is the one
       // the fixture names; a reader's own blur afterwards behaves normally.
@@ -157,7 +158,8 @@
       dispatchPaste('echo one\necho two\u001b[31m\n');
       await untilDialog();
     } else {
-      (await untilButton('Export')).click();
+      const exportControl = await untilButton('Export');
+      exportControl.click();
       await untilDialog();
       if (step === 'export-stale') {
         session.write('output after the snapshot\r\n');

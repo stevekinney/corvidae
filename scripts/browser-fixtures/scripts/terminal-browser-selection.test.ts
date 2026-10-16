@@ -121,12 +121,12 @@ describe('the required terminal selection', () => {
 });
 
 describe('the terminal environment', () => {
-  test('forces the component scope to the terminal, whatever was set', () => {
-    expect(terminalEnvironment({ CINDER_TEST_COMPONENTS: 'button,card', KEEP: 'yes' })).toEqual({
-      CINDER_TEST_COMPONENTS: 'terminal',
-      KEEP: 'yes',
-    });
-    expect(terminalEnvironment({})['CINDER_TEST_COMPONENTS']).toBe('terminal');
+  test('overrides the component scope with the terminal, which wins over a leftover scope', () => {
+    expect(terminalEnvironment()).toEqual({ CINDER_TEST_COMPONENTS: 'terminal' });
+    // Spread after the inherited environment, as the runner does, it replaces a leftover scope.
+    const inherited: Record<string, string> = { KEEP: 'yes', CINDER_TEST_COMPONENTS: 'button' };
+    const merged: Record<string, string> = { ...inherited, ...terminalEnvironment() };
+    expect(merged).toEqual({ KEEP: 'yes', CINDER_TEST_COMPONENTS: 'terminal' });
   });
 });
 

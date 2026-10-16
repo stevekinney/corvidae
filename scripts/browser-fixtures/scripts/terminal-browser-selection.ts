@@ -17,15 +17,13 @@ export const TERMINAL_PROJECTS = ['chromium', 'firefox-terminal', 'webkit-termin
 export const TERMINAL_FILE_FILTER = String.raw`/tests/terminal-[^/]*\.playwright\.ts$`;
 
 /**
- * The environment the terminal run needs. `CINDER_TEST_COMPONENTS` limits which components the
+ * The environment overrides the terminal run needs. `CINDER_TEST_COMPONENTS` limits which components the
  * screenshot helper captures, and a leftover scope that leaves out `terminal` makes it skip every
  * terminal image while every guard still passes. This command is about the terminal, so the scope
  * is forced to it whatever the caller had set.
  */
-export function terminalEnvironment(
-  base: Readonly<Record<string, string | undefined>>,
-): Record<string, string | undefined> {
-  return { ...base, CINDER_TEST_COMPONENTS: 'terminal' };
+export function terminalEnvironment(): { CINDER_TEST_COMPONENTS: string } {
+  return { CINDER_TEST_COMPONENTS: 'terminal' };
 }
 
 /** Specs every one of the three browsers must run. */
