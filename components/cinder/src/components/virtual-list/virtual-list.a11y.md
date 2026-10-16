@@ -47,7 +47,7 @@ It also keeps its place in index order among the rendered rows, because reading 
 
 ## Review outcome
 
-Reviewed against Chromium on 2026-09-12, covering the sticky keyboard model this component introduces. Every item below is enforced as a browser test in `packages/testing/tests/virtual-list.playwright.ts`, so the outcome is re-checked on every change rather than recorded once.
+Reviewed against Chromium on 2026-09-12, covering the sticky keyboard model this component introduces. Every item below is enforced as a browser test in `scripts/browser-fixtures/tests/virtual-list.playwright.ts`, so the outcome is re-checked on every change rather than recorded once.
 
 **The model holds in real CSS.** `position: sticky` does hold the section header at the container's leading edge, at its own height, on both axes. This is not checkable in the unit suite — happy-dom computes no layout and no cascade, so the header never pins there and every arrow offset would have been a header's height out with the whole suite green.
 

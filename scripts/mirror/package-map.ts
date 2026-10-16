@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { packagePayloadAlgorithm } from './package-payload.ts';
 import { publicationContractAlgorithm, publicationSnapshotSchemaVersion } from './source-digest.ts';
+import { workspaceDirectories as workspaceParentDirectories } from './target-definitions.ts';
 
 /**
  * Every corvidae workspace's disposition when the mirror transform emits a public target.
@@ -16,7 +17,7 @@ import { publicationContractAlgorithm, publicationSnapshotSchemaVersion } from '
 
 const mapFile = new URL('./package-map.json', import.meta.url);
 
-const workspaceDirectories = ['applications', 'components', 'packages', 'internal'] as const;
+const workspaceDirectories = workspaceParentDirectories;
 
 const npmName = z.string().min(1);
 const reason = z.string().min(1);

@@ -2,8 +2,18 @@ export type MirrorTarget = 'weft' | 'cinder';
 
 export class MirrorTargetError extends Error {}
 
-/** The workspace roots shared by discovery and target manifests. */
-export const workspaceDirectories = ['applications', 'components', 'packages', 'internal'] as const;
+/**
+ * The corvidae workspace roots that discovery reads. A target's own roots are in `workspaces`.
+ * This file stays free of imports because the sync loads historical copies of it on their own;
+ * `scripts/workspace-contract.test.ts` keeps the list equal to `scripts/workspace-directories.ts`.
+ */
+export const workspaceDirectories = [
+  'applications',
+  'components',
+  'packages',
+  'testing',
+  'internal',
+] as const;
 
 /**
  * Per-target facts that are not in `package-map.json`, which rules on what a workspace *becomes*
@@ -29,7 +39,7 @@ export const targetDefinitions = {
   },
   cinder: {
     rootName: 'cinder-workspace',
-    workspaces: workspaceDirectories.map((directory) => `${directory}/*`),
+    workspaces: ['applications/*', 'components/*', 'packages/*', 'internal/*'],
     catalog: true,
     members: [
       '@lostgradient/cinder',

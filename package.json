@@ -9,6 +9,7 @@
     "applications/*",
     "components/*",
     "packages/*",
+    "testing/*",
     "internal/*",
     "scripts/browser-fixtures"
   ],

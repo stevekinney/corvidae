@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { throwingRejectionOf } from '../promise-outcome.test-support.ts';
+import { workspaceParentDirectories } from '../workspace-directories.ts';
 import {
   coverageReport,
   discoverWorkspaceNames,
@@ -23,7 +24,7 @@ async function fixtureWorkspaceTree(
   workspaces: Record<string, string>,
 ): Promise<{ root: string; [Symbol.asyncDispose](): Promise<void> }> {
   const root = await mkdtemp(join(tmpdir(), 'corvidae-package-map-'));
-  for (const directory of ['applications', 'components', 'packages', 'internal']) {
+  for (const directory of workspaceParentDirectories) {
     await mkdir(join(root, directory), { recursive: true });
   }
   for (const [path, name] of Object.entries(workspaces)) {
@@ -166,12 +167,9 @@ describe('mirror package map', () => {
       'armorer',
       'conversationalist',
       '@lostgradient/cryptography',
-      '@lostgradient/embeddings',
-      '@lostgradient/tool-protocol',
       '@lostgradient/lifecycle',
       '@lostgradient/bureau',
       '@lostgradient/memory',
-      '@lostgradient/skills',
     ]) {
       const disposition = await dispositionFor(retired);
       expect(disposition.disposition, `${retired} is retired`).toBe('exclude');
@@ -195,7 +193,14 @@ describe('mirror package map', () => {
     }
 
     const names = publishedOnly.entries.map((entry) => entry.name);
-    expect(names, 'The one public orphan is ruled on').toContain('@lostgradient/cinder-mcp');
+    for (const orphan of [
+      '@lostgradient/cinder-mcp',
+      // Folded into Armorer after their target retired, so no workspace carries either name.
+      '@lostgradient/embeddings',
+      '@lostgradient/tool-protocol',
+    ]) {
+      expect(names, `${orphan} is ruled on`).toContain(orphan);
+    }
     expect(names.length, 'Published-only names are unique').toBe(new Set(names).size);
   });
 

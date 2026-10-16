@@ -83,7 +83,7 @@
       every container, exercising the `@attach` mount/unmount lifecycle. The
       `id`, by contrast, stays `example-mount-<scenario>` (revision-free) on
       purpose: it mirrors `component-page.svelte`, whose id format is the
-      contract the `packages/testing` browser suite queries. Folding `revision`
+      contract the `testing/testing` browser suite queries. Folding `revision`
       into the id would diverge from that contract and make this a worse
       regression harness. A `bump()` flush can momentarily hold the old and new
       nodes — same id — at once, but every test reads the DOM only after

@@ -316,12 +316,9 @@ describe('workspace discovery and target membership', () => {
     'armorer',
     'conversationalist',
     '@lostgradient/cryptography',
-    '@lostgradient/embeddings',
-    '@lostgradient/tool-protocol',
     '@lostgradient/lifecycle',
     '@lostgradient/bureau',
     '@lostgradient/memory',
-    '@lostgradient/skills',
   ])('the retired workspace %s is excluded and claimed by no target', async (workspace) => {
     const map = await loadPackageMap();
     expect(map.workspaces[workspace]?.disposition).toBe('exclude');

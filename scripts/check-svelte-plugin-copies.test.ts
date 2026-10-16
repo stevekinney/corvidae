@@ -29,11 +29,11 @@ describe('Weft’s copies of the Svelte compile plugin', () => {
   test('copy the plugin and the environment module it imports into Weft’s scripts/lib', () => {
     expect(SVELTE_PLUGIN_COPIES).toEqual([
       {
-        source: 'packages/testing/src/svelte-plugin.ts',
+        source: 'testing/testing/src/svelte-plugin.ts',
         copy: 'packages/weft/scripts/lib/svelte-plugin.ts',
       },
       {
-        source: 'packages/testing/src/environment-configuration.ts',
+        source: 'testing/testing/src/environment-configuration.ts',
         copy: 'packages/weft/scripts/lib/environment-configuration.ts',
       },
     ]);

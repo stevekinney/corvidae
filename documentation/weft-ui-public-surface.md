@@ -221,7 +221,7 @@ Why the numbers differ:
 
 ### Method, for COR-1450 to reproduce
 
-The measurement compiled the source the weft-ui development host compiles: entry `packages/weft/scripts/ui-browser/index.html` (which loads `main.ts` and mounts the app; before the move it was the UI workspace's `scripts/browser/index.html`), at corvidae `f8d6df87` (branch `cor-1456`), with Bun 1.4.2. It called `Bun.build` with the options of `buildBrowser` in `packages/testing/src/build-browser.ts`, switched to production and minified:
+The measurement compiled the source the weft-ui development host compiles: entry `packages/weft/scripts/ui-browser/index.html` (which loads `main.ts` and mounts the app; before the move it was the UI workspace's `scripts/browser/index.html`), at corvidae `f8d6df87` (branch `cor-1456`), with Bun 1.4.2. It called `Bun.build` with the options of `buildBrowser` in `testing/testing/src/build-browser.ts`, switched to production and minified:
 
 ```ts
 await Bun.build({
@@ -241,7 +241,7 @@ await Bun.build({
 });
 ```
 
-`sveltePlugin` is `packages/testing/src/svelte-plugin.ts` (COR-1455 copies it to `packages/weft/scripts/lib/svelte-plugin.ts`), and `wasmPlugin` is the unexported plugin of the same name in `build-browser.ts`. The build logged no warnings. File counts and sizes came from `result.outputs`, which matched a walk of the output directory. Grammar and theme sets came from the keys of the metafile's `outputs[*].inputs`, classified by `/@shikijs\/langs\/dist\/([^/]+)\.mjs$/` and `/@shikijs\/themes\/dist\/([^/]+)\.mjs$/`.
+`sveltePlugin` is `testing/testing/src/svelte-plugin.ts` (COR-1455 copies it to `packages/weft/scripts/lib/svelte-plugin.ts`), and `wasmPlugin` is the unexported plugin of the same name in `build-browser.ts`. The build logged no warnings. File counts and sizes came from `result.outputs`, which matched a walk of the output directory. Grammar and theme sets came from the keys of the metafile's `outputs[*].inputs`, classified by `/@shikijs\/langs\/dist\/([^/]+)\.mjs$/` and `/@shikijs\/themes\/dist\/([^/]+)\.mjs$/`.
 
 Two notes for COR-1450:
 

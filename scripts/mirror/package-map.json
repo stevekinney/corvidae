@@ -9965,16 +9965,6 @@
       "basis": "retired-from-publication",
       "reason": "Published from the agent-bureau mirror until the repository owner ruled on 2026-10-14 that only Weft and Cinder's packages publish from now on, which retired the agent-bureau target. The registry keeps @lostgradient/cryptography@0.0.1, the last release; no sync maintains it any more. `exclude` rather than `private-workspace` because no remaining target carries it. Deprecating the registry entry and archiving stevekinney/agent-bureau are the owner's to do, outside this pipeline."
     },
-    "@lostgradient/embeddings": {
-      "disposition": "exclude",
-      "basis": "retired-from-publication",
-      "reason": "Published from the agent-bureau mirror until the repository owner ruled on 2026-10-14 that only Weft and Cinder's packages publish from now on, which retired the agent-bureau target. The registry keeps @lostgradient/embeddings@0.0.1, the last release; no sync maintains it any more. `exclude` rather than `private-workspace` because no remaining target carries it. Deprecating the registry entry and archiving stevekinney/agent-bureau are the owner's to do, outside this pipeline."
-    },
-    "@lostgradient/tool-protocol": {
-      "disposition": "exclude",
-      "basis": "retired-from-publication",
-      "reason": "Published from the agent-bureau mirror until the repository owner ruled on 2026-10-14 that only Weft and Cinder's packages publish from now on, which retired the agent-bureau target. The registry keeps @lostgradient/tool-protocol@0.0.3, the last release; no sync maintains it any more. `exclude` rather than `private-workspace` because no remaining target carries it. Deprecating the registry entry and archiving stevekinney/agent-bureau are the owner's to do, outside this pipeline."
-    },
     "@lostgradient/lifecycle": {
       "disposition": "exclude",
       "basis": "retired-from-publication",
@@ -10016,11 +10006,6 @@
       "reason": "Shipped as private source to the public agent-bureau mirror and never published to npm. The repository owner retired that target on 2026-10-14, when only Weft and Cinder's packages kept publishing, so no remaining target carries this workspace."
     },
     "@lostgradient/memory": {
-      "disposition": "exclude",
-      "basis": "retired-target",
-      "reason": "Shipped as private source to the public agent-bureau mirror and never published to npm. The repository owner retired that target on 2026-10-14, when only Weft and Cinder's packages kept publishing, so no remaining target carries this workspace."
-    },
-    "@lostgradient/skills": {
       "disposition": "exclude",
       "basis": "retired-target",
       "reason": "Shipped as private source to the public agent-bureau mirror and never published to npm. The repository owner retired that target on 2026-10-14, when only Weft and Cinder's packages kept publishing, so no remaining target carries this workspace."
@@ -10077,6 +10062,20 @@
         "disposition": "orphan-untouched",
         "visibility": "never-published",
         "reason": "Private and never published. The labs chat-room deployment is explicitly out of this project's scope and follows its own disposition."
+      },
+      {
+        "name": "@lostgradient/embeddings",
+        "disposition": "orphan-untouched",
+        "visibility": "public",
+        "reason": "Published from the agent-bureau mirror until the repository owner retired that target on 2026-10-14. Its source was then folded into `armorer`, so corvidae has no workspace by this name. Leaving the registry entry exactly as it is breaks no consumer; deprecating it is a permanently public act and the owner's to do.",
+        "lastPublishedVersion": "0.0.1"
+      },
+      {
+        "name": "@lostgradient/tool-protocol",
+        "disposition": "orphan-untouched",
+        "visibility": "public",
+        "reason": "Published from the agent-bureau mirror until the repository owner retired that target on 2026-10-14. Its source was then folded into `armorer`'s `./protocol` subpath, so corvidae has no workspace by this name. Leaving the registry entry exactly as it is breaks no consumer; deprecating it is a permanently public act and the owner's to do.",
+        "lastPublishedVersion": "0.0.3"
       }
     ]
   },

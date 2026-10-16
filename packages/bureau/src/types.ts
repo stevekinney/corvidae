@@ -42,8 +42,8 @@ import type {
   TokenUsage,
   Validator,
 } from '@lostgradient/operative';
-import type { SkillActivationRecord, SkillCatalogRevision } from '@lostgradient/skills';
-import type { ToolPolicy } from '@lostgradient/tool-protocol';
+import type { SkillActivationRecord, SkillCatalogRevision } from './skills';
+import type { ToolPolicy } from 'armorer/protocol';
 import type {
   ConditionalTextValueStore,
   HistoryPolicy,

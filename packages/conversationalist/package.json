@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@lostgradient/lifecycle": "workspace:*",
-    "@lostgradient/tool-protocol": "workspace:*",
-    "zod": "catalog:",
-    "js-yaml": "catalog:"
+    "armorer": "workspace:*",
+    "js-yaml": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "catalog:",

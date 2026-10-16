@@ -1,7 +1,7 @@
 /**
  * Provenance and version pins for the committed Linux visual baselines.
  *
- * Ported from cinder's `packages/testing/scripts/baseline-provenance.ts` and
+ * Ported from cinder's `testing/testing/scripts/baseline-provenance.ts` and
  * adapted for corvidae (COR-1512): the authoritative renderer is native
  * `linux/arm64` inside `mcr.microsoft.com/playwright:v<version>-jammy`, the
  * Playwright version comes from `bun.lock`, and Bun from the root

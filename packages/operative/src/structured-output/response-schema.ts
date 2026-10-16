@@ -1,4 +1,4 @@
-import { isJSONValue } from '@lostgradient/tool-protocol';
+import { isJSONValue } from 'armorer/protocol';
 import { z, ZodType } from 'zod';
 
 import { NonJsonOutputError, OutputSchemaConversionError, OutputValidationError } from '../errors';

@@ -1,7 +1,7 @@
 import type {
   ToolError as SharedToolError,
   ToolErrorCategory as SharedToolErrorCategory,
-} from '@lostgradient/tool-protocol';
+} from '../protocol';
 
 export type ToolErrorCategory = SharedToolErrorCategory;
 export type ToolError = SharedToolError;

@@ -13,6 +13,8 @@ Declare `"armorer": "workspace:*"` in the consuming workspace's dependencies. In
 - [How It Works](#how-it-works)
 - [Project Role](#project-role)
 - [Features](#features)
+- [Tool protocol](#tool-protocol)
+- [Embedding vectors](#embedding-vectors)
 - [Package Structure](#package-structure)
 - [Quick Start](#quick-start)
 - [Safety, Policy, and Metadata](#safety-policy-and-metadata)
@@ -35,7 +37,7 @@ Toolbox turns tool calling into a structured, observable, and searchable workflo
 
 ## How It Works
 
-A tool combines metadata, an input schema, and an execute function. A toolbox registers one or more tools, validates incoming calls, runs middleware and policy hooks, executes the matching tool, and emits typed lifecycle events. Provider adapters materialize the same toolbox into provider-specific tool declarations and parse provider tool calls back into the shared `@lostgradient/tool-protocol` contract.
+A tool combines metadata, an input schema, and an execute function. A toolbox registers one or more tools, validates incoming calls, runs middleware and policy hooks, executes the matching tool, and emits typed lifecycle events. Provider adapters materialize the same toolbox into provider-specific tool declarations and parse provider tool calls back into the shared tool protocol contract that `armorer/protocol` exports.
 
 ## Project Role
 
@@ -59,9 +61,52 @@ A tool combines metadata, an input schema, and an execute function. A toolbox re
 
 ## Runtime and export support
 
-Armorer is a private ESM workspace whose only export points to `src/index.ts`. Import tools, composition helpers, provider integrations, instrumentation, and test utilities from `armorer`. The consuming application compiles the source. Filesystem tools and server SDK integrations still require their underlying server capabilities; consolidation does not make those operations available in a browser.
+Armorer is a private ESM workspace with two exports. The root, `armorer`, points to `src/index.ts`: import tools, composition helpers, provider integrations, instrumentation, embedding utilities, and test utilities from it. The `armorer/protocol` subpath points to `src/protocol/index.ts` and carries only the JSON-safe tool protocol described below. The consuming application compiles the source. Filesystem tools and server SDK integrations still require their underlying server capabilities; consolidation does not make those operations available in a browser.
 
 Required runtime integrations are direct catalog-backed dependencies. Run this package's `lint`, `typecheck`, and `test` scripts against source; there is no package archive, generated declaration output, or library build to validate.
+
+## Tool protocol
+
+`armorer/protocol` owns the JSON-safe contracts that tool-producing and tool-consuming packages exchange: primitive, object, array, tool-call, tool-result, tool-error, tool-action, and tool-policy types, plus the functions that materialize permissive inputs into those records. It is a separate subpath because Conversationalist, and the browser Chat component through it, need the protocol without the rest of Armorer. The subpath imports nothing but its own files and `@lostgradient/lifecycle`, so importing it never pulls in the MCP, OpenAI Agents, or OpenTelemetry dependencies; `test/boundaries.test.ts` enforces that.
+
+**Materialization** turns a permissive runtime input into the protocol record that another package can store or exchange. A missing call identifier comes from the supplied generator or the Lifecycle runtime; omitted arguments become an empty object.
+
+```typescript
+import { materializeToolCall, materializeToolResult } from 'armorer/protocol';
+
+const call = materializeToolCall(
+  { name: 'lookup-order', arguments: { orderId: 'order-42' } },
+  { generateId: () => 'call-1' },
+);
+const result = materializeToolResult({
+  callId: call.id,
+  outcome: 'success',
+  content: { status: 'shipped' },
+});
+console.log(call.id, result.content);
+```
+
+Materialization preserves an existing identifier. It normalizes non-JSON values through serialization or a string fallback, and strips runtime-only result fields. It is not strict input validation or a deep-copy guarantee: already JSON-safe content can retain its object identity. Use `isJSONValue` or `assertJSONValue` when your boundary must reject unsupported values instead of representing them.
+
+`materializeToolResult` rejects a live stream because a synchronous call cannot wait for its chunks. Use `await materializeToolResultAsync(result, { signal })` to collect an async iterable before producing the record. The resulting `content` is an array of collected chunks, normalized as JSON; this API does not forward a live stream to the caller. The plural asynchronous helper collects results concurrently with `Promise.all`, so supply cancellation when the owner can stop waiting, and avoid collecting unbounded streams into one protocol record.
+
+## Embedding vectors
+
+The root export also owns the shared embedding contract that Memory and Operative's embedding providers use: `Embedder`, `EmbeddingVector`, and `EmbeddingVectorLike` describe providers and their vectors, `isEmbeddingVector` validates unknown arrays and typed arrays at trust boundaries, `computeEmbeddingVectorMagnitude` computes the Euclidean norm, and `cosineSimilarity` compares equal-length finite vectors.
+
+```typescript
+import { cosineSimilarity, isEmbeddingVector } from 'armorer';
+
+const candidate: unknown = new Float32Array([1, 0, 0]);
+if (!isEmbeddingVector(candidate, { dimension: 3 })) {
+  throw new TypeError('Expected a finite three-dimensional embedding');
+}
+
+const score = cosineSimilarity(candidate, [0, 1, 0]);
+console.log(score); // 0: the vectors are perpendicular.
+```
+
+`isEmbeddingVector` accepts arrays and numeric typed arrays, rejects `NaN`, infinity, sparse entries, `DataView`, and arbitrary objects with a `length` property, and rejects empty vectors unless `allowEmpty: true` is supplied. `cosineSimilarity` returns `0` for equal-length empty vectors or a zero-magnitude vector. Different lengths throw `RangeError`; non-finite entries throw `TypeError`. Similarity is a ranking value, not a probability or a model-independent confidence score.
 
 ## Package Structure
 

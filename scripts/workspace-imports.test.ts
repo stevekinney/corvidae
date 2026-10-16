@@ -4,6 +4,7 @@ import { isBuiltin } from 'node:module';
 import { join } from 'node:path';
 import ts from 'typescript';
 
+import { workspaceParentDirectories } from './workspace-directories.ts';
 import { declaresImportSpecifier } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
@@ -24,7 +25,7 @@ async function readManifest(path: string): Promise<Manifest> {
 // unscoped. Membership in the actual set of workspace names, discovered from disk once at module
 // load, is the only discriminator that still distinguishes an internal edge from an external one.
 const internalWorkspaceExports = new Map<string, unknown>(
-  ['applications', 'components', 'packages', 'internal'].flatMap((directory) =>
+  workspaceParentDirectories.flatMap((directory) =>
     readdirSync(join(root, directory), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .flatMap((entry): [string, unknown][] => {
@@ -60,6 +61,9 @@ const formerPackageNames = [
   '@cinder/testing',
   '@cinder/chat-room-lab',
   '@lostgradient/weft-ui',
+  '@lostgradient/embeddings',
+  '@lostgradient/tool-protocol',
+  '@lostgradient/skills',
 ];
 
 /**

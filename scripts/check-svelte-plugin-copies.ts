@@ -5,7 +5,7 @@
  * development dependency for every target except Cinder, so the import would not resolve in the
  * Weft repository. The UI's test preload (`packages/weft/src/ui/tests/setup.ts`), its browser host
  * (`packages/weft/scripts/ui-browser/`), and the dashboard build compile Svelte with the plugin
- * instead, so `packages/testing/src/svelte-plugin.ts` and the `./environment-configuration.ts` it
+ * instead, so `testing/testing/src/svelte-plugin.ts` and the `./environment-configuration.ts` it
  * imports are copied byte for byte into `packages/weft/scripts/lib/`. That pair is the only
  * vendoring the owner allowed for the move (Weft UI project rulings, COR-1455). This check, run
  * from the root `lint:root` script, fails when either copy is missing or differs from its source.
@@ -18,11 +18,11 @@ const root = join(import.meta.dir, '..');
 /** Each copy and the file it must equal, both relative to the repository root. */
 export const SVELTE_PLUGIN_COPIES = [
   {
-    source: 'packages/testing/src/svelte-plugin.ts',
+    source: 'testing/testing/src/svelte-plugin.ts',
     copy: 'packages/weft/scripts/lib/svelte-plugin.ts',
   },
   {
-    source: 'packages/testing/src/environment-configuration.ts',
+    source: 'testing/testing/src/environment-configuration.ts',
     copy: 'packages/weft/scripts/lib/environment-configuration.ts',
   },
 ] as const;
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
     process.stderr.write(`  ${copy} (copy of ${source})\n`);
   }
   process.stderr.write(
-    'Copy the source over the copy unchanged; change the plugin in packages/testing, not in Weft.\n',
+    'Copy the source over the copy unchanged; change the plugin in testing/testing, not in Weft.\n',
   );
   process.exitCode = 1;
 }

@@ -24,7 +24,7 @@ import { isTypeScriptConfiguration } from './target-resolvability.ts';
  * and `assertBuildInputsPresent` fails a sync whose clone is missing one. A workspace that turns
  * out to need anything else fails there, by name, rather than being patched in here.
  *
- * **Why files are read as bytes.** `packages/testing/src/helpers/__fixtures__` carries a PNG
+ * **Why files are read as bytes.** `testing/testing/src/helpers/__fixtures__` carries a PNG
  * baseline inside a source tree, so a plan typed as string-to-string could not carry it. Reading
  * every file as bytes removes the text-or-binary guess entirely; git compares bytes either way.
  *

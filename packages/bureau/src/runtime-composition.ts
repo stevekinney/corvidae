@@ -84,7 +84,7 @@ import {
   type SkillCatalogRevision,
   type SkillEventMap,
   type ToolPolicy,
-} from '@lostgradient/skills';
+} from './skills';
 import {
   type AnyWorkflowDefinition,
   type ConditionalTextValueStore,
@@ -1538,7 +1538,7 @@ export interface RuntimeComposition {
    */
   scheduleFireEvents: TypedEventTarget<ScheduleFireEventMap>;
   /**
-   * Skill lifecycle events (COR-767), dispatched by the `@lostgradient/skills`
+   * Skill lifecycle events (COR-767), dispatched by the `@lostgradient/bureau/skills`
    * tool factories each run's toolbox is built from. One bureau-level target
    * rather than one per run, matching `scheduleFireEvents`: each event carries
    * its own `runId`/`sessionId` correlation, so a shared target loses nothing
@@ -2641,7 +2641,7 @@ async function buildRuntimeComposition(
     if (options.skills && skillCatalog !== undefined) {
       // COR-892 — the catalog-backed path. Bureau composes policy and durability *around*
       // Agent-owned behaviour rather than reimplementing it: discovery, trust admission,
-      // digest-verified activation and the active set all live in `@lostgradient/skills`, and what
+      // digest-verified activation and the active set all live in `@lostgradient/bureau/skills`, and what
       // Bureau adds here is the run and session correlation the client cannot see, plus durable
       // persistence of what the client decided.
       const skillClient = createSkillClient({

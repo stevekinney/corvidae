@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { workspaceDirectories as workspaceParentDirectories } from './target-definitions.ts';
 
 /**
  * Where a corvidae workspace lands inside the target that receives it.
@@ -131,7 +132,7 @@ export async function targetDirectoryFor(workspace: string): Promise<string> {
   return layout.targetDirectory;
 }
 
-const parentDirectories = ['applications', 'components', 'packages', 'internal'] as const;
+const parentDirectories = workspaceParentDirectories;
 
 export interface LayoutCoverage {
   /** Workspaces on disk with no entry. The transform must refuse to run while this is non-empty. */

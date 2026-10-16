@@ -14,7 +14,7 @@ The documentation follows the reader-oriented structure in `packages/weft/docume
 | --- | --- | --- | --- |
 | [Corvidae UI remediation](https://linear.app/lost-gradient/project/corvidae-ui-remediation-043f0128f365) | 2026-09-19 | Documentation (retired with the SvelteKit chat-room; see repository history) | Application integration guide added; component references retained for tool activity, approvals, artifacts, editing, and accessibility. |
 | [Operative Provider SDK Feature Parity](https://linear.app/lost-gradient/project/operative-provider-sdk-feature-parity-581835df2729) | 2026-08-31 | [Documentation](runtime-contracts.md#provider-capability-matrix) | Provider reference retained; capability matrix and fallback boundaries added. |
-| [Deterministic Lifecycle Testability](https://linear.app/lost-gradient/project/deterministic-lifecycle-testability-02d91607988d) | 2026-09-19 | [Documentation](../packages/testing/README.md#deterministic-test-boundaries) | Expanded testing guide; runtime harness and deferred-work ownership references retained and linked. |
+| [Deterministic Lifecycle Testability](https://linear.app/lost-gradient/project/deterministic-lifecycle-testability-02d91607988d) | 2026-09-19 | [Documentation](../testing/testing/README.md#deterministic-test-boundaries) | Expanded testing guide; runtime harness and deferred-work ownership references retained and linked. |
 | [Runtime Steering and Effective Context](https://linear.app/lost-gradient/project/runtime-steering-and-effective-context-6b66134ee881) | 2026-09-19 | [Documentation](runtime-contracts.md#effective-context-and-steering) | Cross-runtime guide added for command admission, turn boundaries, epochs, and actual supported targets. |
 | [Model Capability and Selection Planning](https://linear.app/lost-gradient/project/model-capability-and-selection-planning-8ed7767c8acd) | 2026-09-09 | [Documentation](runtime-contracts.md#selection-plans-and-model-policy) | Selection-plan fields, capability decisions, and revalidation guidance added. |
 | [Conversationalist State Integrity](https://linear.app/lost-gradient/project/conversationalist-state-integrity-11097f5be45e) | 2026-08-27 | [Documentation](../packages/conversationalist/README.md#state-integrity-and-restoration) | Existing immutable-state and event references retained; revision conflicts and snapshot restoration clarified. |
@@ -112,16 +112,14 @@ The expanded pass has its own final validation; the successful run recorded abov
 - [packages/armorer/documentation/openai-agents-sdk.md](../packages/armorer/documentation/openai-agents-sdk.md)
 - [packages/armorer/documentation/provider-adapters.md](../packages/armorer/documentation/provider-adapters.md)
 - [packages/bureau/README.md](../packages/bureau/README.md)
+- [packages/bureau/documentation/skills.md](../packages/bureau/documentation/skills.md)
 - [packages/conversationalist/README.md](../packages/conversationalist/README.md)
 - [packages/cryptography/README.md](../packages/cryptography/README.md)
-- [packages/embeddings/README.md](../packages/embeddings/README.md)
 - [packages/lifecycle/README.md](../packages/lifecycle/README.md)
 - [packages/markdown/README.md](../packages/markdown/README.md)
 - [packages/memory/README.md](../packages/memory/README.md)
 - [packages/operative/README.md](../packages/operative/README.md)
-- [packages/skills/README.md](../packages/skills/README.md)
-- [packages/testing/README.md](../packages/testing/README.md)
-- [packages/tool-protocol/README.md](../packages/tool-protocol/README.md)
+- [testing/testing/README.md](../testing/testing/README.md)
 - [packages/weft/README.md](../packages/weft/README.md)
 - [packages/weft/documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md](../packages/weft/documentation/contributing/architecture-decisions/0001-workflows-typescript-only.md)
 - [packages/weft/documentation/guides/remote-task-recovery.md](../packages/weft/documentation/guides/remote-task-recovery.md)

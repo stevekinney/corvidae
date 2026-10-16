@@ -1,4 +1,4 @@
-import { cosineSimilarity } from '@lostgradient/embeddings';
+import { cosineSimilarity } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { applyMaximalMarginalRelevance } from '../src/maximal-marginal-relevance';
