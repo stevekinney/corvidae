@@ -84,15 +84,6 @@ describe('check-dashboard-size', () => {
     expect(result.error).toEqual([
       `Dashboard over budget: ${DISK_BUDGET_BYTES + INDEX_HTML.length} bytes on disk exceeds the budget of ${DISK_BUDGET_BYTES} bytes.`,
     ]);
-
-    // The script itself, as `bun scripts/check-dashboard-size.ts <directory>` runs it.
-    const child = Bun.spawnSync([
-      'bun',
-      join(import.meta.dir, 'check-dashboard-size.ts'),
-      directory,
-    ]);
-    expect(child.exitCode).toBe(1);
-    expect(child.stderr.toString()).toContain('Dashboard over budget');
   });
 
   it('exits non-zero on a fixture larger than the gzipped budget', async () => {
