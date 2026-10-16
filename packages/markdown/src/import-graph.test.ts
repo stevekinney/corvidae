@@ -18,7 +18,7 @@
  *
  * Instead we now walk the import graph STATICALLY: resolve each subpath to its
  * source file via its declared `exports` map (in Corvidae, the entry for that
- * package in `scripts/mirror/package-surface.json`, because every workspace
+ * package in `scripts/published-exports.json`, because every workspace
  * manifest exports only `.`), read each file with `readFileSync`,
  * extract its runtime imports with `Bun.Transpiler.scanImports` (which excludes
  * `import type` / `export type`), resolve each specifier, and recurse. A subpath
@@ -86,7 +86,7 @@ const WORKSPACE_PARENT_DIRS = (
 // Corvidae declares the published package's subpaths here. The markdown
 // workspace manifest exports only `.` (COR-1297 now permits source subpath
 // exports, but markdown declares none), so the manifest cannot resolve them.
-const PACKAGE_SURFACE_PATH = join(WORKSPACE_ROOT, 'scripts', 'mirror', 'package-surface.json');
+const PACKAGE_SURFACE_PATH = join(WORKSPACE_ROOT, 'scripts', 'published-exports.json');
 
 // The import conditions to apply, in priority order, when picking a target from
 // an `exports` entry. The old Bun.build version resolved with `target: 'browser'`
@@ -359,7 +359,7 @@ function reachFromSubpath(entrySubpath: string): ReachResult {
   if (!entryFile) {
     throw new Error(
       `Could not resolve subpath "${entrySubpath}" to a source file via package exports. ` +
-        `Check its "exports" entry in scripts/mirror/package-surface.json and the EXPORT_CONDITIONS order.`,
+        `Check its "exports" entry in scripts/published-exports.json and the EXPORT_CONDITIONS order.`,
     );
   }
 

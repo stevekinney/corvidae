@@ -3,10 +3,6 @@
   "budgetMilliseconds": 2000,
   "entries": [
     ". :: scripts/environment-configuration-policy.test.ts ::  :: the executable repository has no unregistered environment reads",
-    ". :: scripts/mirror/publication-history.test.ts ::  :: accepts a squash merge whose parent and tree match the App sync commit",
-    ". :: scripts/mirror/publication-history.test.ts ::  :: accepts an intervening commit that adds, edits or deletes a pending changeset",
-    ". :: scripts/mirror/publication-history.test.ts ::  :: accepts only the declared version constant matching a release manifest bump",
-    ". :: scripts/mirror/sync.test.ts :: the foreign-commit guard net-effect rule :: accepts a transform-owned manifest key change that a later commit reverts",
     "applications/playground :: scripts/static-export.test.ts :: static export :: materializes extracted Chat routes, bundles, documentation, and styles",
     "applications/playground :: scripts/static-export.test.ts :: static export :: writes the root landing shell instead of a redirect",
     "applications/playground :: src/analyze.test.ts :: analyzeAll :: returns at least 21 entries",

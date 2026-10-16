@@ -4,9 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { COMPONENT_SOURCES } from '../src/component-sources.ts';
 import {
-  DISPLAYED_PACKAGES,
   PREVIEW_OPT_IN,
   decide,
   decideFromChanges,
@@ -33,14 +31,6 @@ function git(...arguments_: string[]): string {
 
 function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
-}
-
-function packageMap(versions: Record<string, string>): string {
-  return json({
-    workspaces: Object.fromEntries(
-      Object.entries(versions).map(([name, version]) => [name, { lastPublishedVersion: version }]),
-    ),
-  });
 }
 
 const ROOT_MANIFEST = {
@@ -83,12 +73,10 @@ const FIXTURE_FILES: Record<string, string> = {
     dependencies: { '@fixture/build-tool': 'workspace:*' },
   }),
   'internal/typescript/base.json': '{}\n',
-  'scripts/mirror/package-map.json': packageMap({
-    '@lostgradient/cinder': '1.0.0',
-    '@fixture/direct': '1.0.0',
-    '@fixture/unrelated': '1.0.0',
+  'applications/playground/published-versions.json': json({
+    lastPublishedVersions: { '@lostgradient/cinder': '1.0.0' },
   }),
-  'scripts/mirror/sync.ts': 'export {};\n',
+  'scripts/outside-the-closure.ts': 'export {};\n',
 };
 
 async function writeFiles(files: Record<string, string>): Promise<void> {
@@ -164,6 +152,7 @@ const base = await commitBase();
 
 const touchedPathCases = [
   ['applications/playground/src/page.ts', 1],
+  ['applications/playground/published-versions.json', 1],
   ['packages/direct/src/index.ts', 1],
   ['packages/transitive/src/index.ts', 1],
   ['internal/typescript/base.json', 1],
@@ -179,7 +168,7 @@ const touchedPathCases = [
   ['applications/playground/playwright.config.ts', 0],
   ['packages/unrelated/src/index.ts', 0],
   ['applications/example/src/main.ts', 0],
-  ['scripts/mirror/sync.ts', 0],
+  ['scripts/outside-the-closure.ts', 0],
   ['turbo.json', 0],
 ] as const;
 const touchedPathExits = new Map<string, number>();
@@ -193,30 +182,6 @@ for (const [path] of touchedPathCases) {
 const rootManifestExit = productionExit(
   base,
   await commitWriting({ 'package.json': json({ ...ROOT_MANIFEST, private: true }) }),
-);
-const displayedVersionExit = productionExit(
-  base,
-  await commitWriting({
-    'scripts/mirror/package-map.json': packageMap({
-      '@lostgradient/cinder': '1.1.0',
-      '@fixture/direct': '1.0.0',
-      '@fixture/unrelated': '1.0.0',
-    }),
-  }),
-);
-const undisplayedVersionsExit = productionExit(
-  base,
-  await commitWriting({
-    'scripts/mirror/package-map.json': packageMap({
-      '@lostgradient/cinder': '1.0.0',
-      '@fixture/direct': '1.1.0',
-      '@fixture/unrelated': '2.0.0',
-    }),
-  }),
-);
-const unparsablePackageMapExit = productionExit(
-  base,
-  await commitWriting({ 'scripts/mirror/package-map.json': '{ not json' }),
 );
 const unparsableRootManifestExit = productionExit(
   base,
@@ -232,7 +197,7 @@ const exitWithAbsentPreviousDeployment = productionExit(absentCommit, base);
 const exitWithAbsentCurrentCommit = productionExit(base, absentCommit);
 
 const pageChange = await commitWriting({ 'applications/playground/src/page.ts': 'changed\n' });
-const unrelatedChange = await commitWriting({ 'scripts/mirror/sync.ts': 'changed\n' });
+const unrelatedChange = await commitWriting({ 'scripts/outside-the-closure.ts': 'changed\n' });
 const previewWithoutOptInExit = previewExit(pageChange, 'Change a page');
 const previewSubjectOptInExit = previewExit(
   unrelatedChange,
@@ -295,25 +260,6 @@ describe('production deployments', () => {
     expect(rootManifestExit).toBe(1);
   });
 
-  test('builds when the package map records a new published version the documentation displays', () => {
-    expect(displayedVersionExit).toBe(1);
-  });
-
-  test('skips when the package map changes only versions the documentation does not display', () => {
-    expect(undisplayedVersionsExit).toBe(0);
-  });
-
-  test('watches the published versions of exactly the packages the playground documents', () => {
-    const displayed: readonly string[] = DISPLAYED_PACKAGES;
-    expect(displayed.toSorted()).toEqual(
-      COMPONENT_SOURCES.map((source) => source.packageName).toSorted(),
-    );
-  });
-
-  test('builds when the package map cannot be parsed', () => {
-    expect(unparsablePackageMapExit).toBe(1);
-  });
-
   test('builds when the workspace graph cannot be read', () => {
     expect(unparsableRootManifestExit).toBe(1);
     expect(
@@ -370,11 +316,18 @@ describe('decideFromChanges', () => {
     const decision = decideFromChanges({
       changedFiles: ['applications/playground-legacy/index.ts'],
       closure,
-      readPackageMaps: () => {
-        throw new Error('the package map did not change');
-      },
     });
     expect(decision.build).toBe(false);
+  });
+
+  // The file is new on the first deployment after a version is recorded, and edited afterwards:
+  // both are a change to a playground source file, so neither needs a rule of its own.
+  test('builds when the published versions file is added or edited', () => {
+    const decision = decideFromChanges({
+      changedFiles: ['applications/playground/published-versions.json'],
+      closure,
+    });
+    expect(decision.build).toBe(true);
   });
 });
 

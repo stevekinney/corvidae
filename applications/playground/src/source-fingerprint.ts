@@ -37,8 +37,8 @@ export const FINGERPRINT_SOURCE_FILES = [
   'components/chat/components.json',
   'components/editor/package.json',
   'components/editor/components.json',
-  // The documentation's displayed package versions come from the mirror's package map.
-  'scripts/mirror/package-map.json',
+  // The documentation's displayed package versions.
+  'applications/playground/published-versions.json',
 ] as const;
 
 /** The two filesystem reads a walk makes; the real ones in production, replaceable so a test can make a file or a directory vanish or fail. */

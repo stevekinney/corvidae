@@ -10,8 +10,9 @@
  *   {@link PREVIEW_OPT_IN}. `bun run validate` already runs the same static export.
  * - A production deployment builds when a commit since the last successful one touches a file
  *   the export can read: a non-test file in a workspace of the playground's dependency closure,
- *   a root input to `bun install` or TypeScript, or the published version the documentation
- *   displays for Cinder, Chat, or Editor.
+ *   or a root input to `bun install` or TypeScript. The published versions the documentation
+ *   displays live in `src/published-versions.json`, a file of this workspace, so changing one
+ *   rebuilds like any other source change.
  *
  * Whenever it cannot tell, it builds. Exit 1 means build and exit 0 means skip.
  */
@@ -24,18 +25,6 @@ import { ignoreStepEnvironment } from './environment-configuration.ts';
 
 export const PREVIEW_OPT_IN = '[playground preview]';
 export const PLAYGROUND_PACKAGE = '@lostgradient/playground';
-export const PACKAGE_MAP_PATH = 'scripts/mirror/package-map.json';
-
-/**
- * The packages whose `lastPublishedVersion` the documentation displays: every component source in
- * `src/component-sources.ts`. `ignore-build.test.ts` keeps the two lists equal; this script runs
- * before install and cannot import that module.
- */
-export const DISPLAYED_PACKAGES = [
-  '@lostgradient/chat',
-  '@lostgradient/cinder',
-  '@lostgradient/editor',
-] as const;
 
 /** Root files that change what `bun install` resolves or how TypeScript reads the sources. */
 const ROOT_INPUT = /^(package\.json|bun\.lock|bunfig\.toml|tsconfig[^/]*\.json)$/;
@@ -129,35 +118,13 @@ export function dependencyClosure(workspaces: readonly Workspace[], start: strin
   );
 }
 
-/** The `lastPublishedVersion` the package map records for each named workspace. */
-export function publishedVersions(
-  packageMapText: string,
-  names: readonly string[],
-): Map<string, unknown> {
-  const packageMap: unknown = JSON.parse(packageMapText);
-  const entries = isRecord(packageMap) ? packageMap['workspaces'] : undefined;
-  if (!isRecord(entries)) throw new Error(`${PACKAGE_MAP_PATH} has no workspaces object`);
-  return new Map(
-    names.map((name) => {
-      const entry = entries[name];
-      return [name, isRecord(entry) ? entry['lastPublishedVersion'] : undefined];
-    }),
-  );
-}
-
 export type ChangeInputs = {
   changedFiles: readonly string[];
   closure: readonly Workspace[];
-  /** The package map at the previous and current commit, read only when it changed. */
-  readPackageMaps: () => { previous: string; current: string };
 };
 
 /** Whether the files changed since the last successful deployment can change the site. */
-export function decideFromChanges({
-  changedFiles,
-  closure,
-  readPackageMaps,
-}: ChangeInputs): Decision {
+export function decideFromChanges({ changedFiles, closure }: ChangeInputs): Decision {
   const relevant = changedFiles.filter(
     (file) =>
       ROOT_INPUT.test(file) ||
@@ -168,19 +135,6 @@ export function decideFromChanges({
     const shown = relevant.slice(0, 10).join(', ');
     const more = relevant.length > 10 ? ` and ${relevant.length - 10} more` : '';
     return { build: true, reason: `the export reads changed files: ${shown}${more}` };
-  }
-  if (changedFiles.includes(PACKAGE_MAP_PATH)) {
-    const { previous, current } = readPackageMaps();
-    const names = [...DISPLAYED_PACKAGES];
-    const before = publishedVersions(previous, names);
-    const after = publishedVersions(current, names);
-    const changed = names.filter((name) => before.get(name) !== after.get(name));
-    if (changed.length > 0) {
-      return {
-        build: true,
-        reason: `the documentation displays a new published version for ${changed.join(', ')}`,
-      };
-    }
   }
   return {
     build: false,
@@ -244,10 +198,6 @@ export function decideFromRepository(
   return decideFromChanges({
     changedFiles,
     closure,
-    readPackageMaps: () => ({
-      previous: git(repositoryRoot, 'show', `${previousSha}:${PACKAGE_MAP_PATH}`),
-      current: git(repositoryRoot, 'show', `${currentSha}:${PACKAGE_MAP_PATH}`),
-    }),
   });
 }
 

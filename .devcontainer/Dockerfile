@@ -3,8 +3,7 @@
 # Node.js 24 is the active LTS line and the major the workspace's `@types/node` catalog
 # entry targets. Weft's native SQLite suite (`packages/weft/src/storage/node-sqlite.test.ts`)
 # runs its integration cases under a real Node, not Bun's `node` shim, and fails without one.
-# The mirror tooling's packing tests (`scripts/mirror/clean-package-build.test.ts`) run
-# Node's bundled `npm`, so it comes along.
+# Node's bundled `npm` comes along with it.
 FROM node:24.21.0-trixie-slim AS node
 
 # The tag is the workspace's `packageManager` Bun version; `scripts/dev-container.test.ts`
