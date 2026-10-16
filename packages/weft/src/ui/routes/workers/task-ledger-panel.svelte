@@ -6,7 +6,7 @@
    * history render (COR-124).
    */
   import { EmptyState, Skeleton } from '@lostgradient/cinder';
-  import Lock from 'lucide-svelte/icons/lock';
+  import Lock from '@lucide/svelte/icons/lock';
 
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import { isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
