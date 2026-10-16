@@ -21,6 +21,8 @@ export type WorkerManifestDiagnostics = Readonly<{
     startedAt: number;
     lastHeartbeatAt: number;
     heartbeatAgeMs: number;
+    /** Increments every time this worker id opens a new session; a change means the previous session was superseded. */
+    sessionGeneration: number;
   }>;
   deploymentVersion: Readonly<{
     deploymentName: string;
@@ -141,6 +143,7 @@ export function parseWorkerDiagnosticsResponse(value: unknown): WorkerManifestDi
       startedAt: numberAt(instance, 'startedAt', 'response.worker.instance'),
       lastHeartbeatAt: numberAt(instance, 'lastHeartbeatAt', 'response.worker.instance'),
       heartbeatAgeMs: numberAt(instance, 'heartbeatAgeMs', 'response.worker.instance'),
+      sessionGeneration: numberAt(instance, 'sessionGeneration', 'response.worker.instance'),
     },
     deploymentVersion: {
       deploymentName: stringAt(deployment, 'deploymentName', 'response.worker.deploymentVersion'),

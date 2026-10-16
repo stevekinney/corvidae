@@ -4,6 +4,7 @@ import type { PendingReviewEntry } from '@lostgradient/weft';
 
 import {
   buildDiagnosticChips,
+  buildLeaseContestedChip,
   buildReviewsNearTimeoutChip,
   isReviewNearTimeout,
   type TaskDiagnosticsSummary,
@@ -130,5 +131,45 @@ describe('buildReviewsNearTimeoutChip', () => {
     const reviews = [review({ createdAt: 0, timeout: 1_000_000 })];
     const chip = buildReviewsNearTimeoutChip(reviews, 900_000);
     expect(chip?.label).toBe('1 review near timeout');
+  });
+});
+
+describe('buildLeaseContestedChip', () => {
+  test('returns no chip unless weft.system.lease reports contested', () => {
+    expect(buildLeaseContestedChip(undefined)).toBeNull();
+    expect(
+      buildLeaseContestedChip({ mode: 'none', status: 'disabled', holdsLease: false }),
+    ).toBeNull();
+    expect(
+      buildLeaseContestedChip({ mode: 'lease', status: 'no-lease', holdsLease: false }),
+    ).toBeNull();
+    expect(
+      buildLeaseContestedChip({
+        mode: 'lease',
+        status: 'healthy',
+        holdsLease: true,
+        holderId: 'a',
+      }),
+    ).toBeNull();
+  });
+
+  test('a contested lease is a danger chip that names the confirmed loss reason', () => {
+    expect(
+      buildLeaseContestedChip({
+        mode: 'lease',
+        status: 'contested',
+        holdsLease: false,
+        lossReason: 'renewal-unconfirmable',
+      }),
+    ).toEqual({
+      id: 'lease-contested',
+      icon: 'shield-alert',
+      tone: 'danger',
+      label: 'Engine lease contested · renewal unconfirmable',
+      href: '/system?tab=health',
+    });
+    expect(
+      buildLeaseContestedChip({ mode: 'lease', status: 'contested', holdsLease: false })?.label,
+    ).toBe('Engine lease contested');
   });
 });
