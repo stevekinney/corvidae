@@ -2367,6 +2367,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           'CONFLICT',
         );
       }
+      // Already ended by another process holding the same run (or by this
+      // one's catch-up): the fold above has applied that end to this gate,
+      // so there is nothing left to log, and a second end would be history
+      // no process could have written.
+      if (event.type === 'run-ended' && cursor.history.runs.get(event.runId) === 'ended') return;
       if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) !== 'promoted') {
         throw new BureauError(
           `Run "${event.runId}" cannot log "${event.type}" in session "${sessionId}": the steering log has no live promotion of it.`,
