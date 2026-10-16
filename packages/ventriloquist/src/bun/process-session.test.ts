@@ -351,6 +351,43 @@ describe('the session table', () => {
   );
 });
 
+describe('a session that cannot be read at signal time', () => {
+  /** Listed as a member, then unreadable when it is about to be signaled; the follow-up read says what became of it. */
+  function turning(afterwards: ProcessState[]) {
+    let sessionReads = 0;
+    let stateReads = 0;
+    const kills: string[] = [];
+    const operations = createSessionOperations({
+      readStates: () => {
+        stateReads += 1;
+        return stateReads <= 2 ? [{ pid: 500, state: 'S' }] : afterwards;
+      },
+      sessionOf: () => {
+        sessionReads += 1;
+        if (sessionReads === 1) return SESSION;
+        throw new Error('could not be read');
+      },
+      kill: (_pid, signal) => {
+        kills.push(signal);
+      },
+    });
+    return { operations, kills };
+  }
+
+  test('is gone when the process became a zombie meanwhile, and nothing is signaled', async () => {
+    const { operations, kills } = turning([{ pid: 500, state: 'Z' }]);
+    await operations.signal(SESSION, 'SIGKILL');
+    expect(kills).toEqual([]);
+  });
+
+  test('fails the pass when the process is still live, and nothing is signaled', async () => {
+    const { operations, kills } = turning([{ pid: 500, state: 'S' }]);
+    const failure = await rejectionOf(Promise.resolve(operations.signal(SESSION, 'SIGKILL')));
+    expect((failure as Error).message).toContain('could not be read');
+    expect(kills).toEqual([]);
+  });
+});
+
 describe('a session that cannot be read', () => {
   test('a process macOS is tearing down is gone, though it is not yet a zombie', async () => {
     const operations = createSessionOperations({
