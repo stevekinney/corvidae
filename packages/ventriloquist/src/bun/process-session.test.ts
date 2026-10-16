@@ -5,7 +5,8 @@ import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/tes
 import { systemClock } from '../session/session-clock.ts';
 import {
   isAlive,
-  scenarioTest,
+  scenario,
+  scenarioResult,
   settleScenarios,
   waitUntilGone,
 } from './bun-process.test-support.ts';
@@ -61,6 +62,19 @@ function refusal(code: string): never {
   throw Object.assign(new Error(code), { code });
 }
 
+const scenario1 = scenario('are read from the running host and include this process', async () => {
+  expect(await readProcessStates()).toContainEqual(expect.objectContaining({ pid: process.pid }));
+});
+
+const scenario2 = scenario(
+  'are unknown when the command fails, cannot run, or prints something unreadable',
+  async () => {
+    expect(await readProcessStates(['sh', '-c', 'exit 3'])).toBeUndefined();
+    expect(await readProcessStates(['/nonexistent/ventriloquist-ps'])).toBeUndefined();
+    expect(await readProcessStates(['echo', 'not a table'])).toBeUndefined();
+  },
+);
+
 describe('the process states', () => {
   test('are read from rows of pid and state', () => {
     expect(parseProcessStates(' 10 Ss\n11 Z+\n\n')).toEqual([
@@ -74,17 +88,11 @@ describe('the process states', () => {
     expect(() => parseProcessStates(row)).toThrow('unreadable process state row');
   });
 
-  scenarioTest('are read from the running host and include this process', async () => {
-    expect(await readProcessStates()).toContainEqual(expect.objectContaining({ pid: process.pid }));
-  });
+  scenarioResult('are read from the running host and include this process', scenario1);
 
-  scenarioTest(
+  scenarioResult(
     'are unknown when the command fails, cannot run, or prints something unreadable',
-    async () => {
-      expect(await readProcessStates(['sh', '-c', 'exit 3'])).toBeUndefined();
-      expect(await readProcessStates(['/nonexistent/ventriloquist-ps'])).toBeUndefined();
-      expect(await readProcessStates(['echo', 'not a table'])).toBeUndefined();
-    },
+    scenario2,
   );
 });
 
@@ -297,37 +305,47 @@ describe('hanging up the leader', () => {
   });
 });
 
+const scenario3 = scenario(
+  'puts each process in its session, so the descendants that left it are found',
+  async () => {
+    const table = await readSessionTable(
+      (pid) => (pid === 2 ? -1 : pid === 3 ? 900 : 500),
+      async () => [
+        { pid: 1, parentPid: 0, group: 1 },
+        { pid: 2, parentPid: 1, group: 2 },
+        { pid: 3, parentPid: 1, group: 3 },
+        { pid: 4, parentPid: 1, group: 4 },
+      ],
+    );
+    // 2 vanished between the table and its session being read: it is gone, not escaped.
+    expect(table.map((record) => [record.pid, record.group])).toEqual([
+      [1, 500],
+      [3, 900],
+      [4, 500],
+    ]);
+    expect(descendantsOutsideGroup(table, 1, 500).map((record) => record.pid)).toEqual([3]);
+  },
+);
+
+const scenario4 = scenario(
+  'is read from the running host: this process is in the session getsid reports',
+  async () => {
+    const table = await readSessionTable();
+    expect(table).toContainEqual(
+      expect.objectContaining({ pid: process.pid, group: sessionOfProcess(process.pid) }),
+    );
+  },
+);
+
 describe('the session table', () => {
-  scenarioTest(
+  scenarioResult(
     'puts each process in its session, so the descendants that left it are found',
-    async () => {
-      const table = await readSessionTable(
-        (pid) => (pid === 2 ? -1 : pid === 3 ? 900 : 500),
-        async () => [
-          { pid: 1, parentPid: 0, group: 1 },
-          { pid: 2, parentPid: 1, group: 2 },
-          { pid: 3, parentPid: 1, group: 3 },
-          { pid: 4, parentPid: 1, group: 4 },
-        ],
-      );
-      // 2 vanished between the table and its session being read: it is gone, not escaped.
-      expect(table.map((record) => [record.pid, record.group])).toEqual([
-        [1, 500],
-        [3, 900],
-        [4, 500],
-      ]);
-      expect(descendantsOutsideGroup(table, 1, 500).map((record) => record.pid)).toEqual([3]);
-    },
+    scenario3,
   );
 
-  scenarioTest(
+  scenarioResult(
     'is read from the running host: this process is in the session getsid reports',
-    async () => {
-      const table = await readSessionTable();
-      expect(table).toContainEqual(
-        expect.objectContaining({ pid: process.pid, group: sessionOfProcess(process.pid) }),
-      );
-    },
+    scenario4,
   );
 });
 
@@ -355,39 +373,44 @@ function startSessions() {
   return { leader, unrelated };
 }
 
+const scenario5 = scenario(
+  'ends the leader and its job, and leaves a process in another session alone',
+  async () => {
+    const { leader, unrelated } = startSessions();
+    const reader = leader.stdout.getReader();
+    const first = await reader.read();
+    reader.releaseLock();
+    const job = Number(new TextDecoder().decode(first.value).match(/job=(\d+)/)?.[1]);
+    try {
+      expect(sessionOfProcess(job)).toBe(leader.pid);
+      expect(sessionOfProcess(unrelated.pid)).not.toBe(leader.pid);
+      sessionOperations.hangUp(leader.pid);
+      const outcome = await terminateProcessGroup({
+        group: leader.pid,
+        operations: sessionOperations,
+        clock: systemClock,
+        graceMilliseconds: 200,
+        observationMilliseconds: 2_000,
+        pollMilliseconds: 20,
+      });
+      expect(outcome).toBe('complete');
+      await leader.exited;
+      await waitUntilGone(job);
+      expect(unrelated.exitCode).toBeNull();
+      expect(await sessionOperations.exists(leader.pid)).toBe(false);
+    } finally {
+      unrelated.kill('SIGKILL');
+      leader.kill('SIGKILL');
+      // Already gone when the termination worked: ESRCH is the expected answer.
+      if (isAlive(job)) process.kill(job, 'SIGKILL');
+    }
+  },
+);
+
 describe('terminating a real session', () => {
-  scenarioTest(
+  scenarioResult(
     'ends the leader and its job, and leaves a process in another session alone',
-    async () => {
-      const { leader, unrelated } = startSessions();
-      const reader = leader.stdout.getReader();
-      const first = await reader.read();
-      reader.releaseLock();
-      const job = Number(new TextDecoder().decode(first.value).match(/job=(\d+)/)?.[1]);
-      try {
-        expect(sessionOfProcess(job)).toBe(leader.pid);
-        expect(sessionOfProcess(unrelated.pid)).not.toBe(leader.pid);
-        sessionOperations.hangUp(leader.pid);
-        const outcome = await terminateProcessGroup({
-          group: leader.pid,
-          operations: sessionOperations,
-          clock: systemClock,
-          graceMilliseconds: 200,
-          observationMilliseconds: 2_000,
-          pollMilliseconds: 20,
-        });
-        expect(outcome).toBe('complete');
-        await leader.exited;
-        await waitUntilGone(job);
-        expect(unrelated.exitCode).toBeNull();
-        expect(await sessionOperations.exists(leader.pid)).toBe(false);
-      } finally {
-        unrelated.kill('SIGKILL');
-        leader.kill('SIGKILL');
-        // Already gone when the termination worked: ESRCH is the expected answer.
-        if (isAlive(job)) process.kill(job, 'SIGKILL');
-      }
-    },
+    scenario5,
   );
 });
 

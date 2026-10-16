@@ -4,7 +4,12 @@ import { closeSync, existsSync, fstatSync, mkdtempSync, openSync, rmSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { scenarioTest, settleScenarios } from './bun-process.test-support.ts';
+import {
+  scenario,
+  scenarioResult,
+  settleScenarios,
+  type Scenario,
+} from './bun-process.test-support.ts';
 import type { SpawnedProcess } from './process-types.ts';
 import { loadPtyDevice } from './pty-device.ts';
 import { createPtyMaster } from './pty-master.ts';
@@ -20,8 +25,8 @@ function cleanUp(): void {
 }
 
 /** A scenario that runs at module scope, then ends every child and removes every directory it made. */
-function gateScenario(name: string, body: () => Promise<void> | void): void {
-  scenarioTest(name, async () => {
+function gateScenario(name: string, body: () => Promise<void> | void): Scenario {
+  return scenario(name, async () => {
     try {
       await body();
     } finally {
@@ -72,66 +77,80 @@ function spawnGated(command: string[]) {
   return { child, output, process: child as unknown as SpawnedProcess };
 }
 
-describe('the PTY start gate', () => {
-  gateScenario('the command does not run unless the gate is released', async () => {
-    const marker = join(workspace(), 'ran');
-    const { child, output, process } = spawnGated(['sh', '-c', `printf ran > '${marker}'`]);
-    // Abandoning the gate is end of file on the release channel, which ends the shell without
-    // running the command. The command running at all would leave the marker.
-    expect(abandonGate(process)).toBe(true);
-    expect(await child.exited).not.toBe(0);
-    await output();
-    expect(existsSync(marker)).toBe(false);
-  });
+const scenario1 = gateScenario('the command does not run unless the gate is released', async () => {
+  const marker = join(workspace(), 'ran');
+  const { child, output, process } = spawnGated(['sh', '-c', `printf ran > '${marker}'`]);
+  // Abandoning the gate is end of file on the release channel, which ends the shell without
+  // running the command. The command running at all would leave the marker.
+  expect(abandonGate(process)).toBe(true);
+  expect(await child.exited).not.toBe(0);
+  await output();
+  expect(existsSync(marker)).toBe(false);
+});
 
-  gateScenario(
-    'the command runs once the gate is released, in the shell’s session and terminal',
-    async () => {
-      const { child, output, process } = spawnGated([
-        'sh',
-        '-c',
-        'tty; printf "pid=%s" "$$"; ps -o pgid= -p $$',
-      ]);
-      expect(releaseGate(process)).toBe(true);
-      expect(await child.exited).toBe(0);
-      const text = await output();
-      expect(text).toMatch(/\/dev\/\S+/);
-      expect(text).toContain(`pid=${child.pid}`);
-      expect(text.replace(/\s+/g, ' ')).toContain(`${child.pid} `);
-    },
-  );
-
-  gateScenario(
-    'the command leads its session and its terminal is its controlling terminal',
-    async () => {
-      const { child, output, process } = spawnGated([
-        'sh',
-        '-c',
-        'ps -o pid=,pgid=,tpgid= -p $$; (printf controlling > /dev/tty) 2>&1',
-      ]);
-      expect(releaseGate(process)).toBe(true);
-      expect(await child.exited).toBe(0);
-      const printed = await output();
-      const text = printed.replace(/\r/g, '');
-      // A process that leads its group, whose group is the terminal's foreground group, owns the terminal.
-      const [pid, group, foreground] = text.trim().split(/\s+/);
-      expect(Number(pid)).toBe(child.pid);
-      expect(group).toBe(pid as string);
-      expect(foreground).toBe(pid as string);
-      expect(text).toContain('controlling');
-    },
-  );
-
-  gateScenario('the command does not see the release channel', async () => {
+const scenario2 = gateScenario(
+  'the command runs once the gate is released, in the shell’s session and terminal',
+  async () => {
     const { child, output, process } = spawnGated([
       'sh',
       '-c',
-      'if [ -e /dev/fd/3 ]; then printf open; else printf closed; fi',
+      'tty; printf "pid=%s" "$$"; ps -o pgid= -p $$',
     ]);
-    releaseGate(process);
-    await child.exited;
-    expect(await output()).toBe('closed');
-  });
+    expect(releaseGate(process)).toBe(true);
+    expect(await child.exited).toBe(0);
+    const text = await output();
+    expect(text).toMatch(/\/dev\/\S+/);
+    expect(text).toContain(`pid=${child.pid}`);
+    expect(text.replace(/\s+/g, ' ')).toContain(`${child.pid} `);
+  },
+);
+
+const scenario3 = gateScenario(
+  'the command leads its session and its terminal is its controlling terminal',
+  async () => {
+    const { child, output, process } = spawnGated([
+      'sh',
+      '-c',
+      'ps -o pid=,pgid=,tpgid= -p $$; (printf controlling > /dev/tty) 2>&1',
+    ]);
+    expect(releaseGate(process)).toBe(true);
+    expect(await child.exited).toBe(0);
+    const printed = await output();
+    const text = printed.replace(/\r/g, '');
+    // A process that leads its group, whose group is the terminal's foreground group, owns the terminal.
+    const [pid, group, foreground] = text.trim().split(/\s+/);
+    expect(Number(pid)).toBe(child.pid);
+    expect(group).toBe(pid as string);
+    expect(foreground).toBe(pid as string);
+    expect(text).toContain('controlling');
+  },
+);
+
+const scenario4 = gateScenario('the command does not see the release channel', async () => {
+  const { child, output, process } = spawnGated([
+    'sh',
+    '-c',
+    'if [ -e /dev/fd/3 ]; then printf open; else printf closed; fi',
+  ]);
+  releaseGate(process);
+  await child.exited;
+  expect(await output()).toBe('closed');
+});
+
+describe('the PTY start gate', () => {
+  scenarioResult('the command does not run unless the gate is released', scenario1);
+
+  scenarioResult(
+    'the command runs once the gate is released, in the shell’s session and terminal',
+    scenario2,
+  );
+
+  scenarioResult(
+    'the command leads its session and its terminal is its controlling terminal',
+    scenario3,
+  );
+
+  scenarioResult('the command does not see the release channel', scenario4);
 
   // spawn-free: the child is a plain object holding a descriptor, so only the closing runs.
   test('the release channel is closed once, however many times the gate is released or abandoned', () => {

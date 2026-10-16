@@ -1,4 +1,4 @@
-import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 import { afterAll, test } from 'bun:test';
 
 import { systemClock } from '../session/session-clock.ts';
@@ -46,38 +46,82 @@ async function disposeTracked(): Promise<void> {
 /** The scenarios run one after another, so the sessions and processes they track never overlap. */
 let scenarioQueue: Promise<unknown> = Promise.resolve();
 
+/** A scenario that has been started at module scope, and what it recorded. */
+export type Scenario = {
+  readonly name: string;
+  /** Resolves with what the body recorded: `undefined` when it passed, the error when it did not. */
+  readonly outcome: Promise<unknown>;
+  /** Whether the body and its cleanup have finished. */
+  readonly settled: () => boolean;
+};
+
+/** The test files whose `settleScenarios` has returned, by path: module evaluation of each is over. */
+const settledFiles = new Set<string>();
+
+/** The path of the first stack frame outside this module, which is the test file calling in. */
+function callingFile(): string {
+  const frames = (new Error().stack ?? '').split('\n').slice(1);
+  for (const frame of frames) {
+    const match = /\(?((?:file:\/\/)?\/[^():]+?)(?::\d+){1,2}\)?$/.exec(frame.trim());
+    const path = match?.[1];
+    if (path !== undefined && !path.endsWith('bun-process.test-support.ts')) return path;
+  }
+  return '';
+}
+
 /**
- * Define a test whose body starts real processes. Bun gives a test body five seconds, and a child's
- * boot spends that on a loaded host, so the body runs at module scope instead, where no per-test
- * clock applies, and the test only rethrows what it recorded (`outcomeOf` fails a body that never
- * settles after `SCENARIO_HANG_GUARD_MILLISECONDS`). Scenarios run in definition order, and every
- * session and process the body tracked is cleaned up when it ends. Call `settleScenarios` with
- * top-level `await` at the end of the file.
+ * Start a scenario: a body that starts real processes. Bun gives a test body five seconds, and a
+ * child's boot spends that on a loaded host, so the body runs at module scope, where no per-test
+ * clock applies, and its test (`scenarioResult`) only reports what it recorded. `outcomeOf` fails a
+ * body that never settles after `SCENARIO_HANG_GUARD_MILLISECONDS`. Scenarios run one after another
+ * in definition order, and every session and process the body tracked is cleaned up when it ends.
  *
- * Bun runs a `describe` callback after the module body, so a scenario defined inside one starts
- * after that `await` has returned, and its test begins while the scenario is still running. The
- * test therefore waits for its scenario, and that wait is bounded by the hang guard (the scenario is
- * itself abandoned after it), not by Bun's five seconds: the five seconds are for work done in the
- * test, and none is. The scenarios of tests a name filter did not select still run, so
- * `settleScenarios` also registers a file hook that waits for all of them and their cleanup before
- * the run may end.
+ * It must be called at module scope, before the file's `await settleScenarios()`. Bun runs a
+ * `describe` callback after the module body, so a scenario started inside one would start after
+ * that `await` returned and run while its test was already waiting on Bun's clock. That is refused:
+ * start the scenario at module scope and register its test inside the `describe`.
  */
-export function scenarioTest(name: string, body: () => Promise<void> | void): void {
+export function scenario(name: string, body: () => Promise<void> | void): Scenario {
+  const file = callingFile();
+  if (settledFiles.has(file)) {
+    throw new Error(
+      `scenario "${name}" was started after settleScenarios() returned (inside a describe callback?): ` +
+        'start scenarios at module scope and register their tests inside the describe with scenarioResult',
+    );
+  }
+  let finished = false;
   const outcome = scenarioQueue.then(() =>
     outcomeOf(async () => {
       try {
         await body();
       } finally {
         await disposeTracked();
+        finished = true;
       }
     }),
   );
   scenarioQueue = outcome;
-  test(name, async () => rethrow(await outcome), SCENARIO_TEST_TIMEOUT_MILLISECONDS);
+  return { name, outcome, settled: () => finished };
 }
 
-/** The hang guard plus the turns the rethrow needs, so the guard, not Bun's clock, ends a hung scenario. */
-const SCENARIO_TEST_TIMEOUT_MILLISECONDS = SCENARIO_HANG_GUARD_MILLISECONDS + 10_000;
+/**
+ * Register the test that reports a scenario. It runs after every module-scope scenario of its file
+ * has settled, so it waits on nothing and the per-test clock covers no process work; it fails
+ * loudly if that ever stops being true.
+ */
+export function scenarioResult(name: string, started: Scenario): void {
+  test(name, async () => {
+    if (!started.settled()) {
+      throw new Error(`scenario "${started.name}" had not settled when its test began`);
+    }
+    rethrow(await started.outcome);
+  });
+}
+
+/** A scenario and its test together, for a file that defines both at module scope. */
+export function scenarioTest(name: string, body: () => Promise<void> | void): void {
+  scenarioResult(name, scenario(name, body));
+}
 
 /** Wait until the queue stops growing: a scenario can be defined while an earlier one runs. */
 async function drainScenarios(): Promise<void> {
@@ -88,9 +132,14 @@ async function drainScenarios(): Promise<void> {
   } while (last !== scenarioQueue);
 }
 
-/** Wait for every scenario defined so far; `await` it at module scope after the last definition. */
+/**
+ * Wait for every scenario defined so far; `await` it at module scope after the last definition. It
+ * ends the file's module-scope phase: a scenario started afterwards is refused. A file hook also
+ * waits for the whole queue, so no run, however its tests are selected, ends with a scenario in flight.
+ */
 export async function settleScenarios(): Promise<void> {
-  afterAll(drainScenarios, SCENARIO_TEST_TIMEOUT_MILLISECONDS);
+  settledFiles.add(callingFile());
+  afterAll(drainScenarios);
   await scenarioQueue;
 }
 

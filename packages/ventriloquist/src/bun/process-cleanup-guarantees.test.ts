@@ -7,7 +7,8 @@ import { flush, utf8 } from '../session/session.test-support.ts';
 import {
   hostFor,
   runHosted,
-  scenarioTest,
+  scenario,
+  scenarioResult,
   settleScenarios,
   trackHostedProcess,
 } from './bun-process.test-support.ts';
@@ -23,7 +24,9 @@ const PTY_DIMENSIONS = { columns: 80, rows: 24 };
 
 /** Wait for `condition`, failing after about five seconds; a condition is a state, never a guess at timing. */
 async function eventually(condition: () => boolean): Promise<boolean> {
-  for (let attempt = 0; attempt < 1000 && !condition(); attempt += 1) await Bun.sleep(5);
+  for (let attempt = 0; attempt < 1000 && !condition(); attempt += 1) {
+    await Bun.sleep(5);
+  }
   return condition();
 }
 
@@ -58,85 +61,94 @@ function derive(
   };
 }
 
-describe('a pipe process releases the pipes it reads', () => {
-  scenarioTest('when its output ends on its own', async () => {
-    let captured: ReturnType<typeof Bun.spawn> | undefined;
-    const hosted = trackHostedProcess(
-      createPipeProcess({
-        profile: shellProfile('printf done'),
-        spawn: spawnWith((child) => {
-          captured = child;
-          return derive(child, {});
-        }),
+const scenario1 = scenario('when its output ends on its own', async () => {
+  let captured: ReturnType<typeof Bun.spawn> | undefined;
+  const hosted = trackHostedProcess(
+    createPipeProcess({
+      profile: shellProfile('printf done'),
+      spawn: spawnWith((child) => {
+        captured = child;
+        return derive(child, {});
       }),
-    );
-    await hosted.backend.start();
-    const stdout = captured?.stdout as ReadableStream<Uint8Array>;
-    const stderr = captured?.stderr as ReadableStream<Uint8Array>;
-    // Nothing reads a pipe until the session asks, so the output is read to its end here, as it would be there.
-    for (const source of hosted.sources) {
-      if (source.kind !== 'stream') throw new Error('a pipe process carries streams');
-      const reader = source.stream.getReader();
-      for (let result = await reader.read(); !result.done; result = await reader.read());
-      reader.releaseLock();
-    }
-    expect(await eventually(() => !stdout.locked && !stderr.locked)).toBe(true);
-  });
+    }),
+  );
+  await hosted.backend.start();
+  const stdout = captured?.stdout as ReadableStream<Uint8Array>;
+  const stderr = captured?.stderr as ReadableStream<Uint8Array>;
+  // Nothing reads a pipe until the session asks, so the output is read to its end here, as it would be there.
+  for (const source of hosted.sources) {
+    if (source.kind !== 'stream') throw new Error('a pipe process carries streams');
+    const reader = source.stream.getReader();
+    for (let result = await reader.read(); !result.done; result = await reader.read()) {}
+    reader.releaseLock();
+  }
+  expect(await eventually(() => !stdout.locked && !stderr.locked)).toBe(true);
+});
 
-  scenarioTest('when cleanup ends it', async () => {
+const scenario2 = scenario('when cleanup ends it', async () => {
+  let captured: ReturnType<typeof Bun.spawn> | undefined;
+  const hosted = trackHostedProcess(
+    createPipeProcess({
+      profile: shellProfile('sleep 7919'),
+      terminationGraceMilliseconds: 100,
+      spawn: spawnWith((child) => {
+        captured = child;
+        return derive(child, {});
+      }),
+    }),
+  );
+  await hosted.backend.start();
+  const stdout = captured?.stdout as ReadableStream<Uint8Array>;
+  const stderr = captured?.stderr as ReadableStream<Uint8Array>;
+  expect(await hosted.backend.cleanup()).toBe('complete');
+  expect([stdout.locked, stderr.locked]).toEqual([false, false]);
+  expect(await hosted.backend.cleanup()).toBe('complete');
+});
+
+describe('a pipe process releases the pipes it reads', () => {
+  scenarioResult('when its output ends on its own', scenario1);
+
+  scenarioResult('when cleanup ends it', scenario2);
+});
+
+const scenario3 = scenario(
+  'is still signaled, so the cleanup deadline can never be spent waiting on its input',
+  async () => {
+    const stuck = createDeferred<number>();
     let captured: ReturnType<typeof Bun.spawn> | undefined;
     const hosted = trackHostedProcess(
       createPipeProcess({
         profile: shellProfile('sleep 7919'),
+        acceptsInput: true,
         terminationGraceMilliseconds: 100,
         spawn: spawnWith((child) => {
           captured = child;
-          return derive(child, {});
+          return derive(child, {
+            stdin: { write: () => 0, flush: () => 0, end: () => stuck.promise },
+          });
         }),
       }),
     );
     await hosted.backend.start();
-    const stdout = captured?.stdout as ReadableStream<Uint8Array>;
-    const stderr = captured?.stderr as ReadableStream<Uint8Array>;
-    expect(await hosted.backend.cleanup()).toBe('complete');
-    expect([stdout.locked, stderr.locked]).toEqual([false, false]);
-    expect(await hosted.backend.cleanup()).toBe('complete');
-  });
-});
+    const cleanup = hosted.backend.cleanup();
+    try {
+      const outcome = await Promise.race([
+        captured?.exited.then(() => 'ended'),
+        Bun.sleep(5000).then(() => 'still running'),
+      ]);
+      expect(outcome).toBe('ended');
+    } finally {
+      stuck.resolve(0);
+      captured?.kill('SIGKILL');
+    }
+    expect(await cleanup).toBe('complete');
+  },
+);
 
 describe('a pipe process whose stdin cannot be closed', () => {
-  scenarioTest(
+  scenarioResult(
     'is still signaled, so the cleanup deadline can never be spent waiting on its input',
-    async () => {
-      const stuck = createDeferred<number>();
-      let captured: ReturnType<typeof Bun.spawn> | undefined;
-      const hosted = trackHostedProcess(
-        createPipeProcess({
-          profile: shellProfile('sleep 7919'),
-          acceptsInput: true,
-          terminationGraceMilliseconds: 100,
-          spawn: spawnWith((child) => {
-            captured = child;
-            return derive(child, {
-              stdin: { write: () => 0, flush: () => 0, end: () => stuck.promise },
-            });
-          }),
-        }),
-      );
-      await hosted.backend.start();
-      const cleanup = hosted.backend.cleanup();
-      try {
-        const outcome = await Promise.race([
-          captured?.exited.then(() => 'ended'),
-          Bun.sleep(5000).then(() => 'still running'),
-        ]);
-        expect(outcome).toBe('ended');
-      } finally {
-        stuck.resolve(0);
-        captured?.kill('SIGKILL');
-      }
-      expect(await cleanup).toBe('complete');
-    },
+    scenario3,
   );
 });
 
@@ -169,8 +181,9 @@ function drivenMaster(takeAtMost = Number.POSITIVE_INFINITY) {
   };
 }
 
-describe('PTY input', () => {
-  scenarioTest('a write stays unsettled until the terminal has taken every byte', async () => {
+const scenario4 = scenario(
+  'a write stays unsettled until the terminal has taken every byte',
+  async () => {
     const master = drivenMaster();
     const hosted = trackHostedProcess(
       createPtyProcess({
@@ -190,119 +203,145 @@ describe('PTY input', () => {
     await Promise.all([first, second]);
     expect(settled).toEqual(['one', 'two']);
     expect(master.taken.map((bytes) => String.fromCharCode(...bytes))).toEqual(['one', 'two']);
-  });
+  },
+);
 
-  scenarioTest(
+const scenario5 = scenario(
+  'a write the terminal takes in pieces settles when the last piece lands',
+  async () => {
+    const master = drivenMaster(2);
+    master.accept();
+    const hosted = trackHostedProcess(
+      createPtyProcess({
+        profile: shellProfile('sleep 7919'),
+        dimensions: PTY_DIMENSIONS,
+        terminationGraceMilliseconds: 100,
+        writeMaster: master.writeMaster,
+      }),
+    );
+    await hosted.backend.start();
+    await hosted.backend.write(utf8('abcde'));
+    expect(master.taken.map((bytes) => String.fromCharCode(...bytes))).toEqual(['ab', 'cd', 'e']);
+  },
+);
+
+const scenario6 = scenario('a zero-length write settles at once and touches nothing', async () => {
+  const master = drivenMaster();
+  const hosted = trackHostedProcess(
+    createPtyProcess({
+      profile: shellProfile('sleep 7919'),
+      dimensions: PTY_DIMENSIONS,
+      terminationGraceMilliseconds: 100,
+      writeMaster: master.writeMaster,
+    }),
+  );
+  await hosted.backend.start();
+  await hosted.backend.write(utf8(''));
+  expect(master.attempts).toBe(0);
+});
+
+const scenario7 = scenario('a zero-length write to a real PTY settles', async () => {
+  const hosted = trackHostedProcess(
+    hostFor('pty', shellProfile('sleep 7919'), { terminationGraceMilliseconds: 100 }),
+  );
+  await hosted.backend.start();
+  await hosted.backend.write(utf8(''));
+});
+
+const scenario8 = scenario(
+  'a write to a terminal whose other end is gone never settles, and cleanup still completes',
+  async () => {
+    const master = drivenMaster();
+    master.failWith('EIO');
+    const hosted = trackHostedProcess(
+      createPtyProcess({
+        profile: shellProfile('sleep 7919'),
+        dimensions: PTY_DIMENSIONS,
+        terminationGraceMilliseconds: 100,
+        writeMaster: master.writeMaster,
+      }),
+    );
+    await hosted.backend.start();
+    const outcome = await Promise.race([
+      hosted.backend.write(utf8('lost')).then(() => 'settled'),
+      Bun.sleep(150).then(() => 'unsettled'),
+    ]);
+    expect(outcome).toBe('unsettled');
+    expect(master.attempts).toBe(1);
+    expect(await hosted.backend.cleanup()).toBe('complete');
+  },
+);
+
+const scenario9 = scenario('a write the kernel refuses for any other reason fails', async () => {
+  const master = drivenMaster();
+  master.failWith('EBADF');
+  const hosted = trackHostedProcess(
+    createPtyProcess({
+      profile: shellProfile('sleep 7919'),
+      dimensions: PTY_DIMENSIONS,
+      terminationGraceMilliseconds: 100,
+      writeMaster: master.writeMaster,
+    }),
+  );
+  await hosted.backend.start();
+  expect(((await rejectionOf(hosted.backend.write(utf8('x')))) as Error).message).toBe('EBADF');
+});
+
+const scenario10 = scenario(
+  'the session input budget keeps counting bytes the terminal has not taken',
+  async () => {
+    const master = drivenMaster();
+    const hosted = hostFor('pty', shellProfile('sleep 7919'), {
+      writeMaster: master.writeMaster,
+    });
+    const run = runHosted(hosted, { budgets: { inputQueueBytes: 8 } });
+    await run.started;
+    expect(run.attachment.write(utf8('12345678'))).toMatchObject({ disposition: 'accepted' });
+    expect(await eventually(() => master.attempts >= 1)).toBe(true);
+    expect(run.attachment.write(utf8('9'))).toMatchObject({
+      disposition: 'failed',
+      reason: 'input-overflow',
+    });
+    master.accept();
+    expect(await eventually(() => master.taken.length === 1)).toBe(true);
+    await flush();
+    expect(run.attachment.write(utf8('9'))).toMatchObject({ disposition: 'accepted' });
+    await flush();
+    expect(await eventually(() => master.taken.length === 2)).toBe(true);
+    await run.session.dispose();
+    expect(run.recorder.ofType('operationResult')).toEqual([]);
+  },
+);
+
+describe('PTY input', () => {
+  scenarioResult('a write stays unsettled until the terminal has taken every byte', scenario4);
+
+  scenarioResult(
     'a write the terminal takes in pieces settles when the last piece lands',
-    async () => {
-      const master = drivenMaster(2);
-      master.accept();
-      const hosted = trackHostedProcess(
-        createPtyProcess({
-          profile: shellProfile('sleep 7919'),
-          dimensions: PTY_DIMENSIONS,
-          terminationGraceMilliseconds: 100,
-          writeMaster: master.writeMaster,
-        }),
-      );
-      await hosted.backend.start();
-      await hosted.backend.write(utf8('abcde'));
-      expect(master.taken.map((bytes) => String.fromCharCode(...bytes))).toEqual(['ab', 'cd', 'e']);
-    },
+    scenario5,
   );
 
-  scenarioTest('a zero-length write settles at once and touches nothing', async () => {
-    const master = drivenMaster();
-    const hosted = trackHostedProcess(
-      createPtyProcess({
-        profile: shellProfile('sleep 7919'),
-        dimensions: PTY_DIMENSIONS,
-        terminationGraceMilliseconds: 100,
-        writeMaster: master.writeMaster,
-      }),
-    );
-    await hosted.backend.start();
-    await hosted.backend.write(utf8(''));
-    expect(master.attempts).toBe(0);
-  });
+  scenarioResult('a zero-length write settles at once and touches nothing', scenario6);
 
-  scenarioTest('a zero-length write to a real PTY settles', async () => {
-    const hosted = trackHostedProcess(
-      hostFor('pty', shellProfile('sleep 7919'), { terminationGraceMilliseconds: 100 }),
-    );
-    await hosted.backend.start();
-    await hosted.backend.write(utf8(''));
-  });
+  scenarioResult('a zero-length write to a real PTY settles', scenario7);
 
-  scenarioTest(
+  scenarioResult(
     'a write to a terminal whose other end is gone never settles, and cleanup still completes',
-    async () => {
-      const master = drivenMaster();
-      master.failWith('EIO');
-      const hosted = trackHostedProcess(
-        createPtyProcess({
-          profile: shellProfile('sleep 7919'),
-          dimensions: PTY_DIMENSIONS,
-          terminationGraceMilliseconds: 100,
-          writeMaster: master.writeMaster,
-        }),
-      );
-      await hosted.backend.start();
-      const outcome = await Promise.race([
-        hosted.backend.write(utf8('lost')).then(() => 'settled'),
-        Bun.sleep(150).then(() => 'unsettled'),
-      ]);
-      expect(outcome).toBe('unsettled');
-      expect(master.attempts).toBe(1);
-      expect(await hosted.backend.cleanup()).toBe('complete');
-    },
+    scenario8,
   );
 
-  scenarioTest('a write the kernel refuses for any other reason fails', async () => {
-    const master = drivenMaster();
-    master.failWith('EBADF');
-    const hosted = trackHostedProcess(
-      createPtyProcess({
-        profile: shellProfile('sleep 7919'),
-        dimensions: PTY_DIMENSIONS,
-        terminationGraceMilliseconds: 100,
-        writeMaster: master.writeMaster,
-      }),
-    );
-    await hosted.backend.start();
-    expect(((await rejectionOf(hosted.backend.write(utf8('x')))) as Error).message).toBe('EBADF');
-  });
+  scenarioResult('a write the kernel refuses for any other reason fails', scenario9);
 
-  scenarioTest(
+  scenarioResult(
     'the session input budget keeps counting bytes the terminal has not taken',
-    async () => {
-      const master = drivenMaster();
-      const hosted = hostFor('pty', shellProfile('sleep 7919'), {
-        writeMaster: master.writeMaster,
-      });
-      const run = runHosted(hosted, { budgets: { inputQueueBytes: 8 } });
-      await run.started;
-      expect(run.attachment.write(utf8('12345678'))).toMatchObject({ disposition: 'accepted' });
-      expect(await eventually(() => master.attempts >= 1)).toBe(true);
-      expect(run.attachment.write(utf8('9'))).toMatchObject({
-        disposition: 'failed',
-        reason: 'input-overflow',
-      });
-      master.accept();
-      expect(await eventually(() => master.taken.length === 1)).toBe(true);
-      await flush();
-      expect(run.attachment.write(utf8('9'))).toMatchObject({ disposition: 'accepted' });
-      await flush();
-      expect(await eventually(() => master.taken.length === 2)).toBe(true);
-      await run.session.dispose();
-      expect(run.recorder.ofType('operationResult')).toEqual([]);
-    },
+    scenario10,
   );
 });
 
-for (const mode of MODES)
-  describe(`a ${mode} process whose output nothing reads`, () => {
-    scenarioTest('is blocked by the kernel, not buffered by the host and not ended', async () => {
+for (const mode of MODES) {
+  const scenario11 = scenario(
+    'is blocked by the kernel, not buffered by the host and not ended',
+    async () => {
       const hosted = trackHostedProcess(hostFor(mode, shellProfile('yes')));
       const exit = createDeferred<ProcessExit>();
       void hosted.reportExitTo({
@@ -322,62 +361,77 @@ for (const mode of MODES)
       expect(outcome).toBe('still running');
       expect(process.memoryUsage().rss - before).toBeLessThan(96 * 1024 * 1024);
       expect(await hosted.backend.cleanup()).toBe('complete');
-    });
+    },
+  );
+
+  describe(`a ${mode} process whose output nothing reads`, () => {
+    scenarioResult('is blocked by the kernel, not buffered by the host and not ended', scenario11);
   });
+}
+
+const scenario12 = scenario(
+  'both readers are locked before start() yields, because an unlocked pipe is buffered without bound',
+  async () => {
+    let locks = 0;
+    const lockCounting = (stream: unknown) => ({
+      getReader: () => {
+        locks += 1;
+        return (stream as ReadableStream<Uint8Array>).getReader();
+      },
+    });
+    const hosted = trackHostedProcess(
+      createPipeProcess({
+        profile: shellProfile('sleep 7919'),
+        terminationGraceMilliseconds: 100,
+        spawn: spawnWith((child) =>
+          derive(child, {
+            stdout: lockCounting(child.stdout),
+            stderr: lockCounting(child.stderr),
+          }),
+        ),
+      }),
+    );
+    const started = hosted.backend.start();
+    // Not awaited: nothing may run between the spawn and the locks, not even a microtask.
+    expect(locks).toBe(2);
+    await started;
+  },
+);
 
 describe('a pipe process takes its pipes in the spawn turn', () => {
-  scenarioTest(
+  scenarioResult(
     'both readers are locked before start() yields, because an unlocked pipe is buffered without bound',
-    async () => {
-      let locks = 0;
-      const lockCounting = (stream: unknown) => ({
-        getReader: () => {
-          locks += 1;
-          return (stream as ReadableStream<Uint8Array>).getReader();
-        },
-      });
-      const hosted = trackHostedProcess(
-        createPipeProcess({
-          profile: shellProfile('sleep 7919'),
-          terminationGraceMilliseconds: 100,
-          spawn: spawnWith((child) =>
-            derive(child, {
-              stdout: lockCounting(child.stdout),
-              stderr: lockCounting(child.stderr),
-            }),
-          ),
-        }),
-      );
-      const started = hosted.backend.start();
-      // Not awaited: nothing may run between the spawn and the locks, not even a microtask.
-      expect(locks).toBe(2);
-      await started;
-    },
+    scenario12,
   );
 });
 
-describe('a PTY that Bun returned without the release channel', () => {
-  scenarioTest(
-    'is reaped before the start fails as unsupported-runtime, and its command never ran',
-    async () => {
-      let captured: ReturnType<typeof Bun.spawn> | undefined;
-      const hosted = trackHostedProcess(
-        createPtyProcess({
-          profile: shellProfile('sleep 7919'),
-          dimensions: PTY_DIMENSIONS,
-          terminationGraceMilliseconds: 100,
-          spawn: spawnWith((child) => {
-            captured = child;
-            return derive(child, { stdio: undefined });
-          }),
+const scenario13 = scenario(
+  'is reaped before the start fails as unsupported-runtime, and its command never ran',
+  async () => {
+    let captured: ReturnType<typeof Bun.spawn> | undefined;
+    const hosted = trackHostedProcess(
+      createPtyProcess({
+        profile: shellProfile('sleep 7919'),
+        dimensions: PTY_DIMENSIONS,
+        terminationGraceMilliseconds: 100,
+        spawn: spawnWith((child) => {
+          captured = child;
+          return derive(child, { stdio: undefined });
         }),
-      );
-      const error = await rejectionOf(hosted.backend.start());
-      expect((error as ProcessStartFailure).code).toBe('unsupported-runtime');
-      expect(hosted.startFailure?.code).toBe('unsupported-runtime');
-      expect(captured?.exitCode !== null || captured?.signalCode !== null).toBe(true);
-      expect(await hosted.backend.cleanup()).toBe('complete');
-    },
+      }),
+    );
+    const error = await rejectionOf(hosted.backend.start());
+    expect((error as ProcessStartFailure).code).toBe('unsupported-runtime');
+    expect(hosted.startFailure?.code).toBe('unsupported-runtime');
+    expect(captured?.exitCode !== null || captured?.signalCode !== null).toBe(true);
+    expect(await hosted.backend.cleanup()).toBe('complete');
+  },
+);
+
+describe('a PTY that Bun returned without the release channel', () => {
+  scenarioResult(
+    'is reaped before the start fails as unsupported-runtime, and its command never ran',
+    scenario13,
   );
 });
 
