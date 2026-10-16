@@ -444,10 +444,10 @@ test('the preflight and global inputs name files, not the whole repository', asy
 test('the playground build hashes the root package map its documentation reads', async () => {
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const build = configuration.tasks['@lostgradient/playground#build'];
-  // `component-documentation.ts` reads each package's last published version from the root
-  // package map. The generic `build` inputs cover only the package directory, so without this
-  // input turbo restores an old `build/` that still shows a version after `lastPublishedVersion`
-  // changed. A package-specific entry replaces the generic one, so it restates `transit` and the
+  // The Playground reads each package's last published version from the root package map: the
+  // documentation displays it, and the bundles stamp Cinder's into its token runtime. The generic
+  // `build` inputs cover only the package directory, so without this input turbo restores an old
+  // `build/` that still shows or embeds a version after `lastPublishedVersion` changed. A package-specific entry replaces the generic one, so it restates `transit` and the
   // outputs too; `reachesPreflight` below proves the first still reaches the install preflight.
   expect(build?.inputs).toContain('$TURBO_DEFAULT$');
   expect(build?.inputs).toContain('$TURBO_ROOT$/scripts/mirror/package-map.json');
@@ -463,23 +463,31 @@ test('the playground build hashes the root package map its documentation reads',
   expect(playgroundManifest.scripts.build).toStartWith('NODE_ENV=production ');
   expect(await Bun.file(join(root, 'scripts/mirror/package-map.json')).exists()).toBe(true);
   // Pin the read the input covers, so removing the read prompts removing the input. The path is
-  // defined once in `playground-paths.ts`, shared by the documentation read and the file watcher,
-  // so the pin has two halves: the definition names the mirror's package map, and the
-  // documentation module imports that definition and reads the file through it.
+  // defined once in `playground-paths.ts`, shared by the version read and the file watcher, so the
+  // pin has three parts: the definition names the mirror's package map, `published-version.ts`
+  // imports that definition and reads the file through it, and both consumers of the version — the
+  // documentation, and the stamp that writes Cinder's version into the bundled token runtime
+  // (COR-231) — import that read.
   const paths = await Bun.file(
     join(root, 'applications/playground/src/playground-paths.ts'),
   ).text();
   expect(paths).toMatch(/export const PACKAGE_MAP_PATH\s*=/);
   expect(paths).toContain("'scripts', 'mirror', 'package-map.json'");
-  const documentation = await Bun.file(
-    join(root, 'applications/playground/src/component-documentation.ts'),
+  const read = await Bun.file(
+    join(root, 'applications/playground/src/published-version.ts'),
   ).text();
   // The imported name must be `PACKAGE_MAP_PATH` itself: `{ SOMETHING_ELSE as PACKAGE_MAP_PATH }`
   // would satisfy a looser match while pointing the read somewhere else.
-  expect(documentation).toMatch(
+  expect(read).toMatch(
     /import\s*\{(?:[^}]*,)?\s*PACKAGE_MAP_PATH\s*(?:,[^}]*)?\}\s*from\s*'\.\/playground-paths\.ts'/,
   );
-  expect(documentation).toContain('Bun.file(PACKAGE_MAP_PATH)');
+  expect(read).toContain('Bun.file(PACKAGE_MAP_PATH)');
+  for (const consumer of ['component-documentation.ts', 'cinder-package-version-plugin.ts']) {
+    const source = await Bun.file(join(root, 'applications/playground/src', consumer)).text();
+    expect(source).toMatch(
+      /import\s*\{(?:[^}]*,)?\s*readLastPublishedVersion\s*(?:,[^}]*)?\}\s*from\s*'\.\/published-version\.ts'/,
+    );
+  }
 });
 
 test('the bureau tests hash the runtime contracts guide they compare a fixture with', async () => {

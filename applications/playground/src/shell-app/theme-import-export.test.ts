@@ -4,7 +4,7 @@
  * assert on what it captured.
  */
 
-import { CINDER_BASE } from '@lostgradient/cinder/tokens/runtime';
+import { CINDER_BASE, computeSourceDigest } from '@lostgradient/cinder/tokens/runtime';
 import { describe, expect, test } from 'bun:test';
 
 import { cinderThemeBase } from './theme-builder-base.ts';
@@ -59,9 +59,26 @@ const spectrum = await run(
 );
 const notJson = await run('not json at all');
 const unknownShape = await run(JSON.stringify({ hello: 'world' }));
+// A different corpus, honestly digested: the version alone no longer makes a base incompatible.
+const otherResolver = { ...CINDER_BASE.resolver, description: 'Another Cinder corpus' };
+const otherDigest = await computeSourceDigest({
+  resolver: otherResolver,
+  documents: CINDER_BASE.documents,
+});
 const incompatible = await run(
   envelopeWith((copy) => {
-    copy['base'] = { ...copy['base'], packageVersion: '0.0.0-other' };
+    copy['base'] = {
+      ...copy['base'],
+      packageVersion: '0.0.0-other',
+      resolver: otherResolver,
+      sourceDigest: otherDigest,
+    };
+  }),
+);
+// Exported before the Playground stamped Cinder's published version (COR-231).
+const workspaceLabelled = await run(
+  envelopeWith((copy) => {
+    copy['base'] = { ...copy['base'], packageVersion: 'workspace' };
   }),
 );
 
@@ -116,11 +133,24 @@ describe('the four preflight outcomes', () => {
 describe('incompatible base', () => {
   test('is a read-only state with the compared versions, never silently rebased', () => {
     expect(incompatible.outcome).toBe('cinder-envelope');
+    expect(incompatible.base?.sourceDigest).toBe(otherDigest);
     expect(incompatible.base?.compatible).toBe(false);
     expect(incompatible.base?.packageVersion).toBe('0.0.0-other');
     expect(incompatible.base?.currentPackageVersion).toBe(CINDER_BASE.packageVersion);
     expect(canApply(incompatible)).toBe(false);
     expect(incompatible.candidate).toBeNull();
+  });
+
+  test('the same digest under another version label is the same base, and Apply restamps it', () => {
+    expect(workspaceLabelled.outcome).toBe('cinder-envelope');
+    expect(workspaceLabelled.base?.compatible).toBe(true);
+    expect(workspaceLabelled.base?.packageVersion).toBe('workspace');
+    expect(canApply(workspaceLabelled)).toBe(true);
+    const candidate = workspaceLabelled.candidate;
+    expect(candidate?.kind).toBe('envelope');
+    if (candidate?.kind !== 'envelope') throw new Error('expected an envelope candidate');
+    expect(candidate.envelope.base.packageVersion).toBe(CINDER_BASE.packageVersion);
+    expect(candidate.envelope.base.sourceDigest).toBe(CINDER_BASE.sourceDigest);
   });
 
   test('a digest that does not match the embedded base is refused as untrusted', async () => {

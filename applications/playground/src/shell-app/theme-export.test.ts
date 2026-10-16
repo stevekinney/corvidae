@@ -121,7 +121,7 @@ describe('gating', () => {
   test('a base this build does not ship exports its source only', async () => {
     const other = {
       ...snapshot.envelope,
-      base: { ...snapshot.envelope.base, packageVersion: '0.0.0-other' },
+      base: { ...snapshot.envelope.base, sourceDigest: 'sha256:another-corpus' },
     };
     const snap = await takeExportSnapshot(createDraft(other), evaluator);
     const plan = planExports(snap, true);
@@ -129,6 +129,18 @@ describe('gating', () => {
     expect(artifact(plan, 'source').caveat).toBe('Unvalidated');
     expect(artifact(plan, 'css').blockedReason).toContain('different Cinder base');
     expect(artifact(plan, 'report').files[0]!.text).toContain('"matchesThisBuild": false');
+  });
+
+  test('the same digest under the pre-stamp `workspace` label is still this build (COR-231)', async () => {
+    const relabelled = {
+      ...snapshot.envelope,
+      base: { ...snapshot.envelope.base, packageVersion: 'workspace' },
+    };
+    const snap = await takeExportSnapshot(createDraft(relabelled), evaluator);
+    expect(snap.baseIsCurrent).toBe(true);
+    expect(artifact(planExports(snap, true), 'report').files[0]!.text).toContain(
+      '"matchesThisBuild": true',
+    );
   });
 });
 
