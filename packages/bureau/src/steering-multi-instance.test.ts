@@ -23,6 +23,8 @@ import { createConversationHistory } from 'conversationalist';
 import { encodeStorageKeyComponent } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
+
+import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
@@ -773,17 +775,19 @@ describe('durable steering across two Bureau processes', () => {
       // A value naming both a policy and an override is malformed. It is
       // refused before anything is logged, so every process still reads the
       // log: the next admission elsewhere succeeds.
-      await expect(
-        withPolicy.submitSteeringCommand(sessionId, {
-          id: 'p-both',
-          principal: 'alice',
-          requestedValue: {
-            target: 'model',
-            policyRef: 'fast-tier',
-            override: 'claude-opus-4-8',
-          } as never,
-        }),
-      ).rejects.toThrow('Malformed steering command.');
+      expect(
+        await throwingRejectionOf(
+          withPolicy.submitSteeringCommand(sessionId, {
+            id: 'p-both',
+            principal: 'alice',
+            requestedValue: {
+              target: 'model',
+              policyRef: 'fast-tier',
+              override: 'claude-opus-4-8',
+            } as never,
+          }),
+        ),
+      ).toThrow('Malformed steering command.');
       const afterBoth = await withoutPolicy.submitSteeringCommand(sessionId, {
         id: 'p-after-both',
         principal: 'alice',
@@ -849,9 +853,11 @@ describe('durable steering across two Bureau processes', () => {
       if (headKey === undefined) throw new Error('expected a steering log head');
       await kv.set(headKey, '{"sequence":-1}');
 
-      await expect(
-        bureau.createRun({ message: 'again', principal: 'alice', sessionId }),
-      ).rejects.toThrow();
+      expect(
+        await throwingRejectionOf(
+          bureau.createRun({ message: 'again', principal: 'alice', sessionId }),
+        ),
+      ).toThrow();
       const after = await bureau.getSession(sessionId);
       expect(after?.metadata['lastRunStatus']).toBe('error');
     } finally {
@@ -1042,13 +1048,15 @@ describe('durable steering across two Bureau processes', () => {
       // A backend failure reaches the caller authorized for the run it
       // named, even though the session's default authority is someone else's.
       engineGet.mockImplementation(() => Promise.reject(new Error('backend unavailable')));
-      await expect(
-        reader.submitSteeringCommand(sessionId, {
-          principal: 'alice',
-          runId: 'starting-4',
-          requestedValue: { target: 'pause' },
-        }),
-      ).rejects.toThrow('backend unavailable');
+      expect(
+        await throwingRejectionOf(
+          reader.submitSteeringCommand(sessionId, {
+            principal: 'alice',
+            runId: 'starting-4',
+            requestedValue: { target: 'pause' },
+          }),
+        ),
+      ).toThrow('backend unavailable');
       // ...unless that run's authority was taken from the caller while the
       // query was failing: then the answer is `not-found`, not the failure.
       engineGet.mockImplementation(async () => {
@@ -1259,12 +1267,14 @@ describe('durable steering across two Bureau processes', () => {
         Promise.reject(new Error('backend unavailable')),
       );
       try {
-        await expect(
-          bureauA.submitSteeringCommand(sessionId, {
-            principal: 'alice',
-            requestedValue: { target: 'pause' },
-          }),
-        ).rejects.toThrow('backend unavailable');
+        expect(
+          await throwingRejectionOf(
+            bureauA.submitSteeringCommand(sessionId, {
+              principal: 'alice',
+              requestedValue: { target: 'pause' },
+            }),
+          ),
+        ).toThrow('backend unavailable');
       } finally {
         engineList.mockRestore();
       }
@@ -1514,12 +1524,14 @@ describe('durable steering across two Bureau processes', () => {
         },
       );
       reader = await openBureau(path);
-      await expect(
-        reader.submitSteeringCommand(sessionId, {
-          principal: 'alice',
-          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
-        }),
-      ).rejects.toThrow(/no admission before it issued/);
+      expect(
+        await throwingRejectionOf(
+          reader.submitSteeringCommand(sessionId, {
+            principal: 'alice',
+            requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+          }),
+        ),
+      ).toThrow(/no admission before it issued/);
     } finally {
       await writer.dispose();
       await reader?.dispose();
@@ -1545,12 +1557,14 @@ describe('durable steering across two Bureau processes', () => {
         { type: 'run-ended', runId: 'never-promoted', now: new Date().toISOString() },
       );
       reader = await openBureau(path);
-      await expect(
-        reader.submitSteeringCommand(sessionId, {
-          principal: 'alice',
-          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
-        }),
-      ).rejects.toThrow(/ending without a promotion/);
+      expect(
+        await throwingRejectionOf(
+          reader.submitSteeringCommand(sessionId, {
+            principal: 'alice',
+            requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+          }),
+        ),
+      ).toThrow(/ending without a promotion/);
     } finally {
       await writer.dispose();
       await reader?.dispose();
@@ -1653,9 +1667,9 @@ describe('durable steering across two Bureau processes', () => {
       });
       const reader = await openBureau(path);
       readers.push(reader);
-      await expect(reader.submitSteeringCommand(ghostApplied, model('k-a'))).rejects.toThrow(
-        /applying a version without a promotion/,
-      );
+      expect(
+        await throwingRejectionOf(reader.submitSteeringCommand(ghostApplied, model('k-a'))),
+      ).toThrow(/applying a version without a promotion/);
 
       // A second decision for one key, appended past the binding's guard.
       const twice = await startRunningSession(writer);
@@ -1688,9 +1702,9 @@ describe('durable steering across two Bureau processes', () => {
       );
       const second = await openBureau(path);
       readers.push(second);
-      await expect(second.submitSteeringCommand(twice, model('k-other'))).rejects.toThrow(
-        /a second decision for steering key/,
-      );
+      expect(
+        await throwingRejectionOf(second.submitSteeringCommand(twice, model('k-other'))),
+      ).toThrow(/a second decision for steering key/);
     } finally {
       await writer.dispose();
       for (const reader of readers) await reader.dispose();
@@ -1734,12 +1748,14 @@ describe('durable steering across two Bureau processes', () => {
       );
       const reader = await openBureau(path);
       readers.push(reader);
-      await expect(
-        reader.submitSteeringCommand(sessionId, {
-          principal: 'alice',
-          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
-        }),
-      ).rejects.toThrow(/which no admission before it issued to that run/);
+      expect(
+        await throwingRejectionOf(
+          reader.submitSteeringCommand(sessionId, {
+            principal: 'alice',
+            requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+          }),
+        ),
+      ).toThrow(/which no admission before it issued to that run/);
 
       // Saved as running a moment before its promotion is logged: steered
       // from elsewhere in that gap, the run is starting, not terminal.
@@ -2008,12 +2024,14 @@ describe('durable steering across two Bureau processes', () => {
       );
       const belowReader = await openBureau(path);
       readers.push(belowReader);
-      await expect(
-        belowReader.submitSteeringCommand(belowFloor, {
-          principal: 'alice',
-          requestedValue: { target: 'model', override: 'claude-sonnet-5' },
-        }),
-      ).rejects.toThrow(/which no admission before it issued to that run/);
+      expect(
+        await throwingRejectionOf(
+          belowReader.submitSteeringCommand(belowFloor, {
+            principal: 'alice',
+            requestedValue: { target: 'model', override: 'claude-sonnet-5' },
+          }),
+        ),
+      ).toThrow(/which no admission before it issued to that run/);
     } finally {
       await writer.dispose();
       for (const reader of readers) await reader.dispose();
@@ -2149,9 +2167,11 @@ describe('durable steering across two Bureau processes', () => {
       if (headKey === undefined) throw new Error('expected a head');
       await kv.set(headKey, JSON.stringify({ sequence: 1 }));
       for (const id of ['s3', 's4']) {
-        await expect(
-          bureau.submitSteeringCommand(sessionId, model(id, 'claude-sonnet-5')),
-        ).rejects.toThrow(/shorter than the 3 entries already folded/);
+        expect(
+          await throwingRejectionOf(
+            bureau.submitSteeringCommand(sessionId, model(id, 'claude-sonnet-5')),
+          ),
+        ).toThrow(/shorter than the 3 entries already folded/);
       }
     } finally {
       await bureau.dispose();
@@ -2185,9 +2205,11 @@ describe('durable steering across two Bureau processes', () => {
 
       // An exact retry in the session that decided k1 fails closed too,
       // rather than replaying its folded answer past the bad binding.
-      await expect(
-        bureau.submitSteeringCommand(first, model('k1', 'claude-sonnet-5')),
-      ).rejects.toThrow(/does not name that decision/);
+      expect(
+        await throwingRejectionOf(
+          bureau.submitSteeringCommand(first, model('k1', 'claude-sonnet-5')),
+        ),
+      ).toThrow(/does not name that decision/);
       // ...but only to a caller still authorized there.
       const firstSession = await bureau.getSession(first);
       const firstRun = firstSession?.metadata['lastRunId'];
@@ -2208,9 +2230,11 @@ describe('durable steering across two Bureau processes', () => {
       });
 
       const other = await startRunningSession(bureau);
-      await expect(
-        bureau.submitSteeringCommand(other, model('k1', 'claude-sonnet-5')),
-      ).rejects.toThrow(/does not admit it/);
+      expect(
+        await throwingRejectionOf(
+          bureau.submitSteeringCommand(other, model('k1', 'claude-sonnet-5')),
+        ),
+      ).toThrow(/does not admit it/);
     } finally {
       await bureau.dispose();
       rmSync(directory, { recursive: true, force: true });
