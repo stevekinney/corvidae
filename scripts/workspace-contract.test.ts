@@ -291,7 +291,24 @@ describe('internal workspace architecture', () => {
         // ratchet sees every workspace (COR-1499). A direct `bun test` would drop one silently.
         expect(scripts['test'], directory).toMatch(/\bbun-test-junit\.ts\b/);
       }
-      expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
+      expect(scripts['typecheck'], directory).toMatch(
+        /\b(?:svelte-check|tsc --noEmit|tsc -b (?:\.\/)?tsconfig\.json)\b/,
+      );
+      // A type-check that reads a dependency's emitted declarations runs in build mode, which
+      // rebuilds them when the dependency's source is newer, so it never checks stale types.
+      const typescriptConfigurationFile = Bun.file(join(root, directory, 'tsconfig.json'));
+      const typescriptConfiguration: { references?: unknown[] } =
+        (await typescriptConfigurationFile.exists())
+          ? await typescriptConfigurationFile.json()
+          : {};
+      if ((typescriptConfiguration.references ?? []).length > 0) {
+        expect(scripts['typecheck'], directory).toMatch(/^tsc -b (?:\.\/)?tsconfig\.json\b/);
+      }
+      // A library that emits declarations for its consumers does so through the `types` task,
+      // which `typecheck` depends on, so Turborepo orders and caches the emit.
+      if (await Bun.file(join(root, directory, 'tsconfig.source.json')).exists()) {
+        expect(scripts['types'], directory).toBe('tsc -b tsconfig.source.json');
+      }
 
       for (const [name, command] of Object.entries(scripts)) {
         expect(command, `${directory}: ${name}`).not.toMatch(/\b(?:deno|node|npm|npx|pnpm|yarn)\b/);

@@ -7,7 +7,7 @@ This is a pre-release, internal-only Bun and Turborepo workspace. Libraries are 
 - Inspect the existing workspace and nearby conventions before changing code.
 - Plan non-trivial work, implement one complete testable capability at a time, and add a regression test for every defect.
 - Use current official Bun, TypeScript, Turborepo, and dependency documentation for unfamiliar APIs or configuration.
-- Run the relevant focused command while working and `bun run validate` before finishing. Treat warnings, console errors, and failed checks as defects.
+- Run the relevant focused command or `bun run check` while working and `bun run validate` before finishing. Treat warnings, console errors, and failed checks as defects.
 - Treat file length as review guidance, including in imported tests. Enforce classic cyclomatic complexity of at most 100 in implementation and tests, or 300 under `scripts/`. Keep executable repository tooling in its owning workspace’s `scripts/` directory; required tool configuration and application entrypoints retain their documented locations. Require a concrete ownership, duplication, or correctness benefit before restructuring code. Keep correctness, types, tests, and builds enforced. Prefer platform and Bun primitives over new abstractions or dependencies.
 - Do not add compatibility, migration, shim, adapter, or re-export layers while the template is pre-release unless the requirement explicitly demands one.
 
@@ -29,7 +29,7 @@ This software is pre-1.0 and still being prototyped, so the goal is to move fast
 - Internal dependencies always use `workspace:*`. Shared external tool versions belong in the root Bun `catalog`; add runtime dependencies to the workspace that imports them.
 - Component source uses the shared browser TypeScript configuration and root browser lint policy. Keep Bun and Node APIs in tests or scripts. Run both the browser source check and the inclusive tooling/test check.
 - The `@lostgradient/typescript` configuration package under `internal/typescript` exports only `library.json` and `browser.json`; `base.json` is private composition.
-- Shared source libraries export TypeScript source directly. Consumers compile it, so do not add a build step to a just-in-time package without a packaging need.
+- Shared source libraries export TypeScript source directly. Consumers compile it at runtime, so do not add a build step to a just-in-time package without a packaging need. Type-checking is the one exception: a TypeScript library that another package type-checks against has a `tsconfig.source.json` (composite, declarations only, into the ignored `.types/`), its `types` script builds it with `tsc -b`, and each consumer's `tsconfig.json` lists it under `references`, so the consumer reads those declarations instead of type-checking the library's source again. A consumer with references type-checks with `tsc -b tsconfig.json`, which rebuilds stale declarations first. Svelte packages still read source, because `svelte-check` does not substitute declarations.
 - Use Bun commands only. `bun.lock` is authoritative, and dependency changes must update it with `bun install`.
 - Keep `typescript` explicit at the root. Do not rely on a transitive or peer dependency to supply `tsc`.
 
@@ -41,10 +41,12 @@ This software is pre-1.0 and still being prototyped, so the goal is to move fast
 
 ## Turborepo
 
-- Only applications have `build` tasks. Cache their declared application outputs. Lint, type-check, test, and development tasks consume library source directly and must not depend on upstream library builds.
+- Only applications have `build` tasks. Cache their declared application outputs. Lint, test, and development tasks consume library source directly and must not depend on upstream library builds; `typecheck` depends only on its dependencies' `types` tasks, whose declarations it reads.
 - Declare an environment variable in `turbo.json` only when it changes that task's result. Add task outputs whenever a task writes reusable artifacts; keep watchers and mutation tasks uncached.
-- Use `--filter` for focused work, for example `bunx turbo run test --filter=@lostgradient/operative`. Run `bun run validate` for the complete graph.
+- Use `--filter` for focused work, for example `bunx turbo run test --filter=@lostgradient/operative`, or `bun run check` to lint, type-check, and test only the workspaces a change can affect (Turborepo's `--affected`, against the default branch, plus the root lint). It skips root type-checking, coverage, the build, and formatting, so run `bun run validate` for the complete graph.
 - The heavy root stages—`lint`, `typecheck`, `test`, `coverage`, and `build`—run through `scripts/run-exclusively.ts`, which holds one lock in the Git common directory that every worktree on the host shares. Concurrent `bun run validate` runs queue stage by stage instead of oversubscribing the machine, which otherwise times out unrelated tests at random. A waiting stage prints which process holds the lock, and a lock whose holder died is reclaimed. Focused `bunx turbo run … --filter` commands bypass the lock on purpose, so keep them focused. `scripts/workspace-contract.test.ts` keeps each stage behind the lock.
+- The wrapper also gives each stage two Turborepo defaults, unless the environment already sets them. `TURBO_CACHE_DIR` points at one cache in the Git common directory, so a task any worktree has run replays in every other one. `TURBO_CONCURRENCY` is one task per 16 GiB of memory, because a single type-check peaks near 5 GB. A stage that passes `--concurrency` keeps its own value, as the serial test stages do.
+- `bun run validate` runs each test suite once. A workspace whose `test:coverage` runs its fast suite through `scripts/bun-test-junit.ts`, with coverage flags only, writes its JUnit report there, and validate's `test` stage filters that workspace out. `scripts/workspace-contract.test.ts` derives the filter list from the manifests. A workspace whose coverage run differs from its `test` (Weft's sharded run with a longer timeout, chat's parallel run, terminal's run without isolation) keeps both.
 - Every turbo task runs the uncached root `//#preflight` task (`bun install --frozen-lockfile`) first, by way of `transit`, so a `package.json` edit without a matching `bun install` fails every turbo command rather than running against a stale tree. Turbo hashes `bun.lock` but never `node_modules`, so a drifted install would otherwise cache a result under a key describing a toolchain it was not built with. A package-specific `<package>#<task>` entry replaces the generic task definition instead of merging with it, so any new override must restate `"dependsOn": ["transit"]`; `scripts/task-cache.test.ts` enforces that every cacheable task still reaches the preflight.
 - Keep cache keys scoped to what a task can observe, so a change reruns only the packages it can affect. Because every task depends on `//#preflight`, its inputs are only `bun.lock` and the `package.json` manifests. The root package depends on no workspace except `@lostgradient/typescript`: turbo folds the files of every workspace the root depends on into the global hash, which would invalidate every cached task whenever one of them changed. Give root tooling that needs a workspace its own workspace, as `scripts/browser-fixtures` does. `globalDependencies` names individual configuration files, never directory globs; a package task that runs a root script lists that script in its own `inputs`. `scripts/task-cache.test.ts` enforces all three.
 
@@ -79,6 +81,7 @@ What the container enables, suite by suite:
 ```bash
 bun install --frozen-lockfile
 bun run dev
+bun run check
 bun run build
 bun run lint
 bun run typecheck

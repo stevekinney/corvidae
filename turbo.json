@@ -16,9 +16,13 @@
     "lint:fix": {
       "cache": false
     },
+    "types": {
+      "outputs": [".types/**"],
+      "dependsOn": ["transit", "^types"]
+    },
     "typecheck": {
       "outputs": [],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^types"],
       "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
     },
     "test": {
@@ -172,7 +176,7 @@
     },
     "@lostgradient/ventriloquist#typecheck": {
       "outputs": [],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "^types"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/typecheck-contracts.ts",

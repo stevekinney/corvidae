@@ -8,6 +8,7 @@
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",
+    "types": "tsc -b tsconfig.source.json",
     "typecheck": "tsc --noEmit -p ./tsconfig.json",
     "test": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test-junit.ts src",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src"

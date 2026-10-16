@@ -564,16 +564,20 @@ test('a coverage run that replaces its workspace test in validate caches that te
   // `bun run validate` skips a workspace's plain `test` when its coverage run goes through the
   // JUnit wrapper, so the coverage task is what restores `test-output/junit/` on a cache hit, and
   // the duration report finds no report for the workspace without it.
-  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const configuration: { tasks: Record<string, { outputs?: string[] }> } = await Bun.file(
+    join(root, 'turbo.json'),
+  ).json();
   const replacing: string[] = [];
   for await (const path of new Bun.Glob('{applications,components,packages}/*/package.json').scan({
     cwd: root,
   })) {
-    const manifest = await Bun.file(join(root, path)).json();
+    const manifest: { name: string; scripts?: Record<string, string> } = await Bun.file(
+      join(root, path),
+    ).json();
     if (!manifest.scripts?.['test:coverage']?.includes('scripts/bun-test-junit.ts')) continue;
     replacing.push(manifest.name);
     const task = configuration.tasks[`${manifest.name}#test:coverage`];
-    expect(task?.outputs, manifest.name).toContain('test-output/junit/**');
+    expect(task?.outputs ?? [], manifest.name).toContain('test-output/junit/**');
   }
   expect(replacing.length).toBeGreaterThan(0);
 });

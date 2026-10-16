@@ -1,5 +1,19 @@
 {
   "extends": "@lostgradient/typescript/library.json",
   "include": ["src", "test"],
-  "exclude": ["node_modules", "coverage"]
+  "exclude": ["node_modules", "coverage"],
+  "references": [
+    {
+      "path": "../cryptography/tsconfig.source.json"
+    },
+    {
+      "path": "../embeddings/tsconfig.source.json"
+    },
+    {
+      "path": "../lifecycle/tsconfig.source.json"
+    },
+    {
+      "path": "../tool-protocol/tsconfig.source.json"
+    }
+  ]
 }
