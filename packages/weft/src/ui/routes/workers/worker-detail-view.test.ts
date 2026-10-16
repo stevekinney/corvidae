@@ -316,6 +316,19 @@ describe('WorkerDetailView — server-reported session', () => {
     expect(session.getAllByText('Draining')).toHaveLength(2);
   });
 
+  test('stale-session copy does not claim a proven resume changes the generation', () => {
+    const { container } = renderSession({
+      diagnostics: sessionDiagnostics({ heartbeatAgeMs: 180_000 }),
+    });
+    const warning = sessionRegion(container).getByText(/No heartbeat for 3m/);
+    const copy = (warning.textContent ?? '').replace(/\s+/g, ' ');
+
+    expect(copy).toContain(
+      'A proven resume keeps generation 3; a fresh or unproven registration reports a higher one.',
+    );
+    expect(copy).not.toContain('a reconnect reports a generation above');
+  });
+
   test('shows an explicit loading state while diagnostics load', () => {
     const { container } = renderSession({ loading: true });
     expect(

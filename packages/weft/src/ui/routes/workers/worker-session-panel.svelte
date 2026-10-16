@@ -96,7 +96,8 @@
       {#if stale}
         <Alert variant="warning"
           >No heartbeat for {formatDuration(instance.heartbeatAgeMs)}. The session may be slow or
-          about to be superseded; a reconnect reports a generation above {instance.sessionGeneration}.</Alert
+          about to be superseded. A proven resume keeps generation {instance.sessionGeneration}; a
+          fresh or unproven registration reports a higher one.</Alert
         >
       {/if}
       <DescriptionList items={sessionItems} />
