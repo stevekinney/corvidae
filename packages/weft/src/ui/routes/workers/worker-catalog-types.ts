@@ -37,6 +37,11 @@ export type StandardTaskDiagnosticItem = Extract<
 >;
 export type TaskDiagnosticsSummary = TaskDiagnosticsOutput['summary'];
 
+export type TaskLedgerOutput = Awaited<ReturnType<Operations['weft.tasks.get']>>;
+/** One fenced attempt record from `weft.tasks.get`'s `attempts` history. */
+export type TaskAttemptRecord = TaskLedgerOutput['attempts'][number];
+export type TaskAttemptDisposition = TaskAttemptRecord['disposition'];
+
 export type TaskLedgerState =
   'queued' | 'leased' | 'completing' | 'cancelling' | 'terminal' | 'deadLettered';
 
@@ -70,6 +75,8 @@ export type TaskLedgerDetail = Readonly<{
   startedAt?: number;
   lastHeartbeatAt?: number;
   leaseDeadline?: number;
+  attemptDeadline?: number;
+  attempts: readonly TaskAttemptRecord[];
   retryCount?: number;
   requeueCount?: number;
   lastRequeueReason?: string;

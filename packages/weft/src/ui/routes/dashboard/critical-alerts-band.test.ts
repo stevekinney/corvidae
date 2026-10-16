@@ -44,14 +44,22 @@ const EMPTY_DIAGNOSTICS_SUMMARY = {
   unadoptedTerminal: 0,
 };
 
-function alertClient(options: { diagnostics: unknown; reviews: unknown }): HttpClient {
+const DISABLED_LEASE = { mode: 'none', status: 'disabled', holdsLease: false } as const;
+
+function settle(value: unknown): Promise<unknown> {
+  return value instanceof HttpClientError ? Promise.reject(value) : Promise.resolve(value);
+}
+
+function alertClient(options: {
+  diagnostics: unknown;
+  reviews: unknown;
+  lease?: unknown;
+}): HttpClient {
   const client = new HttpClient({ baseUrl: 'http://weft.test/api' });
   Object.defineProperty(client, 'operations', {
     value: {
-      'weft.tasks.diagnostics': () =>
-        options.diagnostics instanceof HttpClientError
-          ? Promise.reject(options.diagnostics)
-          : Promise.resolve(options.diagnostics),
+      'weft.tasks.diagnostics': () => settle(options.diagnostics),
+      'weft.system.lease': () => settle(options.lease ?? DISABLED_LEASE),
     },
   });
   Object.defineProperty(client, 'listReviews', { value: () => Promise.resolve(options.reviews) });
@@ -116,6 +124,67 @@ describe('CriticalAlertsBand', () => {
     );
     const link = getByText('3 dead-lettered tasks').closest('a');
     expect(link?.getAttribute('href')).toBe('/workers?diagnostic=deadLettered');
+  });
+
+  test('renders a contested engine lease chip first, deep-linking to the Health & lease tab', async () => {
+    const client = alertClient({
+      diagnostics: {
+        items: [],
+        summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 3 },
+        limit: 50,
+      },
+      reviews: [],
+      lease: { mode: 'lease', status: 'contested', holdsLease: false, lossReason: 'deposed' },
+    });
+
+    const { container, getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText('Engine lease contested · deposed')).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
+    const link = getByText('Engine lease contested · deposed').closest('a');
+    expect(link?.getAttribute('href')).toBe('/system?tab=health');
+    expect(link?.getAttribute('data-tone')).toBe('danger');
+    await waitFor(() => expect(getByText('3 dead-lettered tasks')).not.toBeNull());
+    expect(container.querySelector('.weft-alert-chip')?.textContent?.trim()).toBe(
+      'Engine lease contested · deposed',
+    );
+  });
+
+  test('a healthy or malformed lease read never produces a lease chip', async () => {
+    for (const lease of [
+      { mode: 'lease', status: 'healthy', holdsLease: true, holderId: 'engine-a' },
+      { mode: 'lease', status: 'split-brain', holdsLease: false },
+    ]) {
+      const client = alertClient({
+        diagnostics: { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
+        reviews: [],
+        lease,
+      });
+      let queryClient!: QueryClient;
+      const { container, unmount } = render(CriticalAlertsBandHarness, {
+        props: { client, onQueryClientReady: (value) => (queryClient = value) },
+      });
+      await waitForSettledQueries(queryClient);
+      expect(container.textContent).not.toContain('lease');
+      unmount();
+    }
+  });
+
+  test('a 403 from the lease read degrades system:read like a diagnostics 403', async () => {
+    const client = alertClient({
+      diagnostics: { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
+      reviews: [],
+      lease: new HttpClientError(403, 'Forbidden'),
+    });
+
+    const { getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText('Requires system:read')).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
   });
 
   test('renders a reviews-near-timeout chip that deep-links to /reviews', async () => {

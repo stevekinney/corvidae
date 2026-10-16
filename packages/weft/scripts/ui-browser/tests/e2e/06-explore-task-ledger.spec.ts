@@ -12,6 +12,16 @@ test('operator inspects a seeded authoritative task ledger', async ({ page, chec
   await expect(page.getByText('traceparent')).toBeVisible();
   await expect(page.getByText('No heartbeat recorded')).toBeVisible();
 
+  // COR-124: three independently labeled clocks, the fenced attempt history, and cancellation.
+  const clocks = page.getByRole('region', { name: 'Lease clocks' });
+  await expect(clocks.getByText('Session lease')).toBeVisible();
+  await expect(clocks.getByText('Attempt lease')).toBeVisible();
+  await expect(clocks.getByText('Absolute execution deadline')).toBeVisible();
+  await expect(clocks.getByText('Not leased')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Attempt history' })).toBeVisible();
+  const cancellation = page.getByRole('region', { name: 'Cancellation evidence' });
+  await expect(cancellation.getByText('Not requested')).toBeVisible();
+
   await checkA11y('workers—authoritative delayed task ledger');
 });
 
@@ -29,6 +39,8 @@ test('task ledger remains usable at supported widths in both themes', async ({ p
       await page.goto(`/workers?tab=diagnostics&task=${E2E_TASK_OPERATION_ID}`);
 
       await expect(page.getByRole('heading', { name: 'Authoritative task ledger' })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Lease clocks' })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Attempt history' })).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
