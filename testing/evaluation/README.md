@@ -6,7 +6,7 @@ Scores completed [Operative](../../packages/operative/README.md) runs against a 
 
 ## Workspace usage
 
-Evaluation is verification tooling, so it lives under `testing/`, and a workspace may declare `"@lostgradient/evaluation": "workspace:*"` only in its `devDependencies`; `scripts/workspace-contract.test.ts` refuses a runtime edge to it. Install from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@lostgradient/evaluation`; the consumer compiles it. Its dependencies include `@lostgradient/operative`, for run results and the judge's `GenerateFunction`, `@lostgradient/weft`, for history storage, and `@lostgradient/memory`, whose stores the memory-lifecycle baselines wrap.
+Evaluation is verification tooling, so it lives under `testing/`, and a library or component may declare `"@lostgradient/evaluation": "workspace:*"` only in its `devDependencies`; `scripts/workspace-contract.test.ts` refuses a runtime edge to it. Install from the Corvidae root with `bun install --frozen-lockfile`. The private package exports TypeScript source from `@lostgradient/evaluation`; the consumer compiles it. Its dependencies include `@lostgradient/operative`, for run results and the judge's `GenerateFunction`, `@lostgradient/weft`, for history storage, and `@lostgradient/memory`, whose stores the memory-lifecycle baselines wrap.
 
 ## Quick start
 

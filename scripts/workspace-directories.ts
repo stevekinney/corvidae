@@ -16,9 +16,10 @@ export const workspaceParentDirectories = [
 ] as const;
 
 /**
- * The directories that hold only verification tooling. A workspace under one of them may appear in
- * another workspace's `devDependencies` but never in its `dependencies`, so nothing that ships can
- * depend on it. `workspace-contract.test.ts` enforces that.
+ * The directories that hold only verification tooling. A library or component may name a workspace
+ * under one of them in `devDependencies` but never in `dependencies` or `peerDependencies`, so no
+ * shared code carries it at runtime. Applications are exempt: they are endpoints nothing depends
+ * on. `workspace-contract.test.ts` enforces that.
  */
 export const verificationWorkspaceDirectories = ['testing'] as const;
 

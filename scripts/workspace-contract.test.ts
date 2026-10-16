@@ -436,9 +436,20 @@ describe('internal workspace architecture', () => {
     expect([...mirrorWorkspaceDirectories]).toEqual([...workspaceParentDirectories]);
   });
 
-  test('verification workspaces are only ever development dependencies', async () => {
-    // Everything under `testing/` exists to check other code. A runtime or peer edge to it would
-    // ship verification tooling inside whatever depends on it, so only devDependencies may name it.
+  test('libraries and components name verification workspaces only as development dependencies', async () => {
+    // Everything under `testing/` exists to check other code. A runtime or peer edge from a library
+    // or component would carry verification tooling into whatever depends on that workspace, so
+    // those may name it only in devDependencies. Applications are endpoints nothing depends on: the
+    // playground's dev server and static exporter run Testing's Svelte plugin and fixture loaders,
+    // and its own manifest test requires that runtime edge to stay in `dependencies`.
+    const applicationNames = new Set<string>();
+    for (const entry of await readdir(join(root, 'applications'), { withFileTypes: true })) {
+      const path = join('applications', entry.name);
+      if (entry.isDirectory() && (await Bun.file(join(root, path, 'package.json')).exists())) {
+        const manifest = await readManifest(path);
+        applicationNames.add(manifest.name);
+      }
+    }
     const verificationNames = new Set<string>();
     for (const directory of verificationWorkspaceDirectories) {
       for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
@@ -454,6 +465,7 @@ describe('internal workspace architecture', () => {
     const offending: string[] = [];
     const manifests = await workspaceManifests();
     for (const manifest of manifests.values()) {
+      if (applicationNames.has(manifest.name)) continue;
       for (const field of ['dependencies', 'peerDependencies'] as const) {
         for (const name of Object.keys(manifest[field] ?? {})) {
           if (verificationNames.has(name)) offending.push(`${manifest.name} ${field} -> ${name}`);

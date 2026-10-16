@@ -25,6 +25,7 @@
     "@lostgradient/editor": "workspace:*",
     "@lostgradient/environmentalist": "catalog:",
     "@lostgradient/markdown": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
     "@lucide/svelte": "catalog:",
     "@shikijs/themes": "catalog:",
     "culori": "catalog:",
@@ -36,7 +37,6 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "catalog:",
-    "@lostgradient/testing": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@playwright/test": "catalog:",
     "@testing-library/svelte": "catalog:",
