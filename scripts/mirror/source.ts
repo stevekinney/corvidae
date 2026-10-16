@@ -368,6 +368,8 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
  * manifest and exported `VERSION` agree. The manifest plan already resolves the version every
  * emitted manifest carries, so the constant is derived from it at emission: parity by
  * construction, at every sync, with the target's `verify-release-version.ts` left as the tag gate.
+ * A target's own version bump still lands between syncs, so `verify-steps.ts` checks the constant
+ * against the manifest in `mirror-verify.yaml`, which each target's release job needs.
  * The alternative measured first — `version.ts` importing `package.json` — has weft's `Bun.build`
  * inline the whole manifest object into every bundle for one string. Declared explicitly rather
  * than by filename convention, so a workspace that stores its version some other way is a visible

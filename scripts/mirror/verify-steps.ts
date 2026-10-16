@@ -12,6 +12,7 @@ import {
   verifyTarballFilename,
   type SmokeTestPackage,
 } from './packaging.ts';
+import { versionConstants } from './source.ts';
 import type { PrivateWorkspace, PublishedPackage } from './surface.ts';
 
 /**
@@ -25,6 +26,33 @@ export const relocateTarballScript = [
   'const { readFileSync, renameSync } = require("node:fs");',
   'const { version } = JSON.parse(readFileSync("package.json", "utf8"));',
   'renameSync(require("node:path").join(source, stem + "-" + version + ".tgz"), destination);',
+].join(' ');
+
+/**
+ * Fails unless the version file named by its last argument exports the `version` of the
+ * `package.json` in the working directory. It runs as `bun -e`, like `relocateTarballScript`, and
+ * carries no single quote or backslash, so the rendered workflow can quote it as one shell word;
+ * the quote the literal needs is spelled `String.fromCharCode(39)`.
+ *
+ * A published release needs its exported `VERSION`, its manifest and its tag to agree. The sync
+ * makes the first two agree (`applyVersionConstants`), but a target's own Changesets flow bumps the
+ * manifest afterwards, and nothing in cinder's rewrites the constant: `@lostgradient/cinder@0.28.0`
+ * shipped `VERSION = '0.27.1'` that way. `mirror-verify.yaml` is the job each target's release
+ * workflow needs before it publishes, so this step is the gate a stale constant cannot pass. The
+ * remedy it names is a sync, which rewrites the constant to the version the target now carries.
+ */
+export const versionConstantScript = [
+  'const file = process.argv.at(-1);',
+  'const { existsSync, readFileSync } = require("node:fs");',
+  'const { name, version } = JSON.parse(readFileSync("package.json", "utf8"));',
+  'const remedy = "Run the mirror sync for this target, which rewrites the constant to the manifest version, or update the constant in the same commit as the version bump.";',
+  'if (!existsSync(file)) { console.error(name + " declares " + file + " as its version constant, but it does not exist. " + remedy); process.exit(1); }',
+  'const quote = String.fromCharCode(39);',
+  'const shape = new RegExp("^[^]*?export const VERSION = " + quote + "([^" + quote + "]*)" + quote + ";" + String.fromCharCode(10) + "$");',
+  'const match = shape.exec(readFileSync(file, "utf8"));',
+  'if (!match) { console.error(name + ": " + file + " is not shaped as export const VERSION = <version>; after an optional comment."); process.exit(1); }',
+  'if (match[1] !== version) { console.error(name + " exports VERSION " + match[1] + " from " + file + ", but package.json is version " + version + ". " + remedy); process.exit(1); }',
+  'console.log(name + " exports VERSION " + version + ", matching package.json");',
 ].join(' ');
 
 /**
@@ -60,6 +88,7 @@ export const relocateTarballScript = [
  */
 export type VerifyStepKind =
   | 'install'
+  | 'version-constant'
   | 'build'
   | 'typecheck-published'
   | 'binary-size'
@@ -265,6 +294,20 @@ export function buildVerifySteps(
   const tarballFor = (entry: PublishedPackage): string =>
     join(tarballsDirectory, verifyTarballFilename(entry.publicName));
   const ordered = orderByDependencies(inputs.published);
+
+  // Before any build, so a stale constant fails on the source the release would pack rather than
+  // after minutes of building it. See `versionConstantScript` for why this is the release gate.
+  for (const entry of ordered) {
+    const versionFile = versionConstants[entry.workspace];
+    if (versionFile === undefined) continue;
+    steps.push({
+      kind: 'version-constant',
+      description: `check that ${entry.publicName} exports its manifest version`,
+      cwd: env.resolveDirectory(entry.directory),
+      command: ['bun', '-e', versionConstantScript, versionFile],
+      publicName: entry.publicName,
+    });
+  }
 
   for (const entry of ordered) {
     steps.push({

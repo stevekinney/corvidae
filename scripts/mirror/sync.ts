@@ -1104,6 +1104,10 @@ export async function verifyTarget({
         assertSucceeded(result, 'verifying the staged lockfile satisfies the emitted manifests');
         break;
       }
+      case 'version-constant': {
+        assertSucceeded(result, `checking ${step.publicName}'s exported VERSION`);
+        break;
+      }
       case 'build':
       case 'typecheck-published': {
         assertSucceeded(
