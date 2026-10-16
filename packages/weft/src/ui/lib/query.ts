@@ -71,7 +71,7 @@ export const queryKeys = {
   retention: () => ['retention'] as const,
   metrics: () => ['metrics'] as const,
   principal: () => ['principal'] as const,
-  /** `weft.system.lease` (COR-124) — shared by the Dashboard alerts band and the Health & lease tab. */
+  /** `weft.system.lease` (COR-124), read only by the System route's Health & lease tab. */
   systemLease: () => ['system', 'lease'] as const,
   /** The five `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
   catalog: {
