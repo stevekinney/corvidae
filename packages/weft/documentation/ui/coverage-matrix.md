@@ -48,7 +48,7 @@ Four dashboard issues own work that no `tracked` row can carry today. COR-166 (c
 | `weft.schedules.pause` | exposed | `src/ui/routes/schedules/schedule-queries.ts` | `pauseSchedule` | `src/ui/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.resume` | exposed | `src/ui/routes/schedules/schedule-queries.ts` | `resumeSchedule` | `src/ui/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.update` | exposed | `src/ui/routes/schedules/schedule-queries.ts` | `updateSchedule` | `src/ui/routes/schedules/schedule-queries.test.ts` |  |  |
-| `weft.storage.capabilities` | tracked |  |  |  | COR-298 | No issue owns this gap yet: the Storage capabilities panel still infers conditional-batch support by probing, so an issue must be filed and named here. |
+| `weft.storage.capabilities` | tracked |  |  |  | COR-1539 |  |
 | `weft.system.lease` | tracked |  |  |  | COR-124 |  |
 | `weft.system.metrics` | exposed | `src/ui/routes/system/metrics-tab.svelte` |  | `src/ui/routes/system/metrics-tab.test.ts` |  |  |
 | `weft.system.principal` | exposed | `src/ui/lib/scopes.svelte.ts` |  | `src/ui/lib/scopes.svelte.test.ts` |  |  |
