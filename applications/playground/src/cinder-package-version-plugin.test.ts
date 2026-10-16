@@ -77,12 +77,15 @@ describe('stampPackageVersion', () => {
     );
   });
 
-  test.each(["1.0.0'; alert(1); '", 'workspace', '1.0', ''])(
-    'refuses %p as a version',
-    (version) => {
-      expect(() => stampPackageVersion(generatedModule, version)).toThrow(
-        'is not a release version',
-      );
-    },
-  );
+  test.each([
+    "1.0.0'; alert(1); '",
+    'workspace',
+    '1.0',
+    '',
+    '01.2.3',
+    '1.2.3-alpha..1',
+    '1.2.3-01',
+  ])('refuses %p as a version', (version) => {
+    expect(() => stampPackageVersion(generatedModule, version)).toThrow('is not a release version');
+  });
 });

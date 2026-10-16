@@ -24,8 +24,14 @@ export const CINDER_PACKAGE_VERSION_MODULE =
 /** The one shape the mirror's rewrite accepts: any leading comment, then the export. */
 const versionExportShape = /^([\s\S]*?)export const VERSION = '([^']*)';\n$/;
 
-/** A release version safe to embed as a single-quoted literal: `major.minor.patch[-pre][+build]`. */
-const releaseVersionShape = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+/**
+ * A SemVer 2.0 version, using the ECMAScript-compatible expression published by
+ * https://semver.org/: the same grammar as the mirror's `isSafeVersionConstant`, so the stamp
+ * accepts nothing the mirror's rewrite would refuse. It also excludes quotes, backslashes and
+ * line breaks, so the version is safe to embed as a single-quoted literal.
+ */
+const releaseVersionShape =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
 export class CinderPackageVersionError extends Error {
   override name = 'CinderPackageVersionError';
