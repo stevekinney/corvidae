@@ -71,8 +71,10 @@ test('the page canvas and shell paint with tokens Cinder defines', async () => {
  * A `var(--cinder-…)` that names a token Cinder never defines resolves to
  * nothing: the declaration silently falls back to its initial or inherited
  * value, so a warning band loses its fill or a status edge disappears
- * (COR-124). Every `--cinder-*` name anywhere in Weft's UI CSS and Svelte
- * source, comments included, must be one Cinder's token sheet declares.
+ * (COR-124). Every `--cinder-*` name anywhere in Weft's UI CSS, Svelte, and
+ * TypeScript source (TypeScript builds inline styles too), comments included,
+ * must be one Cinder's token sheet declares. Test files are skipped: they
+ * may name an undefined token on purpose.
  */
 test('every --cinder-* token in Weft UI source is one Cinder defines', async () => {
   const cinderSource = dirname(Bun.resolveSync('@lostgradient/cinder', import.meta.dir));
@@ -82,7 +84,8 @@ test('every --cinder-* token in Weft UI source is one Cinder defines', async () 
   );
   const uiSource = fileURLToPath(new URL('../../../src/ui/', import.meta.url));
   const undefinedReferences: string[] = [];
-  for await (const file of new Bun.Glob('**/*.{css,svelte}').scan(uiSource)) {
+  for await (const file of new Bun.Glob('**/*.{css,svelte,ts}').scan(uiSource)) {
+    if (/\.test(-support|-harness)?\./.test(file)) continue;
     const text = await Bun.file(join(uiSource, file)).text();
     for (const match of text.matchAll(/--cinder-[a-z0-9-]+/g)) {
       if (!defined.has(match[0])) undefinedReferences.push(`${file}: ${match[0]}`);

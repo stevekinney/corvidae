@@ -69,9 +69,9 @@ export function heartbeatSeverityVariant(severity: HeartbeatSeverity): Presentat
 }
 
 const HEARTBEAT_SEVERITY_CSS_VARIABLE: Readonly<Record<HeartbeatSeverity, string>> = {
-  fresh: 'var(--cinder-color-success-fg)',
-  elevated: 'var(--cinder-color-warning-fg)',
-  stale: 'var(--cinder-color-danger-fg)',
+  fresh: 'var(--cinder-status-success-text)',
+  elevated: 'var(--cinder-status-warning-text)',
+  stale: 'var(--cinder-status-danger-text)',
 };
 
 /** Cinder status-tone CSS variable for a heartbeat severity tier — used to color the heartbeat column's text directly (plan §9.4: "heartbeat staleness … relative color thresholds"), not via `Badge`/`StatusDot` (a full badge per heartbeat cell would be too heavy for a dense table). */
