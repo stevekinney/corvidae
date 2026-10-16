@@ -355,6 +355,33 @@ describe('TaskLedgerDetailView — fenced attempt history', () => {
   });
 });
 
+describe('TaskLedgerDetailView — out-of-order attempt claims', () => {
+  test('renders a zero-length window rather than a negative duration', () => {
+    const task = leasedTask({
+      attempt: 2,
+      attempts: [
+        attemptRecord({
+          attempt: 1,
+          claimedAt: NOW - 5_000,
+          disposition: 'requeued',
+          dispositionAt: NOW - 4_000,
+        }),
+        attemptRecord({
+          attempt: 2,
+          claimedAt: NOW - 20_000,
+          disposition: 'leased',
+          dispositionAt: NOW - 20_000,
+        }),
+      ],
+    });
+    const { container } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
+
+    const first = within(attemptEntry(container, 1));
+    expect(first.getByText(`${iso(NOW - 5_000)} → ${iso(NOW - 5_000)} (0ms)`)).not.toBeNull();
+    expect(attemptEntry(container, 1).textContent).not.toContain('(-');
+  });
+});
+
 describe('TaskLedgerDetailView — cancellation evidence', () => {
   test('a cancelling task whose owning attempt is still leased is requested, not acknowledged', () => {
     const task = leasedTask({
