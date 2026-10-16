@@ -229,11 +229,17 @@ export const sessionOperations: SessionOperations = createSessionOperations({
   sessionOf: sessionOfProcess,
 });
 
+/** The `group` of a live process whose session could not be read: no session, so never the one asked about. */
+export const UNREADABLE_SESSION = -2;
+
 /**
  * The process table with each process's `group` replaced by its session, so
  * `descendantsOutsideGroup` finds the descendants that left the session the way it finds those
- * that left a group. A process that vanished between the table and its session being read is
- * dropped: it is gone, not escaped.
+ * that left a group. A process that vanished, or that became a zombie or was torn down between the
+ * table and its session being read, is gone and dropped. A process that is still live but whose
+ * session cannot be read is kept with `UNREADABLE_SESSION`: as a descendant it counts as one that
+ * may have left, so cleanup is `unknown` and never `complete`, and a process that is not a
+ * descendant is nobody's concern here, so an unrelated process on a busy host cannot fail it.
  */
 export async function readSessionTable(
   sessionOf: SessionOf = sessionOfProcess,
@@ -242,9 +248,20 @@ export async function readSessionTable(
 ): Promise<ProcessRecord[]> {
   const [table, states] = await Promise.all([readTable(), readStates()]);
   if (states === undefined) throw new Error('the process states could not be read');
-  const zombies = new Set(states.filter(({ state }) => isGone(state)).map(({ pid }) => pid));
-  return table
-    .filter((record) => !zombies.has(record.pid))
-    .map((record) => ({ ...record, group: sessionOf(record.pid) }))
-    .filter((record) => record.group >= 0);
+  const gone = new Set(states.filter(({ state }) => isGone(state)).map(({ pid }) => pid));
+  const records: ProcessRecord[] = [];
+  let recheck: ProcessState[] | undefined;
+  for (const record of table) {
+    if (gone.has(record.pid)) continue;
+    try {
+      const group = sessionOf(record.pid);
+      if (group >= 0) records.push({ ...record, group });
+    } catch {
+      recheck ??= await readStates();
+      const now = recheck?.find((entry) => entry.pid === record.pid)?.state;
+      if (recheck !== undefined && (now === undefined || isGone(now))) continue;
+      records.push({ ...record, group: UNREADABLE_SESSION });
+    }
+  }
+  return records;
 }

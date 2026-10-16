@@ -19,6 +19,7 @@ import {
   readSessionTable,
   sessionOfProcess,
   sessionOperations,
+  UNREADABLE_SESSION,
   type ProcessState,
 } from './process-session.ts';
 
@@ -405,7 +406,7 @@ describe('a session that cannot be read', () => {
   });
 
   // spawn-free: the table and the process states are injected, so no process is started
-  test('a live one makes the session table unreadable, and a zombie is left out', async () => {
+  test('a process that exits while the table is read is dropped, and a live one is not clean', async () => {
     const table = [
       { pid: 1, parentPid: 0, group: 1 },
       { pid: 2, parentPid: 1, group: 2 },
@@ -414,26 +415,38 @@ describe('a session that cannot be read', () => {
       if (pid === 2) throw new Error('could not be read');
       return 500;
     };
-    const live = await rejectionOf(
-      readSessionTable(
-        lookup,
-        async () => table,
-        async () => [
-          { pid: 1, state: 'S' },
-          { pid: 2, state: 'S' },
-        ],
-      ),
-    );
-    expect((live as Error).message).toBe('could not be read');
-    const zombie = await readSessionTable(
-      lookup,
-      async () => table,
-      async () => [
+    // Live in the first read and a zombie in the second: it was exiting, so it is gone.
+    const reads = [
+      [
+        { pid: 1, state: 'S' },
+        { pid: 2, state: 'S' },
+      ],
+      [
         { pid: 1, state: 'S' },
         { pid: 2, state: 'Z' },
       ],
+    ];
+    const exiting = await readSessionTable(
+      lookup,
+      async () => table,
+      async () => reads.shift(),
     );
-    expect(zombie.map((record) => record.pid)).toEqual([1]);
+    expect(exiting.map((record) => record.pid)).toEqual([1]);
+    // Live in both: its session is unknown, so as a descendant it is an escape, never a member.
+    const live = [
+      { pid: 1, state: 'S' },
+      { pid: 2, state: 'S' },
+    ];
+    const unknown = await readSessionTable(
+      lookup,
+      async () => table,
+      async () => live,
+    );
+    expect(unknown.map((record) => [record.pid, record.group])).toEqual([
+      [1, 500],
+      [2, UNREADABLE_SESSION],
+    ]);
+    expect(descendantsOutsideGroup(unknown, 1, 500).map((record) => record.pid)).toEqual([2]);
   });
 });
 
