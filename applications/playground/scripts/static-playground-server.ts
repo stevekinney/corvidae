@@ -100,6 +100,21 @@ export async function loadStaticHostConfiguration(
 }
 
 /**
+ * The index of the `)` that closes the group opened at `start`, or -1. Groups nest: Vercel sources
+ * such as `/((?!theme-builder/preview$).*)` carry a lookahead inside the outer group.
+ */
+function closingParenthesis(source: string, start: number): number {
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '\\') index += 1;
+    else if (character === '(') depth += 1;
+    else if (character === ')' && --depth === 0) return index;
+  }
+  return -1;
+}
+
+/**
  * Compile a Vercel `source` (path-to-regexp syntax: `:name` parameters and `(...)` groups) into an
  * anchored expression whose named groups carry the parameters.
  */
@@ -114,7 +129,7 @@ export function compileRouteSource(source: string): RegExp {
       pattern += `(?<${name}>[^/]+)`;
       index += name.length + 1;
     } else if (character === '(') {
-      const end = source.indexOf(')', index);
+      const end = closingParenthesis(source, index);
       if (end === -1) throw new Error(`[static-playground] bad route source ${source}`);
       pattern += source.slice(index, end + 1);
       index = end + 1;

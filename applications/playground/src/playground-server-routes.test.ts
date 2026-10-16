@@ -1,7 +1,7 @@
 /**
  * Table-driven proof that every row of `playground-server.ts`'s `ROUTES`
  * array is actually wired into `matchRoute` — the mechanical evidence that
- * the route table matches the 19-row table `playground-server.ts`'s own
+ * the route table matches the route table `playground-server.ts`'s own
  * module doc comment documents, not just that the existing behavioral route
  * tests still happen to pass.
  *
@@ -39,11 +39,14 @@ const SAMPLE_PATHNAME_BY_ROW_INDEX: readonly string[] = [
   '/example-src/button/primary',
   '/c/button',
   '/',
+  '/theme-builder',
+  '/theme-builder/preview',
+  '/theme-builder-bundle/theme-builder.js',
 ];
 
 describe('ROUTES table', () => {
-  it('has exactly 20 entries (19 distinct URL patterns; /styles.css and /styles/* share one handler function)', () => {
-    expect(ROUTES).toHaveLength(20);
+  it('has exactly 23 entries (22 distinct URL patterns; /styles.css and /styles/* share one handler function)', () => {
+    expect(ROUTES).toHaveLength(23);
   });
 
   it.each(SAMPLE_PATHNAME_BY_ROW_INDEX.map((pathname, index) => [index, pathname] as const))(

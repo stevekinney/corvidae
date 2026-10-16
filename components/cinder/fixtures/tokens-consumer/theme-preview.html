@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cinder theme consumer</title>
+    <!--
+      A clean consumer page: Cinder's token stylesheet, loaded into the cinder.tokens layer the
+      way @lostgradient/cinder/styles loads it, plus the exported theme stylesheet. Nothing else.
+      The check replaces the marker below with the exported theme link (the consumer page) or
+      with nothing (the reference page, which has the theme applied inline like the builder
+      preview does).
+    -->
+    <style>
+      @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+      @import url('/tokens.css') layer(cinder.tokens);
+    </style>
+    <!--THEME-->
+  </head>
+  <body>
+    <main id="app">
+      <div id="descendant">
+        <div id="nested"></div>
+      </div>
+    </main>
+  </body>
+</html>

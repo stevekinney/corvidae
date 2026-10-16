@@ -1,9 +1,9 @@
 import { throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
-import { createValueResolver } from './resolve.ts';
+import { createValueResolver } from '../../src/tokens/runtime/resolve.ts';
+import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { serializeTypedValue } from '../../src/tokens/runtime/value-formatters.ts';
 import { buildResolvedContexts } from './resolved-contexts.ts';
-import type { ResolverDocument, TokenDocument } from './types.ts';
-import { serializeTypedValue } from './value-formatters.ts';
 function layer(inset: unknown) {
   return {
     color: { colorSpace: 'oklch', components: [0, 0, 0] },

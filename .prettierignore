@@ -21,6 +21,8 @@ applications/playground/.tmp/
 applications/playground/src/.tmp-*/
 # Generated declaration fixtures are checked against exact generator output and typechecked.
 **/*.generated.d.ts
+# Standalone schema validators are machine-generated Ajv output, checked against exact generator output.
+components/cinder/src/tokens/runtime/*-validator.generated.js
 # DR-5 (COR-513) diff-review export golden fixtures are byte-exact generated agent-handoff
 # output, checked verbatim against `exportDiffReviewMarkdown`/`exportDiffReviewJson` in
 # diff-review-export-golden.test.ts. Their Markdown deliberately stacks single-newline-separated
@@ -30,5 +32,7 @@ applications/playground/src/.tmp-*/
 components/editor/src/lib/export/__fixtures__/diff-review/
 .env
 .env.*
+# Interoperability fixtures are pinned by SHA-256 (manifest.json); formatting would change their bytes.
+components/cinder/scripts/tokens/fixtures/theme-builder/interoperability/
 # CIN-588 raw measurement output, kept byte-for-byte as the harness wrote it (comparison-*.json is compare's text output).
 applications/playground/docs/decisions/cin-588-results/
