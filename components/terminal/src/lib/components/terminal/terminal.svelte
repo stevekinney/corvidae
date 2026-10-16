@@ -112,6 +112,11 @@
   $effect(() => {
     if (replaced) failed = undefined;
   });
+  // The attachment is rebuilt only when the controller itself is replaced. Reading the prop here
+  // directly would also rebuild it whenever a parent that spreads its props adds or removes some
+  // other prop, because every prop of a spread is invalidated together; a derived passes on only a
+  // changed value.
+  const sessionController = $derived(controller);
   const effectiveState: TerminalState = $derived(
     failure === undefined ? sessionState : 'engine-load-failed',
   );
@@ -218,7 +223,7 @@
    * reaches the live engine through `refresh`.
    */
   function attachEngine(host: HTMLElement): () => void {
-    const borrowed = controller;
+    const borrowed = sessionController;
     const attachment = untrack(() =>
       createTerminalAttachment({
         host,

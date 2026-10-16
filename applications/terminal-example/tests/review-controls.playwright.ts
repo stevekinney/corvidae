@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { connected, enroll, screen, terminalInput } from './support.ts';
+import { connected, enroll, isAlive, screen, terminalInput } from './support.ts';
 
 /** Open the collapsed review controls. */
 async function openControls(page: Page): Promise<void> {
@@ -139,6 +139,34 @@ test('an injected cleanup-incomplete ends the session first, offers Check cleanu
   await expect(page.getByRole('button', { name: 'New session' })).toBeEnabled();
 });
 
+test('the escaped job profile reaches the real Cleanup incomplete, and the escaped process is still there', async ({
+  page,
+}) => {
+  await enroll(page);
+  await connected(page);
+  await openControls(page);
+  await choose(page, 'Escaped job');
+  // The expanded controls push the terminal below the fold, where the engine does not repaint, so
+  // collapse them to bring it into view.
+  await page.getByRole('button', { name: 'Review controls' }).first().click();
+  await expect(screen(page)).toHaveText(/escaped=\d+/);
+  const escaped = Number(/escaped=(\d+)/.exec(await screen(page).innerText())?.[1]);
+  try {
+    await page.getByRole('button', { name: 'End session' }).click();
+    // The host cannot prove a process that left the session is gone, so it quarantines the slot.
+    await expect(status(page, 'Cleanup incomplete')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('button', { name: 'New session' })).toHaveCount(0);
+    expect(isAlive(escaped)).toBe(true);
+  } finally {
+    // This process belongs to the test, which started it and ends it.
+    try {
+      process.kill(escaped, 'SIGKILL');
+    } catch {
+      // It already ended.
+    }
+  }
+});
+
 test('injected backpressure keeps the output, ignores Cancel, and ends when cleared', async ({
   page,
 }) => {
@@ -194,6 +222,8 @@ test.describe('links', () => {
   }) => {
     await openLinksProfile(page);
     await page.getByRole('switch', { name: 'Open visible HTTPS links' }).click();
+    // Turning links on is a settings change, not a new session: the output stays.
+    await expect(screen(page)).toContainText('Fixture complete.');
     await page.getByRole('button', { name: 'Export', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Export terminal output' });
     const offered = dialog.getByRole('button', { name: /^https:/ });

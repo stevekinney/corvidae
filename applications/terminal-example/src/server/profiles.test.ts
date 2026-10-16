@@ -5,6 +5,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { PROFILE_DESCRIPTIONS, PROFILE_IDENTIFIERS } from '../shared/profile-catalog.ts';
 import {
   DIAGNOSTIC_PROGRAM,
+  ESCAPED_PROGRAM,
   FULLSCREEN_PROGRAM,
   LINKS_FIXTURE,
   loginShell,
@@ -22,6 +23,7 @@ describe('the profile table', () => {
   test('names exactly the profiles the page can choose, each with a description and no command', () => {
     expect(PROFILE_IDENTIFIERS.toSorted()).toEqual([
       'diagnostic',
+      'escaped',
       'fullscreen',
       'links',
       'readonly-output',
@@ -90,6 +92,16 @@ describe('the profile table', () => {
     });
   });
 
+  test('the escaped job is a committed script that leaves the session through perl, not a shell setsid', () => {
+    const launch = resolveProfile('escaped', false, context)?.launch;
+    expect(launch?.mode).toBe('pty');
+    expect(launch?.profile.argumentList).toEqual([ESCAPED_PROGRAM]);
+    const program = readFileSync(ESCAPED_PROGRAM, 'utf8');
+    expect(program).toStartWith('#!/bin/sh\n');
+    expect(program).toContain('POSIX::setsid()');
+    expect(program).toContain('escaped=$$');
+  });
+
   test('the links fixture carries every kind of address the review needs', () => {
     expect(resolveProfile('links', false, context)?.launch.profile).toMatchObject({
       executable: '/bin/cat',
@@ -108,13 +120,19 @@ describe('the profile table', () => {
       expect(existsSync(path)).toBe(true);
       expect(statSync(path).isFile()).toBe(true);
     }
-    for (const path of [FULLSCREEN_PROGRAM, DIAGNOSTIC_PROGRAM]) {
+    for (const path of [FULLSCREEN_PROGRAM, DIAGNOSTIC_PROGRAM, ESCAPED_PROGRAM]) {
       expect(readFileSync(path, 'utf8')).toStartWith('#!/bin/sh\n');
     }
   });
 
   test('programs other than the shell get a fixed environment and no host values but the locale', () => {
-    for (const identifier of ['fullscreen', 'diagnostic', 'readonly-output', 'links'] as const) {
+    for (const identifier of [
+      'fullscreen',
+      'diagnostic',
+      'readonly-output',
+      'links',
+      'escaped',
+    ] as const) {
       expect(resolveProfile(identifier, false, context)?.launch.profile.environment).toEqual({
         TERM: 'xterm-256color',
         PATH: '/usr/bin:/bin:/usr/sbin:/sbin',

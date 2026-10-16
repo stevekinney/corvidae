@@ -138,10 +138,9 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
   mouseReporting?: boolean;
   /**
    * Called with a visible HTTPS address the reader deliberately activated. Links are disabled
-   * unless this is set; a host that turns links on and off at run time passes `undefined` to turn
-   * them off. Hidden OSC 8 destinations, paths, and other schemes are never offered.
+   * unless this is set; hidden OSC 8 destinations, paths, and other schemes are never offered.
    */
-  onLinkActivate?: ((url: string) => void) | undefined;
+  onLinkActivate?: (url: string) => void;
   /** Called with the terminal title the program set, as bounded plain text. */
   onTitleChange?: (title: string) => void;
   /**

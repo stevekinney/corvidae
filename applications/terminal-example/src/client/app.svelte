@@ -240,9 +240,9 @@
           stall does not hold: when a process stopped reading, the host failed the session instead
           of staying backpressured, so backpressure cannot be held for review. While backpressure is
           injected, Cancel has no unsent operations to cancel and the output stays readable; Clear
-          the injected state is the capacity acknowledgement. Cleanup incomplete is real after a
-          background job (see the runbook). Injecting it ends the session first, so Check cleanup
-          reports the real, complete result.
+          the injected state is the capacity acknowledgement. The Escaped job profile makes cleanup
+          incomplete real. Injecting it ends the session first, so Check cleanup reports the real,
+          complete result.
         </p>
         <Button
           variant="secondary"
@@ -332,7 +332,7 @@
           {...actions}
           {...model.client === undefined ? {} : { controller: model.client }}
           {mouseReporting}
-          onLinkActivate={linksEnabled ? openLink : undefined}
+          {...linksEnabled ? { onLinkActivate: openLink } : {}}
           onGeometryChange={(geometry) => model.setGeometry(geometry)}
         />
       </div>
