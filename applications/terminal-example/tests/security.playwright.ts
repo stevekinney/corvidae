@@ -156,7 +156,7 @@ test('asked to bind a non-loopback address, the server exits nonzero and says wh
     },
   );
   const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
-  expect(exitCode).not.toBe(0);
+  expect(exitCode).toBe(2);
   expect(stderr).toContain('Refusing to bind "0.0.0.0"');
   expect(stderr).toContain('loopback');
 });

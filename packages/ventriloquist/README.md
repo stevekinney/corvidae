@@ -11,22 +11,28 @@ Declare `"@lostgradient/ventriloquist": "workspace:*"` in the consuming workspac
 The [terminal example application](../../applications/terminal-example/README.md) is the reference host: run `bun run --filter=@lostgradient/terminal-example dev` from the Corvidae root and open the address it prints. Its `src/server/application.ts` wires this package to `Bun.serve` the way every host does:
 
 ```ts
+import { SessionSlot } from '@lostgradient/ventriloquist';
 import {
   createBunProcessFactory,
   createTerminalWebSocketServer,
+  type Authentication,
+  type Authorization,
+  type AuthorizationRequest,
   type SocketData,
 } from '@lostgradient/ventriloquist/websocket';
 
+// Your own host decisions: who the cookie names, and what a profile name may launch.
+declare function authenticate(request: Request): Authentication; // { ok, subject, expiresInMilliseconds } or a denial
+declare function authorize(request: AuthorizationRequest): Authorization; // a grant and the whole server-owned launch, or a denial
+declare function slotFor(subject: string): SessionSlot; // one slot per subject, held for as long as you decide
+
 const terminal = createTerminalWebSocketServer({
-  host: {
-    authenticate: (request) => readYourCookie(request), // { ok, subject, expiresInMilliseconds } or a denial
-    authorize: (request) => decideTheLaunch(request), // a grant and the whole server-owned launch, or a denial
-  },
+  host: { authenticate, authorize },
   createProcess: createBunProcessFactory(),
   allowedOrigins: ['http://127.0.0.1:54240'],
   allowInsecureLoopback: true, // development only, and only with `boundHostname`
   boundHostname: '127.0.0.1',
-  slotFor: (subject) => yourSlotForThatSubject(subject),
+  slotFor,
 });
 
 Bun.serve<SocketData>({
