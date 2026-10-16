@@ -9,22 +9,25 @@
  * it, with its original message.
  *
  * Module scope has no per-test timeout, so a scenario whose child never exits would otherwise
- * hold the whole run. {@link SCENARIO_HANG_GUARD_MILLISECONDS} turns that hang into a failure of
- * the scenario's test. It is a uniform hang detector, set far above any healthy run on a loaded
- * host and never a performance bound; a scenario that needs a larger budget passes it explicitly.
+ * hold the whole run. {@link HANG_GUARD_MILLISECONDS} of awake time turns that hang into a failure
+ * of the scenario's test; `scripts/lib/hang-guard.ts` explains why the guard counts only time the
+ * process was awake (COR-1541). It is a uniform hang detector, set far above any healthy run on a
+ * loaded host and never a performance bound; a scenario that needs a larger budget passes it
+ * explicitly.
  *
  * @example
  * ```ts
  * const compiled = await outcomeOf(async () => {
- *   const exitCode = await Bun.spawn(['bun', tscPath, '--noEmit']).exited;
+ *   const exitCode = await spawnWithHangGuard(['bun', tscPath, '--noEmit']).exited;
  *   expect(exitCode).toBe(0);
  * });
  * it('compiles the fixture', () => rethrow(compiled));
  * ```
  */
-import { restoreRealTimers } from './fake-timers.test-support.ts';
+import { jest } from 'bun:test';
 
-export const SCENARIO_HANG_GUARD_MILLISECONDS = 120_000;
+import { afterAwakeTime, HANG_GUARD_MILLISECONDS } from '../../scripts/lib/hang-guard.ts';
+import { restoreRealTimers } from './fake-timers.test-support.ts';
 
 /** The outcome {@link outcomeOf} records when a scenario does not settle before its hang guard. */
 export class ScenarioHangError extends Error {
@@ -42,18 +45,23 @@ export class ScenarioHangError extends Error {
  */
 export async function outcomeOf(
   scenario: () => Promise<void>,
-  hangGuardMilliseconds = SCENARIO_HANG_GUARD_MILLISECONDS,
+  hangGuardMilliseconds = HANG_GUARD_MILLISECONDS,
   onHang?: () => void | Promise<void>,
 ): Promise<unknown> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel = (): void => {};
   const hang = new Promise<Error>((resolve) => {
-    timer = setTimeout(() => {
-      // The guard is armed before the scenario runs, so it fires even if the scenario installs
-      // fake timers. An abandoned scenario never reaches its own `finally`, so restore real
-      // timers here; otherwise every later scenario's guard would be created fake and never fire.
-      restoreRealTimers();
-      resolve(new ScenarioHangError(hangGuardMilliseconds));
-    }, hangGuardMilliseconds);
+    // The guard is armed before the scenario runs, so its backstop stays real and fires even if
+    // the scenario installs fake timers. An abandoned scenario never reaches its own `finally`, so
+    // restore real timers here; otherwise every later scenario's guard would be created fake and
+    // never fire.
+    cancel = afterAwakeTime(
+      hangGuardMilliseconds,
+      () => {
+        restoreRealTimers();
+        resolve(new ScenarioHangError(hangGuardMilliseconds));
+      },
+      { fakeTimersActive: () => jest.isFakeTimers() },
+    );
   });
   try {
     const outcome = await Promise.race([
@@ -71,7 +79,7 @@ export async function outcomeOf(
     }
     return outcome;
   } finally {
-    clearTimeout(timer);
+    cancel();
   }
 }
 

@@ -277,7 +277,12 @@ export const additionalSourceRoots: Readonly<Record<string, readonly DeclaredSou
     {
       paths: ['scripts/lib/svelte-plugin.ts', 'scripts/lib/environment-configuration.ts'],
       reason:
-        "The Svelte compile plugin the UI's test preload (`src/ui/tests/setup.ts`) registers with `bun:test`, and the environment module the plugin imports. They are Weft's byte-identical copies of `@lostgradient/testing`'s (COR-1455): the weft target cannot install that private package, so the UI imports the copies, and corvidae's root `scripts/check-svelte-plugin-copies.ts` keeps them equal to their sources.",
+        "The Svelte compile plugin the UI's test preload (`src/ui/tests/setup.ts`) registers with `bun:test`, and the environment module the plugin imports. They are Weft's byte-identical copies of `@lostgradient/testing`'s (COR-1455): the weft target cannot install that private package, so the UI imports the copies, and corvidae's root `scripts/check-test-support-copies.ts` keeps them equal to their sources.",
+    },
+    {
+      paths: ['scripts/lib/hang-guard.ts'],
+      reason:
+        "The awake-time hang guard every Weft test file starts its processes through (COR-1541). It is Weft's byte-identical copy of `@lostgradient/testing`'s, for the same reason as the Svelte plugin above, and `scripts/check-test-support-copies.ts` keeps it equal to its source.",
     },
     {
       paths: ['scripts/lib/workflow-visibility-backfill.ts'],
