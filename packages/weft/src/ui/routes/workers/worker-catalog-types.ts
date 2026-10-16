@@ -94,10 +94,17 @@ export type TaskLedgerDetail = Readonly<{
   persistenceFailureReason?: string;
 }>;
 
+/**
+ * Heartbeat age at which an in-flight task reads stale. The Diagnostics
+ * query sends it to `weft.tasks.diagnostics` and task detail renders with
+ * it, so a `stale-inflight` row and its detail view cannot disagree.
+ */
+export const TASK_HEARTBEAT_STALE_AFTER_MS = 60_000;
+
 /** `weft.tasks.diagnostics` input fields the generated client types as required (mirroring the server's Zod `.default(...)` values, which the catalog generator does not reflect as optional — plan §9.4 T5.4). */
 export const DEFAULT_TASK_DIAGNOSTICS_INPUT = {
   staleQueuedAfterMs: 60_000,
-  staleHeartbeatAfterMs: 60_000,
+  staleHeartbeatAfterMs: TASK_HEARTBEAT_STALE_AFTER_MS,
   retryStormMinimumAttempts: 3,
   includeExpectedDelayed: true,
   unadoptedAfterMs: 60_000,

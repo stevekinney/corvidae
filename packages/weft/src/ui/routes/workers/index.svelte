@@ -53,6 +53,7 @@
   import WorkerDetailView from './worker-detail-view.svelte';
   import WorkerListView from './worker-list-view.svelte';
   import WorkersLiveStatus from './workers-live-status.svelte';
+  import { TASK_HEARTBEAT_STALE_AFTER_MS } from './worker-catalog-types.ts';
   import {
     clearDeadLetterMutation,
     drainDeploymentMutation,
@@ -429,6 +430,7 @@
               task={taskDetailQuery.data}
               now={Date.now()}
               refreshing={taskDetailQuery.isFetching}
+              staleHeartbeatAfterMs={TASK_HEARTBEAT_STALE_AFTER_MS}
             />
           {/await}
         {:else}
