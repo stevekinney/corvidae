@@ -12,7 +12,7 @@ import {
 } from './component-sources.ts';
 import { invalidateCachesForChange, startWatcher, waitForPendingRebuild } from './file-watcher.ts';
 import { pageEntryByName } from './page-bundle.ts';
-import { PACKAGE_MAP_PATH } from './playground-paths.ts';
+import { PUBLISHED_VERSIONS_PATH } from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 describe('invalidateCachesForChange', () => {
@@ -209,7 +209,7 @@ describe('startWatcher and the metadata files that change what every page shows'
   }
 
   const metadataFiles = [
-    { label: 'the package map', path: PACKAGE_MAP_PATH },
+    { label: 'the published versions', path: PUBLISHED_VERSIONS_PATH },
     ...COMPONENT_SOURCES.flatMap((source) => [
       { label: `${source.id}'s package.json`, path: join(source.packageRoot, 'package.json') },
       { label: `${source.id}'s components.json`, path: source.manifestPath },
@@ -238,17 +238,21 @@ describe('startWatcher and the metadata files that change what every page shows'
     }
   });
 
-  // Every documentation page shows its package's `lastPublishedVersion`, which it reads from the
-  // mirror's package map. A dev server that never noticed that file change would keep showing the
-  // old version until it restarted.
-  it('invalidates when the package map is replaced by a rename', async () => {
+  // Every documentation page shows its package's last published version, which it reads from
+  // `published-versions.json`. A dev server that never noticed that file change would keep showing
+  // the old version until it restarted.
+  it('invalidates when the published versions file is replaced by a rename', async () => {
     const { callbackByPath } = startWithFakeWatch();
-    const onMirrorDirectoryChange = callbackByPath.get(dirname(PACKAGE_MAP_PATH));
-    expect(onMirrorDirectoryChange).toBeDefined();
+    const onPlaygroundRootChange = callbackByPath.get(dirname(PUBLISHED_VERSIONS_PATH));
+    expect(onPlaygroundRootChange).toBeDefined();
 
     // An atomic save reaches a directory watcher as a rename of the target's name.
-    expect(await invalidates(onMirrorDirectoryChange!, 'rename', 'package-map.json')).toBe(true);
-    expect(await invalidates(onMirrorDirectoryChange!, 'change', 'package-map.json')).toBe(true);
+    expect(await invalidates(onPlaygroundRootChange!, 'rename', 'published-versions.json')).toBe(
+      true,
+    );
+    expect(await invalidates(onPlaygroundRootChange!, 'change', 'published-versions.json')).toBe(
+      true,
+    );
   });
 
   it('invalidates when a component package replaces its package.json or components.json', async () => {
@@ -264,13 +268,15 @@ describe('startWatcher and the metadata files that change what every page shows'
     }
   });
 
-  // The mirror directory holds the other mirror maps and scripts, and a package root holds its
+  // The playground root holds its manifest, configuration and tests, and a package root holds its
   // README, tests, and build output; none of them changes what a page shows.
   it('ignores a change to any other file in a watched metadata directory', async () => {
     const { callbackByPath } = startWithFakeWatch();
 
-    const onMirrorDirectoryChange = callbackByPath.get(dirname(PACKAGE_MAP_PATH));
-    expect(await invalidates(onMirrorDirectoryChange!, 'change', 'layout-map.json')).toBe(false);
+    const onPlaygroundRootChange = callbackByPath.get(dirname(PUBLISHED_VERSIONS_PATH));
+    expect(await invalidates(onPlaygroundRootChange!, 'change', 'playwright.config.ts')).toBe(
+      false,
+    );
     for (const source of COMPONENT_SOURCES) {
       const onPackageRootChange = callbackByPath.get(source.packageRoot);
       expect(await invalidates(onPackageRootChange!, 'change', 'README.md')).toBe(false);
@@ -289,8 +295,10 @@ describe('startWatcher and the metadata files that change what every page shows'
 
   it('matches a metadata file named with the separators a Windows watcher reports', async () => {
     const { callbackByPath } = startWithFakeWatch();
-    const onMirrorDirectoryChange = callbackByPath.get(dirname(PACKAGE_MAP_PATH));
+    const onPlaygroundRootChange = callbackByPath.get(dirname(PUBLISHED_VERSIONS_PATH));
 
-    expect(await invalidates(onMirrorDirectoryChange!, 'change', '.\\package-map.json')).toBe(true);
+    expect(await invalidates(onPlaygroundRootChange!, 'change', '.\\published-versions.json')).toBe(
+      true,
+    );
   });
 });

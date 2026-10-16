@@ -222,13 +222,14 @@ describe('newestSourceMtimeMs', () => {
   }
 
   test('reports an input file that exists but cannot be statted, instead of leaving it out', () => {
-    // A package manifest or the package map that raised EACCES or EIO and was silently omitted
+    // A package manifest or the published versions file that raised EACCES or EIO and was silently omitted
     // would let a server start (and stay) fresh against an input it never saw.
     for (const code of ['EACCES', 'EIO']) {
       expect(() =>
         newestSourceMtimeMs(REPOSITORY_ROOT, {
           statFile: (path) => {
-            if (path.endsWith('scripts/mirror/package-map.json')) throw statFailure(code, path);
+            if (path.endsWith('applications/playground/published-versions.json'))
+              throw statFailure(code, path);
             return statSync(path);
           },
         }),
@@ -237,14 +238,15 @@ describe('newestSourceMtimeMs', () => {
   });
 
   test('still skips an input file that is absent, as in a branch being assembled', () => {
-    const withoutPackageMap = newestSourceMtimeMs(REPOSITORY_ROOT, {
+    const withoutPublishedVersions = newestSourceMtimeMs(REPOSITORY_ROOT, {
       statFile: (path) => {
-        if (path.endsWith('scripts/mirror/package-map.json')) throw statFailure('ENOENT', path);
+        if (path.endsWith('applications/playground/published-versions.json'))
+          throw statFailure('ENOENT', path);
         return statSync(path);
       },
     });
 
-    expect(withoutPackageMap).not.toBeNull();
+    expect(withoutPublishedVersions).not.toBeNull();
   });
 
   test('includes the private upstream packages the playground bundle depends on', () => {
@@ -263,8 +265,8 @@ describe('newestSourceMtimeMs', () => {
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/cinder/components.json');
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/package.json');
     expect(FINGERPRINT_SOURCE_FILES).toContain('components/chat/components.json');
-    // The documentation's displayed versions come from the mirror's package map.
-    expect(FINGERPRINT_SOURCE_FILES).toContain('scripts/mirror/package-map.json');
+    // The documentation's displayed versions.
+    expect(FINGERPRINT_SOURCE_FILES).toContain('applications/playground/published-versions.json');
   });
 
   test('includes the server and bundler script trees the playground server runs', () => {

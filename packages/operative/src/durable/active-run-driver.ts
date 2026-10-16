@@ -55,6 +55,7 @@ export async function driveDurableRun(
   // literal `undefined` throw/rejection — can be mistaken for success.
   resolveDurablyStarted: () => void,
   rejectDurablyStarted: (error: unknown) => void,
+  tags?: readonly string[],
 ): Promise<RunResult> {
   const runStartTime = runtime.monotonic.now();
   const { hooks } = options;
@@ -238,6 +239,7 @@ export async function driveDurableRun(
       },
       {
         id: runId,
+        ...(tags !== undefined && tags.length > 0 ? { tags: [...tags] } : {}),
         services,
       },
     );

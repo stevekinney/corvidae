@@ -235,7 +235,7 @@ describe('publishedModuleMap', () => {
 
   test('maps every published Weft specifier to its source file', async () => {
     const surface = await Bun.file(
-      resolve(weftRoot, '../../scripts/mirror/package-surface.json'),
+      resolve(weftRoot, '../../scripts/published-exports.json'),
     ).json();
 
     const modules = publishedModuleMap(surface, '@lostgradient/weft', weftRoot);
