@@ -30,6 +30,8 @@ function queuedTask() {
     executionRequirement: { deploymentName: 'payments-v2', buildId: 'build-42' },
     createdAt: NOW - 60_000,
     availableAt: NOW + 30_000,
+    firstQueuedAt: NOW - 60_000,
+    lastQueuedAt: NOW - 60_000,
     attempt: 2,
     retryCount: 1,
     requeueCount: 1,
@@ -40,6 +42,54 @@ function queuedTask() {
 describe('task ledger response validation', () => {
   test('accepts the published common ledger envelope', () => {
     expect(parseTaskLedgerDetail(queuedTask())).toEqual(queuedTask());
+  });
+
+  test("rejects a state whose required fields or correlations drift from Weft's union", () => {
+    const holder = {
+      ...queuedTask(),
+      availableAt: undefined,
+      leaseDeadline: NOW + 20_000,
+      startedAt: NOW - 10_000,
+      lastHeartbeatAt: NOW - 1_000,
+    };
+    const cancelling = {
+      ...holder,
+      state: 'cancelling',
+      cancellationReason: 'stop',
+      cancellationRequestedAt: NOW - 3_000,
+    };
+    const terminal = { ...queuedTask(), state: 'terminal', terminalAt: NOW, adopted: true };
+    expect(parseTaskLedgerDetail(cancelling).state).toBe('cancelling');
+    const drifted = [
+      { ...cancelling, cancellationRequestedAt: 'bad' },
+      { ...cancelling, cancellationRequestedAt: undefined },
+      { ...cancelling, cancellationRequestedAt: 1e20 },
+      { ...cancelling, cancellationReason: undefined },
+      { ...holder, state: 'leased', leaseDeadline: undefined },
+      { ...holder, state: 'leased', lastHeartbeatAt: undefined },
+      { ...holder, state: 'completing', pendingStatus: 'maybe', resultDigest: 'sha256:x' },
+      { ...queuedTask(), availableAt: undefined },
+      { ...queuedTask(), retryCount: -1 },
+      { ...terminal, disposition: 'cancelled' },
+      { ...terminal, disposition: 'retryExhausted' },
+      { ...terminal, disposition: 'resolved', resultDigest: 'sha256:x' },
+      { ...terminal, disposition: 'lost', cancellationReason: 'stop' },
+      { ...terminal, disposition: 'cancelled', cancellationReason: 'stop', adopted: 'yes' },
+      {
+        ...queuedTask(),
+        state: 'deadLettered',
+        pendingStatus: 'failed',
+        resultDigest: 'sha256:x',
+        deadLetteredAt: NOW,
+      },
+      { ...queuedTask(), createdAt: Number.NaN },
+      { ...queuedTask(), retryPolicy: { maxAttempts: 'five' } },
+    ];
+    for (const value of drifted) {
+      expect(() => parseTaskLedgerDetail(value), JSON.stringify(value)).toThrow(
+        MalformedTaskLedgerError,
+      );
+    }
   });
 
   test('rejects malformed generated-operation output at the boundary', () => {
@@ -137,6 +187,7 @@ describe('TaskLedgerDetailView', () => {
       attempt: 5,
       availableAt: undefined,
       leaseDeadline: NOW + 20_000,
+      startedAt: NOW - 30_000,
       lastHeartbeatAt: NOW - 2_000,
       scheduleToCloseDeadline: NOW + 120_000,
       fairShareKey: 'tenant-42',
@@ -158,6 +209,8 @@ describe('TaskLedgerDetailView', () => {
       ...queuedTask(),
       state: 'terminal',
       priority: undefined,
+      resultDigest: 'sha256:abc',
+      resultStatus: 'completed',
       headerKeys: [],
       retryPolicy: undefined,
       executionRequirement: undefined,
@@ -291,6 +344,8 @@ describe('TaskLedgerDetailView — lease clocks', () => {
       terminalAt: NOW - 1_000,
       adopted: true,
       scheduleToCloseDeadline: NOW - 60_000,
+      resultDigest: 'sha256:abc',
+      resultStatus: 'completed',
     });
     const { container } = render(TaskLedgerDetailView, { props: { task: terminal, now: NOW } });
     expect(
@@ -315,7 +370,9 @@ describe('TaskLedgerDetailView — lease clocks', () => {
   });
 
   test('reports a running attempt with no heartbeat yet without calling it stale', () => {
-    const task = leasedTask({ lastHeartbeatAt: undefined });
+    // Weft always reports a leased task's lastHeartbeatAt, so validation rejects its
+    // absence; the view still has to say "No heartbeat yet" rather than "Stale".
+    const task = { ...leasedTask(), lastHeartbeatAt: undefined };
     const { container } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
     expect(within(clock(container, 'heartbeat')).getByText('No heartbeat yet')).not.toBeNull();
   });

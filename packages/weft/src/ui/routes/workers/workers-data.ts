@@ -32,7 +32,7 @@ import {
 } from '@tanstack/svelte-query';
 
 import { queryKeys } from '../../lib/query.ts';
-import { isTaskAttemptList } from './task-attempt-evidence.ts';
+import { isTaskLedgerDetail } from './task-ledger-validation.ts';
 import {
   DEFAULT_TASK_DIAGNOSTICS_INPUT,
   type TaskDiagnosticsOutput,
@@ -50,51 +50,6 @@ const REFETCH_INTERVAL_MS = 30_000;
 
 type WorkersOperations = Pick<HttpClient, 'operations'>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-const TASK_LEDGER_STATES = new Set([
-  'queued',
-  'leased',
-  'completing',
-  'cancelling',
-  'terminal',
-  'deadLettered',
-]);
-
-const REQUIRED_TASK_LEDGER_STRING_FIELDS = [
-  'operationId',
-  'workflowType',
-  'activityName',
-  'queue',
-] as const;
-
-function hasRequiredTaskLedgerStrings(value: Record<string, unknown>): boolean {
-  return REQUIRED_TASK_LEDGER_STRING_FIELDS.every((field) => typeof value[field] === 'string');
-}
-
-function hasRequiredTaskLedgerNumbers(value: Record<string, unknown>): boolean {
-  return ['visibilityTimeoutMilliseconds', 'createdAt', 'attempt'].every(
-    (field) => typeof value[field] === 'number',
-  );
-}
-
-function hasValidTaskLedgerHeaderKeys(value: Record<string, unknown>): boolean {
-  return (
-    Array.isArray(value['headerKeys']) &&
-    value['headerKeys'].every((key) => typeof key === 'string')
-  );
-}
-
-function hasValidTaskLedgerLeaseFields(value: Record<string, unknown>): boolean {
-  return ['leaseDeadline', 'attemptDeadline', 'lastHeartbeatAt', 'scheduleToCloseDeadline'].every(
-    (field) =>
-      value[field] === undefined ||
-      (typeof value[field] === 'number' && Number.isFinite(value[field])),
-  );
-}
-
 /** A `weft.tasks.get` response the dashboard refuses to render, distinct from a transport or server fault. */
 export class MalformedTaskLedgerError extends Error {
   constructor() {
@@ -109,22 +64,6 @@ export function parseTaskLedgerDetail(value: unknown): TaskLedgerDetail {
     throw new MalformedTaskLedgerError();
   }
   return value;
-}
-
-function isTaskLedgerDetail(value: unknown): value is TaskLedgerDetail {
-  if (
-    !isRecord(value) ||
-    typeof value['state'] !== 'string' ||
-    !TASK_LEDGER_STATES.has(value['state']) ||
-    !hasRequiredTaskLedgerStrings(value) ||
-    !hasRequiredTaskLedgerNumbers(value) ||
-    !hasValidTaskLedgerHeaderKeys(value) ||
-    !hasValidTaskLedgerLeaseFields(value) ||
-    !isTaskAttemptList(value['attempts'])
-  ) {
-    return false;
-  }
-  return true;
 }
 
 /** Reads exactly one authoritative durable ledger record. */

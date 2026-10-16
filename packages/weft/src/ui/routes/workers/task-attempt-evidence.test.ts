@@ -4,6 +4,7 @@ import {
   buildAttemptHistory,
   buildLeaseClocks,
   describeCancellation,
+  exactTimestamp,
   GRACE_PERIOD_SETTLEMENT_REASON,
   isTaskAttemptList,
   isTaskAttemptRecord,
@@ -171,6 +172,18 @@ describe('attempt ordering and fencing', () => {
 
   test('has no owning attempt until the ledger records the current attempt number', () => {
     expect(owningAttempt(task({ attempts: [attempt({ attempt: 1 })] }))).toBeUndefined();
+  });
+});
+
+describe('exactTimestamp', () => {
+  test('formats a representable instant as ISO 8601', () => {
+    expect(exactTimestamp(NOW)).toBe(new Date(NOW).toISOString());
+  });
+
+  test('names an unrepresentable instant instead of throwing a RangeError', () => {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, 1e20, 'bad' as unknown as number]) {
+      expect(exactTimestamp(value)).toBe('Invalid timestamp');
+    }
   });
 });
 

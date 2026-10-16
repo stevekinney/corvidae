@@ -103,7 +103,12 @@ export function isTaskAttemptList(value: unknown): value is readonly TaskAttempt
 
 /** Exact, timezone-independent rendering of a ledger instant. */
 export function exactTimestamp(timestampMs: number): string {
-  return new Date(timestampMs).toISOString();
+  // Validation rejects unrepresentable instants first; this guard keeps a
+  // stray one from throwing a RangeError mid-render.
+  const date = new Date(timestampMs);
+  return typeof timestampMs === 'number' && Number.isFinite(date.getTime())
+    ? date.toISOString()
+    : 'Invalid timestamp';
 }
 
 /** Attempts ordered by attempt number, then by claim time. Never mutates its input. */
