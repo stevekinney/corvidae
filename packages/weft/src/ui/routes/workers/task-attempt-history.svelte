@@ -6,11 +6,12 @@
    * after a newer claim is labeled fenced rather than drawn as a longer
    * window. See `task-attempt-evidence.ts` for the rules.
    */
-  import { Badge, DescriptionList, EmptyState, Timeline } from '@lostgradient/cinder';
+  import { Badge, Button, DescriptionList, EmptyState, Timeline } from '@lostgradient/cinder';
   import type { TimelineEntry, TimelineTone } from '@lostgradient/cinder';
 
   import { formatDuration, truncateId } from '../../lib/format/index.ts';
   import {
+    ATTEMPT_HISTORY_PAGE_SIZE,
     buildAttemptHistory,
     exactTimestamp,
     type AttemptBadgeVariant,
@@ -31,10 +32,16 @@
     neutral: 'info',
   };
 
+  // Fencing and order come from the whole history; only the newest
+  // `pageCount` pages are mounted, so an unbounded history stays cheap.
   const history = $derived(buildAttemptHistory(task.attempts, task.attempt));
-  const byKey = $derived(new Map(history.map((entry) => [entry.key, entry])));
+  let pageCount = $state(1);
+  const shownCount = $derived(Math.min(history.length, pageCount * ATTEMPT_HISTORY_PAGE_SIZE));
+  const shown = $derived(history.slice(history.length - shownCount));
+  const olderCount = $derived(Math.min(ATTEMPT_HISTORY_PAGE_SIZE, history.length - shownCount));
+  const byKey = $derived(new Map(shown.map((entry) => [entry.key, entry])));
   const entries = $derived<TimelineEntry[]>(
-    history.map((entry) => ({
+    shown.map((entry) => ({
       id: entry.key,
       datetime: exactTimestamp(entry.record.claimedAt),
       timestamp: exactTimestamp(entry.record.claimedAt),
@@ -109,6 +116,19 @@
       description="No worker has claimed this task yet, so there is no attempt history."
     />
   {:else}
+    {#if olderCount > 0}
+      <div class="weft-task-attempts__paging">
+        <p class="weft-task-attempts__paging-summary">
+          Showing the newest {shownCount} of {history.length} attempts.
+        </p>
+        <Button
+          variant="secondary"
+          size="sm"
+          label={`Show ${olderCount} older attempts`}
+          onclick={() => (pageCount += 1)}
+        />
+      </div>
+    {/if}
     <div class="weft-task-attempts__timeline">
       <Timeline {entries} aria-labelledby="task-attempts-heading">
         {#snippet children(timelineEntry)}

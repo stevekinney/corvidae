@@ -656,6 +656,19 @@
   overflow-wrap: anywhere;
 }
 
+.weft-task-attempts__paging {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+  align-items: center;
+  padding: 12px 15px 0;
+}
+
+.weft-task-attempts__paging-summary {
+  margin: 0;
+  color: var(--cinder-text-muted);
+}
+
 .weft-task-cancellation {
   overflow-wrap: anywhere;
 }

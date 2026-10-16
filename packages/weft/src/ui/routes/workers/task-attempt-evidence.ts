@@ -195,6 +195,13 @@ export function buildAttemptHistory(
   });
 }
 
+/**
+ * Attempts mounted per page of history. A task with no retry policy is
+ * requeued without limit, so its history can grow unbounded; the view shows
+ * the newest page and loads older ones on request.
+ */
+export const ATTEMPT_HISTORY_PAGE_SIZE = 25;
+
 /** The attempt record that owns the task's current attempt, if the ledger has recorded one. */
 export function owningAttempt(task: TaskLedgerDetail): TaskAttemptRecord | undefined {
   return buildAttemptHistory(task.attempts, task.attempt).find((entry) => entry.owning)?.record;
