@@ -4,6 +4,7 @@ import {
   buildAttemptHistory,
   buildLeaseClocks,
   describeCancellation,
+  GRACE_PERIOD_SETTLEMENT_REASON,
   isTaskAttemptList,
   isTaskAttemptRecord,
   orderAttempts,
@@ -156,6 +157,38 @@ describe('cancellation evidence', () => {
     expect(evidence.acknowledgement).toBe(
       `Acknowledged by attempt 2 at ${new Date(NOW).toISOString()}`,
     );
+  });
+
+  test('a grace-period force settlement of the owning attempt is not acknowledgement', () => {
+    const evidence = describeCancellation(
+      task({
+        state: 'terminal',
+        disposition: 'cancelled',
+        cancellationReason: 'stop',
+        attempts: [
+          attempt({
+            attempt: 2,
+            disposition: 'cancelled',
+            dispositionAt: NOW,
+            dispositionReason: GRACE_PERIOD_SETTLEMENT_REASON,
+          }),
+        ],
+      }),
+    );
+    expect(evidence.status).toBe('settled-after-grace-period');
+    expect(evidence.statusLabel).toBe('Settled after grace period · no worker acknowledgement');
+    expect(evidence.variant).toBe('warning');
+    expect(evidence.acknowledgement).toBe(
+      `Not acknowledged · Weft settled attempt 2 at ${new Date(NOW).toISOString()} after the cancellation grace period elapsed`,
+    );
+  });
+
+  test("matches the reason Weft's reconciliation records when it force-settles a cancellation", async () => {
+    const reconciliation = await Bun.file(
+      new URL('../../../server/runtime/task-reconciliation.ts', import.meta.url),
+    ).text();
+    const sites = reconciliation.split(`dispositionReason: '${GRACE_PERIOD_SETTLEMENT_REASON}'`);
+    expect(sites.length - 1).toBeGreaterThan(0);
   });
 
   test('a requested cancellation with no record for the current attempt waits for one', () => {

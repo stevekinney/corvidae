@@ -170,8 +170,25 @@ export function owningAttempt(task: TaskLedgerDetail): TaskAttemptRecord | undef
   return buildAttemptHistory(task.attempts, task.attempt).find((entry) => entry.owning)?.record;
 }
 
+/**
+ * The `dispositionReason` Weft's task reconciliation writes on the owning
+ * attempt when a `cancelling` record's grace period elapses with no
+ * cooperative `taskResult(status: 'cancelled')`. That force settlement also
+ * records the attempt as `cancelled`, but the server does not know whether
+ * the activity stopped, and `weft.tasks.get` does not project the ledger's
+ * `uncertain` flag. A worker's own cooperative acknowledgement records no
+ * reason, so this exact string is the only evidence that tells the two apart.
+ * A test reads `server/runtime/task-reconciliation.ts` to keep it in step.
+ */
+export const GRACE_PERIOD_SETTLEMENT_REASON =
+  'cancellation deadline elapsed with no cooperative result';
+
 export type CancellationStatus =
-  'not-requested' | 'requested' | 'acknowledged' | 'cancelled-unacknowledged';
+  | 'not-requested'
+  | 'requested'
+  | 'acknowledged'
+  | 'settled-after-grace-period'
+  | 'cancelled-unacknowledged';
 
 export interface CancellationEvidence {
   readonly status: CancellationStatus;
@@ -185,10 +202,19 @@ export interface CancellationEvidence {
   readonly earlierCancelledAttempts: readonly number[];
 }
 
+function isGracePeriodSettlement(owner: TaskAttemptRecord | undefined): boolean {
+  return (
+    owner?.disposition === 'cancelled' && owner.dispositionReason === GRACE_PERIOD_SETTLEMENT_REASON
+  );
+}
+
 function acknowledgementText(task: TaskLedgerDetail, owner: TaskAttemptRecord | undefined): string {
   if (owner === undefined) return `No record for attempt ${task.attempt} yet`;
   if (owner.disposition !== 'cancelled') {
     return `Not acknowledged · attempt ${owner.attempt} is ${DISPOSITION_LABEL[owner.disposition].toLowerCase()}`;
+  }
+  if (isGracePeriodSettlement(owner)) {
+    return `Not acknowledged · Weft settled attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)} after the cancellation grace period elapsed`;
   }
   const reason = owner.dispositionReason ? ` · ${owner.dispositionReason}` : '';
   return `Acknowledged by attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)}${reason}`;
@@ -197,7 +223,8 @@ function acknowledgementText(task: TaskLedgerDetail, owner: TaskAttemptRecord | 
 /** Derives cancellation intent and acknowledgement from the ledger, never from lease timing. */
 export function describeCancellation(task: TaskLedgerDetail): CancellationEvidence {
   const owner = owningAttempt(task);
-  const acknowledged = owner?.disposition === 'cancelled';
+  const settledAfterGracePeriod = isGracePeriodSettlement(owner);
+  const acknowledged = owner?.disposition === 'cancelled' && !settledAfterGracePeriod;
   const requested =
     task.state === 'cancelling' ||
     task.cancellationRequestedAt !== undefined ||
@@ -209,6 +236,7 @@ export function describeCancellation(task: TaskLedgerDetail): CancellationEviden
 
   let status: CancellationStatus = 'not-requested';
   if (acknowledged) status = 'acknowledged';
+  else if (settledAfterGracePeriod) status = 'settled-after-grace-period';
   else if (task.state === 'terminal' && task.disposition === 'cancelled') {
     status = 'cancelled-unacknowledged';
   } else if (requested) status = 'requested';
@@ -219,6 +247,10 @@ export function describeCancellation(task: TaskLedgerDetail): CancellationEviden
     'not-requested': { label: 'Not requested', variant: 'neutral' },
     requested: { label: 'Requested · awaiting worker acknowledgement', variant: 'warning' },
     acknowledged: { label: 'Acknowledged by owning attempt', variant: 'success' },
+    'settled-after-grace-period': {
+      label: 'Settled after grace period · no worker acknowledgement',
+      variant: 'warning',
+    },
     'cancelled-unacknowledged': {
       label: 'Cancelled · no worker acknowledgement recorded',
       variant: 'warning',

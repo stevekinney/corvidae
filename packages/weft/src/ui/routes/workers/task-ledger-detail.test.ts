@@ -473,6 +473,35 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     ).not.toBeNull();
   });
 
+  test('a cancellation Weft force-settled after the grace period is never shown as acknowledged', () => {
+    const task = parseTaskLedgerDetail({
+      ...queuedTask(),
+      state: 'terminal',
+      disposition: 'cancelled',
+      cancellationReason: 'operator requested cancellation',
+      terminalAt: NOW - 1_000,
+      adopted: true,
+      attempts: [
+        attemptRecord({
+          attempt: 2,
+          disposition: 'cancelled',
+          dispositionAt: NOW - 1_000,
+          dispositionReason: 'cancellation deadline elapsed with no cooperative result',
+        }),
+      ],
+    });
+    const { getByText, queryByText } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
+
+    expect(getByText('Settled after grace period · no worker acknowledgement')).not.toBeNull();
+    expect(
+      getByText(
+        `Not acknowledged · Weft settled attempt 2 at ${iso(NOW - 1_000)} after the cancellation grace period elapsed`,
+      ),
+    ).not.toBeNull();
+    expect(queryByText('Acknowledged by owning attempt')).toBeNull();
+    expect(queryByText(/^Acknowledged by attempt/)).toBeNull();
+  });
+
   test('a cancelled terminal task without an owning cancelled attempt records no acknowledgement', () => {
     const task = parseTaskLedgerDetail({
       ...queuedTask(),
