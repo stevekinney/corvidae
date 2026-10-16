@@ -126,6 +126,12 @@
       "corvidaeDirectory": "packages/ventriloquist",
       "issue": "COR-482",
       "reason": "Excluded from the mirror in `package-map.json` by the owner ruling of 2026-09-25 (not published until a later publication project), so no placement is needed and the plan never consults this entry. COR-482 created the workspace; its only consumer is `@lostgradient/terminal`, which is itself excluded. It stays `deferred` rather than being given a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
+    },
+    "@lostgradient/terminal-example": {
+      "disposition": "deferred",
+      "corvidaeDirectory": "applications/terminal-example",
+      "issue": "COR-407",
+      "reason": "Excluded from the mirror in `package-map.json`, so no placement is needed and the plan never consults this entry. COR-407 created the application; it is a private local development tool that starts shells, and no workspace the mirror emits depends on it. It stays `deferred` rather than being given a directory, matching every other excluded workspace here, so that lifting the exclusion forces a ruling on placement before anything is emitted."
     }
   },
   "openQuestions": [

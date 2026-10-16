@@ -1,0 +1,50 @@
+[1;36mReplay[0m  a fixed set of bytes the server sends the same way every time
+
+[31mred[0m [32mgreen[0m [33myellow[0m [34mblue[0m [35mmagenta[0m [36mcyan[0m 
+
+line 01  [2mreplayed bytes 01[0m
+line 02  [2mreplayed bytes 02[0m
+line 03  [2mreplayed bytes 03[0m
+line 04  [2mreplayed bytes 04[0m
+line 05  [2mreplayed bytes 05[0m
+line 06  [2mreplayed bytes 06[0m
+line 07  [2mreplayed bytes 07[0m
+line 08  [2mreplayed bytes 08[0m
+line 09  [2mreplayed bytes 09[0m
+line 10  [2mreplayed bytes 10[0m
+line 11  [2mreplayed bytes 11[0m
+line 12  [2mreplayed bytes 12[0m
+line 13  [2mreplayed bytes 13[0m
+line 14  [2mreplayed bytes 14[0m
+line 15  [2mreplayed bytes 15[0m
+line 16  [2mreplayed bytes 16[0m
+line 17  [2mreplayed bytes 17[0m
+line 18  [2mreplayed bytes 18[0m
+line 19  [2mreplayed bytes 19[0m
+line 20  [2mreplayed bytes 20[0m
+line 21  [2mreplayed bytes 21[0m
+line 22  [2mreplayed bytes 22[0m
+line 23  [2mreplayed bytes 23[0m
+line 24  [2mreplayed bytes 24[0m
+line 25  [2mreplayed bytes 25[0m
+line 26  [2mreplayed bytes 26[0m
+line 27  [2mreplayed bytes 27[0m
+line 28  [2mreplayed bytes 28[0m
+line 29  [2mreplayed bytes 29[0m
+line 30  [2mreplayed bytes 30[0m
+line 31  [2mreplayed bytes 31[0m
+line 32  [2mreplayed bytes 32[0m
+line 33  [2mreplayed bytes 33[0m
+line 34  [2mreplayed bytes 34[0m
+line 35  [2mreplayed bytes 35[0m
+line 36  [2mreplayed bytes 36[0m
+line 37  [2mreplayed bytes 37[0m
+line 38  [2mreplayed bytes 38[0m
+line 39  [2mreplayed bytes 39[0m
+line 40  [2mreplayed bytes 40[0m
+
+Unicode: café, 世界, π≈ 3.14159, → arrows, 😀
+
+progress 0%[2Kprogress 10%[2Kprogress 20%[2Kprogress 30%[2Kprogress 40%[2Kprogress 50%[2Kprogress 60%[2Kprogress 70%[2Kprogress 80%[2Kprogress 90%[2Kprogress 100%
+
+[1;32mReplay complete.[0m

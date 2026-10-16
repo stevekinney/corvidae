@@ -9498,6 +9498,11 @@
       "basis": "owner-excluded-from-public-mirror",
       "reason": "New in COR-482 and never published. Excluded from the mirror by the repository owner's ruling of 2026-09-25 (not published until a later publication project). It is the terminal wire protocol and session core with Bun pipe, PTY, and WebSocket host helpers behind `./bun` and `./websocket`. Its only consumer is `@lostgradient/terminal`, which is itself excluded, so nothing the mirror emits depends on it. Reversible: promote to `private-workspace` or `publish-as` when the later publication project rules on a public home."
     },
+    "@lostgradient/terminal-example": {
+      "disposition": "exclude",
+      "basis": "private-application-hosted-in-corvidae",
+      "reason": "New in COR-407 and never published. The local development application that serves `@lostgradient/terminal` over `@lostgradient/ventriloquist` from a Bun server on loopback. It starts shells on the machine it runs on, so it is a private application in corvidae and not a package, and its only dependencies are the excluded terminal workspaces and published ones. Nothing the mirror emits depends on it. Reversible: lifting the exclusion needs a ruling on a public home, which also moves with the terminal workspaces' publication project."
+    },
     "@lostgradient/bureau": {
       "disposition": "exclude",
       "basis": "retired-target",

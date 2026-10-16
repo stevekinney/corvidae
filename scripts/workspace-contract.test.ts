@@ -64,6 +64,7 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/typescript',
   '@lostgradient/playground',
   '@lostgradient/terminal',
+  '@lostgradient/terminal-example',
   '@lostgradient/ventriloquist',
   'armorer',
   'conversationalist',

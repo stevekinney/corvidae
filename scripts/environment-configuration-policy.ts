@@ -17,6 +17,7 @@ export const environmentBoundaries = [
     kind: 'runtime',
     paths: new Set([
       'applications/playground/src/environment-configuration.ts',
+      'applications/terminal-example/src/server/environment-configuration.ts',
       'packages/operative/src/environment-configuration.ts',
       'packages/skills/src/environment-configuration.ts',
       'packages/testing/src/environment-configuration.ts',
@@ -28,6 +29,7 @@ export const environmentBoundaries = [
     kind: 'script',
     paths: new Set([
       'applications/playground/scripts/environment-configuration.ts',
+      'applications/terminal-example/tests/environment-configuration.ts',
       'components/cinder/scripts/environment-configuration.ts',
       'scripts/browser-fixtures/environment-configuration.ts',
       'scripts/environment-configuration.ts',

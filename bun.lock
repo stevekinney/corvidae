@@ -69,6 +69,24 @@
         "typescript": "catalog:",
       },
     },
+    "applications/terminal-example": {
+      "name": "@lostgradient/terminal-example",
+      "dependencies": {
+        "@lostgradient/cinder": "workspace:*",
+        "@lostgradient/terminal": "workspace:*",
+        "@lostgradient/ventriloquist": "workspace:*",
+        "svelte": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@playwright/test": "catalog:",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "svelte-check": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "components/chat": {
       "name": "@lostgradient/chat",
       "dependencies": {
@@ -98,7 +116,6 @@
     },
     "components/cinder": {
       "name": "@lostgradient/cinder",
-      "version": "0.0.0",
       "dependencies": {
         "@floating-ui/dom": "catalog:",
         "@lostgradient/markdown": "workspace:*",
@@ -800,6 +817,8 @@
     "@lostgradient/skills": ["@lostgradient/skills@workspace:packages/skills"],
 
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
+
+    "@lostgradient/terminal-example": ["@lostgradient/terminal-example@workspace:applications/terminal-example"],
 
     "@lostgradient/testing": ["@lostgradient/testing@workspace:packages/testing"],
 
