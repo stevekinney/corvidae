@@ -31,9 +31,9 @@
  * only targets top-level steps, so `stepIdFromItem`'s regex deliberately
  * narrows to the top-level `step-<n>` shape and leaves branch-lane ids
  * (`step-<n>-branch-<m>`) unmatched, even though those are also app-minted.
- * The private `.cinder-run-step-timeline__item` class buys nothing extra
- * here either way; querying `[data-cinder-path]` alone is sufficient and
- * keeps this module off Cinder's internal class names entirely.
+ * Cinder's private row class names buy nothing extra here either way;
+ * querying `[data-cinder-path]` alone is sufficient and keeps this module
+ * off Cinder's internal class names entirely.
  */
 
 const RUN_STEP_ITEM_SELECTOR = '[data-cinder-path]';

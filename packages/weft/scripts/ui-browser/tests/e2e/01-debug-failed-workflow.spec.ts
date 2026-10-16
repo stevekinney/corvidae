@@ -40,23 +40,28 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
   await checkA11y('workflow detail — overview (failure explanation)');
 
   await page.getByRole('tab', { name: 'Timeline' }).click();
-  // Scoped to the first step's stable `<li>` (a Cinder `RunStepTimeline`
-  // row, keyed by class/position, not text). Cinder's own
-  // `selection-control` button (WFC-7: adopted from `RunStepTimeline`'s
-  // public selection API) is a `pointer-events: none` overlay that exists
-  // for keyboard/AT interaction only — its `aria-label` stays
-  // `Select <step>` and only its `aria-pressed` flips on click. Real
-  // pointer clicks land on the row's visible content and are delegated to
-  // the same `onStepSelect` handler by a click listener Cinder attaches to
-  // the `<li>` itself (see `run-step-timeline.svelte`'s
+  // Scoped to the first step row through Cinder's public `data-cinder-path`
+  // attribute (stamped on every `RunStepTimeline` step/branch row), not its
+  // private class names. Cinder's own `selection-control` button (WFC-7:
+  // adopted from `RunStepTimeline`'s public selection API) is a
+  // `pointer-events: none` overlay that exists for keyboard/AT interaction
+  // only — its `aria-label` stays `Select <step>` and only its
+  // `aria-pressed` flips on click. Real pointer clicks land on the row's
+  // visible content and are delegated to the same `onStepSelect` handler by
+  // a click listener Cinder attaches to the row itself (see
+  // `run-step-timeline.svelte`'s
   // `createStepSelectionAttachment`/`isInteractiveDescendant`), so click
-  // the visible label rather than the (intentionally unclickable-by-mouse)
-  // button.
-  const firstStep = page.locator('li.cinder-run-step-timeline__item').first();
+  // the step's visible label text rather than the (intentionally
+  // unclickable-by-mouse) button. The label is read back from the button's
+  // accessible name, so the test never hardcodes a fixture step name.
+  const firstStep = page.locator('[data-cinder-path]').first();
   const stepToggle = firstStep.getByRole('button', { name: /^Select/ });
   await expect(stepToggle).toBeVisible();
   await expect(stepToggle).toHaveAttribute('aria-pressed', 'false');
-  await firstStep.locator('.cinder-run-step-timeline__label').first().click();
+  const stepToggleName = await stepToggle.getAttribute('aria-label');
+  if (stepToggleName === null) throw new Error('Step selection control has no aria-label');
+  const stepLabel = stepToggleName.replace(/^Select /, '');
+  await firstStep.getByText(stepLabel, { exact: true }).first().click();
   await expect(stepToggle).toHaveAttribute('aria-pressed', 'true');
   // The linked-selection chip is rendered by `timeline-tab.svelte` as a
   // page-level sibling of `RunStepTimeline`, not inside the step `<li>`.

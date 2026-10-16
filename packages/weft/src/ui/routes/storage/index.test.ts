@@ -75,10 +75,14 @@ describe('Storage route', () => {
     // whether the conditional-batch probe ever resolved — scope to the
     // Conditional batch row specifically (flagged in WFC-10 PR #14 review).
     const conditionalBatchTerm = await findByText('Conditional batch');
-    const conditionalBatchRow = conditionalBatchTerm.closest('.cinder-description-list__row');
-    if (!conditionalBatchRow) throw new Error('Conditional batch row not found');
+    // Scope through the term's own `<dt>`/`<dd>` pairing (public DOM
+    // semantics of a description list) rather than Cinder's private row class.
+    expect(conditionalBatchTerm.tagName).toBe('DT');
+    const conditionalBatchDefinition = conditionalBatchTerm.nextElementSibling;
+    if (!conditionalBatchDefinition) throw new Error('Conditional batch definition not found');
+    expect(conditionalBatchDefinition.tagName).toBe('DD');
     expect(
-      await within(requireElement(conditionalBatchRow, HTMLElement)).findByText('supported'),
+      await within(requireElement(conditionalBatchDefinition, HTMLElement)).findByText('supported'),
     ).not.toBeNull();
   });
 

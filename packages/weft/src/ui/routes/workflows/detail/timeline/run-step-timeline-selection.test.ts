@@ -2,16 +2,17 @@ import { describe, expect, test } from 'bun:test';
 
 import { applyRunStepTimelineDivergenceHighlight } from './run-step-timeline-selection.ts';
 
-/** Builds a minimal DOM tree shaped like Cinder's `RunStepTimeline` render output. */
+/**
+ * Builds a minimal DOM tree carrying only Cinder's public `RunStepTimeline`
+ * row contract — the `data-cinder-path` attribute — with no private class names.
+ */
 function buildTimelineDom(stepPaths: readonly string[]): HTMLElement {
   const container = document.createElement('div');
   const list = document.createElement('ol');
   for (const path of stepPaths) {
     const item = document.createElement('li');
-    item.className = 'cinder-run-step-timeline__item';
     item.setAttribute('data-cinder-path', path);
     const label = document.createElement('span');
-    label.className = 'cinder-run-step-timeline__label';
     label.textContent = path;
     item.append(label);
     list.append(item);
