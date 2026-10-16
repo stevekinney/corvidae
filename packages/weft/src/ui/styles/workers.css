@@ -656,6 +656,10 @@
   overflow-wrap: anywhere;
 }
 
+.weft-task-cancellation {
+  overflow-wrap: anywhere;
+}
+
 .weft-task-attempts__entry {
   display: flex;
   flex-wrap: wrap;
