@@ -8,7 +8,7 @@
    * rather than a guessed one; the Health & lease tab renders that failure.
    *
    * Scope gating (plan §6): the principal store optimistically grants every
-   * scope until a real `403` is observed, so both queries fire on mount;
+   * scope until a real `403` is observed, so all three queries fire on mount;
    * a `403` degrades the principal (`denyScope`) rather than surfacing as a
    * generic fault, and `enabled` re-checks `hasScope` so a known-denied
    * scope stops refetching. Missing-scope sections render a lock notice
@@ -134,8 +134,8 @@
     return list;
   });
 
-  // Read both query states before deciding whether either is pending. A
-  // single logical OR can skip the reviews state while diagnostics is
+  // Read every query state before deciding whether any is pending. A
+  // single logical OR can skip a later state while an earlier one is
   // pending, leaving it out of this derived value's dependency set.
   const isLoading = $derived.by(() => {
     const diagnosticsPending = canReadSystem && diagnosticsQuery.isPending;

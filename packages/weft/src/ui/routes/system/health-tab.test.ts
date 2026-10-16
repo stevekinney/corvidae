@@ -73,10 +73,18 @@ function routeBaseline(fetch: ScriptedFetch): void {
  * test's run and read from the wrong (already-restored) fetch mock, an
  * intermittent cross-test flake observed empirically.
  */
-async function renderHealthTab() {
+async function renderHealthTab(queryClient = createQueryClient()) {
   return render(SystemRouteTestHarness, {
-    props: { client: realClient(), queryClient: createQueryClient(), component: HealthTab },
+    props: { client: realClient(), queryClient, component: HealthTab },
   });
+}
+
+/** The production query client without retries, so a non-wire failure settles immediately. */
+function queryClientWithoutRetries() {
+  const queryClient = createQueryClient();
+  const defaults = queryClient.getDefaultOptions();
+  queryClient.setDefaultOptions({ ...defaults, queries: { ...defaults.queries, retry: false } });
+  return queryClient;
 }
 
 describe('HealthTab', () => {
@@ -126,13 +134,11 @@ describe('HealthTab', () => {
   test('a malformed lease response is explicit, never a healthy badge', async () => {
     scripted = scriptedWithLease({ mode: 'lease', status: 'healthy' });
     routeBaseline(scripted);
-    const { findByText, queryByText, unmount } = await renderHealthTab();
-    expect(
-      await findByText('Malformed server response', undefined, { timeout: 15_000 }),
-    ).not.toBeNull();
+    const { findByText, queryByText, unmount } = await renderHealthTab(queryClientWithoutRetries());
+    expect(await findByText('Malformed server response')).not.toBeNull();
     expect(queryByText('Healthy')).toBeNull();
     unmount();
-  }, 20_000);
+  });
 
   test('a forbidden lease read shows the fault banner', async () => {
     scripted = new ScriptedFetch();
