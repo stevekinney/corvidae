@@ -22,6 +22,15 @@ export class OutputBudget {
     return this.#pendingBytes;
   }
 
+  /** Bytes that can still be reserved before a chunk would not fit. */
+  get availableBytes(): number {
+    return this.#limitBytes - this.#pendingBytes;
+  }
+
+  get limitBytes(): number {
+    return this.#limitBytes;
+  }
+
   get pendingChunks(): number {
     return this.#pending.size;
   }

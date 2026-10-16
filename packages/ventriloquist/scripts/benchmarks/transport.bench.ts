@@ -39,6 +39,14 @@ import {
   type Target,
 } from './benchmark-report.ts';
 import {
+  RESUME_SAMPLES,
+  measureFloodThroughput,
+  measurePauseLatency,
+  measurePausedMemory,
+  measureResumeLatency,
+  resumeLatencyControl,
+} from './flood-measurements.ts';
+import {
   cleanupObservation,
   measureAcknowledgementLatency,
   measureCleanup,
@@ -141,6 +149,53 @@ const specifications: CellSpecification[] = [
     control: () => memoryControl(),
     measure: () => measureMemoryPlateau('websocket'),
   },
+  ...(['pipe', 'pty'] as const).flatMap((mode): CellSpecification[] => [
+    {
+      id: `flood-throughput-${mode}`,
+      method: `sixteen mebibytes of \`cat\` through a real ${mode} process and the Bun WebSocket host, the client parsing each chunk as it arrives, until the last byte is parsed`,
+      target: throughputTarget,
+      sampleCount: SAMPLES.transfer,
+      warmupCount: 0,
+      control: () => throughputControl(),
+      measure: () => measureFloodThroughput('websocket', mode),
+    },
+    {
+      id: `pause-latency-${mode}`,
+      method: `fifty stalls of a flooding ${mode} process through the in-memory path, each timed from the output queue being full until the last byte the host delivers before it goes quiet`,
+      target: latencyTarget,
+      sampleCount: RESUME_SAMPLES,
+      warmupCount: 0,
+      control: () => resumeLatencyControl(),
+      measure: () => measurePauseLatency('direct', mode),
+    },
+    {
+      id: `direct-resume-latency-${mode}`,
+      method: `fifty stalls of a flooding ${mode} process through the in-memory path, each timed from the client reporting its held output parsed until the next byte of output reaches it`,
+      target: latencyTarget,
+      sampleCount: RESUME_SAMPLES,
+      warmupCount: 0,
+      control: () => resumeLatencyControl(),
+      measure: () => measureResumeLatency('direct', mode),
+    },
+    {
+      id: `resume-latency-${mode}`,
+      method: `the same fifty stalls over the Bun WebSocket host, timed until the next byte of output reaches the client`,
+      target: latencyTarget,
+      sampleCount: RESUME_SAMPLES,
+      warmupCount: 0,
+      control: () => resumeLatencyControl(),
+      measure: () => measureResumeLatency('websocket', mode),
+    },
+    {
+      id: `paused-memory-${mode}`,
+      method: `resident memory growth across three seconds of a flooding ${mode} process held back by a client that parses nothing, after one identical warmup stall`,
+      target: memoryTarget,
+      sampleCount: SAMPLES.transfer,
+      warmupCount: SAMPLES.memoryWarmup,
+      control: () => memoryControl(),
+      measure: () => measurePausedMemory('websocket', mode),
+    },
+  ]),
   {
     id: 'cleanup-duration',
     method: 'stop to cleanup result for a real PTY child over the Bun WebSocket host',

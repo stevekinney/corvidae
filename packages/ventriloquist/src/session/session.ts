@@ -137,6 +137,8 @@ export class Session {
   #sourcesEnded = 0;
   #droppedBytes = 0;
   #drainWaiter: (() => void) | undefined;
+  /** Pull-based sources waiting for the output budget to have room; each returns true once it is settled. */
+  #roomWaiters: (() => boolean)[] = [];
 
   constructor(options: SessionOptions) {
     // The wire schema requires a canonical UUID, so any other identity could never be addressed by a client.
@@ -385,11 +387,13 @@ export class Session {
       resize: (columns, rows, options) => submit({ kind: 'resize', columns, rows }, options),
       outputParsed: (chunkId) => {
         const released = attachment.output.release(chunkId);
+        this.#notifyRoom();
         this.#checkDrain();
         return released;
       },
       outputParsedThrough: (cumulativeBytes) => {
         const released = attachment.output.releaseThrough(cumulativeBytes);
+        this.#notifyRoom();
         this.#checkDrain();
         return released;
       },
@@ -545,6 +549,8 @@ export class Session {
     for (const source of this.#sources) {
       try {
         source.start({
+          room: (minimum) => this.#waitForRoom(minimum),
+          offer: (bytes) => this.#offer(source.channel, bytes),
           chunk: (bytes) => this.#ingest(source.channel, bytes),
           end: () => this.#sourceEnded(source.channel),
           failed: () => this.#beginClose('source-failed'),
@@ -583,6 +589,50 @@ export class Session {
       channel,
       bytes,
     });
+  }
+
+  /**
+   * Resolve with the output budget's free bytes once it has room for `minimum` of them, capped at
+   * a quarter of the budget so a small budget still moves, or with `undefined` once the session
+   * no longer accepts output. This is the whole of the pause: a source that is not asked for more
+   * is not read.
+   */
+  #waitForRoom(minimum: number): Promise<number | undefined> {
+    return new Promise((resolve) => {
+      const settle = (): boolean => {
+        const attachment = this.#attachment;
+        if (this.#finalized || attachment === undefined || attachment.revoked) {
+          resolve(undefined);
+          return true;
+        }
+        const wanted = Math.max(1, Math.min(minimum, Math.floor(attachment.output.limitBytes / 4)));
+        if (attachment.output.availableBytes < wanted) return false;
+        resolve(attachment.output.availableBytes);
+        return true;
+      };
+      if (!settle()) this.#roomWaiters.push(settle);
+    });
+  }
+
+  /**
+   * Take up to what the output budget has free right now, in one step with checking it. A session
+   * that no longer accepts output takes everything, to count it as unavailable.
+   */
+  #offer(channel: OutputChannel, bytes: Uint8Array): number {
+    const attachment = this.#attachment;
+    const take =
+      this.#finalized || attachment === undefined || attachment.revoked
+        ? bytes.length
+        : Math.min(attachment.output.availableBytes, bytes.length);
+    if (take === 0 && bytes.length > 0) return 0;
+    this.#ingest(channel, bytes.subarray(0, take));
+    return take;
+  }
+
+  /** Wake every source waiting for room whose wait can now end. */
+  #notifyRoom(): void {
+    if (this.#roomWaiters.length === 0) return;
+    this.#roomWaiters = this.#roomWaiters.filter((settle) => !settle());
   }
 
   #sourceEnded(channel: OutputChannel): void {
@@ -643,6 +693,7 @@ export class Session {
     const attachment = this.#attachment;
     if (attachment === undefined || attachment.revoked) return;
     attachment.revoked = true;
+    this.#notifyRoom();
     attachment.cancelLiveness();
     attachment.releaseControl = attachment.queue.admitControl();
     const { generation } = attachment.authority;
@@ -765,6 +816,7 @@ export class Session {
     Object.freeze(summary);
     this.#emit({ type: 'sessionClosed', summary });
     this.#finalized = true;
+    this.#notifyRoom();
     this.#resolveClosed(summary);
   }
 }

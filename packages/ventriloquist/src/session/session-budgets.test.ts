@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createDeferred } from './fixtures/deferred.ts';
-import { createScriptedStream } from './fixtures/scripted-sources.ts';
+import { createScriptedSubscription } from './fixtures/scripted-sources.ts';
 import { SESSION_BUDGET_RANGES, resolveSessionBudgets } from './session-budgets.ts';
 import { DEFAULT_SESSION_BUDGETS } from './session-types.ts';
 import { createHarness, flush, startAndAttach, utf8 } from './session.test-support.ts';
@@ -144,7 +144,7 @@ describe('overflow', () => {
   });
 
   test('output over the budget revokes the generation and quarantines the slot', async () => {
-    const stream = createScriptedStream('pty');
+    const stream = createScriptedSubscription('pty');
     const harness = createHarness({
       sources: [stream.source],
       budgets: { outputQueueBytes: 65_536 },
@@ -168,7 +168,7 @@ describe('overflow', () => {
   });
 
   test('accepted output is never dropped: the chunk that does not fit fails the session', async () => {
-    const stream = createScriptedStream('pty');
+    const stream = createScriptedSubscription('pty');
     const harness = createHarness({
       sources: [stream.source],
       budgets: { outputQueueBytes: 65_536 },
@@ -185,7 +185,7 @@ describe('overflow', () => {
 
 describe('output capacity is released only at a per-write parse completion', () => {
   async function fillTo(limit: number) {
-    const stream = createScriptedStream('pty');
+    const stream = createScriptedSubscription('pty');
     const harness = createHarness({
       sources: [stream.source],
       budgets: { outputQueueBytes: limit },
