@@ -35,8 +35,9 @@
  * covers only those inferred calls: a process API written in the test body is always reported.
  *
  * Moving a process to module scope takes it off the per-test clock, so nothing bounds it there:
- * a child that never exits would hold the whole run. A test file therefore never calls a process
- * API directly, wherever the call runs; it starts every process through `spawnWithHangGuard` or
+ * a child that never exits would hold the whole run. A test file, or a `*.test-support.ts` module
+ * beside one, therefore never calls a process API directly, wherever the call runs; it starts
+ * every process through `spawnWithHangGuard` or
  * `runWithHangGuard` (`@lostgradient/testing/hang-guard`, or its checked copies at
  * `scripts/hang-guard.ts` and `packages/weft/scripts/lib/hang-guard.ts`). They kill a child after
  * the owner-approved 120-second hang guard of awake time. Bun's own `timeout` option, which this
@@ -620,7 +621,7 @@ export function collectTestFiles(directory: string, paths: string[]): void {
       if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
       if (entry.name === 'benchmarks' && basename(directory) === 'scripts') continue;
       collectTestFiles(path, paths);
-    } else if (entry.isFile() && /\.test\.tsx?$/.test(entry.name)) {
+    } else if (entry.isFile() && /\.test(?:-support)?\.tsx?$/.test(entry.name)) {
       paths.push(path);
     }
   }

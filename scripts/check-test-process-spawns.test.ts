@@ -216,7 +216,7 @@ describe('spawn-free exemptions', () => {
   });
 });
 
-test('skips scripts/benchmarks directories when collecting test files', async () => {
+test('collects test files and test-support modules, skipping scripts/benchmarks', async () => {
   const { collectTestFiles } = await import('./check-test-process-spawns');
   const directory = mkdtempSync(join(tmpdir(), 'check-test-process-spawns-collect-'));
   try {
@@ -224,9 +224,13 @@ test('skips scripts/benchmarks directories when collecting test files', async ()
     writeFileSync(join(directory, 'scripts', 'benchmarks', 'load.test.ts'), '');
     writeFileSync(join(directory, 'scripts', 'unit.test.ts'), '');
     writeFileSync(join(directory, 'scripts', 'view.test.tsx'), '');
+    // A support module's spawns run in the test process too (COR-1541 found an unguarded one).
+    writeFileSync(join(directory, 'scripts', 'cluster.test-support.ts'), '');
+    writeFileSync(join(directory, 'scripts', 'cluster.ts'), '');
     const paths: string[] = [];
     collectTestFiles(directory, paths);
     expect(paths.map((path) => path.slice(directory.length + 1)).toSorted()).toEqual([
+      join('scripts', 'cluster.test-support.ts'),
       join('scripts', 'unit.test.ts'),
       join('scripts', 'view.test.tsx'),
     ]);

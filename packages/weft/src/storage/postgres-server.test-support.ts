@@ -3,6 +3,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 import { readEnvironmentVariable } from '../runtime/environment-configuration.ts';
 
 /** A live PostgreSQL the storage suites can talk to, however it was obtained. */
@@ -224,7 +225,7 @@ export function postgresCommandEnvironment(
 }
 
 async function runPostgresCommand(command: string[]): Promise<void> {
-  const child = Bun.spawn(command, {
+  const child = spawnWithHangGuard(command, {
     stdout: 'pipe',
     stderr: 'pipe',
     env: postgresCommandEnvironment(),
