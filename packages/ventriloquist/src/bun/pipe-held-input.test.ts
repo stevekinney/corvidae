@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
 
+import { createDeferred } from '../session/fixtures/deferred.ts';
 import type { InputHold } from '../session/session-types.ts';
 import { scenario, scenarioResult, settleScenarios } from './bun-process.test-support.ts';
 import { shellProfile } from './fixtures/bun-pipe-stdin.ts';
@@ -155,15 +156,19 @@ const scenarioNoInput = scenario('a pipe with no input channel refuses a write',
 function recordingDevice(overrides: Partial<PipeDevice> = {}) {
   const real = loadPipeDevice();
   const closed: number[] = [];
+  let pair: { readFd: number; writeFd: number } | undefined;
   const device: PipeDevice = {
-    open: () => real.open(),
+    open: () => {
+      pair = real.open();
+      return pair;
+    },
     close: (descriptor) => {
       closed.push(descriptor);
       real.close(descriptor);
     },
     ...overrides,
   };
-  return { device, closed };
+  return { device, closed, pair: () => pair };
 }
 
 const scenarioNoLibc = scenario(
@@ -198,7 +203,7 @@ const scenarioNoPipe = scenario('a pipe the host cannot open is spawn-failed', a
 });
 
 const scenarioRefusedSpawn = scenario(
-  'a refused spawn closes both ends of the input pipe',
+  'a refused spawn closes each end of the input pipe exactly once',
   async () => {
     const recording = recordingDevice();
     const hosted = createPipeProcess({
@@ -211,8 +216,71 @@ const scenarioRefusedSpawn = scenario(
     });
     const failure = await rejectionOf(hosted.backend.start());
     expect((failure as ProcessStartFailure).code).toBe('spawn-failed');
-    // Both ends once, and the read end once more as the spawn's own `finally` releases it.
-    expect(new Set(recording.closed).size).toBe(2);
+    const pair = recording.pair() as { readFd: number; writeFd: number };
+    // A descriptor closed twice could by then belong to another thread.
+    expect(recording.closed.toSorted()).toEqual([pair.readFd, pair.writeFd].toSorted());
+  },
+);
+
+const scenarioDescriptorOwnership = scenario(
+  'a started pipe closes its read end once, after the spawn, and its write end once, at cleanup',
+  async () => {
+    const recording = recordingDevice();
+    const hosted = createPipeProcess({
+      profile: shellProfile('sleep 7919'),
+      acceptsInput: true,
+      loadDevice: () => recording.device,
+    });
+    await hosted.backend.start();
+    const pair = recording.pair() as { readFd: number; writeFd: number };
+    // Bun duplicates the descriptor into the child and leaves the original open, so this host closes it.
+    expect(recording.closed).toEqual([pair.readFd]);
+    expect(await hosted.backend.cleanup()).toBe('complete');
+    expect(recording.closed).toEqual([pair.readFd, pair.writeFd]);
+    expect(await hosted.backend.cleanup()).toBe('complete');
+    expect(recording.closed).toEqual([pair.readFd, pair.writeFd]);
+  },
+);
+
+/** A child that has already gone: the pipe's reader is closed, so a write has nobody to reach. */
+const scenarioExitedChild = scenario(
+  'a write to a child that exited fails as a write error and does not kill the host',
+  async () => {
+    const hosted = createPipeProcess({ profile: shellProfile('exit 0'), acceptsInput: true });
+    const exited = createDeferred<void>();
+    void hosted.reportExitTo({
+      start: () => hosted.backend.start(),
+      reportProcessExit: () => {
+        exited.resolve();
+        return true;
+      },
+    });
+    await exited.promise;
+    // SIGPIPE would end this process here; Bun ignores it, and the write reports EPIPE.
+    const failure = await rejectionOf(hosted.backend.write(new Uint8Array(4)));
+    expect((failure as { code?: string }).code).toBe('EPIPE');
+    expect(await hosted.backend.cleanup()).toBe('complete');
+  },
+);
+
+const scenarioHeldChildExits = scenario(
+  'a held write whose child exits fails instead of hanging',
+  async () => {
+    const gate = join(scratch, 'exit-pipe-input');
+    const hosted = createPipeProcess({
+      profile: shellProfile('until [ -e "$1" ]; do sleep 0.05; done; exit 0', [gate]),
+      acceptsInput: true,
+    });
+    await hosted.backend.start();
+    const { log, hold } = recordHold();
+    const written = hosted.backend.write(new Uint8Array(300_000).fill(97), hold);
+    expect(await settledIn(written)).toBe('unsettled');
+    expect(log[0]).toBe('held');
+    await Bun.write(gate, '');
+    // The child leaves without reading it all: the rest of the write has nowhere to go.
+    const failure = await rejectionOf(written);
+    expect((failure as { code?: string }).code).toBe('EPIPE');
+    expect(await hosted.backend.cleanup()).toBe('complete');
   },
 );
 
@@ -235,7 +303,19 @@ describe('pipe input held by a child that is not reading', () => {
   scenarioResult('a pipe with no input channel refuses a write', scenarioNoInput);
   scenarioResult('a host that cannot open a pipe is unsupported-runtime', scenarioNoLibc);
   scenarioResult('a pipe the host cannot open is spawn-failed', scenarioNoPipe);
-  scenarioResult('a refused spawn closes both ends of the input pipe', scenarioRefusedSpawn);
+  scenarioResult(
+    'a refused spawn closes each end of the input pipe exactly once',
+    scenarioRefusedSpawn,
+  );
+  scenarioResult(
+    'a started pipe closes its read end once, after the spawn, and its write end once, at cleanup',
+    scenarioDescriptorOwnership,
+  );
+  scenarioResult(
+    'a write to a child that exited fails as a write error and does not kill the host',
+    scenarioExitedChild,
+  );
+  scenarioResult('a held write whose child exits fails instead of hanging', scenarioHeldChildExits);
 });
 
 await settleScenarios();

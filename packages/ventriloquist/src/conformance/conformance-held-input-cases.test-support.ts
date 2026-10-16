@@ -1,10 +1,11 @@
-import { closeSync, openSync } from 'node:fs';
+import { closeSync, constants, openSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
 import { shellProfile } from '../bun/fixtures/bun-pipe-stdin.ts';
 import type { ServerMessage } from '../protocol/messages.ts';
+import { attempt } from '../session/settle.ts';
 import {
   channelFor,
   conclude,
@@ -24,6 +25,8 @@ const PASTE_BYTES = 60_000;
 const MAXIMUM_PASTES = 4;
 const ACCEPTED_AT_MOST = 2 * 65_536;
 const FINAL_MARKER = 'END';
+/** Attempts to release the child, 5 ms apart: ten seconds, the hang guard's order of magnitude. */
+const GATE_TURNS = 2_000;
 
 let launches = 0;
 
@@ -96,6 +99,23 @@ async function pasteUntilHeld(
     held = pasted.kind === 'operation-ack' && refusedAsHeld(probe);
   }
   return { accepted: pastes * PASTE_BYTES, held };
+}
+
+/**
+ * Release the child by opening its named pipe for writing and closing it, which is the child's end
+ * of file. The open never blocks: it fails with `ENXIO` until the child is reading, so it is tried
+ * once per turn of the event loop, a bounded number of times, and a child that never reads is
+ * reported by the cell instead of freezing the runner.
+ */
+async function releaseGate(path: string): Promise<boolean> {
+  let released = false;
+  for (let turn = 0; turn < GATE_TURNS && !released; turn += 1) {
+    released = await attempt(() =>
+      closeSync(openSync(path, constants.O_WRONLY | constants.O_NONBLOCK)),
+    );
+    await Bun.sleep(5);
+  }
+  return released;
 }
 
 function expectedOutput(pastes: number): string {
@@ -181,8 +201,7 @@ const heldInputBackpressure: CaseDefinition = {
   async run({ rig, launched, mode }) {
     const held = await holdInput(rig);
     const refusals = rig.client.messages.filter((message) => message.kind === 'operation-failure');
-    // Opening the named pipe for writing waits for the child's read, then the child reads end of file.
-    closeSync(openSync(gateOf(launched), 'w'));
+    const released = await releaseGate(gateOf(launched));
     const expected = expectedOutput(held.pastes);
     await outputReaches(rig, expected.length);
     const writable = await untilAccepted(rig, FINAL_MARKER);
@@ -202,6 +221,7 @@ const heldInputBackpressure: CaseDefinition = {
         text === expected + FINAL_MARKER,
       ),
       check('the output came on the one channel the mode carries', onOneChannel),
+      check('the child read the release from its named pipe', released),
       check('the host accepted input again without a new session', writable),
       check('cleanup was complete', cleanup.outcome === 'complete'),
       check('the transport closed normally', closeCode === 1000),

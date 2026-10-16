@@ -93,11 +93,11 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
           device?.close(pipe.writeFd);
         }
         throw error;
-      } finally {
-        // The child holds its own copy of the read end. Keeping this one would leave a reader on
-        // the pipe after the child is gone, so a write would never see EPIPE.
-        if (pipe !== undefined) device?.close(pipe.readFd);
       }
+      // Bun duplicates the descriptor into the child and leaves this one open (checked: it is still
+      // valid after the spawn). It is closed here, once: keeping it would leave a reader on the pipe
+      // after the child is gone, so a write would never see EPIPE.
+      if (pipe !== undefined) device?.close(pipe.readFd);
       owned.adopt(child);
       if (pipe !== undefined) {
         inputEnd = pipe;
