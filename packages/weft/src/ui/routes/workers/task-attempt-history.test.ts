@@ -1,8 +1,8 @@
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
-import TaskAttemptHistory from './task-attempt-history.svelte';
 import { ATTEMPT_HISTORY_PAGE_SIZE } from './task-attempt-evidence.ts';
+import TaskAttemptHistory from './task-attempt-history.svelte';
 import type { TaskAttemptRecord, TaskLedgerDetail } from './worker-catalog-types.ts';
 
 const NOW = 1_700_000_000_000;

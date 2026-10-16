@@ -14,10 +14,7 @@
     describeCancellation,
     exactTimestamp,
   } from './task-attempt-evidence.ts';
-  import {
-    TASK_HEARTBEAT_STALE_AFTER_MS,
-    type TaskLedgerDetail,
-  } from './worker-catalog-types.ts';
+  import { TASK_HEARTBEAT_STALE_AFTER_MS, type TaskLedgerDetail } from './worker-catalog-types.ts';
 
   interface TaskLeasePanelProps {
     readonly task: TaskLedgerDetail;
