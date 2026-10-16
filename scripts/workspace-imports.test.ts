@@ -4,7 +4,7 @@ import { isBuiltin } from 'node:module';
 import { join } from 'node:path';
 import ts from 'typescript';
 
-import { workspaceParentDirectories } from './workspace-directories.ts';
+import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 import { declaresImportSpecifier } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
@@ -244,7 +244,7 @@ describe('workspace imports', () => {
   test.each([
     './package.json',
     'scripts/browser-fixtures/package.json',
-    ...new Bun.Glob('{packages,components,applications,internal}/*/package.json').scanSync({
+    ...new Bun.Glob(`${directoryGlob(workspaceParentDirectories)}/*/package.json`).scanSync({
       cwd: root,
     }),
   ])(
@@ -309,7 +309,7 @@ describe('workspace imports', () => {
   );
   test('manifests do not retain former package identities', async () => {
     for (const path of new Bun.Glob(
-      '{packages,components,applications,internal}/*/package.json',
+      `${directoryGlob(workspaceParentDirectories)}/*/package.json`,
     ).scanSync({
       cwd: root,
     })) {

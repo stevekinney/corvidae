@@ -96,7 +96,7 @@ async function readManifest(path: string): Promise<Manifest> {
 async function libraryApplicationConfigurations(): Promise<string[]> {
   const paths: string[] = [];
   const configurations = new Bun.Glob(
-    '{packages,components}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}',
+    `${directoryGlob(workspaceParentDirectories.filter((directory) => !['applications', 'internal'].includes(directory)))}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}`,
   );
   for await (const path of configurations.scan({ cwd: root, onlyFiles: true })) {
     if (!path.split('/').includes('node_modules')) paths.push(path);
