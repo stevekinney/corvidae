@@ -558,7 +558,7 @@
         "packedBy": "pack-script"
       },
       "peerDependencies": {
-        "@lostgradient/cinder": "^0.27.0",
+        "@lostgradient/cinder": "^0.28.0",
         "@lostgradient/markdown": "^0.6.0",
         "@milkdown/ctx": "^7.17.3",
         "@milkdown/kit": "^7.17.3",
