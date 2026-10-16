@@ -1,5 +1,5 @@
-import type { Embedder, EmbeddingVector } from '@lostgradient/embeddings';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { Embedder, EmbeddingVector } from 'armorer';
 
 import type {
   MemoryRecord,

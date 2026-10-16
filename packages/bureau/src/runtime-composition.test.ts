@@ -38,8 +38,8 @@ import {
   discoverSkills,
   type SkillActivationRecord,
   type SkillCatalogRevision,
-} from '@lostgradient/skills';
-import type { JSONValue } from '@lostgradient/tool-protocol';
+} from './skills';
+import type { JSONValue } from 'armorer/protocol';
 import {
   createCheckpoint,
   encode,

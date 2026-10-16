@@ -1,7 +1,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import type { JSONValue } from '@lostgradient/tool-protocol';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import type { JSONValue } from 'armorer/protocol';
 import type { ConversationHistory, Message } from 'conversationalist';
 
 import { createSessionStore } from './session/create-session-store';

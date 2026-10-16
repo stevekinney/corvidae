@@ -21,7 +21,7 @@ import type {
   SkillFailedEvent,
   SkillLoadedEvent,
   SkillRejectedEvent,
-} from '@lostgradient/skills';
+} from './skills';
 
 /**
  * Fired when the store records an action from a run.
@@ -378,7 +378,7 @@ export interface BureauEventMap extends EventMap {
   'schedule.completed': ScheduleCompletedEvent;
   'schedule.attempted': ScheduleAttemptedEvent;
   'schedule.skipped': ScheduleSkippedEvent;
-  // Skill lifecycle (COR-767), dispatched by the `@lostgradient/skills` tools and
+  // Skill lifecycle (COR-767), dispatched by the `@lostgradient/bureau/skills` tools and
   // forwarded onto this emitter by `create-bureau.ts`.
   'skill.loaded': SkillLoadedEvent;
   'skill.activated': SkillActivatedEvent;

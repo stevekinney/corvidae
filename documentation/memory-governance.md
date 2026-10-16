@@ -1,6 +1,6 @@
 # Memory governance and lifecycle evaluation
 
-Once memory outlives one conversation and more than one principal can reach it, three questions matter more than recall quality. Should this memory exist? Can this caller use it? Can we remove it, and say honestly how far the removal got? This guide covers what [Memory](../packages/memory/README.md), [Bureau](../packages/bureau/README.md), and [Evaluation](../packages/evaluation/README.md) ship to answer them, how the pieces connect, and what they do not do.
+Once memory outlives one conversation and more than one principal can reach it, three questions matter more than recall quality. Should this memory exist? Can this caller use it? Can we remove it, and say honestly how far the removal got? This guide covers what [Memory](../packages/memory/README.md), [Bureau](../packages/bureau/README.md), and [Evaluation](../testing/evaluation/README.md) ship to answer them, how the pieces connect, and what they do not do.
 
 The binding decision is COR-806: deletion-propagation timing, retention periods, and legal-hold handling. The memory classes come from the COR-750 lifecycle contract. COR-41 implemented governed memory and Bureau's enforcement of it. COR-755 built the action-based memory-lifecycle evaluation. The package READMEs are the API references; this guide is the map.
 
@@ -12,7 +12,7 @@ The binding decision is COR-806: deletion-propagation timing, retention periods,
 | Share memory across users, agents, tools, or tenants | `createGovernedMemory()` | Yes. |
 | Give the runs Bureau composes governed recall and persistence | `BureauOptions.memory` | Yes, for `createRun`, scheduler, schedule-fire, and recovered runs. Catalog runs get no memory hooks. |
 | Let a model store, recall, and forget | `createGovernedMemoryTools()` | Yes, under each call's persisted request authority. |
-| Decide whether a memory architecture change makes agents act better | `bun run --cwd packages/evaluation memory-lifecycle run` | Not applicable: it measures, it does not govern. |
+| Decide whether a memory architecture change makes agents act better | `bun run --cwd testing/evaluation memory-lifecycle run` | Not applicable: it measures, it does not govern. |
 
 `createMemoryHooks()`, the ungoverned memory tools, `ingest()`, `createFileSynchronizer()`, and Operative's `createMemoryBridge()` all work on an ungoverned `Memory`. They have no authority, admission, or receipts.
 
@@ -249,7 +249,7 @@ A `completed` row means the step the package controls finished, or a propagator 
 Governance says what memory may do. The memory-lifecycle suite in `@lostgradient/evaluation` (COR-755) asks whether a memory architecture makes an agent's final action better, compared with simpler options under the same budget. The versioned command is:
 
 ```bash
-bun run --cwd packages/evaluation memory-lifecycle run --lane deterministic
+bun run --cwd testing/evaluation memory-lifecycle run --lane deterministic
 ```
 
 It runs the committed suite, `memory-lifecycle` version `memory-lifecycle-2026-09`: fourteen scenarios covering writing, state maintenance, retrieval, downstream use, governance, and final action, under temporal change, contradiction, long delays, procedural reuse, multimodal evidence, recovery, deletion, privacy, and poisoning. Every scenario runs against four baselines under one compute envelope:
@@ -263,7 +263,7 @@ It runs the committed suite, `memory-lifecycle` version `memory-lifecycle-2026-0
 
 The report gives each baseline's evidence admission precision and recall, stale-state rate, transition faithfulness, retrieval sufficiency, context cost, latency, downstream task success, tool and environment correctness, privacy and authorization violations, poison exposures, deletion completion and receipts, unsupported operations, and unknown outcomes. The command exits with the release gate's codes. The committed gate, `gates/memory-lifecycle.json`, blocks any regression in authorization, deletion, poisoning, state maintenance, or the cost ceiling, and requires a predeclared improvement in action success over the best simpler baseline. Every trial writes an artifact that `memory-lifecycle replay` reproduces without a model.
 
-The offline lanes run a fixed reference policy, not a live model, and the suite's deployment keeps no bounded-async copies, so its lifecycle receipts settle at once. No external benchmark score is a threshold. The evaluation README's [Memory lifecycle evaluation](../packages/evaluation/README.md#memory-lifecycle-evaluation) section documents every subcommand, metric, exit code, and limit.
+The offline lanes run a fixed reference policy, not a live model, and the suite's deployment keeps no bounded-async copies, so its lifecycle receipts settle at once. No external benchmark score is a threshold. The evaluation README's [Memory lifecycle evaluation](../testing/evaluation/README.md#memory-lifecycle-evaluation) section documents every subcommand, metric, exit code, and limit.
 
 ## Source map
 
@@ -276,4 +276,4 @@ The contracts in this guide are defined in:
 - `packages/memory/src/governance/deletion.ts` and `ledger-types.ts`: deletion plans, lanes, propagation, and receipts.
 - `packages/memory/src/governance/policy.ts`, `retention.ts`, and `governed-administration.ts`: policy defaults, retention, sweeps, and policy revisions.
 - `packages/bureau/src/runtime-composition.ts`: `createRunMemoryAuthority()` and Bureau's recall and persistence hooks.
-- `packages/evaluation/src/memory-lifecycle/` and `packages/evaluation/scripts/memory-lifecycle.ts`: the lifecycle suite and its command.
+- `testing/evaluation/src/memory-lifecycle/` and `testing/evaluation/scripts/memory-lifecycle.ts`: the lifecycle suite and its command.

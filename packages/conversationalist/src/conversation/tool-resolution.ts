@@ -1,4 +1,4 @@
-import { materializeToolResult, materializeToolResultAsync } from '@lostgradient/tool-protocol';
+import { materializeToolResult, materializeToolResultAsync } from 'armorer/protocol';
 import {
   type ConversationEnvironment,
   isConversationEnvironmentParameter,

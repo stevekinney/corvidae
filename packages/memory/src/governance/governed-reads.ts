@@ -1,4 +1,4 @@
-import { cosineSimilarity } from '@lostgradient/embeddings';
+import { cosineSimilarity } from 'armorer';
 
 import { computeBM25Scores } from '../text-search';
 import type { MemoryAuthority, MemoryOperation } from './authority';

@@ -172,12 +172,12 @@ Bureau hands its value down through `AgentRunContext.inheritedGuardrails` to age
 
 Skills do not inherit: `BureauOptions.skills` only ever composed `createRun` runs. A catalog agent offers exactly the catalog its own `skills: createAgentSkills({ catalog })` names, scanned by its own guardrails.
 
-`createAgentSkills({ catalog, includeTools?, loadArtifact?, events? })` is exported by this package. It implements operative's `AgentSkills` seam over `@lostgradient/skills`, which is why it lives here: operative cannot import the private skills package, and the skills package sits below operative in the package graph and must not import it. Each run gets a fresh skill client bound to the catalog, so activations never leak between runs. Active skills are not snapshotted for durable recovery on this path: a catalog-dispatched run has no Bureau session to hold them, so a recovered run starts with an empty active set.
+`createAgentSkills({ catalog, includeTools?, loadArtifact?, events? })` is exported by this package. It implements operative's `AgentSkills` seam over Bureau's skills subsystem, which [documentation/skills.md](./documentation/skills.md) describes and the `@lostgradient/bureau/skills` subpath exports. The composition lives here because operative cannot import a private Bureau module, and the skills subsystem must not import operative. Each run gets a fresh skill client bound to the catalog, so activations never leak between runs. Active skills are not snapshotted for durable recovery on this path: a catalog-dispatched run has no Bureau session to hold them, so a recovered run starts with an empty active set.
 
 ```typescript
 import { createAgentSkills } from '@lostgradient/bureau';
 import { createAgent } from '@lostgradient/operative';
-import { discoverSkills } from '@lostgradient/skills';
+import { discoverSkills } from '@lostgradient/bureau/skills';
 
 const catalog = await discoverSkills({
   sources: [{ id: 'user', kind: 'user', location: './skills', precedence: 20 }],

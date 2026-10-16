@@ -29,18 +29,18 @@ describe('copies of @lostgradient/testing modules', () => {
   test('are the Svelte plugin and its environment module for Weft, and the hang guard for Weft and the root', () => {
     expect(TEST_SUPPORT_COPIES).toEqual([
       {
-        source: 'packages/testing/src/svelte-plugin.ts',
+        source: 'testing/testing/src/svelte-plugin.ts',
         copy: 'packages/weft/scripts/lib/svelte-plugin.ts',
       },
       {
-        source: 'packages/testing/src/environment-configuration.ts',
+        source: 'testing/testing/src/environment-configuration.ts',
         copy: 'packages/weft/scripts/lib/environment-configuration.ts',
       },
       {
-        source: 'packages/testing/src/hang-guard.ts',
+        source: 'testing/testing/src/hang-guard.ts',
         copy: 'packages/weft/scripts/lib/hang-guard.ts',
       },
-      { source: 'packages/testing/src/hang-guard.ts', copy: 'scripts/hang-guard.ts' },
+      { source: 'testing/testing/src/hang-guard.ts', copy: 'scripts/hang-guard.ts' },
     ]);
   });
 

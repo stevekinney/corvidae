@@ -249,11 +249,12 @@ describe('dependencyClosure', () => {
       'components/cinder',
       'components/editor',
       'internal/typescript',
+      'packages/armorer',
       'packages/conversationalist',
+      'packages/cryptography',
       'packages/lifecycle',
       'packages/markdown',
-      'packages/testing',
-      'packages/tool-protocol',
+      'testing/testing',
     ]);
   });
 });

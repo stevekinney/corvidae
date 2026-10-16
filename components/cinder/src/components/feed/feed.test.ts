@@ -188,7 +188,7 @@ describe('Feed', () => {
 // former EventStreamViewer. Follow-latest scroll *pausing* is exercised via
 // the scroll handler here; the auto-scroll-on-growth path needs a real
 // ResizeObserver (absent in happy-dom) and is covered by
-// packages/testing/tests/feed-log-follow.playwright.ts.
+// scripts/browser-fixtures/tests/feed-log-follow.playwright.ts.
 // ---------------------------------------------------------------------------
 describe('Feed log arm', () => {
   const logProps = {

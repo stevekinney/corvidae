@@ -1,5 +1,5 @@
-import type { ToolCall } from '@lostgradient/tool-protocol';
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
+import type { ToolCall } from 'armorer/protocol';
 import { Conversation, materializeToolCalls } from 'conversationalist';
 
 import { reclassifyToolError } from './errors';

@@ -80,9 +80,10 @@
 import { readdirSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import ts from 'typescript';
+import { workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
-const SCANNED_DIRECTORIES = ['applications', 'components', 'packages', 'internal', 'scripts'];
+const SCANNED_DIRECTORIES = [...workspaceParentDirectories, 'scripts'];
 // Installed dependencies and generated output, mirroring `.gitignore`. Dot
 // directories (`.svelte-kit`, `.turbo`, `.playwright`) are skipped wholesale.
 const SKIPPED_DIRECTORIES = new Set([

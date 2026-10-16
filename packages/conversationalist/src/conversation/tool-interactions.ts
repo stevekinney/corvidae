@@ -5,7 +5,7 @@ import {
   materializeToolResultAsync,
   materializeToolResults,
   materializeToolResultsAsync,
-} from '@lostgradient/tool-protocol';
+} from 'armorer/protocol';
 
 import {
   type ConversationEnvironment,
@@ -32,8 +32,8 @@ export {
   materializeToolResultAsync,
   materializeToolResults,
   materializeToolResultsAsync,
-} from '@lostgradient/tool-protocol';
-export type { MaterializeToolCallOptions } from '@lostgradient/tool-protocol';
+} from 'armorer/protocol';
+export type { MaterializeToolCallOptions } from 'armorer/protocol';
 
 export interface AppendToolCallOptions {
   content?: MessageInput['content'];
