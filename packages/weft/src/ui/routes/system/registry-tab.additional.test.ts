@@ -9,7 +9,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { createQueryClient } from '../../lib/query.ts';
 import RegistryTab from './registry-tab.svelte';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
-import { realClient, ScriptedFetch } from './system-test-support.test-support.ts';
+import {
+  realClient,
+  ScriptedFetch,
+  withContractHashes,
+} from './system-test-support.test-support.ts';
 
 let scripted: ScriptedFetch | undefined;
 
@@ -91,9 +95,11 @@ describe('additional coverage', () => {
   test('renders an activity timeout of exactly 0 — a valid Duration, not the same as "no timeout"', async () => {
     scripted = new ScriptedFetch();
     scripted.enqueueJsonRpcResult(
-      registrySnapshot([manifestFixture('order-processing')], {
-        chargeCard: { queue: 'default', timeout: 0 },
-      }),
+      await withContractHashes(
+        registrySnapshot([manifestFixture('order-processing')], {
+          chargeCard: { queue: 'default', timeout: 0 },
+        }),
+      ),
     );
     const { findByText } = await renderRegistryTab();
     // A truthy-only guard on `activity.timeout` would suppress this badge
@@ -103,7 +109,9 @@ describe('additional coverage', () => {
 
   test('shows the honest "no activities" note when the engine has none registered', async () => {
     scripted = new ScriptedFetch();
-    scripted.enqueueJsonRpcResult(registrySnapshot([manifestFixture('heartbeat')]));
+    scripted.enqueueJsonRpcResult(
+      await withContractHashes(registrySnapshot([manifestFixture('heartbeat')])),
+    );
     const { findByText } = await renderRegistryTab();
     expect(await findByText('No activities registered for this engine.')).not.toBeNull();
   });
@@ -111,11 +119,13 @@ describe('additional coverage', () => {
   test('a declared root schema that is not `type: object` renders its root type, not "no schema declared"', async () => {
     scripted = new ScriptedFetch();
     scripted.enqueueJsonRpcResult(
-      registrySnapshot([
-        manifestFixture('order-processing', {
-          inputSchema: { type: 'string' },
-        }),
-      ]),
+      await withContractHashes(
+        registrySnapshot([
+          manifestFixture('order-processing', {
+            inputSchema: { type: 'string' },
+          }),
+        ]),
+      ),
     );
     const { container, findByRole, queryByText } = await renderRegistryTab();
     await fireEvent.click(await findByRole('button', { name: /order-processing/ }));
@@ -129,16 +139,18 @@ describe('additional coverage', () => {
   test('renders a schema field description, when the fragment declares one', async () => {
     scripted = new ScriptedFetch();
     scripted.enqueueJsonRpcResult(
-      registrySnapshot([
-        manifestFixture('order-processing', {
-          inputSchema: {
-            type: 'object',
-            properties: {
-              orderId: { type: 'string', description: 'The order identifier to process.' },
+      await withContractHashes(
+        registrySnapshot([
+          manifestFixture('order-processing', {
+            inputSchema: {
+              type: 'object',
+              properties: {
+                orderId: { type: 'string', description: 'The order identifier to process.' },
+              },
             },
-          },
-        }),
-      ]),
+          }),
+        ]),
+      ),
     );
     const { findByRole, findByText } = await renderRegistryTab();
     await fireEvent.click(await findByRole('button', { name: /order-processing/ }));
@@ -148,21 +160,23 @@ describe('additional coverage', () => {
   test('renders a nested object field as an expandable schema tree branch', async () => {
     scripted = new ScriptedFetch();
     scripted.enqueueJsonRpcResult(
-      registrySnapshot([
-        manifestFixture('order-processing', {
-          inputSchema: {
-            type: 'object',
-            required: ['address'],
-            properties: {
-              address: {
-                type: 'object',
-                required: ['city'],
-                properties: { city: { type: 'string' }, zip: { type: 'string' } },
+      await withContractHashes(
+        registrySnapshot([
+          manifestFixture('order-processing', {
+            inputSchema: {
+              type: 'object',
+              required: ['address'],
+              properties: {
+                address: {
+                  type: 'object',
+                  required: ['city'],
+                  properties: { city: { type: 'string' }, zip: { type: 'string' } },
+                },
               },
             },
-          },
-        }),
-      ]),
+          }),
+        ]),
+      ),
     );
 
     const { findAllByText, findByRole } = await renderRegistryTab();
