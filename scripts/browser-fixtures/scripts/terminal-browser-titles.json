@@ -68,6 +68,7 @@
     "the program tracks the mouse, and reporting is not permitted › with tracking off the pointer selects whatever the prop and capture say"
   ],
   "terminal-recovery.playwright.ts": [
+    "capture is visible on its control › the capture fixtures are already captured when they report ready",
     "capture is visible on its control › the pressed capture button looks different from the resting one",
     "each state offers the actions its row of the state table names › a failure shows exactly one recovery control, with every handler and an error message",
     "each state offers the actions its row of the state table names › an action without a host handler is not rendered",

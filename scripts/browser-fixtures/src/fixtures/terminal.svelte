@@ -162,9 +162,10 @@
     if (mine !== generation) return;
     await session.settled();
     await frames(3);
-    // Focus needs a visible element, so the one step that takes focus runs after the reveal.
-    const focusStep = scenario.step === 'capture';
-    if (!firstStepDone && scenario.step !== undefined && !focusStep) {
+    // Every step, the focus-taking capture step included, runs before the stage is revealed or
+    // marked ready, so nothing that waits for the stage (the shared sweep, its axe check) can start
+    // on a state the fixture has not reached. The host below stays visible, so it can take focus.
+    if (!firstStepDone && scenario.step !== undefined) {
       firstStepDone = true;
       await runStep(scenario.step);
     }
@@ -176,11 +177,6 @@
     if (mine !== generation) return;
     stageReady = true;
     for (const resolve of readyWaiters.splice(0)) resolve();
-    if (!firstStepDone && focusStep) {
-      firstStepDone = true;
-      await frames(2);
-      await runStep('capture');
-    }
   }
 
   $effect(() => {
@@ -287,7 +283,7 @@
       <label>Before the terminal <input id="before-terminal" type="text" /></label>
     </p>
   {/if}
-  <div class="terminal-host" style:height={stageHeight}>
+  <div class="terminal-host" style:height={stageHeight} style:visibility="visible">
     {#if hydrating}
       <div bind:this={hydrationTarget} style="height: 100%;"></div>
     {:else if mounted}

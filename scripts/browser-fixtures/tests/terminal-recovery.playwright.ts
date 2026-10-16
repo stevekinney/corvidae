@@ -261,4 +261,16 @@ test.describe('capture is visible on its control', () => {
     expect(await face()).toEqual(resting);
     await focusTerminal(page);
   });
+
+  test('the capture fixtures are already captured when they report ready', async ({
+    terminalPage,
+  }) => {
+    for (const fixture of ['keyboard-capture', 'keyboard-mouse-reporting']) {
+      const page = await terminalPage.open({ fixture });
+      // Read at once, without waiting: a sweep that starts when the fixture is ready must already
+      // see the captured state.
+      const pressed = await captureButton(page).getAttribute('aria-pressed');
+      expect(pressed, fixture).toBe('true');
+    }
+  });
 });
