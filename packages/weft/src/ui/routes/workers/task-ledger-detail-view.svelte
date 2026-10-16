@@ -21,6 +21,13 @@
     staleHeartbeatAfterMs,
   }: TaskLedgerDetailViewProps = $props();
 
+  // Dispatches carry the qualified `${workflowType}.${activityName}` routing name
+  // (what the worker registry routes by); a bare name gets the prefix here.
+  const activityLabel = $derived(
+    task.activityName.startsWith(`${task.workflowType}.`)
+      ? task.activityName
+      : `${task.workflowType}.${task.activityName}`,
+  );
   const isDelayed = $derived(task.state === 'queued' && (task.availableAt ?? 0) > now);
   const retryAvailable = $derived(
     task.retryPolicy ? task.attempt < task.retryPolicy.maxAttempts : false,
@@ -47,7 +54,7 @@
     { term: 'Attempt', definition: String(task.attempt) },
     { term: 'Workflow', definition: task.workflowId ?? 'No workflow identifier' },
     { term: 'Execution token', definition: task.workflowExecutionToken ?? 'Not supplied' },
-    { term: 'Activity', definition: `${task.workflowType}.${task.activityName}` },
+    { term: 'Activity', definition: activityLabel },
   ]);
   const dispatchItems = $derived([
     { term: 'Queue', definition: task.queue },

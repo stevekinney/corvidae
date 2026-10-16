@@ -61,6 +61,26 @@ describe('TaskLedgerDetailView', () => {
     expect(getByText(/deploymentName: payments-v2/)).not.toBeNull();
   });
 
+  test('names an already-qualified activity once, without prefixing its workflow type again', () => {
+    const { getByText, queryByText } = render(TaskLedgerDetailView, {
+      props: {
+        task: parseTaskLedgerDetail({ ...queuedTask(), activityName: 'orders.chargeCard' }),
+        now: NOW,
+      },
+    });
+
+    expect(getByText('orders.chargeCard')).not.toBeNull();
+    expect(queryByText('orders.orders.chargeCard')).toBeNull();
+  });
+
+  test('qualifies a bare activity name with its workflow type', () => {
+    const { getByText } = render(TaskLedgerDetailView, {
+      props: { task: parseTaskLedgerDetail(queuedTask()), now: NOW },
+    });
+
+    expect(getByText('orders.chargeCard')).not.toBeNull();
+  });
+
   test('labels cached ledger evidence while an authoritative refresh is pending', () => {
     const { getByRole } = render(TaskLedgerDetailView, {
       props: { task: parseTaskLedgerDetail(queuedTask()), now: NOW, refreshing: true },
