@@ -65,7 +65,16 @@ export const queryKeys = {
   reviews: {
     list: (filter: ReviewListFilter) => ['reviews', 'list', filter] as const,
   },
+  /** Raw `weft.system.registry` response (and projections of it) for consumers that read it unvalidated. */
   registry: () => ['registry'] as const,
+  /**
+   * The `parseRegistrySnapshot`-validated snapshot behind contract verification
+   * (Worker detail, System → Registry). Its own entry, so a raw response cached
+   * under `registry()` never reaches the verification panels unvalidated
+   * (COR-162). It sits under the `registry` prefix, so invalidating
+   * `registry()` refreshes it too.
+   */
+  registrySnapshot: () => ['registry', 'snapshot'] as const,
   /** `weft.realms.diagnostics` (COR-243) — host-wide, no query params. */
   realms: () => ['realms'] as const,
   retention: () => ['retention'] as const,

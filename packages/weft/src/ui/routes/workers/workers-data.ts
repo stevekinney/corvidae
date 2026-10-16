@@ -32,6 +32,8 @@ import {
 } from '@tanstack/svelte-query';
 
 import { queryKeys } from '../../lib/query.ts';
+import type { RegistrySnapshotSource } from '../system/registry-view.ts';
+import { parseRegistrySnapshot } from './registry-snapshot-guard.ts';
 import {
   DEFAULT_TASK_DIAGNOSTICS_INPUT,
   type TaskDiagnosticsOutput,
@@ -170,6 +172,13 @@ export async function loadFleetManifestDiagnostics(
     workerIds.toSorted().map((workerId) => loadWorkerManifestDiagnostics(client, workerId)),
   );
   return diagnostics.filter((entry): entry is WorkerManifestDiagnostics => entry !== null);
+}
+
+/** The active registry snapshot that Worker detail's contract verification compares manifests with (COR-162). */
+export async function loadRegistrySnapshot(
+  client: WorkersOperations,
+): Promise<RegistrySnapshotSource> {
+  return parseRegistrySnapshot(await client.operations['weft.system.registry']({}));
 }
 
 /** Bounded, server-owned evidence for recently rejected registration attempts. */

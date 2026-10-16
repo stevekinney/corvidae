@@ -21,8 +21,10 @@
   import { formatDuration } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
   import ManifestDiagnosticsView from '../workers/manifest-diagnostics-view.svelte';
+  import { MalformedRegistrySnapshotError } from '../workers/registry-snapshot-guard.ts';
   import {
     loadFleetManifestDiagnostics,
+    loadRegistrySnapshot,
     loadWorkerRegistrationRejections,
   } from '../workers/workers-data.ts';
   import DynamicSourcePanel from './dynamic-source-panel.svelte';
@@ -37,10 +39,13 @@
 
   const client = getClient();
 
+  // Validated by the same loader as Worker detail, and refreshed on the
+  // worker and manifest queries' cadence, so contract verification never
+  // compares fresh manifests with a stale snapshot (COR-162).
   const query = createQuery(() => ({
-    queryKey: queryKeys.registry(),
-    queryFn: (): Promise<RegistrySnapshotSource> =>
-      client.operations['weft.system.registry']({}) as Promise<RegistrySnapshotSource>,
+    queryKey: queryKeys.registrySnapshot(),
+    queryFn: (): Promise<RegistrySnapshotSource> => loadRegistrySnapshot(client),
+    refetchInterval: 30_000,
   }));
 
   const workersQuery = createQuery(() => ({
@@ -97,6 +102,14 @@
   <Badge {variant}>{label}</Badge>
 {/snippet}
 
+{#snippet registryFault(error: unknown)}
+  {#if error instanceof MalformedRegistrySnapshotError}
+    <EmptyState title="Malformed server response" description={error.message} />
+  {:else}
+    <QueryFaultBanner {error} onRetry={() => query.refetch()} />
+  {/if}
+{/snippet}
+
 <!--
   Rendered above the registry query's own branches, and independent of it: a
   `registerSource()`-registered workflow never appears in the
@@ -117,14 +130,23 @@
   <DynamicSourcePanel />
 {/if}
 
+<!--
+  A failed background refresh keeps the last snapshot on screen: TanStack
+  Query retains `data` and sets `error`, so the fault is shown above it.
+-->
+{#if query.data !== undefined && query.isError}
+  <p class="weft-registry-stale">Refresh failed · showing the last registry snapshot</p>
+  {@render registryFault(query.error)}
+{/if}
+
 {#if query.isPending}
   <div class="weft-registry-skeleton" role="status" aria-busy="true" aria-label="Loading registry">
     <Skeleton height="1.25rem" width="220px" />
     <Skeleton height="220px" />
     <Skeleton height="140px" />
   </div>
-{:else if query.isError}
-  <QueryFaultBanner error={query.error} onRetry={() => query.refetch()} />
+{:else if query.data === undefined}
+  {@render registryFault(query.error)}
 {:else if isRegistryEmpty(query.data)}
   <!--
     Scoped to what this snapshot actually covers. `weft.system.registry` lists
@@ -151,7 +173,17 @@
   {@const activityRows = registryActivityRows(query.data)}
   {@const selectedRow = workflowRows.find((row) => row.type === selectedType)}
   {#if selectedRow}
-    <RegistryDetail row={selectedRow} onBack={() => (selectedType = null)} />
+    <RegistryDetail
+      row={selectedRow}
+      onBack={() => (selectedType = null)}
+      registry={query.data}
+      manifests={{
+        diagnostics: manifestsQuery.data,
+        loading: workersQuery.isPending || manifestsQuery.isPending,
+        refreshing: manifestsQuery.isFetching && manifestsQuery.data !== undefined,
+        error: workersQuery.error ?? manifestsQuery.error ?? null,
+      }}
+    />
   {:else}
     <div class="weft-registry-list">
       <div class="weft-registry-list__header">
@@ -258,6 +290,12 @@
 />
 
 <style>
+  .weft-registry-stale {
+    margin: 0 0 8px;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
   .weft-registry-skeleton {
     max-width: 1000px;
     display: flex;
