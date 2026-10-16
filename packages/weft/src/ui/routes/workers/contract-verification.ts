@@ -374,9 +374,13 @@ const STRICT_PAYLOAD_ERROR_NAME = 'WorkerJsonValidationError';
 /**
  * The reason suffixes `strict-json.ts` writes after `<path>: `. Recognizing
  * the vocabulary is not re-validating: nothing here inspects a payload.
+ *
+ * The path is matched greedily: a path can quote a key that itself contains
+ * `: ` (`value["a: b"]`), while no reason does, so the last separator before
+ * a recognized reason is the one `strict-json.ts` wrote.
  */
 const STRICT_PAYLOAD_MESSAGE =
-  /^(.+?): (.+ is not valid worker JSON|.+ is not a plain JSON object|number must be finite)$/;
+  /^(.+): (.+ is not valid worker JSON|.+ is not a plain JSON object|number must be finite)$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
