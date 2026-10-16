@@ -182,7 +182,6 @@ test('the escaped job profile reaches the real Cleanup incomplete, and the escap
 test('a stalled program holds a long paste as backpressure, keeps the output, and recovers when it reads again', async ({
   page,
 }) => {
-  test.setTimeout(120_000);
   await enroll(page);
   await connected(page);
   await openControls(page);
@@ -208,8 +207,8 @@ test('a stalled program holds a long paste as backpressure, keeps the output, an
   await page.waitForTimeout(3_000);
   await expect(status(page, 'Backpressure: input paused')).toBeVisible();
   await expect(status(page, 'Terminal failed')).toHaveCount(0);
-  // The program reads again after 20 seconds and discards the line: capacity is back.
-  await expect(screen(page)).toContainText('Reading again.', { timeout: 40_000 });
+  // The program reads again after 10 seconds and discards the line: capacity is back.
+  await expect(screen(page)).toContainText('Reading again.', { timeout: 20_000 });
   await expect(status(page, 'Connected')).toBeVisible({ timeout: 15_000 });
 });
 

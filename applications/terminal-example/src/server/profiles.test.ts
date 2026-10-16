@@ -113,7 +113,7 @@ describe('the profile table', () => {
     // Raw mode, because in canonical mode the line discipline discards what overflows instead of
     // making the writer wait; echo off, so nothing the terminal is sent is echoed back.
     expect(program).toContain('stty raw -echo');
-    expect(program).toContain('sleep 20');
+    expect(program).toContain('sleep 10');
     expect(program).toContain('exec cat >/dev/null');
   });
 

@@ -250,7 +250,7 @@
           Backpressure is real. Choose the Stalled input profile, copy a long line, and paste it
           into the terminal: the program is not reading, so the host holds the input, the terminal
           shows Backpressure: input paused, and the output stays readable. When the program reads
-          again, after 20 seconds, the terminal returns to Connected. There is no Cancel in that
+          again, after 10 seconds, the terminal returns to Connected. There is no Cancel in that
           state, because nothing is waiting to be sent. Cleanup incomplete is real too: the Escaped
           job profile makes it, and injecting it here ends the session first, so Check cleanup
           reports the real, complete result.

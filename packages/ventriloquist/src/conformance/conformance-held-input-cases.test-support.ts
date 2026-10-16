@@ -13,8 +13,8 @@ import { check, type Check, type ProcessMode, type Rig } from './conformance.tes
 /** One paste: large enough to fill a terminal's input queue, and under the 65,536-byte paste limit. */
 const PASTE_BYTES = 60_000;
 /**
- * A pipe takes what its kernel buffer holds before the sink starts waiting, so it may need several
- * pastes before one is held; a terminal holds the first. This bounds how many a cell sends.
+ * A pipe's stdin sink buffers about 512 KiB in Bun before it reports a wait, so a pipe may need
+ * several pastes before one is held; a terminal holds the first. This bounds how many a cell sends.
  */
 const MAXIMUM_PASTES = 64;
 const FINAL_MARKER = 'END';
@@ -163,7 +163,7 @@ const heldInputBackpressure: CaseDefinition = {
   id: 'held-input-backpressure',
   comparable: false,
   scope:
-    'the two paths are not compared: a pipe needs as many pastes as its kernel buffer takes before one is held, which varies by host',
+    'the two paths are not compared: a pipe needs as many pastes as the Bun stdin sink buffer (about 512 KiB) and the pipe take before one is held, which varies by host',
   modes: ['pipe', 'pty'],
   launch: (mode, scratch) => nonReadingChild(mode, scratch),
   async run({ rig, launched, mode }) {

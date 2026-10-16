@@ -146,7 +146,8 @@ export function createTerminalInput(options: TerminalInputOptions): TerminalInpu
   function refusalReason(): InputRefusalReason | undefined {
     if (disposed) return 'closed';
     if (frozen) return 'frozen';
-    if (!options.readSettings().writable) return 'read-only';
+    const settings = options.readSettings();
+    if (!settings.writable) return settings.paused === true ? 'paused' : 'read-only';
     if (controller === undefined) return 'closed';
     if (controller.authorityRevoked) return 'read-only';
     return saturated ? 'paused' : undefined;

@@ -6,8 +6,8 @@
 # Output is written with explicit carriage returns because raw mode turns output processing off.
 stty raw -echo
 printf 'This program is not reading its input.\r\n'
-printf 'Copy a long line with Copy a long line in the review controls, paste it here, and read Backpressure: input paused.\r\n'
-printf 'It reads again in 20 seconds.\r\n'
-sleep 20
+printf 'Use Copy a long line in the review controls, paste it here, and read Backpressure: input paused.\r\n'
+printf 'It reads again in 10 seconds.\r\n'
+sleep 10
 printf 'Reading again.\r\n'
 exec cat >/dev/null

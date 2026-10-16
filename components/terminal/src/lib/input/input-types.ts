@@ -74,6 +74,11 @@ export type InputSettings = {
   /** Whether the state accepts input at all (a `writable` view). */
   writable: boolean;
   /**
+   * The view is not writable because the host cannot take input right now (`backpressured`), not
+   * because it takes none. Input refused then is `paused` and announced as such, never `read-only`.
+   */
+  paused?: boolean;
+  /**
    * Whether the host enabled mouse reporting. Off by default: a mouse report is sent only when
    * this is on, key capture is on and the view is writable.
    */

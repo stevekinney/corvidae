@@ -75,7 +75,7 @@ export const PROFILE_DESCRIPTIONS: Readonly<Record<ProfileIdentifier, ProfileDes
     label: 'Stalled input',
     title: 'Stalled input',
     summary:
-      'A program that stops reading its input for 20 seconds. Paste a long line to see input held, then read again.',
+      'A program that stops reading its input for 10 seconds. Paste a long line to see input held, then read again.',
     transport: 'pty',
     interactive: true,
   },
