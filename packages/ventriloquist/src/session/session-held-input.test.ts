@@ -158,7 +158,8 @@ describe('input held by a child that is not reading', () => {
     expect(harness.recorder.ofType('operationResult')).toMatchObject([
       { disposition: 'failed', reason: 'backend-failed' },
     ]);
-    expect((await harness.session.closed).cause).toBe('backend-failed');
+    const summary = await harness.session.closed;
+    expect(summary.cause).toBe('backend-failed');
   });
 
   test('stop while held cancels what is queued, reports the held write as unknown, and cleans up', async () => {

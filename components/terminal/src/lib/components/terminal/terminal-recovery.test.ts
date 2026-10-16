@@ -22,7 +22,8 @@ describe('recoveryActions follows the state table of the experience specificatio
     expect(labels('connecting')).toEqual(['Cancel']);
     expect(labels('writable')).toEqual(['New session']);
     expect(labels('read-only')).toEqual(['New session']);
-    expect(labels('backpressured')).toEqual(['Cancel']);
+    // No unsent operation exists to cancel: the client refuses input locally and queues none.
+    expect(labels('backpressured')).toEqual([]);
     expect(labels('exited')).toEqual(['New session']);
     expect(labels('disconnected')).toEqual(['New session']);
     expect(labels('denied')).toEqual(['Try again', 'New session']);
@@ -64,8 +65,7 @@ describe('recoveryActions follows the state table of the experience specificatio
     expect(blocked('denied')).toEqual({ 'try-again': false, 'new-session': true });
     expect(blocked('cleanup-incomplete')).toEqual({ 'check-cleanup': false });
     expect(blocked('connecting')).toEqual({ cancel: false });
-    // Cancelling unsent operations is not a replacement, so cleanup never blocks it.
-    expect(blocked('backpressured')).toEqual({ cancel: false });
+    expect(blocked('backpressured')).toEqual({});
     expect(blocked('writable')).toEqual({ 'new-session': true });
     expect(recoveryActions('exited', ALL, false)[0]?.disabled).toBe(false);
   });

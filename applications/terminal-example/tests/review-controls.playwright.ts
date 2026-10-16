@@ -179,25 +179,50 @@ test('the escaped job profile reaches the real Cleanup incomplete, and the escap
   }
 });
 
-test('injected backpressure keeps the output, ignores Cancel, and ends when cleared', async ({
+test('a stalled program holds a long paste as backpressure, keeps the output, and recovers when it reads again', async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   await enroll(page);
   await connected(page);
-  await terminalInput(page).focus();
-  await page.keyboard.type('echo before-pressure');
-  await page.keyboard.press('Enter');
-  await expect(screen(page)).toContainText('before-pressure');
   await openControls(page);
-  await page.getByRole('button', { name: 'Inject backpressure' }).click();
-  await expect(status(page, 'Backpressure: input paused')).toBeVisible();
-  await expect(page.getByTestId('injection-status')).toContainText('injected by this page');
-  // Cancel has no unsent operations to cancel, so the session and its output are kept.
-  await page.getByRole('button', { name: 'Cancel' }).click();
-  await expect(status(page, 'Backpressure: input paused')).toBeVisible();
-  await expect(screen(page)).toContainText('before-pressure');
-  await page.getByRole('button', { name: 'Clear the injected state' }).click();
+  await choose(page, 'Stalled input');
+  // The expanded controls push the terminal below the fold, where the engine does not repaint.
+  await page.getByRole('button', { name: 'Review controls' }).first().click();
+  await expect(screen(page)).toContainText('This program is not reading its input');
   await expect(status(page, 'Connected')).toBeVisible();
+  // One long line, as the Copy a long line control puts on the clipboard: under the paste limit,
+  // so it skips the review and goes straight to the program, which is not reading.
+  await terminalInput(page).evaluate((target) => {
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    const line = '0123456789'.repeat(6_000);
+    Object.defineProperty(event, 'clipboardData', {
+      value: { getData: (type: string) => (type === 'text/plain' ? line : '') },
+    });
+    target.dispatchEvent(event);
+  });
+  // Held, not failed: well past the host's two-second acknowledgement deadline the session stands.
+  await expect(status(page, 'Backpressure: input paused')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+  await expect(screen(page)).toContainText('This program is not reading its input');
+  await page.waitForTimeout(3_000);
+  await expect(status(page, 'Backpressure: input paused')).toBeVisible();
+  await expect(status(page, 'Terminal failed')).toHaveCount(0);
+  // The program reads again after 20 seconds and discards the line: capacity is back.
+  await expect(screen(page)).toContainText('Reading again.', { timeout: 40_000 });
+  await expect(status(page, 'Connected')).toBeVisible({ timeout: 15_000 });
+});
+
+test('Copy a long line puts one long line on the clipboard', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await enroll(page);
+  await connected(page);
+  await openControls(page);
+  await page.getByRole('button', { name: 'Copy a long line' }).click();
+  await expect(page.getByTestId('copy-status')).toContainText('Copied 60000 characters');
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toHaveLength(60_000);
+  expect(copied).not.toContain('\n');
 });
 
 test.describe('links', () => {

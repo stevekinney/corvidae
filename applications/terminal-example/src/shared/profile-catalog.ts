@@ -3,7 +3,7 @@
  * arguments, working directory and environment of each profile live in `src/server/profiles.ts` and
  * never cross to the browser. The identifiers `shell`, `readonly-output` and `diagnostic` are the
  * ones `documentation/terminal/contract.md` froze; `fullscreen` is the fourth behavior the example
- * demonstrates, and `links` and `escaped` exist for the review controls (links to accept and to refuse, and a job that leaves the session).
+ * demonstrates, and `links`, `escaped` and `stalled` exist for the review controls (links to accept and to refuse, a job that leaves the session, and a program that stops reading its input).
  */
 export const PROFILE_IDENTIFIERS = [
   'shell',
@@ -12,6 +12,7 @@ export const PROFILE_IDENTIFIERS = [
   'readonly-output',
   'links',
   'escaped',
+  'stalled',
 ] as const;
 
 export type ProfileIdentifier = (typeof PROFILE_IDENTIFIERS)[number];
@@ -66,6 +67,15 @@ export const PROFILE_DESCRIPTIONS: Readonly<Record<ProfileIdentifier, ProfileDes
     title: 'Escaped job',
     summary:
       'Starts a process that leaves the terminal session on purpose. Ending the session then reports Cleanup incomplete, the real path.',
+    transport: 'pty',
+    interactive: true,
+  },
+  stalled: {
+    identifier: 'stalled',
+    label: 'Stalled input',
+    title: 'Stalled input',
+    summary:
+      'A program that stops reading its input for 20 seconds. Paste a long line to see input held, then read again.',
     transport: 'pty',
     interactive: true,
   },

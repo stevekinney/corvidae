@@ -131,6 +131,7 @@ export class TerminalWebSocketClient {
   #connecting: { resolve(value: Capabilities): void; reject(error: Error): void } | undefined;
   #cancelConnectTimer: (() => void) | undefined;
   #cancelProbe: (() => void) | undefined;
+  #cancelSettleProbe: (() => void) | undefined;
   #cancelStopTimer: (() => void) | undefined;
   #probeDelay: number;
   readonly #probeSequences = new Set<number>();
@@ -333,6 +334,8 @@ export class TerminalWebSocketClient {
   #submit(build: () => ProtocolResult<SentFrame>, settle?: Settle): ProtocolResult<SentFrame> {
     if (!this.#canSubmit()) return refusal('stale-generation', 'attachment-revoked');
     if (this.#state === 'backpressured') return refusal('fifo-full', 'operation-window-full');
+    // Someone is typing: the question of whether the host kept up is asked once they stop.
+    this.#stopSettleProbe();
     const built = build();
     if (!built.ok) {
       if (built.failure.code === 'fifo-full') this.#setState('backpressured');
@@ -435,10 +438,15 @@ export class TerminalWebSocketClient {
     // The wait starts over only when something a user sent was accepted. A probe being accepted can
     // be followed at once by a refusal of real input, and that flapping must keep backing off.
     if (!wasProbe) this.#probeDelay = this.#probeInitial;
+    // Acceptance says the host's queue took the input, not that the process did. A write the process
+    // is not reading is held there, and nothing says so until something is refused.
     // An acknowledgement is the only thing that frees the window, so it is the only way back.
     if (this.#state === 'backpressured') this.#setState('writable');
     // A probe carries no user bytes, so nothing a view shows is about it.
-    if (!wasProbe) this.#emit({ type: 'operation-ack', sequence });
+    if (!wasProbe) {
+      this.#emit({ type: 'operation-ack', sequence });
+      this.#armSettleProbe();
+    }
   }
 
   #onOperationFailure(sequence: number, code: FailureCode, message: string): void {
@@ -538,11 +546,18 @@ export class TerminalWebSocketClient {
       this.#armProbe();
       return;
     }
+    if (!this.#sendProbe()) this.#backOff();
+  }
+
+  /**
+   * Send one empty input as a capacity probe. Returns `false` when the client itself refused it
+   * because the window is full, which a paused client treats as a refusal and backs off.
+   */
+  #sendProbe(): boolean {
     const built = this.#endpoint.input(new Uint8Array(0));
     if (!built.ok) {
       // Only a stopped client cannot send, and then there is nothing left to wait for.
-      if (built.failure.code === 'fifo-full') this.#backOff();
-      return;
+      return built.failure.code !== 'fifo-full';
     }
     this.#probeSequences.add(built.value.sequence);
     this.#pendingOperations.set(built.value.sequence, (result) => {
@@ -550,6 +565,34 @@ export class TerminalWebSocketClient {
       if (result.status === 'failed') this.#backOff();
     });
     this.#transmit(built.value.frame);
+    return true;
+  }
+
+  /**
+   * The host acknowledges input when its queue accepts it, so a process that is not reading is
+   * invisible until the next operation is refused: a paste larger than the terminal's queue is
+   * accepted whole and then held, and the view would stay `writable` over input that is going
+   * nowhere. So once the user has stopped and nothing is in flight, the client asks once, with the
+   * same empty input it uses while paused. The host accepts it when the process is keeping up and
+   * refuses it as `fifo-full` when input is held, which moves the view to `backpressured` and hands
+   * over to the paused probe's backoff. Nothing a user typed is ever sent by it.
+   */
+  #armSettleProbe(): void {
+    this.#stopSettleProbe();
+    if (this.#ended || this.#state !== 'writable') return;
+    this.#cancelSettleProbe = this.#schedule(() => this.#settleProbe(), this.#probeInitial);
+  }
+
+  #stopSettleProbe(): void {
+    this.#cancelSettleProbe?.();
+    this.#cancelSettleProbe = undefined;
+  }
+
+  #settleProbe(): void {
+    this.#cancelSettleProbe = undefined;
+    // Operations still in flight will be answered, and each answer asks the question again.
+    if (this.#ended || this.#state !== 'writable' || this.#pendingOperations.size > 0) return;
+    this.#sendProbe();
   }
 
   #backOff(): void {
@@ -598,6 +641,7 @@ export class TerminalWebSocketClient {
     if (this.#ended) return;
     this.#ended = true;
     this.#cancelProbe?.();
+    this.#stopSettleProbe();
     this.#cancelStopTimer?.();
     // The peer closed it already: there is nothing to close from this side.
     if (cause === 'closed') this.#socketClosed = true;

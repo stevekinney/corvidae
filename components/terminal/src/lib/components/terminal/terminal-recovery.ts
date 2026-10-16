@@ -21,7 +21,7 @@ const LABELS: Readonly<Record<RecoveryActionId, string>> = {
 /**
  * Which actions each state offers, in reading order. `engine-load-failed` is absent on purpose:
  * its `Retry` belongs to the host's recovery request and the frame's reload control, which the
- * component already renders. `backpressured` offers `Cancel`, which cancels unsent operations while the output stays readable; `writable` offers `New session` for the explicit restart, and `read-only` shows it disabled.
+ * component already renders. `backpressured` offers none: the client queues nothing while input is held, so there is nothing for `Cancel` to cancel, and the reader waits for capacity or ends the session some other way; `writable` offers `New session` for the explicit restart, and `read-only` shows it disabled.
  */
 const BY_STATE: Readonly<Partial<Record<TerminalState, readonly RecoveryActionId[]>>> = {
   empty: ['new-session'],
@@ -29,7 +29,7 @@ const BY_STATE: Readonly<Partial<Record<TerminalState, readonly RecoveryActionId
   'read-only': ['new-session'],
   loading: ['cancel'],
   connecting: ['cancel'],
-  backpressured: ['cancel'],
+  backpressured: [],
   exited: ['new-session'],
   disconnected: ['new-session'],
   denied: ['try-again', 'new-session'],

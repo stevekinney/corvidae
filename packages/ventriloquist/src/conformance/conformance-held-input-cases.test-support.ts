@@ -79,13 +79,15 @@ const refusedAsHeld = (answer: Answer): boolean =>
 async function pasteUntilHeld(
   rig: Rig,
 ): Promise<{ readonly accepted: number; readonly held: boolean }> {
-  for (let index = 0; index < MAXIMUM_PASTES; index += 1) {
-    const pasted = await offer(rig, pasteNumber(index));
-    if (pasted.kind !== 'operation-ack') return { accepted: index * PASTE_BYTES, held: false };
+  let pastes = 0;
+  let held = false;
+  while (!held && pastes < MAXIMUM_PASTES) {
+    const pasted = await offer(rig, pasteNumber(pastes));
     const probe = await offer(rig, new Uint8Array(0));
-    if (refusedAsHeld(probe)) return { accepted: (index + 1) * PASTE_BYTES, held: true };
+    pastes += 1;
+    held = pasted.kind === 'operation-ack' && refusedAsHeld(probe);
   }
-  return { accepted: MAXIMUM_PASTES * PASTE_BYTES, held: false };
+  return { accepted: pastes * PASTE_BYTES, held };
 }
 
 function expectedOutput(pastes: number): string {
@@ -102,11 +104,14 @@ async function outputReaches(rig: Rig, length: number): Promise<void> {
 
 /** Offer `input` until the host accepts it: the view is writable again. */
 async function untilAccepted(rig: Rig, input: string): Promise<boolean> {
-  for (let attempt = 0; attempt < 500; attempt += 1) {
-    if ((await offer(rig, input)).kind === 'operation-ack') return true;
+  let accepted = false;
+  for (let attempt = 0; attempt < 500 && !accepted; attempt += 1) {
+    const answer = await offer(rig, input);
+    accepted = answer.kind === 'operation-ack';
+    // Give the held write a turn to finish before asking again.
     await Bun.sleep(0);
   }
-  return false;
+  return accepted;
 }
 
 /** Nothing in the conversation says the input failed: no attachment error, no submitted-operation failure. */

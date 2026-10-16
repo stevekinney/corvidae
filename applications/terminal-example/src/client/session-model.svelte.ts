@@ -117,12 +117,10 @@ export class SessionModel {
   }
 
   /**
-   * Cancel a session that is still loading or connecting. Nothing is replayed or kept. While
-   * backpressured there is nothing to cancel: the client refuses input locally and queues none, so
-   * the session, its output and its recovery are left as they are.
+   * Cancel a session that is still loading or connecting. Nothing is replayed or kept. The terminal
+   * offers no Cancel while backpressured: the client queues nothing there, so there is nothing to cancel.
    */
   cancel(): void {
-    if (this.state === 'backpressured') return;
     this.showEmpty();
   }
 

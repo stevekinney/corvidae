@@ -38,7 +38,8 @@ test.describe('each state offers the actions its row of the state table names', 
     ['cleanup-incomplete', ['Check cleanup']],
     ['writable', ['New session']],
     ['read-only', ['New session']],
-    ['backpressured', ['Cancel']],
+    // The client queues nothing while input is held, so there is no unsent operation to cancel.
+    ['backpressured', []],
   ];
 
   for (const [state, expected] of TABLE) {
@@ -178,15 +179,11 @@ test.describe('focus follows the action', () => {
     await expect(retry, 'arriving output does not move focus').toBeFocused();
   });
 
-  test('Cancel while input is paused keeps focus and leaves the output readable', async ({
-    terminalPage,
-  }) => {
+  test('input paused offers no Cancel and leaves the output readable', async ({ terminalPage }) => {
     const page = await openState(terminalPage, 'backpressured', { quiet: false });
     await expect(page.getByText('Backpressure: input paused').first()).toBeVisible();
-    const cancel = page.getByRole('button', { name: 'Cancel' });
-    await cancel.click();
-    await expect(cancel).toBeFocused();
-    expect(await page.evaluate(() => window.terminalLab!.events.actions)).toEqual(['Cancel']);
+    await expect(page.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+    expect(await page.evaluate(() => window.terminalLab!.events.actions)).toEqual([]);
     expect(await exportedText(page)).toMatch(/bun run build/);
   });
 
