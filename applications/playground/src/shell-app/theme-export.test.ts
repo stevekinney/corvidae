@@ -131,16 +131,23 @@ describe('gating', () => {
     expect(artifact(plan, 'report').files[0]!.text).toContain('"matchesThisBuild": false');
   });
 
-  test('the same digest under the pre-stamp `workspace` label is still this build (COR-231)', async () => {
+  test('a draft saved under another label for this digest exports relabelled as this build (COR-231)', async () => {
+    // A draft restored from before the stamp says `workspace`; any label other than this build's
+    // proves the relabelling, since tests run Cinder's unstamped source.
     const relabelled = {
       ...snapshot.envelope,
-      base: { ...snapshot.envelope.base, packageVersion: 'workspace' },
+      base: { ...snapshot.envelope.base, packageVersion: '0.0.1-saved-earlier' },
     };
     const snap = await takeExportSnapshot(createDraft(relabelled), evaluator);
     expect(snap.baseIsCurrent).toBe(true);
-    expect(artifact(planExports(snap, true), 'report').files[0]!.text).toContain(
-      '"matchesThisBuild": true',
-    );
+    expect(snap.envelope.base.packageVersion).toBe(CINDER_BASE.packageVersion);
+    const plan = planExports(snap, true);
+    for (const kind of ['source', 'report'] as const) {
+      const text = artifact(plan, kind).files[0]!.text;
+      expect(text).toContain(CINDER_BASE.packageVersion);
+      expect(text).not.toContain('0.0.1-saved-earlier');
+    }
+    expect(artifact(plan, 'report').files[0]!.text).toContain('"matchesThisBuild": true');
   });
 });
 
