@@ -288,7 +288,7 @@ const scenario9 = scenario('a write the kernel refuses for any other reason fail
 });
 
 const scenario10 = scenario(
-  'the session input budget keeps counting bytes the terminal has not taken',
+  'the session holds bytes the terminal has not taken, refuses more, and delivers them once it reads',
   async () => {
     const master = drivenMaster();
     const hosted = hostFor('pty', shellProfile('sleep 7919'), {
@@ -300,8 +300,9 @@ const scenario10 = scenario(
     expect(await eventually(() => master.attempts >= 1)).toBe(true);
     expect(run.attachment.write(utf8('9'))).toMatchObject({
       disposition: 'failed',
-      reason: 'input-overflow',
+      reason: 'input-held',
     });
+    expect(run.attachment.inputHeld).toBe(true);
     master.accept();
     expect(await eventually(() => master.taken.length === 1)).toBe(true);
     await flush();
@@ -333,7 +334,7 @@ describe('PTY input', () => {
   scenarioResult('a write the kernel refuses for any other reason fails', scenario9);
 
   scenarioResult(
-    'the session input budget keeps counting bytes the terminal has not taken',
+    'the session holds bytes the terminal has not taken, refuses more, and delivers them once it reads',
     scenario10,
   );
 });

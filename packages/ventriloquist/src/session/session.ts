@@ -62,6 +62,8 @@ type AttachmentRuntime = {
   /** Set when the listener threw or rejected. A failed listener is never called again. */
   listenerFailed: boolean;
   inputBytes: number;
+  /** The backend reported the write in flight is held by a child that is not reading. */
+  inputHeld: boolean;
   nextSequence: number;
   pumping: boolean;
   inFlight: { readonly operation: QueuedOperation; readonly settling: Settling<void> } | undefined;
@@ -308,6 +310,7 @@ export class Session {
       revoked: false,
       listenerFailed: false,
       inputBytes: 0,
+      inputHeld: false,
       nextSequence: 1,
       pumping: false,
       inFlight: undefined,
@@ -397,6 +400,9 @@ export class Session {
         this.#checkDrain();
         return released;
       },
+      get inputHeld() {
+        return attachment.inputHeld;
+      },
       heartbeat: () => {
         if (!live()) return false;
         attachment.cancelLiveness();
@@ -449,6 +455,9 @@ export class Session {
     ) {
       return refuse('invalid-dimensions');
     }
+    // A held write means the process is not reading: nothing new is queued behind it, and a refused
+    // operation is never replayed. The client's empty capacity probe lands here too.
+    if (attachment.inputHeld) return refuse('input-held');
     const byteLength = operation.kind === 'input' ? operation.bytes.length : 0;
     if (attachment.inputBytes + byteLength > this.#budgets.inputQueueBytes) {
       return refuse('input-overflow');
@@ -483,16 +492,31 @@ export class Session {
     for (;;) {
       const operation = attachment.queue.take();
       if (operation === undefined) break;
+      // A hold report only counts while this operation is the one in flight.
+      let current = true;
       const settling = settleWithin(
         this.#clock,
         this.#budgets.inputAcknowledgementDeadlineMilliseconds,
-        () =>
+        (deadline) =>
           operation.kind === 'input'
-            ? backend.write(operation.bytes)
+            ? backend.write(operation.bytes, {
+                held: () => {
+                  if (!current) return;
+                  attachment.inputHeld = true;
+                  deadline.suspend();
+                },
+                resumed: () => {
+                  if (!current) return;
+                  attachment.inputHeld = false;
+                  deadline.resume();
+                },
+              })
             : backend.resize?.(operation.columns, operation.rows),
       );
       attachment.inFlight = { operation, settling };
       const settled = await settling.outcome;
+      current = false;
+      attachment.inputHeld = false;
       // A close that already reported this operation as unknown owns its result: nothing is said twice.
       if (this.#finalized || attachment.inFlight === undefined) return;
       attachment.inFlight = undefined;

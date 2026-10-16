@@ -19,6 +19,19 @@ type InputSink = {
 };
 
 /**
+ * Close the child's stdin. When input is still held in the sink because the child never read it,
+ * ending the sink fails with `EPIPE` once the child is gone: the pipe is closed and the held input
+ * is discarded, which is what cleanup is for, so that is not a failure to close.
+ */
+async function closeInput(sink: InputSink | undefined): Promise<void> {
+  try {
+    await sink?.end();
+  } catch (error) {
+    if ((error as { readonly code?: string }).code !== 'EPIPE') throw error;
+  }
+}
+
+/**
  * Create a pipe process: `Bun.spawn` with piped stdio, run as its own process group. Standard
  * output and standard error are two separate owned sources tagged `stdout` and `stderr`, so
  * partial escape sequences from one channel can never be spliced into the other, and nothing is
@@ -38,6 +51,8 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
   const owned = createOwnedProcess(settings);
   let startFailure: ProcessStartFailure | undefined;
   let input: InputSink | undefined;
+  /** Cleanup has begun: a write it ends is lost with the process, not a failure of the write itself. */
+  let cleaningUp = false;
   // Neither channel is buffered here: each is read only when the session asks, so a child nobody
   // reads blocks on its pipe, and the session's one output budget bounds both channels together.
   const outputs = { stdout: createDeferredByteStream(), stderr: createDeferredByteStream() };
@@ -69,18 +84,33 @@ export function createPipeProcess(options: PipeProcessOptions): HostedProcess {
       outputs.stdout.attach(child.stdout as ReadableStream<Uint8Array>);
       outputs.stderr.attach(child.stderr as ReadableStream<Uint8Array>);
     },
-    write: async (bytes) => {
+    write: async (bytes, hold) => {
       if (input === undefined) throw new Error('the process has no open input');
-      await input.write(bytes);
-      await input.flush();
+      // Bun answers with a number while the pipe takes the bytes at once and with a promise while
+      // the child is not reading and the sink is waiting for the pipe to drain: that wait is a hold.
+      try {
+        const written = input.write(bytes);
+        if (written instanceof Promise) hold?.held();
+        await written;
+        const flushed = input.flush();
+        if (flushed instanceof Promise) hold?.held();
+        await flushed;
+      } catch (error) {
+        if (!cleaningUp) throw error;
+        // Cleanup killed the child this write was waiting on, which rejects it. Whether any of it
+        // arrived cannot be known, so it stays unsettled and the session reports unknown delivery,
+        // exactly as it does for a terminal that hung up.
+        await new Promise<never>(() => undefined);
+      }
     },
     cleanup: async () => {
       // Termination starts first and runs alongside the close of stdin: closing flushes buffered
       // input, which waits on a child that has stopped reading, and must not hold the signal back.
+      cleaningUp = true;
       const terminating = owned.terminate();
       const sink = input;
       input = undefined;
-      const closing = attempt(() => sink?.end());
+      const closing = attempt(() => closeInput(sink));
       const terminated = await terminating;
       const closed = await closing;
       const released = await attempt(releaseOutputs);

@@ -1,6 +1,11 @@
 import { writeSync } from 'node:fs';
 
-import type { ByteReader, ByteReadResult, ByteStream } from '../session/session-types.ts';
+import type {
+  ByteReader,
+  ByteReadResult,
+  ByteStream,
+  InputHold,
+} from '../session/session-types.ts';
 import type { PtyDevice } from './pty-device.ts';
 import {
   MASTER_FLAG_COUNT,
@@ -40,8 +45,11 @@ export type PtyMaster = {
    * Write input. The master is non-blocking, so what the child has not read is queued here and
    * retried; the returned promise settles when every byte is in the kernel. Input to a terminal
    * whose other end is gone never settles, and the session reports it as unknown at close.
+   * `hold` is told when the write is waiting only because the child has not read what is already
+   * queued (`held`), and when it stops waiting without having finished (`resumed`): progress, or a
+   * terminal that hung up, which is then a lost write rather than a held one.
    */
-  write(bytes: Uint8Array): Promise<void>;
+  write(bytes: Uint8Array, hold?: InputHold): Promise<void>;
   /** Keep reading but drop the output, so a terminal that is closing can drain. */
   discard(): void;
   /** End the worker and wait for it; `false` means it did not answer in time and was terminated. */
@@ -74,6 +82,9 @@ function isHungUp(error: unknown): boolean {
 type QueuedWrite = {
   readonly bytes: Uint8Array;
   offset: number;
+  readonly hold: InputHold | undefined;
+  /** `hold.held()` was reported and `resumed()` has not been since. */
+  holding: boolean;
   resolve(): void;
   reject(error: unknown): void;
 };
@@ -209,6 +220,10 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
       } catch (error) {
         const code = (error as { readonly code?: string }).code;
         if (code === 'EAGAIN') {
+          if (!head.holding && head.hold !== undefined) {
+            head.holding = true;
+            head.hold.held();
+          }
           // The child has not read what is already queued: wait, longer each time, and try again.
           const delay = WRITE_RETRY_MILLISECONDS[
             Math.min(retries, WRITE_RETRY_MILLISECONDS.length - 1)
@@ -217,8 +232,15 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
           retryTimer = setTimeout(flush, delay);
           return;
         }
-        // A terminal whose other end is gone will never take this write: it stays unsettled.
-        if (isHungUp(error)) return;
+        // A terminal whose other end is gone will never take this write: it stays unsettled, and a
+        // wait that was a hold is now a lost write, which the session times out as unknown.
+        if (isHungUp(error)) {
+          if (head.holding) {
+            head.holding = false;
+            head.hold?.resumed();
+          }
+          return;
+        }
         pending.shift()?.reject(error);
         continue;
       }
@@ -226,6 +248,11 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
       if (head.offset >= head.bytes.length) {
         pending.shift();
         head.resolve();
+      } else if (head.holding) {
+        // The child read some of it: the wait is over, though the write is not. If the queue fills
+        // again the next retry reports a new hold.
+        head.holding = false;
+        head.hold?.resumed();
       }
     }
   };
@@ -240,10 +267,10 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
   // ---- ending ----------------------------------------------------------------------------------
   return {
     stream,
-    write: (bytes) => {
+    write: (bytes, hold) => {
       if (bytes.length === 0) return Promise.resolve();
       return new Promise<void>((resolve, reject) => {
-        pending.push({ bytes: bytes.slice(), offset: 0, resolve, reject });
+        pending.push({ bytes: bytes.slice(), offset: 0, hold, holding: false, resolve, reject });
         if (pending.length === 1 && retryTimer === undefined) flush();
       });
     },
