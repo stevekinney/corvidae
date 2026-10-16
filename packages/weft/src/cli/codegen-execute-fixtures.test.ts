@@ -181,7 +181,17 @@ function preparePackedWorkspace(root: string): string {
   ) {
     throw new Error('expected @lostgradient/weft package.json devDependencies to be an object');
   }
-  (devDependencies as Record<string, unknown>)['@lostgradient/typescript'] = PACKED_FIXTURE_VERSION;
+  // The UI's development edges to Cinder and Markdown (COR-1455) name workspaces this
+  // two-workspace fixture does not carry, so `bun pm pack` could not resolve them. The packed
+  // consumer never installs a devDependency, so they are dropped rather than given a version.
+  packageJson['devDependencies'] = Object.fromEntries(
+    Object.entries({
+      ...devDependencies,
+      '@lostgradient/typescript': PACKED_FIXTURE_VERSION,
+    }).filter(
+      ([, specifier]) => typeof specifier !== 'string' || !specifier.startsWith('workspace:'),
+    ),
+  );
   writeJsonFile(packageJsonPath, packageJson);
 
   const typescriptPackageJsonPath = join(typescriptDirectory, 'package.json');

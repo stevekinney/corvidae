@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { check, resolveConfig } from 'prettier';
 
+import { packageMapForFixtures } from './committed-plans.ts';
 import { formatEmittedFile, serializeJson } from './json-formatting.ts';
 import { planManifests } from './manifests.ts';
 import { planSource } from './source.ts';
@@ -332,7 +333,16 @@ describe('an emitted document with no target configuration to obey', () => {
     await withClone(
       { 'packages/weft/.prettierrc.json': targetPrettierConfiguration },
       async (clone) => {
-        const plan = await planManifests({ corvidaeRoot, target: 'weft', targetDirectory: clone });
+        // Weft's development edges to Cinder and Markdown (the UI's, COR-1455) resolve through
+        // `assertEdgeNotStale`, which refuses while either has unpublished source. Staleness is not
+        // this test's subject, so it plans against the current-digest snapshots the committed
+        // plans use; the release order (Cinder and Markdown before Weft) is the real sync's.
+        const plan = await planManifests({
+          corvidaeRoot,
+          target: 'weft',
+          targetDirectory: clone,
+          packageMap: packageMapForFixtures,
+        });
         const rootManifest = plan.files['package.json'] ?? '';
         expect(rootManifest).toBe(`${JSON.stringify(JSON.parse(rootManifest), undefined, 2)}\n`);
         const workspaceManifest = plan.files['packages/weft/package.json'] ?? '';

@@ -237,7 +237,7 @@ Every workspace was swept. These workspaces have no non-conformant path: `conver
 | `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/server/runtime/authentication-bridge.ts` | 327 |
 | `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/server/runtime/authentication-bridge.ts` | 350 |
 | `@lostgradient/editor` | `fire-and-forget-call` | ephemeral | `components/editor/src/lib/editor/attach.ts` | 117 |
-| `@lostgradient/weft-ui` | `timeout` | ephemeral | `components/weft-ui/src/lib/live-source/polling-source.svelte.ts` | 97 |
+| `@lostgradient/weft` | `timeout` | ephemeral | `packages/weft/src/ui/lib/live-source/polling-source.svelte.ts` | 97 |
 
 ## Session input admission
 

@@ -41,8 +41,11 @@ describe('the layout table against the committed tree', () => {
   test('the components become the packages the targets publish them from', async () => {
     expect(await targetDirectoryFor('@lostgradient/cinder')).toBe('packages/components');
     expect(await targetDirectoryFor('@lostgradient/editor')).toBe('packages/editor');
-    expect(await targetDirectoryFor('@lostgradient/weft-ui')).toBe('packages/weft-ui');
     expect(await targetDirectoryFor('@lostgradient/weft')).toBe('packages/weft');
+  });
+
+  test('the UI has no placement of its own, having moved into Weft (COR-1455)', async () => {
+    expect(await throwingRejectionOf(layoutFor('@lostgradient/weft-ui'))).toThrow(LayoutMapError);
   });
 
   test('a workspace with no entry stops the transform by name', async () => {

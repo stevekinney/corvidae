@@ -1,0 +1,12 @@
+# The UI's `bun test` configuration, selected with `--config=./bunfig.ui.toml` by the second
+# invocation of `test`, by `test:ui-deployment`, and by `scripts/ui-coverage/run-coverage.ts`. It
+# replaces `bunfig.toml` for those runs rather than merging with it, so the engine's preload
+# (`tests/test-preload.ts`) never runs under the UI and this preload never runs under the engine.
+[test]
+# happy-dom's DOM globals, the Svelte compile plugin (`scripts/lib/svelte-plugin.ts`), the
+# jest-dom matchers, and `@testing-library/svelte`'s cleanup, installed before any test imports.
+preload = ["./src/ui/tests/setup.ts"]
+coverageReporter = ["text", "lcov"]
+coverageSkipTestFiles = true
+# The Playwright lane runs these through `test:ui-browser`; `bun test` must not discover them.
+pathIgnorePatterns = ["scripts/ui-browser/tests/e2e/**"]
