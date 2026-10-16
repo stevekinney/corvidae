@@ -1,7 +1,7 @@
 /**
- * Component tests for `<HealthTab>` (plan §9.7 T7.5). Covers the honest
- * lease-not-available note, retention rendering, the recover-all Tier-2
- * confirm flow, and the codegen preview.
+ * Component tests for `<HealthTab>` (plan §9.7 T7.5). Covers the engine
+ * lease status from `weft.system.lease` (COR-124), retention rendering, the
+ * recover-all Tier-2 confirm flow, and the codegen preview.
  */
 import { fireEvent, render } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -18,6 +18,15 @@ afterEach(() => {
   scripted?.restore();
   scripted = undefined;
 });
+
+const DISABLED_LEASE = { mode: 'none', status: 'disabled', holdsLease: false } as const;
+
+/** A fresh scripted fetch with a standing `weft.system.lease` route; a later route for the same call wins. */
+function scriptedWithLease(lease: unknown = DISABLED_LEASE): ScriptedFetch {
+  const fetch = new ScriptedFetch();
+  fetch.routeJsonRpcMethod('weft.system.lease', lease);
+  return fetch;
+}
 
 function routeBaseline(fetch: ScriptedFetch): void {
   fetch.routeUrl('/retention', {
@@ -71,16 +80,75 @@ async function renderHealthTab() {
 }
 
 describe('HealthTab', () => {
-  test('shows the honest lease-not-available note', async () => {
+  test('reports a disabled engine lease in words', async () => {
+    scripted = scriptedWithLease();
+    routeBaseline(scripted);
+    const { findByText, getByText, unmount } = await renderHealthTab();
+    expect(await findByText('Disabled')).not.toBeNull();
+    expect(getByText('Lease ownership is not configured for this engine.')).not.toBeNull();
+    unmount();
+  });
+
+  test('reports a contested engine lease with its holder, fencing epoch, and loss reason', async () => {
+    scripted = scriptedWithLease({
+      mode: 'lease',
+      status: 'contested',
+      holdsLease: false,
+      holderId: 'engine-b',
+      heldSince: 1_700_000_000_000,
+      expiresAt: 1_700_000_030_000,
+      lastRenewedAt: 1_700_000_010_000,
+      fencingEpoch: 9,
+      lossReason: 'deposed',
+    });
+    routeBaseline(scripted);
+    const { findByText, getByText, getByRole, unmount } = await renderHealthTab();
+    expect(await findByText('Contested')).not.toBeNull();
+    expect(getByRole('heading', { name: 'Engine lease' })).not.toBeNull();
+    expect(
+      getByText('This engine lost the ownership lease: another holder deposed this engine.'),
+    ).not.toBeNull();
+    expect(getByText('engine-b')).not.toBeNull();
+    expect(getByText('9')).not.toBeNull();
+    expect(getByText('2023-11-14T22:13:50.000Z')).not.toBeNull();
+    unmount();
+  });
+
+  test('a healthy lease without timing fields says so instead of inventing them', async () => {
+    scripted = scriptedWithLease({ mode: 'lease', status: 'healthy', holdsLease: true });
+    routeBaseline(scripted);
+    const { findByText, getAllByText, unmount } = await renderHealthTab();
+    expect(await findByText('Healthy')).not.toBeNull();
+    expect(getAllByText('Not reported')).toHaveLength(5);
+    unmount();
+  });
+
+  test('a malformed lease response is explicit, never a healthy badge', async () => {
+    scripted = scriptedWithLease({ mode: 'lease', status: 'healthy' });
+    routeBaseline(scripted);
+    const { findByText, queryByText, unmount } = await renderHealthTab();
+    expect(
+      await findByText('Malformed server response', undefined, { timeout: 15_000 }),
+    ).not.toBeNull();
+    expect(queryByText('Healthy')).toBeNull();
+    unmount();
+  }, 20_000);
+
+  test('a forbidden lease read shows the fault banner', async () => {
     scripted = new ScriptedFetch();
+    scripted.routeJsonRpcError('weft.system.lease', {
+      code: -32000,
+      message: 'Forbidden',
+      data: { httpStatus: 403 },
+    });
     routeBaseline(scripted);
     const { findByText, unmount } = await renderHealthTab();
-    expect(await findByText('Lease status not available')).not.toBeNull();
+    expect(await findByText('Not authorized')).not.toBeNull();
     unmount();
   });
 
   test('renders retention overview fields', async () => {
-    scripted = new ScriptedFetch();
+    scripted = scriptedWithLease();
     routeBaseline(scripted);
     const { findByText, unmount } = await renderHealthTab();
     expect(await findByText('300000ms')).not.toBeNull();
@@ -89,7 +157,7 @@ describe('HealthTab', () => {
   });
 
   test('renders a codegen preview for the first schema-bearing workflow', async () => {
-    scripted = new ScriptedFetch();
+    scripted = scriptedWithLease();
     routeBaseline(scripted);
     const { findByText, unmount } = await renderHealthTab();
     // Root cause of the original flake here: `CodeBlock`'s syntax
@@ -110,7 +178,7 @@ describe('HealthTab', () => {
   });
 
   test('recover-all requires Tier-2 confirmation before calling the operation, then shows a success toast', async () => {
-    scripted = new ScriptedFetch();
+    scripted = scriptedWithLease();
     routeBaseline(scripted);
     scripted.routeJsonRpcMethod('weft.recover.all', { recovered: ['wf_1'] });
 
@@ -142,7 +210,7 @@ describe('HealthTab', () => {
   });
 
   test('conformance panel shows the copyable CLI command, not a run button', async () => {
-    scripted = new ScriptedFetch();
+    scripted = scriptedWithLease();
     routeBaseline(scripted);
     const { findByText, queryByRole, unmount } = await renderHealthTab();
     expect(await findByText('weft conformance -- <worker-command>')).not.toBeNull();
@@ -151,7 +219,7 @@ describe('HealthTab', () => {
   });
 
   test('a failing retention fetch shows the fault banner', async () => {
-    scripted = new ScriptedFetch();
+    scripted = scriptedWithLease();
     scripted.routeJsonRpcMethod('weft.system.registry', {
       registryVersion: 2,
       generatedAt: '2026-01-01T00:00:00.000Z',
@@ -171,7 +239,7 @@ describe('HealthTab', () => {
   });
 
   test('a failing registry fetch shows the fault banner in the codegen preview panel', async () => {
-    scripted = new ScriptedFetch();
+    scripted = scriptedWithLease();
     scripted.routeUrl('/retention', {
       defaultRetention: null,
       sweepIntervalMs: 300000,
@@ -181,13 +249,15 @@ describe('HealthTab', () => {
     });
     // See the retention test above for why 403, not 500.
     scripted.routeUrlStatus('/jsonrpc', 403, 'Forbidden');
+    // Later routes win: keep the lease read healthy so only the registry panel faults.
+    scripted.routeJsonRpcMethod('weft.system.lease', DISABLED_LEASE);
     const { findByText, unmount } = await renderHealthTab();
     expect(await findByText('Not authorized')).not.toBeNull();
     unmount();
   });
 
   test('shows an honest empty state when no registered workflow has an input schema', async () => {
-    scripted = new ScriptedFetch();
+    scripted = scriptedWithLease();
     scripted.routeUrl('/retention', {
       defaultRetention: null,
       sweepIntervalMs: 300000,
