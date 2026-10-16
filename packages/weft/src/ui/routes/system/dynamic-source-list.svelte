@@ -55,7 +55,7 @@
    */
   import { Badge, Button, EmptyState, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import { DatabaseZap } from 'lucide-svelte';
+  import { DatabaseZap } from '@lucide/svelte';
 
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';

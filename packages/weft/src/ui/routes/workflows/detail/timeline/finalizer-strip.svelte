@@ -22,7 +22,7 @@
    */
   import { Badge, StatusDot } from '@lostgradient/cinder';
   import type { WorkflowFinalizerStatus, WorkflowStatus } from '@lostgradient/weft';
-  import { CircleX, Loader, Paintbrush, TriangleAlert } from 'lucide-svelte';
+  import { CircleX, Loader, Paintbrush, TriangleAlert } from '@lucide/svelte';
 
   import { finalizerStatusPresentation } from '../workflow-status.ts';
 

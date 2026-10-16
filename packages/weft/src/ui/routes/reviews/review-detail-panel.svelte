@@ -10,7 +10,7 @@
    *   - completed → a read-only recorded-decision summary, no form at all.
    */
   import { Alert, Badge, DescriptionList } from '@lostgradient/cinder';
-  import CircleCheck from 'lucide-svelte/icons/circle-check';
+  import CircleCheck from '@lucide/svelte/icons/circle-check';
   import type { CompletedReviewEntry, PendingReviewEntry } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';

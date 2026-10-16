@@ -129,7 +129,7 @@
   import { Badge, CopyButton, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
-  import { ArrowRight, CalendarClock, CornerDownRight, GitBranch, GitFork } from 'lucide-svelte';
+  import { ArrowRight, CalendarClock, CornerDownRight, GitBranch, GitFork } from '@lucide/svelte';
 
   import { createActiveRevisionComparisons } from '../../../lib/active-revision-comparisons.svelte.ts';
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';

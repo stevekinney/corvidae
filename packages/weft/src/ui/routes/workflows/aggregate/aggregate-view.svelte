@@ -11,7 +11,7 @@
    * console's `invalid` fault treatment) through the shared
    * `query-fault-banner.svelte`.
    */
-  import { ChevronRight } from 'lucide-svelte';
+  import { ChevronRight } from '@lucide/svelte';
   import {
     BarChart,
     EmptyState,

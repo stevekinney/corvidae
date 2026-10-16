@@ -42,7 +42,7 @@
    * this batch, not an oversight — see the PR body.
    */
   import { Badge, Button, ConfirmDialog, CopyButton } from '@lostgradient/cinder';
-  import { AlertTriangle } from 'lucide-svelte';
+  import { TriangleAlert } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { HttpClientError } from '@lostgradient/weft';
@@ -294,7 +294,7 @@
     <QueryFaultBanner error={activeQuery.error} onRetry={() => activeQuery.refetch()} />
   {:else if rows === undefined}
     <div class="weft-revisions-panel__malformed" role="alert">
-      <AlertTriangle aria-hidden="true" size={16} />
+      <TriangleAlert aria-hidden="true" size={16} />
       <span
         >The server returned a revisions list this console doesn't recognize — showing nothing
         rather than a guess.</span

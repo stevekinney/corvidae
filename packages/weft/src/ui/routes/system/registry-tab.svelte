@@ -12,7 +12,7 @@
    * `serve()` now routes `/jsonrpc`).
    */
   import { Badge, EmptyState, Table, Skeleton } from '@lostgradient/cinder';
-  import { GitBranch, Zap } from 'lucide-svelte';
+  import { GitBranch, Zap } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import type { RetryPolicy } from '@lostgradient/weft';

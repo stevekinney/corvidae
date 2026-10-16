@@ -6,7 +6,7 @@
    */
   import { Button, ConfirmDialog, Input, JsonEditor } from '@lostgradient/cinder';
   import type { StorageConnection } from './storage-client.ts';
-  import { Save } from 'lucide-svelte';
+  import { Save } from '@lucide/svelte';
 
   import { createMutation } from '@tanstack/svelte-query';
 

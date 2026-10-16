@@ -144,7 +144,7 @@ describe('OperationsTab', () => {
     expect(await findByText('weft.workflows.stream')).not.toBeNull();
     // No REST route for the JSON-RPC-only operation.
     expect(await findByText('—')).not.toBeNull();
-    // lucide-svelte renders each icon's name as a `lucide-<name>` class (see
+    // @lucide/svelte renders each icon's name as a `lucide-<name>` class (see
     // `Icon.svelte`): the REST-only row's JSON-RPC/MCP cells are both Minus,
     // and the JSON-RPC-only row's JSON-RPC/MCP cells are both Check.
     expect(container.querySelectorAll('.lucide-check').length).toBe(2);

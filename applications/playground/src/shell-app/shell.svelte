@@ -10,7 +10,7 @@
    * this page.
    */
   import { Button } from '@lostgradient/cinder';
-  import Palette from 'lucide-svelte/icons/palette';
+  import Palette from '@lucide/svelte/icons/palette';
 
   import ComponentPage from '../component-page.svelte';
 

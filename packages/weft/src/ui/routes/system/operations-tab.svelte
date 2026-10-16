@@ -15,7 +15,7 @@
     SearchField,
     Table,
   } from '@lostgradient/cinder';
-  import { Check, Minus } from 'lucide-svelte';
+  import { Check, Minus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';

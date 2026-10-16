@@ -15,7 +15,7 @@
    * disabled for a missing scope.
    */
   import { EmptyState, Segment, SegmentedControl } from '@lostgradient/cinder';
-  import Lock from 'lucide-svelte/icons/lock';
+  import Lock from '@lucide/svelte/icons/lock';
 
   import { getClient } from '../../lib/client.ts';
   import { getPrincipalStore, isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';

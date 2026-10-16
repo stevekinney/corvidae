@@ -47,16 +47,16 @@
     ArrowLeftRight,
     Ban,
     CircleCheck,
+    CircleQuestionMark,
     CircleX,
     Clock,
-    HelpCircle,
     Loader,
     Pause,
     Play,
     Radio,
     TimerOff,
     TriangleAlert,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   import { formatDuration, formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import {
@@ -130,7 +130,7 @@
   const REVISION_BADGE: Readonly<Record<'active' | 'stale' | 'unknown', RevisionBadgeTreatment>> = {
     active: { icon: CircleCheck, variant: 'success', label: 'Active' },
     stale: { icon: TriangleAlert, variant: 'warning', label: 'Differs from active' },
-    unknown: { icon: HelpCircle, variant: 'neutral', label: 'Active revision unknown' },
+    unknown: { icon: CircleQuestionMark, variant: 'neutral', label: 'Active revision unknown' },
   };
 
   // `classifyRevisionAgainstActive` returns `'unpinned'` exactly when
@@ -344,7 +344,7 @@
         aria-expanded={queryOpen}
       >
         {#snippet leadingIcon()}
-          <HelpCircle aria-hidden="true" size={14} />
+          <CircleQuestionMark aria-hidden="true" size={14} />
         {/snippet}
       </Button>
     </Tooltip>

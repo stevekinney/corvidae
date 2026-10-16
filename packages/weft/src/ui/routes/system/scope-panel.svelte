@@ -5,7 +5,7 @@
    * a one-line description and what it unlocks in the console UI.
    */
   import { Badge } from '@lostgradient/cinder';
-  import { ShieldCheck, ShieldOff } from 'lucide-svelte';
+  import { ShieldCheck, ShieldOff } from '@lucide/svelte';
 
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import { SCOPE_CATALOG } from './scope-catalog.ts';

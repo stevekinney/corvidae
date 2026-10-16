@@ -3,7 +3,7 @@
  * `Weft Patterns.dc.html` "Status badge system"). Pure mapping so the badge
  * tone/label/icon-name decision is unit-testable without mounting a
  * component; `workflow-status-badge.svelte` wraps this in a Cinder `Badge` +
- * `lucide-svelte` icon.
+ * `@lucide/svelte` icon.
  *
  * **Scope note on `finalizing` / `cancelled — cleanup failed`.** The design
  * mock's status-badge section also shows these two sub-states (plan's

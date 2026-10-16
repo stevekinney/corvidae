@@ -17,14 +17,14 @@
   } from '@lostgradient/cinder';
   import {
     CalendarClock,
+    CircleX,
     Ellipsis,
     Lock,
     Pause,
     Pencil,
     Play,
     Search,
-    XCircle,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   import type { ScheduleFilter, ScheduleStatus, ScheduleSummary } from '@lostgradient/weft';
 
@@ -366,7 +366,7 @@
                       disabled={writeGate.disabled}
                       onclick={(event) => requestCancel(schedule.id, event)}
                     >
-                      <XCircle aria-hidden="true" size={14} /> Cancel
+                      <CircleX aria-hidden="true" size={14} /> Cancel
                     </Dropdown.Item>
                   {/if}
                 </Dropdown.Menu>

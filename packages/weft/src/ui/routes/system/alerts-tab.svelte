@@ -32,7 +32,7 @@
    */
   import { EmptyState, Badge, type BadgeVariant, Skeleton } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { BellOff, Info } from 'lucide-svelte';
+  import { BellOff, Info } from '@lucide/svelte';
 
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
   import { getClient } from '../../lib/client.ts';

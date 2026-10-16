@@ -31,7 +31,7 @@
    * client-side "disconnected" row).
    */
   import { EmptyState, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
-  import Lock from 'lucide-svelte/icons/lock';
+  import Lock from '@lucide/svelte/icons/lock';
 
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 

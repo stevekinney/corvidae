@@ -9,7 +9,7 @@
  *
  * They do NOT reproduce #756's packaged-consumer `hydration_mismatch`. One
  * earlier occurrence came from differing Lucide icon artwork and is guarded by
- * Cinder's exact `lucide-svelte` dependency. The recurring case was caused by
+ * Cinder's exact `@lucide/svelte` dependency. The recurring case was caused by
  * conditional export order: SvelteKit SSR selected Cinder's precompiled `node`
  * tree while the browser compiled its `svelte` source tree. Those independently
  * compiled trees emitted incompatible hydration markers at a nested Chat/Cinder

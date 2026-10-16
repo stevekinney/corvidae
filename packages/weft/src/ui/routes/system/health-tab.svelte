@@ -44,7 +44,7 @@
     CopyButton,
     DescriptionList,
   } from '@lostgradient/cinder';
-  import { CircleAlert, Terminal } from 'lucide-svelte';
+  import { CircleAlert, Terminal } from '@lucide/svelte';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
   import type { RetentionOverview } from '@lostgradient/weft';
 

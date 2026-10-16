@@ -25,7 +25,7 @@
   } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import {
-    Building2,
+    BuildingComplex,
     CalendarClock,
     ChevronRight,
     LayoutDashboard,
@@ -33,7 +33,7 @@
     Settings,
     UserCheck,
     Workflow,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
   import { MediaQuery } from 'svelte/reactivity';
 
   import { createQuery } from '@tanstack/svelte-query';
@@ -146,7 +146,7 @@
     {
       path: '/storage',
       label: 'Storage',
-      icon: Building2,
+      icon: BuildingComplex,
       badge: undefined,
       badgeVariant: 'warning',
     },

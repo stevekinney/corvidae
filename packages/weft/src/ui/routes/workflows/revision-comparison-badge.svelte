@@ -12,7 +12,7 @@
    * on every row of a page; the detail header keeps that explicit state.
    */
   import { Badge, Tooltip } from '@lostgradient/cinder';
-  import { CircleCheck, TriangleAlert } from 'lucide-svelte';
+  import { CircleCheck, TriangleAlert } from '@lucide/svelte';
 
   import {
     EAGER_REVISION_HEDGE,

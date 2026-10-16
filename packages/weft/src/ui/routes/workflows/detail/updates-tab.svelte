@@ -26,7 +26,7 @@
    */
   import { Badge, Button, Input, JsonEditor } from '@lostgradient/cinder';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
-  import { CircleCheck, CircleX } from 'lucide-svelte';
+  import { CircleCheck, CircleX } from '@lucide/svelte';
   import { onDestroy } from 'svelte';
 
   import { formatRelativeTime } from '../../../lib/format/index.ts';

@@ -9,7 +9,7 @@
   import { untrack } from 'svelte';
 
   import { Callout, EmptyState, Tabs } from '@lostgradient/cinder';
-  import { Lock } from 'lucide-svelte';
+  import { Lock } from '@lucide/svelte';
 
   import { createQuery } from '@tanstack/svelte-query';
 

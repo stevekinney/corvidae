@@ -56,7 +56,7 @@ describe('shared ts-morph project over the full inventory', () => {
     resetProject();
     const before = getProjectCreationCount();
     await analyzeComponent(componentPath('card'));
-    // Chat's types reach Cinder's barrel, and through it every `lucide-svelte`
+    // Chat's types reach Cinder's barrel, and through it every `@lucide/svelte`
     // icon declaration (thousands of files). ts-morph keeps each resolved
     // dependency as a root of every later program in the same Project, so a
     // Project shared across packages made every Cinder analysis after the first
@@ -66,7 +66,7 @@ describe('shared ts-morph project over the full inventory', () => {
     });
     await analyzeComponent(componentPath('alert'));
 
-    const isLucideDeclaration = (path: string): boolean => path.includes('/lucide-svelte/');
+    const isLucideDeclaration = (path: string): boolean => path.includes('/@lucide/svelte/');
     // The premise: Chat's analysis really does pull the icon graph in.
     expect(
       getProjectProgramFileNames(CHAT_COMPONENT_SOURCE.packageRoot).some(isLucideDeclaration),

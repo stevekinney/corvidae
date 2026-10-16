@@ -12,7 +12,7 @@
    * triggers Shiki's "language not in bundle" warning.
    */
   import { Button, CodeBlock, DescriptionList } from '@lostgradient/cinder';
-  import { Plug } from 'lucide-svelte';
+  import { Plug } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { codeHighlighter } from '../../lib/code-highlighter.ts';

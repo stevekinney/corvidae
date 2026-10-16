@@ -187,7 +187,7 @@ Consequences:
 
 Notes:
 
-- `@lucide/svelte` replaces the deprecated `lucide-svelte`. At `bd09f203` the root catalog still declares only `lucide-svelte` (`^0.577.0`), so this peer cannot be declared until COR-1460 adds `@lucide/svelte` to the catalog. COR-1452 is blocked by COR-1460 for that reason.
+- `@lucide/svelte` replaces Lucide's deprecated Svelte package. At `bd09f203` the root catalog still declared only the deprecated package (`^0.577.0`), so this peer could not be declared until COR-1460 added `@lucide/svelte` (`^1.56.0`) to the catalog. COR-1452 is blocked by COR-1460 for that reason.
 - At `bd09f203` the other catalog ranges are `@tanstack/svelte-query` `^6.2.1`, `cron-parser` `^5.6.2`, `@shikijs/langs` `^3.21.0`, and `@shikijs/themes` `^3.21.0`. The published ranges follow the catalog at each sync.
 - The minimum of every `@lostgradient/cinder` range Weft publishes must be at least the first Cinder release that contains COR-1456 (COR-1452). A lower floor brings back the 13 MB dashboard the project measured.
 - `dashboard()` serves a fully built dashboard and needs none of these peers. Engine-only installs get none of them.

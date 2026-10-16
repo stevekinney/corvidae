@@ -40,7 +40,7 @@
     WorkflowFinalizerStatus,
     WorkflowState,
   } from '@lostgradient/weft';
-  import { Clock, Link, X } from 'lucide-svelte';
+  import { Clock, Link, X } from '@lucide/svelte';
   import { untrack } from 'svelte';
 
   import { attachPendingActivitiesToSteps } from './async-activity/async-activity-matching.ts';

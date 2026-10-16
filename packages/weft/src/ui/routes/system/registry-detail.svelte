@@ -10,7 +10,7 @@
    * (`workflow-revisions-panel.svelte`).
    */
   import { DescriptionList, Tree, Badge, Button, CopyButton } from '@lostgradient/cinder';
-  import { ArrowLeft, FileQuestion } from 'lucide-svelte';
+  import { ArrowLeft, FileQuestionMark } from '@lucide/svelte';
 
   import { truncateId } from '../../lib/format/index.ts';
   import type {
@@ -73,12 +73,12 @@
     </Tree>
   {:else if rootType !== undefined}
     <div class="weft-registry-detail__no-schema">
-      <FileQuestion aria-hidden="true" size={17} />
+      <FileQuestionMark aria-hidden="true" size={17} />
       <span>Declared as <code>{rootType}</code> — no object fields to list.</span>
     </div>
   {:else}
     <div class="weft-registry-detail__no-schema">
-      <FileQuestion aria-hidden="true" size={17} />
+      <FileQuestionMark aria-hidden="true" size={17} />
       <span>{emptyLabel}</span>
     </div>
   {/if}

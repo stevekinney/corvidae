@@ -60,7 +60,7 @@
   } from '@lostgradient/cinder';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowEvent, WorkflowState } from '@lostgradient/weft';
-  import { Filter, X } from 'lucide-svelte';
+  import { Funnel, X } from '@lucide/svelte';
   import { onDestroy, untrack } from 'svelte';
 
   import type { LiveSourceStatus } from '../../../lib/live-source/index.ts';
@@ -244,7 +244,7 @@
     <span class="weft-events-tab__count">{streamEvents.length} events</span>
     {#if selectedStep !== null}
       <Badge variant="accent" size="sm">
-        <Filter aria-hidden="true" size={10} />
+        <Funnel aria-hidden="true" size={10} />
         step: {selectedStep}
         <button
           type="button"

@@ -19,7 +19,7 @@
     Toggle,
     type SelectOption,
   } from '@lostgradient/cinder';
-  import { Plus, X } from 'lucide-svelte';
+  import { Plus, X } from '@lucide/svelte';
 
   import { createMutation } from '@tanstack/svelte-query';
 

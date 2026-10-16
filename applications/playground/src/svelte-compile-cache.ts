@@ -38,7 +38,7 @@ function sha256(...parts: readonly string[]): string {
  * A compiled-output cache on disk, shared by every process that points at the same directory.
  *
  * Compiling a Svelte component is a pure function of its source, its path, the compile options,
- * and the compiler, but the playground compiles about 2,000 of them (most of them `lucide-svelte`
+ * and the compiler, but the playground compiles about 2,000 of them (most of them `@lucide/svelte`
  * icons reachable through a few Cinder imports) in every fresh process it spawns to server-render a
  * page, which is where the cost of a cold render goes. Persisting the output across that process
  * boundary takes a render's compile from seconds to a few hundred milliseconds.

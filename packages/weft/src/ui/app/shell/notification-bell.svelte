@@ -15,8 +15,7 @@
    * an app-local composition over the primitive, not a fork (PROJECT-BRIEF).
    */
   import { Badge, ConnectionIndicator, Dropdown } from '@lostgradient/cinder';
-  import type { ComponentType, SvelteComponent } from 'svelte';
-  import type { IconProps } from 'lucide-svelte';
+  import type { LucideIcon } from '@lucide/svelte';
   import {
     Ban,
     Bell,
@@ -38,10 +37,10 @@
     ShieldAlert,
     Siren,
     Tag,
-    Trash2,
+    Trash,
     TriangleAlert,
     UserCheck,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   import { formatRelativeTime } from '../../lib/format/index.ts';
   import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
@@ -58,14 +57,8 @@
 
   let open = $state(false);
 
-  /**
-   * `lucide-svelte` still ships icons as `SvelteComponentTyped` classes, not
-   * Svelte 5's native functional component shape — same
-   * `ComponentType<SvelteComponent<IconProps>>` typing `fault-boundary.svelte`
-   * (T1.5) already established for the same reason, reused here rather than
-   * re-deriving a cast.
-   */
-  const ICONS: Readonly<Record<string, ComponentType<SvelteComponent<IconProps>>>> = {
+  /** Icon per `classifyFleetEvent` icon name. `@lucide/svelte` icons are Svelte 5 components typed `LucideIcon`. */
+  const ICONS: Readonly<Record<string, LucideIcon>> = {
     siren: Siren,
     'circle-x': CircleX,
     'calendar-x': CalendarX,
@@ -80,7 +73,7 @@
     ban: Ban,
     'clock-alert': ClockAlert,
     pause: Pause,
-    'trash-2': Trash2,
+    'trash-2': Trash,
     radio: Radio,
     tag: Tag,
     pencil: Pencil,
@@ -90,7 +83,7 @@
     'hard-drive': HardDrive,
   };
 
-  function iconFor(name: string): ComponentType<SvelteComponent<IconProps>> {
+  function iconFor(name: string): LucideIcon {
     return ICONS[name] ?? TriangleAlert;
   }
 

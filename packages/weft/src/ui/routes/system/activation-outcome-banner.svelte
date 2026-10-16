@@ -9,7 +9,7 @@
    * from a query — every prop is already resolved by the caller.
    */
   import { Badge, Button } from '@lostgradient/cinder';
-  import { Ban, CheckCircle2, RefreshCw } from 'lucide-svelte';
+  import { Ban, CircleCheck, RefreshCw } from '@lucide/svelte';
 
   import {
     compatibilityReasonLabel,
@@ -44,7 +44,7 @@
 
 {#if outcome.kind === 'applied'}
   <div class="weft-activation-outcome weft-activation-outcome--applied" role="status">
-    <CheckCircle2 aria-hidden="true" size={16} />
+    <CircleCheck aria-hidden="true" size={16} />
     <div>
       <Badge variant="success">Compatible</Badge>
       <p>{appliedOutcomeMessage(outcome)}</p>

@@ -7,7 +7,7 @@
    * shell (`../app.svelte`), and `none` (a normally authenticated principal)
    * has nothing to announce.
    */
-  import { TriangleAlert, X } from 'lucide-svelte';
+  import { TriangleAlert, X } from '@lucide/svelte';
 
   import type { BannerMode } from '../../lib/scopes.svelte.ts';
 

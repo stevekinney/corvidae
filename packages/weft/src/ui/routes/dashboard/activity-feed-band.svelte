@@ -19,8 +19,7 @@
    * never `close()` the shared source, which would tear down the shell's
    * bell/notification feed too.
    */
-  import type { ComponentType, SvelteComponent } from 'svelte';
-  import type { IconProps } from 'lucide-svelte';
+  import type { LucideIcon } from '@lucide/svelte';
   import {
     Ban,
     CalendarClock,
@@ -42,10 +41,10 @@
     ShieldAlert,
     Siren,
     Tag,
-    Trash2,
+    Trash,
     TriangleAlert,
     UserCheck,
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   import { ConnectionIndicator, Card, Feed, FeedEvent, Skeleton } from '@lostgradient/cinder';
 
@@ -73,7 +72,7 @@
   });
 
   /** Same icon-name lookup `../../app/shell/notification-bell.svelte` uses for the same `classifyFleetEvent` icon strings — that table isn't exported from the frozen shell, so this is a small, intentional local duplicate (this track's final report flags it as a foundation follow-up: extract a shared icon-resolution helper). */
-  const ICONS: Readonly<Record<string, ComponentType<SvelteComponent<IconProps>>>> = {
+  const ICONS: Readonly<Record<string, LucideIcon>> = {
     siren: Siren,
     'circle-alert': CircleAlert,
     'circle-x': CircleX,
@@ -89,7 +88,7 @@
     ban: Ban,
     'clock-alert': ClockAlert,
     pause: Pause,
-    'trash-2': Trash2,
+    'trash-2': Trash,
     radio: Radio,
     tag: Tag,
     pencil: Pencil,
@@ -99,7 +98,7 @@
     'hard-drive': HardDrive,
   };
 
-  function iconFor(name: string): ComponentType<SvelteComponent<IconProps>> {
+  function iconFor(name: string): LucideIcon {
     return ICONS[name] ?? TriangleAlert;
   }
 

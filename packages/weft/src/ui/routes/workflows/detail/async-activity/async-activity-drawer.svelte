@@ -22,7 +22,7 @@
   } from '@lostgradient/cinder';
   import { createMutation } from '@tanstack/svelte-query';
   import type { WeftClientActivity } from '@lostgradient/weft';
-  import { Clock } from 'lucide-svelte';
+  import { Clock } from '@lucide/svelte';
 
   import { faultTreatment } from '../../../../lib/faults.ts';
   import type { AttachedPendingActivity } from './async-activity-matching.ts';

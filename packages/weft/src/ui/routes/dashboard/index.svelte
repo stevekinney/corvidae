@@ -11,7 +11,7 @@
    * below. Results expose reactive properties directly and their effects
    * are disposed with the component.
    */
-  import { ArrowRight, Rocket, WifiOff } from 'lucide-svelte';
+  import { ArrowRight, Rocket, WifiOff } from '@lucide/svelte';
   import { Button, CodeBlock, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 

@@ -8,7 +8,7 @@
    */
   import { Button, ConfirmDialog, Input } from '@lostgradient/cinder';
   import type { StorageConnection } from './storage-client.ts';
-  import { Trash2 } from 'lucide-svelte';
+  import { Trash } from '@lucide/svelte';
 
   import { createMutation } from '@tanstack/svelte-query';
 
@@ -53,7 +53,7 @@
       confirmOpen = true;
     }}
   >
-    {#snippet leadingIcon()}<Trash2 aria-hidden="true" size={14} />{/snippet}
+    {#snippet leadingIcon()}<Trash aria-hidden="true" size={14} />{/snippet}
   </Button>
   {#if deleteMutation.isError}
     <p class="weft-storage-error">{faultTreatment(deleteMutation.error).message}</p>

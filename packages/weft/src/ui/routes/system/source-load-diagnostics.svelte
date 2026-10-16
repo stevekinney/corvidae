@@ -24,7 +24,7 @@
    * transition; `cancelled` does not establish that the work stopped.
    */
   import { Badge } from '@lostgradient/cinder';
-  import { AlertTriangle, CircleDashed, CheckCircle2, Loader, XCircle } from 'lucide-svelte';
+  import { CircleCheck, CircleDashed, CircleX, Loader, TriangleAlert } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../lib/client.ts';
@@ -121,7 +121,7 @@
     <QueryFaultBanner error={diagnosticsQuery.error} onRetry={() => diagnosticsQuery.refetch()} />
   {:else if summary === undefined}
     <p class="weft-source-load__malformed" role="alert">
-      <AlertTriangle aria-hidden="true" size={14} />
+      <TriangleAlert aria-hidden="true" size={14} />
       <span>
         The server returned load diagnostics this console doesn't recognize — showing nothing rather
         than a guess.
@@ -139,11 +139,11 @@
     -->
     <div class="weft-source-load__state" role="status">
       {#if summary.tone === 'positive'}
-        <CheckCircle2 aria-hidden="true" size={14} />
+        <CircleCheck aria-hidden="true" size={14} />
       {:else if summary.tone === 'progress'}
         <Loader aria-hidden="true" size={14} />
       {:else if summary.tone === 'attention'}
-        <XCircle aria-hidden="true" size={14} />
+        <CircleX aria-hidden="true" size={14} />
       {:else}
         <CircleDashed aria-hidden="true" size={14} />
       {/if}
@@ -173,7 +173,7 @@
 
     {#if summary.lastFailureCategory !== undefined}
       <p class="weft-source-load__failure">
-        <AlertTriangle aria-hidden="true" size={14} />
+        <TriangleAlert aria-hidden="true" size={14} />
         <span>
           Last failure category: <strong>{summary.lastFailureCategory}</strong
           >{#if summary.lastFailureDescription !== undefined}&nbsp;—&nbsp;{summary.lastFailureDescription}{/if}
