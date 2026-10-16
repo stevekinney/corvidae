@@ -377,7 +377,7 @@
     width: 27px;
     height: 27px;
     border-radius: 7px;
-    background: color-mix(in oklch, var(--cinder-accent), transparent 88%);
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
     color: var(--cinder-accent-text);
     flex: none;
   }
@@ -416,7 +416,7 @@
     height: 28px;
     border-radius: 7px;
     background: var(--cinder-surface-inset);
-    color: var(--cinder-color-warning-fg);
+    color: var(--cinder-status-warning-text);
     flex: none;
   }
 

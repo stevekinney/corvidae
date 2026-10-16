@@ -52,15 +52,15 @@
 }
 
 .weft-workers-callout--warning {
-  background: var(--cinder-color-warning-bg);
-  border-color: var(--cinder-color-warning-border);
-  color: var(--cinder-color-warning-fg);
+  background: var(--cinder-status-warning-background);
+  border-color: var(--cinder-status-warning-border);
+  color: var(--cinder-status-warning-text);
 }
 
 .weft-workers-callout--danger {
-  background: var(--cinder-color-danger-bg);
-  border-color: var(--cinder-color-danger-border);
-  color: var(--cinder-color-danger-fg);
+  background: var(--cinder-status-danger-background);
+  border-color: var(--cinder-status-danger-border);
+  color: var(--cinder-status-danger-text);
 }
 
 .weft-workers-stat-card {
@@ -85,7 +85,7 @@
 }
 
 .weft-workers-stat-card__value--warning {
-  color: var(--cinder-color-warning-fg);
+  color: var(--cinder-status-warning-text);
 }
 
 .weft-workers-stat-card__value-secondary {
@@ -540,15 +540,15 @@
 }
 
 .weft-diagnostic-card--warning {
-  background: var(--cinder-color-warning-bg);
-  border: 1px solid var(--cinder-color-warning-border);
+  background: var(--cinder-status-warning-background);
+  border: 1px solid var(--cinder-status-warning-border);
   border-radius: var(--cinder-radius-lg);
   padding: 14px 16px;
 }
 
 .weft-diagnostic-card--danger {
-  background: var(--cinder-color-danger-bg);
-  border: 1px solid var(--cinder-color-danger-border);
+  background: var(--cinder-status-danger-background);
+  border: 1px solid var(--cinder-status-danger-border);
   border-radius: var(--cinder-radius-lg);
   padding: 14px 16px;
 }
@@ -579,6 +579,111 @@
   align-items: start;
 }
 
+/* Worker session, lease clocks, cancellation, attempt history (COR-124).
+   Timestamps and digests are long unbroken strings, so these blocks wrap
+   anywhere rather than widen the page at 375px. */
+
+.weft-worker-session__header,
+.weft-task-cancellation__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weft-worker-session__header h2,
+.weft-task-cancellation__header h3 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  margin-inline-end: auto;
+}
+
+.weft-worker-session__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 15px;
+  overflow-wrap: anywhere;
+}
+
+.weft-task-lease-clocks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.weft-task-lease-clocks__clock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 15px;
+  border-block-end: 1px solid var(--cinder-border-muted);
+  overflow-wrap: anywhere;
+}
+
+.weft-task-lease-clocks__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weft-task-lease-clocks__label {
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
+}
+
+.weft-task-lease-clocks__time,
+.weft-task-lease-clocks__description {
+  margin: 0;
+  font-size: var(--cinder-text-xs);
+}
+
+.weft-task-lease-clocks__time {
+  font-family: var(--cinder-font-mono);
+}
+
+.weft-task-lease-clocks__description {
+  color: var(--cinder-text-muted);
+}
+
+.weft-task-attempts__timeline {
+  padding: 12px 15px;
+  overflow-wrap: anywhere;
+}
+
+.weft-task-attempts__paging {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+  align-items: center;
+  padding: 12px 15px 0;
+}
+
+.weft-task-attempts__paging-summary {
+  margin: 0;
+  color: var(--cinder-text-muted);
+}
+
+.weft-task-cancellation {
+  overflow-wrap: anywhere;
+}
+
+.weft-task-attempts__entry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.weft-task-attempts__entry > :last-child {
+  flex-basis: 100%;
+}
+
 /* ---------------------------------------------------------------------- */
 /* Drain dialog                                                           */
 /* ---------------------------------------------------------------------- */
@@ -591,7 +696,7 @@
 
 .weft-drain-dialog__target {
   font-family: var(--cinder-font-mono);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -625,7 +730,7 @@
   margin: 0;
   padding: 12px 15px;
   font-size: var(--cinder-text-xs);
-  color: var(--cinder-color-danger-fg);
+  color: var(--cinder-status-danger-text);
 }
 
 /* ---------------------------------------------------------------------- */

@@ -91,7 +91,7 @@
 
 .weft-storage-error {
   margin: 0;
-  color: var(--cinder-danger);
+  color: var(--cinder-status-danger-text);
   font-size: var(--cinder-text-sm);
 }
 
@@ -189,8 +189,8 @@
 
 @media (hover: hover) {
   .weft-storage-row-remove:hover {
-    color: var(--cinder-danger);
-    border-color: var(--cinder-danger);
+    color: var(--cinder-status-danger-text);
+    border-color: var(--cinder-status-danger-border);
   }
 }
 

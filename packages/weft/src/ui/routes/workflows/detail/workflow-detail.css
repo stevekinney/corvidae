@@ -76,11 +76,11 @@
   align-items: center;
   gap: 4px;
   font-family: var(--cinder-font-mono);
-  color: var(--cinder-color-warning-fg);
+  color: var(--cinder-status-warning-text);
 }
 
 .weft-workflow-detail__deadline[data-overdue='true'] {
-  color: var(--cinder-color-danger-fg);
+  color: var(--cinder-status-danger-text);
 }
 
 .weft-workflow-detail__actions {
@@ -161,13 +161,13 @@
 }
 
 .weft-workflow-detail__fault[data-tone='warning'] {
-  border-color: var(--cinder-color-warning-border);
-  background: var(--cinder-color-warning-bg);
+  border-color: var(--cinder-status-warning-border);
+  background: var(--cinder-status-warning-background);
 }
 
 .weft-workflow-detail__fault[data-tone='danger'] {
-  border-color: var(--cinder-color-danger-border);
-  background: var(--cinder-color-danger-bg);
+  border-color: var(--cinder-status-danger-border);
+  background: var(--cinder-status-danger-background);
 }
 
 .weft-workflow-detail__fault-banner {
@@ -181,7 +181,7 @@
   flex: 1 1 auto;
   margin: 0;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -242,8 +242,8 @@
 }
 
 .weft-overview-tab__failure {
-  background: var(--cinder-color-danger-bg);
-  border: 1px solid var(--cinder-color-danger-border);
+  background: var(--cinder-status-danger-background);
+  border: 1px solid var(--cinder-status-danger-border);
   border-radius: var(--cinder-radius-lg);
   padding: 13px 15px;
 }
@@ -253,14 +253,14 @@
   align-items: center;
   gap: 9px;
   margin-bottom: 8px;
-  color: var(--cinder-color-danger-fg);
+  color: var(--cinder-status-danger-text);
   font-weight: 600;
 }
 
 .weft-overview-tab__failure-explanation {
   margin: 0 0 10px;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 .weft-overview-tab__pending-result {
@@ -443,7 +443,7 @@
 .weft-send-tab__error {
   margin: 0;
   font-size: var(--cinder-text-xs);
-  color: var(--cinder-color-danger-fg);
+  color: var(--cinder-status-danger-text);
 }
 
 .weft-send-tab__result {

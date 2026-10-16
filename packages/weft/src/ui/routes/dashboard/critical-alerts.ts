@@ -6,18 +6,19 @@
  * is unit-testable without a DOM (PROJECT-BRIEF "pure logic ... gets
  * colocated bun test unit tests").
  *
- * The design mock also shows a "Lease contested" chip sourced from
- * `GET /v1/health` — omitted here. Verified against `weft` v0.11.0 that
- * `/v1/health` returns `{ status: 'ok' }` only (no lease/ownership fields)
- * and that no catalog operation exposes lease/ownership state at all
- * (grepped `operation-catalog.snapshot.json` and every `src/server/
- * operations/*.ts` for `lease`/`ownership`/`holder`/`epoch`/`contested`:
- * no matches). Filed upstream rather than fabricating a chip with no real
- * signal: https://github.com/stevekinney/weft/issues/723. A "workers
- * draining" chip is likewise out of this band's scope — this track's brief
- * names exactly three sources (task diagnostics, reviews near timeout,
- * lease/health), and worker fleet counts are the Workers card-slot's own
- * data to surface.
+ * The design mock's "Lease contested" chip is not in this band. It was first
+ * omitted because no catalog operation exposed lease or ownership state
+ * (filed upstream as https://github.com/stevekinney/weft/issues/723).
+ * COR-124 revisited the set once lease data existed and still adds no chip:
+ * that issue admits a band alert only when it is backed by
+ * `weft.workers.diagnostics`'s `sessionGeneration`/`heartbeatAgeMs` or
+ * `weft.tasks.get`'s `leaseDeadline`/`attemptDeadline`, and none of those
+ * yields a fleet-level contested signal without inference (the per-task
+ * deadlines need one `weft.tasks.get` per task, and expired in-flight leases
+ * already surface here as `staleInflight`). The engine's own ownership lease
+ * (`weft.system.lease`) is shown on the System route's Health & lease tab
+ * instead. A "workers draining" chip stays out of this band's scope — worker
+ * fleet counts are the Workers card-slot's own data to surface.
  */
 import type { PendingReviewEntry } from '@lostgradient/weft';
 

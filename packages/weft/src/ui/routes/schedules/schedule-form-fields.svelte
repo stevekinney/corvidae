@@ -314,10 +314,10 @@
     align-items: flex-start;
     gap: 9px;
     padding: 10px 12px;
-    background: var(--cinder-color-warning-bg);
-    border: 1px solid var(--cinder-color-warning-border);
+    background: var(--cinder-status-warning-background);
+    border: 1px solid var(--cinder-status-warning-border);
     border-radius: var(--cinder-radius-md);
-    color: var(--cinder-color-warning-fg);
+    color: var(--cinder-status-warning-text);
     font-size: var(--cinder-text-xs);
   }
 

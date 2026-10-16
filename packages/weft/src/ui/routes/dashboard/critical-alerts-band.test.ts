@@ -12,6 +12,7 @@ import { tick } from 'svelte';
 
 import { HttpClient, HttpClientError } from '@lostgradient/weft';
 
+import { TASK_HEARTBEAT_STALE_AFTER_MS } from '../workers/worker-catalog-types.ts';
 import CriticalAlertsBandHarness from './critical-alerts-band-test-harness.test-harness.svelte';
 
 // This component waits for two independently scheduled TanStack Query
@@ -44,14 +45,20 @@ const EMPTY_DIAGNOSTICS_SUMMARY = {
   unadoptedTerminal: 0,
 };
 
-function alertClient(options: { diagnostics: unknown; reviews: unknown }): HttpClient {
+function alertClient(options: {
+  diagnostics: unknown;
+  reviews: unknown;
+  diagnosticsInputs?: unknown[];
+}): HttpClient {
   const client = new HttpClient({ baseUrl: 'http://weft.test/api' });
   Object.defineProperty(client, 'operations', {
     value: {
-      'weft.tasks.diagnostics': () =>
-        options.diagnostics instanceof HttpClientError
+      'weft.tasks.diagnostics': (input: unknown) => {
+        options.diagnosticsInputs?.push(input);
+        return options.diagnostics instanceof HttpClientError
           ? Promise.reject(options.diagnostics)
-          : Promise.resolve(options.diagnostics),
+          : Promise.resolve(options.diagnostics);
+      },
     },
   });
   Object.defineProperty(client, 'listReviews', { value: () => Promise.resolve(options.reviews) });
@@ -73,6 +80,25 @@ describe('CriticalAlertsBand', () => {
     await waitForSettledQueries(queryClient);
     expect(queryByLabelText('Loading alerts')).toBeNull();
     expect(container.textContent).toBe('');
+  });
+
+  test('asks for stale heartbeats at the Workers route threshold', async () => {
+    const diagnosticsInputs: unknown[] = [];
+    const client = alertClient({
+      diagnostics: { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
+      reviews: [],
+      diagnosticsInputs,
+    });
+
+    let queryClient!: QueryClient;
+    render(CriticalAlertsBandHarness, {
+      props: { client, onQueryClientReady: (value) => (queryClient = value) },
+    });
+
+    await waitForSettledQueries(queryClient);
+    expect(diagnosticsInputs).toEqual([
+      expect.objectContaining({ staleHeartbeatAfterMs: TASK_HEARTBEAT_STALE_AFTER_MS }),
+    ]);
   });
 
   test('keeps the loading skeleton visible until both alert queries settle', async () => {

@@ -108,6 +108,11 @@ describe('System route', () => {
       nextSweepAt: null,
       workflowTypes: [],
     });
+    scripted?.routeJsonRpcMethod('weft.system.lease', {
+      mode: 'none',
+      status: 'disabled',
+      holdsLease: false,
+    });
 
     await fireEvent.click(await findByRole('tab', { name: 'Metrics' }));
     const metricsMatches = await findAllByText('Active workflows');
@@ -124,7 +129,8 @@ describe('System route', () => {
     ).not.toBeNull();
 
     await fireEvent.click(await findByRole('tab', { name: 'Health & lease' }));
-    expect(await findByText('Lease status not available')).not.toBeNull();
+    expect(await findByRole('heading', { name: 'Engine lease' })).not.toBeNull();
+    expect(await findByText('Lease ownership is not configured for this engine.')).not.toBeNull();
   });
 
   test('an unrecognized ?tab= value falls back to Registry rather than erroring', async () => {

@@ -20,22 +20,12 @@
    * other Tier-2 confirm in the console (`../workflows/detail/header.svelte`'s
    * cancel/force-timeout, `../storage/delete-panel.svelte`'s delete).
    *
-   * ## Lease status has no live signal to bind to — flagged, not faked
+   * ## Lease status
    *
-   * Verified against `weft` v0.11.0 (`src/core/engine/lease-manager.ts` and
-   * every file under `src/core/engine/`, plus every `src/server/operations/*`
-   * file): lease ownership/health (healthy / no-lease / contested) is
-   * entirely internal to `Engine` — no REST route, JSON-RPC operation, or
-   * metric exposes it. The plan's "lease status first (healthy / no-lease
-   * amber / contested red banner...)" and its Dashboard mirror (owned by
-   * Track C2) both assume a wire signal that doesn't exist yet. Filed
-   * upstream: https://github.com/stevekinney/weft/issues/738 (expose lease
-   * health via a public operation). Until it lands, this section says so
-   * plainly instead of rendering a fabricated "healthy" badge — a false
-   * "healthy" reading on an operator console is actively harmful during a
-   * real split-brain incident. `LEASE_STATUS_QUERY_KEY` is exported so a
-   * future implementation (here or on the Dashboard mirror) has one shared
-   * key to invalidate together the day a real endpoint exists.
+   * `lease-status-panel.svelte` reads `weft.system.lease` (COR-124) and
+   * renders disabled / no-lease / healthy / contested with the holder,
+   * fencing epoch, and lease instants. A failed or malformed read renders as
+   * a fault, never as a healthy badge.
    */
   import {
     Button,
@@ -44,7 +34,7 @@
     CopyButton,
     DescriptionList,
   } from '@lostgradient/cinder';
-  import { CircleAlert, Terminal } from '@lucide/svelte';
+  import { Terminal } from '@lucide/svelte';
   import { createMutation, createQuery } from '@tanstack/svelte-query';
   import type { RetentionOverview } from '@lostgradient/weft';
 
@@ -53,13 +43,10 @@
   import { queryKeys } from '../../lib/query.ts';
   import { showToast } from '../../app/toast-host.svelte';
   import { codegenPreviewSource, type RegistryLike } from './codegen-preview-source.ts';
+  import LeaseStatusPanel from './lease-status-panel.svelte';
   import QueryFaultBanner from './query-fault-banner.svelte';
 
   const client = getClient();
-
-  /** Exported per this module's lease-status doc above — no current consumer, a seam for when a real endpoint lands. */
-  export const LEASE_STATUS_QUERY_KEY = ['system', 'lease'] as const;
-  void LEASE_STATUS_QUERY_KEY;
 
   const retentionQuery = createQuery(() => ({
     queryKey: ['system', 'retention'],
@@ -85,18 +72,7 @@
 </script>
 
 <div class="weft-health-tab">
-  <div class="weft-health-tab__lease-note" role="status">
-    <CircleAlert aria-hidden="true" size={16} />
-    <div>
-      <div class="weft-health-tab__lease-note-title">Lease status not available</div>
-      <div class="weft-health-tab__lease-note-body">
-        This server doesn't expose lease ownership/health over the API yet — see
-        <a href="https://github.com/stevekinney/weft/issues/738" target="_blank" rel="noreferrer"
-          >stevekinney/weft#738</a
-        >. This banner will show healthy / no-lease / contested here once it does.
-      </div>
-    </div>
-  </div>
+  <LeaseStatusPanel />
 
   <div class="weft-health-tab__grid">
     <section class="weft-health-tab__panel">
@@ -209,28 +185,6 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
-  }
-
-  .weft-health-tab__lease-note {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 14px 16px;
-    background: var(--cinder-color-warning-bg);
-    border: 1px solid var(--cinder-color-warning-border);
-    border-radius: var(--cinder-radius-lg);
-    color: var(--cinder-color-warning-fg);
-  }
-
-  .weft-health-tab__lease-note-title {
-    font-size: var(--cinder-text-sm);
-    font-weight: 600;
-  }
-
-  .weft-health-tab__lease-note-body {
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-muted);
-    margin-top: 2px;
   }
 
   .weft-health-tab__grid {

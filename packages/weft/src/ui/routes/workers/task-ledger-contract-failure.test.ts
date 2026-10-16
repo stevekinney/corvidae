@@ -19,6 +19,8 @@ function failedTask(error: string) {
     attempt: 1,
     disposition: 'resolved',
     resultStatus: 'failed',
+    resultDigest: 'sha256:failed',
+    attempts: [],
     error,
     terminalAt: NOW - 10_000,
     adopted: true,

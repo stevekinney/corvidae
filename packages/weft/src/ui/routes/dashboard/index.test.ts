@@ -86,4 +86,48 @@ describe('Dashboard', () => {
     expect(getByText('Failures by category')).not.toBeNull();
     expect(getByText('Recent activity')).not.toBeNull();
   });
+
+  // COR-124 admits a critical-alerts chip only when it is backed by
+  // `weft.workers.diagnostics` or `weft.tasks.get` fields. Engine lease health
+  // lives on the System route's Health & lease tab, so even a contested
+  // `weft.system.lease` never reaches the band, and the Dashboard never asks.
+  test('never shows or requests a weft.system.lease chip, even when the lease is contested', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeUrl('/v1/health', { status: 'ok' });
+    scripted.routeJsonRpcMethod('weft.workflows.aggregate', {
+      total: 1,
+      groups: [{ key: 'running', count: 1 }],
+      truncated: false,
+    });
+    scripted.routeJsonRpcMethod('weft.tasks.diagnostics', {
+      items: [],
+      summary: {
+        stuckQueued: 0,
+        staleInflight: 0,
+        retryStorms: 0,
+        allWorkersAtCapacity: 0,
+        deadLettered: 2,
+        delayed: 0,
+        unadoptedTerminal: 0,
+      },
+      limit: 50,
+    });
+    scripted.routeUrl('/reviews', { items: [] });
+    scripted.routeJsonRpcMethod('weft.system.lease', {
+      mode: 'lease',
+      status: 'contested',
+      holdsLease: false,
+      lossReason: 'deposed',
+    });
+    const client = realClient();
+
+    const { findByText, queryByText } = render(DashboardIndexHarness, { props: { client } });
+
+    await findByText('2 dead-lettered tasks', undefined, { timeout: 3_000 });
+    expect(queryByText(/lease contested/i)).toBeNull();
+    const requestBodies = scripted.calls.map((call) =>
+      typeof call.init?.body === 'string' ? call.init.body : '',
+    );
+    expect(requestBodies.some((body) => body.includes('weft.system.lease'))).toBe(false);
+  });
 });

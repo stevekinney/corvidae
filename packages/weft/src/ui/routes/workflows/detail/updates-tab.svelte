@@ -138,9 +138,9 @@
           {#if entry.status === 'pending'}
             <span class="weft-send-tab__spinner" aria-hidden="true"></span>
           {:else if entry.status === 'completed'}
-            <CircleCheck aria-hidden="true" size={15} color="var(--cinder-color-success-fg)" />
+            <CircleCheck aria-hidden="true" size={15} color="var(--cinder-status-success-text)" />
           {:else}
-            <CircleX aria-hidden="true" size={15} color="var(--cinder-color-danger-fg)" />
+            <CircleX aria-hidden="true" size={15} color="var(--cinder-status-danger-text)" />
           {/if}
           <div class="weft-send-tab__history-name">
             {entry.name}
@@ -155,7 +155,9 @@
                 {JSON.stringify(entry.result)}
               </div>
             {:else}
-              <div style="font-size: var(--cinder-text-xs); color: var(--cinder-color-danger-fg);">
+              <div
+                style="font-size: var(--cinder-text-xs); color: var(--cinder-status-danger-text);"
+              >
                 {entry.error}
               </div>
             {/if}
@@ -238,7 +240,7 @@
     flex: none;
     width: 13px;
     height: 13px;
-    border: 2px solid var(--cinder-info);
+    border: 2px solid var(--cinder-status-info-solid);
     border-top-color: transparent;
     border-radius: 50%;
     display: inline-block;

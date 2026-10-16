@@ -15,6 +15,10 @@ import { Window, type DetachedWindowAPI } from 'happy-dom';
 import { createQueryClient } from '../../lib/query.ts';
 import { router } from '../../lib/router.svelte.ts';
 import WorkersRoute from './index.svelte';
+import {
+  DEFAULT_TASK_DIAGNOSTICS_INPUT,
+  TASK_HEARTBEAT_STALE_AFTER_MS,
+} from './worker-catalog-types.ts';
 import WorkersRouteTestHarness from './workers-route-test-harness.test-harness.svelte';
 import {
   realClient,
@@ -161,6 +165,38 @@ describe('Workers route — Diagnostics tab', () => {
     expect(await findByText('Retry storm')).not.toBeNull();
     await fireEvent.click(await findByRole('button', { name: 'Inspect ledger' }));
     expect(await findByText('Authoritative task ledger')).not.toBeNull();
+  });
+
+  test('a heartbeat 60–120s old reads stale in task detail, as it does in the diagnostics row', async () => {
+    const now = Date.now();
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, {
+      diagnosticsItems: [diagnosticItem({ kind: 'stale-inflight', queue: 'payments' })],
+      diagnosticsSummary: { ...EMPTY_DIAGNOSTICS_SUMMARY, staleInflight: 1 },
+    });
+    scripted.routeJsonRpcMethod('weft.tasks.get', {
+      ...taskLedgerDetailFixture(),
+      operationId: 'op_dead_1',
+      state: 'leased',
+      availableAt: undefined,
+      leaseDeadline: now + 20_000,
+      startedAt: now - 120_000,
+      lastHeartbeatAt: now - 90_000,
+    });
+
+    const { container, findByRole, findByText } = await renderWorkersRoute();
+
+    await fireEvent.click(await findByRole('tab', { name: 'Diagnostics' }));
+    await fireEvent.click(await findByRole('button', { name: 'Inspect ledger' }));
+    expect(await findByText('Authoritative task ledger')).not.toBeNull();
+    const heartbeat = container.querySelector<HTMLElement>('[data-clock="heartbeat"]');
+    expect(heartbeat?.textContent).not.toContain('Fresh');
+    expect(heartbeat?.textContent).toContain(
+      `Stale after ${TASK_HEARTBEAT_STALE_AFTER_MS / 60_000}m without a heartbeat.`,
+    );
+    expect(DEFAULT_TASK_DIAGNOSTICS_INPUT.staleHeartbeatAfterMs).toBe(
+      TASK_HEARTBEAT_STALE_AFTER_MS,
+    );
   });
 
   test('a zeroed summary renders the "No diagnostics" empty state', async () => {

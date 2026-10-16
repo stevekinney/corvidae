@@ -371,7 +371,7 @@
     align-items: center;
     gap: 7px;
     padding: 7px 10px;
-    background: color-mix(in oklch, var(--cinder-accent), transparent 92%);
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-2xs);
     color: var(--cinder-accent-text);

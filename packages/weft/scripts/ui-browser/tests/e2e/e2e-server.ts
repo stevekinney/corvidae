@@ -40,10 +40,12 @@ import { seedWorkflowRevisions } from '../../../../src/ui/fixtures/workflow-revi
 import { seed, workflows } from '../../../../src/ui/fixtures/workflows.ts';
 import {
   E2E_API_KEY,
+  E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
   E2E_SERVER_PORT,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
+import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
 
 // `AUTHORIZATION_SCOPES` became a public export of
 // `@lostgradient/weft` in weft 0.18.0, so this file no longer keeps a
@@ -59,6 +61,7 @@ const engine = await Engine.create({ workflows });
 const server = serve({
   engine,
   port: E2E_SERVER_PORT,
+  cancellationGracePeriodMs: E2E_CANCELLATION_GRACE_PERIOD_MS,
   auth: {
     apiKeys: [E2E_API_KEY],
     defaultApiKeyScopes: ALL_SCOPES,
@@ -132,10 +135,16 @@ for (let attempt = 0; attempt < 5; attempt += 1) {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 
+// COR-124: a leased task on its second, heartbeating attempt, plus requested
+// and acknowledged cancellations, all produced by a real worker against this
+// server's real task ledger. See `ledger-evidence-seed.ts`.
+await seedLedgerEvidence(server);
+
 process.stdout.write(
   [
     `weft E2E server listening on ${server.url}`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
+    'Seeded COR-124 attempt, lease, and cancellation evidence',
     'Registered dynamic workflow sources for invoice-reconciliation',
   ].join('\n') + '\n',
 );

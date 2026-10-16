@@ -467,7 +467,7 @@
   .weft-fork-dialog__error {
     margin: 0;
     font-size: var(--cinder-text-2xs);
-    color: var(--cinder-color-danger-fg);
+    color: var(--cinder-status-danger-text);
   }
 
   .weft-fork-dialog__conflict {
@@ -475,15 +475,15 @@
     flex-direction: column;
     gap: 6px;
     padding: 9px 12px;
-    background: var(--cinder-color-warning-bg);
-    border: 1px solid var(--cinder-color-warning-border);
+    background: var(--cinder-status-warning-background);
+    border: 1px solid var(--cinder-status-warning-border);
     border-radius: var(--cinder-radius-md);
   }
 
   .weft-fork-dialog__conflict p {
     margin: 0;
     font-size: var(--cinder-text-xs);
-    color: var(--cinder-color-warning-fg);
+    color: var(--cinder-status-warning-text);
   }
 
   .weft-fork-dialog__success {
@@ -491,8 +491,8 @@
     align-items: center;
     gap: 8px;
     padding: 9px 12px;
-    background: var(--cinder-color-success-bg);
-    border: 1px solid var(--cinder-color-success-border);
+    background: var(--cinder-status-success-background);
+    border: 1px solid var(--cinder-status-success-border);
     border-radius: var(--cinder-radius-md);
     font-size: var(--cinder-text-sm);
   }
