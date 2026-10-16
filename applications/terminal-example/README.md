@@ -34,14 +34,16 @@ The Ctrl+C that stops the server first revokes every session and waits for each 
 
 ## What is in the page
 
-The page renders the `Terminal` component and offers four server-owned profiles. The page picks an identifier and whether it wants to be read-only, and nothing else: it never sends an executable, an argument, a working directory or an environment, and the server refuses a request that carries any of them.
+The page renders the `Terminal` component and offers five server-owned profiles. The page picks an identifier and whether it wants to be read-only, and nothing else: it never sends an executable, an argument, a working directory or an environment, and the server refuses a request that carries any of them.
 
 - `shell`: your login shell, `$SHELL -l` (or the shell your account records when `$SHELL` is unset), on a pseudo-terminal, started in your home directory. Its environment is explicit rather than inherited: `TERM`, `COLORTERM`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `LANG` and `PATH` from the host. There is no fallback shell: a missing one is reported as unavailable.
 - `fullscreen`: a small committed `sh` program that takes over the alternate screen, counts the keys it is given and leaves on `q`. A committed script rather than `vi` or `less` so it behaves the same on every host.
 - `diagnostic`: a committed `sh` program on pipes, with standard output and standard error in two `Terminal` views side by side. It reads no input and exits with status 3.
 - `readonly-output`: a read-only replay of a committed byte fixture (`src/server/fixtures/replay.ansi`, colour, Unicode, a carriage-return rewrite and enough lines to scroll) that is the same bytes every time.
 
-The contract froze the identifiers `shell`, `readonly-output` and `diagnostic`; `fullscreen` is the fourth behavior. A profile with no input channel (`diagnostic` and `readonly-output`) is granted read-only whatever the page asks for.
+- `links`: a read-only replay of a committed fixture (`src/server/fixtures/links.ansi`) with visible HTTPS text, a hidden OSC 8 destination, a path, a command scheme, an insecure address and a download-looking address, for reviewing the host-enabled link behavior.
+
+The contract froze the identifiers `shell`, `readonly-output` and `diagnostic`; `fullscreen` and `links` are the behaviors this example adds. A profile with no input channel (`diagnostic` and `readonly-output`) is granted read-only whatever the page asks for.
 
 What to try, each of which `bun run --filter=@lostgradient/terminal-example test:browser` also proves:
 
@@ -51,6 +53,20 @@ What to try, each of which `bun run --filter=@lostgradient/terminal-example test
 - **Search, accessible output and export.** The toolbar under the output searches the retained text, clears it locally, and opens a snapshot dialog you can read, copy or download. `Announce output` mirrors output to a screen-reader live region. Both are bounded; the [terminal README](../../components/terminal/README.md) lists the bounds.
 - **Read-only mode.** `Open read-only` asks for a read-only grant. The server then gives the session no input and no resize, the terminal sends nothing (not even its automatic replies to terminal queries), and selection and scrolling still work.
 - **Mouse reporting.** `Report the mouse` opts the terminal in to sending mouse reports to a program that asks for them, only while `Capture terminal keys` is on and the session is writable.
+
+## Review controls
+
+The `Review controls` section of the page (collapsed by default) exists for the human review in `documentation/terminal/review-runbook.md`. It lets a reviewer put the terminal into each state of the specification and hold it there. None of it lets the page choose an executable, argument, directory or environment: the server still owns every profile, and the controls only change what the page shows or when it acts.
+
+- **Theme**: `Light` and `Dark` set `data-theme` on the page.
+- **Empty**: `?autostart=off` on the address (after the start URL has enrolled the browser), or `Show empty`, leaves the page in `empty` with `New session`.
+- **Loading and connecting**: `Hold the next session at` waits at the page's own `loading` step (before it asks the server for a session) or `connecting` step (before it opens the socket) until `Release held session`. `Cancel` works while held. This delays the page's steps only.
+- **Denied and failed**: `Make the next session end in` sends a ticket the server never issued (the server denies the upgrade) or asks for a profile the server does not have (the server answers `400`). Both refusals are the real server's.
+- **Backpressure and cleanup incomplete**: injected. A real stalled process did not hold backpressure (the session ended as `failed` instead), so `Inject backpressure` hands the terminal the state; `Cancel` then leaves the session and its output alone, and `Clear the injected state` is the capacity acknowledgement. `Inject cleanup incomplete` ends the session and hands the terminal that state; `Check cleanup` reads the real cleanup result. A real `cleanup-incomplete` still comes from a background job (see Limits).
+- **Engine load failed**: injected. `Inject engine load failure` passes the state; the terminal's own `Retry` hands control back. `Remove the toolbar in 8 seconds` does the same after a delay, which removes the `Export` button while its dialog can be open.
+- **Links**: `Open visible HTTPS links` turns `onLinkActivate` on (off by default). The page opens the visible HTTPS address in a new tab with `noopener`.
+
+Every injected state is named as injected in the page, beside the session's own state.
 
 ## How it is wired
 
@@ -105,6 +121,7 @@ default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:
   - the policy, the cookie flags, and a foreign origin on `POST /session`;
   - the non-loopback refusal and its exit code;
   - the start URL: no token or a wrong one enrolls nothing, a page on another origin cannot enroll the browser, the printed URL opens the terminal, it admits one browser (or `--browsers` many), and the request body is bounded;
-  - the four profiles, read-only mode, disconnect, exit and restart, paste review, search and export, and cleanup of background and escaped jobs.
+  - the profiles, read-only mode, disconnect, exit and restart, paste review, search and export, and cleanup of background and escaped jobs;
+  - the review controls (`tests/review-controls.playwright.ts`): theme, `?autostart=off`, held loading and connecting with `Cancel`, a real denial and a real failure, injected engine failure, backpressure and cleanup incomplete, the links profile with links off and on, and focus after the `Export` button is removed.
 
 The Playwright checks are a separate script rather than part of `test`, like the playground's `test:browser` and the root `test:browser:terminal`: browser suites with real shells and a fixed port are explicit commands and are not part of the turbo `test` or `validate` graph.

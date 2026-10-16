@@ -4,6 +4,8 @@ import {
   describeRefusal,
   requestSession,
   requestSlotStatus,
+  requestUnknownProfile,
+  reverseTicket,
   waitForFreeSlot,
   type SessionRefusal,
 } from './session-request.ts';
@@ -109,5 +111,25 @@ describe('describeRefusal', () => {
       expect(message).not.toMatch(/\/bin|ticket|cookie=|argument/i);
     }
     expect(describeRefusal({ kind: 'failed', status: 500 })).toContain('500');
+  });
+});
+
+describe("the review controls' faults", () => {
+  test('requestUnknownProfile asks the server for an identifier it does not own, and keeps its answer', async () => {
+    const { fetcher, calls } = respond(json(400, { error: 'request' }));
+    const outcome = await requestUnknownProfile(fetcher);
+    expect(outcome).toEqual({ ok: false, refusal: { kind: 'failed', status: 400 } });
+    expect(calls[0]?.input).toBe('/session');
+    const body = JSON.parse(calls[0]?.init?.body as string) as Record<string, unknown>;
+    expect(Object.keys(body).toSorted()).toEqual(['profile', 'readOnly']);
+    expect(body['profile']).toBe('review-unknown-profile');
+  });
+
+  test('reverseTicket changes a ticket into a different string of the same length', () => {
+    const ticket = 'abc-123_XYZ';
+    const reversed = reverseTicket(ticket);
+    expect(reversed).not.toBe(ticket);
+    expect(reversed).toHaveLength(ticket.length);
+    expect(reverseTicket(reversed)).toBe(ticket);
   });
 });

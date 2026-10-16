@@ -3,13 +3,14 @@
  * arguments, working directory and environment of each profile live in `src/server/profiles.ts` and
  * never cross to the browser. The identifiers `shell`, `readonly-output` and `diagnostic` are the
  * ones `documentation/terminal/contract.md` froze; `fullscreen` is the fourth behavior the example
- * demonstrates.
+ * demonstrates, and `links` exists for the review controls (links to accept and to refuse).
  */
 export const PROFILE_IDENTIFIERS = [
   'shell',
   'fullscreen',
   'diagnostic',
   'readonly-output',
+  'links',
 ] as const;
 
 export type ProfileIdentifier = (typeof PROFILE_IDENTIFIERS)[number];
@@ -55,6 +56,15 @@ export const PROFILE_DESCRIPTIONS: Readonly<Record<ProfileIdentifier, ProfileDes
     label: 'Replay',
     title: 'Replay',
     summary: 'A read-only replay of a fixed set of bytes. The server never grants it input.',
+    transport: 'pipe',
+    interactive: false,
+  },
+  links: {
+    identifier: 'links',
+    label: 'Links',
+    title: 'Links',
+    summary:
+      'A read-only fixture with visible HTTPS text, a hidden OSC 8 destination, a path, a command scheme and a download-looking address.',
     transport: 'pipe',
     interactive: false,
   },

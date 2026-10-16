@@ -6,6 +6,7 @@ import { PROFILE_DESCRIPTIONS, PROFILE_IDENTIFIERS } from '../shared/profile-cat
 import {
   DIAGNOSTIC_PROGRAM,
   FULLSCREEN_PROGRAM,
+  LINKS_FIXTURE,
   loginShell,
   REPLAY_FIXTURE,
   resolveProfile,
@@ -22,6 +23,7 @@ describe('the profile table', () => {
     expect(PROFILE_IDENTIFIERS.toSorted()).toEqual([
       'diagnostic',
       'fullscreen',
+      'links',
       'readonly-output',
       'shell',
     ]);
@@ -70,7 +72,7 @@ describe('the profile table', () => {
   });
 
   test('the pipe demo and the replay are pipes that are never granted input', () => {
-    for (const identifier of ['diagnostic', 'readonly-output'] as const) {
+    for (const identifier of ['diagnostic', 'readonly-output', 'links'] as const) {
       // Whatever the page asked for.
       for (const readOnly of [false, true]) {
         const resolved = resolveProfile(identifier, readOnly, context);
@@ -88,8 +90,21 @@ describe('the profile table', () => {
     });
   });
 
+  test('the links fixture carries every kind of address the review needs', () => {
+    expect(resolveProfile('links', false, context)?.launch.profile).toMatchObject({
+      executable: '/bin/cat',
+      argumentList: [LINKS_FIXTURE],
+    });
+    const text = readFileSync(LINKS_FIXTURE, 'utf8');
+    expect(text).toContain('https://example.com/visible-link');
+    expect(text).toContain('\u001b]8;;https://hidden.example/secret\u001b\\');
+    expect(text).toContain('/etc/hosts');
+    expect(text).toContain('command:workbench.action.openSettings');
+    expect(text).toContain('archive.zip?download=1');
+  });
+
   test('every committed program and fixture exists, and the programs are executable by sh', () => {
-    for (const path of [REPLAY_FIXTURE, FULLSCREEN_PROGRAM, DIAGNOSTIC_PROGRAM]) {
+    for (const path of [REPLAY_FIXTURE, LINKS_FIXTURE, FULLSCREEN_PROGRAM, DIAGNOSTIC_PROGRAM]) {
       expect(existsSync(path)).toBe(true);
       expect(statSync(path).isFile()).toBe(true);
     }
@@ -99,7 +114,7 @@ describe('the profile table', () => {
   });
 
   test('programs other than the shell get a fixed environment and no host values but the locale', () => {
-    for (const identifier of ['fullscreen', 'diagnostic', 'readonly-output'] as const) {
+    for (const identifier of ['fullscreen', 'diagnostic', 'readonly-output', 'links'] as const) {
       expect(resolveProfile(identifier, false, context)?.launch.profile.environment).toEqual({
         TERM: 'xterm-256color',
         PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
