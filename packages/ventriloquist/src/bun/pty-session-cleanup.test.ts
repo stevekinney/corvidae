@@ -27,6 +27,13 @@ import {
  */
 const BACKGROUND_JOB = 'set -m; sleep 7919 & printf \'leader=%s job=%s \' "$$" "$!"; wait';
 
+/**
+ * A pipe has no terminal and so no job control: a job in a group of its own is one that put itself
+ * there, which is what this does.
+ */
+const OWN_GROUP_JOB =
+  'perl -e \'setpgrp(0, 0); $|=1; print "job=$$ "; exec "sleep", "7919"\' & printf \'leader=%s \' "$$"; wait';
+
 /** A job that ignores both the hang-up and TERM, so only KILL ends it. */
 const STUBBORN_JOB =
   'set -m; sh -c \'trap "" HUP TERM; printf "stubborn=%s " $$; while :; do sleep 1; done\' & printf \'leader=%s \' "$$"; wait';
@@ -105,7 +112,9 @@ describe('ending a PTY ends the jobs its shell started', () => {
     );
     const job = observed.pids['job'] as number;
     await run.exitReported;
-    const summary = await run.session.closed;
+    // On Linux the terminal reports the end of its output only when every holder of it has closed
+    // it, and the job still holds it, so the session is ended the way a host ends it.
+    const summary = await run.session.dispose();
     expect(summary).toMatchObject({ cleanup: 'complete', quarantined: false });
     expect(isAlive(job)).toBe(false);
   });
@@ -150,7 +159,7 @@ describe('a pipe is unchanged: its guarantee is the process group', () => {
   scenarioTest(
     'a background job in a group of its own is not claimed, and is reported unknown',
     async () => {
-      const run = runHosted(hostFor('pipe', shellProfile(BACKGROUND_JOB)));
+      const run = runHosted(hostFor('pipe', shellProfile(OWN_GROUP_JOB)));
       await run.waitForOutput('stdout', /job=\d+ /);
       const { leader, job } = pidsIn(textOf(bytesOnChannel(run.recorder, 'stdout')));
       try {
