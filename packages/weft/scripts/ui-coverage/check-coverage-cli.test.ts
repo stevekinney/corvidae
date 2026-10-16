@@ -124,7 +124,7 @@ describe('the UI coverage gate', () => {
     expect(errors).toEqual([]);
   });
 
-  test('names each regressed area, and the areas new to or missing from the run', async () => {
+  test('names each regressed area and each area new to the run, and fails on a recorded area missing from it', async () => {
     const errors = captureGateOutput();
     const report = [
       lcovRecord('src/ui/lib/client.ts', 1, 10),
@@ -149,9 +149,20 @@ describe('the UI coverage gate', () => {
     expect(console.log).toHaveBeenCalledWith(
       '\nNew area(s) with no recorded baseline yet (not gated): src/app',
     );
-    expect(console.log).toHaveBeenCalledWith(
-      '\nBaselined area(s) with no files in this run (rename/removal? not gated): src/routes/retired',
-    );
+    const missingArea =
+      "\nBaselined area(s) with no files in this run: src/routes/retired. A floor with nothing to measure gates nothing; restore the area's files to the run, or move its floor in scripts/ui-coverage/coverage-baseline.ts in the same change as the rename or removal.";
+    expect(errors).toContain(missingArea);
+
+    // Every measured area at or above its floor still fails while a recorded area has no files.
+    errors.length = 0;
+    expect(
+      await uiCoverageExitCode({
+        runCoverage: async () => 0,
+        readLcov: async () => lcovRecord('src/ui/lib/client.ts', 9, 10),
+        resolveBaseline: () => ({ baseline: recorded, platform: 'darwin' }),
+      }),
+    ).toBe(1);
+    expect(errors).toEqual([missingArea]);
   });
 
   test('fails without gating when the measurement fails or writes no report', async () => {

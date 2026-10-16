@@ -19,15 +19,17 @@
  * transport probe.
  */
 import { HttpClient } from '@lostgradient/weft';
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-// The two modules under test, imported directly rather than through `@lostgradient/weft/ui`: the
-// entry also evaluates the app shell (`app/app.svelte` and `app/shell/`), which this file does not
-// render, and loading it here would add those unexercised components to the UI coverage
-// ratchet's measured files (`scripts/ui-coverage/`), whose recorded floors never included them.
-import { createClient } from '../../../../src/ui/lib/client.ts';
-import { readRuntimeConfig } from '../../../../src/ui/lib/config.ts';
+// The two functions under test come through the UI's public entry, `@lostgradient/weft/ui`, as
+// they did when the UI was its own workspace: the entry (`src/ui/index.ts`) is the one file in the
+// coverage ratchet's `src` area, so this import is what keeps that recorded floor measured. The
+// entry also re-exports the app shell (`app/app.svelte`), which this file does not render and the
+// recorded `src/app` floor never measured; the shell is replaced before the entry loads, so it is
+// not evaluated here and the entry's own lines and both functions under test are real.
+mock.module('../../../../src/ui/app/app.svelte', () => ({ default: function WeftConsole() {} }));
+const { createClient, readRuntimeConfig } = await import('@lostgradient/weft/ui');
 
 const CONFIG_ELEMENT_ID = 'weft-ui-config';
 const CONSOLE_ORIGIN = 'https://weft-ui.example.com';

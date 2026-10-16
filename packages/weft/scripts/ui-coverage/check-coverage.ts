@@ -319,9 +319,9 @@ const REGRESSION_EPSILON = 1e-9;
  * Compare current per-area totals against the recorded baseline and report
  * every area whose line or function coverage dropped. An area present in the
  * baseline but absent from the current run (e.g. a directory rename) is
- * skipped here — {@link main} warns about it separately instead of gating on
- * a shape change this function can't distinguish from "coverage went to
- * zero."
+ * skipped here, because this function can't tell a shape change from
+ * "coverage went to zero"; `check-coverage-cli.ts` fails the gate on such an
+ * area separately, naming it as missing rather than as a regression.
  */
 export function findRegressions(
   current: ReadonlyMap<string, AreaCoverage>,

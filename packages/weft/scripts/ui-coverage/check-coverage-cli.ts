@@ -104,16 +104,20 @@ export async function checkUiCoverage(
   if (newAreas.length > 0) {
     console.log(`\nNew area(s) with no recorded baseline yet (not gated): ${newAreas.join(', ')}`);
   }
+  // A recorded floor with no files behind it would pass every run without measuring anything, so
+  // a baselined area missing from the run fails the gate rather than being skipped. A rename or a
+  // removal moves the floor in the same change, which is what the failure asks for.
   const droppedAreas = [...baselineAreas.keys()].filter(
     (area) => area !== 'OVERALL' && !currentAreas.has(area),
   );
   if (droppedAreas.length > 0) {
-    console.log(
-      `\nBaselined area(s) with no files in this run (rename/removal? not gated): ${droppedAreas.join(', ')}`,
+    console.error(
+      `\nBaselined area(s) with no files in this run: ${droppedAreas.join(', ')}. A floor with nothing to measure gates nothing; restore the area's files to the run, or move its floor in scripts/ui-coverage/coverage-baseline.ts in the same change as the rename or removal.`,
     );
   }
 
   const regressions = findRegressions(currentAreas, baselineAreas);
+  if (droppedAreas.length > 0 && regressions.length === 0) return false;
   if (regressions.length > 0) {
     console.error(`\n${regressions.length} coverage regression(s) vs. the recorded baseline:`);
     for (const regression of regressions) {
