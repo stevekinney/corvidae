@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   boundaryKind,
@@ -64,6 +67,21 @@ test('permits test setup values only when they are restored', () => {
 test('the executable repository has no unregistered environment reads', async () => {
   const root = new URL('..', import.meta.url).pathname;
   expect(await scanEnvironmentConfigurationPolicy(root)).toEqual([]);
+});
+
+test("skips Weft's generated dashboard but not other directories of that name", async () => {
+  const root = await mkdtemp(join(tmpdir(), 'environment-policy-'));
+  try {
+    const read = 'export const mode = process.env.NODE_ENV;\n';
+    await Bun.write(join(root, 'packages/weft/dashboard/assets/index-abc12345.js'), read);
+    await Bun.write(join(root, 'packages/example/src/dashboard/consumer.ts'), read);
+    const violations = await scanEnvironmentConfigurationPolicy(root);
+    expect(violations.map((violation) => violation.file)).toEqual([
+      'packages/example/src/dashboard/consumer.ts',
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('registers runtime and script boundaries separately', () => {
