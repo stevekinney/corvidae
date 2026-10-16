@@ -52,7 +52,9 @@ function hasHolderEvidence(value: Record<string, unknown>): boolean {
 }
 
 function hasNoHolderEvidence(value: Record<string, unknown>): boolean {
-  return value['holderId'] === undefined && HOLDER_TIMING_FIELDS.every((f) => value[f] === undefined);
+  return (
+    value['holderId'] === undefined && HOLDER_TIMING_FIELDS.every((f) => value[f] === undefined)
+  );
 }
 
 /**

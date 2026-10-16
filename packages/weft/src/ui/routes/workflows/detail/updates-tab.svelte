@@ -155,7 +155,9 @@
                 {JSON.stringify(entry.result)}
               </div>
             {:else}
-              <div style="font-size: var(--cinder-text-xs); color: var(--cinder-status-danger-text);">
+              <div
+                style="font-size: var(--cinder-text-xs); color: var(--cinder-status-danger-text);"
+              >
                 {entry.error}
               </div>
             {/if}
