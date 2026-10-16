@@ -366,12 +366,21 @@ export async function exportedText(page: Page): Promise<string> {
   const snapshot = page.getByRole('textbox', { name: 'Terminal output snapshot' });
   await expect(snapshot).toBeVisible();
   const text = await snapshot.inputValue();
+  // Arm the wait before closing: the native dialog's `close` event is the moment the Modal returns
+  // focus to Export, and its exit callback (the panel's own restore) follows a flush later.
+  const closed = page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const native = document.querySelector('dialog');
+        if (native === null || !native.open) resolve();
+        else native.addEventListener('close', () => resolve(), { once: true });
+      }),
+  );
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await closed;
   await expect(snapshot).toBeHidden();
-  // The dialog returns focus to Export when it starts closing and again when its exit completes,
-  // which is when its panel leaves the page. A caller that moved focus before that would be
-  // overridden by the second return, so wait for the panel to go, and then for Export.
-  await expect(page.locator('.cinder-modal__panel')).toHaveCount(0);
+  // Both returns have run once the flush after the `close` event has; only then is focus the spec's.
+  await frames(page, 3);
   await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
   return text;
 }
