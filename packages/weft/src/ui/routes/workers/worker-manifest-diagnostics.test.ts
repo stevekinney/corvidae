@@ -19,6 +19,7 @@ function response(overrides: Record<string, unknown> = {}): unknown {
         startedAt: 2,
         lastHeartbeatAt: 3,
         heartbeatAgeMs: 4,
+        sessionGeneration: 1,
       },
       deploymentVersion: {
         deploymentName: 'payments',
@@ -81,6 +82,19 @@ describe('parseWorkerDiagnosticsResponse', () => {
 
   test('returns null when the worker disconnected before detail resolved', () => {
     expect(parseWorkerDiagnosticsResponse({ worker: null })).toBeNull();
+  });
+
+  test('carries the session generation the server reports for the instance', () => {
+    expect(parseWorkerDiagnosticsResponse(response())?.instance.sessionGeneration).toBe(1);
+  });
+
+  test('rejects an instance without a numeric session generation', () => {
+    const value = response();
+    const worker = Reflect.get(value as object, 'worker') as { instance: Record<string, unknown> };
+    worker.instance['sessionGeneration'] = 'two';
+    expect(() => parseWorkerDiagnosticsResponse(value)).toThrow(
+      'malformed worker diagnostics at response.worker.instance.sessionGeneration',
+    );
   });
 
   test('rejects malformed nested contract data at the response boundary', () => {
