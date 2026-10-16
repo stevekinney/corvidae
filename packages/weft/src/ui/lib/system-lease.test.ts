@@ -64,6 +64,52 @@ describe('weft.system.lease', () => {
     expect(() => parseSystemLease(null)).toThrow('malformed engine lease response');
   });
 
+  test("accepts each of EngineLeaseHealth's coherent shapes", () => {
+    const { lossReason: _lossReason, ...holder } = CONTESTED;
+    const coherent = [
+      { mode: 'none', status: 'disabled', holdsLease: false },
+      { mode: 'lease', status: 'no-lease', holdsLease: false },
+      { ...holder, status: 'healthy', holdsLease: true },
+      holder,
+      CONTESTED,
+      { mode: 'lease', status: 'contested', holdsLease: false, lossReason: 'deposed' },
+    ];
+    for (const lease of coherent) expect(parseSystemLease(lease)).toEqual(lease);
+  });
+
+  test('rejects incoherent status, mode, holder, and loss-reason combinations', () => {
+    const { lossReason: _lossReason, ...holder } = CONTESTED;
+    const incoherent = [
+      // `healthy` must hold the lease and report its holder and instants.
+      { ...holder, status: 'healthy', holdsLease: false },
+      { mode: 'lease', status: 'healthy', holdsLease: true },
+      { ...holder, status: 'healthy', holdsLease: true, fencingEpoch: undefined },
+      // `disabled` pairs only with `mode: 'none'`, and only `disabled` does.
+      { mode: 'lease', status: 'disabled', holdsLease: false },
+      { mode: 'none', status: 'no-lease', holdsLease: false },
+      { ...holder, mode: 'none', status: 'healthy', holdsLease: true },
+      { mode: 'none', status: 'disabled', holdsLease: true },
+      // No other status is held, and holder evidence only belongs to a held or lost lease.
+      { mode: 'lease', status: 'no-lease', holdsLease: true },
+      { ...holder, status: 'no-lease' },
+      { ...CONTESTED, holdsLease: true },
+      // A loss reason belongs only to `contested`; without holder evidence it must be `deposed`.
+      { ...holder, status: 'healthy', holdsLease: true, lossReason: 'deposed' },
+      { mode: 'lease', status: 'contested', holdsLease: false },
+      {
+        mode: 'lease',
+        status: 'contested',
+        holdsLease: false,
+        lossReason: 'renewal-unconfirmable',
+      },
+    ];
+    for (const lease of incoherent) {
+      expect(() => parseSystemLease(lease), JSON.stringify(lease)).toThrow(
+        MalformedSystemLeaseError,
+      );
+    }
+  });
+
   test('presents every status in words, with the loss reason when one is reported', () => {
     expect(leaseStatusPresentation(parseSystemLease(CONTESTED))).toEqual({
       label: 'Contested',

@@ -40,6 +40,52 @@ function isOptionalNumber(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isFinite(value));
 }
 
+const HOLDER_TIMING_FIELDS = ['heldSince', 'expiresAt', 'lastRenewedAt', 'fencingEpoch'] as const;
+
+function hasHolderEvidence(value: Record<string, unknown>): boolean {
+  return (
+    typeof value['holderId'] === 'string' &&
+    HOLDER_TIMING_FIELDS.every(
+      (field) => typeof value[field] === 'number' && Number.isFinite(value[field]),
+    )
+  );
+}
+
+function hasNoHolderEvidence(value: Record<string, unknown>): boolean {
+  return value['holderId'] === undefined && HOLDER_TIMING_FIELDS.every((f) => value[f] === undefined);
+}
+
+/**
+ * The wire schema is flat, but Weft builds it from the `EngineLeaseHealth`
+ * union, so only these combinations are coherent:
+ * - `disabled` ⇔ `mode: 'none'`, not held, no holder evidence;
+ * - `no-lease`: `mode: 'lease'`, not held, no holder evidence;
+ * - `healthy`: `mode: 'lease'`, held, with the holder and its four instants;
+ * - `contested`: `mode: 'lease'`, not held, with either the holder evidence
+ *   (and an optional loss reason) or only the confirmed `deposed` reason.
+ * A loss reason is only coherent on `contested`.
+ */
+function isCoherentLease(value: Record<string, unknown>): boolean {
+  const { mode, status, holdsLease, lossReason } = value;
+  if (status !== 'contested' && lossReason !== undefined) return false;
+  switch (status) {
+    case 'disabled':
+      return mode === 'none' && holdsLease === false && hasNoHolderEvidence(value);
+    case 'no-lease':
+      return mode === 'lease' && holdsLease === false && hasNoHolderEvidence(value);
+    case 'healthy':
+      return mode === 'lease' && holdsLease === true && hasHolderEvidence(value);
+    case 'contested':
+      return (
+        mode === 'lease' &&
+        holdsLease === false &&
+        (hasHolderEvidence(value) || (lossReason === 'deposed' && hasNoHolderEvidence(value)))
+      );
+    default:
+      return false;
+  }
+}
+
 function isSystemLease(value: unknown): value is SystemLease {
   return (
     isRecord(value) &&
@@ -51,9 +97,8 @@ function isSystemLease(value: unknown): value is SystemLease {
     (value['lossReason'] === undefined ||
       value['lossReason'] === 'deposed' ||
       value['lossReason'] === 'renewal-unconfirmable') &&
-    ['heldSince', 'expiresAt', 'lastRenewedAt', 'fencingEpoch'].every((field) =>
-      isOptionalNumber(value[field]),
-    )
+    HOLDER_TIMING_FIELDS.every((field) => isOptionalNumber(value[field])) &&
+    isCoherentLease(value)
   );
 }
 

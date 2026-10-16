@@ -122,12 +122,32 @@ describe('HealthTab', () => {
     unmount();
   });
 
-  test('a healthy lease without timing fields says so instead of inventing them', async () => {
+  test('a healthy lease reports its holder and fencing epoch', async () => {
+    scripted = scriptedWithLease({
+      mode: 'lease',
+      status: 'healthy',
+      holdsLease: true,
+      holderId: 'engine-a',
+      heldSince: 1_700_000_000_000,
+      expiresAt: 1_700_000_030_000,
+      lastRenewedAt: 1_700_000_010_000,
+      fencingEpoch: 3,
+    });
+    routeBaseline(scripted);
+    const { findByText, getByText, queryByText, unmount } = await renderHealthTab();
+    expect(await findByText('Healthy')).not.toBeNull();
+    expect(getByText('engine-a')).not.toBeNull();
+    expect(getByText('3')).not.toBeNull();
+    expect(queryByText('Not reported')).toBeNull();
+    unmount();
+  });
+
+  test('a healthy lease without its holder evidence is malformed, never a healthy badge', async () => {
     scripted = scriptedWithLease({ mode: 'lease', status: 'healthy', holdsLease: true });
     routeBaseline(scripted);
-    const { findByText, getAllByText, unmount } = await renderHealthTab();
-    expect(await findByText('Healthy')).not.toBeNull();
-    expect(getAllByText('Not reported')).toHaveLength(5);
+    const { findByText, queryByText, unmount } = await renderHealthTab(queryClientWithoutRetries());
+    expect(await findByText('Malformed server response')).not.toBeNull();
+    expect(queryByText('Healthy')).toBeNull();
     unmount();
   });
 
