@@ -28,6 +28,7 @@
     buildReviewsNearTimeoutChip,
     type AlertChip,
   } from './critical-alerts.ts';
+  import { TASK_HEARTBEAT_STALE_AFTER_MS } from '../workers/worker-catalog-types.ts';
 
   const client = getClient();
   const principal = getPrincipalStore();
@@ -41,11 +42,13 @@
    * `DEFAULT_STALE_QUEUED_AFTER_MS`/etc.) — the generated type is derived
    * from the schema's post-default output shape, not its optional input
    * shape. Passed explicitly here, matching the server defaults verbatim, so
-   * this call means exactly what an empty `{}` means server-side.
+   * this call means exactly what an empty `{}` means server-side. The
+   * heartbeat threshold is the Workers route's, so a stale-inflight chip and
+   * the Workers diagnostics it links to cannot disagree.
    */
   const DIAGNOSTICS_DEFAULT_INPUT = {
     staleQueuedAfterMs: 60_000,
-    staleHeartbeatAfterMs: 60_000,
+    staleHeartbeatAfterMs: TASK_HEARTBEAT_STALE_AFTER_MS,
     retryStormMinimumAttempts: 3,
     includeExpectedDelayed: true,
     unadoptedAfterMs: 60_000,
