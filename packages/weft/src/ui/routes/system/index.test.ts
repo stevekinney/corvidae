@@ -12,7 +12,11 @@ import { router } from '../../lib/router.svelte.ts';
 import SystemRoute from './index.svelte';
 import type { RegistrySnapshotSource } from './registry-view.ts';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
-import { realClient, ScriptedFetch } from './system-test-support.test-support.ts';
+import {
+  realClient,
+  ScriptedFetch,
+  withContractHashes,
+} from './system-test-support.test-support.ts';
 
 let scripted: ScriptedFetch | undefined;
 
@@ -54,7 +58,7 @@ async function renderSystemRoute(
   },
 ) {
   scripted = new ScriptedFetch();
-  scripted.routeJsonRpcMethod('weft.system.registry', registry);
+  scripted.routeJsonRpcMethod('weft.system.registry', await withContractHashes(registry));
   // The "deep-linking to ?tab=alerts" test below mounts `<AlertsTab>`, which
   // subscribes to the harness's shared `FleetEventSource` on mount — an
   // open-ended stream avoids a real fetch failure driving a background

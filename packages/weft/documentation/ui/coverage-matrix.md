@@ -52,7 +52,7 @@ Four dashboard issues own work that no `tracked` row can carry today. COR-166 (c
 | `weft.system.lease` | exposed | `src/ui/lib/system-lease.ts` |  | `src/ui/lib/system-lease.test.ts` | COR-124 |  |
 | `weft.system.metrics` | exposed | `src/ui/routes/system/metrics-tab.svelte` |  | `src/ui/routes/system/metrics-tab.test.ts` |  |  |
 | `weft.system.principal` | exposed | `src/ui/lib/scopes.svelte.ts` |  | `src/ui/lib/scopes.svelte.test.ts` |  |  |
-| `weft.system.registry` | exposed | `src/ui/routes/system/registry-tab.svelte` |  | `src/ui/routes/system/registry-tab.test.ts` | COR-162 |  |
+| `weft.system.registry` | exposed | `src/ui/routes/workers/workers-data.ts` |  | `src/ui/routes/workers/workers-registry-data.test.ts` | COR-162 |  |
 | `weft.task.queues.list` | exposed | `src/ui/routes/workers/workers-data.ts` |  | `src/ui/routes/workers/index.test.ts` |  |  |
 | `weft.tasks.deadletters.get` | tracked |  |  |  | COR-284 |  |
 | `weft.tasks.deliveries` | tracked |  |  |  | COR-284 |  |

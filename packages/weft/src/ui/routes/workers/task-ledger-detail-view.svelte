@@ -4,6 +4,8 @@
   import { formatDuration, formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import TaskAttemptHistory from './task-attempt-history.svelte';
   import TaskLeasePanel from './task-lease-panel.svelte';
+  import ContractFailureNotice from './contract-failure-notice.svelte';
+  import { classifyContractFailure } from './contract-verification.ts';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';
 
   interface TaskLedgerDetailViewProps {
@@ -27,6 +29,9 @@
     task.activityName.startsWith(`${task.workflowType}.`)
       ? task.activityName
       : `${task.workflowType}.${task.activityName}`,
+  );
+  const contractFailure = $derived(
+    task.error === undefined ? undefined : classifyContractFailure(task.error),
   );
   const isDelayed = $derived(task.state === 'queued' && (task.availableAt ?? 0) > now);
   const retryAvailable = $derived(
@@ -139,6 +144,10 @@
     <Alert variant="warning"
       >The terminal result is durable but has not been adopted by its workflow.</Alert
     >
+  {/if}
+
+  {#if contractFailure}
+    <ContractFailureNotice failure={contractFailure} />
   {/if}
 
   {#if refreshing}
