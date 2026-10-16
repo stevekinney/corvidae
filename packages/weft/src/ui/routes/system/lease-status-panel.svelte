@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * Engine ownership-lease status from `weft.system.lease` (COR-124), the
-   * target of the Dashboard's "Engine lease contested" chip. Loading,
+   * Engine ownership-lease status from `weft.system.lease` (COR-124). This
+   * tab is the dashboard's only reader of that operation. Loading,
    * malformed response, and server faults are explicit; a failed read never
    * renders as healthy.
    */

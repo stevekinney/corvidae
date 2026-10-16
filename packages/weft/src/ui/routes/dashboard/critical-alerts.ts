@@ -6,17 +6,21 @@
  * is unit-testable without a DOM (PROJECT-BRIEF "pure logic ... gets
  * colocated bun test unit tests").
  *
- * The design mock's "Lease contested" chip is backed by `weft.system.lease`
- * (`buildLeaseContestedChip`, COR-124). It was omitted while no catalog
- * operation exposed lease or ownership state (filed upstream as
- * https://github.com/stevekinney/weft/issues/723); the chip appears only when
- * that operation reports `status: 'contested'`, never from inference. A
- * "workers draining" chip stays out of this band's scope — worker fleet
- * counts are the Workers card-slot's own data to surface.
+ * The design mock's "Lease contested" chip is not in this band. It was first
+ * omitted because no catalog operation exposed lease or ownership state
+ * (filed upstream as https://github.com/stevekinney/weft/issues/723).
+ * COR-124 revisited the set once lease data existed and still adds no chip:
+ * that issue admits a band alert only when it is backed by
+ * `weft.workers.diagnostics`'s `sessionGeneration`/`heartbeatAgeMs` or
+ * `weft.tasks.get`'s `leaseDeadline`/`attemptDeadline`, and none of those
+ * yields a fleet-level contested signal without inference (the per-task
+ * deadlines need one `weft.tasks.get` per task, and expired in-flight leases
+ * already surface here as `staleInflight`). The engine's own ownership lease
+ * (`weft.system.lease`) is shown on the System route's Health & lease tab
+ * instead. A "workers draining" chip stays out of this band's scope — worker
+ * fleet counts are the Workers card-slot's own data to surface.
  */
 import type { PendingReviewEntry } from '@lostgradient/weft';
-
-import type { SystemLease } from '../../lib/system-lease.ts';
 
 /** Mirrors `TaskDiagnosticsSummary` (`weft/src/server/operations/get-task-diagnostics.ts`) — named locally since it isn't a public `@lostgradient/weft` export. */
 export interface TaskDiagnosticsSummary {
@@ -151,24 +155,5 @@ export function buildReviewsNearTimeoutChip(
     tone: 'warning',
     label: `${count} ${pluralize(count, 'review', 'reviews')} near timeout`,
     href: '/reviews',
-  };
-}
-
-const LEASE_LOSS_LABEL: Readonly<Record<NonNullable<SystemLease['lossReason']>, string>> = {
-  deposed: 'deposed',
-  'renewal-unconfirmable': 'renewal unconfirmable',
-};
-
-/** Builds the "Lease contested" chip from `weft.system.lease`, or `null` unless it reports `contested`. */
-export function buildLeaseContestedChip(lease: SystemLease | undefined): AlertChip | null {
-  if (lease?.status !== 'contested') return null;
-  return {
-    id: 'lease-contested',
-    icon: 'shield-alert',
-    tone: 'danger',
-    label: lease.lossReason
-      ? `Engine lease contested · ${LEASE_LOSS_LABEL[lease.lossReason]}`
-      : 'Engine lease contested',
-    href: '/system?tab=health',
   };
 }
