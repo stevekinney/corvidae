@@ -68,13 +68,13 @@ Terminal output is text. HTML, script, and escape sequences never become DOM or 
 
 ## Human review verdict
 
-The human design and accessibility review (COR-471) is performed by the named reviewer with VoiceOver in Safari and Chrome against `applications/terminal-example`. The task rows, versions, screenshots, findings, inherent limits, and acceptance are recorded in [`documentation/terminal/review-evidence.md`](../../../../../../documentation/terminal/review-evidence.md); the procedure is in [`documentation/terminal/review-runbook.md`](../../../../../../documentation/terminal/review-runbook.md). Automated browser and axe passes do not satisfy this verdict. The fields below stay blank until the reviewer records them.
+The human design and accessibility review (COR-471) is performed by the named reviewer with VoiceOver in Safari and Chrome against `applications/terminal-example`. The task rows, versions, screenshots, findings, inherent limits, and acceptance are recorded in [`documentation/terminal/review-evidence.md`](../../../../../../documentation/terminal/review-evidence.md); the procedure is in [`documentation/terminal/review-runbook.md`](../../../../../../documentation/terminal/review-runbook.md). Automated browser and axe passes do not satisfy this verdict. The verdict below records the reviewer's sign-off.
 
-| Field                              | Value |
-| ---------------------------------- | ----- |
-| Reviewer                           |       |
-| Date                               |       |
-| Reviewed source SHA                |       |
-| Engine version                     |       |
-| Verdict (accepted or not accepted) |       |
-| Blocking findings open             |       |
+| Field                              | Value                                            |
+| ---------------------------------- | ------------------------------------------------ |
+| Reviewer                           | Steve Kinney                                     |
+| Date                               | 2026-10-16                                       |
+| Reviewed source SHA                | `45d4daaa`, with the finding fixes at `7ef388ce` |
+| Engine version                     | `@xterm/xterm` 6.0.0                             |
+| Verdict (accepted or not accepted) | Accepted                                         |
+| Blocking findings open             | None. Findings A and B are fixed in COR-1540     |
