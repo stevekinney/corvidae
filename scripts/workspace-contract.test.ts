@@ -189,11 +189,12 @@ describe('internal workspace architecture', () => {
       // A workspace whose coverage run is its fast suite plus instrumentation, and writes the same
       // JUnit report, runs that suite once, in `coverage`, rather than twice.
       `bun run test ${coverageReplacesTest.map((workspace) => `--filter=!${workspace}`).join(' ')}`,
-      // COR-1499: slow correctness tests run serially after the fast phase, then the duration report
-      // (warnings only) reads the fast phase's reports.
+      // COR-1499: slow correctness tests run serially after the fast phase. The duration report
+      // (warnings only) follows coverage, because a coverage run that replaces a workspace's fast
+      // suite writes that workspace's fast-lane report.
       'bun run test:slow',
-      'bun run report:test-durations',
       'bun run coverage',
+      'bun run report:test-durations',
       'bun run build',
       'bun run format:check',
       'bun run audit',
