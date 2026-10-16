@@ -243,6 +243,25 @@ describe('dashboard coverage matrix checker', () => {
     ]);
   });
 
+  test('fails when an exposed row leaves Location or Test empty', async () => {
+    const withoutLocation = replaceRow(
+      readMatrix(),
+      'weft.alerts.list',
+      '| `weft.alerts.list` | exposed | | | `src/ui/routes/system/alerts-tab.test.ts` | | |',
+    );
+    expect(await checkCoverageMatrix(withoutLocation, context)).toEqual([
+      'weft.alerts.list: an exposed row must name its Location.',
+    ]);
+    const withoutTest = replaceRow(
+      readMatrix(),
+      'weft.alerts.list',
+      '| `weft.alerts.list` | exposed | `src/ui/routes/system/alerts-tab.svelte` | | | | |',
+    );
+    expect(await checkCoverageMatrix(withoutTest, context)).toEqual([
+      'weft.alerts.list: an exposed row must name its Test.',
+    ]);
+  });
+
   test("fails when a Method does not send its operation's REST binding", async () => {
     const markdown = replaceRow(
       readMatrix(),
