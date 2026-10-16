@@ -178,7 +178,7 @@ describe('spawning functions', () => {
       join(import.meta.dir, 'fixture.test.ts'),
       '@lostgradient/testing',
     );
-    expect(resolved?.endsWith(join('packages', 'testing', 'src', 'index.ts'))).toBe(true);
+    expect(resolved?.endsWith(join('testing', 'testing', 'src', 'index.ts'))).toBe(true);
   });
 });
 
