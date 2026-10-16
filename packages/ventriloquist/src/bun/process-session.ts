@@ -7,20 +7,31 @@ import {
 } from './process-group.ts';
 
 /**
- * Whether a process state means the process can no longer run. `Z` is a zombie, waiting to be
- * reaped, which macOS refuses to signal. `?` is how macOS prints a process the kernel is tearing
- * down; `getsid` fails on it, though it is not yet a zombie, and it is on its way to being one.
+ * Whether a process state means the process can no longer run: `Z`, a zombie, which only waits to
+ * be reaped and which macOS refuses to signal. Nothing else is assumed gone. macOS also prints `?`
+ * (seen as `?NEs`, named like `(bash)`) for processes whose session `getsid` cannot read while
+ * `kill(pid, 0)` still succeeds; its `ps(1)` page documents only `I R S T U Z`, so that `?` means
+ * "being torn down" could not be established and such a process gets the same second look, and the
+ * same scoping, as any other whose session cannot be read.
  */
 export function isGone(state: string): boolean {
-  return state.startsWith('Z') || state.startsWith('?');
+  return state.startsWith('Z');
 }
 
-/** One process and the state letters `ps` reports for it. */
-export type ProcessState = { readonly pid: number; readonly state: string };
+/**
+ * One process as `ps` lists it. `parentPid` and `group` say how it relates to the session being
+ * ended; where they are absent the process is treated as possibly related.
+ */
+export type ProcessState = {
+  readonly pid: number;
+  readonly state: string;
+  readonly parentPid?: number;
+  readonly group?: number;
+};
 
 /**
- * Read `pid stat` rows, as `ps -A -o pid=,stat=` prints them. A row that is not a pid and a state
- * fails the read.
+ * Read `pid ppid pgid stat` rows, as `ps -A -o pid=,ppid=,pgid=,stat=` prints them. A row that is
+ * not three integers and a state fails the read.
  */
 export function parseProcessStates(text: string): ProcessState[] {
   return text
@@ -28,15 +39,25 @@ export function parseProcessStates(text: string): ProcessState[] {
     .filter((line) => line.trim().length > 0)
     .map((line) => {
       const fields = line.trim().split(/\s+/);
-      const pid = Number(fields[0]);
-      if (fields.length !== 2 || !Number.isSafeInteger(pid)) {
+      const [pid, parentPid, group] = fields.slice(0, 3).map(Number);
+      if (
+        fields.length !== 4 ||
+        !Number.isSafeInteger(pid) ||
+        !Number.isSafeInteger(parentPid) ||
+        !Number.isSafeInteger(group)
+      ) {
         throw new Error(`unreadable process state row: ${JSON.stringify(line)}`);
       }
-      return { pid, state: fields[1] as string };
+      return {
+        pid: pid as number,
+        parentPid: parentPid as number,
+        group: group as number,
+        state: fields[3] as string,
+      };
     });
 }
 
-const PROCESS_STATE_COMMAND = ['ps', '-A', '-o', 'pid=,stat='];
+const PROCESS_STATE_COMMAND = ['ps', '-A', '-o', 'pid=,ppid=,pgid=,stat='];
 
 /**
  * Read the state of every process with `ps`, or with `command` when a test supplies a stand-in;
@@ -117,6 +138,55 @@ function errorCode(error: unknown): unknown {
   return (error as { code?: unknown }).code;
 }
 
+/** The snapshots of the process table a caller has already taken, so a second look can reuse them. */
+type Snapshots = { latest?: ProcessState[] | undefined };
+
+/**
+ * What became of a process whose session could not be read: `gone` if it is a zombie or no longer
+ * listed, `unknown` if the table cannot be read, otherwise its entry. The last snapshot is reused
+ * only if it lists the process; one that does not may simply predate it, so the table is read again.
+ */
+async function lookAgain(
+  pid: number,
+  snapshots: Snapshots,
+  readStates: () => ProcessState[] | undefined | Promise<ProcessState[] | undefined>,
+): Promise<ProcessState | 'gone' | 'unknown'> {
+  let entry = snapshots.latest?.find((candidate) => candidate.pid === pid);
+  if (entry === undefined) {
+    snapshots.latest = await readStates();
+    if (snapshots.latest === undefined) return 'unknown';
+    entry = snapshots.latest.find((candidate) => candidate.pid === pid);
+  }
+  return entry === undefined || isGone(entry.state) ? 'gone' : entry;
+}
+
+/**
+ * Whether a live process whose session is unknown could be a member of `session`: it descends from
+ * the leader or from a known member, or it shares a process group with the leader or a member. A
+ * process with nothing to do with the session is no concern of its cleanup, however unreadable.
+ */
+function couldBelongTo(
+  suspect: ProcessState,
+  table: readonly ProcessState[],
+  session: number,
+  members: ReadonlySet<number>,
+): boolean {
+  if (suspect.parentPid === undefined || suspect.group === undefined) return true;
+  const byPid = new Map(table.map((entry) => [entry.pid, entry]));
+  const groups = new Set([session, ...[...members].map((pid) => byPid.get(pid)?.group)]);
+  if (groups.has(suspect.group)) return true;
+  const seen = new Set<number>();
+  for (let current: ProcessState | undefined = suspect; current !== undefined;) {
+    if (seen.has(current.pid)) return false;
+    seen.add(current.pid);
+    const parent = current.parentPid;
+    if (parent === undefined) return true;
+    if (parent === session || members.has(parent)) return true;
+    current = byPid.get(parent);
+  }
+  return false;
+}
+
 /**
  * How many times one signal pass re-reads the process table looking for members that started while
  * it was signaling. A member forks faster than a pass can read, so the pass is bounded rather than
@@ -145,25 +215,29 @@ export function createSessionOperations(dependencies: {
 
   /**
    * The live (non-zombie) members of `session`, or `undefined` when they cannot be read. A process
-   * whose session cannot be read is given a second look at the table: one that became a zombie or
-   * vanished meanwhile is gone, and any other makes the answer unknown.
+   * whose session cannot be read is given a second look: one that became a zombie or vanished is
+   * gone, and one still live blocks the answer only if it could belong to the session.
    */
   async function liveMembers(session: number): Promise<number[] | undefined> {
     const states = await readStates();
     if (states === undefined) return undefined;
+    const snapshots: Snapshots = {};
     const members: number[] = [];
-    let recheck: ProcessState[] | undefined;
-    for (const { pid, state } of states) {
-      if (isGone(state)) continue;
+    const unreadable: ProcessState[] = [];
+    for (const entry of states) {
+      if (isGone(entry.state)) continue;
       try {
-        if (sessionOf(pid) === session) members.push(pid);
+        if (sessionOf(entry.pid) === session) members.push(entry.pid);
       } catch {
-        recheck ??= await readStates();
-        const now = recheck?.find((entry) => entry.pid === pid)?.state;
-        if (recheck === undefined || (now !== undefined && !isGone(now))) return undefined;
+        const look = await lookAgain(entry.pid, snapshots, readStates);
+        if (look === 'unknown') return undefined;
+        if (look !== 'gone') unreadable.push(look);
       }
     }
-    return members;
+    const known = new Set(members);
+    return unreadable.some((suspect) => couldBelongTo(suspect, states, session, known))
+      ? undefined
+      : members;
   }
 
   return {
@@ -210,11 +284,10 @@ export function createSessionOperations(dependencies: {
       }
       if (refused.length === 0) return;
       // macOS answers EPERM, not ESRCH, for a process that became a zombie meanwhile. That is gone;
-      // a live process this one may not signal is a real refusal.
-      const states = await readStates();
+      // a live process this one may not signal, or cannot read, is a real refusal.
+      const snapshots: Snapshots = {};
       for (const { pid, error } of refused) {
-        const state = states?.find((candidate) => candidate.pid === pid)?.state;
-        if (states === undefined || (state !== undefined && !isGone(state))) throw error;
+        if ((await lookAgain(pid, snapshots, readStates)) !== 'gone') throw error;
       }
     },
     async exists(session) {
@@ -250,16 +323,14 @@ export async function readSessionTable(
   if (states === undefined) throw new Error('the process states could not be read');
   const gone = new Set(states.filter(({ state }) => isGone(state)).map(({ pid }) => pid));
   const records: ProcessRecord[] = [];
-  let recheck: ProcessState[] | undefined;
+  const snapshots: Snapshots = {};
   for (const record of table) {
     if (gone.has(record.pid)) continue;
     try {
       const group = sessionOf(record.pid);
       if (group >= 0) records.push({ ...record, group });
     } catch {
-      recheck ??= await readStates();
-      const now = recheck?.find((entry) => entry.pid === record.pid)?.state;
-      if (recheck !== undefined && (now === undefined || isGone(now))) continue;
+      if ((await lookAgain(record.pid, snapshots, readStates)) === 'gone') continue;
       records.push({ ...record, group: UNREADABLE_SESSION });
     }
   }

@@ -79,16 +79,19 @@ const scenario2 = scenario(
 
 describe('the process states', () => {
   test('are read from rows of pid and state', () => {
-    expect(parseProcessStates(' 10 Ss\n11 Z+\n\n')).toEqual([
-      { pid: 10, state: 'Ss' },
-      { pid: 11, state: 'Z+' },
+    expect(parseProcessStates(' 10 1 10 Ss\n11 10 10 Z+\n\n')).toEqual([
+      { pid: 10, parentPid: 1, group: 10, state: 'Ss' },
+      { pid: 11, parentPid: 10, group: 10, state: 'Z+' },
     ]);
     expect(parseProcessStates('')).toEqual([]);
   });
 
-  test.each(['10', '10 S extra', 'x S', '1.5 S'])('refuse the row %j', (row) => {
-    expect(() => parseProcessStates(row)).toThrow('unreadable process state row');
-  });
+  test.each(['10', '10 S', '10 1 10 S extra', 'x 1 10 S', '1.5 1 10 S', '10 y 10 S', '10 1 z S'])(
+    'refuse the row %j',
+    (row) => {
+      expect(() => parseProcessStates(row)).toThrow('unreadable process state row');
+    },
+  );
 
   scenarioResult('are read from the running host and include this process', scenario1);
 
@@ -351,6 +354,73 @@ describe('the session table', () => {
   );
 });
 
+/** A host where `unreadable` pids cannot have their session read; every pid not listed in `sessions` is unreadable. */
+function crowded(
+  rows: readonly ProcessState[],
+  sessions: Readonly<Record<number, number>>,
+  snapshots: ProcessState[][] = [],
+) {
+  const kills: { pid: number; signal: string }[] = [];
+  const operations = createSessionOperations({
+    readStates: () => snapshots.shift() ?? [...rows],
+    sessionOf: (pid) => {
+      const session = sessions[pid];
+      if (session === undefined) throw new Error(`the session of process ${pid} could not be read`);
+      return session;
+    },
+    kill: (pid, signal) => {
+      kills.push({ pid, signal });
+    },
+  });
+  return { operations, kills };
+}
+
+const LEADER_ROW: ProcessState = { pid: 500, parentPid: 1, group: 500, state: 'S' };
+
+describe('a process whose session cannot be read', () => {
+  const unrelated: ProcessState = { pid: 900, parentPid: 1, group: 900, state: 'S' };
+
+  test('does not touch cleanup when it has nothing to do with the session', async () => {
+    const { operations, kills } = crowded([LEADER_ROW, unrelated], { 500: 500 });
+    expect(await operations.exists(SESSION)).toBe(true);
+    await operations.signal(SESSION, 'SIGKILL');
+    expect(kills).toEqual([{ pid: 500, signal: 'SIGKILL' }]);
+    const alone = crowded([unrelated], {});
+    expect(await alone.operations.exists(SESSION)).toBe(false);
+    await alone.operations.signal(SESSION, 'SIGKILL');
+    expect(alone.kills).toEqual([]);
+  });
+
+  test.each([
+    ['a descendant of the leader', { pid: 901, parentPid: 500, group: 901, state: 'S' }],
+    ['a descendant of a descendant', { pid: 902, parentPid: 501, group: 902, state: 'S' }],
+    ['a member of the leader’s group', { pid: 903, parentPid: 1, group: 500, state: 'S' }],
+    ['a member of a job’s group', { pid: 904, parentPid: 1, group: 501, state: 'S' }],
+    [
+      'one macOS prints with ?, which is not shown to be gone',
+      { pid: 905, parentPid: 500, group: 905, state: '?NEs' },
+    ],
+  ])('blocks cleanup when it is %s', async (_label, suspect) => {
+    const job: ProcessState = { pid: 501, parentPid: 500, group: 501, state: 'S' };
+    const { operations } = crowded([LEADER_ROW, job, suspect], { 500: 500, 501: 500 });
+    expect(await operations.exists(SESSION)).toBe(true);
+    const failure = await rejectionOf(Promise.resolve(operations.signal(SESSION, 'SIGKILL')));
+    expect((failure as Error).message).toBe('the process table could not be read');
+  });
+
+  test('is judged by a fresh look when it was not in the snapshot taken for the last one', async () => {
+    // The suspect appears only in the table read after the first look: it was not vanished.
+    const suspect: ProcessState = { pid: 906, parentPid: 500, group: 906, state: 'S' };
+    const first = [LEADER_ROW, { pid: 907, parentPid: 1, group: 907, state: 'S' }];
+    const { operations } = crowded([], { 500: 500 }, [
+      [LEADER_ROW, suspect],
+      first,
+      [LEADER_ROW, suspect],
+    ]);
+    expect(await operations.exists(SESSION)).toBe(true);
+  });
+});
+
 describe('a session that cannot be read at signal time', () => {
   /** Listed as a member, then unreadable when it is about to be signaled; the follow-up read says what became of it. */
   function turning(afterwards: ProcessState[]) {
@@ -389,17 +459,6 @@ describe('a session that cannot be read at signal time', () => {
 });
 
 describe('a session that cannot be read', () => {
-  test('a process macOS is tearing down is gone, though it is not yet a zombie', async () => {
-    const operations = createSessionOperations({
-      readStates: () => [{ pid: 500, state: '?NEs' }],
-      sessionOf: () => {
-        throw new Error('could not be read');
-      },
-      kill: () => undefined,
-    });
-    expect(await operations.exists(SESSION)).toBe(false);
-  });
-
   test('is not the same as a process that is gone: only ESRCH says gone', () => {
     const lookup = (getsidResult: number, killResult: 'ESRCH' | 'EPERM' | 'ok') =>
       createSessionOf(
@@ -440,6 +499,30 @@ describe('a session that cannot be read', () => {
       kill: () => undefined,
     });
     expect(await operations.exists(SESSION)).toBe(false);
+  });
+
+  // spawn-free: the table and the process states are injected, so no process is started
+  test('a process created after the last snapshot is looked up again, not taken for gone', async () => {
+    const table = [
+      { pid: 1, parentPid: 0, group: 1 },
+      { pid: 2, parentPid: 1, group: 2 },
+      { pid: 3, parentPid: 1, group: 3 },
+    ];
+    const everyone = [1, 2, 3].map((pid) => ({ pid, parentPid: 0, group: pid, state: 'S' }));
+    const reads = [everyone.slice(0, 2), everyone.slice(0, 2), everyone];
+    const records = await readSessionTable(
+      (pid) => {
+        if (pid === 1) return 500;
+        throw new Error('could not be read');
+      },
+      async () => table,
+      async () => reads.shift(),
+    );
+    expect(records.map((record) => [record.pid, record.group])).toEqual([
+      [1, 500],
+      [2, UNREADABLE_SESSION],
+      [3, UNREADABLE_SESSION],
+    ]);
   });
 
   // spawn-free: the table and the process states are injected, so no process is started
