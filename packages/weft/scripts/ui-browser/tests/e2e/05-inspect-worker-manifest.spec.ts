@@ -29,7 +29,10 @@ test('operator inspects a server-accepted canonical worker manifest', async ({
   await checkA11y('workers — canonical worker manifest detail');
 });
 
-test('canonical manifest remains usable across supported widths and themes', async ({ page }) => {
+test('canonical manifest remains usable across supported widths and themes', async ({
+  page,
+  checkA11y,
+}) => {
   for (const theme of ['light', 'dark'] as const) {
     for (const viewport of [
       { width: 375, height: 812 },
@@ -50,6 +53,7 @@ test('canonical manifest remains usable across supported widths and themes', asy
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
+      await checkA11y(`workers — canonical worker manifest (${theme}, ${viewport.width}px)`);
     }
   }
 });
