@@ -1,6 +1,8 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+
 import type { ImplementedSteeringCommand } from './steering';
 import {
   appendSteeringLogEvent,
@@ -121,23 +123,25 @@ describe('steering log', () => {
     }
 
     await kv.set(entryKey, JSON.stringify({ ...admit(), command: { id: 'cmd-1' } }));
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     await kv.delete(entryKey);
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(/missing/);
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(/missing/);
 
     await kv.set(entryKey, JSON.stringify({ ...applied, configVersion: 1.5 }));
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     await kv.set(
       entryKey,
       JSON.stringify(admit({ requestedValue: { target: 'effort', override: 'turbo' } as never })),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     const refused = (failure: Record<string, unknown>) =>
       JSON.stringify({
         type: 'refused',
@@ -154,9 +158,9 @@ describe('steering log', () => {
       { failedAt: '2026-09-02T00:00:01.000Z', reason: 'deadline-passed' },
     ]) {
       await kv.set(entryKey, refused(failure));
-      await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-        SteeringLogCorruptError,
-      );
+      expect(
+        await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+      ).toThrow(SteeringLogCorruptError);
     }
     await kv.set(
       entryKey,
@@ -167,9 +171,9 @@ describe('steering log', () => {
         now: '2026-09-02T00:00:01.000Z',
       }),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     // The selector refusal belongs to an identity selector, nothing else.
     await kv.set(
       entryKey,
@@ -180,16 +184,16 @@ describe('steering log', () => {
         now: '2026-09-02T00:00:01.000Z',
       }),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     await kv.set(
       entryKey,
       JSON.stringify(admit({ requestedValue: { target: 'pause', override: 'x' } as never })),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     await kv.set(
       entryKey,
       JSON.stringify({
@@ -197,31 +201,31 @@ describe('steering log', () => {
         submittedValue: { target: 'provider', policyRef: 'fast-tier' },
       }),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     await kv.set(entryKey, JSON.stringify({ ...admit(), liveRunIds: ['run-1', 'run-1'] }));
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     // An admitted command is always concrete: a selector is resolved before
     // admission, or refused before the gate.
     await kv.set(
       entryKey,
       JSON.stringify(admit({ requestedValue: { target: 'model', policyRef: 'fast-tier' } })),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     await kv.set(entryKey, JSON.stringify(admit({ requestedAt: 'not a timestamp' })));
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     // An entry deciding a command for another session is not this log's.
     await kv.set(entryKey, JSON.stringify(admit({ sessionId: 'session-2' })));
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     await kv.set(
       entryKey,
       JSON.stringify({
@@ -231,16 +235,16 @@ describe('steering log', () => {
         now: '2026-09-02T00:00:01.000Z',
       }),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
     await kv.set(entryKey, JSON.stringify({ ...admit(), now: 'not a timestamp' }));
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
 
     await kv.set(headKey, '{"sequence":"1"}');
-    await expect(readSteeringLogHead(kv, 'session-1', 'inc-1')).rejects.toThrow(
+    expect(await throwingRejectionOf(readSteeringLogHead(kv, 'session-1', 'inc-1'))).toThrow(
       SteeringLogCorruptError,
     );
 
@@ -249,12 +253,12 @@ describe('steering log', () => {
         bindingKey,
         JSON.stringify({ sessionId: 'session-1', incarnation: 'inc-1', sequence }),
       );
-      await expect(readSteeringKeyBinding(kv, 'alice', 'cmd-1')).rejects.toThrow(
+      expect(await throwingRejectionOf(readSteeringKeyBinding(kv, 'alice', 'cmd-1'))).toThrow(
         SteeringLogCorruptError,
       );
     }
     await kv.set(bindingKey, 'not json');
-    await expect(readSteeringKeyBinding(kv, 'alice', 'cmd-1')).rejects.toThrow(
+    expect(await throwingRejectionOf(readSteeringKeyBinding(kv, 'alice', 'cmd-1'))).toThrow(
       SteeringLogCorruptError,
     );
   });
@@ -293,9 +297,9 @@ describe('steering log', () => {
         submittedValue: { target: 'provider', policyRef: 'fast-tier' },
       }),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
 
     // A concrete value is not a selector: retrying it must not replay a
     // decision made for a different concrete value.
@@ -306,9 +310,9 @@ describe('steering log', () => {
         submittedValue: { target: 'model', override: 'claude-opus-4-8' },
       }),
     );
-    await expect(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)).rejects.toThrow(
-      SteeringLogCorruptError,
-    );
+    expect(
+      await throwingRejectionOf(readSteeringLogEntries(kv, 'session-1', 'inc-1', 0, 1)),
+    ).toThrow(SteeringLogCorruptError);
   });
 
   it('lists every decodable log incarnation, skipping a key no encoder wrote', async () => {
