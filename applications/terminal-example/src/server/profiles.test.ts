@@ -30,6 +30,7 @@ describe('the profile table', () => {
       'readonly-output',
       'shell',
       'stalled',
+      'stalled-long',
     ]);
     for (const identifier of PROFILE_IDENTIFIERS) {
       const description = PROFILE_DESCRIPTIONS[identifier];
@@ -107,13 +108,17 @@ describe('the profile table', () => {
   test('the stalled program puts its terminal in raw mode, stops reading, and then discards what it is sent', () => {
     const launch = resolveProfile('stalled', false, context)?.launch;
     expect(launch?.mode).toBe('pty');
-    expect(launch?.profile.argumentList).toEqual([STALLED_PROGRAM]);
+    expect(launch?.profile.argumentList).toEqual([STALLED_PROGRAM, '10']);
+    expect(resolveProfile('stalled-long', false, context)?.launch.profile.argumentList).toEqual([
+      STALLED_PROGRAM,
+      '90',
+    ]);
     const program = readFileSync(STALLED_PROGRAM, 'utf8');
     expect(program).toStartWith('#!/bin/sh\n');
     // Raw mode, because in canonical mode the line discipline discards what overflows instead of
     // making the writer wait; echo off, so nothing the terminal is sent is echoed back.
     expect(program).toContain('stty raw -echo');
-    expect(program).toContain('sleep 10');
+    expect(program).toContain('sleep "$1"');
     expect(program).toContain('exec cat >/dev/null');
   });
 
@@ -154,6 +159,7 @@ describe('the profile table', () => {
       'links',
       'escaped',
       'stalled',
+      'stalled-long',
     ] as const) {
       expect(resolveProfile(identifier, false, context)?.launch.profile.environment).toEqual({
         TERM: 'xterm-256color',

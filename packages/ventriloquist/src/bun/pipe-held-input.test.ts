@@ -1,44 +1,27 @@
-import { describe, expect } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { rejectionOf } from '@lostgradient/testing';
 
 import type { InputHold } from '../session/session-types.ts';
 import { scenario, scenarioResult, settleScenarios } from './bun-process.test-support.ts';
 import { shellProfile } from './fixtures/bun-pipe-stdin.ts';
+import type { DescriptorWrite } from './input-writer.ts';
+import { createPipeDevice, loadPipeDevice, type PipeDevice } from './pipe-device.ts';
 import { createPipeProcess } from './pipe-process.ts';
-import type { SpawnedProcess, SpawnProcess } from './process-types.ts';
+import { ProcessStartFailure } from './process-start-failure.ts';
 
-type SinkScript = {
-  write?: (bytes: Uint8Array) => number | Promise<number>;
-  flush?: () => number | Promise<number>;
-  end?: () => number | Promise<number>;
-};
-
-/** A real child whose standard input is replaced by a sink the test scripts. */
-function pipeWith(script: SinkScript) {
-  const spawn: SpawnProcess = (command, options) => {
-    const child: SpawnedProcess = Bun.spawn(command, {
-      ...(options as object),
-      timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    });
-    return {
-      pid: child.pid,
-      exited: child.exited,
-      get signalCode() {
-        return child.signalCode;
-      },
-      stdout: child.stdout,
-      stderr: child.stderr,
-      stdin: {
-        write: script.write ?? (() => 0),
-        flush: script.flush ?? (() => 0),
-        end: script.end ?? (() => 0),
-      },
-      kill: (signal?: number | string) => child.kill(signal),
-    };
-  };
-  return createPipeProcess({ profile: shellProfile('sleep 7919'), acceptsInput: true, spawn });
-}
+/**
+ * The most a pipe holds before a write waits: the kernel's pipe buffer plus the one write in
+ * flight, which the session's input budget (64 KiB) bounds. Measured with a child that never reads
+ * (60,000-byte writes, counting what is accepted before one waits): 120,000 bytes on macOS and
+ * Linux, that is a 64 KiB kernel pipe buffer and the 60,000-byte write that did not fit. Before
+ * this, Bun's stdin sink took 540,000 bytes on macOS first.
+ */
+const KERNEL_PIPE_BUFFER_BYTES = 65_536;
+const INPUT_BUDGET_BYTES = 65_536;
 
 function recordHold() {
   const log: string[] = [];
@@ -49,8 +32,51 @@ function recordHold() {
 const settledIn = (promise: Promise<unknown>) =>
   Promise.race([promise.then(() => 'settled'), Bun.sleep(50).then(() => 'unsettled')]);
 
-const scenario1 = scenario('a write the pipe takes at once is never held', async () => {
-  const hosted = pipeWith({});
+const eagain = () => Object.assign(new Error('try again'), { code: 'EAGAIN' });
+
+const scratch = mkdtempSync(join(tmpdir(), 'ventriloquist-pipe-input-'));
+
+const scenarioBound = scenario(
+  'a child that never reads holds a write after the kernel buffer and one budget, not half a mebibyte',
+  async () => {
+    const hosted = createPipeProcess({ profile: shellProfile('sleep 7919'), acceptsInput: true });
+    await hosted.backend.start();
+    let accepted = 0;
+    let held = false;
+    const hold: InputHold = { held: () => (held = true), resumed: () => undefined };
+    while (!held && accepted < 2_000_000) {
+      const write = hosted.backend.write(new Uint8Array(60_000).fill(97), hold);
+      accepted += 60_000;
+      // A write the pipe takes settles at once; one it cannot take reports itself held first.
+      await Promise.race([write, Bun.sleep(0)]);
+    }
+    expect(held).toBe(true);
+    expect(accepted).toBeLessThanOrEqual(KERNEL_PIPE_BUFFER_BYTES + INPUT_BUDGET_BYTES);
+    expect(await hosted.backend.cleanup()).toBe('complete');
+  },
+);
+
+const scenarioRelease = scenario(
+  'a held write completes, whole, when the child reads',
+  async () => {
+    const gate = join(scratch, 'release-pipe-input');
+    const hosted = createPipeProcess({
+      profile: shellProfile('until [ -e "$1" ]; do sleep 0.05; done; exec wc -c', [gate]),
+      acceptsInput: true,
+    });
+    await hosted.backend.start();
+    const { log, hold } = recordHold();
+    const written = hosted.backend.write(new Uint8Array(300_000).fill(97), hold);
+    expect(await settledIn(written)).toBe('unsettled');
+    expect(log[0]).toBe('held');
+    await Bun.write(gate, '');
+    await written;
+    expect(await hosted.backend.cleanup()).toBe('complete');
+  },
+);
+
+const scenarioQuiet = scenario('a write the pipe takes at once is never held', async () => {
+  const hosted = createPipeProcess({ profile: shellProfile('sleep 7919'), acceptsInput: true });
   await hosted.backend.start();
   const { log, hold } = recordHold();
   await hosted.backend.write(new Uint8Array(4), hold);
@@ -59,92 +85,212 @@ const scenario1 = scenario('a write the pipe takes at once is never held', async
   expect(await hosted.backend.cleanup()).toBe('complete');
 });
 
-const scenario2 = scenario(
-  'a write the sink is waiting to drain is held until it does',
+const scenarioScripted = scenario(
+  'a write the pipe refuses with EAGAIN is held, and resumed when part of it lands',
   async () => {
-    let drain!: () => void;
-    const drained = new Promise<number>((resolve) => {
-      drain = () => resolve(4);
+    let calls = 0;
+    const writeInput: DescriptorWrite = () => {
+      calls += 1;
+      if (calls === 1) throw eagain();
+      if (calls === 2) return 2;
+      if (calls === 3) throw eagain();
+      return 100;
+    };
+    const hosted = createPipeProcess({
+      profile: shellProfile('sleep 7919'),
+      acceptsInput: true,
+      writeInput,
     });
-    const hosted = pipeWith({ write: () => drained });
     await hosted.backend.start();
     const { log, hold } = recordHold();
-    const written = hosted.backend.write(new Uint8Array(4), hold);
-    expect(log).toEqual(['held']);
-    expect(await settledIn(written)).toBe('unsettled');
-    drain();
-    await written;
+    await hosted.backend.write(new Uint8Array(8), hold);
+    expect(log).toEqual(['held', 'resumed', 'held']);
     expect(await hosted.backend.cleanup()).toBe('complete');
   },
 );
 
-const scenario3 = scenario('a flush the sink is waiting to complete is held too', async () => {
-  let finish!: () => void;
-  const finished = new Promise<number>((resolve) => {
-    finish = () => resolve(4);
+const scenarioFailure = scenario('a write that fails for another reason is a failure', async () => {
+  const hosted = createPipeProcess({
+    profile: shellProfile('sleep 7919'),
+    acceptsInput: true,
+    writeInput: () => {
+      throw Object.assign(new Error('closed'), { code: 'EPIPE' });
+    },
   });
-  const hosted = pipeWith({ flush: () => finished });
   await hosted.backend.start();
-  const { log, hold } = recordHold();
-  const written = hosted.backend.write(new Uint8Array(4), hold);
-  expect(await settledIn(written)).toBe('unsettled');
-  expect(log).toEqual(['held']);
-  finish();
-  await written;
+  expect(((await rejectionOf(hosted.backend.write(new Uint8Array(4)))) as Error).message).toBe(
+    'closed',
+  );
   await hosted.backend.cleanup();
 });
 
-const scenario4 = scenario(
-  'a write that fails while the process is running is a failure',
+const scenarioCleanup = scenario(
+  'cleanup drops a held write, which stays unsettled, and completes',
   async () => {
-    const hosted = pipeWith({ write: () => Promise.reject(new Error('EIO')) });
-    await hosted.backend.start();
-    expect(((await rejectionOf(hosted.backend.write(new Uint8Array(4)))) as Error).message).toBe(
-      'EIO',
-    );
-    await hosted.backend.cleanup();
-  },
-);
-
-const scenario5 = scenario(
-  'a held write that cleanup ends stays unsettled, and discarding it is not a failed cleanup',
-  async () => {
-    let refuse!: (error: Error) => void;
-    const refused = new Promise<number>((_resolve, reject) => {
-      refuse = reject;
-    });
-    const hosted = pipeWith({
-      write: () => refused,
-      end: () => Promise.reject(Object.assign(new Error('broken pipe'), { code: 'EPIPE' })),
+    const hosted = createPipeProcess({
+      profile: shellProfile('sleep 7919'),
+      acceptsInput: true,
+      writeInput: () => {
+        throw eagain();
+      },
     });
     await hosted.backend.start();
-    const written = hosted.backend.write(new Uint8Array(4), recordHold().hold);
-    const cleaning = hosted.backend.cleanup();
-    refuse(Object.assign(new Error('broken pipe'), { code: 'EPIPE' }));
-    expect(await cleaning).toBe('complete');
+    const { log, hold } = recordHold();
+    const written = hosted.backend.write(new Uint8Array(4), hold);
+    expect(log).toEqual(['held']);
+    expect(await hosted.backend.cleanup()).toBe('complete');
     expect(await settledIn(written)).toBe('unsettled');
   },
 );
 
-const scenario6 = scenario(
-  'an input that cannot be closed for another reason is incomplete',
+const scenarioNoInput = scenario('a pipe with no input channel refuses a write', async () => {
+  const hosted = createPipeProcess({ profile: shellProfile('sleep 7919') });
+  await hosted.backend.start();
+  expect(((await rejectionOf(hosted.backend.write(new Uint8Array(4)))) as Error).message).toBe(
+    'the process has no open input',
+  );
+  await hosted.backend.cleanup();
+});
+
+function recordingDevice(overrides: Partial<PipeDevice> = {}) {
+  const real = loadPipeDevice();
+  const closed: number[] = [];
+  const device: PipeDevice = {
+    open: () => real.open(),
+    close: (descriptor) => {
+      closed.push(descriptor);
+      real.close(descriptor);
+    },
+    ...overrides,
+  };
+  return { device, closed };
+}
+
+const scenarioNoLibc = scenario(
+  'a host that cannot open a pipe is unsupported-runtime',
   async () => {
-    const hosted = pipeWith({ end: () => Promise.reject(new Error('EBADF')) });
-    await hosted.backend.start();
-    expect(await hosted.backend.cleanup()).toBe('incomplete');
+    const hosted = createPipeProcess({
+      profile: shellProfile('sleep 7919'),
+      acceptsInput: true,
+      loadDevice: () => {
+        throw new Error('no libc');
+      },
+    });
+    const failure = await rejectionOf(hosted.backend.start());
+    expect((failure as ProcessStartFailure).code).toBe('unsupported-runtime');
+    expect(hosted.startFailure?.code).toBe('unsupported-runtime');
+  },
+);
+
+const scenarioNoPipe = scenario('a pipe the host cannot open is spawn-failed', async () => {
+  const hosted = createPipeProcess({
+    profile: shellProfile('sleep 7919'),
+    acceptsInput: true,
+    loadDevice: () =>
+      recordingDevice({
+        open: () => {
+          throw new Error('EMFILE');
+        },
+      }).device,
+  });
+  const failure = await rejectionOf(hosted.backend.start());
+  expect((failure as ProcessStartFailure).code).toBe('spawn-failed');
+});
+
+const scenarioRefusedSpawn = scenario(
+  'a refused spawn closes both ends of the input pipe',
+  async () => {
+    const recording = recordingDevice();
+    const hosted = createPipeProcess({
+      profile: shellProfile('true'),
+      acceptsInput: true,
+      loadDevice: () => recording.device,
+      spawn: () => {
+        throw new Error('EACCES');
+      },
+    });
+    const failure = await rejectionOf(hosted.backend.start());
+    expect((failure as ProcessStartFailure).code).toBe('spawn-failed');
+    // Both ends once, and the read end once more as the spawn's own `finally` releases it.
+    expect(new Set(recording.closed).size).toBe(2);
   },
 );
 
 describe('pipe input held by a child that is not reading', () => {
-  scenarioResult('a write the pipe takes at once is never held', scenario1);
-  scenarioResult('a write the sink is waiting to drain is held until it does', scenario2);
-  scenarioResult('a flush the sink is waiting to complete is held too', scenario3);
-  scenarioResult('a write that fails while the process is running is a failure', scenario4);
   scenarioResult(
-    'a held write that cleanup ends stays unsettled, and discarding it is not a failed cleanup',
-    scenario5,
+    'a child that never reads holds a write after the kernel buffer and one budget, not half a mebibyte',
+    scenarioBound,
   );
-  scenarioResult('an input that cannot be closed for another reason is incomplete', scenario6);
+  scenarioResult('a held write completes, whole, when the child reads', scenarioRelease);
+  scenarioResult('a write the pipe takes at once is never held', scenarioQuiet);
+  scenarioResult(
+    'a write the pipe refuses with EAGAIN is held, and resumed when part of it lands',
+    scenarioScripted,
+  );
+  scenarioResult('a write that fails for another reason is a failure', scenarioFailure);
+  scenarioResult(
+    'cleanup drops a held write, which stays unsettled, and completes',
+    scenarioCleanup,
+  );
+  scenarioResult('a pipe with no input channel refuses a write', scenarioNoInput);
+  scenarioResult('a host that cannot open a pipe is unsupported-runtime', scenarioNoLibc);
+  scenarioResult('a pipe the host cannot open is spawn-failed', scenarioNoPipe);
+  scenarioResult('a refused spawn closes both ends of the input pipe', scenarioRefusedSpawn);
 });
 
 await settleScenarios();
+rmSync(scratch, { recursive: true, force: true });
+
+describe('the pipe device', () => {
+  const libc = (
+    script: { pipe?: number; cloexec?: number; getFlags?: number; setFlags?: number } = {},
+  ) => ({
+    pipe: (descriptors: Int32Array) => {
+      descriptors[0] = 100;
+      descriptors[1] = 101;
+      return script.pipe ?? 0;
+    },
+    getFlags: () => script.getFlags ?? 0,
+    setFlags: () => script.setFlags ?? 0,
+    setCloseOnExec: () => script.cloexec ?? 0,
+  });
+
+  test('opens a pair with the write end non-blocking', () => {
+    expect(createPipeDevice(libc(), { close: () => undefined }).open()).toEqual({
+      readFd: 100,
+      writeFd: 101,
+    });
+  });
+
+  test.each([
+    ['pipe', { pipe: -1 }, 0],
+    ['FD_CLOEXEC', { cloexec: -1 }, 2],
+    ['reading the flags', { getFlags: -1 }, 2],
+    ['O_NONBLOCK', { setFlags: -1 }, 2],
+  ] as const)('a failure of %s throws and leaves nothing open', (_name, script, closes) => {
+    const closed: number[] = [];
+    const device = createPipeDevice(libc(script), {
+      close: (descriptor) => closed.push(descriptor),
+    });
+    expect(() => device.open()).toThrow();
+    expect(closed).toHaveLength(closes);
+  });
+
+  test('closing a descriptor that is already closed is not an error', () => {
+    const device = createPipeDevice(libc(), {
+      close: () => {
+        throw new Error('EBADF');
+      },
+    });
+    expect(() => device.close(5)).not.toThrow();
+  });
+
+  test('the real device opens a pair and closes it', () => {
+    const device = loadPipeDevice();
+    const pair = device.open();
+    expect(pair.readFd).not.toBe(pair.writeFd);
+    device.close(pair.readFd);
+    device.close(pair.writeFd);
+    expect(loadPipeDevice()).toBe(device);
+  });
+});

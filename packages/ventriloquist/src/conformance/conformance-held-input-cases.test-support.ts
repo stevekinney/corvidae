@@ -13,10 +13,13 @@ import { check, type Check, type ProcessMode, type Rig } from './conformance.tes
 /** One paste: large enough to fill a terminal's input queue, and under the 65,536-byte paste limit. */
 const PASTE_BYTES = 60_000;
 /**
- * A pipe's stdin sink buffers about 512 KiB in Bun before it reports a wait, so a pipe may need
- * several pastes before one is held; a terminal holds the first. This bounds how many a cell sends.
+ * A pipe takes what its kernel buffer holds (64 KiB, less on macOS until a large write grows it)
+ * before a write waits, so it needs one or two pastes before one is held; a terminal holds the
+ * first. This bounds how many a cell sends, and what the host may have accepted by then: the
+ * kernel's buffer and one write in flight, which the 64 KiB input budget bounds.
  */
-const MAXIMUM_PASTES = 64;
+const MAXIMUM_PASTES = 4;
+const ACCEPTED_AT_MOST = 2 * 65_536;
 const FINAL_MARKER = 'END';
 
 let launches = 0;
@@ -138,6 +141,10 @@ async function holdInput(rig: Rig): Promise<{ checks: Check[]; pastes: number }>
     pastes: accepted / PASTE_BYTES,
     checks: [
       check(`the host reported input held after ${accepted} accepted bytes`, held),
+      check(
+        `no more than the kernel buffer and one budget was accepted (${accepted} of ${ACCEPTED_AT_MOST} bytes)`,
+        accepted <= ACCEPTED_AT_MOST,
+      ),
       check('the session did not fail once the acknowledgement deadline had passed', stillOpen),
       check('new input was refused as held', refusedAsHeld(probe)),
       check('a resize was refused as held', resize),
@@ -163,7 +170,7 @@ const heldInputBackpressure: CaseDefinition = {
   id: 'held-input-backpressure',
   comparable: false,
   scope:
-    'the two paths are not compared: a pipe needs as many pastes as the Bun stdin sink buffer (about 512 KiB) and the pipe take before one is held, which varies by host',
+    'the two paths are not compared: a pipe needs a second paste on a host whose pipe buffer takes the first whole, which varies by host',
   modes: ['pipe', 'pty'],
   launch: (mode, scratch) => nonReadingChild(mode, scratch),
   async run({ rig, launched, mode }) {

@@ -247,13 +247,13 @@
 
       <div class="review-group" role="group" aria-label="Backpressure and cleanup">
         <p>
-          Backpressure is real. Choose the Stalled input profile, copy a long line, and paste it
-          into the terminal: the program is not reading, so the host holds the input, the terminal
-          shows Backpressure: input paused, and the output stays readable. When the program reads
-          again, after 10 seconds, the terminal returns to Connected. There is no Cancel in that
-          state, because nothing is waiting to be sent. Cleanup incomplete is real too: the Escaped
-          job profile makes it, and injecting it here ends the session first, so Check cleanup
-          reports the real, complete result.
+          Backpressure is real. Choose the Stalled input (long, for screen-reader review) profile,
+          copy a long line, and paste it into the terminal: the program is not reading, so the host
+          holds the input, the terminal shows Backpressure: input paused, and the output stays
+          readable. When the program reads again, after 90 seconds, the terminal returns to
+          Connected. There is no Cancel in that state, because nothing is waiting to be sent.
+          Cleanup incomplete is real too: the Escaped job profile makes it, and injecting it here
+          ends the session first, so Check cleanup reports the real, complete result.
         </p>
         <Button variant="secondary" label="Copy a long line" onclick={() => void copyLongLine()} />
         <p data-testid="copy-status">{copyStatus}</p>

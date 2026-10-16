@@ -32,7 +32,7 @@ Defaults are intentionally below the largest passing probe values and include op
 | Export | 1 MiB | 64 KiB–16 MiB | Package; export is bounded and reports truncation as failure. |
 | Accessible snapshot | 64 KiB | 4–512 KiB | Package; snapshot is bounded and never includes raw parser state. |
 | Retained sessions | 1 per attachment | 1–8 | Host; extra sessions are rejected, not evicted optimistically. |
-| Input acknowledgement deadline | 2 s | 250 ms–10 s | Host; expiry is unknown delivery, never success. It does not run while a write is held because the process is not reading; the held bytes count against the input queue budget (a pipe's stdin sink buffers about 512 KiB in Bun first, outside that budget) and new input is refused. |
+| Input acknowledgement deadline | 2 s | 250 ms–10 s | Host; expiry is unknown delivery, never success. It does not run while a write is held because the process is not reading; the held bytes count against the input queue budget plus the kernel's buffer (a terminal's input queue or a pipe's 64 KiB pipe buffer; the host adds no buffer of its own) and new input is refused. |
 | Idle/liveness deadline | 30 s | 5–300 s | Host; liveness probes do not grant authority. |
 | Cleanup deadline | 5 s | 1–60 s | Host; expiry is incomplete or unknown and quarantines the slot. |
 | Descendant observation window | 2 s | 250 ms–30 s | Host; absence of proof remains unknown after the window. |

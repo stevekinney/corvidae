@@ -6,6 +6,7 @@ import type {
   ByteStream,
   InputHold,
 } from '../session/session-types.ts';
+import { createInputWriter, type DescriptorWrite } from './input-writer.ts';
 import type { PtyDevice } from './pty-device.ts';
 import {
   MASTER_FLAG_COUNT,
@@ -25,7 +26,7 @@ export type MasterWorker = {
 };
 
 /** Writes `bytes` from `offset` to the master without blocking; throws an error with an errno `code`. */
-export type MasterWrite = (descriptor: number, bytes: Uint8Array, offset: number) => number;
+export type MasterWrite = DescriptorWrite;
 
 export type PtyMasterOptions = {
   readonly descriptor: number;
@@ -64,8 +65,6 @@ export type PtyMaster = {
   close(): void;
 };
 
-const WRITE_RETRY_MILLISECONDS = [1, 2, 4, 8, 16];
-
 const defaultWrite: MasterWrite = (descriptor, bytes, offset) =>
   writeSync(descriptor, bytes, offset, bytes.length - offset, null);
 
@@ -78,16 +77,6 @@ function isHungUp(error: unknown): boolean {
   const code = (error as { readonly code?: string }).code;
   return code === 'EIO' || code === 'EPIPE' || code === 'ENXIO';
 }
-
-type QueuedWrite = {
-  readonly bytes: Uint8Array;
-  offset: number;
-  readonly hold: InputHold | undefined;
-  /** `hold.held()` was reported and `resumed()` has not been since. */
-  holding: boolean;
-  resolve(): void;
-  reject(error: unknown): void;
-};
 
 type Ending = { readonly how: MasterEnd; readonly code?: string };
 
@@ -206,74 +195,12 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
   };
 
   // ---- input ---------------------------------------------------------------------------------
-  const pending: QueuedWrite[] = [];
-  let retryTimer: ReturnType<typeof setTimeout> | undefined;
-  let retries = 0;
-
-  const flush = (): void => {
-    retryTimer = undefined;
-    for (;;) {
-      if (closed || pending.length === 0) return;
-      const head = pending[0] as QueuedWrite;
-      try {
-        head.offset += writeBytes(descriptor, head.bytes, head.offset);
-      } catch (error) {
-        const code = (error as { readonly code?: string }).code;
-        if (code === 'EAGAIN') {
-          if (!head.holding && head.hold !== undefined) {
-            head.holding = true;
-            head.hold.held();
-          }
-          // The child has not read what is already queued: wait, longer each time, and try again.
-          const delay = WRITE_RETRY_MILLISECONDS[
-            Math.min(retries, WRITE_RETRY_MILLISECONDS.length - 1)
-          ] as number;
-          retries += 1;
-          retryTimer = setTimeout(flush, delay);
-          return;
-        }
-        // A terminal whose other end is gone will never take this write: it stays unsettled, and a
-        // wait that was a hold is now a lost write, which the session times out as unknown.
-        if (isHungUp(error)) {
-          if (head.holding) {
-            head.holding = false;
-            head.hold?.resumed();
-          }
-          return;
-        }
-        pending.shift()?.reject(error);
-        continue;
-      }
-      retries = 0;
-      if (head.offset >= head.bytes.length) {
-        pending.shift();
-        head.resolve();
-      } else if (head.holding) {
-        // The child read some of it: the wait is over, though the write is not. If the queue fills
-        // again the next retry reports a new hold.
-        head.holding = false;
-        head.hold?.resumed();
-      }
-    }
-  };
-
-  const dropInput = (): void => {
-    closed = true;
-    if (retryTimer !== undefined) clearTimeout(retryTimer);
-    retryTimer = undefined;
-    pending.length = 0;
-  };
+  const input = createInputWriter({ descriptor, write: writeBytes, isHungUp });
 
   // ---- ending ----------------------------------------------------------------------------------
   return {
     stream,
-    write: (bytes, hold) => {
-      if (bytes.length === 0) return Promise.resolve();
-      return new Promise<void>((resolve, reject) => {
-        pending.push({ bytes: bytes.slice(), offset: 0, hold, holding: false, resolve, reject });
-        if (pending.length === 1 && retryTimer === undefined) flush();
-      });
-    },
+    write: (bytes, hold) => input.write(bytes, hold),
     discard: () => {
       Atomics.store(flags, MASTER_FLAGS.discard, 1);
       Atomics.notify(flags, MASTER_FLAGS.inflight);
@@ -294,10 +221,14 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
       worker.terminate();
       return graceful;
     },
-    abandon: dropInput,
+    abandon: () => {
+      closed = true;
+      input.abandon();
+    },
     close: () => {
       if (closed) return;
-      dropInput();
+      closed = true;
+      input.abandon();
       device.close(descriptor);
     },
   };

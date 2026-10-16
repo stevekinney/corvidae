@@ -135,13 +135,14 @@ export function resolveProfile(
         },
       };
     case 'stalled':
+    case 'stalled-long':
       return {
         grant,
         launch: {
           mode: 'pty',
           profile: {
             executable: '/bin/sh',
-            argumentList: [STALLED_PROGRAM],
+            argumentList: [STALLED_PROGRAM, identifier === 'stalled' ? '10' : '90'],
             workingDirectory: FIXTURES,
             environment: programEnvironment(context),
           },

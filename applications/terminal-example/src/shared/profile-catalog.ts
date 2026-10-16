@@ -13,6 +13,7 @@ export const PROFILE_IDENTIFIERS = [
   'links',
   'escaped',
   'stalled',
+  'stalled-long',
 ] as const;
 
 export type ProfileIdentifier = (typeof PROFILE_IDENTIFIERS)[number];
@@ -76,6 +77,15 @@ export const PROFILE_DESCRIPTIONS: Readonly<Record<ProfileIdentifier, ProfileDes
     title: 'Stalled input',
     summary:
       'A program that stops reading its input for 10 seconds. Paste a long line to see input held, then read again.',
+    transport: 'pty',
+    interactive: true,
+  },
+  'stalled-long': {
+    identifier: 'stalled-long',
+    label: 'Stalled input (long, for screen-reader review)',
+    title: 'Stalled input (long)',
+    summary:
+      'The same program, stopped for 90 seconds, so there is time to listen to the announcement and read the state. Paste a long line to see input held.',
     transport: 'pty',
     interactive: true,
   },

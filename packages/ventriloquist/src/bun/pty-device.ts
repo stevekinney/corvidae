@@ -90,6 +90,38 @@ export function createPtyDevice(
   };
 }
 
+/** The compiled fixed-arity wrappers over `fcntl` and `ioctl`, shared by every device that needs them. */
+export type DescriptorWrappers = {
+  pty_set_window_size: (
+    descriptor: number,
+    request: number,
+    columns: number,
+    rows: number,
+  ) => number;
+  pty_get_flags: (descriptor: number) => number;
+  pty_set_flags: (descriptor: number, flags: number) => number;
+  pty_set_close_on_exec: (descriptor: number) => number;
+};
+
+let wrappers: DescriptorWrappers | undefined;
+
+/**
+ * `ioctl` and `fcntl` are variadic: see pty-helpers.c for why they are not bound directly. Compiled
+ * once and shared, because a pipe's input end needs the same flag calls as a terminal's master.
+ */
+export function loadDescriptorWrappers(): DescriptorWrappers {
+  wrappers ??= cc({
+    source: new URL('./pty-helpers.c', import.meta.url),
+    symbols: {
+      pty_set_window_size: { args: ['int', 'u64', 'int', 'int'], returns: 'int' },
+      pty_get_flags: { args: ['int'], returns: 'int' },
+      pty_set_flags: { args: ['int', 'int'], returns: 'int' },
+      pty_set_close_on_exec: { args: ['int'], returns: 'int' },
+    },
+  }).symbols as DescriptorWrappers;
+  return wrappers;
+}
+
 let device: PtyDevice | undefined;
 
 /**
@@ -105,16 +137,7 @@ export function loadPtyDevice(): PtyDevice {
     unlockpt: { args: [FFIType.i32], returns: FFIType.i32 },
     ptsname: { args: [FFIType.i32], returns: FFIType.ptr },
   }).symbols;
-  // `ioctl` and `fcntl` are variadic: see pty-helpers.c for why they are not bound directly.
-  const wrappers = cc({
-    source: new URL('./pty-helpers.c', import.meta.url),
-    symbols: {
-      pty_set_window_size: { args: ['int', 'u64', 'int', 'int'], returns: 'int' },
-      pty_get_flags: { args: ['int'], returns: 'int' },
-      pty_set_flags: { args: ['int', 'int'], returns: 'int' },
-      pty_set_close_on_exec: { args: ['int'], returns: 'int' },
-    },
-  }).symbols;
+  const flags = loadDescriptorWrappers();
   device = createPtyDevice(
     {
       posix_openpt: libc.posix_openpt,
@@ -124,10 +147,10 @@ export function loadPtyDevice(): PtyDevice {
         const name = libc.ptsname(descriptor);
         return name === null ? null : new CString(name).valueOf();
       },
-      setWindowSize: wrappers.pty_set_window_size,
-      getFlags: wrappers.pty_get_flags,
-      setFlags: wrappers.pty_set_flags,
-      setCloseOnExec: wrappers.pty_set_close_on_exec,
+      setWindowSize: flags.pty_set_window_size,
+      getFlags: flags.pty_get_flags,
+      setFlags: flags.pty_set_flags,
+      setCloseOnExec: flags.pty_set_close_on_exec,
     },
     TIOCSWINSZ[platform],
     { open: openSync, close: closeSync },
