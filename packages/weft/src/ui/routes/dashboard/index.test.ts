@@ -77,25 +77,21 @@ describe('Dashboard', () => {
       limit: 50,
     });
     scripted.routeUrl('/reviews', { items: [] });
-    scripted.routeJsonRpcMethod('weft.system.lease', {
-      mode: 'none',
-      status: 'disabled',
-      holdsLease: false,
-    });
     const client = realClient();
 
-    const { getByText, getAllByText, queryByText } = render(DashboardIndexHarness, {
-      props: { client },
-    });
+    const { getByText, getAllByText } = render(DashboardIndexHarness, { props: { client } });
 
     await waitFor(() => expect(getByText('Workflows by status')).not.toBeNull());
     expect(getAllByText('9').length).toBeGreaterThan(0);
     expect(getByText('Failures by category')).not.toBeNull();
     expect(getByText('Recent activity')).not.toBeNull();
-    expect(queryByText(/Engine lease contested/)).toBeNull();
   });
 
-  test('wires a contested engine lease into the critical-alerts band', async () => {
+  // COR-124 admits a critical-alerts chip only when it is backed by
+  // `weft.workers.diagnostics` or `weft.tasks.get` fields. Engine lease health
+  // lives on the System route's Health & lease tab, so even a contested
+  // `weft.system.lease` never reaches the band, and the Dashboard never asks.
+  test('never shows or requests a weft.system.lease chip, even when the lease is contested', async () => {
     scripted = new ScriptedFetch();
     scripted.routeUrl('/v1/health', { status: 'ok' });
     scripted.routeJsonRpcMethod('weft.workflows.aggregate', {
@@ -110,7 +106,7 @@ describe('Dashboard', () => {
         staleInflight: 0,
         retryStorms: 0,
         allWorkersAtCapacity: 0,
-        deadLettered: 0,
+        deadLettered: 2,
         delayed: 0,
         unadoptedTerminal: 0,
       },
@@ -121,20 +117,17 @@ describe('Dashboard', () => {
       mode: 'lease',
       status: 'contested',
       holdsLease: false,
-      holderId: 'engine-b',
-      heldSince: 1,
-      expiresAt: 3,
-      lastRenewedAt: 2,
-      fencingEpoch: 9,
       lossReason: 'deposed',
     });
     const client = realClient();
 
-    const { findByText } = render(DashboardIndexHarness, { props: { client } });
+    const { findByText, queryByText } = render(DashboardIndexHarness, { props: { client } });
 
-    const chip = await findByText('Engine lease contested · deposed', undefined, {
-      timeout: 3_000,
-    });
-    expect(chip.closest('a')?.getAttribute('href')).toBe('/system?tab=health');
+    await findByText('2 dead-lettered tasks', undefined, { timeout: 3_000 });
+    expect(queryByText(/lease contested/i)).toBeNull();
+    const requestBodies = scripted.calls.map((call) =>
+      typeof call.init?.body === 'string' ? call.init.body : '',
+    );
+    expect(requestBodies.some((body) => body.includes('weft.system.lease'))).toBe(false);
   });
 });
