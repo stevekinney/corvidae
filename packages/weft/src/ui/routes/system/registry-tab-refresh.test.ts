@@ -83,7 +83,7 @@ describe('RegistryTab registry query', () => {
     scripted.enqueueJsonRpcResult(
       await withContractHashes({
         ...SNAPSHOT,
-        workflows: [...SNAPSHOT.workflows, SNAPSHOT.workflows[0]],
+        workflows: [...SNAPSHOT.workflows, SNAPSHOT.workflows[0]!],
       }),
     );
     const { findByText } = renderRegistryTab(scripted, { retry: false });

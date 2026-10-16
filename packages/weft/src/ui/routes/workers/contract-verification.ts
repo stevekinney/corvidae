@@ -401,7 +401,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function strictPayloadFromMessage(message: string): ContractFailure | undefined {
+type StrictPayloadFailure = Extract<ContractFailure, { kind: 'strict-payload' }>;
+
+function strictPayloadFromMessage(message: string): StrictPayloadFailure | undefined {
   const match = STRICT_PAYLOAD_MESSAGE.exec(message);
   if (match === null) return undefined;
   return { kind: 'strict-payload', path: match[1]!, message: match[2]!, confirmed: false };
