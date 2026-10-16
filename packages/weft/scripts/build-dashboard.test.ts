@@ -19,6 +19,7 @@ import {
   defaultDashboardDirectory,
 } from '../src/server/dashboard.ts';
 import { MemoryStorage } from '../src/storage/memory.ts';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   assertCleanBuild,
   DASHBOARD_ASSET_DIRECTORY,
@@ -212,9 +213,11 @@ describe('readMetafileArgument', () => {
       `--metafile must point outside ${directory}`,
     );
     // The command line entry checks against the default directory before it builds.
-    await expect(
-      runBuildDashboardCommand(['--metafile', join(DEFAULT_DASHBOARD_DIRECTORY, 'meta.json')]),
-    ).rejects.toThrow(`--metafile must point outside ${DEFAULT_DASHBOARD_DIRECTORY}`);
+    expect(
+      await throwingRejectionOf(
+        runBuildDashboardCommand(['--metafile', join(DEFAULT_DASHBOARD_DIRECTORY, 'meta.json')]),
+      ),
+    ).toThrow(`--metafile must point outside ${DEFAULT_DASHBOARD_DIRECTORY}`);
   });
 });
 
