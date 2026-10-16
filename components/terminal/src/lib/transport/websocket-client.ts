@@ -5,6 +5,7 @@ import {
   type Capabilities,
   type FailureCode,
   type FailureReason,
+  type OutputChannel,
   type ProtocolResult,
   type SentFrame,
   type ServerMessage,
@@ -114,7 +115,7 @@ export class TerminalWebSocketClient {
   readonly #eventListeners = new Set<(event: TerminalTransportEvent) => void>();
   readonly #outputListeners = new Set<OutputListener>();
   readonly #pendingOperations = new Map<number, Settle>();
-  readonly #pendingOutput: Uint8Array[] = [];
+  readonly #pendingOutput: { readonly bytes: Uint8Array; readonly channel: OutputChannel }[] = [];
   readonly #stopWaiters: ((result: CleanupResult) => void)[] = [];
   readonly #unknownSequences: number[] = [];
   readonly #inputPath: TerminalInputPath;
@@ -233,7 +234,7 @@ export class TerminalWebSocketClient {
     this.#outputListeners.add(listener);
     const held = this.#pendingOutput.splice(0);
     this.#pendingOutputBytes = 0;
-    for (const chunk of held) this.#dispatch(chunk);
+    for (const chunk of held) this.#dispatch(chunk.bytes, chunk.channel);
     return () => this.#outputListeners.delete(listener);
   }
 
@@ -397,7 +398,7 @@ export class TerminalWebSocketClient {
         this.#onCapabilities(message.capabilities);
         break;
       case 'output':
-        this.#onOutput(message.payload);
+        this.#onOutput(message.payload, message.channel);
         break;
       case 'operation-ack':
         this.#onAcknowledgement(message.operationSequence);
@@ -468,11 +469,11 @@ export class TerminalWebSocketClient {
    * Output is delivered in order. With nothing listening it is held, bounded by the host's own
    * output budget: past that the conversation has diverged from what the host believes was sent.
    */
-  #onOutput(bytes: Uint8Array): void {
+  #onOutput(bytes: Uint8Array, channel: OutputChannel): void {
     // An empty chunk carries nothing to count or to parse.
     if (bytes.length === 0) return;
     if (this.#outputListeners.size > 0) {
-      this.#dispatch(bytes);
+      this.#dispatch(bytes, channel);
       return;
     }
     this.#pendingOutputBytes += bytes.length;
@@ -480,10 +481,10 @@ export class TerminalWebSocketClient {
       this.#failClosed('transport-failed');
       return;
     }
-    this.#pendingOutput.push(bytes);
+    this.#pendingOutput.push({ bytes, channel });
   }
 
-  #dispatch(bytes: Uint8Array): void {
+  #dispatch(bytes: Uint8Array, channel: OutputChannel): void {
     const listeners = [...this.#outputListeners];
     const parsedOnce = this.#release.register(bytes.length, listeners.length);
     for (const listener of listeners) {
@@ -494,7 +495,7 @@ export class TerminalWebSocketClient {
         parsedOnce();
       };
       try {
-        listener(bytes, parsed);
+        listener(bytes, parsed, channel);
       } catch {
         this.#fail('callback-failed');
         return;

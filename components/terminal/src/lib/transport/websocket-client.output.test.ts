@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { rig, type Rig } from './transport-test-support.ts';
+import { PIPE, rig, type Rig } from './transport-test-support.ts';
 import type { TerminalTransportEvent } from './transport-types.ts';
 
 const encoder = new TextEncoder();
@@ -131,6 +131,27 @@ describe('output', () => {
     expect(consumed(subject)).toEqual([6, 18]);
     output(subject, '!');
     expect(chunks).toEqual(['before', ' subscribing', '!']);
+  });
+
+  test('names the channel each chunk came from, live and when held for the first subscriber', async () => {
+    const subject = rig();
+    await subject.attach(PIPE);
+    output(subject, 'held out', 'stdout');
+    output(subject, 'held err', 'stderr');
+    const seen: string[] = [];
+    subject.client.subscribeOutput((chunk, parsed, channel) => {
+      seen.push(`${channel}:${new TextDecoder().decode(chunk)}`);
+      parsed();
+    });
+    output(subject, 'live err', 'stderr');
+    output(subject, 'live out', 'stdout');
+    expect(seen).toEqual([
+      'stdout:held out',
+      'stderr:held err',
+      'stderr:live err',
+      'stdout:live out',
+    ]);
+    expect(consumed(subject)).toEqual([8, 16, 24, 32]);
   });
 
   test('held output is bounded by the host budget, and past it the connection fails closed', async () => {
