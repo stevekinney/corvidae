@@ -17,7 +17,7 @@ import {
   type ComponentSource,
 } from './component-sources.ts';
 import { discoverComponents } from './discover.ts';
-import { PACKAGE_MAP_PATH } from './playground-paths.ts';
+import { PUBLISHED_VERSIONS_PATH } from './playground-paths.ts';
 import { readLastPublishedVersion } from './published-version.ts';
 import {
   addReadmeHeadingAnchors,
@@ -177,11 +177,11 @@ function isRawPackageManifest(value: unknown): value is RawPackageManifest {
 }
 
 /**
- * The version the documentation displays: the one the public mirror last
- * published, recorded in `scripts/mirror/package-map.json`. This is the single
+ * The version the documentation displays: the one the public repository last
+ * published, recorded in `published-versions.json`. This is the single
  * source of `package.version`, so the page never shows the stale copy a
  * `components.json` carries. Thrown as the same `malformed-components-manifest`
- * error the manifest shape check uses, since a package the map does not record
+ * error the manifest shape check uses, since a package the file does not record
  * is just as unusable here.
  */
 async function readDocumentedVersion(componentSource: ComponentSource): Promise<string> {
@@ -189,7 +189,7 @@ async function readDocumentedVersion(componentSource: ComponentSource): Promise<
   if (version === undefined) {
     throw new ComponentDocumentationError(
       'malformed-components-manifest',
-      `${PACKAGE_MAP_PATH} records no lastPublishedVersion for ${componentSource.packageName}`,
+      `${PUBLISHED_VERSIONS_PATH} records no lastPublishedVersion for ${componentSource.packageName}`,
     );
   }
   return version;

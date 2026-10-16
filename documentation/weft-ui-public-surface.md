@@ -67,7 +67,7 @@ WorkflowTailSourceOptions
 ### How the list is read
 
 - The block above is the only fenced `text` block in this document. COR-1449's test reads it and compares it, as a set, with the export names of `packages/weft/src/ui/index.ts`. Order carries no meaning: the names are sorted alphabetically, ignoring case.
-- Type-only exports are listed by their bare name, with no `type` prefix, exactly as value exports are. The table below marks which they are. Because a runtime `Object.keys(module)` cannot see type-only exports, COR-1449's test must enumerate the entry's exports with the TypeScript checker (for example `checker.getExportsOfModule`), as `scripts/mirror/declaration-agreement.ts` already does to tell values from types.
+- Type-only exports are listed by their bare name, with no `type` prefix, exactly as value exports are. The table below marks which they are. Because a runtime `Object.keys(module)` cannot see type-only exports, COR-1449's test must enumerate the entry's exports with the TypeScript checker (for example `checker.getExportsOfModule`), as `corvidae-mirror/src/declaration-agreement.ts` already does to tell values from types.
 - `index.ts` must not re-export anything that is not in the block.
 
 | Name | Kind | Source module (pre-move) |
@@ -103,7 +103,7 @@ A type that a listed export's signature mentions without the list naming it is p
 
 ### Semver
 
-Every listed name is public API under semver, including the four shared layers. A change that would break a consumer of a listed name, or of a type reachable through one, ships only in a release semver marks as breaking. While Weft's major version is 0 (its last published version is 0.27.17 per `scripts/mirror/package-map.json`), that is a minor-version bump. Behavior the source already documents as frozen is part of that contract: the query-key shapes, `createQueryClient`'s defaults, the router's matching rules, and the six `LiveSourceStatus` states.
+Every listed name is public API under semver, including the four shared layers. A change that would break a consumer of a listed name, or of a type reachable through one, ships only in a release semver marks as breaking. While Weft's major version is 0 (its last published version is 0.27.17 per `corvidae-mirror/src/package-map.json`), that is a minor-version bump. Behavior the source already documents as frozen is part of that contract: the query-key shapes, `createQueryClient`'s defaults, the router's matching rules, and the six `LiveSourceStatus` states.
 
 ## Export shape
 
@@ -138,21 +138,21 @@ Resolvers take the first key, in object order, whose condition they match, so `i
 Consequences for the implementing issues:
 
 - **Browser bundlers get the compiled client build**, not source. That is also how Cinder's root entry resolves today. The `svelte` and `browser` source targets are reached only by a resolver that matches neither `node` nor `import`.
-- **The server build must import cleanly under Node and plain Bun with no optional peer installed.** `scripts/mirror/packaging.ts` puts every entry with a `node`, `import`, `require`, or `default` condition in the Node smoke list (`nodeImportableSpecifierEntries`), COR-1452 requires both the Bun and the Node consumer smoke to import `./ui`, and the smoke's consumer project installs only the packed tarballs. Bun 1.4.2 did not install a `file:` dependency's optional peer when measured. Three things stand in the way today:
+- **The server build must import cleanly under Node and plain Bun with no optional peer installed.** `corvidae-mirror/src/packaging.ts` puts every entry with a `node`, `import`, `require`, or `default` condition in the Node smoke list (`nodeImportableSpecifierEntries`), COR-1452 requires both the Bun and the Node consumer smoke to import `./ui`, and the smoke's consumer project installs only the packed tarballs. Bun 1.4.2 did not install a `file:` dependency's optional peer when measured. Three things stand in the way today:
   - `lib/router.svelte.ts` ends with `export const router = new ConsoleRouter()`, whose field initializer reads `window.location` and whose constructor calls `window.addEventListener`, so importing the entry without a DOM throws `ReferenceError: window is not defined`.
   - Node 26.9.0 cannot import `@tanstack/svelte-query` at all: `import('@tanstack/svelte-query')` fails with `ERR_UNKNOWN_FILE_EXTENSION` on its `.svelte` re-exports.
   - `./ui`'s side-effect `import './styles/index.css'` is not importable under Node.
-- **Declarations** at `dist/ui/index.d.ts` must pass the mirror's `attw` gate, which treats `internal-resolution-error` as fatal (`checkTarball` in `scripts/mirror/packaging.ts`). svelte2tsx's `emitDts` is the emitter Cinder's mirror build uses for `.svelte` files (`scripts/mirror/declaration-portability.test.ts`).
+- **Declarations** at `dist/ui/index.d.ts` must pass the mirror's `attw` gate, which treats `internal-resolution-error` as fatal (`checkTarball` in `corvidae-mirror/src/packaging.ts`). svelte2tsx's `emitDts` is the emitter Cinder's mirror build uses for `.svelte` files (`corvidae-mirror/src/declaration-portability.test.ts`).
 
 [Open questions](#open-questions-for-the-owner) 3 and 4 record the defaults this document takes for these constraints.
 
 ### Published files
 
-Weft is `packedBy: "files"` (`scripts/mirror/package-surface.json`), so every target must be inside its `files` allowlist (`isExpectedPackRewrite` in `scripts/mirror/surface.ts` excuses only `pack-script` packages). COR-1452 adds `dashboard/**`, the `dist/ui` outputs, and the `src/ui` files the `svelte` and `browser` targets reach, and excludes every test-only file under `src/ui`: `*.test.*`, `*.test-support.*`, `*.test-harness.svelte`, `*.test-host.svelte` (`lib/active-revision-comparisons.test-host.svelte` exists today), and everything under `src/ui/tests/` and `src/ui/fixtures/`.
+Weft is `packedBy: "files"` (`corvidae-mirror/src/package-surface.json`), so every target must be inside its `files` allowlist (`isExpectedPackRewrite` in `corvidae-mirror/src/surface.ts` excuses only `pack-script` packages). COR-1452 adds `dashboard/**`, the `dist/ui` outputs, and the `src/ui` files the `svelte` and `browser` targets reach, and excludes every test-only file under `src/ui`: `*.test.*`, `*.test-support.*`, `*.test-harness.svelte`, `*.test-host.svelte` (`lib/active-revision-comparisons.test-host.svelte` exists today), and everything under `src/ui/tests/` and `src/ui/fixtures/`.
 
 ## CSS
 
-**Decision:** `./ui` keeps its side-effect `import './styles/index.css'` (today the first line of `packages/weft/src/ui/index.ts`). Weft's `sideEffects` changes from `false` to `["**/*.css"]` in both `packages/weft/package.json` and Weft's entry in `scripts/mirror/package-surface.json`, the value Cinder publishes. There is no separate stylesheet subpath.
+**Decision:** `./ui` keeps its side-effect `import './styles/index.css'` (today the first line of `packages/weft/src/ui/index.ts`). Weft's `sideEffects` changes from `false` to `["**/*.css"]` in both `packages/weft/package.json` and Weft's entry in `corvidae-mirror/src/package-surface.json`, the value Cinder publishes. There is no separate stylesheet subpath.
 
 **Rationale:** For JavaScript modules `["**/*.css"]` is identical to `false`, so every engine and UI module stays tree-shakable. It only stops bundlers that honor `sideEffects` from dropping the stylesheet import, and with it the UI's styles. Engine modules import no CSS, so engine consumers see no change.
 
@@ -175,8 +175,8 @@ Consequences:
 | Peer | Declared in corvidae as | Rendered in the published manifest as |
 | --- | --- | --- |
 | `svelte` | `>=5.56.0 <6` | The same literal range, Cinder's own published peer range |
-| `@lostgradient/cinder` | `workspace:*` | `^` its `lastPublishedVersion` in `scripts/mirror/package-map.json` |
-| `@lostgradient/markdown` | `workspace:*` | `^` its `lastPublishedVersion` in `scripts/mirror/package-map.json` |
+| `@lostgradient/cinder` | `workspace:*` | `^` its `lastPublishedVersion` in `corvidae-mirror/src/package-map.json` |
+| `@lostgradient/markdown` | `workspace:*` | `^` its `lastPublishedVersion` in `corvidae-mirror/src/package-map.json` |
 | `@tanstack/svelte-query` | `catalog:` | The root catalog's range |
 | `@lucide/svelte` | `catalog:` | The root catalog's range |
 | `cron-parser` | `catalog:` | The root catalog's range |
@@ -268,4 +268,4 @@ These carry over from the draft of this document. Each states the default this d
 2. **Names left out.** The owner's list answers part of this: `readRuntimeConfig` and `WeftUiRuntimeConfig` are exported. `RouteDefinition`, `WorkflowListQuery`, `getPrincipalStore`, and `getFleetEventSource` are still not. **Default:** they stay out, public only as structure reachable through a listed export. Any of them can be added later as a compatible change.
 3. **What the compiled builds bundle.** The owner's export shape replaces the draft's self-contained `bun` target, but the same constraint returns for the server build: the Bun and Node consumer smokes import `./ui` from the packed tarball with no optional peer installed, and Node cannot import `@tanstack/svelte-query`. The draft's probe of a self-contained, minified, code-split server build of its export list, at `6be120d3` without COR-1456, emitted about 2.3 MB of JavaScript. **Default:** COR-1454's server build bundles every dependency except `@lostgradient/weft` and runtime built-ins, carries no CSS import, and is compiled with Svelte `generate: 'server'`. The client build keeps `svelte` and the other peers external, so a consumer's tree shares one Svelte runtime and its context. The `svelte` and `browser` source targets stay in the map as decided, although ESM resolvers reach `import` first.
 4. **Requirements the blocked issues do not state yet.** COR-1449 does not require `router` to be importable without a DOM, which the server build and both smokes need. COR-1452's tarball exclusions do not list `*.test-host.svelte`, and its unpacked-size criterion (the previous release plus 4,500,000 bytes plus the packed `src/ui` files) does not allow for `dist/ui/`. **Default:** COR-1449 changes `router` to read `window` on first use rather than at module evaluation, keeping its name, type, and members, and adds a test that imports the entry with no DOM. COR-1452 excludes `*.test-host.svelte` and adds the size of `dist/ui/` to its unpacked-size allowance.
-5. **Values that wait on other work.** The owner decided the size budget, and this document records it with the measurement above. The Cinder minimum still waits on the version COR-1456 records after the Cinder mirror's release. **Default:** no Weft release publishes `./ui` until `scripts/mirror/package-map.json` records a Cinder release that contains COR-1456, so the rendered `workspace:*` peer and development ranges start at that version or later.
+5. **Values that wait on other work.** The owner decided the size budget, and this document records it with the measurement above. The Cinder minimum still waits on the version COR-1456 records after the Cinder mirror's release. **Default:** no Weft release publishes `./ui` until `corvidae-mirror/src/package-map.json` records a Cinder release that contains COR-1456, so the rendered `workspace:*` peer and development ranges start at that version or later.

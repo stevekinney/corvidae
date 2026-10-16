@@ -18,7 +18,7 @@ import {
   EDITOR_COMPONENT_SOURCE,
 } from './component-sources.ts';
 import { discoverComponentDefinitions } from './discover.ts';
-import { REPOSITORY_ROOT } from './playground-paths.ts';
+import { PUBLISHED_VERSIONS_PATH } from './playground-paths.ts';
 import type { ComponentManifest } from './types.ts';
 
 const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
@@ -253,18 +253,15 @@ describe('buildComponentDocumentation', () => {
   });
 
   describe('documented package version', () => {
-    // The version the playground displays is the one the public mirror last
-    // published, recorded in `scripts/mirror/package-map.json`. Corvidae
+    // The version the playground displays is the one its public repository last
+    // published, recorded in `published-versions.json`. Corvidae
     // packages carry no `version` of their own and `components.json` files
     // carry a stale or absent copy, so neither is consulted.
     async function lastPublishedVersion(packageName: string): Promise<string> {
-      const packageMap: unknown = await Bun.file(
-        join(REPOSITORY_ROOT, 'scripts', 'mirror', 'package-map.json'),
-      ).json();
-      const workspaces = (
-        packageMap as { workspaces: Record<string, { lastPublishedVersion?: string }> }
-      ).workspaces;
-      const version = workspaces[packageName]?.lastPublishedVersion;
+      const recorded: unknown = await Bun.file(PUBLISHED_VERSIONS_PATH).json();
+      const versions = (recorded as { lastPublishedVersions: Record<string, string | undefined> })
+        .lastPublishedVersions;
+      const version = versions[packageName];
       if (version === undefined) throw new Error(`${packageName} has no lastPublishedVersion`);
       return version;
     }
@@ -302,10 +299,10 @@ describe('buildComponentDocumentation', () => {
       }
     });
 
-    it('rejects a package the package map does not list', async () => {
+    it('rejects a package the published versions file does not list', async () => {
       const unlisted = {
         ...CINDER_COMPONENT_SOURCE,
-        packageName: '@example/not-in-the-package-map',
+        packageName: '@example/not-in-the-published-versions',
       };
 
       const error = await loadPackageManifestForDocumentation(unlisted).then(
@@ -315,7 +312,7 @@ describe('buildComponentDocumentation', () => {
 
       expect(error).toBeInstanceOf(ComponentDocumentationError);
       expect((error as ComponentDocumentationError).code).toBe('malformed-components-manifest');
-      expect((error as ComponentDocumentationError).message).toContain('package-map.json');
+      expect((error as ComponentDocumentationError).message).toContain('published-versions.json');
     });
   });
 

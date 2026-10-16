@@ -132,5 +132,5 @@ The expanded pass has its own final validation; the successful run recorded abov
 - [packages/weft/documentation/reference/remote-worker-protocol.md](../packages/weft/documentation/reference/remote-worker-protocol.md)
 - [packages/weft/src/server/**fixtures**/subscription-wire/README.md](../packages/weft/src/server/__fixtures__/subscription-wire/README.md)
 - [packages/weft/src/worker/protocol.test.ts](../packages/weft/src/worker/protocol.test.ts)
-- [scripts/mirror/cinder-exports-decision.md](../scripts/mirror/cinder-exports-decision.md)
-- [scripts/mirror/playground-asset-delivery-decision.md](../scripts/mirror/playground-asset-delivery-decision.md)
+- [corvidae-mirror/src/cinder-exports-decision.md](https://github.com/stevekinney/corvidae-mirror/blob/main/src/cinder-exports-decision.md)
+- [corvidae-mirror/src/playground-asset-delivery-decision.md](https://github.com/stevekinney/corvidae-mirror/blob/main/src/playground-asset-delivery-decision.md)
