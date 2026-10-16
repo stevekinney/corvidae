@@ -1,6 +1,6 @@
 import { mount } from 'svelte';
 
-import { WeftConsole as App } from '@lostgradient/weft/ui';
+import { WeftDashboard as App } from '@lostgradient/weft/ui';
 
 const target = document.getElementById('app');
 

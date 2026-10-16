@@ -28,7 +28,7 @@
  * runs unconditionally, so the bell dropdown/critical strip reflect the full
  * replayed backlog; only the ephemeral toast is suppressed for it.
  */
-import { getContext, setContext } from 'svelte';
+import { getContext, hasContext, setContext } from 'svelte';
 
 import type { HttpClient } from '@lostgradient/weft';
 
@@ -179,6 +179,11 @@ const FLEET_EVENT_SOURCE_CONTEXT_KEY = Symbol('weft-ui-fleet-event-source');
 
 export function provideFleetEventSource(source: FleetEventSource): void {
   setContext(FLEET_EVENT_SOURCE_CONTEXT_KEY, source);
+}
+
+/** Whether an ancestor component already called `provideFleetEventSource()`. */
+export function hasFleetEventSource(): boolean {
+  return hasContext(FLEET_EVENT_SOURCE_CONTEXT_KEY);
 }
 
 /**

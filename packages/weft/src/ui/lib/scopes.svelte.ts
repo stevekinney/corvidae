@@ -41,7 +41,7 @@
  * `denyScope()`/`isForbidden()` remain as the runtime-degrade path for the
  * residual case of a scope revoked server-side mid-session.
  */
-import { getContext, setContext } from 'svelte';
+import { getContext, hasContext, setContext } from 'svelte';
 
 import { HttpClientError, type HttpClient } from '@lostgradient/weft';
 
@@ -171,6 +171,11 @@ export function providePrincipalStore(options?: PrincipalStoreOptions): Principa
   const store = new PrincipalStore(options);
   setContext(PRINCIPAL_CONTEXT_KEY, store);
   return store;
+}
+
+/** Whether an ancestor component already called `providePrincipalStore()`. */
+export function hasPrincipalStore(): boolean {
+  return hasContext(PRINCIPAL_CONTEXT_KEY);
 }
 
 export function getPrincipalStore(): PrincipalStore {

@@ -19,6 +19,7 @@
    * genuinely has no component context to call `useToast()` from.
    */
   import type { ToastApi, ToastOptions, ToastVariant } from '@lostgradient/cinder';
+  import { hasContext, setContext } from 'svelte';
 
   import {
     FAULT_TREATMENT_TITLE,
@@ -26,11 +27,37 @@
     type FaultTreatmentKind,
   } from '../lib/faults.ts';
 
-  let toastApi: ToastApi | undefined;
+  /**
+   * Every mounted `<ToastHost>`'s toast API, most recent last. `WeftDashboard`
+   * mounts one, and a view rendered on its own outside the dashboard mounts
+   * its own, so a page can hold more than one; toasts go to the newest, and
+   * unmounting one host never unregisters another.
+   */
+  const toastApis: ToastApi[] = [];
 
   /** Registered by the mounted `<ToastHost>`'s own attachment below — not meant to be called from other modules. */
-  function registerToastApi(next: ToastApi | undefined): void {
-    toastApi = next;
+  function registerToastApi(next: ToastApi): () => void {
+    toastApis.push(next);
+    return () => {
+      const index = toastApis.lastIndexOf(next);
+      if (index !== -1) toastApis.splice(index, 1);
+    };
+  }
+
+  const TOAST_HOST_CONTEXT_KEY = Symbol('weft-ui-toast-host');
+
+  /**
+   * Marks this subtree as covered by a `<ToastHost>` the caller renders.
+   * `<ToastHost>` is a sibling of the content it serves, not an ancestor, so
+   * the component that renders it says so here during its own init.
+   */
+  export function provideToastHost(): void {
+    setContext(TOAST_HOST_CONTEXT_KEY, true);
+  }
+
+  /** Whether an ancestor called `provideToastHost()`. */
+  export function hasToastHost(): boolean {
+    return hasContext(TOAST_HOST_CONTEXT_KEY);
   }
 
   /**
@@ -39,6 +66,7 @@
    * programming error reported through the platform error channel.
    */
   export function showToast(message: string, options?: ToastOptions): string | undefined {
+    const toastApi = toastApis.at(-1);
     if (!toastApi) {
       const error = new Error('weft-ui: showToast() called before <ToastHost> mounted.');
       if (typeof globalThis.reportError === 'function') globalThis.reportError(error);
@@ -103,12 +131,6 @@
 <ToastRegion position="bottom-right">
   {#snippet children()}
     {@const toast = useToast()}
-    <span
-      hidden
-      {@attach () => {
-        registerToastApi(toast);
-        return () => registerToastApi(undefined);
-      }}
-    ></span>
+    <span hidden {@attach () => registerToastApi(toast)}></span>
   {/snippet}
 </ToastRegion>

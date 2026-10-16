@@ -4,11 +4,12 @@
 
 ## Usage
 
-Inside Corvidae the UI is Weft's `./ui` entry, which resolves to the TypeScript and Svelte source. It is not yet part of the published `@lostgradient/weft`; COR-1449 and COR-1452 decide and ship that surface (`documentation/weft-ui-public-surface.md` at the Corvidae root). The entry exports the console and its client configuration helpers:
+Inside Corvidae the UI is Weft's `./ui` entry, which resolves to the TypeScript and Svelte source. It is not yet part of the published `@lostgradient/weft`; COR-1452 ships it. The entry exports exactly the names `documentation/weft-ui-public-surface.md` at the Corvidae root lists, and `src/ui/public-surface.test.ts` holds the two to each other: the whole application, one view per area, and the client, query, router, live-source, and runtime-configuration layers they share.
 
 ```ts partial
 import {
-  WeftConsole,
+  WeftDashboard,
+  WorkflowsView,
   createClient,
   readRuntimeConfig,
   provideClient,
@@ -17,7 +18,9 @@ import {
 } from '@lostgradient/weft/ui';
 ```
 
-`WeftConsole` is the browser application shell. It reads runtime configuration, creates the HTTP client, resolves the current principal, and presents API-key entry when authentication is required. Its root import includes the shared interface styles. Application tooling compiles the TypeScript and Svelte source directly.
+`WeftDashboard` is the browser application shell. It reads runtime configuration, creates the HTTP client, resolves the current principal, and presents API-key entry when authentication is required. The entry imports the shared interface styles, so importing any name from it brings them. Application tooling compiles the TypeScript and Svelte source directly.
+
+`DashboardView`, `WorkflowsView`, `ReviewsView`, `WorkersView`, `SchedulesView`, `StorageView`, and `SystemView` render one area each, inside `WeftDashboard` or on their own. On its own a view needs only a client from `provideClient`, a `QueryClientProvider` around `createQueryClient()`, and the location `router` reads; it resolves the principal itself and supplies its own fleet event source and toast region when no ancestor did. `router` reads `window` on first use rather than when the module loads, so the entry imports without a DOM.
 
 `createClient(configuration, sameOriginBaseUrl?)` creates a Weft `HttpClient`. `provideClient` and `getClient` share that client through Svelte context. `setApiKey` creates a replacement client with the entered key and removes conflicting authorization headers; it does not persist the key.
 

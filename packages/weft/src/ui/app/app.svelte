@@ -1,6 +1,7 @@
 <script lang="ts">
   /**
-   * App shell entry point (plan §13 T1.6, design `Weft UI.dc.html`).
+   * App shell entry point (plan §13 T1.6, design `Weft UI.dc.html`),
+   * exported from `@lostgradient/weft/ui` as `WeftDashboard`.
    * Owns the boot sequence — read runtime config, construct the initial
    * `HttpClient`, resolve the principal, and either mount `<ApiKeyEntry>`
    * (reject-mode, no/invalid credential) or the real `<Shell>` (sidebar,
@@ -22,9 +23,12 @@
   import { resolvePrincipal, type Principal } from '../lib/scopes.svelte.ts';
   import ApiKeyEntry from './auth/api-key-entry.svelte';
   import Shell from './shell/shell.svelte';
-  import ToastHost from './toast-host.svelte';
+  import ToastHost, { provideToastHost } from './toast-host.svelte';
 
   const queryClient = createQueryClient();
+  // The `<ToastHost>` below serves every view in the shell, so a view never
+  // mounts a second one of its own.
+  provideToastHost();
   const config: WeftUiRuntimeConfig = readRuntimeConfig();
 
   // Every highlighted CodeBlock in the UI renders JSON or TypeScript, so the
