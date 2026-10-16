@@ -13,19 +13,33 @@
   import { ArrowLeft, FileQuestionMark } from '@lucide/svelte';
 
   import { truncateId } from '../../lib/format/index.ts';
+  import type { WorkerManifestDiagnostics } from '../workers/worker-manifest-diagnostics.ts';
+  import RegistryContractVerificationPanel from './registry-contract-verification-panel.svelte';
   import type {
     RegistryContractMessageRow,
+    RegistrySnapshotSource,
     RegistryWorkflowRow,
     SchemaTreeNode,
   } from './registry-view.ts';
   import WorkflowRevisionsPanel from './workflow-revisions-panel.svelte';
 
+  /** The connected workers' accepted manifests, for the contract-verification panel (COR-162). */
+  interface ManifestEvidence {
+    readonly diagnostics: readonly WorkerManifestDiagnostics[] | undefined;
+    readonly loading: boolean;
+    readonly refreshing: boolean;
+    readonly error: unknown;
+  }
+
   interface Props {
     row: RegistryWorkflowRow;
     onBack: () => void;
+    /** The snapshot `row` came from; the verification panel renders only when it is supplied. */
+    registry?: RegistrySnapshotSource | undefined;
+    manifests?: ManifestEvidence | undefined;
   }
 
-  let { row, onBack }: Props = $props();
+  let { row, onBack, registry = undefined, manifests = undefined }: Props = $props();
 </script>
 
 {#snippet schemaBadge(
@@ -242,6 +256,17 @@
       />
     </section>
   </div>
+
+  {#if registry}
+    <RegistryContractVerificationPanel
+      workflow={row.type}
+      {registry}
+      diagnostics={manifests?.diagnostics}
+      loading={manifests?.loading ?? false}
+      refreshing={manifests?.refreshing ?? false}
+      error={manifests?.error ?? null}
+    />
+  {/if}
 
   <WorkflowRevisionsPanel workflowName={row.type} />
 </div>
