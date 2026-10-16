@@ -70,7 +70,7 @@ output, input, resize, acknowledgements ◀────▶  one attachment, one 
 - **The ticket.** Because script cannot read the cookie, `POST /session` is how the page asks for a session. It needs the cookie, the served origin and a JSON body of exactly `profile` and `readOnly`, at most 1024 bytes (it answers `411` without a `Content-Length`, and `413` on a declared or actual length over the limit before reading more, and the listener itself caps any request body at 4 KiB), and it answers with a fresh session identity and a one-time ticket, which the page sends as the `hello` token. The server redeems it once, for that browser and that session, within 30 seconds. The upgrade URL carries only `?profile=`; the package refuses any other query key.
 - **Profiles are the server's.** `src/server/profiles.ts` turns an identifier into a launch: the mode, the executable, its arguments, the directory and the whole environment. Nothing the page sends reaches a process.
 - **One session per browser.** A reload or a restart arrives while the last shell is still being cleaned up, so `POST /session` waits for that cleanup (up to 15 seconds, then `409`) before issuing the next ticket. `GET /session/status` reports `free`, `busy` or `quarantined`, which the page polls after a session ends so `New session` is offered only when it will work.
-- **Cleanup.** A closed page, a dropped socket, `End session` and Ctrl+C on the server all end the session's whole process group with `TERM` and then `KILL`.
+- **Cleanup.** A closed page, a dropped socket, `End session` and Ctrl+C on the server all end the session with `SIGHUP` to the shell, then `TERM` and then `KILL` to every process in the terminal's session, background and stopped jobs included.
 
 ### The Content-Security-Policy
 
@@ -88,7 +88,7 @@ default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:
 
 ## Limits
 
-- A background job the shell starts with `&` is put in a process group of its own, which is beyond the group cleanup owns. The host can see it, cannot prove it is gone, and reports cleanup `unknown`: the slot is quarantined, the terminal shows `Cleanup incomplete` with no `New session`, and the server has to be restarted. A foreground child, such as `sleep 300` typed at the prompt, is ended with the shell. The browser checks start a background job on purpose to show this.
+- A background job the shell starts with `&`, and a job stopped with Ctrl+Z, belong to the terminal's session, so ending the session ends them and cleanup is `complete`: a new session is offered as usual. Only a process that deliberately leaves the session, through `setsid` or a double-fork daemon, is beyond cleanup. The host cannot prove it is gone and reports cleanup `unknown`: the slot is quarantined, the terminal shows `Cleanup incomplete` with no `New session`, and the server has to be restarted. The browser checks start a background job to show that it no longer does this, and a `setsid` job to show that it does.
 - It is a development tool: no authentication beyond the loopback cookie, no TLS, no persistence, no sharing between viewers, and one server-owned set of profiles.
 - Tabs, splits, user-defined profiles, shell integration (working-directory tracking, command marks) and persistence across a restart are host concerns this example does not provide. See the [terminal README](../../components/terminal/README.md).
 
@@ -105,6 +105,6 @@ default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:
   - the policy, the cookie flags, and a foreign origin on `POST /session`;
   - the non-loopback refusal and its exit code;
   - the start URL: no token or a wrong one enrolls nothing, a page on another origin cannot enroll the browser, the printed URL opens the terminal, it admits one browser (or `--browsers` many), and the request body is bounded;
-  - the four profiles, read-only mode, disconnect, exit and restart, paste review, search and export, and the background-job limit.
+  - the four profiles, read-only mode, disconnect, exit and restart, paste review, search and export, and cleanup of background and escaped jobs.
 
 The Playwright checks are a separate script rather than part of `test`, like the playground's `test:browser` and the root `test:browser:terminal`: browser suites with real shells and a fixed port are explicit commands and are not part of the turbo `test` or `validate` graph.

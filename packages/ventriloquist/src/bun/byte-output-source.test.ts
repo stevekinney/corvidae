@@ -6,7 +6,8 @@ import { expectAttached, flush, Recorder, SESSION_ID } from '../session/session.
 import { Session } from '../session/session.ts';
 import {
   bytesOnChannel,
-  scenarioTest,
+  scenario,
+  scenarioResult,
   settleScenarios,
   textOf,
 } from './bun-process.test-support.ts';
@@ -40,61 +41,74 @@ function outputOnly(source: OutputSource) {
   return { session, recorder, attachment, started: session.start() };
 }
 
+const scenario1 = scenario(
+  'ingests a Bun Shell result as an owned stdout stream, without decoding it',
+  async () => {
+    const { session, recorder, attachment } = outputOnly(
+      createByteOutputSource(await createShellOutputStream()),
+    );
+    const summary = await session.closed;
+    expect(textOf(bytesOnChannel(recorder, 'stdout'))).toBe(SHELL_OUTPUT_TEXT);
+    expect(summary).toMatchObject({
+      cause: 'source-complete',
+      cleanup: 'complete',
+      quarantined: false,
+    });
+    expect(session.snapshot.ownership).toMatchObject({ process: 'none', sources: ['owned'] });
+    expect(attachment.authority.capabilities).toEqual({
+      mode: 'output-only',
+      input: false,
+      resize: false,
+      kill: false,
+      readOnly: true,
+    });
+  },
+);
+
+const scenario2 = scenario(
+  'reports source completion, never an exit code, and never presents the feed as a terminal',
+  async () => {
+    const { session, recorder } = outputOnly(
+      createByteOutputSource(await createShellOutputStream()),
+    );
+    await session.closed;
+    expect(recorder.ofType('processExit')).toEqual([]);
+    expect(recorder.ofType('sourceComplete')).toEqual([
+      { type: 'sourceComplete', channel: 'stdout' },
+    ]);
+    expect(new Set(recorder.ofType('output').map((event) => event.channel))).toEqual(
+      new Set(['stdout']),
+    );
+    expect(session.snapshot.process).toEqual({ kind: 'running' });
+  },
+);
+
+const scenario3 = scenario(
+  'ingests an async byte iterable, keeping the chunk boundaries it was given',
+  async () => {
+    const { session, recorder } = outputOnly(createByteOutputSource(createShellOutputIterable(5)));
+    await session.closed;
+    expect(recorder.ofType('output').map((event) => event.bytes.length)).toEqual([
+      5, 5, 5, 5, 5, 1,
+    ]);
+    expect(textOf(bytesOnChannel(recorder, 'stdout'))).toBe(SHELL_OUTPUT_TEXT);
+  },
+);
+
 describe('createByteOutputSource', () => {
-  scenarioTest(
+  scenarioResult(
     'ingests a Bun Shell result as an owned stdout stream, without decoding it',
-    async () => {
-      const { session, recorder, attachment } = outputOnly(
-        createByteOutputSource(await createShellOutputStream()),
-      );
-      const summary = await session.closed;
-      expect(textOf(bytesOnChannel(recorder, 'stdout'))).toBe(SHELL_OUTPUT_TEXT);
-      expect(summary).toMatchObject({
-        cause: 'source-complete',
-        cleanup: 'complete',
-        quarantined: false,
-      });
-      expect(session.snapshot.ownership).toMatchObject({ process: 'none', sources: ['owned'] });
-      expect(attachment.authority.capabilities).toEqual({
-        mode: 'output-only',
-        input: false,
-        resize: false,
-        kill: false,
-        readOnly: true,
-      });
-    },
+    scenario1,
   );
 
-  scenarioTest(
+  scenarioResult(
     'reports source completion, never an exit code, and never presents the feed as a terminal',
-    async () => {
-      const { session, recorder } = outputOnly(
-        createByteOutputSource(await createShellOutputStream()),
-      );
-      await session.closed;
-      expect(recorder.ofType('processExit')).toEqual([]);
-      expect(recorder.ofType('sourceComplete')).toEqual([
-        { type: 'sourceComplete', channel: 'stdout' },
-      ]);
-      expect(new Set(recorder.ofType('output').map((event) => event.channel))).toEqual(
-        new Set(['stdout']),
-      );
-      expect(session.snapshot.process).toEqual({ kind: 'running' });
-    },
+    scenario2,
   );
 
-  scenarioTest(
+  scenarioResult(
     'ingests an async byte iterable, keeping the chunk boundaries it was given',
-    async () => {
-      const { session, recorder } = outputOnly(
-        createByteOutputSource(createShellOutputIterable(5)),
-      );
-      await session.closed;
-      expect(recorder.ofType('output').map((event) => event.bytes.length)).toEqual([
-        5, 5, 5, 5, 5, 1,
-      ]);
-      expect(textOf(bytesOnChannel(recorder, 'stdout'))).toBe(SHELL_OUTPUT_TEXT);
-    },
+    scenario3,
   );
 
   test('passes a code point cut by a chunk boundary through as bytes', async () => {

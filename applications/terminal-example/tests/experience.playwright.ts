@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 import {
   connected,
@@ -88,37 +88,82 @@ test('search finds output, and export offers the accessible snapshot', async ({ 
   await expect(dialog.getByRole('button', { name: 'Download' })).toBeVisible();
 });
 
-test('a background job is beyond the cleanup, and the server says so', async ({
+/** The slot state the server reports for this browser: `free`, `busy` or `quarantined`. */
+async function slotOf(context: BrowserContext): Promise<string> {
+  const response = await context.request.get('/session/status');
+  return ((await response.json()) as { slot: string }).slot;
+}
+
+/** Wait for a process the test started to appear on the screen as `marker=<pid>`. */
+async function printedPid(page: Page, marker: string): Promise<number> {
+  await expect(screen(page)).toHaveText(new RegExp(`${marker}=\\d+`));
+  return Number(new RegExp(`${marker}=(\\d+)`).exec(await screen(page).innerText())?.[1]);
+}
+
+test('a background job and a stopped job end with the session, and a replacement is offered', async ({
   page,
   context,
 }) => {
   await enroll(page);
   await connected(page);
   await typeLine(page, 'sleep 300 & echo job=$!');
-  await expect(screen(page)).toHaveText(/job=\d+/);
-  const job = Number(/job=(\d+)/.exec(await screen(page).innerText())?.[1]);
+  const background = await printedPid(page, 'job');
+  await typeLine(page, "sh -c 'echo stopped=$$; exec sleep 300'");
+  const stopped = await printedPid(page, 'stopped');
+  // Control-Z stops the foreground job through the terminal; the shell keeps it as a stopped job.
+  await page.keyboard.press('Control+z');
+  await expect(screen(page)).toContainText('Stopped');
   try {
     await page.close();
-    // A job the shell put in a group of its own is outside the process group cleanup owns. The
-    // host cannot prove it is gone, so it reports unknown and refuses a replacement.
+    // A shell on a terminal puts each job in a process group of its own, but they stay in the
+    // terminal's session, which is what cleanup owns. Both are ended and the slot is free again.
     await expect
-      .poll(
-        async () => {
-          const response = await context.request.get('/session/status');
-          const status = (await response.json()) as { slot: string };
-          return status.slot;
-        },
-        { timeout: 20_000 },
-      )
-      .toBe('quarantined');
+      .poll(() => [isAlive(background), isAlive(stopped)], { timeout: 20_000 })
+      .toEqual([false, false]);
+    await expect.poll(() => slotOf(context), { timeout: 20_000 }).toBe('free');
+    const second = await context.newPage();
+    await enroll(second);
+    await connected(second);
+    await expect(second.getByText('Cleanup incomplete')).toHaveCount(0);
+  } finally {
+    // These belong to the test, which ends them if cleanup did not.
+    for (const pid of [background, stopped]) {
+      try {
+        process.kill(pid, 'SIGKILL');
+      } catch {
+        // It already ended.
+      }
+    }
+  }
+});
+
+test('a job that leaves the session is beyond the cleanup, and the server says so', async ({
+  page,
+  context,
+}) => {
+  await enroll(page);
+  await connected(page);
+  // The forked child starts a session of its own (perl, because macOS has no setsid command), so
+  // nothing in the terminal's session reaches it. Its parent stays, so the host can still see it.
+  await typeLine(
+    page,
+    `perl -MPOSIX -e 'if (fork) { wait } else { POSIX::setsid(); $|=1; print "escaped=$$\\n"; exec "sleep", "300" }'`,
+  );
+  const escaped = await printedPid(page, 'escaped');
+  try {
+    await page.close();
+    // The host cannot prove a process that left the session is gone, so it reports unknown and
+    // refuses a replacement.
+    await expect.poll(() => slotOf(context), { timeout: 20_000 }).toBe('quarantined');
     const second = await context.newPage();
     await enroll(second);
     await expect(second.getByText('Cleanup incomplete').first()).toBeVisible();
     await expect(second.getByRole('button', { name: 'New session' })).toHaveCount(0);
+    expect(isAlive(escaped)).toBe(true);
   } finally {
-    // This job belongs to the test, which started it and ends it.
+    // This process belongs to the test, which started it and ends it.
     try {
-      process.kill(job, 'SIGKILL');
+      process.kill(escaped, 'SIGKILL');
     } catch {
       // It already ended.
     }

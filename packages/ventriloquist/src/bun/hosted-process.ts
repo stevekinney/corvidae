@@ -3,6 +3,7 @@ import type { OutputSource, ProcessBackend } from '../session/session-types.ts';
 import { isSupportedHost, type HostPlatform } from './host-platform.ts';
 import { OwnedProcess } from './owned-process.ts';
 import { processGroupOperations, readProcessTable } from './process-group.ts';
+import { readSessionTable, sessionOperations } from './process-session.ts';
 import { ProcessStartFailure } from './process-start-failure.ts';
 import {
   PROCESS_BUDGETS,
@@ -46,14 +47,31 @@ export function resolveHostSettings(options: ProcessHostOptions): ResolvedHostSe
   };
 }
 
-export function createOwnedProcess(settings: ResolvedHostSettings): OwnedProcess {
-  return new OwnedProcess({
-    operations: processGroupOperations,
+/**
+ * What cleanup owns. A pipe has no terminal, so its guarantee is the process group. A PTY child is
+ * a session leader, and a shell on a terminal puts each background job in a group of its own, so a
+ * PTY owns the whole session.
+ */
+export type CleanupScope = 'group' | 'session';
+
+export function createOwnedProcess(
+  settings: ResolvedHostSettings,
+  scope: CleanupScope = 'group',
+): OwnedProcess {
+  const timing = {
     clock: settings.clock,
     graceMilliseconds: settings.graceMilliseconds,
     observationMilliseconds: settings.observationMilliseconds,
-    readProcessTable,
-  });
+  };
+  return scope === 'session'
+    ? new OwnedProcess({
+        ...timing,
+        operations: sessionOperations,
+        readProcessTable: () => readSessionTable(),
+        hangUp: (leader) => sessionOperations.hangUp(leader),
+        release: (leader) => sessionOperations.forget(leader),
+      })
+    : new OwnedProcess({ ...timing, operations: processGroupOperations, readProcessTable });
 }
 
 /**

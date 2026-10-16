@@ -1,5 +1,5 @@
 import { outcomeOf, rethrow } from '@lostgradient/testing';
-import { test } from 'bun:test';
+import { afterAll, test } from 'bun:test';
 
 import { systemClock } from '../session/session-clock.ts';
 import type {
@@ -7,7 +7,7 @@ import type {
   SessionAttachment,
   SessionBudgets,
 } from '../session/session-types.ts';
-import { Recorder, SESSION_ID, expectAttached } from '../session/session.test-support.ts';
+import { expectAttached, Recorder, SESSION_ID } from '../session/session.test-support.ts';
 import { Session } from '../session/session.ts';
 import type { OutputMode } from './fixtures/terminal-output.ts';
 import { createPipeProcess } from './pipe-process.ts';
@@ -46,30 +46,116 @@ async function disposeTracked(): Promise<void> {
 /** The scenarios run one after another, so the sessions and processes they track never overlap. */
 let scenarioQueue: Promise<unknown> = Promise.resolve();
 
+/** A scenario that has been started at module scope, and what it recorded. */
+export type Scenario = {
+  readonly name: string;
+  /** Resolves with what the body recorded: `undefined` when it passed, the error when it did not. */
+  readonly outcome: Promise<unknown>;
+  /** Whether the body and its cleanup have finished. */
+  readonly settled: () => boolean;
+};
+
+/** The test files whose `settleScenarios` has returned, by path: module evaluation of each is over. */
+const settledFiles = new Set<string>();
+
+/** The path of the first frame of `stack` outside this module, which is the test file calling in; `''` if none. */
+export function callingFileOf(stack: string): string {
+  const paths = stack
+    .split('\n')
+    .slice(1)
+    .map((frame) => /\(?((?:file:\/\/)?\/[^():]+?)(?::\d+){1,2}\)?$/.exec(frame.trim())?.[1]);
+  return (
+    paths.find((path) => path !== undefined && !path.endsWith('bun-process.test-support.ts')) ?? ''
+  );
+}
+
+/** The calling file, or an error: a caller that cannot be identified must not be allowed or refused by guesswork. */
+export function requireCallingFile(stack: string, what: string): string {
+  const file = callingFileOf(stack);
+  if (file === '') throw new Error(`${what}: could not identify the test file that called it`);
+  return file;
+}
+
 /**
- * Define a test whose body starts real processes. Bun gives a test body five seconds, and a child's
- * boot spends that on a loaded host, so the body runs at module scope instead, where no per-test
- * clock applies, and the test only rethrows what it recorded (`outcomeOf` fails a body that never
- * settles after `SCENARIO_HANG_GUARD_MILLISECONDS`). Scenarios run in definition order, and every
- * session and process the body tracked is cleaned up when it ends. Call `settleScenarios` with
- * top-level `await` at the end of the file so every body has finished before any test runs.
+ * Start a scenario: a body that starts real processes. Bun gives a test body five seconds, and a
+ * child's boot spends that on a loaded host, so the body runs at module scope, where no per-test
+ * clock applies, and its test (`scenarioResult`) only reports what it recorded. `outcomeOf` fails a
+ * body that never settles after `SCENARIO_HANG_GUARD_MILLISECONDS`. Scenarios run one after another
+ * in definition order, and every session and process the body tracked is cleaned up when it ends.
+ *
+ * It must be called at module scope, before the file's `await settleScenarios()`. Bun runs a
+ * `describe` callback after the module body, so a scenario started inside one would start after
+ * that `await` returned and run while its test was already waiting on Bun's clock. That is refused:
+ * start the scenario at module scope and register its test inside the `describe`.
  */
-export function scenarioTest(name: string, body: () => Promise<void> | void): void {
+export function scenario(name: string, body: () => Promise<void> | void): Scenario {
+  const file = requireCallingFile(new Error().stack ?? '', `scenario "${name}"`);
+  if (settledFiles.has(file)) {
+    throw new Error(
+      `scenario "${name}" was started after settleScenarios() returned (inside a describe callback?): ` +
+        'start scenarios at module scope and register their tests inside the describe with scenarioResult',
+    );
+  }
+  let finished = false;
   const outcome = scenarioQueue.then(() =>
     outcomeOf(async () => {
       try {
         await body();
       } finally {
-        await disposeTracked();
+        try {
+          await disposeTracked();
+        } finally {
+          // Set even when cleanup fails, so the failure is what the test reports, not "unsettled".
+          finished = true;
+        }
       }
     }),
   );
   scenarioQueue = outcome;
-  test(name, async () => rethrow(await outcome));
+  return { name, outcome, settled: () => finished };
 }
 
-/** Wait for every scenario defined so far; `await` it at module scope after the last definition. */
+/** Fail loudly if a scenario is still running: its test must never be the one waiting for it. */
+export function expectSettled(started: Scenario): void {
+  if (!started.settled()) {
+    throw new Error(`scenario "${started.name}" had not settled when its test began`);
+  }
+}
+
+/**
+ * Register the test that reports a scenario. It runs after every module-scope scenario of its file
+ * has settled, so it waits on nothing and the per-test clock covers no process work; it fails
+ * loudly if that ever stops being true.
+ */
+export function scenarioResult(name: string, started: Scenario): void {
+  test(name, async () => {
+    expectSettled(started);
+    rethrow(await started.outcome);
+  });
+}
+
+/** A scenario and its test together, for a file that defines both at module scope. */
+export function scenarioTest(name: string, body: () => Promise<void> | void): void {
+  scenarioResult(name, scenario(name, body));
+}
+
+/** Wait until the queue stops growing: a scenario can be defined while an earlier one runs. */
+async function drainScenarios(): Promise<void> {
+  let last: Promise<unknown>;
+  do {
+    last = scenarioQueue;
+    await last;
+  } while (last !== scenarioQueue);
+}
+
+/**
+ * Wait for every scenario defined so far; `await` it at module scope after the last definition. It
+ * ends the file's module-scope phase: a scenario started afterwards is refused. A file hook also
+ * waits for the whole queue, so no run, however its tests are selected, ends with a scenario in flight.
+ */
 export async function settleScenarios(): Promise<void> {
+  settledFiles.add(requireCallingFile(new Error().stack ?? '', 'settleScenarios()'));
+  afterAll(drainScenarios);
   await scenarioQueue;
 }
 

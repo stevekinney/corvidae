@@ -57,6 +57,10 @@ function notRunnable(profile: ProcessProfile): string | undefined {
  * non-executable command is found after the spawn, before the gate is released, and fails the
  * start as `spawn-failed` exactly as a refused spawn does.
  *
+ * Cleanup ends the whole session, not only the shell's process group (see `process-session.ts`): the
+ * shell is hung up first, then every process still in the session is sent TERM and, after the
+ * grace, KILL. A job that left the session with `setsid` is out of reach and is reported `unknown`.
+ *
  * End of output ends the output source; the process exit is reported separately and in either
  * order. A host that cannot open a terminal this way (no libc binding, no C compiler, no worker
  * thread) fails the start as `unsupported-runtime`; a PTY never degrades to a pipe.
@@ -70,7 +74,7 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
   validateProcessProfile(profile);
   validateDimensions(dimensions);
   const settings = resolveHostSettings(options);
-  const owned = createOwnedProcess(settings);
+  const owned = createOwnedProcess(settings, 'session');
   const output = createDeferredByteStream();
   let startFailure: ProcessStartFailure | undefined;
   let device: PtyDevice | undefined;
