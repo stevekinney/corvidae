@@ -3,6 +3,7 @@ import { readdirSync } from 'node:fs';
 
 import { rejectionOf, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
+import { trackRealTimers } from '../conformance/conformance.test-support.ts';
 import type { ByteReader } from '../session/session-types.ts';
 import { flush } from '../session/session.test-support.ts';
 import {
@@ -515,6 +516,52 @@ describe('a PTY whose reader thread does not confirm it stopped', () => {
       // A thread that may still be reading it must never have the descriptor closed under it.
       expect(real.closed).not.toContain(master);
       real.device.close(master);
+    },
+  );
+
+  scenarioTest(
+    'also stops retrying queued input, without closing the descriptor, and leaves it unsettled',
+    async () => {
+      const real = recordingDevice();
+      let attempts = 0;
+      const refuse = () => {
+        attempts += 1;
+        throw Object.assign(new Error('try again'), { code: 'EAGAIN' });
+      };
+      const timers = trackRealTimers();
+      try {
+        const hosted = trackHostedProcess(
+          createPtyProcess({
+            ...PTY_OPTIONS,
+            profile: shellProfile('sleep 7919'),
+            terminationGraceMilliseconds: 100,
+            masterStopTimeoutMilliseconds: 30,
+            loadDevice: real.loadDevice,
+            createMasterWorker: () => fakeWorker(),
+            writeMaster: refuse,
+          }),
+        );
+        await hosted.backend.start();
+        const master = real.opened[0]?.masterFd as number;
+        let settled = false;
+        void hosted.backend.write(Uint8Array.of(1)).then(
+          () => (settled = true),
+          () => (settled = true),
+        );
+        expect(attempts).toBe(1);
+        expect(await hosted.backend.cleanup()).toBe('incomplete');
+        const after = attempts;
+        await Bun.sleep(80);
+        // The 16 ms retry would have run several times by now against a descriptor still open.
+        expect(attempts).toBe(after);
+        expect(timers.outstanding()).toBe(0);
+        expect(real.closed).not.toContain(master);
+        // Never taken, never refused: the session reports it as unknown delivery at close.
+        expect(settled).toBe(false);
+        real.device.close(master);
+      } finally {
+        timers.stop();
+      }
     },
   );
 

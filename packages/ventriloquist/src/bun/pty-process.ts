@@ -169,6 +169,7 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
           // Closed only once the thread reading it has confirmed it stopped; otherwise the descriptor
           // stays for process teardown, since closing it under a reader invites a reused number.
           if (await master.stop()) master.close();
+          else master.abandon();
         }
         master = undefined;
       };
@@ -238,6 +239,7 @@ export function createPtyProcess(options: PtyProcessOptions): HostedProcess {
       const stopped = active === undefined ? true : await active.stop();
       // An unconfirmed reader still has the descriptor: leave it open and say cleanup did not finish.
       const closed = stopped && (await attempt(() => active?.close()));
+      if (!stopped) active?.abandon();
       master = undefined;
       pair = undefined;
       await attempt(() => output.cancel());

@@ -46,7 +46,13 @@ export type PtyMaster = {
   discard(): void;
   /** End the worker and wait for it; `false` means it did not answer in time and was terminated. */
   stop(): Promise<boolean>;
-  /** Abandon queued input and close the descriptor. Call once, after `stop`. */
+  /**
+   * Stop retrying queued input and drop it, leaving the descriptor open. For a reader thread that
+   * never confirmed it stopped: the descriptor stays for process teardown, and nothing may keep
+   * writing to it. Queued writes are neither taken nor refused, so the session reports them unknown.
+   */
+  abandon(): void;
+  /** Abandon queued input and close the descriptor. Call once, after a confirmed `stop`. */
   close(): void;
 };
 
@@ -224,6 +230,13 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
     }
   };
 
+  const dropInput = (): void => {
+    closed = true;
+    if (retryTimer !== undefined) clearTimeout(retryTimer);
+    retryTimer = undefined;
+    pending.length = 0;
+  };
+
   // ---- ending ----------------------------------------------------------------------------------
   return {
     stream,
@@ -254,11 +267,10 @@ export function createPtyMaster(options: PtyMasterOptions): PtyMaster {
       worker.terminate();
       return graceful;
     },
+    abandon: dropInput,
     close: () => {
       if (closed) return;
-      closed = true;
-      if (retryTimer !== undefined) clearTimeout(retryTimer);
-      pending.length = 0;
+      dropInput();
       device.close(descriptor);
     },
   };

@@ -351,6 +351,13 @@ describe('ending a master', () => {
     expect(thread.terminated).toBe(1);
   });
 
+  test('abandon drops queued input and leaves the descriptor open, even if close follows', () => {
+    const { created, closed } = master();
+    created.abandon();
+    created.close();
+    expect(closed).toEqual([]);
+  });
+
   test('close closes the descriptor once', () => {
     const { created, closed } = master();
     created.close();
