@@ -66,7 +66,7 @@ describe('weft.system.lease', () => {
 
   test("accepts each of EngineLeaseHealth's coherent shapes", () => {
     const { lossReason: _lossReason, ...holder } = CONTESTED;
-    const coherent = [
+    const coherent: unknown[] = [
       { mode: 'none', status: 'disabled', holdsLease: false },
       { mode: 'lease', status: 'no-lease', holdsLease: false },
       { ...holder, status: 'healthy', holdsLease: true },
@@ -74,12 +74,12 @@ describe('weft.system.lease', () => {
       CONTESTED,
       { mode: 'lease', status: 'contested', holdsLease: false, lossReason: 'deposed' },
     ];
-    for (const lease of coherent) expect(parseSystemLease(lease)).toEqual(lease);
+    for (const lease of coherent) expect(parseSystemLease(lease) as unknown).toEqual(lease);
   });
 
   test('rejects incoherent status, mode, holder, and loss-reason combinations', () => {
     const { lossReason: _lossReason, ...holder } = CONTESTED;
-    const incoherent = [
+    const incoherent: unknown[] = [
       // `healthy` must hold the lease and report its holder and instants.
       { ...holder, status: 'healthy', holdsLease: false },
       { mode: 'lease', status: 'healthy', holdsLease: true },
