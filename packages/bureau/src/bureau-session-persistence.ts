@@ -118,6 +118,15 @@ function mergeMetadata(
           },
         }
       : {}),
+    // One entry per starting run, so concurrent starts each keep theirs.
+    ...(metadata['steeringStartingRuns'] !== undefined
+      ? {
+          steeringStartingRuns: {
+            ...enumerableRecord(current['steeringStartingRuns'], false),
+            ...enumerableRecord(metadata['steeringStartingRuns'], true),
+          },
+        }
+      : {}),
   };
 }
 
@@ -161,6 +170,14 @@ function clearCompletedRunMetadata(
       ),
     );
   clearTerminalApprovalMetadata(metadata, runId, hasPendingApproval ?? false);
+  // An ended run is no longer starting. Copied, never edited in place: the
+  // map may still be the stored session's own object.
+  const starting = metadata['steeringStartingRuns'];
+  if (typeof starting === 'object' && starting !== null && !Array.isArray(starting)) {
+    metadata['steeringStartingRuns'] = Object.fromEntries(
+      Object.entries(starting).filter(([startingRunId]) => startingRunId !== runId),
+    );
+  }
 }
 
 export function createSessionPersistence(dependencies: SessionPersistenceDependencies) {
@@ -197,12 +214,27 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
     metadata: Record<string, JSONValue>,
     agentName?: string,
     baseConversationHistory: ConversationHistory = conversation.current,
-  ): Promise<void> {
-    if (!sessionStore) return;
+    // The session incarnation the run was started (or recovered) against.
+    // When given, the save applies only to that incarnation: another
+    // process may have deleted the session without knowing this run exists,
+    // and an upsert here would silently undo that deletion.
+    expectedIncarnation?: string,
+  ): Promise<AgentSession | undefined> {
+    if (!sessionStore) return undefined;
     const candidateRunId = metadata['lastRunId'];
-    if (typeof candidateRunId === 'string' && orphanedRunIds.delete(candidateRunId)) return;
+    if (typeof candidateRunId === 'string' && orphanedRunIds.delete(candidateRunId)) {
+      return undefined;
+    }
 
-    await sessionStore.update(sessionId, (existingSession: AgentSession | undefined) => {
+    // The session as this save committed it: its incarnation is the one the
+    // caller's run now belongs to, whatever replaces it afterwards.
+    return sessionStore.update(sessionId, (existingSession: AgentSession | undefined) => {
+      if (
+        expectedIncarnation !== undefined &&
+        existingSession?.incarnation !== expectedIncarnation
+      ) {
+        return undefined;
+      }
       const nextSession =
         existingSession ??
         createAgentSession({
@@ -240,7 +272,7 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
    * the producers its outbox entry is replayed through.
    */
   function persistSessionUpdate(
-    saveSessionUpdate: () => Promise<void>,
+    saveSessionUpdate: () => Promise<unknown>,
     context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
   ): void {
     const persisting = (async () => {

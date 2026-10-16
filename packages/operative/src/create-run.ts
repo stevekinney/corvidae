@@ -239,6 +239,8 @@ export function createActiveRun(
       {
         runId: durable.runId,
         sessionId: durable.sessionId ?? durable.runId,
+        // Copied now: the start itself runs a microtask later.
+        ...(durable.tags !== undefined ? { tags: [...durable.tags] } : {}),
         // F2: thread agentName from RunOptions into the durable input. Falls
         // back to '' inside createDurableActiveRun if undefined here.
         agentName: options.agentName,
@@ -764,6 +766,12 @@ export interface DurableRunRouting extends DurableActiveRunContext {
    * headless run with no distinct session.
    */
   sessionId?: string | undefined;
+  /**
+   * Workflow tags to launch this run's durable workflow with, so a host can
+   * find it later through the engine (`engine.list({ tags })`) from any
+   * process sharing the store.
+   */
+  tags?: readonly string[] | undefined;
   /** First user message to seed a brand-new run. */
   prompt?: string | undefined;
   /**

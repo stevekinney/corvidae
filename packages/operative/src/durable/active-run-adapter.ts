@@ -42,6 +42,8 @@ export interface DurableActiveRunContext {
 export interface DurableActiveRunOptions {
   runId: string;
   sessionId: string;
+  /** Workflow tags to launch the durable workflow with. */
+  tags?: readonly string[] | undefined;
   agentName?: string | undefined;
   options: RunOptions;
   prompt?: string | undefined;
