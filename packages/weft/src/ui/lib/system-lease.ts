@@ -41,6 +41,27 @@ function isOptionalNumber(value: unknown): boolean {
   return value === undefined || (typeof value === 'number' && Number.isFinite(value));
 }
 
+const HELD_LEASE_NUMBER_FIELDS = ['heldSince', 'expiresAt', 'lastRenewedAt', 'fencingEpoch'];
+
+/**
+ * The status, mode, and `holdsLease` must agree the way Weft's
+ * `EngineLeaseHealth` union says they do: `disabled` only with mode `none`,
+ * every other status only with mode `lease`, and `healthy` exactly when this
+ * engine holds the lease, with its holder and lease instants present. A
+ * `contested` reading may omit the holder fields (a confirmed `deposed` loss
+ * can arrive without them).
+ */
+function isCoherentLeaseStatus(value: Record<string, unknown>): boolean {
+  const status = value['status'];
+  if ((status === 'disabled') !== (value['mode'] === 'none')) return false;
+  if ((status === 'healthy') !== (value['holdsLease'] === true)) return false;
+  if (status !== 'healthy') return true;
+  return (
+    typeof value['holderId'] === 'string' &&
+    HELD_LEASE_NUMBER_FIELDS.every((field) => typeof value[field] === 'number')
+  );
+}
+
 function isSystemLease(value: unknown): value is SystemLease {
   return (
     isRecord(value) &&
@@ -48,13 +69,12 @@ function isSystemLease(value: unknown): value is SystemLease {
     typeof value['status'] === 'string' &&
     LEASE_STATUSES.has(value['status']) &&
     typeof value['holdsLease'] === 'boolean' &&
+    isCoherentLeaseStatus(value) &&
     (value['holderId'] === undefined || typeof value['holderId'] === 'string') &&
     (value['lossReason'] === undefined ||
       value['lossReason'] === 'deposed' ||
       value['lossReason'] === 'renewal-unconfirmable') &&
-    ['heldSince', 'expiresAt', 'lastRenewedAt', 'fencingEpoch'].every((field) =>
-      isOptionalNumber(value[field]),
-    )
+    HELD_LEASE_NUMBER_FIELDS.every((field) => isOptionalNumber(value[field]))
   );
 }
 

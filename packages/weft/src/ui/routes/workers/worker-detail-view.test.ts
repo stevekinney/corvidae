@@ -313,6 +313,13 @@ describe('WorkerDetailView — server-reported session', () => {
     expect(session.getByText('Heartbeat stale')).not.toBeNull();
     expect(session.getByText('3m · stale (stale at 2m)')).not.toBeNull();
     expect(session.getByText(/No heartbeat for 3m\. The session may be slow/)).not.toBeNull();
+    // A proven resume keeps the generation, so the warning never promises
+    // that every reconnect raises it.
+    expect(
+      session.getByText(
+        /A proven resume keeps generation \d+; a fresh registration reports a higher one\./,
+      ),
+    ).not.toBeNull();
     expect(session.getAllByText('Draining')).toHaveLength(2);
   });
 

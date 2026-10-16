@@ -122,12 +122,21 @@ describe('HealthTab', () => {
     unmount();
   });
 
-  test('a healthy lease without timing fields says so instead of inventing them', async () => {
-    scripted = scriptedWithLease({ mode: 'lease', status: 'healthy', holdsLease: true });
+  test('a lease reading without timing fields says so instead of inventing them', async () => {
+    scripted = scriptedWithLease({ mode: 'lease', status: 'no-lease', holdsLease: false });
     routeBaseline(scripted);
     const { findByText, getAllByText, unmount } = await renderHealthTab();
-    expect(await findByText('Healthy')).not.toBeNull();
+    expect(await findByText('No lease held')).not.toBeNull();
     expect(getAllByText('Not reported')).toHaveLength(5);
+    unmount();
+  });
+
+  test('a healthy lease without its holder and timing fields is malformed, never healthy', async () => {
+    scripted = scriptedWithLease({ mode: 'lease', status: 'healthy', holdsLease: true });
+    routeBaseline(scripted);
+    const { findByText, queryByText, unmount } = await renderHealthTab(queryClientWithoutRetries());
+    expect(await findByText('Malformed server response')).not.toBeNull();
+    expect(queryByText('Healthy')).toBeNull();
     unmount();
   });
 

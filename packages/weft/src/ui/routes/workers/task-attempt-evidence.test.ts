@@ -24,6 +24,22 @@ function attempt(overrides: Partial<TaskAttemptRecord> = {}): TaskAttemptRecord 
   };
 }
 
+const IDENTITY: NonNullable<TaskAttemptRecord['executionIdentity']> = {
+  activityContractHash: 'sha256:contract',
+  activityName: 'charge',
+  artifactDigest: 'sha256:artifact',
+  buildId: 'build-1',
+  deploymentName: 'payments',
+  manifestDigest: 'sha256:manifest',
+  protocolVersion: 1,
+  runtimeName: 'bun',
+  runtimeVersion: '1.4.2',
+  sdkVersion: '0.0.0',
+  workerId: 'worker-a',
+  workflowRevision: 'rev-1',
+  workflowType: 'orders',
+};
+
 function task(overrides: Partial<TaskLedgerDetail> = {}): TaskLedgerDetail {
   return {
     state: 'leased',
@@ -47,12 +63,23 @@ describe('attempt record validation', () => {
         attempt({ dispositionReason: 'expired', lastHeartbeatAt: NOW, sessionGeneration: 2 }),
       ),
     ).toBe(true);
+    expect(isTaskAttemptRecord(attempt({ executionIdentity: IDENTITY }))).toBe(true);
   });
 
   test('rejects records with malformed optional evidence', () => {
     expect(isTaskAttemptRecord({ ...attempt(), dispositionReason: 7 })).toBe(false);
     expect(isTaskAttemptRecord({ ...attempt(), lastHeartbeatAt: Number.NaN })).toBe(false);
     expect(isTaskAttemptRecord({ ...attempt(), executionIdentity: 'worker-a' })).toBe(false);
+    expect(isTaskAttemptRecord({ ...attempt(), executionIdentity: {} })).toBe(false);
+    expect(
+      isTaskAttemptRecord({ ...attempt(), executionIdentity: { ...IDENTITY, workerId: 7 } }),
+    ).toBe(false);
+    expect(
+      isTaskAttemptRecord({
+        ...attempt(),
+        executionIdentity: { ...IDENTITY, protocolVersion: '1' },
+      }),
+    ).toBe(false);
     expect(isTaskAttemptRecord(null)).toBe(false);
     expect(isTaskAttemptList({})).toBe(false);
     expect(isTaskAttemptList([attempt(), { attempt: 2 }])).toBe(false);
@@ -155,6 +182,29 @@ describe('cancellation evidence', () => {
     expect(evidence.status).toBe('acknowledged');
     expect(evidence.acknowledgement).toBe(
       `Acknowledged by attempt 2 at ${new Date(NOW).toISOString()}`,
+    );
+  });
+
+  test('an owning cancelled attempt with a disposition reason was settled by the server, not acknowledged', () => {
+    const evidence = describeCancellation(
+      task({
+        state: 'cancelling',
+        cancellationReason: 'stop',
+        cancellationRequestedAt: NOW - 5_000,
+        attempts: [
+          attempt({
+            attempt: 2,
+            disposition: 'cancelled',
+            dispositionAt: NOW,
+            dispositionReason: 'cancellation deadline elapsed with no cooperative result',
+          }),
+        ],
+      }),
+    );
+    expect(evidence.status).toBe('cancelled-unacknowledged');
+    expect(evidence.statusLabel).toBe('Cancelled · no worker acknowledgement recorded');
+    expect(evidence.acknowledgement).toBe(
+      `Not acknowledged · the server settled attempt 2 as cancelled at ${new Date(NOW).toISOString()} · cancellation deadline elapsed with no cooperative result`,
     );
   });
 

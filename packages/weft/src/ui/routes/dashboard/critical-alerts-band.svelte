@@ -109,8 +109,11 @@
    * exactly one real write.
    */
   $effect(() => {
-    const systemError = diagnosticsQuery.error ?? leaseQuery.error;
-    if (canReadSystem && systemError && isForbidden(systemError)) {
+    // Read both errors before deciding, so a non-403 diagnostics fault never
+    // masks a 403 from the lease read (or the reverse).
+    const diagnosticsForbidden = isForbidden(diagnosticsQuery.error);
+    const leaseForbidden = isForbidden(leaseQuery.error);
+    if (canReadSystem && (diagnosticsForbidden || leaseForbidden)) {
       principal.denyScope('system:read');
     }
   });

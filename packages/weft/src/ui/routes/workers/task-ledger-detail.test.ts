@@ -223,6 +223,15 @@ describe('task ledger lease and attempt validation', () => {
     ).toThrow(MalformedTaskLedgerError);
   });
 
+  test('rejects an attempt whose execution identity lacks its published fields', () => {
+    expect(() =>
+      parseTaskLedgerDetail({
+        ...queuedTask(),
+        attempts: [attemptRecord({ executionIdentity: {} })],
+      }),
+    ).toThrow(MalformedTaskLedgerError);
+  });
+
   test('rejects a non-numeric lease deadline', () => {
     expect(() => parseTaskLedgerDetail({ ...queuedTask(), attemptDeadline: 'later' })).toThrow(
       MalformedTaskLedgerError,
@@ -439,18 +448,44 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
           attempt: 2,
           disposition: 'cancelled',
           dispositionAt: NOW - 2_000,
-          dispositionReason: 'worker acknowledged cancellation',
         }),
       ],
     });
     const { getByText } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
 
     expect(getByText('Acknowledged by owning attempt')).not.toBeNull();
+    expect(getByText(`Acknowledged by attempt 2 at ${iso(NOW - 2_000)}`)).not.toBeNull();
+  });
+
+  test('a cancellation the server settled after the grace period is never shown as acknowledged', () => {
+    const task = parseTaskLedgerDetail({
+      ...queuedTask(),
+      state: 'terminal',
+      disposition: 'cancelled',
+      cancellationReason: 'operator requested cancellation',
+      terminalAt: NOW - 1_000,
+      adopted: true,
+      attempts: [
+        attemptRecord({
+          attempt: 2,
+          disposition: 'cancelled',
+          dispositionAt: NOW - 1_000,
+          dispositionReason: 'cancellation deadline elapsed with no cooperative result',
+        }),
+      ],
+    });
+    const { getByText, queryByText } = render(TaskLedgerDetailView, {
+      props: { task, now: NOW },
+    });
+
+    expect(getByText('Cancelled · no worker acknowledgement recorded')).not.toBeNull();
     expect(
       getByText(
-        `Acknowledged by attempt 2 at ${iso(NOW - 2_000)} · worker acknowledged cancellation`,
+        `Not acknowledged · the server settled attempt 2 as cancelled at ${iso(NOW - 1_000)} · cancellation deadline elapsed with no cooperative result`,
       ),
     ).not.toBeNull();
+    expect(queryByText('Acknowledged by owning attempt')).toBeNull();
+    expect(queryByText(/^Acknowledged by attempt/)).toBeNull();
   });
 
   test('a cancelled terminal task without an owning cancelled attempt records no acknowledgement', () => {

@@ -187,6 +187,21 @@ describe('CriticalAlertsBand', () => {
     );
   });
 
+  test('a lease 403 still degrades system:read when diagnostics fails with a server fault', async () => {
+    const client = alertClient({
+      diagnostics: new HttpClientError(500, 'Internal Server Error'),
+      reviews: [],
+      lease: new HttpClientError(403, 'Forbidden'),
+    });
+
+    const { getByText } = render(CriticalAlertsBandHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText('Requires system:read')).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
+  });
+
   test('renders a reviews-near-timeout chip that deep-links to /reviews', async () => {
     const now = Date.now();
     const client = alertClient({

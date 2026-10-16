@@ -64,6 +64,34 @@ describe('weft.system.lease', () => {
     expect(() => parseSystemLease(null)).toThrow('malformed engine lease response');
   });
 
+  test('rejects status, mode, and holdsLease combinations the published union never produces', () => {
+    const HEALTHY = { ...CONTESTED, status: 'healthy', holdsLease: true } as const;
+    expect(parseSystemLease(HEALTHY).status).toBe('healthy');
+    expect(() => parseSystemLease({ ...HEALTHY, holdsLease: false })).toThrow(
+      MalformedSystemLeaseError,
+    );
+    expect(() => parseSystemLease({ mode: 'lease', status: 'healthy', holdsLease: true })).toThrow(
+      MalformedSystemLeaseError,
+    );
+    expect(() => parseSystemLease({ ...CONTESTED, holdsLease: true })).toThrow(
+      MalformedSystemLeaseError,
+    );
+    expect(() =>
+      parseSystemLease({ mode: 'lease', status: 'disabled', holdsLease: false }),
+    ).toThrow(MalformedSystemLeaseError);
+    expect(() => parseSystemLease({ mode: 'none', status: 'no-lease', holdsLease: false })).toThrow(
+      MalformedSystemLeaseError,
+    );
+    expect(
+      parseSystemLease({
+        mode: 'lease',
+        status: 'contested',
+        holdsLease: false,
+        lossReason: 'deposed',
+      }).status,
+    ).toBe('contested');
+  });
+
   test('presents every status in words, with the loss reason when one is reported', () => {
     expect(leaseStatusPresentation(parseSystemLease(CONTESTED))).toEqual({
       label: 'Contested',

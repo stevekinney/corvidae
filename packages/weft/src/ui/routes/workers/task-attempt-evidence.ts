@@ -15,8 +15,13 @@
  * - **Acknowledgement belongs to the owning attempt.** Worker acknowledgement
  *   of a cancellation is reported only when the attempt record whose
  *   `attempt` matches the task's current `attempt` carries
- *   `disposition: 'cancelled'`. A cancellation request on the task, or a
- *   cancelled disposition on an older attempt, never reads as acknowledged.
+ *   `disposition: 'cancelled'` with no `dispositionReason`. That is the shape
+ *   Weft records when the worker's own cancelled result settles the attempt.
+ *   When the server settles the attempt itself because the cancellation
+ *   grace period ran out, it records a `dispositionReason`, so a cancelled
+ *   owning attempt that carries one reads as settled without acknowledgement.
+ *   A cancellation request on the task, or a cancelled disposition on an
+ *   older attempt, never reads as acknowledged.
  * - **Expiry is not cancellation.** A lease that ran out is reported as an
  *   expired clock; it says nothing about cancellation, and cancellation
  *   wording never appears on a clock.
@@ -54,6 +59,30 @@ function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string';
 }
 
+const EXECUTION_IDENTITY_STRING_FIELDS = [
+  'activityContractHash',
+  'activityName',
+  'artifactDigest',
+  'buildId',
+  'deploymentName',
+  'manifestDigest',
+  'runtimeName',
+  'runtimeVersion',
+  'sdkVersion',
+  'workerId',
+  'workflowRevision',
+  'workflowType',
+] as const;
+
+/** Validates an attempt's `executionIdentity` against its published required shape. */
+function isExecutionIdentity(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isFiniteNumber(value['protocolVersion']) &&
+    EXECUTION_IDENTITY_STRING_FIELDS.every((field) => typeof value[field] === 'string')
+  );
+}
+
 /** Validates one attempt record at the dashboard's trust boundary. */
 export function isTaskAttemptRecord(value: unknown): value is TaskAttemptRecord {
   return (
@@ -67,7 +96,7 @@ export function isTaskAttemptRecord(value: unknown): value is TaskAttemptRecord 
     isOptionalString(value['dispositionReason']) &&
     isOptionalNumber(value['lastHeartbeatAt']) &&
     isOptionalNumber(value['sessionGeneration']) &&
-    (value['executionIdentity'] === undefined || isRecord(value['executionIdentity']))
+    (value['executionIdentity'] === undefined || isExecutionIdentity(value['executionIdentity']))
   );
 }
 
@@ -185,19 +214,32 @@ export interface CancellationEvidence {
   readonly earlierCancelledAttempts: readonly number[];
 }
 
+/**
+ * `true` only when the owning attempt's own record shows the worker's
+ * cancelled result: a cancelled disposition with no `dispositionReason`. The
+ * server's forced settlement after the grace period records a reason.
+ */
+function isWorkerAcknowledged(owner: TaskAttemptRecord | undefined): boolean {
+  return owner?.disposition === 'cancelled' && owner.dispositionReason === undefined;
+}
+
 function acknowledgementText(task: TaskLedgerDetail, owner: TaskAttemptRecord | undefined): string {
   if (owner === undefined) return `No record for attempt ${task.attempt} yet`;
   if (owner.disposition !== 'cancelled') {
     return `Not acknowledged · attempt ${owner.attempt} is ${DISPOSITION_LABEL[owner.disposition].toLowerCase()}`;
   }
-  const reason = owner.dispositionReason ? ` · ${owner.dispositionReason}` : '';
-  return `Acknowledged by attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)}${reason}`;
+  const at = exactTimestamp(owner.dispositionAt);
+  if (owner.dispositionReason !== undefined) {
+    return `Not acknowledged · the server settled attempt ${owner.attempt} as cancelled at ${at} · ${owner.dispositionReason}`;
+  }
+  return `Acknowledged by attempt ${owner.attempt} at ${at}`;
 }
 
 /** Derives cancellation intent and acknowledgement from the ledger, never from lease timing. */
 export function describeCancellation(task: TaskLedgerDetail): CancellationEvidence {
   const owner = owningAttempt(task);
-  const acknowledged = owner?.disposition === 'cancelled';
+  const acknowledged = isWorkerAcknowledged(owner);
+  const serverSettled = owner?.disposition === 'cancelled' && !acknowledged;
   const requested =
     task.state === 'cancelling' ||
     task.cancellationRequestedAt !== undefined ||
@@ -209,7 +251,7 @@ export function describeCancellation(task: TaskLedgerDetail): CancellationEviden
 
   let status: CancellationStatus = 'not-requested';
   if (acknowledged) status = 'acknowledged';
-  else if (task.state === 'terminal' && task.disposition === 'cancelled') {
+  else if (serverSettled || (task.state === 'terminal' && task.disposition === 'cancelled')) {
     status = 'cancelled-unacknowledged';
   } else if (requested) status = 'requested';
 
