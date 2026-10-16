@@ -16,6 +16,7 @@
     "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a stateless interval schedule and runs the agent with a fresh session per fire",
     "packages/evaluation :: scripts/memory-lifecycle.test.ts :: memory-lifecycle run :: runs the stochastic lane with a fixed, recorded seed",
     "packages/operative :: src/durable/run-workflow-checkpoint-depth.test.ts :: durable agentRun checkpoint nesting :: keeps persisted run state at constant depth across more than 100 steps",
+    "packages/weft :: scripts/build-dashboard.test.ts :: buildDashboard :: writes index.html and hashed JavaScript and CSS into the default dashboard directory",
     "packages/weft :: src/server/index.test.ts :: concurrent scanner deduplication :: does not double-process an orphaned operationId visible only to reconcileOrphanedRecords",
     "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownAllWorkers shuts down all connected workers",
     "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownWorker sends shutdown message and waits for disconnect",
