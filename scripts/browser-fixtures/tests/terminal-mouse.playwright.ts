@@ -138,8 +138,8 @@ test.describe('the program tracks the mouse, and reporting is not permitted', ()
 });
 
 test.describe('on a Mac the selection gesture is Option', () => {
-  const asMac = (page: Page) =>
-    page.addInitScript(() => {
+  const asMac = async (page: Page): Promise<void> => {
+    await page.addInitScript(() => {
       Object.defineProperty(Navigator.prototype, 'platform', {
         get: () => 'MacIntel',
         configurable: true,
@@ -149,6 +149,7 @@ test.describe('on a Mac the selection gesture is Option', () => {
         configurable: true,
       });
     });
+  };
 
   test('a plain drag is re-dispatched with Option and selects the dragged text', async ({
     terminalPage,

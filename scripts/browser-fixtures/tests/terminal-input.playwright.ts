@@ -184,8 +184,8 @@ test.describe('capture, focus and page navigation', () => {
   }) => {
     const page = await terminalPage.open({
       query: { probes: true },
-      prepare: (target) =>
-        target.addInitScript(() => {
+      prepare: async (target) => {
+        await target.addInitScript(() => {
           Object.defineProperty(Navigator.prototype, 'platform', {
             get: () => 'MacIntel',
             configurable: true,
@@ -194,7 +194,8 @@ test.describe('capture, focus and page navigation', () => {
             get: () => ({ platform: 'macOS' }),
             configurable: true,
           });
-        }),
+        });
+      },
     });
     expect(await isMac(page)).toBe(true);
     // What the page's own default action would be: whether anything cancelled the key.
