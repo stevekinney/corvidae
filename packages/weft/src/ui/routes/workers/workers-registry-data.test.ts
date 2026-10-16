@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { HttpClient } from '@lostgradient/weft';
 
+import { rejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { registrySnapshot } from './contract-verification.test-support.ts';
 import { MalformedRegistrySnapshotError } from './contract-verification.ts';
 import { loadRegistrySnapshot } from './workers-data.ts';
@@ -40,7 +41,7 @@ describe('registry snapshot for contract verification', () => {
       { ...registrySnapshot(), activities: [] },
     ];
     for (const value of malformed) {
-      await expect(loadRegistrySnapshot(clientReturning(value))).rejects.toBeInstanceOf(
+      expect(await rejectionOf(loadRegistrySnapshot(clientReturning(value)))).toBeInstanceOf(
         MalformedRegistrySnapshotError,
       );
     }
