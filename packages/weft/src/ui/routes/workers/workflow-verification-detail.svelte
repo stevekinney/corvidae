@@ -36,13 +36,10 @@
     matched: 'success',
     missing: 'danger',
     extra: 'danger',
-    unconfirmed: 'warning',
+    mismatched: 'danger',
   };
 
   const status = $derived(WORKFLOW_STATUS[verification.status]);
-  const hasUnconfirmed = $derived(
-    verification.activities.some((activity) => activity.status === 'unconfirmed'),
-  );
 </script>
 
 <div class="weft-workflow-verification">
@@ -81,6 +78,7 @@
           <Table.HeaderCell>Activity</Table.HeaderCell>
           <Table.HeaderCell>Status</Table.HeaderCell>
           <Table.HeaderCell>Worker contract hash</Table.HeaderCell>
+          <Table.HeaderCell>Registry contract hash</Table.HeaderCell>
         </Table.Row>
       </Table.Header>
       <Table.Body>
@@ -93,17 +91,12 @@
               >
             </Table.Cell>
             <Table.Cell class="weft-workers-mono">{activity.workerContractHash ?? '—'}</Table.Cell>
+            <Table.Cell class="weft-workers-mono">{activity.registryContractHash ?? '—'}</Table.Cell
+            >
           </Table.Row>
         {/each}
       </Table.Body>
     </Table>
-  {/if}
-
-  {#if hasUnconfirmed}
-    <p class="weft-workflow-verification__note">
-      The workflow contract hash differs, so the dashboard cannot tell which shared activity
-      changed. Run <code>weft worker verify</code> to check each activity's contract hash.
-    </p>
   {/if}
 </div>
 

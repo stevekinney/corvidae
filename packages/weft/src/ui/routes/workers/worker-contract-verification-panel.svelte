@@ -8,6 +8,7 @@
 
   import type { RegistrySnapshotSource } from '../system/registry-view.ts';
   import { verifyWorkerContracts } from './contract-verification.ts';
+  import { trackRegistryActivityHashes } from './registry-activity-hashes.svelte.ts';
   import VerificationCommandsPanel from './verification-commands-panel.svelte';
   import VerificationFaultView from './verification-fault-view.svelte';
   import WorkflowVerificationDetail from './workflow-verification-detail.svelte';
@@ -21,11 +22,25 @@
     readonly error: unknown;
   }
 
-  let { diagnostics, registry, loading, refreshing, error }: WorkerContractVerificationPanelProps =
-    $props();
+  let {
+    diagnostics,
+    registry,
+    loading: queriesLoading,
+    refreshing,
+    error: queryError,
+  }: WorkerContractVerificationPanelProps = $props();
 
+  const activityHashes = trackRegistryActivityHashes(() => registry);
+  const error = $derived(queryError ?? activityHashes.error);
+  // The expected activity hashes are derived from the snapshot asynchronously.
+  const loading = $derived(
+    queriesLoading ||
+      (!error && Boolean(diagnostics) && registry !== undefined && !activityHashes.hashes),
+  );
   const verification = $derived(
-    diagnostics && registry ? verifyWorkerContracts(diagnostics, registry) : undefined,
+    diagnostics && registry && activityHashes.hashes
+      ? verifyWorkerContracts(diagnostics, registry, activityHashes.hashes)
+      : undefined,
   );
 </script>
 

@@ -1,10 +1,11 @@
 import { HttpClientError } from '@lostgradient/weft';
-import { render } from '@testing-library/svelte';
+import { render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import {
   matchingCheckout,
   registrySnapshot,
+  RESERVE_HASH,
   workerManifest,
 } from './contract-verification.test-support.ts';
 import { MalformedRegistrySnapshotError } from './contract-verification.ts';
@@ -32,16 +33,16 @@ function renderPanel(overrides: Partial<PanelProps> = {}) {
 }
 
 describe('WorkerContractVerificationPanel', () => {
-  test('a matching manifest reads as verified in text, not only color', () => {
-    const { getByRole, getByText, getAllByText } = renderPanel();
+  test('a matching manifest reads as verified in text, not only color', async () => {
+    const { findByRole, findByText, findAllByText } = renderPanel();
 
-    expect(getByRole('region', { name: 'Contract verification' })).not.toBeNull();
-    expect(getByText('Verified · manifest matches registry')).not.toBeNull();
-    expect(getAllByText('Matches registry').length).toBeGreaterThan(0);
-    expect(getByText('1 registry workflow not served by this worker')).not.toBeNull();
+    expect(await findByRole('region', { name: 'Contract verification' })).not.toBeNull();
+    expect(await findByText('Verified · manifest matches registry')).not.toBeNull();
+    expect(await findAllByText('Matches registry')).not.toHaveLength(0);
+    expect(await findByText('1 registry workflow not served by this worker')).not.toBeNull();
   });
 
-  test('drift names each missing, extra, and changed activity', () => {
+  test('drift names each missing, extra, and changed activity', async () => {
     const drifted = {
       ...matchingCheckout(),
       workflowVersion: '3.0.0',
@@ -51,97 +52,103 @@ describe('WorkerContractVerificationPanel', () => {
         refundCard: { contractHash: 'sha256:refund-card', implementationRevision: 'impl-1' },
       },
     };
-    const { getByText } = renderPanel({ diagnostics: workerManifest({ checkout: drifted }) });
+    const { findByText } = renderPanel({ diagnostics: workerManifest({ checkout: drifted }) });
 
-    expect(getByText('Drift · manifest differs from registry')).not.toBeNull();
-    expect(getByText('Drift detected')).not.toBeNull();
-    expect(getByText('Workflow version differs from the active registry revision')).not.toBeNull();
-    expect(getByText('Contract hash differs from the active registry revision')).not.toBeNull();
-    expect(getByText('Missing from worker')).not.toBeNull();
-    expect(getByText('Not in registry')).not.toBeNull();
-    expect(getByText('Hash not checked here')).not.toBeNull();
-    expect(getByText('sha256:refund-card')).not.toBeNull();
+    expect(await findByText('Drift · manifest differs from registry')).not.toBeNull();
+    expect(await findByText('Drift detected')).not.toBeNull();
+    expect(
+      await findByText('Workflow version differs from the active registry revision'),
+    ).not.toBeNull();
+    expect(
+      await findByText('Contract hash differs from the active registry revision'),
+    ).not.toBeNull();
+    expect(await findByText('Missing from worker')).not.toBeNull();
+    expect(await findByText('Not in registry')).not.toBeNull();
+    expect(await findByText('Contract hash differs from registry')).not.toBeNull();
+    expect(await findByText('sha256:refund-card')).not.toBeNull();
   });
 
-  test('renders copyable CLI commands with the known file names substituted', () => {
-    const { getByText, getByRole } = renderPanel();
+  test('renders copyable CLI commands with the known file names substituted', async () => {
+    const { findByText, findByRole } = renderPanel();
 
     expect(
-      getByText(
+      await findByText(
         'weft worker verify --manifest payments-api-build-7.manifest.json --from registry-v2.json',
       ),
     ).not.toBeNull();
     expect(
-      getByText('weft codegen --from registry-v2.json --out weft-registry.d.ts'),
+      await findByText('weft codegen --from registry-v2.json --out weft-registry.d.ts'),
     ).not.toBeNull();
-    expect(getByRole('button', { name: 'Copy weft worker verify command' })).not.toBeNull();
-    expect(getByRole('button', { name: 'Copy weft codegen command' })).not.toBeNull();
+    expect(await findByRole('button', { name: 'Copy weft worker verify command' })).not.toBeNull();
+    expect(await findByRole('button', { name: 'Copy weft codegen command' })).not.toBeNull();
   });
 
-  test('loading state', () => {
-    const { getByRole, queryByText } = renderPanel({ loading: true });
-    expect(getByRole('status', { name: 'Loading contract verification' })).not.toBeNull();
+  test('loading state', async () => {
+    const { findByRole, queryByText } = renderPanel({ loading: true });
+    expect(await findByRole('status', { name: 'Loading contract verification' })).not.toBeNull();
     // A verdict is never claimed while evidence is still loading.
     expect(queryByText('Verified · manifest matches registry')).toBeNull();
   });
 
-  test('empty state: no accepted manifest', () => {
-    const { getByText, queryByText } = renderPanel({ diagnostics: null });
-    expect(getByText('No accepted manifest')).not.toBeNull();
+  test('empty state: no accepted manifest', async () => {
+    const { findByText, queryByText } = renderPanel({ diagnostics: null });
+    expect(await findByText('No accepted manifest')).not.toBeNull();
     expect(queryByText('Verified · manifest matches registry')).toBeNull();
   });
 
-  test('empty state: no registry snapshot yet', () => {
-    const { getByText } = renderPanel({ registry: undefined });
-    expect(getByText('No registry snapshot yet')).not.toBeNull();
+  test('empty state: no registry snapshot yet', async () => {
+    const { findByText } = renderPanel({ registry: undefined });
+    expect(await findByText('No registry snapshot yet')).not.toBeNull();
     // Without a snapshot the command still names the worker's manifest file.
     expect(
-      getByText(
+      await findByText(
         'weft worker verify --manifest payments-api-build-7.manifest.json --from registry.json',
       ),
     ).not.toBeNull();
   });
 
-  test('empty state: a registry with no workflow revisions', () => {
-    const { getByText } = renderPanel({
+  test('empty state: a registry with no workflow revisions', async () => {
+    const { findByText } = renderPanel({
       registry: { ...registrySnapshot(), workflows: [], activeRevisions: {} },
     });
-    expect(getByText('No registry snapshot yet')).not.toBeNull();
+    expect(await findByText('No registry snapshot yet')).not.toBeNull();
   });
 
-  test('stale state keeps cached evidence with the neutral refreshing badge', () => {
-    const { getByText } = renderPanel({ refreshing: true });
-    expect(getByText('Refreshing · showing cached evidence')).not.toBeNull();
-    expect(getByText('Verified · manifest matches registry')).not.toBeNull();
+  test('stale state keeps cached evidence with the neutral refreshing badge', async () => {
+    const { findByText } = renderPanel({ refreshing: true });
+    expect(await findByText('Refreshing · showing cached evidence')).not.toBeNull();
+    expect(await findByText('Verified · manifest matches registry')).not.toBeNull();
   });
 
-  test('permission-denied state', () => {
-    const { getByText } = renderPanel({
+  test('permission-denied state', async () => {
+    const { findByText } = renderPanel({
       error: new HttpClientError(403, 'Missing scope system:read', { faultCode: 'Forbidden' }),
     });
-    expect(getByText('Permission denied')).not.toBeNull();
+    expect(await findByText('Permission denied')).not.toBeNull();
   });
 
-  test('malformed-response state', () => {
-    const { getByText } = renderPanel({
+  test('malformed-response state', async () => {
+    const { findByText } = renderPanel({
       error: new MalformedWorkerDiagnosticsError('response.worker.deploymentVersion.workflows'),
     });
-    expect(getByText('Malformed server response')).not.toBeNull();
+    expect(await findByText('Malformed server response')).not.toBeNull();
   });
 
-  test('malformed-response state from the registry snapshot', () => {
-    const { getByText } = renderPanel({ error: new MalformedRegistrySnapshotError() });
-    expect(getByText('Malformed server response')).not.toBeNull();
-    expect(getByText('The server returned a malformed registry snapshot.')).not.toBeNull();
+  test('malformed-response state from the registry snapshot', async () => {
+    const { findByText } = renderPanel({ error: new MalformedRegistrySnapshotError() });
+    expect(await findByText('Malformed server response')).not.toBeNull();
+    expect(await findByText('The server returned a malformed registry snapshot.')).not.toBeNull();
   });
 
-  test('server-fault state', () => {
-    const { getByText } = renderPanel({ error: new HttpClientError(500, 'Internal server error') });
-    expect(getByText('Something went wrong')).not.toBeNull();
-    expect(getByText('Internal server error')).not.toBeNull();
+  test('server-fault state', async () => {
+    const { findByText } = renderPanel({
+      error: new HttpClientError(500, 'Internal server error'),
+    });
+    expect(await findByText('Something went wrong')).not.toBeNull();
+    expect(await findByText('Internal server error')).not.toBeNull();
   });
 
-  test('a strict payload rejection and a contract mismatch get different copy', () => {
+  test('a strict payload rejection and a contract mismatch get different copy', async () => {
     const strict = renderPanel({
       error: new HttpClientError(422, 'Unprocessable', {
         faultCode: 'Unprocessable',
@@ -152,7 +159,7 @@ describe('WorkerContractVerificationPanel', () => {
         },
       }),
     });
-    expect(strict.getByText('Strict payload boundary rejected a value')).not.toBeNull();
+    expect(await strict.findByText('Strict payload boundary rejected a value')).not.toBeNull();
     expect(strict.queryByText('Contract mismatch')).toBeNull();
     strict.unmount();
 
@@ -162,21 +169,21 @@ describe('WorkerContractVerificationPanel', () => {
         data: { compatibilityReasons: ['contract-hash-mismatch'] },
       }),
     });
-    expect(mismatch.getByText('Contract mismatch')).not.toBeNull();
+    expect(await mismatch.findByText('Contract mismatch')).not.toBeNull();
     expect(
-      mismatch.getByText('Candidate payload contract differs from the active revision.'),
+      await mismatch.findByText('Candidate payload contract differs from the active revision.'),
     ).not.toBeNull();
     expect(mismatch.queryByText('Strict payload boundary rejected a value')).toBeNull();
   });
 
-  test('a worker that advertises no workflows says so', () => {
-    const { getByText } = renderPanel({ diagnostics: workerManifest({}) });
-    expect(getByText('This worker advertises no workflows.')).not.toBeNull();
-    expect(getByText('2 registry workflows not served by this worker')).not.toBeNull();
+  test('a worker that advertises no workflows says so', async () => {
+    const { findByText } = renderPanel({ diagnostics: workerManifest({}) });
+    expect(await findByText('This worker advertises no workflows.')).not.toBeNull();
+    expect(await findByText('2 registry workflows not served by this worker')).not.toBeNull();
   });
 
-  test('a workflow the registry has no active revision of is explained', () => {
-    const { getByText } = renderPanel({
+  test('a workflow the registry has no active revision of is explained', async () => {
+    const { findByText } = renderPanel({
       diagnostics: workerManifest({
         ghost: {
           workflowVersion: '0.0.0',
@@ -186,8 +193,60 @@ describe('WorkerContractVerificationPanel', () => {
         },
       }),
     });
-    expect(getByText('Not in registry')).not.toBeNull();
-    expect(getByText(/registry has no active revision of this workflow/)).not.toBeNull();
-    expect(getByText('Neither the worker nor the registry declares activities.')).not.toBeNull();
+    expect(await findByText('Not in registry')).not.toBeNull();
+    expect(await findByText(/registry has no active revision of this workflow/)).not.toBeNull();
+    expect(
+      await findByText('Neither the worker nor the registry declares activities.'),
+    ).not.toBeNull();
+  });
+
+  test('loading state while the expected activity hashes are computed', async () => {
+    const { getByRole, queryByText, findByText } = renderPanel();
+    // Hashing is asynchronous, so no verdict is claimed on the first render.
+    expect(getByRole('status', { name: 'Loading contract verification' })).not.toBeNull();
+    expect(queryByText('Verified · manifest matches registry')).toBeNull();
+    expect(await findByText('Verified · manifest matches registry')).not.toBeNull();
+  });
+
+  test('attributes contract-hash drift to the activity that changed, with both hashes', async () => {
+    const changed = {
+      ...matchingCheckout(),
+      contractHash: 'sha256:drifted',
+      activities: {
+        ...matchingCheckout().activities,
+        reserve: { contractHash: 'sha256:reserve-v2', implementationRevision: 'impl-2' },
+      },
+    };
+    const { findByRole } = renderPanel({ diagnostics: workerManifest({ checkout: changed }) });
+
+    const table = await findByRole('table', { name: 'checkout activity verification' });
+    const rows = within(table).getAllByRole('row');
+    const reserve = rows.find((row) => row.textContent?.includes('reserve'));
+    const charge = rows.find((row) => row.textContent?.includes('charge'));
+    expect(reserve?.textContent).toContain('Contract hash differs from registry');
+    expect(reserve?.textContent).toContain('sha256:reserve-v2');
+    expect(reserve?.textContent).toContain(RESERVE_HASH);
+    expect(charge?.textContent).toContain('Matches registry');
+  });
+
+  test('a registry activity contract that cannot be hashed renders a fault, not a verdict', async () => {
+    const snapshot = registrySnapshot();
+    const unhashable = {
+      ...snapshot,
+      workflows: snapshot.workflows.map((manifest) =>
+        manifest.revision === 'rev-2'
+          ? {
+              ...manifest,
+              contract: {
+                ...manifest.contract,
+                activities: { charge: { inputSchema: { x: 1n } } },
+              },
+            }
+          : manifest,
+      ),
+    };
+    const { findByText, queryByText } = renderPanel({ registry: unhashable });
+    expect(await findByText('Something went wrong')).not.toBeNull();
+    expect(queryByText('Verified · manifest matches registry')).toBeNull();
   });
 });

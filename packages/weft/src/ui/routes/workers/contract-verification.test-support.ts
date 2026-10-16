@@ -1,8 +1,20 @@
 /** Shared fixtures for the COR-162 contract-verification tests. */
+import { activityContractHash } from '@lostgradient/weft';
+
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
+import { registryActivityContractHashes } from './contract-verification.ts';
 import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
 
 type WorkerWorkflows = WorkerManifestDiagnostics['deploymentVersion']['workflows'];
+
+const CHARGE_CONTRACT = {
+  inputSchema: { type: 'object', properties: { amount: { type: 'number' } } },
+  outputSchema: { type: 'object', properties: { chargeId: { type: 'string' } } },
+};
+
+/** The real `activityContractHash` of the active `checkout` revision's `charge` and `reserve` activities. */
+export const CHARGE_HASH = await activityContractHash(CHARGE_CONTRACT);
+export const RESERVE_HASH = await activityContractHash({});
 
 export function workerManifest(
   workflows: WorkerWorkflows,
@@ -40,8 +52,8 @@ export function matchingCheckout(): WorkerWorkflows[string] {
     workflowRevision: 'rev-2',
     contractHash: 'sha256:checkout-contract',
     activities: {
-      charge: { contractHash: 'sha256:charge', implementationRevision: 'impl-1' },
-      reserve: { contractHash: 'sha256:reserve', implementationRevision: 'impl-1' },
+      charge: { contractHash: CHARGE_HASH, implementationRevision: 'impl-1' },
+      reserve: { contractHash: RESERVE_HASH, implementationRevision: 'impl-1' },
     },
   };
 }
@@ -71,7 +83,7 @@ export function registrySnapshot(): RegistrySnapshotSource {
         contract: {
           name: 'checkout',
           workflowVersion: '2.0.0',
-          activities: { charge: {}, reserve: {} },
+          activities: { charge: CHARGE_CONTRACT, reserve: {} },
         },
       },
       {
@@ -87,3 +99,6 @@ export function registrySnapshot(): RegistrySnapshotSource {
     activities: {},
   };
 }
+
+/** {@link registryActivityContractHashes} of {@link registrySnapshot}. */
+export const REGISTRY_HASHES = await registryActivityContractHashes(registrySnapshot());
