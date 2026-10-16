@@ -95,8 +95,12 @@ export function scenario(name: string, body: () => Promise<void> | void): Scenar
       try {
         await body();
       } finally {
-        await disposeTracked();
-        finished = true;
+        try {
+          await disposeTracked();
+        } finally {
+          // Set even when cleanup fails, so the failure is what the test reports, not "unsettled".
+          finished = true;
+        }
       }
     }),
   );
