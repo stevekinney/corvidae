@@ -99,6 +99,9 @@ async function importWithoutDom(): Promise<NoDomImport> {
     cwd: packageRoot,
     stdout: 'pipe',
     stderr: 'pipe',
+    // A hang guard, not a budget: compiling the entry's Svelte graph takes seconds on a loaded
+    // host, and this runs at module scope, off the per-test clock.
+    timeout: 120_000,
   });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
