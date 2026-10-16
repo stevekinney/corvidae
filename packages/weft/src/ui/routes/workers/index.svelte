@@ -45,6 +45,7 @@
     scopeGate,
     scopeReason,
   } from '../../lib/scopes.svelte.ts';
+  import type { RegistrySnapshotSource } from '../system/registry-view.ts';
   import type { DrainTarget } from './drain-dialog.svelte';
   import DrainDialog from './drain-dialog.svelte';
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
@@ -111,6 +112,13 @@
     enabled: !locked && !workersQuery.isPending,
     refetchInterval: 30_000,
   }));
+  const registryQuery = createQuery(() => ({
+    queryKey: queryKeys.registry(),
+    // Same key and narrowing as `registry-tab.svelte`; feeds contract verification.
+    queryFn: (): Promise<RegistrySnapshotSource> =>
+      client.operations['weft.system.registry']({}) as Promise<RegistrySnapshotSource>,
+    enabled: !locked,
+  }));
   const rejectionsQuery = createQuery(() => ({
     queryKey: queryKeys.workers.rejections(),
     queryFn: () => loadWorkerRegistrationRejections(client),
@@ -124,7 +132,8 @@
       isForbidden(queuesQuery.error) ||
       isForbidden(diagnosticsQuery.error) ||
       isForbidden(manifestQuery.error) ||
-      isForbidden(rejectionsQuery.error)
+      isForbidden(rejectionsQuery.error) ||
+      isForbidden(registryQuery.error)
     ) {
       principalStore.denyScope('system:read');
     }
@@ -354,6 +363,10 @@
             manifestLoading={manifestQuery.isPending}
             manifestRefreshing={manifestQuery.isFetching && manifestQuery.data !== undefined}
             manifestError={manifestQuery.error ?? null}
+            registrySnapshot={registryQuery.data}
+            registryLoading={registryQuery.isPending}
+            registryRefreshing={registryQuery.isFetching && registryQuery.data !== undefined}
+            registryError={registryQuery.error ?? null}
           />
         {:else}
           <WorkerListView workers={workersQuery.data?.items ?? []} />

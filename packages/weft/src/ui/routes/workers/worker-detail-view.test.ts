@@ -223,3 +223,88 @@ describe('WorkerDetailView — connection and activities panels', () => {
     expect(getByText('Workflow.sendEmail')).not.toBeNull();
   });
 });
+
+describe('WorkerDetailView — contract verification (COR-162)', () => {
+  const registrySnapshot = {
+    registryVersion: 2,
+    workflows: [
+      {
+        manifestVersion: 1,
+        name: 'Workflow',
+        workflowVersion: '1.0.0',
+        revision: 'workflow-rev',
+        contractHash: 'sha256:workflow',
+        contract: { name: 'Workflow', workflowVersion: '1.0.0', activities: { activity: {} } },
+      },
+    ],
+    activeRevisions: { Workflow: 'workflow-rev' },
+    activities: {},
+  };
+
+  const manifestDiagnostics = {
+    instance: {
+      workerId: 'wkr_1',
+      queue: 'default',
+      health: 'active',
+      connectedAt: 0,
+      startedAt: 0,
+      lastHeartbeatAt: 0,
+      heartbeatAgeMs: 0,
+    },
+    deploymentVersion: {
+      deploymentName: 'orders',
+      buildId: 'build-1',
+      artifactDigest: 'sha256:artifact',
+      runtimeName: 'bun',
+      runtimeVersion: '1.3.0',
+      sdkVersion: '0.20.0',
+      manifestVersion: 1,
+      protocolVersion: 3,
+      manifestDigest: 'sha256:manifest',
+      workflows: {
+        Workflow: {
+          workflowVersion: '1.0.0',
+          workflowRevision: 'workflow-rev',
+          contractHash: 'sha256:workflow',
+          activities: {},
+        },
+      },
+    },
+  } as const;
+
+  test('shows which activities the worker manifest is missing relative to the registry', async () => {
+    const { findByText, getByRole, getByText } = render(WorkerDetailView, {
+      props: {
+        worker: worker(),
+        adminGate: OPEN_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        manifestDiagnostics,
+        registrySnapshot,
+      },
+    });
+
+    expect(await findByText('Drift · 1 finding')).not.toBeNull();
+    expect(getByText('Missing activity')).not.toBeNull();
+    expect(getByRole('rowheader', { name: 'Workflow.activity' })).not.toBeNull();
+    expect(
+      getByText(
+        'weft worker verify --manifest orders-build-1.manifest.json --from weft-registry.json',
+      ),
+    ).not.toBeNull();
+  });
+
+  test('waits for the registry snapshot before comparing', () => {
+    const { getByRole } = render(WorkerDetailView, {
+      props: {
+        worker: worker(),
+        adminGate: OPEN_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        manifestDiagnostics,
+        registryLoading: true,
+      },
+    });
+    expect(getByRole('status', { name: 'Loading contract verification' })).not.toBeNull();
+  });
+});

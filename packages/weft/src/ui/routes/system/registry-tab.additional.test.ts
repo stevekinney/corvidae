@@ -180,4 +180,59 @@ describe('additional coverage', () => {
     const zipMatches = await findAllByText('zip');
     expect(zipMatches.length).toBeGreaterThan(0);
   });
+
+  test('a definition detail verifies each serving worker manifest against the registry (COR-162)', async () => {
+    scripted = new ScriptedFetch();
+    scripted.enqueueJsonRpcResult(
+      registrySnapshot([manifestFixture('order-processing', { activities: { chargeCard: {} } })]),
+    );
+
+    const { findByRole, findByText, getByText } = await renderRegistryTab({
+      workers: [{ id: 'worker-a' }],
+      diagnostics: {
+        worker: {
+          instance: {
+            workerId: 'worker-a',
+            queue: 'default',
+            health: 'active',
+            connectedAt: 1,
+            startedAt: 1,
+            lastHeartbeatAt: 1,
+            heartbeatAgeMs: 1,
+          },
+          deploymentVersion: {
+            deploymentName: 'payments',
+            buildId: 'build-7',
+            artifactDigest: 'sha256:artifact',
+            runtimeName: 'bun',
+            runtimeVersion: '1.4.0',
+            sdkVersion: '0.20.0',
+            manifestVersion: 1,
+            protocolVersion: 3,
+            manifestDigest: 'sha256:manifest',
+            workflows: {
+              'order-processing': {
+                workflowVersion: '1.0.0',
+                workflowRevision: 'order-processing-rev-old',
+                contractHash: 'order-processing-hash',
+                activities: {},
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await fireEvent.click(await findByRole('button', { name: /order-processing/ }));
+
+    expect(await findByText('Drift · 2 findings')).not.toBeNull();
+    expect(getByText('Revision mismatch')).not.toBeNull();
+    expect(getByText('Missing activity')).not.toBeNull();
+    expect(getByText('artifact-revision-mismatch')).not.toBeNull();
+    expect(
+      getByText(
+        'weft worker verify --manifest payments-build-7.manifest.json --from weft-registry.json',
+      ),
+    ).not.toBeNull();
+  });
 });

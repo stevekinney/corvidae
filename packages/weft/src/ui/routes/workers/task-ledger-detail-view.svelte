@@ -3,6 +3,8 @@
 
   import { formatDuration, formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';
+  import { classifyVerificationFailure } from './verification-failure.ts';
+  import VerificationFailureNotice from './verification-failure-notice.svelte';
 
   interface TaskLedgerDetailViewProps {
     readonly task: TaskLedgerDetail;
@@ -12,6 +14,9 @@
 
   let { task, now, refreshing = false }: TaskLedgerDetailViewProps = $props();
 
+  const verificationFailure = $derived(
+    task.error === undefined ? undefined : classifyVerificationFailure(task.error),
+  );
   const isDelayed = $derived(task.state === 'queued' && (task.availableAt ?? 0) > now);
   const retryAvailable = $derived(
     task.retryPolicy ? task.attempt < task.retryPolicy.maxAttempts : false,
@@ -143,6 +148,10 @@
     <Alert variant="warning"
       >The terminal result is durable but has not been adopted by its workflow.</Alert
     >
+  {/if}
+
+  {#if verificationFailure}
+    <VerificationFailureNotice failure={verificationFailure} />
   {/if}
 
   {#if refreshing}

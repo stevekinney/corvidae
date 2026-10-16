@@ -90,7 +90,7 @@ export interface RegistrySnapshotSource {
 }
 
 /** Resolve the currently active manifest for each workflow name — `activeRevisions[name] === manifest.revision`. */
-function activeManifests(
+export function activeManifests(
   snapshot: RegistrySnapshotSource,
 ): readonly WorkflowRevisionManifestSource[] {
   return snapshot.workflows.filter(

@@ -37,7 +37,7 @@ export const KNOWN_COMPATIBILITY_REASONS = [
   'artifact-revision-mismatch',
 ] as const;
 
-type KnownCompatibilityReason = (typeof KNOWN_COMPATIBILITY_REASONS)[number];
+export type KnownCompatibilityReason = (typeof KNOWN_COMPATIBILITY_REASONS)[number];
 
 /** Sentence-case operator copy for each known reason (plan §10.10 copy voice). */
 const COMPATIBILITY_REASON_LABELS: Readonly<Record<KnownCompatibilityReason, string>> = {

@@ -150,3 +150,35 @@ describe('TaskLedgerDetailView', () => {
     expect(getByText('No constrained capacity')).not.toBeNull();
   });
 });
+
+describe('task ledger — payload-boundary failures (COR-162)', () => {
+  function failedTask(error: string) {
+    return parseTaskLedgerDetail({
+      ...queuedTask(),
+      state: 'terminal',
+      disposition: 'retryExhausted',
+      resultStatus: 'failed',
+      terminalAt: NOW - 10_000,
+      adopted: true,
+      error,
+    });
+  }
+
+  test('calls out a strict worker JSON rejection distinctly from an ordinary failure', () => {
+    const { getByText, getAllByText } = render(TaskLedgerDetailView, {
+      props: { task: failedTask('activity result.total: number must be finite'), now: NOW },
+    });
+    expect(getByText('Payload rejected at the worker boundary.')).not.toBeNull();
+    expect(getByText('activity result.total')).not.toBeNull();
+    // The raw message stays in the outcome list as evidence.
+    expect(getAllByText(/number must be finite/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('adds no payload notice for an ordinary activity failure', () => {
+    const { queryByText, getByText } = render(TaskLedgerDetailView, {
+      props: { task: failedTask('seeded inventory outage'), now: NOW },
+    });
+    expect(getByText('seeded inventory outage')).not.toBeNull();
+    expect(queryByText('Payload rejected at the worker boundary.')).toBeNull();
+  });
+});
