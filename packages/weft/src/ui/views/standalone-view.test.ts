@@ -37,12 +37,30 @@ function jsonRpcCall(body: RequestInit['body']): { id: unknown; method: string }
   return typeof method === 'string' ? { id: Reflect.get(parsed, 'id'), method } : undefined;
 }
 
+/** The principal probe's answer: the granted scopes, or a failure with this HTTP status. */
+type PrincipalAnswer = readonly string[] | { readonly httpStatus: number };
+
+function principalResponse(id: unknown, answer: PrincipalAnswer): Response {
+  if ('httpStatus' in answer) {
+    return Response.json({
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32000, message: 'principal probe failed', data: answer },
+    });
+  }
+  return Response.json({
+    jsonrpc: '2.0',
+    id,
+    result: { method: 'api-key', subject: 'host', scopes: answer },
+  });
+}
+
 /**
- * Answers the principal probe with `principalScopes` and holds every other request open until it
- * is aborted, so a view settles without a server, and the fleet event source it opens is torn
- * down by its own `close()`.
+ * Answers the principal probe with `principal` and holds every other request open until it is
+ * aborted, so a view settles without a server, and the fleet event source it opens is torn down
+ * by its own `close()`.
  */
-function stubServer(principalScopes: readonly string[] = AUTHORIZATION_SCOPES): {
+function stubServer(principal: PrincipalAnswer = AUTHORIZATION_SCOPES): {
   requests: Request[];
   restore: () => void;
 } {
@@ -52,13 +70,7 @@ function stubServer(principalScopes: readonly string[] = AUTHORIZATION_SCOPES): 
     const call = jsonRpcCall(init?.body);
     requests.push({ url, operation: call?.method });
     if (call?.method === 'weft.system.principal') {
-      return Promise.resolve(
-        Response.json({
-          jsonrpc: '2.0',
-          id: call.id,
-          result: { method: 'api-key', subject: 'host', scopes: principalScopes },
-        }),
-      );
+      return Promise.resolve(principalResponse(call.id, principal));
     }
     return new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => {
@@ -110,6 +122,26 @@ describe('a view rendered outside WeftDashboard', () => {
 
   test('a view gates its controls on the principal it resolved for itself', async () => {
     server = stubServer([]);
+    const { findByText, queryByRole } = render(HostPage, {
+      props: { client: client(), view: StorageView },
+    });
+
+    expect(await findByText('Storage access requires storage:admin')).not.toBeNull();
+    expect(queryByRole('tablist')).toBeNull();
+  });
+
+  test('a rejected credential leaves the view rendered with every scope locked', async () => {
+    server = stubServer({ httpStatus: 401 });
+    const { findByText, queryByRole } = render(HostPage, {
+      props: { client: client(), view: StorageView },
+    });
+
+    expect(await findByText('Storage access requires storage:admin')).not.toBeNull();
+    expect(queryByRole('tablist')).toBeNull();
+  });
+
+  test('a failed principal probe falls open to an anonymous principal, as WeftDashboard does', async () => {
+    server = stubServer({ httpStatus: 500 });
     const { findByText, queryByRole } = render(HostPage, {
       props: { client: client(), view: StorageView },
     });
