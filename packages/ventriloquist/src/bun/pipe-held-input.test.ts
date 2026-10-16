@@ -17,10 +17,10 @@ type SinkScript = {
 /** A real child whose standard input is replaced by a sink the test scripts. */
 function pipeWith(script: SinkScript) {
   const spawn: SpawnProcess = (command, options) => {
-    const child = Bun.spawn(command, {
+    const child: SpawnedProcess = Bun.spawn(command, {
       ...(options as object),
       timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-    } as never) as unknown as SpawnedProcess;
+    });
     return {
       pid: child.pid,
       exited: child.exited,
