@@ -1,8 +1,9 @@
 import { HttpClientError } from '@lostgradient/weft';
-import { render } from '@testing-library/svelte';
+import { render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import {
+  CHARGE_HASH,
   matchingCheckout,
   registrySnapshot,
   workerManifest,
@@ -45,69 +46,107 @@ function renderPanel(overrides: Partial<PanelProps> = {}) {
 }
 
 describe('RegistryContractVerificationPanel', () => {
-  test('shows each serving worker’s verification status for the workflow', () => {
-    const { getAllByText, getByRole, getByText } = renderPanel();
+  test('shows each serving worker’s verification status for the workflow', async () => {
+    const { findAllByText, findByRole, findByText } = renderPanel();
 
-    expect(getByRole('region', { name: 'Worker contract verification' })).not.toBeNull();
-    expect(getByText('Drift · 1 of 2 workers')).not.toBeNull();
-    expect(getAllByText('Matches registry').length).toBeGreaterThan(0);
-    expect(getByText('Drift detected')).not.toBeNull();
-    expect(getByText('Missing from worker')).not.toBeNull();
-    expect(getByText('1 other connected worker does not serve this workflow.')).not.toBeNull();
-    expect(getByRole('table', { name: 'worker-b checkout activity verification' })).not.toBeNull();
+    expect(await findByRole('region', { name: 'Worker contract verification' })).not.toBeNull();
+    expect(await findByText('Drift · 1 of 2 workers')).not.toBeNull();
+    expect(await findAllByText('Matches registry')).not.toHaveLength(0);
+    expect(await findByText('Drift detected')).not.toBeNull();
+    expect(await findByText('Missing from worker')).not.toBeNull();
+    expect(
+      await findByText('1 other connected worker does not serve this workflow.'),
+    ).not.toBeNull();
+    expect(
+      await findByRole('table', { name: 'worker-b checkout activity verification' }),
+    ).not.toBeNull();
   });
 
-  test('every serving worker matching reads as verified', () => {
-    const { getByText } = renderPanel({
+  test('every serving worker matching reads as verified', async () => {
+    const { findByText } = renderPanel({
       diagnostics: [workerManifest({ checkout: matchingCheckout() })],
     });
-    expect(getByText('Verified · every serving worker matches')).not.toBeNull();
+    expect(await findByText('Verified · every serving worker matches')).not.toBeNull();
     // A single serving worker names its manifest file in the command.
     expect(
-      getByText(
+      await findByText(
         'weft worker verify --manifest payments-api-build-7.manifest.json --from registry-v2.json',
       ),
     ).not.toBeNull();
   });
 
-  test('loading state', () => {
-    const { getByRole, queryByText } = renderPanel({ loading: true });
-    expect(getByRole('status', { name: 'Loading worker contract verification' })).not.toBeNull();
+  test('loading state', async () => {
+    const { findByRole, queryByText } = renderPanel({ loading: true });
+    expect(
+      await findByRole('status', { name: 'Loading worker contract verification' }),
+    ).not.toBeNull();
     expect(queryByText('Drift · 1 of 2 workers')).toBeNull();
   });
 
-  test('empty state: no worker serves the workflow', () => {
-    const { getByText } = renderPanel({ workflow: 'refund' });
-    expect(getByText('No worker manifests for this workflow')).not.toBeNull();
+  test('empty state: no worker serves the workflow', async () => {
+    const { findByText } = renderPanel({ workflow: 'refund' });
+    expect(await findByText('No worker manifests for this workflow')).not.toBeNull();
   });
 
-  test('empty state: no manifests yet', () => {
-    const { getByText } = renderPanel({ diagnostics: [] });
-    expect(getByText('No worker manifests for this workflow')).not.toBeNull();
+  test('empty state: no manifests yet', async () => {
+    const { findByText } = renderPanel({ diagnostics: [] });
+    expect(await findByText('No worker manifests for this workflow')).not.toBeNull();
   });
 
-  test('stale state keeps cached evidence with the neutral refreshing badge', () => {
-    const { getByText } = renderPanel({ refreshing: true });
-    expect(getByText('Refreshing · showing cached evidence')).not.toBeNull();
-    expect(getByText('Drift · 1 of 2 workers')).not.toBeNull();
+  test('stale state keeps cached evidence with the neutral refreshing badge', async () => {
+    const { findByText } = renderPanel({ refreshing: true });
+    expect(await findByText('Refreshing · showing cached evidence')).not.toBeNull();
+    expect(await findByText('Drift · 1 of 2 workers')).not.toBeNull();
   });
 
-  test('permission-denied state', () => {
-    const { getByText } = renderPanel({
+  test('permission-denied state', async () => {
+    const { findByText } = renderPanel({
       error: new HttpClientError(403, 'Missing scope system:read', { faultCode: 'Forbidden' }),
     });
-    expect(getByText('Permission denied')).not.toBeNull();
+    expect(await findByText('Permission denied')).not.toBeNull();
   });
 
-  test('malformed-response state', () => {
-    const { getByText } = renderPanel({
+  test('malformed-response state', async () => {
+    const { findByText } = renderPanel({
       error: new MalformedWorkerDiagnosticsError('response.worker.instance'),
     });
-    expect(getByText('Malformed server response')).not.toBeNull();
+    expect(await findByText('Malformed server response')).not.toBeNull();
   });
 
-  test('server-fault state', () => {
-    const { getByText } = renderPanel({ error: new HttpClientError(503, 'Service unavailable') });
-    expect(getByText('Something went wrong')).not.toBeNull();
+  test('server-fault state', async () => {
+    const { findByText } = renderPanel({ error: new HttpClientError(503, 'Service unavailable') });
+    expect(await findByText('Something went wrong')).not.toBeNull();
+  });
+
+  test('names the activity whose contract hash differs on a serving worker', async () => {
+    const { findByRole } = renderPanel({
+      diagnostics: [
+        workerManifest(
+          {
+            checkout: {
+              ...matchingCheckout(),
+              activities: {
+                ...matchingCheckout().activities,
+                charge: { contractHash: 'sha256:charge-v2', implementationRevision: 'impl-2' },
+              },
+            },
+          },
+          { workerId: 'worker-d' },
+        ),
+      ],
+    });
+
+    const table = await findByRole('table', { name: 'worker-d checkout activity verification' });
+    const charge = within(table)
+      .getAllByRole('row')
+      .find((row) => row.textContent?.includes('charge'));
+    expect(charge?.textContent).toContain('Contract hash differs from registry');
+    expect(charge?.textContent).toContain(CHARGE_HASH);
+  });
+
+  test('loading state while the expected activity hashes are computed', async () => {
+    const { getByRole, findByText } = renderPanel();
+    expect(getByRole('status', { name: 'Loading worker contract verification' })).not.toBeNull();
+    expect(await findByText('Drift · 1 of 2 workers')).not.toBeNull();
   });
 });

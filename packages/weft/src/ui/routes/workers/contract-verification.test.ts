@@ -1,14 +1,18 @@
-import { HttpClientError } from '@lostgradient/weft';
+import { activityContractHash, HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import { KNOWN_COMPATIBILITY_REASONS } from '../system/compatibility-verdict.ts';
 import {
+  CHARGE_HASH,
   matchingCheckout,
+  REGISTRY_HASHES,
   registrySnapshot,
+  RESERVE_HASH,
   workerManifest,
 } from './contract-verification.test-support.ts';
 import {
   classifyContractFailure,
+  registryActivityContractHashes,
   verificationCommands,
   verificationFault,
   verifyRegistryWorkflow,
@@ -22,6 +26,7 @@ describe('verifyWorkerContracts', () => {
     const result = verifyWorkerContracts(
       workerManifest({ checkout: matchingCheckout() }),
       registrySnapshot(),
+      REGISTRY_HASHES,
     );
 
     expect(result.hasDrift).toBe(false);
@@ -31,8 +36,18 @@ describe('verifyWorkerContracts', () => {
         status: 'matched',
         identityDrift: [],
         activities: [
-          { name: 'charge', status: 'matched', workerContractHash: 'sha256:charge' },
-          { name: 'reserve', status: 'matched', workerContractHash: 'sha256:reserve' },
+          {
+            name: 'charge',
+            status: 'matched',
+            workerContractHash: CHARGE_HASH,
+            registryContractHash: CHARGE_HASH,
+          },
+          {
+            name: 'reserve',
+            status: 'matched',
+            workerContractHash: RESERVE_HASH,
+            registryContractHash: RESERVE_HASH,
+          },
         ],
       },
     ]);
@@ -47,7 +62,11 @@ describe('verifyWorkerContracts', () => {
       workflowRevision: 'rev-1',
       contractHash: 'sha256:old-checkout-contract',
     };
-    const result = verifyWorkerContracts(workerManifest({ checkout: stale }), registrySnapshot());
+    const result = verifyWorkerContracts(
+      workerManifest({ checkout: stale }),
+      registrySnapshot(),
+      REGISTRY_HASHES,
+    );
 
     expect(result.workflows[0]!.status).toBe('drift');
     expect(result.workflows[0]!.identityDrift).toEqual([
@@ -61,7 +80,7 @@ describe('verifyWorkerContracts', () => {
     ]);
   });
 
-  test('reports missing and extra activities, and leaves shared ones unconfirmed when the contract hash differs', () => {
+  test('reports missing, extra, and per-activity contract-hash drift', () => {
     const workflow = {
       ...matchingCheckout(),
       contractHash: 'sha256:drifted',
@@ -73,6 +92,7 @@ describe('verifyWorkerContracts', () => {
     const result = verifyWorkerContracts(
       workerManifest({ checkout: workflow }),
       registrySnapshot(),
+      REGISTRY_HASHES,
     );
 
     expect(result.hasDrift).toBe(true);
@@ -80,10 +100,58 @@ describe('verifyWorkerContracts', () => {
       'contract-hash-mismatch',
     ]);
     expect(result.workflows[0]!.activities).toEqual([
-      { name: 'charge', status: 'unconfirmed', workerContractHash: 'sha256:charge-v2' },
+      {
+        name: 'charge',
+        status: 'mismatched',
+        workerContractHash: 'sha256:charge-v2',
+        registryContractHash: CHARGE_HASH,
+      },
       { name: 'refundCard', status: 'extra', workerContractHash: 'sha256:refund-card' },
-      { name: 'reserve', status: 'missing' },
+      { name: 'reserve', status: 'missing', registryContractHash: RESERVE_HASH },
     ]);
+  });
+
+  test('attributes a contract-hash difference to the one activity that changed', () => {
+    const workflow = {
+      ...matchingCheckout(),
+      contractHash: 'sha256:drifted',
+      activities: {
+        ...matchingCheckout().activities,
+        reserve: { contractHash: 'sha256:reserve-v2', implementationRevision: 'impl-2' },
+      },
+    };
+    const result = verifyWorkerContracts(
+      workerManifest({ checkout: workflow }),
+      registrySnapshot(),
+      REGISTRY_HASHES,
+    );
+
+    expect(result.workflows[0]!.status).toBe('drift');
+    expect(
+      result.workflows[0]!.activities.map((activity) => [activity.name, activity.status]),
+    ).toEqual([
+      ['charge', 'matched'],
+      ['reserve', 'mismatched'],
+    ]);
+  });
+
+  test('an activity hash mismatch is drift even when the workflow identity matches', () => {
+    const workflow = {
+      ...matchingCheckout(),
+      activities: {
+        ...matchingCheckout().activities,
+        charge: { contractHash: 'sha256:charge-v2', implementationRevision: 'impl-2' },
+      },
+    };
+    const result = verifyWorkerContracts(
+      workerManifest({ checkout: workflow }),
+      registrySnapshot(),
+      REGISTRY_HASHES,
+    );
+
+    expect(result.hasDrift).toBe(true);
+    expect(result.workflows[0]!.identityDrift).toEqual([]);
+    expect(result.workflows[0]!.activities[0]!.status).toBe('mismatched');
   });
 
   test('missing or extra activities are drift even when the workflow identity matches', () => {
@@ -94,6 +162,7 @@ describe('verifyWorkerContracts', () => {
     const result = verifyWorkerContracts(
       workerManifest({ checkout: workflow }),
       registrySnapshot(),
+      REGISTRY_HASHES,
     );
 
     expect(result.workflows[0]!.status).toBe('drift');
@@ -115,6 +184,7 @@ describe('verifyWorkerContracts', () => {
         },
       }),
       registrySnapshot(),
+      REGISTRY_HASHES,
     );
 
     expect(result.hasDrift).toBe(true);
@@ -141,6 +211,26 @@ describe('verifyWorkerContracts', () => {
   });
 });
 
+describe('registryActivityContractHashes', () => {
+  test('hashes each active revision’s activities with Weft’s canonical activity hasher', async () => {
+    const hashes = await registryActivityContractHashes(registrySnapshot());
+
+    expect([...hashes.keys()].toSorted()).toEqual(['checkout', 'refund']);
+    expect(Object.fromEntries(hashes.get('checkout')!)).toEqual({
+      charge: CHARGE_HASH,
+      reserve: RESERVE_HASH,
+    });
+    expect(hashes.get('refund')!.size).toBe(0);
+    // Schema key order does not change the canonical hash.
+    const reordered = await activityContractHash({
+      outputSchema: { properties: { chargeId: { type: 'string' } }, type: 'object' },
+      inputSchema: { properties: { amount: { type: 'number' } }, type: 'object' },
+    });
+    expect(reordered).toBe(CHARGE_HASH);
+    expect(CHARGE_HASH).not.toBe(RESERVE_HASH);
+  });
+});
+
 describe('verifyRegistryWorkflow', () => {
   test('verifies every worker that serves the workflow and counts the rest', () => {
     const drifted = { ...matchingCheckout(), workflowRevision: 'rev-9' };
@@ -152,6 +242,7 @@ describe('verifyRegistryWorkflow', () => {
         workerManifest({}, { workerId: 'worker-c' }),
       ],
       registrySnapshot(),
+      REGISTRY_HASHES,
     );
 
     expect(result.workers.map((entry) => [entry.workerId, entry.verification.status])).toEqual([

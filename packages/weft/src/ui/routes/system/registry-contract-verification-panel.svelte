@@ -10,6 +10,7 @@
   import { truncateId } from '../../lib/format/index.ts';
   import { verifyRegistryWorkflow } from '../workers/contract-verification.ts';
   import VerificationCommandsPanel from '../workers/verification-commands-panel.svelte';
+  import { trackRegistryActivityHashes } from '../workers/registry-activity-hashes.svelte.ts';
   import VerificationFaultView from '../workers/verification-fault-view.svelte';
   import WorkflowVerificationDetail from '../workers/workflow-verification-detail.svelte';
   import type { WorkerManifestDiagnostics } from '../workers/worker-manifest-diagnostics.ts';
@@ -28,13 +29,19 @@
     workflow,
     registry,
     diagnostics,
-    loading,
+    loading: queriesLoading,
     refreshing,
-    error,
+    error: queryError,
   }: RegistryContractVerificationPanelProps = $props();
 
+  const activityHashes = trackRegistryActivityHashes(() => registry);
+  const error = $derived(queryError ?? activityHashes.error);
+  // The expected activity hashes are derived from the snapshot asynchronously.
+  const loading = $derived(queriesLoading || (!error && !activityHashes.hashes));
   const verification = $derived(
-    diagnostics ? verifyRegistryWorkflow(workflow, diagnostics, registry) : undefined,
+    diagnostics && activityHashes.hashes
+      ? verifyRegistryWorkflow(workflow, diagnostics, registry, activityHashes.hashes)
+      : undefined,
   );
   const driftCount = $derived(
     verification?.workers.filter((entry) => entry.verification.status !== 'matched').length ?? 0,

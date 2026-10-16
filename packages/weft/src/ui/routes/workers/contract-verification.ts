@@ -4,22 +4,17 @@
  * registry snapshot (`weft.system.registry`), both of which the dashboard
  * already fetches.
  *
- * ## What this mirrors, and what it cannot
+ * ## What this mirrors
  *
  * `weft worker verify` (`packages/weft/src/cli/worker-verify.ts`) reports
  * extra and missing workflows, workflow revision, version, and contract-hash
  * mismatches, extra and missing activities, and per-activity contract-hash
- * mismatches. This module reports the same findings, in the same order,
- * with one exception. The CLI computes each expected activity hash from the
- * registry's schema pair with Weft's canonical contract hasher, which is not
- * part of any public `@lostgradient/weft` export, and the registry snapshot
- * carries no activity hash of its own. Re-deriving that hasher here would be
- * a second implementation that could drift from the real one, so this module
- * never does. A workflow's contract hash covers its activity contracts, so
- * when the workflow hash matches, every activity present on both sides is
- * confirmed; when it differs, each shared activity is reported as
- * `unconfirmed` and the operator is pointed at `weft worker verify`, which
- * can attribute the difference to an activity.
+ * mismatches. This module reports the same findings. Like the CLI, it
+ * derives each expected activity hash from the registry's schema pair with
+ * Weft's own `activityContractHash` (a public root export), so the two
+ * cannot drift. That hasher is asynchronous, so
+ * {@link registryActivityContractHashes} runs once per snapshot and the
+ * comparisons stay synchronous.
  *
  * A registry workflow the worker does not advertise is the CLI's `missing
  * workflow`. Workers often serve a subset of the registry, so those are
@@ -35,7 +30,7 @@
  * a `Conflict` fault carrying `compatibilityReasons`
  * (`compatibility-verdict.ts`).
  */
-import { HttpClientError } from '@lostgradient/weft';
+import { activityContractHash, HttpClientError } from '@lostgradient/weft';
 
 import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
 import {
@@ -83,21 +78,23 @@ export type WorkflowIdentityDrift = Readonly<{
   registry: string;
 }>;
 
-/** One activity's verification status. `unconfirmed` means only `weft worker verify` can check its hash. */
-export type ActivityVerificationStatus = 'matched' | 'missing' | 'extra' | 'unconfirmed';
+/** One activity's verification status. `mismatched`: both sides declare it, with different contract hashes. */
+export type ActivityVerificationStatus = 'matched' | 'missing' | 'extra' | 'mismatched';
 
 export type ActivityVerification = Readonly<{
   name: string;
   status: ActivityVerificationStatus;
   /** The worker's advertised activity contract hash; absent for a `missing` activity. */
   workerContractHash?: string;
+  /** The hash the registry's schema pair produces; absent for an `extra` activity. */
+  registryContractHash?: string;
 }>;
 
 export const ACTIVITY_STATUS_LABELS: Readonly<Record<ActivityVerificationStatus, string>> = {
   matched: 'Matches registry',
   missing: 'Missing from worker',
   extra: 'Not in registry',
-  unconfirmed: 'Hash not checked here',
+  mismatched: 'Contract hash differs from registry',
 };
 
 /** `matched`: identity and activities agree. `drift`: they do not. `extra`: the registry has no active revision of it. */
@@ -143,6 +140,31 @@ function activeManifestsByName(
 
 type WorkerWorkflow = WorkerManifestDiagnostics['deploymentVersion']['workflows'][string];
 
+/** Expected activity contract hashes, by active workflow name, then activity name. */
+export type RegistryActivityHashes = ReadonlyMap<string, ReadonlyMap<string, string>>;
+
+/**
+ * Hashes every activity of every active registry revision the way `weft
+ * worker verify` does: the schema pair only, through Weft's own
+ * `activityContractHash`.
+ */
+export async function registryActivityContractHashes(
+  snapshot: RegistrySnapshotSource,
+): Promise<RegistryActivityHashes> {
+  const entries = await Promise.all(
+    [...activeManifestsByName(snapshot)].map(async ([workflow, manifest]) => {
+      const activities = Object.entries(manifest.contract.activities ?? {});
+      const hashes = await Promise.all(
+        activities.map(
+          async ([name, contract]) => [name, await activityContractHash(contract)] as const,
+        ),
+      );
+      return [workflow, new Map(hashes)] as const;
+    }),
+  );
+  return new Map(entries);
+}
+
 function identityDrift(
   actual: WorkerWorkflow,
   expected: WorkflowRevisionManifestSource,
@@ -161,20 +183,23 @@ function identityDrift(
 function activityVerification(
   actual: WorkerWorkflow,
   expected: WorkflowRevisionManifestSource,
+  expectedHashes: ReadonlyMap<string, string> | undefined,
 ): readonly ActivityVerification[] {
   const expectedActivities = expected.contract.activities ?? {};
-  const contractConfirmed = actual.contractHash === expected.contractHash;
   const names = new Set([...Object.keys(actual.activities), ...Object.keys(expectedActivities)]);
   return [...names].toSorted(compareCodepoint).map((name): ActivityVerification => {
     const advertised = actual.activities[name];
-    if (advertised === undefined) return { name, status: 'missing' };
-    const status: ActivityVerificationStatus =
-      expectedActivities[name] === undefined
-        ? 'extra'
-        : contractConfirmed
-          ? 'matched'
-          : 'unconfirmed';
-    return { name, status, workerContractHash: advertised.contractHash };
+    const declared = expectedActivities[name] !== undefined;
+    const registryHash = declared ? expectedHashes?.get(name) : undefined;
+    const registryField = registryHash === undefined ? {} : { registryContractHash: registryHash };
+    if (advertised === undefined) return { name, status: 'missing', ...registryField };
+    if (!declared) return { name, status: 'extra', workerContractHash: advertised.contractHash };
+    return {
+      name,
+      status: advertised.contractHash === registryHash ? 'matched' : 'mismatched',
+      workerContractHash: advertised.contractHash,
+      ...registryField,
+    };
   });
 }
 
@@ -183,6 +208,7 @@ function verifyWorkflow(
   workflow: string,
   actual: WorkerWorkflow,
   expected: WorkflowRevisionManifestSource | undefined,
+  expectedHashes: ReadonlyMap<string, string> | undefined,
 ): WorkflowVerification {
   if (expected === undefined) {
     return {
@@ -199,10 +225,8 @@ function verifyWorkflow(
     };
   }
   const drift = identityDrift(actual, expected);
-  const activities = activityVerification(actual, expected);
-  const activityDrift = activities.some(
-    (activity) => activity.status === 'missing' || activity.status === 'extra',
-  );
+  const activities = activityVerification(actual, expected, expectedHashes);
+  const activityDrift = activities.some((activity) => activity.status !== 'matched');
   return {
     workflow,
     status: drift.length > 0 || activityDrift ? 'drift' : 'matched',
@@ -211,16 +235,20 @@ function verifyWorkflow(
   };
 }
 
-/** Compares one worker's accepted manifest with the active registry snapshot. */
+/**
+ * Compares one worker's accepted manifest with the active registry snapshot.
+ * `hashes` is {@link registryActivityContractHashes} of the same snapshot.
+ */
 export function verifyWorkerContracts(
   diagnostics: WorkerManifestDiagnostics,
   snapshot: RegistrySnapshotSource,
+  hashes: RegistryActivityHashes,
 ): WorkerContractVerification {
   const active = activeManifestsByName(snapshot);
   const advertised = diagnostics.deploymentVersion.workflows;
   const workflows = Object.keys(advertised)
     .toSorted(compareCodepoint)
-    .map((name) => verifyWorkflow(name, advertised[name]!, active.get(name)));
+    .map((name) => verifyWorkflow(name, advertised[name]!, active.get(name), hashes.get(name)));
   return {
     workerId: diagnostics.instance.workerId,
     deploymentName: diagnostics.deploymentVersion.deploymentName,
@@ -253,8 +281,10 @@ export function verifyRegistryWorkflow(
   workflow: string,
   diagnostics: readonly WorkerManifestDiagnostics[],
   snapshot: RegistrySnapshotSource,
+  hashes: RegistryActivityHashes,
 ): RegistryWorkflowVerification {
   const expected = activeManifestsByName(snapshot).get(workflow);
+  const expectedHashes = hashes.get(workflow);
   const workers = diagnostics
     .flatMap((entry): WorkerWorkflowVerification[] => {
       const actual = entry.deploymentVersion.workflows[workflow];
@@ -264,7 +294,7 @@ export function verifyRegistryWorkflow(
           workerId: entry.instance.workerId,
           deploymentName: entry.deploymentVersion.deploymentName,
           buildId: entry.deploymentVersion.buildId,
-          verification: verifyWorkflow(workflow, actual, expected),
+          verification: verifyWorkflow(workflow, actual, expected, expectedHashes),
         },
       ];
     })
