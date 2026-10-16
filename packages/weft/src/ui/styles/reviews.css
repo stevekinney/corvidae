@@ -147,7 +147,7 @@
   min-width: 160px;
   margin: 0;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 /* Two-panel layouts stack vertically below 900px (PROJECT-BRIEF binding
@@ -371,13 +371,13 @@
 .weft-artifact-text {
   margin: 0;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
   white-space: pre-wrap;
 }
 
 .weft-artifact-markdown {
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
   overflow-x: auto;
 }
 
@@ -398,7 +398,7 @@
   min-height: 12rem;
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
-  background: var(--cinder-bg);
+  background: var(--cinder-surface-canvas);
 }
 
 /* ---------------------------------------------------------------------- */

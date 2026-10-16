@@ -38,8 +38,8 @@ body {
 
 body {
   margin: 0;
-  background: var(--cinder-bg);
-  color: var(--cinder-text);
+  background: var(--cinder-surface-canvas);
+  color: var(--cinder-text-default);
 }
 
 #app {
