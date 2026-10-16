@@ -205,7 +205,14 @@
         "toolchain": {
           "chalk": "catalog:"
         },
-        "requiredInputs": ["scripts/build.ts", "scripts/lib/build-guards.ts"],
+        "requiredInputs": [
+          "scripts/build.ts",
+          "scripts/lib/build-guards.ts",
+          "scripts/build-dashboard.ts",
+          "scripts/check-dashboard-size.ts",
+          "scripts/lib/svelte-plugin.ts",
+          "scripts/lib/environment-configuration.ts"
+        ],
         "sourceRoot": "src",
         "packedBy": "files"
       },
