@@ -60,7 +60,7 @@ const memoryPerTurborepoTask = 16 * 1024 ** 3;
  */
 export function withTurborepoDefaults(
   environment: Readonly<Record<string, string | undefined>>,
-  gitCommonDirectory: string,
+  commonDirectory: string,
   host: { readonly totalMemoryBytes: number; readonly processors: number } = {
     totalMemoryBytes: totalmem(),
     processors: cpus().length,
@@ -72,7 +72,7 @@ export function withTurborepoDefaults(
   );
   return {
     ...environment,
-    TURBO_CACHE_DIR: environment['TURBO_CACHE_DIR'] || join(gitCommonDirectory, 'turbo-cache'),
+    TURBO_CACHE_DIR: environment['TURBO_CACHE_DIR'] || join(commonDirectory, 'turbo-cache'),
     TURBO_CONCURRENCY: environment['TURBO_CONCURRENCY'] || String(concurrency),
   };
 }

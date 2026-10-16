@@ -168,7 +168,8 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
-    const coverageReplacesTest = [...(await workspaceManifests()).values()]
+    const manifests = await workspaceManifests();
+    const coverageReplacesTest = [...manifests.values()]
       .filter((manifest) =>
         manifest.scripts?.['test:coverage']?.includes('scripts/bun-test-junit.ts'),
       )
