@@ -40,7 +40,16 @@ const SNAPSHOT = {
   activities: {},
 };
 
-function renderRegistryTab(fetch: ScriptedFetch, { retry = true } = {}) {
+function renderRegistryTab(
+  fetch: ScriptedFetch,
+  {
+    retry = true,
+    seed,
+  }: {
+    retry?: boolean;
+    seed?: (queryClient: ReturnType<typeof createQueryClient>) => void;
+  } = {},
+) {
   fetch.routeJsonRpcMethod('weft.workers.list', {
     items: [],
     deployments: [],
@@ -49,7 +58,8 @@ function renderRegistryTab(fetch: ScriptedFetch, { retry = true } = {}) {
   fetch.routeJsonRpcMethod('weft.workers.rejections', { items: [], limit: 25 });
   fetch.routeJsonRpcMethod('weft.catalog.sources.list', { sources: [] });
   const queryClient = createQueryClient();
-  if (!retry) queryClient.setQueryDefaults(queryKeys.registry(), { retry: false });
+  if (!retry) queryClient.setQueryDefaults(queryKeys.registrySnapshot(), { retry: false });
+  seed?.(queryClient);
   const view = render(SystemRouteTestHarness, {
     props: { client: realClient(), queryClient, component: RegistryTab },
   });
@@ -75,7 +85,7 @@ describe('RegistryTab registry query', () => {
 
     const workersInterval = refetchIntervalOf(queryClient, queryKeys.workers.list());
     expect(workersInterval).toBe(30_000);
-    expect(refetchIntervalOf(queryClient, queryKeys.registry())).toBe(workersInterval);
+    expect(refetchIntervalOf(queryClient, queryKeys.registrySnapshot())).toBe(workersInterval);
   });
 
   test('reports a malformed snapshot through the validated loader', async () => {
@@ -106,10 +116,38 @@ describe('RegistryTab registry query', () => {
     const { findByText, getByText, queryClient } = renderRegistryTab(scripted);
     expect(await findByText('order-processing')).not.toBeNull();
 
-    await queryClient.refetchQueries({ queryKey: queryKeys.registry() });
+    await queryClient.refetchQueries({ queryKey: queryKeys.registrySnapshot() });
 
     expect(await findByText('Refresh failed · showing the last registry snapshot')).not.toBeNull();
     expect(getByText('Not authorized')).not.toBeNull();
     expect(getByText('order-processing')).not.toBeNull();
+  });
+
+  test('never renders a raw registry response cached by an unvalidated consumer', async () => {
+    // Health, Start workflow and the schedule drawer cache the raw
+    // `weft.system.registry` response (or a projection of it) under
+    // `queryKeys.registry()`. This one is malformed: the validated loader
+    // rejects duplicate workflows, so it must not reach contract verification.
+    const raw = await withContractHashes({
+      ...SNAPSHOT,
+      workflows: [
+        { ...SNAPSHOT.workflows[0]!, name: 'unvalidated-workflow' },
+        { ...SNAPSHOT.workflows[0]!, name: 'unvalidated-workflow' },
+      ],
+    });
+    scripted = new ScriptedFetch();
+    scripted.enqueueJsonRpcResult(await withContractHashes(SNAPSHOT));
+    const { findByText, queryByText, queryClient } = renderRegistryTab(scripted, {
+      seed: (client) => {
+        // Fresh forever under the whole `registry` prefix: if the tab shared the
+        // raw entry it would render it without ever calling the loader.
+        client.setQueryDefaults(queryKeys.registry(), { staleTime: Infinity });
+        client.setQueryData(queryKeys.registry(), raw);
+      },
+    });
+
+    expect(await findByText('order-processing')).not.toBeNull();
+    expect(queryByText('unvalidated-workflow')).toBeNull();
+    expect(queryClient.getQueryData<unknown>(queryKeys.registry())).toBe(raw);
   });
 });

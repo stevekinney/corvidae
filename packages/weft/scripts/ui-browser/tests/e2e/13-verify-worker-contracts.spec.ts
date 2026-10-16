@@ -86,9 +86,12 @@ test('operator reads every serving worker’s verification from a registry entry
 });
 
 /**
- * Failure states, each reached by answering the worker-manifest read with a
- * JSON-RPC fault, so every notice is checked for text (not color alone) and
- * by `checkA11y`.
+ * Failure states, each reached by answering one of the panel's two reads with
+ * a JSON-RPC fault (or, for the malformed state, a result the Console's
+ * validator rejects), so every notice is checked for text (not color alone)
+ * and by `checkA11y`. Most answer the worker-manifest read; the permission
+ * denial answers the registry read instead, because a 403 on the manifest read
+ * also locks the whole Workers route behind `system:read`.
  */
 const FAILURES = [
   {
@@ -104,6 +107,17 @@ const FAILURES = [
       },
     },
     title: 'Strict payload boundary rejected a value',
+  },
+  {
+    // No `WorkerJsonValidationError` name, so only the message matches the
+    // strict-payload shape and the notice stays unconfirmed.
+    name: 'unconfirmed strict payload rejection',
+    error: {
+      code: -32602,
+      message: 'activity result.total: number must be finite',
+      data: { httpStatus: 422 },
+    },
+    title: 'Possible strict payload rejection',
   },
   {
     name: 'contract mismatch',
@@ -127,20 +141,40 @@ const FAILURES = [
     },
     title: 'Not found',
   },
+  {
+    name: 'permission denied',
+    method: 'weft.system.registry',
+    error: {
+      code: -32003,
+      message: 'Forbidden',
+      data: { httpStatus: 403, weftCode: 'Forbidden' },
+    },
+    title: 'Permission denied',
+  },
+  {
+    name: 'malformed response',
+    result: { worker: 'not-a-worker-record' },
+    title: 'Malformed server response',
+    // An unclassified error is retried (three times, with backoff) before
+    // the panel leaves its loading state.
+    timeout: 20_000,
+  },
 ] as const;
 
-async function failWorkerDiagnostics(page: Page, error: unknown): Promise<void> {
+type JsonRpcReply = Readonly<{ error: unknown }> | Readonly<{ result: unknown }>;
+
+async function answerJsonRpc(page: Page, method: string, reply: JsonRpcReply): Promise<void> {
   await page.route('**/jsonrpc', async (route) => {
     const request: unknown = route.request().postDataJSON();
     const body = request as { id?: unknown; method?: unknown } | null;
-    if (body?.method !== 'weft.workers.diagnostics') {
+    if (body?.method !== method) {
       await route.continue();
       return;
     }
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ jsonrpc: '2.0', id: body.id ?? null, error }),
+      body: JSON.stringify({ jsonrpc: '2.0', id: body.id ?? null, ...reply }),
     });
   });
 }
@@ -150,11 +184,17 @@ for (const failure of FAILURES) {
     page,
     checkA11y,
   }) => {
-    await failWorkerDiagnostics(page, failure.error);
+    await answerJsonRpc(
+      page,
+      'method' in failure ? failure.method : 'weft.workers.diagnostics',
+      'error' in failure ? { error: failure.error } : { result: failure.result },
+    );
     await page.goto('/workers?tab=list&worker=e2e-fleet-worker-1');
 
     const verification = page.getByRole('region', { name: 'Contract verification' });
-    await expect(verification.getByText(failure.title, { exact: true })).toBeVisible();
+    await expect(verification.getByText(failure.title, { exact: true })).toBeVisible(
+      'timeout' in failure ? { timeout: failure.timeout } : {},
+    );
     await expect(verification.getByText('Verified · manifest matches registry')).toHaveCount(0);
 
     await checkA11y(`workers — contract verification ${failure.name}`);

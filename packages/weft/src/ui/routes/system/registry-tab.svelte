@@ -43,7 +43,7 @@
   // worker and manifest queries' cadence, so contract verification never
   // compares fresh manifests with a stale snapshot (COR-162).
   const query = createQuery(() => ({
-    queryKey: queryKeys.registry(),
+    queryKey: queryKeys.registrySnapshot(),
     queryFn: (): Promise<RegistrySnapshotSource> => loadRegistrySnapshot(client),
     refetchInterval: 30_000,
   }));

@@ -114,7 +114,7 @@
   }));
   // Worker detail's contract verification (COR-162); shared with System → Registry.
   const registryQuery = createQuery(() => ({
-    queryKey: queryKeys.registry(),
+    queryKey: queryKeys.registrySnapshot(),
     queryFn: () => loadRegistrySnapshot(client),
     enabled: !locked && router.search.get('worker') !== null,
     refetchInterval: 30_000,
