@@ -445,13 +445,15 @@ describe('internal workspace architecture', () => {
         if (!entry.isDirectory()) continue;
         const path = join(directory, entry.name);
         if (await Bun.file(join(root, path, 'package.json')).exists()) {
-          verificationNames.add((await readManifest(path)).name);
+          const manifest = await readManifest(path);
+          verificationNames.add(manifest.name);
         }
       }
     }
     expect(verificationNames.size).toBeGreaterThan(0);
     const offending: string[] = [];
-    for (const manifest of (await workspaceManifests()).values()) {
+    const manifests = await workspaceManifests();
+    for (const manifest of manifests.values()) {
       for (const field of ['dependencies', 'peerDependencies'] as const) {
         for (const name of Object.keys(manifest[field] ?? {})) {
           if (verificationNames.has(name)) offending.push(`${manifest.name} ${field} -> ${name}`);
