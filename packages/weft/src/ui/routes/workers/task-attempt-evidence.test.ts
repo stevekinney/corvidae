@@ -107,6 +107,35 @@ describe('attempt ordering and fencing', () => {
     expect(history.map((entry) => entry.dispositionLabel)).toEqual(['Requeued', 'Resolved']);
   });
 
+  test('never ends a window before it starts when a lower attempt was claimed after the next one', () => {
+    // Attempt 1's claim is later than attempt 2's (clock skew between servers,
+    // or a recovered record): the next claim must not pull attempt 1's window
+    // end before its own start.
+    const history = buildAttemptHistory(
+      [
+        attempt({ attempt: 1, claimedAt: NOW - 5_000, disposition: 'leased' }),
+        attempt({ attempt: 2, claimedAt: NOW - 20_000, disposition: 'leased' }),
+      ],
+      2,
+    );
+    expect(history.map((entry) => entry.record.attempt)).toEqual([1, 2]);
+    expect(history[0]?.windowStart).toBe(NOW - 5_000);
+    expect(history[0]?.windowEnd).toBe(NOW - 5_000);
+    for (const entry of history) {
+      if (entry.windowEnd !== undefined) {
+        expect(entry.windowEnd).toBeGreaterThanOrEqual(entry.windowStart);
+      }
+    }
+  });
+
+  test('never ends a window before it starts when its own disposition predates its claim', () => {
+    const [entry] = buildAttemptHistory(
+      [attempt({ attempt: 1, claimedAt: NOW - 5_000, dispositionAt: NOW - 9_000 })],
+      1,
+    );
+    expect(entry?.windowEnd).toBe(NOW - 5_000);
+  });
+
   test('has no owning attempt until the ledger records the current attempt number', () => {
     expect(owningAttempt(task({ attempts: [attempt({ attempt: 1 })] }))).toBeUndefined();
   });

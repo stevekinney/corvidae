@@ -9,7 +9,9 @@
  *   its own `dispositionAt` and the next attempt's `claimedAt`, so an older
  *   attempt's late disposition can never draw over a newer attempt's window.
  *   A disposition recorded after a newer claim is shown as fenced evidence,
- *   not as a longer window.
+ *   not as a longer window. A window never ends before it starts: when a
+ *   lower attempt's claim is later than the next attempt's (or than its own
+ *   disposition), its window is clamped to zero length at its own claim.
  * - **Acknowledgement belongs to the owning attempt.** Worker acknowledgement
  *   of a cancellation is reported only when the attempt record whose
  *   `attempt` matches the task's current `attempt` carries
@@ -127,8 +129,15 @@ function attemptWindowEnd(
   next: TaskAttemptRecord | undefined,
 ): number | undefined {
   const ownEnd = record.disposition === 'leased' ? undefined : record.dispositionAt;
-  if (next === undefined) return ownEnd;
-  return ownEnd === undefined ? next.claimedAt : Math.min(ownEnd, next.claimedAt);
+  const end =
+    next === undefined
+      ? ownEnd
+      : ownEnd === undefined
+        ? next.claimedAt
+        : Math.min(ownEnd, next.claimedAt);
+  // A window never ends before it starts: when the next attempt's claim (or
+  // this attempt's own disposition) predates this claim, the window is empty.
+  return end === undefined ? undefined : Math.max(end, record.claimedAt);
 }
 
 /** Builds the fenced, chronological attempt history for a task. */
