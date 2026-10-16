@@ -36,12 +36,19 @@
 
   const activityHashes = trackRegistryActivityHashes(() => registry);
   const error = $derived(queryError ?? activityHashes.error);
-  // The expected activity hashes are derived from the snapshot asynchronously.
-  const loading = $derived(queriesLoading || (!error && !activityHashes.hashes));
   const verification = $derived(
     diagnostics && activityHashes.hashes
       ? verifyRegistryWorkflow(workflow, diagnostics, registry, activityHashes.hashes)
       : undefined,
+  );
+  // A verdict computed from cached manifests outlives a failed background
+  // refetch: it stays on screen, marked stale, and the fault replaces it
+  // only when there is nothing to compare. The expected activity hashes are
+  // derived from the snapshot asynchronously.
+  const loading = $derived(
+    verification === undefined &&
+      !error &&
+      (queriesLoading || (diagnostics !== undefined && !activityHashes.hashes)),
   );
   const driftCount = $derived(
     verification?.workers.filter((entry) => entry.verification.status !== 'matched').length ?? 0,
@@ -57,7 +64,7 @@
 >
   <div class="weft-contract-verification__heading-row">
     <h2 id="registry-contract-verification-heading">Worker contract verification</h2>
-    {#if !loading && !error && verification && verification.workers.length > 0}
+    {#if verification && verification.workers.length > 0}
       {#if driftCount > 0}
         <Badge variant="danger"
           >Drift · {driftCount} of {verification.workers.length} worker{verification.workers
@@ -69,14 +76,18 @@
         <Badge variant="success">Verified · every serving worker matches</Badge>
       {/if}
     {/if}
-    {#if refreshing}<Badge variant="neutral">Refreshing · showing cached evidence</Badge>{/if}
+    {#if verification && error}
+      <Badge variant="warning">Stale · last refresh failed</Badge>
+    {:else if refreshing}
+      <Badge variant="neutral">Refreshing · showing cached evidence</Badge>
+    {/if}
   </div>
 
   {#if loading}
     <div role="status" aria-busy="true" aria-label="Loading worker contract verification">
       <Skeleton height="6rem" />
     </div>
-  {:else if error}
+  {:else if error && verification === undefined}
     <VerificationFaultView {error} />
   {:else if !verification || verification.workers.length === 0}
     <EmptyState
@@ -84,6 +95,9 @@
       description={`No connected worker with an accepted manifest advertises ${workflow}.`}
     />
   {:else}
+    {#if error}
+      <VerificationFaultView {error} />
+    {/if}
     {#each verification.workers as entry (entry.workerId)}
       <div class="weft-workers-panel">
         <div class="weft-contract-verification__worker">

@@ -41,6 +41,7 @@ import type {
   RegistrySnapshotSource,
   WorkflowRevisionManifestSource,
 } from '../system/registry-view.ts';
+import { MalformedRegistrySnapshotError } from './registry-snapshot-guard.ts';
 import {
   MalformedWorkerDiagnosticsError,
   type WorkerManifestDiagnostics,
@@ -125,13 +126,22 @@ function compareCodepoint(left: string, right: string): number {
   return 0;
 }
 
+/**
+ * Reads `record[key]` only when `key` is an own property. Workflow and
+ * activity names such as `constructor`, `toString`, and `__proto__` are
+ * valid, so a plain index would read `Object.prototype` members as entries.
+ */
+function ownEntry<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
 /** The active manifest of each workflow name, by the same `activeRevisions` rule `registry-view.ts` uses. */
 function activeManifestsByName(
   snapshot: RegistrySnapshotSource,
 ): ReadonlyMap<string, WorkflowRevisionManifestSource> {
   const active = new Map<string, WorkflowRevisionManifestSource>();
   for (const manifest of snapshot.workflows) {
-    if (snapshot.activeRevisions[manifest.name] === manifest.revision) {
+    if (ownEntry(snapshot.activeRevisions, manifest.name) === manifest.revision) {
       active.set(manifest.name, manifest);
     }
   }
@@ -188,8 +198,8 @@ function activityVerification(
   const expectedActivities = expected.contract.activities ?? {};
   const names = new Set([...Object.keys(actual.activities), ...Object.keys(expectedActivities)]);
   return [...names].toSorted(compareCodepoint).map((name): ActivityVerification => {
-    const advertised = actual.activities[name];
-    const declared = expectedActivities[name] !== undefined;
+    const advertised = ownEntry(actual.activities, name);
+    const declared = ownEntry(expectedActivities, name) !== undefined;
     const registryHash = declared ? expectedHashes?.get(name) : undefined;
     const registryField = registryHash === undefined ? {} : { registryContractHash: registryHash };
     if (advertised === undefined) return { name, status: 'missing', ...registryField };
@@ -255,7 +265,7 @@ export function verifyWorkerContracts(
     buildId: diagnostics.deploymentVersion.buildId,
     workflows,
     notAdvertised: [...active.keys()]
-      .filter((name) => advertised[name] === undefined)
+      .filter((name) => ownEntry(advertised, name) === undefined)
       .toSorted(compareCodepoint),
     hasDrift: workflows.some((workflow) => workflow.status !== 'matched'),
   };
@@ -287,7 +297,7 @@ export function verifyRegistryWorkflow(
   const expectedHashes = hashes.get(workflow);
   const workers = diagnostics
     .flatMap((entry): WorkerWorkflowVerification[] => {
-      const actual = entry.deploymentVersion.workflows[workflow];
+      const actual = ownEntry(entry.deploymentVersion.workflows, workflow);
       if (actual === undefined) return [];
       return [
         {
@@ -420,51 +430,6 @@ export function classifyContractFailure(failure: unknown): ContractFailure | und
   }
   if (isRecord(failure)) return strictPayloadFromRecord(failure);
   return undefined;
-}
-
-// ---------------------------------------------------------------------------
-// Registry snapshot boundary
-// ---------------------------------------------------------------------------
-
-export class MalformedRegistrySnapshotError extends Error {
-  constructor() {
-    super('The server returned a malformed registry snapshot.');
-    this.name = 'MalformedRegistrySnapshotError';
-  }
-}
-
-function isStringRecord(value: unknown): value is Readonly<Record<string, string>> {
-  return isRecord(value) && Object.values(value).every((entry) => typeof entry === 'string');
-}
-
-function isWorkflowManifest(value: unknown): value is WorkflowRevisionManifestSource {
-  if (!isRecord(value) || !isRecord(value['contract'])) return false;
-  const activities = value['contract']['activities'];
-  return (
-    typeof value['manifestVersion'] === 'number' &&
-    typeof value['name'] === 'string' &&
-    typeof value['workflowVersion'] === 'string' &&
-    typeof value['revision'] === 'string' &&
-    typeof value['contractHash'] === 'string' &&
-    (activities === undefined || isRecord(activities))
-  );
-}
-
-/**
- * Checks the fields contract verification reads from `weft.system.registry`,
- * whose generated output types them as `unknown`. A type guard, so the
- * snapshot is passed through whole: the Registry tab shares its query key
- * and reads the rest of each contract.
- */
-export function isRegistrySnapshot(value: unknown): value is RegistrySnapshotSource {
-  return (
-    isRecord(value) &&
-    typeof value['registryVersion'] === 'number' &&
-    Array.isArray(value['workflows']) &&
-    value['workflows'].every(isWorkflowManifest) &&
-    isStringRecord(value['activeRevisions']) &&
-    isRecord(value['activities'])
-  );
 }
 
 // ---------------------------------------------------------------------------

@@ -229,6 +229,28 @@ describe('registryActivityContractHashes', () => {
     expect(reordered).toBe(CHARGE_HASH);
     expect(CHARGE_HASH).not.toBe(RESERVE_HASH);
   });
+
+  test('hashes without crypto.subtle, which plain-HTTP dashboards lack, to the same values', async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { getRandomValues: crypto.getRandomValues.bind(crypto) },
+    });
+    let hashes: Awaited<ReturnType<typeof registryActivityContractHashes>>;
+    try {
+      expect(globalThis.crypto.subtle).toBeUndefined();
+      hashes = await registryActivityContractHashes(registrySnapshot());
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(globalThis, 'crypto');
+      else Object.defineProperty(globalThis, 'crypto', original);
+    }
+
+    // CHARGE_HASH and RESERVE_HASH came from activityContractHash with SubtleCrypto.
+    expect(Object.fromEntries(hashes.get('checkout')!)).toEqual({
+      charge: CHARGE_HASH,
+      reserve: RESERVE_HASH,
+    });
+  });
 });
 
 describe('verifyRegistryWorkflow', () => {

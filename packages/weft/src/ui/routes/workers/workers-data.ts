@@ -33,7 +33,7 @@ import {
 
 import { queryKeys } from '../../lib/query.ts';
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
-import { isRegistrySnapshot, MalformedRegistrySnapshotError } from './contract-verification.ts';
+import { isRegistrySnapshot, MalformedRegistrySnapshotError } from './registry-snapshot-guard.ts';
 import {
   DEFAULT_TASK_DIAGNOSTICS_INPUT,
   type TaskDiagnosticsOutput,

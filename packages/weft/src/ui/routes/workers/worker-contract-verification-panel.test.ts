@@ -8,7 +8,7 @@ import {
   RESERVE_HASH,
   workerManifest,
 } from './contract-verification.test-support.ts';
-import { MalformedRegistrySnapshotError } from './contract-verification.ts';
+import { MalformedRegistrySnapshotError } from './registry-snapshot-guard.ts';
 import WorkerContractVerificationPanel from './worker-contract-verification-panel.svelte';
 import { MalformedWorkerDiagnosticsError } from './worker-manifest-diagnostics.ts';
 
@@ -247,6 +247,29 @@ describe('WorkerContractVerificationPanel', () => {
     };
     const { findByText, queryByText } = renderPanel({ registry: unhashable });
     expect(await findByText('Something went wrong')).not.toBeNull();
+    expect(queryByText('Verified · manifest matches registry')).toBeNull();
+  });
+
+  test('a failed background refetch keeps the cached verdict, marked stale', async () => {
+    const { findByText, getByText, queryByText } = renderPanel({
+      refreshing: true,
+      error: new HttpClientError(503, 'Service unavailable'),
+    });
+
+    expect(await findByText('Verified · manifest matches registry')).not.toBeNull();
+    expect(getByText('Stale · last refresh failed')).not.toBeNull();
+    expect(getByText('Something went wrong')).not.toBeNull();
+    expect(queryByText('Refreshing · showing cached evidence')).toBeNull();
+  });
+
+  test('with no cached data, the fault replaces the verdict', async () => {
+    const { findByText, queryByText } = renderPanel({
+      diagnostics: undefined,
+      error: new HttpClientError(503, 'Service unavailable'),
+    });
+
+    expect(await findByText('Something went wrong')).not.toBeNull();
+    expect(queryByText('Stale · last refresh failed')).toBeNull();
     expect(queryByText('Verified · manifest matches registry')).toBeNull();
   });
 });

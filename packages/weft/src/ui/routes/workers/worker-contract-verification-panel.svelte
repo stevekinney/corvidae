@@ -32,36 +32,44 @@
 
   const activityHashes = trackRegistryActivityHashes(() => registry);
   const error = $derived(queryError ?? activityHashes.error);
-  // The expected activity hashes are derived from the snapshot asynchronously.
-  const loading = $derived(
-    queriesLoading ||
-      (!error && Boolean(diagnostics) && registry !== undefined && !activityHashes.hashes),
-  );
   const verification = $derived(
     diagnostics && registry && activityHashes.hashes
       ? verifyWorkerContracts(diagnostics, registry, activityHashes.hashes)
       : undefined,
+  );
+  // A verdict computed from cached data outlives a failed background refetch:
+  // it stays on screen, marked stale, and the fault replaces it only when
+  // there is nothing to compare. The expected activity hashes are derived
+  // from the snapshot asynchronously.
+  const loading = $derived(
+    verification === undefined &&
+      !error &&
+      (queriesLoading || (Boolean(diagnostics) && registry !== undefined)),
   );
 </script>
 
 <section class="weft-contract-verification" aria-labelledby="worker-contract-verification-heading">
   <div class="weft-contract-verification__heading-row">
     <h2 id="worker-contract-verification-heading">Contract verification</h2>
-    {#if !loading && !error && verification}
+    {#if verification}
       {#if verification.hasDrift}
         <Badge variant="danger">Drift · manifest differs from registry</Badge>
       {:else}
         <Badge variant="success">Verified · manifest matches registry</Badge>
       {/if}
     {/if}
-    {#if refreshing}<Badge variant="neutral">Refreshing · showing cached evidence</Badge>{/if}
+    {#if verification && error}
+      <Badge variant="warning">Stale · last refresh failed</Badge>
+    {:else if refreshing}
+      <Badge variant="neutral">Refreshing · showing cached evidence</Badge>
+    {/if}
   </div>
 
   {#if loading}
     <div role="status" aria-busy="true" aria-label="Loading contract verification">
       <Skeleton height="6rem" />
     </div>
-  {:else if error}
+  {:else if error && verification === undefined}
     <VerificationFaultView {error} />
   {:else if diagnostics === null}
     <EmptyState
@@ -74,6 +82,9 @@
       description="The registry has no workflow revisions to compare this worker's manifest with."
     />
   {:else if verification}
+    {#if error}
+      <VerificationFaultView {error} />
+    {/if}
     {#if verification.workflows.length === 0}
       <p class="weft-contract-verification__note">This worker advertises no workflows.</p>
     {:else}

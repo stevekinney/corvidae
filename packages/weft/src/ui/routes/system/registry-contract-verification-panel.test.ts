@@ -149,4 +149,27 @@ describe('RegistryContractVerificationPanel', () => {
     expect(getByRole('status', { name: 'Loading worker contract verification' })).not.toBeNull();
     expect(await findByText('Drift · 1 of 2 workers')).not.toBeNull();
   });
+
+  test('a failed background refetch keeps the cached verdict, marked stale', async () => {
+    const { findByText, getByText, queryByText } = renderPanel({
+      refreshing: true,
+      error: new HttpClientError(503, 'Service unavailable'),
+    });
+
+    expect(await findByText('Drift · 1 of 2 workers')).not.toBeNull();
+    expect(getByText('Stale · last refresh failed')).not.toBeNull();
+    expect(getByText('Something went wrong')).not.toBeNull();
+    expect(queryByText('Refreshing · showing cached evidence')).toBeNull();
+  });
+
+  test('with no cached manifests, the fault replaces the verdict', async () => {
+    const { findByText, queryByText } = renderPanel({
+      diagnostics: undefined,
+      error: new HttpClientError(503, 'Service unavailable'),
+    });
+
+    expect(await findByText('Something went wrong')).not.toBeNull();
+    expect(queryByText('Stale · last refresh failed')).toBeNull();
+    expect(queryByText('No worker manifests for this workflow')).toBeNull();
+  });
 });

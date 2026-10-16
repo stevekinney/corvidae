@@ -488,6 +488,7 @@
         "@lostgradient/environmentalist": "catalog:",
         "@msgpack/msgpack": "catalog:",
         "@neondatabase/serverless": "catalog:",
+        "@noble/hashes": "catalog:",
         "@valibot/to-json-schema": "catalog:",
         "better-sqlite3": "catalog:",
         "lmdb": "catalog:",

@@ -4,7 +4,7 @@ import { HttpClient } from '@lostgradient/weft';
 
 import { rejectionOf } from '../../../testing/promise-outcome.test-support.ts';
 import { registrySnapshot } from './contract-verification.test-support.ts';
-import { MalformedRegistrySnapshotError } from './contract-verification.ts';
+import { MalformedRegistrySnapshotError } from './registry-snapshot-guard.ts';
 import { loadRegistrySnapshot } from './workers-data.ts';
 
 function clientReturning(value: unknown, inputs: unknown[] = []): HttpClient {
@@ -45,5 +45,25 @@ describe('registry snapshot for contract verification', () => {
         MalformedRegistrySnapshotError,
       );
     }
+  });
+
+  test('rejects a snapshot with two manifests for one (name, revision)', async () => {
+    const snapshot = registrySnapshot();
+    const duplicated = { ...snapshot, workflows: [...snapshot.workflows, snapshot.workflows[1]!] };
+
+    expect(await rejectionOf(loadRegistrySnapshot(clientReturning(duplicated)))).toBeInstanceOf(
+      MalformedRegistrySnapshotError,
+    );
+  });
+
+  test('accepts an active pointer with no manifest in this process (WFT-11)', async () => {
+    // `engine.workflows.activate()` can activate an installed revision the
+    // serving process has no in-process manifest for; codegen omits it too.
+    const snapshot = {
+      ...registrySnapshot(),
+      activeRevisions: { ...registrySnapshot().activeRevisions, refund: 'refund-rev-2' },
+    };
+
+    expect(await loadRegistrySnapshot(clientReturning(snapshot))).toBe(snapshot);
   });
 });
