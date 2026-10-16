@@ -1,0 +1,10 @@
+{
+  "documentation": "The version of each documented package that its public repository last published, which is what the documentation displays and what the Cinder token runtime stamps (COR-231). Updated by hand after each batch backport, from `npm view <package> version`; when Cinder's entry changes, `src/cinder-published-bases.json` needs that version's base digest too. The mirror tooling that used to record these now lives in stevekinney/corvidae-mirror and does not write here. This file belongs to the playground workspace, so a change to it rebuilds cinder.website like any other source change.",
+  "lastPublishedVersions": {
+    "@lostgradient/chat": "0.16.0",
+    "@lostgradient/cinder": "0.29.0",
+    "@lostgradient/editor": "0.18.0",
+    "@lostgradient/markdown": "0.6.2",
+    "@lostgradient/weft": "0.29.0"
+  }
+}

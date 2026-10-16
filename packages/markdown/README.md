@@ -56,7 +56,7 @@ const html = renderTemplate(
 console.log(diff, html);
 ```
 
-Use `resolveTemplatePlaceholders` when you need the substituted source and placeholder diagnostics before rendering. Inside this workspace, import parsing, serialization, syntax-tree utilities, diffing, rendering, highlighting, templates, and URL utilities from the package root. The public package also declares the subpaths listed in `scripts/mirror/package-surface.json`: `./pipeline`, `./diff`, `./diff/line-diff`, `./diff/types`, `./rendering`, `./rendering/async`, `./rendering/types`, `./rendering/highlighter`, `./rendering/mermaid-cache`, `./utilities/safe-url`, `./utilities/sort-keys`, `./templates/sanitize-html`, `./templates/template-placeholders`, `./templates/template-render`, `./templates/placeholder-security`, and `./templates/types`.
+Use `resolveTemplatePlaceholders` when you need the substituted source and placeholder diagnostics before rendering. Inside this workspace, import parsing, serialization, syntax-tree utilities, diffing, rendering, highlighting, templates, and URL utilities from the package root. The public package also declares the subpaths listed in `corvidae-mirror/src/package-surface.json`: `./pipeline`, `./diff`, `./diff/line-diff`, `./diff/types`, `./rendering`, `./rendering/async`, `./rendering/types`, `./rendering/highlighter`, `./rendering/mermaid-cache`, `./utilities/safe-url`, `./utilities/sort-keys`, `./templates/sanitize-html`, `./templates/template-placeholders`, `./templates/template-render`, `./templates/placeholder-security`, and `./templates/types`.
 
 ## Placeholder catalogs
 
@@ -119,7 +119,7 @@ The parser and resolver subpaths (`./templates/types`, `./templates/template-pla
 
 ## Placeholder utilities and diagnostics
 
-Every function and type below is exported from the package root. The subpath column names the public subpath (from `scripts/mirror/package-surface.json`) that declares it; inside this workspace, import from the root.
+Every function and type below is exported from the package root. The subpath column names the public subpath (from `corvidae-mirror/src/package-surface.json`) that declares it; inside this workspace, import from the root.
 
 | Export | Signature | Subpath |
 | --- | --- | --- |

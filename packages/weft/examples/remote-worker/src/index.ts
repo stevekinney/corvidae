@@ -10,7 +10,7 @@
  * already hold themselves to. This also doubles as this project's
  * packed-consumer end-to-end fixture (see the COR-151 decision record):
  * Corvidae is a private, unpublished workspace with no `prepack`/tarball step
- * to verify against (AGENTS.md forbids adding one outside `scripts/mirror/`),
+ * to verify against (AGENTS.md forbids adding one),
  * so a real engine + real server + real `RemoteWorker` reached only through
  * this public surface is the closest available substitute for "install the
  * package and use it."

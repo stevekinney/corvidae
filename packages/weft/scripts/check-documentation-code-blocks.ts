@@ -5,7 +5,7 @@
  * Every ```` ```ts ```` or ```` ```typescript ```` fence in `README.md` and `documentation/**` is
  * compiled as its own module in one in-memory TypeScript program. Imports of `@lostgradient/weft`
  * and its subpaths resolve through the published `exports` map recorded in
- * `scripts/mirror/package-surface.json` at the repository root — the map the public mirror ships —
+ * `scripts/published-exports.json` at the repository root — a snapshot of the map the public mirror ships —
  * rather than this workspace's single `"."` export, so a guide cannot import a subpath or symbol a
  * consumer would not be able to import.
  *
@@ -260,7 +260,7 @@ export async function runDocumentationCodeBlockCheck(
 
 if (import.meta.main) {
   const packageRoot = resolve(import.meta.dir, '..');
-  const surfacePath = resolve(packageRoot, '../../scripts/mirror/package-surface.json');
+  const surfacePath = resolve(packageRoot, '../../scripts/published-exports.json');
   const result = await runDocumentationCodeBlockCheck(
     packageRoot,
     surfacePath,

@@ -6,7 +6,7 @@
 // once (dev only) so consumers migrate before the alias is removed in the
 // next major. Kept in corvidae (restored for COR-1196, since published cinder
 // exports this subpath); its exports entry comes from
-// scripts/mirror/cinder/generate-exports.ts's DEPRECATED_EXPERIMENTAL_ALIASES.
+// corvidae-mirror/src/cinder/generate-exports.ts's DEPRECATED_EXPERIMENTAL_ALIASES.
 
 import { devWarn } from '../../../utilities/dev-warn.ts';
 import JsonViewerComponent from '../../json-viewer/index.ts';
