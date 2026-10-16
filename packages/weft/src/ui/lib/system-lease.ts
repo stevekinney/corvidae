@@ -1,11 +1,10 @@
 /**
  * Engine ownership-lease health from `weft.system.lease` (`system:read`),
- * shared by the Dashboard's critical-alerts band and the System route's
- * Health & lease tab (COR-124). This is the serving engine process's
- * last-known lease state: `disabled` when lease ownership is off, `no-lease`
- * before it is held, `healthy` while held, and `contested` once ownership is
- * lost (with the confirmed `deposed` or `renewal-unconfirmable` reason when
- * Weft reports one).
+ * read by the System route's Health & lease tab (COR-124). This is the
+ * serving engine process's last-known lease state: `disabled` when lease
+ * ownership is off, `no-lease` before it is held, `healthy` while held, and
+ * `contested` once ownership is lost (with the confirmed `deposed` or
+ * `renewal-unconfirmable` reason when Weft reports one).
  *
  * The response is validated here, at the dashboard's trust boundary, so a
  * drifted payload surfaces as an explicit malformed-response state rather
