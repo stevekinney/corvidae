@@ -168,34 +168,23 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
-    const manifests = await workspaceManifests();
-    const coverageReplacesTest = [...manifests.values()]
-      .filter((manifest) =>
-        manifest.scripts?.['test:coverage']?.includes('scripts/bun-test-junit.ts'),
-      )
-      .map((manifest) => manifest.name)
-      .toSorted();
-    expect(coverageReplacesTest.length).toBeGreaterThan(0);
     // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
-    // instead of rejoining the queue at every stage. Its stages find the lock held by their parent
-    // and reuse it rather than queueing behind it.
+    // instead of rejoining the queue at every stage.
     const validationChain = scripts['validate']?.match(
       /^bun scripts\/run-exclusively\.ts '([^']+)'$/,
     );
     const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
-      'bun run lint',
-      'bun run typecheck',
-      // A workspace whose coverage run is its fast suite plus instrumentation, and writes the same
-      // JUnit report, runs that suite once, in `coverage`, rather than twice.
-      `bun run test ${coverageReplacesTest.map((workspace) => `--filter=!${workspace}`).join(' ')}`,
-      // COR-1499: slow correctness tests run serially after the fast phase. The duration report
-      // (warnings only) follows coverage, because a coverage run that replaces a workspace's fast
-      // suite writes that workspace's fast-lane report.
+      'bun run lint:root',
+      'bun run lint:styles',
+      'bun run typecheck:root',
+      // Every workspace task in one turbo run, so lint, type-checks, tests, coverage, and builds
+      // overlap under the memory-scaled concurrency instead of waiting on each other stage by stage.
+      'turbo run lint typecheck test:self test test:browser-fixtures test:coverage build',
+      // COR-1499: slow correctness tests run serially after the parallel phase, then the duration
+      // report (warnings only) reads the fast phase's reports.
       'bun run test:slow',
-      'bun run coverage',
       'bun run report:test-durations',
-      'bun run build',
       'bun run format:check',
       'bun run audit',
     ]);
@@ -204,20 +193,23 @@ describe('internal workspace architecture', () => {
     for (const stage of ['check', 'lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
       expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
     }
+    expect(scripts['typecheck']).toBe(
+      "bun scripts/run-exclusively.ts 'bun run typecheck:root && turbo run typecheck'",
+    );
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
     expect(scripts['test']).toBe(
-      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures --concurrency=1'",
+      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures'",
     );
     // The development loop: only the workspaces a change can affect, judged against the default
-    // branch, with tests kept serial as in the gate. `validate` stays the full gate.
+    // branch. `validate` stays the full gate.
     expect(scripts['check']).toBe(
-      "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint typecheck --affected && turbo run test:self test test:browser-fixtures --affected --concurrency=1'",
+      "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint typecheck test:self test test:browser-fixtures --affected'",
     );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
     expect(scripts['test:self']).toBe(
-      'bun scripts/bun-test-junit.ts --report-name=self ./scripts/*.test.ts ./scripts/terminal/*.test.ts',
+      'bun scripts/bun-test-junit.ts --report-name=self --parallel=4 ./scripts/*.test.ts ./scripts/terminal/*.test.ts',
     );
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.

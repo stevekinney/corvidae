@@ -556,28 +556,6 @@ test('the evaluation coverage gate runs in the root coverage graph and caches it
   });
 });
 
-test('a coverage run that replaces its workspace test in validate caches that test report', async () => {
-  // `bun run validate` skips a workspace's plain `test` when its coverage run goes through the
-  // JUnit wrapper, so the coverage task is what restores `test-output/junit/` on a cache hit, and
-  // the duration report finds no report for the workspace without it.
-  const configuration: { tasks: Record<string, { outputs?: string[] }> } = await Bun.file(
-    join(root, 'turbo.json'),
-  ).json();
-  const replacing: string[] = [];
-  for await (const path of new Bun.Glob('{applications,components,packages}/*/package.json').scan({
-    cwd: root,
-  })) {
-    const manifest: { name: string; scripts?: Record<string, string> } = await Bun.file(
-      join(root, path),
-    ).json();
-    if (!manifest.scripts?.['test:coverage']?.includes('scripts/bun-test-junit.ts')) continue;
-    replacing.push(manifest.name);
-    const task = configuration.tasks[`${manifest.name}#test:coverage`];
-    expect(task?.outputs ?? [], manifest.name).toContain('test-output/junit/**');
-  }
-  expect(replacing.length).toBeGreaterThan(0);
-});
-
 test('the root package defines the preflight script the turbo task runs', async () => {
   // Turbo treats a task whose script is missing as a silent no-op, so deleting
   // or renaming this script would disable the gate above without failing.
