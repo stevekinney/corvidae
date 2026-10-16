@@ -162,6 +162,29 @@ export type TerminalProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'titl
    * value or a credential. A handler that throws changes nothing about the session.
    */
   onInspectionEvent?: (event: InspectionEvent) => void;
+  /**
+   * Recovery actions, each rendered as a button only when its handler is provided and the state
+   * allows it (`documentation/terminal/experience.md`). The component never starts, restarts,
+   * cancels or checks anything itself: the host does, and answers by changing the state.
+   *
+   * - `onNewSession`: `empty`, `writable`, `exited`, `disconnected` and `denied`, and `read-only`
+   *   where it is disabled until the current attachment is cleaned up.
+   * - `onTryAgain`: `denied`, repeating connection authorization only.
+   * - `onRetry`: `failed`. For `engine-load-failed`, `onRecoveryRequest` is the handler.
+   * - `onCheckCleanup`: `cleanup-incomplete`.
+   * - `onCancel`: `loading`, `connecting` and `backpressured` (cancels unsent operations).
+   */
+  onNewSession?: () => void;
+  onTryAgain?: () => void;
+  onRetry?: () => void;
+  onCheckCleanup?: () => void;
+  onCancel?: () => void;
+  /**
+   * Cleanup of the previous attachment has not finished. Replacing the session (`New session`,
+   * and `Retry` after a failure) is blocked until it has, so those buttons are disabled.
+   * @default false
+   */
+  cleanupPending?: boolean;
   /** Additional class merged with the component's root class. */
   class?: string;
 };

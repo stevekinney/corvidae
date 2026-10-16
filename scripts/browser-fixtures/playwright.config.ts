@@ -42,5 +42,18 @@ export default defineConfig({
       testMatch: '**/keyboard-scroll.playwright.ts',
       use: { ...devices['Desktop Safari'] },
     },
+    // The terminal proof runs in all three engines; the baselines belong to Chromium alone.
+    {
+      name: 'firefox-terminal',
+      testMatch: '**/terminal-*.playwright.ts',
+      testIgnore: '**/terminal-visual.playwright.ts',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit-terminal',
+      testMatch: '**/terminal-*.playwright.ts',
+      testIgnore: '**/terminal-visual.playwright.ts',
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
 });

@@ -1,0 +1,276 @@
+import type { Page } from '@playwright/test';
+
+import {
+  captureButton,
+  captureKeys,
+  expect,
+  exportedText,
+  focusTerminal,
+  frames,
+  test,
+  write,
+} from './terminal-support.ts';
+
+const group = (page: Page) => page.getByRole('group', { name: 'Terminal recovery' });
+
+async function recoveryLabels(page: Page): Promise<string[]> {
+  const labels = await group(page)
+    .getByRole('button')
+    .evaluateAll((buttons) => buttons.map((button) => button.textContent?.trim() ?? ''));
+  return labels;
+}
+
+const openState = (
+  terminalPage: Parameters<Parameters<typeof test>[2]>[0]['terminalPage'],
+  state: string,
+  query: Record<string, string | number | boolean> = {},
+) => terminalPage.open({ query: { state, actions: true, quiet: true, ...query } });
+
+test.describe('each state offers the actions its row of the state table names', () => {
+  const TABLE: Array<[string, string[]]> = [
+    ['empty', ['New session']],
+    ['loading', ['Cancel']],
+    ['connecting', ['Cancel']],
+    ['exited', ['New session']],
+    ['disconnected', ['New session']],
+    ['denied', ['Try again', 'New session']],
+    ['failed', ['Retry']],
+    ['cleanup-incomplete', ['Check cleanup']],
+    ['writable', ['New session']],
+    ['read-only', ['New session']],
+    ['backpressured', ['Cancel']],
+  ];
+
+  for (const [state, expected] of TABLE) {
+    test(`${state} offers ${expected.length === 0 ? 'no action' : expected.join(' and ')}`, async ({
+      terminalPage,
+    }) => {
+      const page = await openState(terminalPage, state);
+      expect(await recoveryLabels(page)).toEqual(expected);
+    });
+  }
+
+  test('writable restarts explicitly and read-only shows the restart disabled', async ({
+    terminalPage,
+  }) => {
+    const writable = await openState(terminalPage, 'writable');
+    await expect(writable.getByRole('button', { name: 'Capture terminal keys' })).toBeVisible();
+    await writable.getByRole('button', { name: 'New session' }).click();
+    expect(await writable.evaluate(() => window.terminalLab!.events.actions)).toEqual([
+      'New session',
+    ]);
+    // No byte is sent by a restart: the host replaces the session, nothing is replayed.
+    expect(await writable.evaluate(() => window.terminalLab!.session.sent)).toEqual([]);
+    const readOnly = await openState(terminalPage, 'read-only');
+    const replace = readOnly.getByRole('button', { name: 'New session' });
+    await expect(replace).toBeDisabled();
+    await readOnly.evaluate(() => window.terminalLab!.setProps({ cleanupPending: true }));
+    await expect(replace).toBeDisabled();
+  });
+
+  test('a failure shows exactly one recovery control, with every handler and an error message', async ({
+    terminalPage,
+  }) => {
+    const states: Array<[string, string]> = [
+      ['failed', 'Retry'],
+      ['engine-load-failed', 'Reload'],
+    ];
+    for (const [state, expected] of states) {
+      const page = await openState(terminalPage, state, {
+        recovery: true,
+        error: 'The session could not continue',
+      });
+      const controls = await page
+        .locator('button')
+        .evaluateAll((buttons) =>
+          buttons
+            .map((button) => button.textContent?.trim() ?? '')
+            .filter((name) => name === 'Reload' || name === 'Retry'),
+        );
+      expect(controls, state).toEqual([expected]);
+    }
+  });
+
+  test('an action without a host handler is not rendered', async ({ terminalPage }) => {
+    const page = await terminalPage.open({ query: { state: 'denied', quiet: true } });
+    await expect(group(page)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  });
+
+  test('every state the engine mounts still keeps its output tools next to the actions', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'exited');
+    await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New session' })).toBeVisible();
+  });
+});
+
+test.describe('using an action', () => {
+  test('a click and the keyboard each activate it once, and the handler is the host’s', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'denied');
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await page.getByRole('button', { name: 'New session' }).focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
+    expect(await page.evaluate(() => window.terminalLab!.events.actions)).toEqual([
+      'Try again',
+      'New session',
+      'New session',
+    ]);
+    // The component changed nothing itself: the host owns the state.
+    await expect(page.getByText('Access denied').first()).toBeVisible();
+  });
+
+  test('replacement waits for cleanup: the buttons show disabled and do nothing', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'exited', { cleanup: true });
+    const replace = page.getByRole('button', { name: 'New session' });
+    await expect(replace).toBeDisabled();
+    await replace.click({ force: true });
+    expect(await page.evaluate(() => window.terminalLab!.events.actions)).toEqual([]);
+    await page.evaluate(() => window.terminalLab!.setProps({ cleanupPending: false }));
+    await expect(replace).toBeEnabled();
+    await replace.click();
+    expect(await page.evaluate(() => window.terminalLab!.events.actions)).toEqual(['New session']);
+  });
+
+  test('cleanup-incomplete offers only the cleanup check, and no replacement or input', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'cleanup-incomplete', { cleanup: true });
+    expect(await recoveryLabels(page)).toEqual(['Check cleanup']);
+    await expect(page.getByRole('button', { name: 'Check cleanup' })).toBeEnabled();
+    await page.getByRole('button', { name: 'Check cleanup' }).click();
+    await expect(page.getByRole('button', { name: 'Check cleanup' })).toBeFocused();
+    await page.keyboard.type('nothing');
+    expect(await page.evaluate(() => window.terminalLab!.session.inputCalls)).toBe(0);
+  });
+});
+
+test.describe('focus follows the action', () => {
+  test('New session then Cancel hand focus to the button the new state offers', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'empty', { flow: true });
+    await page.getByRole('button', { name: 'New session' }).click();
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('button', { name: 'New session' })).toBeFocused();
+    expect(await page.evaluate(() => window.terminalLab!.events.actions)).toEqual([
+      'New session',
+      'Cancel',
+    ]);
+  });
+
+  test('a failure keeps focus in the error action group, and output never moves it', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'failed');
+    const retry = page.getByRole('button', { name: 'Retry' });
+    await retry.click();
+    await expect(retry).toBeFocused();
+    await write(page, 'late output\r\n');
+    await frames(page);
+    await expect(retry, 'arriving output does not move focus').toBeFocused();
+  });
+
+  test('Cancel while input is paused keeps focus and leaves the output readable', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'backpressured', { quiet: false });
+    await expect(page.getByText('Backpressure: input paused').first()).toBeVisible();
+    const cancel = page.getByRole('button', { name: 'Cancel' });
+    await cancel.click();
+    await expect(cancel).toBeFocused();
+    expect(await page.evaluate(() => window.terminalLab!.events.actions)).toEqual(['Cancel']);
+    expect(await exportedText(page)).toMatch(/bun run build/);
+  });
+
+  test('a refused action, then focus elsewhere, then a state change leaves focus alone', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'denied', { probes: true });
+    await page.getByRole('button', { name: 'Try again' }).click();
+    // The host refused: the state is unchanged and the button stays. The reader moves on.
+    await page.locator('#before-terminal').focus();
+    await page.evaluate(() => window.terminalLab!.setProps({ state: 'connecting' }));
+    await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+    await frames(page, 3);
+    await expect(page.locator('#before-terminal')).toBeFocused();
+  });
+
+  test('a button that survives the change keeps focus on every browser, even where a click does not focus it', async ({
+    terminalPage,
+  }) => {
+    const page = await openState(terminalPage, 'cleanup-incomplete', { cleanup: true });
+    await page.getByRole('button', { name: 'Check cleanup' }).click();
+    await expect(page.getByRole('button', { name: 'Check cleanup' })).toBeFocused();
+  });
+});
+
+test.describe('the actions are usable at the narrowest viewport', () => {
+  test('every recovery button is inside the frame and reachable', async ({ terminalPage }) => {
+    const page = await terminalPage.open({
+      viewport: 'mobile',
+      query: { state: 'denied', actions: true, quiet: true },
+    });
+    const inside = await page.evaluate(() => {
+      const frame = document.querySelector('.cinder-terminal-frame')!.getBoundingClientRect();
+      return [...document.querySelectorAll('.cinder-terminal__recovery button')].every((button) => {
+        const box = button.getBoundingClientRect();
+        return box.left >= frame.left - 0.5 && box.right <= frame.right + 0.5 && box.width > 0;
+      });
+    });
+    expect(inside).toBe(true);
+  });
+});
+
+test.describe('capture is visible on its control', () => {
+  test('the pressed capture button looks different from the resting one', async ({
+    terminalPage,
+  }) => {
+    const page = await terminalPage.open({ query: { quiet: true } });
+    const face = () =>
+      captureButton(page).evaluate((button) => {
+        const style = getComputedStyle(button);
+        return { background: style.backgroundColor, color: style.color };
+      });
+    const resting = await face();
+    await captureKeys(page);
+    // The pointer is still over the button, which would show its hover face.
+    await page.mouse.move(0, 0);
+    const pressed = await face();
+    expect(pressed.background).not.toBe(resting.background);
+    expect(pressed.color).not.toBe(resting.color);
+    // It is the accent face Cinder gives a pressed toggle.
+    const accent = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = 'var(--cinder-accent-solid)';
+      document.body.append(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    });
+    expect(pressed.background).toBe(accent);
+    await page.keyboard.press('Control+Shift+Escape');
+    await expect(captureButton(page)).toHaveAttribute('aria-pressed', 'false');
+    expect(await face()).toEqual(resting);
+    await focusTerminal(page);
+  });
+
+  test('the capture fixtures are already captured when they report ready', async ({
+    terminalPage,
+  }) => {
+    for (const fixture of ['keyboard-capture', 'keyboard-mouse-reporting']) {
+      const page = await terminalPage.open({ fixture });
+      // Read at once, without waiting: a sweep that starts when the fixture is ready must already
+      // see the captured state.
+      const pressed = await captureButton(page).getAttribute('aria-pressed');
+      expect(pressed, fixture).toBe('true');
+    }
+  });
+});

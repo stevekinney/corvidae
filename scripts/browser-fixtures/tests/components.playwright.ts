@@ -90,7 +90,11 @@ const filterSlugs = parseComponentFilter(
   environmentConfiguration().cinderTestComponents,
   knownSlugs,
 );
-const entries = applyComponentFilter(allEntries, filterSlugs);
+// The terminal's baselines belong to `terminal-visual.playwright.ts`, so that `test:browser:terminal`
+// owns them; sweeping the entry here as well would write each image from two tests.
+const entries = applyComponentFilter(allEntries, filterSlugs).filter(
+  (entry) => entry.slug !== 'terminal',
+);
 
 test('visual baselines belong to the application, browser project, and platform', () => {
   const testInfo = test.info();

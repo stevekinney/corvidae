@@ -1,3 +1,5 @@
+import { TERMINAL_FIXTURE_NAMES } from './fixtures/terminal/scenarios.ts';
+
 export const appFixtureDeclarations = {
   chat: ['assertion'],
   'chat-navigation-rail': ['assertion'],
@@ -21,6 +23,7 @@ export const appFixtureDeclarations = {
   'setting-row': ['assertion'],
   'shortcut-field': ['assertion'],
   stack: ['assertion'],
+  terminal: TERMINAL_FIXTURE_NAMES,
   'terminal-frame': ['assertion'],
   'terminal-output': ['assertion'],
   'zoom-pan-viewer': ['assertion'],

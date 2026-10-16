@@ -250,7 +250,7 @@ describe('terminal.css', () => {
 
   test('keeps a visible focus indicator, and a system-color one under forced colors', async () => {
     const css = await read('terminal.css');
-    expect(css).toContain('.cinder-terminal__viewport:focus-within');
+    expect(css).toContain('.cinder-terminal__screen:focus-within');
     const forced = css.slice(css.indexOf('@media (forced-colors: active)'));
     expect(forced).toContain('outline-color: Highlight');
   });

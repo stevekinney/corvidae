@@ -190,8 +190,16 @@ describe('reserved chords', () => {
     ).toEqual(BROWSER);
   });
 
-  test('Option+Tab on a Mac is not a system chord; it reaches the engine', () => {
-    expect(routeKey(key('Tab', { altKey: true }), context({ platform: 'mac' }))).toEqual(ENGINE);
+  test('Option+Tab on a Mac moves through the page without capture and is shell input with it', () => {
+    // Safari reaches buttons and links only with Option held, so the terminal must not swallow it
+    // while capture is off (COR-474: found in WebKit, where focus could not leave the terminal).
+    expect(routeKey(key('Tab', { altKey: true }), context({ platform: 'mac' }))).toEqual(BROWSER);
+    expect(
+      routeKey(key('Tab', { altKey: true }), context({ platform: 'mac', writable: false })),
+    ).toEqual(BROWSER);
+    expect(
+      routeKey(key('Tab', { altKey: true }), context({ platform: 'mac', captured: true })),
+    ).toEqual(ENGINE);
   });
 
   test('a Super or Windows key chord elsewhere is left to the system', () => {
