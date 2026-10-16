@@ -7,7 +7,9 @@
 
   import { formatDuration, truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
+  import type { RegistrySnapshotSource } from '../system/registry-view.ts';
   import type { WorkerSummary } from './worker-catalog-types.ts';
+  import WorkerContractVerificationPanel from './worker-contract-verification-panel.svelte';
   import WorkerManifestPanel from './worker-manifest-panel.svelte';
   import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
   import { workerHealthPresentation } from './worker-presentation.ts';
@@ -21,6 +23,11 @@
     readonly manifestLoading?: boolean;
     readonly manifestRefreshing?: boolean;
     readonly manifestError?: unknown;
+    /** Active registry snapshot for contract verification (COR-162). */
+    readonly registry?: RegistrySnapshotSource | undefined;
+    readonly registryLoading?: boolean;
+    readonly registryRefreshing?: boolean;
+    readonly registryError?: unknown;
   }
 
   let {
@@ -32,6 +39,10 @@
     manifestLoading = false,
     manifestRefreshing = false,
     manifestError = null,
+    registry = undefined,
+    registryLoading = false,
+    registryRefreshing = false,
+    registryError = null,
   }: WorkerDetailViewProps = $props();
 
   const presentation = $derived(workerHealthPresentation(worker));
@@ -97,5 +108,13 @@
     refreshing={manifestRefreshing}
     error={manifestError}
     capabilities={worker.capabilities}
+  />
+
+  <WorkerContractVerificationPanel
+    diagnostics={manifestDiagnostics}
+    {registry}
+    loading={manifestLoading || registryLoading}
+    refreshing={manifestRefreshing || registryRefreshing}
+    error={manifestError ?? registryError ?? null}
   />
 </div>

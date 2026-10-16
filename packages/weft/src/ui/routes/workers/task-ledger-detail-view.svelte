@@ -2,6 +2,8 @@
   import { Alert, Badge, DescriptionList } from '@lostgradient/cinder';
 
   import { formatDuration, formatRelativeTime, truncateId } from '../../lib/format/index.ts';
+  import ContractFailureNotice from './contract-failure-notice.svelte';
+  import { classifyContractFailure } from './contract-verification.ts';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';
 
   interface TaskLedgerDetailViewProps {
@@ -12,6 +14,9 @@
 
   let { task, now, refreshing = false }: TaskLedgerDetailViewProps = $props();
 
+  const contractFailure = $derived(
+    task.error === undefined ? undefined : classifyContractFailure(task.error),
+  );
   const isDelayed = $derived(task.state === 'queued' && (task.availableAt ?? 0) > now);
   const retryAvailable = $derived(
     task.retryPolicy ? task.attempt < task.retryPolicy.maxAttempts : false,
@@ -143,6 +148,10 @@
     <Alert variant="warning"
       >The terminal result is durable but has not been adopted by its workflow.</Alert
     >
+  {/if}
+
+  {#if contractFailure}
+    <ContractFailureNotice failure={contractFailure} />
   {/if}
 
   {#if refreshing}
