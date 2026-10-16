@@ -231,13 +231,16 @@ describe('dashboard', () => {
     expect(manifest.name).toBe('@lostgradient/weft');
   });
 
-  // Applies to a checkout without a dashboard build; a built tree serves it instead.
-  it.skipIf(existsSync(join(PACKAGE_ROOT, 'dashboard', 'index.html')))(
-    'without distDir, names the default directory and the build command when it is not built',
-    () => {
-      expect(() => dashboard({ engine, port: 0, unauthenticatedAccess: 'allow' })).toThrow(
-        `Weft's dashboard is not built: ${join(PACKAGE_ROOT, 'dashboard')} has no index.html. Build it by running \`bun scripts/build-dashboard.ts\` in the @lostgradient/weft package, or pass distDir.`,
-      );
-    },
-  );
+  // The message a checkout without a dashboard build gets. Whether one exists is read when the
+  // test runs, not when the file loads: `scripts/build-dashboard.test.ts` writes the default
+  // directory in the same run, and serving that build is its test, not this one.
+  it('without distDir, names the default directory and the build command when it is not built', () => {
+    const defaultDirectory = join(PACKAGE_ROOT, 'dashboard');
+    const expectedMessage = `Weft's dashboard is not built: ${defaultDirectory} has no index.html. Build it by running \`bun scripts/build-dashboard.ts\` in the @lostgradient/weft package, or pass distDir.`;
+    expect(DASHBOARD_BUILD_COMMAND).toBe('bun scripts/build-dashboard.ts');
+    if (existsSync(join(defaultDirectory, 'index.html'))) return;
+    expect(() => dashboard({ engine, port: 0, unauthenticatedAccess: 'allow' })).toThrow(
+      expectedMessage,
+    );
+  });
 });

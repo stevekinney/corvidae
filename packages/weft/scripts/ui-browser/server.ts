@@ -1,7 +1,7 @@
 import { existsSync, unwatchFile, watch, watchFile, type Stats } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { sveltePlugin } from '../lib/svelte-plugin.ts';
+import { assertCleanBuild, browserBuildOptions } from '../build-dashboard.ts';
 import { environmentConfiguration } from './environment-configuration.ts';
 
 import { DEV_API_KEY } from './dev-credentials.ts';
@@ -135,30 +135,9 @@ function connectWebSocket(upstream: string, headers: Headers): WebSocket {
   return new WebSocketConstructor(upstream, { headers: Object.fromEntries(headers.entries()) });
 }
 
-// The unwasm condition exposes binary modules. Bun emits their bytes as assets;
-// the module's default export supplies the instantiator expected by consumers.
-const wasmPlugin: Bun.BunPlugin = {
-  name: 'browser-wasm',
-  setup(builder) {
-    builder.onLoad({ filter: /\.wasm$/, namespace: 'file' }, ({ path }) => ({
-      loader: 'js',
-      contents: `import url from ${JSON.stringify(`wasm-asset:${path}`)};
-export default (imports) => WebAssembly.instantiateStreaming(fetch(url), imports);`,
-    }));
-    builder.onResolve({ filter: /^wasm-asset:/ }, ({ path }) => ({
-      // Keep the binary and its JavaScript module distinct in Bun's module graph.
-      path: `${path.slice('wasm-asset:'.length)}.binary.wasm`,
-      namespace: 'wasm-asset',
-    }));
-    builder.onLoad({ filter: /.*/, namespace: 'wasm-asset' }, async ({ path }) => ({
-      contents: await Bun.file(path.slice(0, -'.binary.wasm'.length)).bytes(),
-      loader: 'file',
-    }));
-  },
-};
-
 /**
- * Compile the real Svelte source for the browser host. Errors and warnings fail the build, and the
+ * Compile the real Svelte source for the browser host, with the Bun.build options the production
+ * dashboard build shares (`scripts/build-dashboard.ts`). Errors and warnings fail the build, and the
  * module provenance is written to `metafile.json` last, after Bun has emitted every asset.
  */
 export async function buildBrowserBundle(options: {
@@ -166,32 +145,9 @@ export async function buildBrowserBundle(options: {
   outdir: string;
   development: boolean;
 }): Promise<Bun.BuildOutput> {
-  const result = await Bun.build({
-    entrypoints: options.entrypoints,
-    outdir: options.outdir,
-    conditions: ['browser', 'svelte', 'unwasm'],
-    define: {
-      'process.env.NODE_ENV': JSON.stringify(options.development ? 'development' : 'production'),
-    },
-    format: 'esm',
-    publicPath: '/',
-    target: 'browser',
-    plugins: [
-      wasmPlugin,
-      sveltePlugin({ generate: 'client', injectCss: true, development: options.development }),
-    ],
-    optimizeImports: ['@lostgradient/cinder'],
-    sourcemap: 'none',
-    splitting: true,
-    metafile: true,
-  });
-  if (!result.success) throw new AggregateError(result.logs, 'Browser compilation failed');
-  const warnings = result.logs.filter((message) => message.level === 'warning');
-  if (warnings.length > 0)
-    throw new AggregateError(warnings, 'Browser compilation emitted warnings');
-  if (result.metafile === undefined)
-    throw new Error('Browser compilation did not emit module provenance');
-  await Bun.write(join(options.outdir, 'metafile.json'), JSON.stringify(result.metafile));
+  const result = await Bun.build(browserBuildOptions(options));
+  const metafile = assertCleanBuild(result);
+  await Bun.write(join(options.outdir, 'metafile.json'), JSON.stringify(metafile));
   return result;
 }
 
