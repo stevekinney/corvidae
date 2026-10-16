@@ -380,7 +380,7 @@ describe('TaskLedgerDetailView — lease clocks', () => {
   test('reports a running attempt with no heartbeat yet without calling it stale', () => {
     // Weft always reports a leased task's lastHeartbeatAt, so validation rejects its
     // absence; the view still has to say "No heartbeat yet" rather than "Stale".
-    const task = { ...leasedTask(), lastHeartbeatAt: undefined };
+    const { lastHeartbeatAt: _lastHeartbeatAt, ...task } = leasedTask();
     const { container } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
     expect(within(clock(container, 'heartbeat')).getByText('No heartbeat yet')).not.toBeNull();
   });
