@@ -1,6 +1,6 @@
 import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdtempSync, openSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -131,6 +131,29 @@ describe('the PTY start gate', () => {
     releaseGate(process);
     await child.exited;
     expect(await output()).toBe('closed');
+  });
+
+  // spawn-free: the child is a plain object holding a descriptor, so only the closing runs.
+  test('the release channel is closed once, however many times the gate is released or abandoned', () => {
+    const channel = openSync('/dev/null', 'r');
+    const child = {
+      pid: 1,
+      exited: Promise.resolve(0),
+      signalCode: null,
+      stdio: [null, null, null, channel],
+      kill() {},
+    };
+    expect(abandonGate(child)).toBe(true);
+    // The number is free now, and the next descriptor opened takes it; closing it again would close that one.
+    const reused = openSync('/dev/null', 'r');
+    try {
+      expect(reused).toBe(channel);
+      expect(abandonGate(child)).toBe(true);
+      expect(releaseGate(child)).toBe(true);
+      expect(() => fstatSync(reused)).not.toThrow();
+    } finally {
+      closeSync(reused);
+    }
   });
 
   // spawn-free: the child is a plain object with no process behind it, so only the descriptor lookup runs.

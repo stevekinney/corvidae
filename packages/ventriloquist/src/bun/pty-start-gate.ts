@@ -40,7 +40,14 @@ export function gatedCommand(command: readonly string[], slavePath: string): str
   return [GATE_SHELL, '-c', GATE_SCRIPT, 'sh', slavePath, ...command];
 }
 
-/** The host's end of the release channel, or `undefined` when this Bun did not provide one. */
+/**
+ * Children whose release channel has been closed. A descriptor number is reused as soon as it is
+ * free, so closing a number a second time would close whatever has taken it since; the channel is
+ * closed once, and a later release or abandon finds it done.
+ */
+const closedChannels = new WeakSet<object>();
+
+/** The host's end of the release channel, or `undefined` when this Bun did not provide one or it is closed. */
 function releaseDescriptor(child: SpawnedProcess): number | undefined {
   const descriptor = child.stdio?.[3];
   return typeof descriptor === 'number' ? descriptor : undefined;
@@ -61,6 +68,8 @@ function closeQuietly(descriptor: number): void {
 export function releaseGate(child: SpawnedProcess): boolean {
   const descriptor = releaseDescriptor(child);
   if (descriptor === undefined) return false;
+  if (closedChannels.has(child)) return true;
+  closedChannels.add(child);
   try {
     writeSync(descriptor, '\n');
   } catch {
@@ -78,6 +87,8 @@ export function releaseGate(child: SpawnedProcess): boolean {
 export function abandonGate(child: SpawnedProcess): boolean {
   const descriptor = releaseDescriptor(child);
   if (descriptor === undefined) return false;
+  if (closedChannels.has(child)) return true;
+  closedChannels.add(child);
   closeQuietly(descriptor);
   return true;
 }
