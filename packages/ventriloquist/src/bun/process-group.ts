@@ -122,11 +122,19 @@ export type GroupTermination = {
   readonly pollMilliseconds: number;
 };
 
-/** Resolve `true` as soon as the group has no member, or `false` once `milliseconds` have passed. */
+/**
+ * Resolve `true` as soon as the group has no member, or `false` once `milliseconds` have passed and
+ * a last probe still finds one. At most one probe is ever in flight: reading the members can take
+ * a process-table read, longer than the deadline on a loaded host, and a probe left running when
+ * this returns would hold its pipes open after cleanup claimed to be finished. The deadline waits
+ * for the probe in flight, then looks once more.
+ */
 function waitForEmpty(termination: GroupTermination, milliseconds: number): Promise<boolean> {
   const { clock, group, operations, pollMilliseconds } = termination;
   return new Promise((resolve) => {
     let settled = false;
+    let deadlinePassed = false;
+    let inFlight: Promise<void> = Promise.resolve();
     let cancelPoll: CancelTimer | undefined;
     const settle = (empty: boolean): void => {
       if (settled) return;
@@ -136,13 +144,18 @@ function waitForEmpty(termination: GroupTermination, milliseconds: number): Prom
       resolve(empty);
     };
     const cancelDeadline = clock.schedule(() => {
+      deadlinePassed = true;
       cancelPoll?.();
-      void (async () => settle(!(await operations.exists(group))))();
+      void (async () => {
+        await inFlight;
+        if (!settled) settle(!(await operations.exists(group)));
+      })();
     }, milliseconds);
     const poll = (): void => {
-      void (async () => {
+      inFlight = (async () => {
         const present = await operations.exists(group);
-        if (settled) return;
+        // After the deadline the probe the deadline is waiting for is this one; it takes its own last look.
+        if (deadlinePassed) return;
         if (present) cancelPoll = clock.schedule(poll, pollMilliseconds);
         else settle(true);
       })();

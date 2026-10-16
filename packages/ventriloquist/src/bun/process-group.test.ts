@@ -111,6 +111,44 @@ describe('terminateProcessGroup', () => {
     expect(clock.pendingTimers).toBe(0);
   });
 
+  test('never has two probes in flight, and the last look waits for the one that is', async () => {
+    const clock = new ManualClock();
+    const probes: { resolve(present: boolean): void }[] = [];
+    let inFlight = 0;
+    let overlapped = false;
+    const done = terminateProcessGroup({
+      ...termination(scriptedGroup(), clock),
+      operations: {
+        signal: () => undefined,
+        exists: () =>
+          new Promise<boolean>((resolve) => {
+            inFlight += 1;
+            overlapped ||= inFlight > 1;
+            probes.push({
+              resolve: (present) => {
+                inFlight -= 1;
+                resolve(present);
+              },
+            });
+          }),
+      },
+    });
+    await flush();
+    // The first probe is still reading the process table when the grace passes.
+    clock.advance(100);
+    await flush();
+    expect(probes).toHaveLength(1);
+    probes[0]?.resolve(true);
+    await flush();
+    // Only now does the deadline look once more, and it sees the group gone.
+    expect(probes).toHaveLength(2);
+    probes[1]?.resolve(false);
+    expect(await done).toBe('complete');
+    expect(overlapped).toBe(false);
+    expect(inFlight).toBe(0);
+    expect(clock.pendingTimers).toBe(0);
+  });
+
   test('is incomplete when the group cannot be signaled', async () => {
     const clock = new ManualClock();
     const outcome = await terminateProcessGroup({

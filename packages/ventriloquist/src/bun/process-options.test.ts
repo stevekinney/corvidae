@@ -604,10 +604,28 @@ describe('a start that fails after the release channel was opened', () => {
       await rejectionOf(hosted.backend.start());
       await hosted.backend.cleanup();
     };
+    // Bun closes the pipe of a child it has reported finished a few milliseconds after the fact, with
+    // however the pipe was read, and cleanup reads the process table with such a child. So the count
+    // is never read in the turn a read returned. The baseline is the lowest count seen once the
+    // warm-up has had time to settle, and the final count must come back down to it: a descriptor
+    // that is really held never does, however long this waits.
+    const lowestOver = async (turns: number): Promise<number> => {
+      let lowest = descriptors();
+      for (let turn = 0; turn < turns; turn += 1) {
+        await Bun.sleep(1);
+        lowest = Math.min(lowest, descriptors());
+      }
+      return lowest;
+    };
     await attempt();
-    const before = descriptors();
+    const before = await lowestOver(50);
     for (let round = 0; round < 3; round += 1) await attempt();
-    expect(descriptors()).toBe(before);
+    let after = descriptors();
+    for (let turn = 0; turn < 2_000 && after > before; turn += 1) {
+      await Bun.sleep(1);
+      after = descriptors();
+    }
+    expect(after).toBeLessThanOrEqual(before);
   });
 });
 

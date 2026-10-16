@@ -17,8 +17,17 @@ export type OwnedProcessOptions = {
   readonly clock: SessionClock;
   readonly graceMilliseconds: number;
   readonly observationMilliseconds: number;
-  /** Reads the process table, to find descendants that left the owned group. */
+  /**
+   * Reads the process table, to find descendants that left the owned scope. Each record's `group`
+   * is the scope id the operations work on: a process group, or a session.
+   */
   readonly readProcessTable: () => Promise<ProcessRecord[]>;
+  /**
+   * Asked once per termination, before the first TERM, to hang up the leader so it can end its own
+   * jobs. Only a session has one; a failure is swallowed, because the sweep that follows does not
+   * depend on it.
+   */
+  readonly hangUp?: (leader: number) => void;
 };
 
 /** The wire carries a signal as a nonempty name; a signal without a name of its own is spelled by its number. */
@@ -29,11 +38,14 @@ function signalName(signal: string | number | null): string | null {
 }
 
 /**
- * One spawned process and the process group it leads. The helpers start every process as its own
- * group leader, so the group is exactly the process and the descendants that stayed in it, and
- * ending the group ends all of them. That is the whole of what cleanup can own; descendants that
- * started a group or session of their own, and anything left behind by a host crash, are outside
- * it and are reported as `unknown`, never as clean.
+ * One spawned process and the scope it leads. The helpers start every process as its own group
+ * leader, and a PTY child as its own session leader as well. For a pipe the scope is the group:
+ * exactly the process and the descendants that stayed in it, and ending the group ends all of them.
+ * For a PTY it is the whole session, which also holds the jobs a shell puts in groups of their own.
+ * That is the whole of what cleanup can own; descendants that started a group (a pipe) or a session
+ * (either) of their own, and anything left behind by a host crash, are outside it and are reported
+ * as `unknown`, never as clean. In the rest of this file "group" means that scope, and a scope's id
+ * is its leader's pid.
  *
  * What cleanup can observe of that is limited, and it says so. An escaped descendant is found by
  * walking parent links in the process table, which works only while its ancestors are alive: once
@@ -104,7 +116,12 @@ export class OwnedProcess {
     // That group's number can belong to an unrelated group by now, so it is not signaled.
     if (this.#exiting) await this.#exit;
     if (this.#exited && this.#emptyAtExit) return scope;
-    const { operations, clock, graceMilliseconds, observationMilliseconds } = this.#options;
+    const { operations, clock, graceMilliseconds, observationMilliseconds, hangUp } = this.#options;
+    try {
+      hangUp?.(child.pid);
+    } catch {
+      // A courtesy only: the TERM and KILL sweep below is what ends the scope.
+    }
     const ended = await terminateProcessGroup({
       group: child.pid,
       operations,

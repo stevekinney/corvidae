@@ -28,6 +28,7 @@ import { CORPUS_CASES } from './conformance-corpus-cases.test-support.ts';
 import { FAULT_CASES } from './conformance-fault-cases.test-support.ts';
 import { descriptorStability } from './conformance-leak-cases.test-support.ts';
 import { PAUSE_CASES } from './conformance-pause-cases.test-support.ts';
+import { SESSION_CASES } from './conformance-session-cases.test-support.ts';
 import { SOURCE_CASES } from './conformance-source-cases.test-support.ts';
 import {
   HOST_CELL,
@@ -58,6 +59,7 @@ const FAMILIES: readonly { readonly family: string; readonly cases: readonly Cas
     { family: 'sources', cases: SOURCE_CASES },
     { family: 'pause', cases: PAUSE_CASES },
     { family: 'faults', cases: FAULT_CASES },
+    { family: 'session', cases: SESSION_CASES },
   ];
 
 type Cell = {
