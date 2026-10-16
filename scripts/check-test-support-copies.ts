@@ -5,11 +5,11 @@
  * development dependency for every target except Cinder, so the import would not resolve in the
  * Weft repository. The UI's test preload (`packages/weft/src/ui/tests/setup.ts`), its browser host
  * (`packages/weft/scripts/ui-browser/`), and the dashboard build compile Svelte with the plugin
- * instead, so `packages/testing/src/svelte-plugin.ts` and the `./environment-configuration.ts` it
+ * instead, so `testing/testing/src/svelte-plugin.ts` and the `./environment-configuration.ts` it
  * imports are copied into `packages/weft/scripts/lib/`. That pair was the only vendoring the owner
  * allowed for the move (Weft UI project rulings, COR-1455).
  *
- * The hang guard (`packages/testing/src/hang-guard.ts`, COR-1541) is copied for the same reason,
+ * The hang guard (`testing/testing/src/hang-guard.ts`, COR-1541) is copied for the same reason,
  * and once more to `scripts/hang-guard.ts`: every test file starts its processes through it, the
  * Weft mirror cannot resolve the package, and the root package may not depend on a workspace,
  * because turbo folds every workspace the root depends on into the global hash.
@@ -25,15 +25,15 @@ const root = join(import.meta.dir, '..');
 /** Each copy and the file it must equal, both relative to the repository root. */
 export const TEST_SUPPORT_COPIES = [
   {
-    source: 'packages/testing/src/svelte-plugin.ts',
+    source: 'testing/testing/src/svelte-plugin.ts',
     copy: 'packages/weft/scripts/lib/svelte-plugin.ts',
   },
   {
-    source: 'packages/testing/src/environment-configuration.ts',
+    source: 'testing/testing/src/environment-configuration.ts',
     copy: 'packages/weft/scripts/lib/environment-configuration.ts',
   },
-  { source: 'packages/testing/src/hang-guard.ts', copy: 'packages/weft/scripts/lib/hang-guard.ts' },
-  { source: 'packages/testing/src/hang-guard.ts', copy: 'scripts/hang-guard.ts' },
+  { source: 'testing/testing/src/hang-guard.ts', copy: 'packages/weft/scripts/lib/hang-guard.ts' },
+  { source: 'testing/testing/src/hang-guard.ts', copy: 'scripts/hang-guard.ts' },
 ] as const;
 
 /** The copies under `repositoryRoot` that are missing or differ from their sources. */
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     process.stderr.write(`  ${copy} (copy of ${source})\n`);
   }
   process.stderr.write(
-    'Copy the source over the copy unchanged; change the module in packages/testing, not in a copy.\n',
+    'Copy the source over the copy unchanged; change the module in testing/testing, not in a copy.\n',
   );
   process.exitCode = 1;
 }

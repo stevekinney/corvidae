@@ -1,11 +1,10 @@
 /**
  * Per-agent skills for `createAgent` (COR-1367).
  *
- * Operative defines the seam (`AgentSkills`) and Bureau implements it over
- * `@lostgradient/skills`. Neither lower package may import the other: skills
- * sits below operative in the package graph (`packages/skills/test/package-graph.test.ts`
- * forbids the dependency), and operative must not name a private workspace.
- * Bureau already depends on both, so the composition lives here.
+ * Operative defines the seam (`AgentSkills`) and Bureau implements it over its
+ * skills subsystem (`./skills`). The subsystem never imports Operative
+ * (`test/skills/boundaries.test.ts` forbids it), and Operative must not name a
+ * private workspace, so the composition lives here.
  */
 
 import type { TypedEventTarget } from '@lostgradient/lifecycle';
@@ -29,7 +28,7 @@ import {
   type SkillCatalogRevision,
   type SkillEventMap,
   type SkillGuardrailOptions,
-} from '@lostgradient/skills';
+} from './skills';
 
 /** Options for {@link createAgentSkills}. */
 export interface AgentSkillsOptions {

@@ -70,7 +70,7 @@ import {
   SkillActivatedEvent,
   type SkillCatalogRevision,
   SkillLoadedEvent,
-} from '@lostgradient/skills';
+} from './skills';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
 import {
   createFleetEventFeed,
@@ -21904,7 +21904,7 @@ describe('createBureau schedule tick observation (COR-660)', () => {
 
 // ---------------------------------------------------------------------------
 // COR-1226 — Bureau's skill tooling must be the guardrail-scanning
-// implementation from `@lostgradient/skills`, not a second inline copy that skips
+// implementation from `@lostgradient/bureau/skills`, not a second inline copy that skips
 // the scan. Skill content is untrusted instruction input.
 // ---------------------------------------------------------------------------
 describe('skill guardrail scanning (COR-1226)', () => {

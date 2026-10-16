@@ -59,7 +59,7 @@ const repoRoot = resolve(srcRoot, '..', '..', '..');
 const preloadPath = resolve(packageRoot, 'scripts', 'preload.ts');
 const globalCleanupPath = resolve(
   repoRoot,
-  'packages',
+  'testing',
   'testing',
   'src',
   'helpers',

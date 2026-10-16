@@ -9,7 +9,7 @@ import type {
   ToolErrorInput as SharedToolErrorInput,
   ToolResult as SharedToolResult,
   ToolResultInput as SharedToolResultInput,
-} from '@lostgradient/tool-protocol';
+} from 'armorer/protocol';
 
 import type { MultiModalContent } from './multi-modal';
 
@@ -20,7 +20,7 @@ import type { MultiModalContent } from './multi-modal';
 export const CURRENT_SCHEMA_VERSION = 5;
 
 /** Shared JSON value types have one definition in @lostgradient/tool-protocol. */
-export type { JSONPrimitive, JSONValue } from '@lostgradient/tool-protocol';
+export type { JSONPrimitive, JSONValue } from 'armorer/protocol';
 
 export type ConversationProvider = 'openai' | 'anthropic' | 'gemini';
 export type ChatMessageRole = 'user' | 'assistant' | 'system';

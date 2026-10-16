@@ -1,4 +1,4 @@
-import type { EmbeddingVectorLike } from '@lostgradient/embeddings';
+import type { EmbeddingVectorLike } from 'armorer';
 
 /**
  * Scope that isolates a set of memory records. Every storage operation is

@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 
 type Role = 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies';
 type Edge = {
@@ -84,7 +85,7 @@ const rootPackage = parseObject(
   await readFile(resolve(root, 'package.json'), 'utf8'),
 ) as PackageManifest;
 const paths = ['package.json'];
-const glob = new Bun.Glob('{applications,components,packages,internal}/*/package.json');
+const glob = new Bun.Glob(`${directoryGlob(workspaceParentDirectories)}/*/package.json`);
 for await (const p of glob.scan({ cwd: root })) paths.push(p);
 
 const lock = Bun.JSON5.parse(await readFile(resolve(root, 'bun.lock'), 'utf8')) as Lockfile;

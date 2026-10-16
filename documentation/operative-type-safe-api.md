@@ -157,11 +157,11 @@ Stopping a timer is not awaiting the work the timer already started. A stop path
 - **Ownership** is the workspace package that owns the code, by its real name: `@lostgradient/*`, or the unscoped `armorer` and `conversationalist`.
 - **Execution mode** is one of `interval`, `timeout`, `fire-and-forget-call`, or `unawaited-field-promise`.
 - **Durability** uses the control contract's vocabulary. `ephemeral` means the work leaves no state that outlives the process. `durable` means abandoning it mid-flight can leave persisted state incomplete or stale.
-- **File** and **line** locate where the work is started, on base commit `5ec1f80223890fa431a684c687e4333b6b2da103`, the commit this inventory was taken from.
+- **File** and **line** locate where the work is started, on base commit `5ec1f80223890fa431a684c687e4333b6b2da103`, the commit this inventory was taken from. Later consolidations moved some files without changing them, so a path names the file's current location: Skills moved into `packages/bureau/src/skills/`, Embeddings and Tool Protocol into Armorer, and Evaluation to `testing/evaluation/`. The line numbers are unchanged.
 
 ### Sweep coverage
 
-Every workspace was swept. These workspaces have no non-conformant path: `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/embeddings`, `@lostgradient/lifecycle`, `@lostgradient/markdown`, `@lostgradient/memory`, `@lostgradient/testing`, `@lostgradient/tool-protocol`, `@lostgradient/chat`, and `@lostgradient/cinder`. Every other workspace appears in the table below.
+Every workspace was swept. These workspaces have no non-conformant path: `conversationalist`, `@lostgradient/cryptography`, `@lostgradient/lifecycle`, `@lostgradient/markdown`, `@lostgradient/memory`, `@lostgradient/testing`, `@lostgradient/chat`, and `@lostgradient/cinder`. Every other workspace appears in the table below.
 
 ### Inventory
 
@@ -187,8 +187,8 @@ Every workspace was swept. These workspaces have no non-conformant path: `conver
 | `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 118 |
 | `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 138 |
 | `armorer` | `fire-and-forget-call` | ephemeral | `packages/armorer/src/toolbox-event-lifecycle.ts` | 142 |
-| `@lostgradient/evaluation` | `timeout` | ephemeral | `packages/evaluation/src/evaluator.ts` | 114 |
-| `@lostgradient/skills` | `timeout` | ephemeral | `packages/skills/src/discovery/catalog-service.ts` | 278 |
+| `@lostgradient/evaluation` | `timeout` | ephemeral | `testing/evaluation/src/evaluator.ts` | 114 |
+| `@lostgradient/bureau` | `timeout` | ephemeral | `packages/bureau/src/skills/discovery/catalog-service.ts` | 278 |
 | `@lostgradient/weft` | `interval` | durable | `packages/weft/src/core/scheduler/scheduler-class.ts` | 95 |
 | `@lostgradient/weft` | `fire-and-forget-call` | ephemeral | `packages/weft/src/alerting/alert-manager.ts` | 283 |
 | `@lostgradient/weft` | `fire-and-forget-call` | durable | `packages/weft/src/server/serve-internals.ts` | 347 |

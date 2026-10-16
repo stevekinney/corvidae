@@ -1,4 +1,4 @@
-import type { Embedder, EmbeddingVector } from '@lostgradient/embeddings';
+import type { Embedder, EmbeddingVector } from 'armorer';
 
 import { sha256Hex } from './hash';
 

@@ -1,0 +1,260 @@
+/**
+ * Unit tests for resolveVisualDiffMode() — the env-var parsing logic extracted
+ * from screenshot.ts. These tests deliberately avoid spinning up a Playwright
+ * browser; they only exercise the pure string-to-mode mapping.
+ */
+
+import type { FullConfig } from '@playwright/test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
+import {
+  blockBaselineGuard,
+  isScreenshotInComponentScope,
+  resolveVisualDiffMode,
+  type UpdateSnapshotsState,
+} from './screenshot.ts';
+
+// ---------------------------------------------------------------------------
+// Env-var helpers
+// ---------------------------------------------------------------------------
+
+let originalValue: string | undefined;
+let originalUpdateSnapshotsValue: string | undefined;
+let originalComponentScopeValue: string | undefined;
+
+beforeEach(() => {
+  originalValue = process.env['CINDER_VISUAL_DIFF'];
+  originalUpdateSnapshotsValue = process.env['CINDER_UPDATE_SNAPSHOTS'];
+  originalComponentScopeValue = process.env['CINDER_TEST_COMPONENTS'];
+});
+
+afterEach(() => {
+  if (originalValue === undefined) {
+    delete process.env['CINDER_VISUAL_DIFF'];
+  } else {
+    process.env['CINDER_VISUAL_DIFF'] = originalValue;
+  }
+  if (originalUpdateSnapshotsValue === undefined) {
+    delete process.env['CINDER_UPDATE_SNAPSHOTS'];
+  } else {
+    process.env['CINDER_UPDATE_SNAPSHOTS'] = originalUpdateSnapshotsValue;
+  }
+  if (originalComponentScopeValue === undefined) {
+    delete process.env['CINDER_TEST_COMPONENTS'];
+  } else {
+    process.env['CINDER_TEST_COMPONENTS'] = originalComponentScopeValue;
+  }
+});
+
+function setMode(value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env['CINDER_VISUAL_DIFF'];
+  } else {
+    process.env['CINDER_VISUAL_DIFF'] = value;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Valid modes
+// ---------------------------------------------------------------------------
+
+describe('resolveVisualDiffMode — valid values', () => {
+  it("returns 'off' when CINDER_VISUAL_DIFF is 'off'", () => {
+    setMode('off');
+    expect(resolveVisualDiffMode()).toBe('off');
+  });
+
+  it("returns 'report' when CINDER_VISUAL_DIFF is 'report'", () => {
+    setMode('report');
+    expect(resolveVisualDiffMode()).toBe('report');
+  });
+
+  it("returns 'block' when CINDER_VISUAL_DIFF is 'block'", () => {
+    setMode('block');
+    expect(resolveVisualDiffMode()).toBe('block');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Default (unset / empty)
+// ---------------------------------------------------------------------------
+
+describe("resolveVisualDiffMode — defaults to 'off'", () => {
+  it("returns 'off' when env var is unset", () => {
+    setMode(undefined);
+    expect(resolveVisualDiffMode()).toBe('off');
+  });
+
+  it("returns 'off' when env var is an empty string", () => {
+    setMode('');
+    expect(resolveVisualDiffMode()).toBe('off');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Invalid values — fall back to 'off' with a warning
+// ---------------------------------------------------------------------------
+
+describe("resolveVisualDiffMode — invalid values fall back to 'off'", () => {
+  it("returns 'off' for an unrecognised value ('turbo') and emits a warning", () => {
+    expectInvalidMode('turbo');
+  });
+
+  it("returns 'off' for a numeric string ('1') and emits a warning", () => {
+    expectInvalidMode('1');
+  });
+
+  it("returns 'off' for uppercase 'OFF' and emits a warning", () => {
+    // Mode matching is case-sensitive; 'OFF' ≠ 'off'.
+    expectInvalidMode('OFF');
+  });
+
+  it("returns 'off' for 'BLOCK' (wrong case) and emits a warning", () => {
+    expectInvalidMode('BLOCK');
+  });
+
+  it('emits a process warning for an invalid value', () => {
+    expectInvalidMode('invalid-value');
+  });
+
+  it('does NOT emit a process warning for a valid value', () => {
+    const warningSpy = spyOn(process, 'emitWarning').mockImplementation(() => undefined);
+    try {
+      setMode('block');
+      expect(resolveVisualDiffMode()).toBe('block');
+      expect(warningSpy).not.toHaveBeenCalled();
+    } finally {
+      warningSpy.mockRestore();
+    }
+  });
+
+  it('does NOT emit a process warning when the var is unset', () => {
+    const warningSpy = spyOn(process, 'emitWarning').mockImplementation(() => undefined);
+    try {
+      setMode(undefined);
+      expect(resolveVisualDiffMode()).toBe('off');
+      expect(warningSpy).not.toHaveBeenCalled();
+    } finally {
+      warningSpy.mockRestore();
+    }
+  });
+});
+
+function expectInvalidMode(value: string): void {
+  const warningSpy = spyOn(process, 'emitWarning').mockImplementation(() => undefined);
+  try {
+    setMode(value);
+    expect(resolveVisualDiffMode()).toBe('off');
+    expect(warningSpy).toHaveBeenCalledTimes(1);
+    const [firstArg] = warningSpy.mock.calls[0] as [string];
+    expect(firstArg).toContain('CINDER_VISUAL_DIFF');
+    expect(firstArg).toContain(value);
+  } finally {
+    warningSpy.mockRestore();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// blockBaselineGuard — actionable "update baselines" failure in block mode
+// ---------------------------------------------------------------------------
+
+const BASELINE = '/repo/testing/testing/snapshots/button/light-desktop-default.png';
+const KNOWN_SLUGS = new Set(['badge', 'button', 'popover']);
+
+describe('blockBaselineGuard — validating (updateSnapshots: none)', () => {
+  it('passes when the baseline exists', () => {
+    expect(blockBaselineGuard(BASELINE, true, 'none')).toEqual({ ok: true });
+  });
+
+  it('fails with an actionable message when the baseline is missing', () => {
+    const result = blockBaselineGuard(BASELINE, false, 'none');
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected guard to fail');
+
+    // Names the missing file so the offending case is identifiable.
+    expect(result.message).toContain(BASELINE);
+    // Names the block-mode env var that triggered the comparison.
+    expect(result.message).toContain('CINDER_VISUAL_DIFF=block');
+    // Updated for COR-1512: baselines are authored and verified only in the Docker renderer.
+    expect(result.message).toContain('bun run test:browser:update:docker');
+    expect(result.message).toContain('bun run test:browser:visual:docker');
+    expect(result.message).toContain('visual-baselines.md');
+  });
+});
+
+describe('blockBaselineGuard — authoring (updateSnapshots !== none)', () => {
+  it("stays silent for 'all' when the explicit Cinder update marker is set", () => {
+    // --update-snapshots is active; toHaveScreenshot legitimately writes the file.
+    expect(blockBaselineGuard(BASELINE, false, 'all', true)).toEqual({ ok: true });
+  });
+
+  it("fails for Playwright's local 'missing' default without the explicit Cinder update marker", () => {
+    const result = blockBaselineGuard(BASELINE, false, 'missing', false);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected guard to fail');
+    expect(result.message).toContain('Visual-regression baseline missing');
+  });
+
+  it("stays silent for 'missing' when the explicit Cinder update marker is set", () => {
+    expect(blockBaselineGuard(BASELINE, false, 'missing', true)).toEqual({ ok: true });
+  });
+
+  it("stays silent for 'changed' when the explicit Cinder update marker is set", () => {
+    expect(blockBaselineGuard(BASELINE, false, 'changed', true)).toEqual({ ok: true });
+  });
+
+  it('passes when authoring and the baseline already exists', () => {
+    expect(blockBaselineGuard(BASELINE, true, 'all', true)).toEqual({ ok: true });
+  });
+});
+
+describe('isScreenshotInComponentScope', () => {
+  it('includes every screenshot when no component scope is set', () => {
+    expect(isScreenshotInComponentScope('button', undefined)).toBe(true);
+  });
+
+  it('includes screenshots whose slug is in scope', () => {
+    expect(isScreenshotInComponentScope('button', 'button,badge', KNOWN_SLUGS)).toBe(true);
+  });
+
+  it('excludes screenshots outside a scoped visual-regression run', () => {
+    expect(isScreenshotInComponentScope('popover', 'button', KNOWN_SLUGS)).toBe(false);
+  });
+
+  it('throws when the component scope references an unknown slug', () => {
+    expect(() =>
+      isScreenshotInComponentScope('button', 'ghost', new Set(['button', 'badge'])),
+    ).toThrow(/ghost/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Type-level contract: UpdateSnapshotsState must stay pinned to Playwright's
+// `FullConfig['updateSnapshots']` union, NOT a bare `string`. The guard's
+// correctness hinges on the `'none'` sentinel; if the param widened back to
+// `string`, an arbitrary string would type-check as an "authoring" run and
+// silently skip the missing-baseline check. These checks fail to compile (and
+// thus fail `bun run typecheck`) if the contract regresses.
+// ---------------------------------------------------------------------------
+
+// Assignable to/from Playwright's union — proves the alias resolves to exactly
+// `'all' | 'changed' | 'missing' | 'none'` and not a wider/narrower type.
+{
+  const fromPlaywright: FullConfig['updateSnapshots'] = 'none';
+  const asState: UpdateSnapshotsState = fromPlaywright;
+  const backToPlaywright: FullConfig['updateSnapshots'] = asState;
+  void backToPlaywright;
+}
+
+// All four valid literals are accepted by the guard's parameter.
+blockBaselineGuard(BASELINE, false, 'all');
+blockBaselineGuard(BASELINE, false, 'changed');
+blockBaselineGuard(BASELINE, false, 'missing');
+blockBaselineGuard(BASELINE, false, 'none');
+
+// A non-union string must be rejected by the compiler. If UpdateSnapshotsState
+// ever widens to `string`, this line stops erroring and typecheck fails on the
+// now-unused @ts-expect-error directive, surfacing the regression.
+// @ts-expect-error 'nonee' is not a valid FullConfig['updateSnapshots'] value
+blockBaselineGuard(BASELINE, false, 'nonee');
+// @ts-expect-error 'NONE' (wrong case) is not assignable to the union
+blockBaselineGuard(BASELINE, false, 'NONE');

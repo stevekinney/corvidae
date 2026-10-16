@@ -43,7 +43,7 @@
  * reference lives in a different rule entirely (often the generated
  * `:root` block, which this scan deliberately excludes). Those two shapes are
  * covered instead by
- * `packages/testing/tests/border-tier-computed-audit.playwright.ts`, which
+ * `scripts/browser-fixtures/tests/border-tier-computed-audit.playwright.ts`, which
  * reads the real, rendered cascade via CDP rather than grepping text -- see
  * that file, and `border-tier-audit.ts` next to it, for the mechanism.
  */
@@ -416,7 +416,7 @@ describe('CIN-245: structural border tiers used outside a border declaration', (
     // in foundation.css disabled-visual rule"), relying entirely on that other
     // file for its opacity -- no rule in either file pairs the two for that
     // element. CIN-602's
-    // `packages/testing/tests/border-tier-computed-audit.playwright.ts` proves
+    // `scripts/browser-fixtures/tests/border-tier-computed-audit.playwright.ts` proves
     // BOTH shapes from the real cascade via CDP's `CSS.getMatchedStylesForNode`:
     // the icon-only Button's same-rule-plus-shared-rule compound, and the
     // plain (secondary-variant) disabled Button's cross-file-only compound,

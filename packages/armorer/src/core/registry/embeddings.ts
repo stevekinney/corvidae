@@ -1,11 +1,11 @@
-import type { Embedder, EmbeddingVector } from '@lostgradient/embeddings';
+import type { Embedder, EmbeddingVector } from '../../embedding-vector';
 
 import { isPromise } from '../../type-guards';
 import type { TextQueryField } from '../query-predicates';
 import { getSchemaKeys } from '../schema-utilities';
 import type { AnyToolDefinition as ToolDefinition } from '../tool-definition';
 
-export type { Embedder, EmbeddingVector } from '@lostgradient/embeddings';
+export type { Embedder, EmbeddingVector } from '../../embedding-vector';
 
 export type EmbeddingInfo = {
   vector: EmbeddingVector;

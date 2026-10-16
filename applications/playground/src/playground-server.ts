@@ -426,7 +426,7 @@ async function renderComponentPage(
    *
    * - `?snapshot=1` — the visual-regression and axe suites wait for `#app > *`
    *   to become visible and assert single-instance counts of `example-mount-*`
-   *   on a bare surface (see packages/testing/src/fixtures/component-page.ts).
+   *   on a bare surface (see testing/testing/src/fixtures/component-page.ts).
    *   Rendering the full documentation chrome there would break ~93 suites.
    * - `?preview=1` — the shell's preview frame renders only a single featured
    *   example (`canonical-preview`). The client bundle `mount()`s that surface
