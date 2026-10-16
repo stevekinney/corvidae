@@ -218,7 +218,9 @@ const scenarioRefusedSpawn = scenario(
     expect((failure as ProcessStartFailure).code).toBe('spawn-failed');
     const pair = recording.pair() as { readFd: number; writeFd: number };
     // A descriptor closed twice could by then belong to another thread.
-    expect(recording.closed.toSorted()).toEqual([pair.readFd, pair.writeFd].toSorted());
+    expect(recording.closed.toSorted((a, b) => a - b)).toEqual(
+      [pair.readFd, pair.writeFd].toSorted((a, b) => a - b),
+    );
   },
 );
 
