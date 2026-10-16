@@ -16,7 +16,7 @@ import { resetPlaygroundStylesheetBuilds } from './documentation-styles.ts';
 import { clearFixtureBundleCaches } from './fixture-bundle.ts';
 import { clearManifestCaches } from './manifest-cache.ts';
 import { pageEntryByName } from './page-bundle.ts';
-import { PACKAGE_MAP_PATH, PLAYGROUND_ROOT, REPOSITORY_ROOT } from './playground-paths.ts';
+import { PLAYGROUND_ROOT, PUBLISHED_VERSIONS_PATH, REPOSITORY_ROOT } from './playground-paths.ts';
 import {
   getRebuildGeneration,
   incrementRebuildGeneration,
@@ -289,7 +289,7 @@ export function watchMetadataFiles(
       if (!existsSync(directory)) continue;
       created.push(
         watchPath(directory, (_event, filename) => {
-          // Normalized before the comparison: a Windows watcher reports `.\package-map.json`, and a
+          // Normalized before the comparison: a Windows watcher reports `.\published-versions.json`, and a
           // backend that reports a nested path (`src/package.json`) is not reporting this file.
           if (!filename || names.has(posix.normalize(filename.replaceAll('\\', '/')))) {
             onChange();
@@ -343,15 +343,15 @@ export function startWatcher(watchPath: typeof watch = watch): FSWatcher[] {
 
     // The metadata files that change what every page shows, none of them under a watched source
     // tree: a package's `package.json` and `components.json` (its component inventory and export
-    // names), and the mirror's package map, which every documentation page reads its package's
-    // `lastPublishedVersion` from on each build of the page. A change to any of them would
+    // names), and `published-versions.json`, which every documentation page reads its package's
+    // last published version from on each build of the page. A change to any of them would
     // otherwise leave open pages stale until a restart. See `watchMetadataFiles` for why they are
     // watched through their directories.
     created.push(
       ...watchMetadataFiles(
         watchPath,
         [
-          PACKAGE_MAP_PATH,
+          PUBLISHED_VERSIONS_PATH,
           ...COMPONENT_SOURCES.flatMap((componentSource) => [
             join(componentSource.packageRoot, 'package.json'),
             componentSource.manifestPath,

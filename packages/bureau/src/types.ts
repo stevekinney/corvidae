@@ -1557,25 +1557,23 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * returns `{ outcome: 'unsupported-capability', reason:
    * 'selector-unavailable' }`.
    *
-   * Durable sessions are admitted too: the command is persisted in the
-   * session's steering mailbox before it enters desired state, so recovery
-   * can replay it. `{ outcome: 'unsupported-capability', reason:
-   * 'durable-steering-unavailable' }` is returned only by the guard for a
-   * durably-configured Bureau with no resolved storage backend, which
-   * normal composition does not produce. A durable command the session's
-   * mailbox rejects at admission (for example, an exhausted backlog) returns
-   * `unsupported-capability` with the mailbox's own rejection reason and
-   * never enters desired state. A reused `id` whose persisted identity
-   * differs is not one of those: it falls through to the gate and returns
-   * the typed `conflict` described below.
-   *
-   * Known limit: durability holds across ONE restart. Recovery replays the
-   * mailbox and acknowledges what it replays, so after a second restart the
-   * session's mailbox and in-memory gate are both empty: desired
-   * configuration and agent identity fall back to defaults, and a reused
-   * `(principal, id)` — exact or not — is admitted as a new command rather
-   * than `replayed` or a `conflict`. Steering is also process-local: two
-   * Bureau processes sharing a backend each admit into their own gate.
+   * Durable sessions are admitted too, through the session's durable
+   * steering log (`steering-log.ts`): an append-only log of every
+   * admission and run-boundary transition, with the inputs each was decided
+   * from, committed atomically and never consumed. The session's gate is a
+   * fold of it, so desired configuration, agent identity, pause state,
+   * command states, and `configVersion` survive any number of restarts, and
+   * every Bureau process sharing the backend folds the same history before
+   * it decides. An exact `(principal, id)` retry replays and a mismatched
+   * one conflicts after any restart and across sessions and processes; a
+   * refused command's id stays decided too, answering an exact retry with
+   * the original refusal. `pause`/`resume` bind against the session's live
+   * runs in every process sharing the backend. A run reads its own process's gate: steering
+   * admitted by another process reaches it when this process next folds
+   * the log (before its next admission or run). `{ outcome:
+   * 'unsupported-capability', reason: 'durable-steering-unavailable' }` is
+   * returned only by the guard for a durably-configured Bureau with no
+   * resolved storage backend, which normal composition does not produce.
    *
    * A `pause` against an authorized, non-terminal session is
    * accepted, increments the session's `configVersion` by exactly one, and

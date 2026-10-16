@@ -3,11 +3,11 @@
  * bundles (COR-231).
  *
  * Cinder's `package-version.generated.ts` holds the sentinel `workspace`, because the workspace
- * carries no version; the mirror rewrites that one literal when it composes the package
- * (`versionConstants` in `scripts/mirror/source.ts`). The Playground compiles Cinder's source
+ * carries no version; the mirror tooling (stevekinney/corvidae-mirror) rewrites that one
+ * literal when it composes the package (`versionConstants` in its `src/source.ts`). The Playground compiles Cinder's source
  * directly, so without this stamp every theme the deployed theme builder exported named its base
  * `workspace`. The stamp applies the same rewrite at bundle time, from the version
- * `scripts/mirror/package-map.json` records as last published, which is also the version the
+ * `published-versions.json` records as last published, which is also the version the
  * documentation displays.
  *
  * The version names a published corpus, so it is stamped only when the bundled base is that
@@ -146,7 +146,7 @@ export function cinderPackageVersionPlugin(
         const lastPublishedVersion = await sources.lastPublishedVersion();
         if (lastPublishedVersion === undefined) {
           throw new CinderPackageVersionError(
-            `scripts/mirror/package-map.json records no lastPublishedVersion for ${CINDER_PACKAGE_NAME}`,
+            `published-versions.json records no lastPublishedVersion for ${CINDER_PACKAGE_NAME}`,
           );
         }
         const version = publishedVersionForBase(

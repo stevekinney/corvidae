@@ -1,7 +1,9 @@
 {
-  "documentation": "The source digest of the Cinder token base each published @lostgradient/cinder version ships, keyed by version: `computeSourceDigest` over the published package's `src/tokens/cinder.resolver.json` and the nine token documents the runtime bundles. The Playground stamps `package-map.json`'s `lastPublishedVersion` into its bundled token runtime only when the bundled base has that version's digest; otherwise the runtime keeps the `workspace` sentinel, because the source is unreleased (COR-231). Add an entry, from the registry tarball, whenever a Cinder publication is recorded: `cinder-package-version-plugin.test.ts` fails while `lastPublishedVersion` has none. 0.27.1 predates the token runtime but ships the documents; 0.28.0 was the first release with the runtime.",
+  "documentation": "The source digest of the Cinder token base each published @lostgradient/cinder version ships, keyed by version: `computeSourceDigest` over the published package's `src/tokens/cinder.resolver.json` and the nine token documents the runtime bundles. The Playground stamps `published-versions.json`'s Cinder version into its bundled token runtime only when the bundled base has that version's digest; otherwise the runtime keeps the `workspace` sentinel, because the source is unreleased (COR-231). Add an entry, from the registry tarball, whenever the Cinder version in `published-versions.json` changes: `cinder-package-version-plugin.test.ts` fails while `lastPublishedVersion` has none. 0.27.1 predates the token runtime but ships the documents; 0.28.0 was the first release with the runtime.",
   "bases": {
     "0.27.1": "sha256:94921dd96c0155bbfb51d3251c08fa49b602124ad4f4126830a44520432ae706",
-    "0.28.0": "sha256:35fb1c57b3c88ef6a75177972511a54deeda735c903b0bf71d63929200d37a28"
+    "0.28.0": "sha256:35fb1c57b3c88ef6a75177972511a54deeda735c903b0bf71d63929200d37a28",
+    "0.28.1": "sha256:35fb1c57b3c88ef6a75177972511a54deeda735c903b0bf71d63929200d37a28",
+    "0.29.0": "sha256:35fb1c57b3c88ef6a75177972511a54deeda735c903b0bf71d63929200d37a28"
   }
 }

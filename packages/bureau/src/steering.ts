@@ -123,12 +123,10 @@ export interface SteeringCommandConflict {
  *   seven are admitted (AB-199/AB-200/AB-68, COR-1227). It is returned for
  *   an `agent-identity` `policyRef`, or a configuration-target command with
  *   no `override` reaching the gate directly (`reason:
- *   'selector-unavailable'`); for a durably-configured Bureau with no
- *   resolved storage backend (`reason: 'durable-steering-unavailable'`); and
- *   for a durable command the session's steering mailbox rejects at
- *   admission, such as an exhausted backlog (the mailbox's own rejection
- *   reason). A reused `id` with a different persisted identity returns
- *   `conflict`, not this. See `Bureau.submitSteeringCommand`.
+ *   'selector-unavailable'`); and for a durably-configured Bureau with no
+ *   resolved storage backend (`reason: 'durable-steering-unavailable'`). A
+ *   reused `id` with a different identity returns `conflict`, not this. See
+ *   `Bureau.submitSteeringCommand`.
  */
 export type SteeringCommandAdmissionOutcome =
   | { readonly outcome: 'accepted'; readonly command: SteeringCommandSnapshot }
@@ -235,6 +233,18 @@ export interface BureauSteeringGate extends SteeringGate {
    *  third-party `SteeringGate` that predates AB-199's cross-run dedupe
    *  addition and has no cross-run memory of its own). */
   getAppliedFloor(): number;
+  /**
+   * The highest `configVersion` `runId` can observe: what its own
+   * `forRun(runId).getDesiredState()` reports. A run never sees another
+   * run's run-scoped versions, so a logged `applied` above this is corrupt.
+   */
+  getRunVisibleVersion(runId: string): number;
+  /**
+   * The version `runId` started at (its promotion baseline). Every version
+   * the run reports at a boundary is at least this, so a logged `applied`
+   * below it is corrupt.
+   */
+  getRunBaseline(runId: string): number;
   /**
    * A per-run VIEW of this session's gate, scoped to `runId`: its
    * `getDesiredState().paused` and `awaitResume()` reflect only a pause
@@ -414,6 +424,125 @@ export type SteeringCommandLedger = Map<string, Map<string, StoredSteeringComman
  *  `createSteeringGate` call for that bureau instance. */
 export function createSteeringCommandLedger(): SteeringCommandLedger {
   return new Map();
+}
+
+/** The ledger's entry for `(principal, id)`, or `undefined` when it has none. */
+export function getSteeringLedgerEntry(
+  ledger: SteeringCommandLedger,
+  principal: string,
+  id: string,
+): StoredSteeringCommand | undefined {
+  return ledger.get(principal)?.get(id);
+}
+
+/**
+ * Resolves a same-`(principal, id)` retry against the command already
+ * recorded under that key: a typed `conflict` when the session, target,
+ * requested run, or requested value disagrees, otherwise `replayed`.
+ */
+export function resolveSteeringRetry(
+  existing: StoredSteeringCommand,
+  command: Pick<ImplementedSteeringCommand, 'id' | 'sessionId' | 'requestedValue' | 'runId'>,
+): Extract<SteeringCommandAdmissionOutcome, { outcome: 'conflict' | 'replayed' }> {
+  if (existing.sessionId !== command.sessionId) {
+    return {
+      outcome: 'conflict',
+      conflict: {
+        id: command.id,
+        reason: 'session-mismatch',
+        original: snapshotOf(existing),
+      },
+    };
+  }
+  if (existing.requestedValue.target !== command.requestedValue.target) {
+    return {
+      outcome: 'conflict',
+      conflict: { id: command.id, reason: 'target-mismatch', original: snapshotOf(existing) },
+    };
+  }
+  // A pause/resume retry naming a DIFFERENT run than the original
+  // request is a typed conflict, not a replay — runId determines
+  // which run the command actually affects (review finding, PR #430
+  // — Codex P2, "Include the bound run in replay matching"). Compares
+  // the RAW requested runId (undefined when omitted), not the
+  // resolved bound run — an omitted runId that resolves differently
+  // across two admissions (the session's sole live run changed
+  // between them) is a liveness/binding question `run-terminal`/
+  // `run-ambiguous` already own, not an idempotency conflict.
+  if (existing.requestedRunId !== command.runId) {
+    return {
+      outcome: 'conflict',
+      conflict: {
+        id: command.id,
+        reason: 'requested-value-mismatch',
+        original: snapshotOf(existing),
+      },
+    };
+  }
+  if (sameRequestedValue(existing.requestedValue, command.requestedValue)) {
+    return { outcome: 'replayed', command: snapshotOf(existing) };
+  }
+  return {
+    outcome: 'conflict',
+    conflict: {
+      id: command.id,
+      reason: 'requested-value-mismatch',
+      original: snapshotOf(existing),
+    },
+  };
+}
+
+/**
+ * A durably logged admission the gate did not accept. The ledger records
+ * only accepted commands; a durable Bureau keeps these beside it, folded
+ * from the same log, so a refused command's id is answered from the log
+ * rather than decided afresh.
+ */
+export interface SteeringRefusal {
+  readonly command: ImplementedSteeringCommand;
+  readonly outcome: Extract<
+    SteeringCommandAdmissionOutcome,
+    { outcome: 'rejected' | 'unsupported-capability' }
+  >;
+  readonly refusedAt: string;
+}
+
+/**
+ * Answers a reused `(principal, id)` from what was already decided for it:
+ * the ledger's accepted command, or a refusal. An exact retry of a refused
+ * command gets the original refusal back; a mismatched one is a `conflict`
+ * against it. `undefined` when the key was never decided.
+ */
+export function answerSteeringRetry(
+  ledger: SteeringCommandLedger,
+  refusals: ReadonlyMap<string, ReadonlyMap<string, SteeringRefusal>>,
+  command: ImplementedSteeringCommand,
+): SteeringCommandAdmissionOutcome | undefined {
+  const accepted = getSteeringLedgerEntry(ledger, command.principal, command.id);
+  if (accepted !== undefined) return resolveSteeringRetry(accepted, command);
+  const refusal = refusals.get(command.principal)?.get(command.id);
+  if (refusal === undefined) return undefined;
+  const original = refusal.command;
+  const resolved = resolveSteeringRetry(
+    {
+      id: original.id,
+      sessionId: original.sessionId,
+      principal: original.principal,
+      requestedValue: original.requestedValue,
+      // The run the refused request named: not bound, but it is the run a
+      // conflict against this refusal discloses, and is authorized against.
+      runId: original.runId,
+      requestedRunId: original.runId,
+      requestedAt: original.requestedAt,
+      deadline: original.deadline,
+      configVersion: 0,
+      state: 'rejected',
+      failure: refusal.outcome.outcome === 'rejected' ? refusal.outcome.failure : undefined,
+    },
+    command,
+  );
+  // A copy: the caller must not be able to change what later retries see.
+  return resolved.outcome === 'replayed' ? structuredClone(refusal.outcome) : resolved;
 }
 
 interface StoredSteeringCommand {
@@ -928,6 +1057,14 @@ export function createSteeringGate(
       return appliedFloor;
     },
 
+    getRunVisibleVersion(runId: string): number {
+      return runVisibleVersion(runId);
+    },
+
+    getRunBaseline(runId: string): number {
+      return runBaseline.get(runId) ?? 0;
+    },
+
     forRun(runId: string): SteeringGate {
       return {
         sessionId,
@@ -985,54 +1122,7 @@ export function createSteeringGate(
 
     admit(command, context) {
       const existing = ledgerGet(command.principal, command.id);
-      if (existing) {
-        if (existing.sessionId !== command.sessionId) {
-          return {
-            outcome: 'conflict',
-            conflict: {
-              id: command.id,
-              reason: 'session-mismatch',
-              original: snapshotOf(existing),
-            },
-          };
-        }
-        if (existing.requestedValue.target !== command.requestedValue.target) {
-          return {
-            outcome: 'conflict',
-            conflict: { id: command.id, reason: 'target-mismatch', original: snapshotOf(existing) },
-          };
-        }
-        // A pause/resume retry naming a DIFFERENT run than the original
-        // request is a typed conflict, not a replay — runId determines
-        // which run the command actually affects (review finding, PR #430
-        // — Codex P2, "Include the bound run in replay matching"). Compares
-        // the RAW requested runId (undefined when omitted), not the
-        // resolved bound run — an omitted runId that resolves differently
-        // across two admissions (the session's sole live run changed
-        // between them) is a liveness/binding question `run-terminal`/
-        // `run-ambiguous` already own, not an idempotency conflict.
-        if (existing.requestedRunId !== command.runId) {
-          return {
-            outcome: 'conflict',
-            conflict: {
-              id: command.id,
-              reason: 'requested-value-mismatch',
-              original: snapshotOf(existing),
-            },
-          };
-        }
-        if (sameRequestedValue(existing.requestedValue, command.requestedValue)) {
-          return { outcome: 'replayed', command: snapshotOf(existing) };
-        }
-        return {
-          outcome: 'conflict',
-          conflict: {
-            id: command.id,
-            reason: 'requested-value-mismatch',
-            original: snapshotOf(existing),
-          },
-        };
-      }
+      if (existing) return resolveSteeringRetry(existing, command);
 
       // AB-67/AB-199 review finding (PR #430 — Codex P2, second wave,
       // "Reject commands addressed to another gate"): the existing-ledger

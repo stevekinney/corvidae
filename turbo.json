@@ -56,11 +56,6 @@
     "transit": {
       "dependsOn": ["//#preflight", "^transit"]
     },
-    "@lostgradient/playground#build": {
-      "dependsOn": ["transit"],
-      "outputs": ["build/**"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/mirror/package-map.json"]
-    },
     "//#test:self": {
       "dependsOn": ["//#preflight"],
       "env": ["CODEX_CI", "NODE_ENV"],
