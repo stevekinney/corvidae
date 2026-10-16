@@ -19,8 +19,8 @@
  * nothing from a private workspace for the same reason.
  *
  * The output directory is replaced only once a build succeeds: Bun writes into a staging
- * directory beside it, which is then renamed into place, so a failed build leaves the previous
- * dashboard intact and a reader never sees a half-written tree.
+ * directory beside it, which {@link replaceDirectory} swaps into place, so a failed build or a
+ * failed swap leaves the previous dashboard intact and a reader never sees a half-written tree.
  */
 
 import { mkdtemp, rename, rm } from 'node:fs/promises';
@@ -144,6 +144,45 @@ export function assertCleanBuild(result: Bun.BuildOutput): Bun.BuildMetafile {
   return result.metafile;
 }
 
+/** The filesystem operations {@link replaceDirectory} uses, replaceable in tests. */
+export type DirectoryOperations = {
+  readonly rename: (from: string, to: string) => Promise<void>;
+  readonly rm: (path: string, options: { recursive: true; force: true }) => Promise<void>;
+};
+
+const NODE_DIRECTORY_OPERATIONS: DirectoryOperations = { rename, rm };
+
+function isMissingPath(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}
+
+/**
+ * Put `staging` at `directory`. Whatever was at `directory` is renamed aside first and deleted
+ * only once `staging` is in place, so there is no moment with neither tree, and when the second
+ * rename fails the previous tree is renamed back before the error is rethrown.
+ */
+export async function replaceDirectory(
+  staging: string,
+  directory: string,
+  operations: DirectoryOperations = NODE_DIRECTORY_OPERATIONS,
+): Promise<void> {
+  const previous = join(dirname(directory), `.dashboard-previous-${crypto.randomUUID()}`);
+  let movedAside = true;
+  try {
+    await operations.rename(directory, previous);
+  } catch (error) {
+    if (!isMissingPath(error)) throw error;
+    movedAside = false;
+  }
+  try {
+    await operations.rename(staging, directory);
+  } catch (error) {
+    if (movedAside) await operations.rename(previous, directory);
+    throw error;
+  }
+  if (movedAside) await operations.rm(previous, { recursive: true, force: true });
+}
+
 export type DashboardBuild = {
   /** The directory the dashboard was written to. */
   readonly directory: string;
@@ -182,8 +221,7 @@ export async function buildDashboard(
     const files = result.outputs
       .map((output) => relative(staging, output.path).split(sep).join('/'))
       .toSorted();
-    await rm(directory, { recursive: true, force: true });
-    await rename(staging, directory);
+    await replaceDirectory(staging, directory);
     return { directory, files, metafile };
   } finally {
     await rm(staging, { recursive: true, force: true });

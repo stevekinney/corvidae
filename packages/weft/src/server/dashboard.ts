@@ -144,5 +144,8 @@ export function dashboard(options: DashboardOptions): WeftServer {
       `dashboard() registers these routes itself, so remove them from routes: ${conflicts.join(', ')}`,
     );
   }
-  return serve({ ...serveOptions, routes: { ...callerRoutes, ...createDashboardRoutes(dashboardDirectory(distDir)) } });
+  return serve({
+    ...serveOptions,
+    routes: { ...callerRoutes, ...createDashboardRoutes(dashboardDirectory(distDir)) },
+  });
 }

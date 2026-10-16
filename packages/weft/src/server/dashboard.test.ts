@@ -15,8 +15,8 @@ import { MemoryStorage } from '../storage/memory.ts';
 import {
   dashboard,
   DASHBOARD_BUILD_COMMAND,
-  dashboardDirectory,
   DASHBOARD_SHELL_ROUTES,
+  dashboardDirectory,
   defaultDashboardDirectory,
   type DashboardOptions,
 } from './dashboard.ts';

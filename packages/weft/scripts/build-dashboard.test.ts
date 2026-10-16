@@ -8,7 +8,8 @@
  * once would race. Nothing here asserts on how long the build takes.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -19,13 +20,14 @@ import {
   defaultDashboardDirectory,
 } from '../src/server/dashboard.ts';
 import { MemoryStorage } from '../src/storage/memory.ts';
-import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import {
   assertCleanBuild,
   DASHBOARD_ASSET_DIRECTORY,
   DEFAULT_DASHBOARD_DIRECTORY,
   PACKAGE_DIRECTORY,
   readMetafileArgument,
+  replaceDirectory,
   runBuildDashboardCommand,
   type DashboardBuild,
 } from './build-dashboard.ts';
@@ -76,7 +78,7 @@ describe('buildDashboard', () => {
   });
 
   it(
-    'writes index.html and hashed JavaScript and CSS into the default dashboard directory',
+    'writes index.html and hashed JavaScript and CSS into the default dashboard directory (COR-1450)',
     async () => {
       const result = await builtDashboard();
 
@@ -181,6 +183,77 @@ describe('buildDashboard', () => {
     },
     BUILD_TIMEOUT_MS,
   );
+});
+
+describe('replaceDirectory', () => {
+  /** A parent directory holding `dashboard/` (when `previous` is given) and `staging/`. */
+  function directories(previous: string | undefined): {
+    parent: string;
+    directory: string;
+    staging: string;
+  } {
+    const parent = mkdtempSync(join(scratch, 'replace-'));
+    const directory = join(parent, 'dashboard');
+    const staging = join(parent, 'staging');
+    if (previous !== undefined) {
+      mkdirSync(directory);
+      writeFileSync(join(directory, 'index.html'), previous);
+    }
+    mkdirSync(staging);
+    writeFileSync(join(staging, 'index.html'), 'new');
+    return { parent, directory, staging };
+  }
+
+  it('puts the staged tree in place and deletes the previous one', async () => {
+    const { parent, directory, staging } = directories('old');
+    await replaceDirectory(staging, directory);
+    expect(await Bun.file(join(directory, 'index.html')).text()).toBe('new');
+    expect(readdirSync(parent)).toEqual(['dashboard']);
+  });
+
+  it('puts the staged tree in place when nothing was there before', async () => {
+    const { parent, directory, staging } = directories(undefined);
+    await replaceDirectory(staging, directory);
+    expect(await Bun.file(join(directory, 'index.html')).text()).toBe('new');
+    expect(readdirSync(parent)).toEqual(['dashboard']);
+  });
+
+  it('restores the previous tree when the staged tree cannot be renamed into place', async () => {
+    const { parent, directory, staging } = directories('old');
+    const failure = new Error('rename failed');
+    const renames: [string, string][] = [];
+    const rejection = await rejectionOf(
+      replaceDirectory(staging, directory, {
+        rename: async (from, to) => {
+          renames.push([from, to]);
+          if (from === staging) throw failure;
+          await rename(from, to);
+        },
+        rm,
+      }),
+    );
+    expect(rejection).toBe(failure);
+    expect(renames).toHaveLength(3);
+    expect(renames[0]?.[0]).toBe(directory);
+    expect(renames[2]).toEqual([renames[0]?.[1] ?? '', directory]);
+    expect(await Bun.file(join(directory, 'index.html')).text()).toBe('old');
+    expect(readdirSync(parent).toSorted()).toEqual(['dashboard', 'staging']);
+  });
+
+  it('leaves the previous tree alone when it cannot be moved aside', async () => {
+    const { directory, staging } = directories('old');
+    const failure = Object.assign(new Error('busy'), { code: 'EBUSY' });
+    const rejection = await rejectionOf(
+      replaceDirectory(staging, directory, {
+        rename: async () => {
+          throw failure;
+        },
+        rm,
+      }),
+    );
+    expect(rejection).toBe(failure);
+    expect(await Bun.file(join(directory, 'index.html')).text()).toBe('old');
+  });
 });
 
 describe('readMetafileArgument', () => {
