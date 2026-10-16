@@ -5,8 +5,8 @@ import {
   scenarioTest,
   settleScenarios,
   trackHostedProcess,
-} from '../bun-process.test-support.ts';
-import { shellProfile } from './bun-pipe-stdin.ts';
+} from '../src/bun/bun-process.test-support.ts';
+import { shellProfile } from '../src/bun/fixtures/bun-pipe-stdin.ts';
 
 /**
  * Run by `filtered-run.test.ts` with a test-name filter, never by the default gate (its name is not a

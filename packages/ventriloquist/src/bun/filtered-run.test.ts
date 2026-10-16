@@ -22,13 +22,7 @@ describe('a run that selects tests by name', () => {
     async () => {
       const token = `7919.${Math.floor(Math.random() * 1_000_000)}`;
       const run = Bun.spawn(
-        [
-          process.execPath,
-          'test',
-          './src/bun/fixtures/filtered-run-fixture.ts',
-          '-t',
-          'finishes at once',
-        ],
+        [process.execPath, 'test', './scripts/filtered-run-fixture.ts', '-t', 'finishes at once'],
         {
           cwd: new URL('../..', import.meta.url).pathname,
           env: { ...process.env, FILTERED_RUN_TOKEN: token },
