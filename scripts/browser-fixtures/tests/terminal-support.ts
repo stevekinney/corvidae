@@ -368,8 +368,10 @@ export async function exportedText(page: Page): Promise<string> {
   const text = await snapshot.inputValue();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(snapshot).toBeHidden();
-  // Closing hands focus back to Export after the exit finishes; a caller that moves focus sooner
-  // would be overridden by that late restore.
+  // The dialog returns focus to Export when it starts closing and again when its exit completes,
+  // which is when its panel leaves the page. A caller that moved focus before that would be
+  // overridden by the second return, so wait for the panel to go, and then for Export.
+  await expect(page.locator('.cinder-modal__panel')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Export', exact: true })).toBeFocused();
   return text;
 }

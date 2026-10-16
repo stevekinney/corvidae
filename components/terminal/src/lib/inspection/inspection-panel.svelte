@@ -36,7 +36,13 @@
   const notices = $derived(view.snapshot === undefined ? [] : describeSnapshot(view.snapshot));
 
   /** Focus returns to the control that opened the dialog while it is mounted, else to the frame. */
-  function restoreFocus(trigger: HTMLElement | null): void {
+  function restoreFocus(trigger: HTMLElement | null, whenLost = false): void {
+    // The search closes from inside its own field, so its restore always moves focus. The dialog
+    // already returned focus when its exit completed, and `onExitComplete` calls this a tick
+    // later: there, focus the reader has put somewhere else since is theirs, and only a page that
+    // lost focus, or the control itself, is restored.
+    const active = document.activeElement;
+    if (whenLost && active !== null && active !== document.body && active !== trigger) return;
     if (trigger?.isConnected === true) trigger.focus();
     if (trigger === null || document.activeElement !== trigger) restoreTarget()?.focus();
   }
@@ -134,7 +140,7 @@
   onDismiss={() => inspection.closeSnapshot()}
   onExitComplete={() => {
     inspection.releaseSnapshot();
-    restoreFocus(exportTrigger);
+    restoreFocus(exportTrigger, true);
   }}
 >
   {#if view.snapshot !== undefined}
