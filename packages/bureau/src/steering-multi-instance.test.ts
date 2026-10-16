@@ -29,10 +29,12 @@ import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import type { SteeringCommandRequest } from './steering';
+import type { BureauDiagnostic } from './types';
 import { createRuntimeComposition } from './runtime-composition';
 import {
   appendSteeringLogEvent,
   readSteeringKeyBinding,
+  readSteeringLogEntries,
   readSteeringLogHead,
   steeringSessionRunTag,
 } from './steering-log';
@@ -1565,6 +1567,66 @@ describe('durable steering across two Bureau processes', () => {
       ).toThrow(/ending without a promotion/);
     } finally {
       await writer.dispose();
+      await reader?.dispose();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('ends a run quietly when another process already logged its end', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'corvidae-steering-ended-elsewhere-'));
+    const path = join(directory, 'bureau.sqlite');
+    const diagnostics: BureauDiagnostic[] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createToolbox([]),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    let disposed = false;
+    let reader: TestBureau | undefined;
+    try {
+      const sessionId = await startRunningSession(bureau);
+      const session = await bureau.getSession(sessionId);
+      const kv = bureau.kv;
+      if (session === undefined || kv === undefined) throw new Error('expected a durable session');
+      const runId = session.metadata['lastRunId'] as string;
+      // Another process (one that adopted the run, say) ends it first.
+      await appendSteeringLogEvent(
+        kv,
+        sessionId,
+        session.incarnation,
+        await readSteeringLogHead(kv, sessionId, session.incarnation),
+        { type: 'run-ended', runId, now: new Date().toISOString() },
+      );
+      bureau.abortRun(runId);
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        if (bureau.getRun(runId)?.status !== 'running') break;
+        await Bun.sleep(10);
+      }
+      expect(bureau.getRun(runId)?.status).toBe('aborted');
+      await bureau.dispose();
+      disposed = true;
+
+      expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'steering')).toEqual([]);
+      // The log, read afresh, records the end once.
+      reader = await openBureau(path);
+      const log = reader.kv;
+      if (log === undefined) throw new Error('expected a durable store');
+      const head = await readSteeringLogHead(log, sessionId, session.incarnation);
+      const entries = await readSteeringLogEntries(
+        log,
+        sessionId,
+        session.incarnation,
+        0,
+        head.sequence,
+      );
+      expect(
+        entries.filter((event) => event.type === 'run-ended' && event.runId === runId),
+      ).toHaveLength(1);
+    } finally {
+      if (!disposed) await bureau.dispose();
       await reader?.dispose();
       rmSync(directory, { recursive: true, force: true });
     }
