@@ -40,11 +40,13 @@ const STUBBORN_JOB =
   'set -m; sh -c \'trap "" HUP TERM; printf "stubborn=%s " $$; while :; do sleep 1; done\' & printf \'leader=%s \' "$$"; wait';
 
 /**
- * A stopped job. The shell announces it only once `ps` shows it stopped, so a test that has read
- * the announcement never mistakes a job that has not stopped yet for one.
+ * A stopped job. The job stops itself: a stop sent from outside right after the fork was lost now
+ * and then (5 of 150 runs under load on macOS), leaving the job running and the shell waiting for it
+ * to stop. The shell announces the job only once `ps` shows it stopped, so a test that has read the
+ * announcement never mistakes a job that has not stopped yet for one.
  */
 const STOPPED_JOB =
-  'set -m; sleep 7919 & kill -STOP $!; until ps -o stat= -p $! | grep -q T; do sleep 0.02; done; printf \'leader=%s job=%s \' "$$" "$!"; exec sleep 7919';
+  'set -m; sh -c \'kill -STOP $$; exec sleep 7919\' & until ps -o stat= -p $! | grep -q T; do sleep 0.02; done; printf \'leader=%s job=%s \' "$$" "$!"; exec sleep 7919';
 
 type Observed = { readonly leader: number; readonly pids: Record<string, number> };
 
@@ -77,8 +79,8 @@ const scenario1 = scenario(
     expect(isAlive(job)).toBe(true);
     const summary = await run.session.dispose();
     expect(summary).toMatchObject({ cleanup: 'complete', quarantined: false });
-    expect(isAlive(observed.leader)).toBe(false);
-    expect(isAlive(job)).toBe(false);
+    await waitUntilGone(observed.leader);
+    await waitUntilGone(job);
   },
 );
 
@@ -87,8 +89,8 @@ const scenario2 = scenario('a stopped job is ended', async () => {
   const job = observed.pids['job'] as number;
   const summary = await run.session.dispose();
   expect(summary).toMatchObject({ cleanup: 'complete', quarantined: false });
-  expect(isAlive(job)).toBe(false);
-  expect(isAlive(observed.leader)).toBe(false);
+  await waitUntilGone(job);
+  await waitUntilGone(observed.leader);
 });
 
 const scenario3 = scenario(
@@ -103,7 +105,7 @@ const scenario3 = scenario(
     expect(isAlive(stubborn)).toBe(true);
     const summary = await run.session.dispose();
     expect(summary).toMatchObject({ cleanup: 'complete', quarantined: false });
-    expect(isAlive(stubborn)).toBe(false);
+    await waitUntilGone(stubborn);
   },
 );
 
@@ -119,7 +121,7 @@ const scenario4 = scenario('a job that outlived its shell is still ended', async
   // it, and the job still holds it, so the session is ended the way a host ends it.
   const summary = await run.session.dispose();
   expect(summary).toMatchObject({ cleanup: 'complete', quarantined: false });
-  expect(isAlive(job)).toBe(false);
+  await waitUntilGone(job);
 });
 
 const scenario5 = scenario(
@@ -130,7 +132,7 @@ const scenario5 = scenario(
       const { run, observed } = await launch('pty', BACKGROUND_JOB, /job=\d+ /);
       const summary = await run.session.dispose();
       expect(summary).toMatchObject({ cleanup: 'complete', quarantined: false });
-      expect(isAlive(observed.pids['job'] as number)).toBe(false);
+      await waitUntilGone(observed.pids['job'] as number);
       expect(isAlive(unrelated.pid)).toBe(true);
     } finally {
       unrelated.end();
@@ -151,7 +153,7 @@ const scenario6 = scenario(
     try {
       const summary = await run.session.dispose();
       expect(summary).toMatchObject({ cleanup: 'unknown', quarantined: true });
-      expect(isAlive(job as number)).toBe(false);
+      await waitUntilGone(job as number);
       expect(isAlive(escaped as number)).toBe(true);
     } finally {
       process.kill(escaped as number, 'SIGKILL');
@@ -189,7 +191,7 @@ const scenario7 = scenario(
     try {
       const summary = await run.session.dispose();
       expect(summary).toMatchObject({ cleanup: 'unknown', quarantined: true });
-      expect(isAlive(leader as number)).toBe(false);
+      await waitUntilGone(leader as number);
       expect(isAlive(job as number)).toBe(true);
     } finally {
       process.kill(job as number, 'SIGKILL');

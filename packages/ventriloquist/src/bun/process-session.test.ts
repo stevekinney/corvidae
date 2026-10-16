@@ -12,6 +12,7 @@ import {
 } from './bun-process.test-support.ts';
 import { descendantsOutsideGroup, terminateProcessGroup } from './process-group.ts';
 import {
+  createSessionOf,
   createSessionOperations,
   parseProcessStates,
   readProcessStates,
@@ -347,6 +348,93 @@ describe('the session table', () => {
     'is read from the running host: this process is in the session getsid reports',
     scenario4,
   );
+});
+
+describe('a session that cannot be read', () => {
+  test('a process macOS is tearing down is gone, though it is not yet a zombie', async () => {
+    const operations = createSessionOperations({
+      readStates: () => [{ pid: 500, state: '?NEs' }],
+      sessionOf: () => {
+        throw new Error('could not be read');
+      },
+      kill: () => undefined,
+    });
+    expect(await operations.exists(SESSION)).toBe(false);
+  });
+
+  test('is not the same as a process that is gone: only ESRCH says gone', () => {
+    const lookup = (getsidResult: number, killResult: 'ESRCH' | 'EPERM' | 'ok') =>
+      createSessionOf(
+        () => getsidResult,
+        () => {
+          if (killResult !== 'ok') refusal(killResult);
+        },
+      );
+    expect(lookup(77, 'ok')(1)).toBe(77);
+    expect(lookup(-1, 'ESRCH')(1)).toBe(-1);
+    expect(() => lookup(-1, 'ok')(1)).toThrow('could not be read');
+    expect(() => lookup(-1, 'EPERM')(1)).toThrow('could not be read');
+  });
+
+  test('a live process whose session cannot be read keeps the session present and fails a signal pass', async () => {
+    const unreadable = createSessionOperations({
+      readStates: () => [{ pid: 500, state: 'S' }],
+      sessionOf: () => {
+        throw new Error('could not be read');
+      },
+      kill: () => undefined,
+    });
+    expect(await unreadable.exists(SESSION)).toBe(true);
+    const failure = await rejectionOf(Promise.resolve(unreadable.signal(SESSION, 'SIGKILL')));
+    expect((failure as Error).message).toBe('the process table could not be read');
+  });
+
+  test('a process that became a zombie meanwhile is gone, not unreadable', async () => {
+    let reads = 0;
+    const operations = createSessionOperations({
+      readStates: () => {
+        reads += 1;
+        return [{ pid: 500, state: reads === 1 ? 'S' : 'Z' }];
+      },
+      sessionOf: () => {
+        throw new Error('could not be read');
+      },
+      kill: () => undefined,
+    });
+    expect(await operations.exists(SESSION)).toBe(false);
+  });
+
+  // spawn-free: the table and the process states are injected, so no process is started
+  test('a live one makes the session table unreadable, and a zombie is left out', async () => {
+    const table = [
+      { pid: 1, parentPid: 0, group: 1 },
+      { pid: 2, parentPid: 1, group: 2 },
+    ];
+    const lookup = (pid: number): number => {
+      if (pid === 2) throw new Error('could not be read');
+      return 500;
+    };
+    const live = await rejectionOf(
+      readSessionTable(
+        lookup,
+        async () => table,
+        async () => [
+          { pid: 1, state: 'S' },
+          { pid: 2, state: 'S' },
+        ],
+      ),
+    );
+    expect((live as Error).message).toBe('could not be read');
+    const zombie = await readSessionTable(
+      lookup,
+      async () => table,
+      async () => [
+        { pid: 1, state: 'S' },
+        { pid: 2, state: 'Z' },
+      ],
+    );
+    expect(zombie.map((record) => record.pid)).toEqual([1]);
+  });
 });
 
 describe('the host session lookup', () => {

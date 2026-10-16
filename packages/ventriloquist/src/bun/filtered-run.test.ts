@@ -3,7 +3,9 @@ import { describe, expect, test } from 'bun:test';
 import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
 
 import {
+  callingFileOf,
   expectSettled,
+  requireCallingFile,
   scenario,
   scenarioResult,
   settleScenarios,
@@ -75,6 +77,14 @@ const scenario3 = scenario(
 );
 
 describe('scenarios', () => {
+  test('are not started or settled by a caller that cannot be identified', () => {
+    expect(() => requireCallingFile('Error\n    at nowhere', 'scenario "x"')).toThrow(
+      'scenario "x": could not identify the test file',
+    );
+    expect(requireCallingFile('Error\n    at f (/a/b.test.ts:1:2)', 'x')).toBe('/a/b.test.ts');
+    expect(callingFileOf('Error\n    at f (/a/bun-process.test-support.ts:1:2)')).toBe('');
+  });
+
   test('refuse to start once the file has settled, naming the scenario', () => {
     expect(() => scenario('late', () => undefined)).toThrow(
       'scenario "late" was started after settleScenarios()',

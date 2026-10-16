@@ -58,15 +58,22 @@ export type Scenario = {
 /** The test files whose `settleScenarios` has returned, by path: module evaluation of each is over. */
 const settledFiles = new Set<string>();
 
-/** The path of the first stack frame outside this module, which is the test file calling in. */
-function callingFile(): string {
-  const frames = (new Error().stack ?? '').split('\n').slice(1);
-  const paths = frames.map(
-    (frame) => /\(?((?:file:\/\/)?\/[^():]+?)(?::\d+){1,2}\)?$/.exec(frame.trim())?.[1],
-  );
+/** The path of the first frame of `stack` outside this module, which is the test file calling in; `''` if none. */
+export function callingFileOf(stack: string): string {
+  const paths = stack
+    .split('\n')
+    .slice(1)
+    .map((frame) => /\(?((?:file:\/\/)?\/[^():]+?)(?::\d+){1,2}\)?$/.exec(frame.trim())?.[1]);
   return (
     paths.find((path) => path !== undefined && !path.endsWith('bun-process.test-support.ts')) ?? ''
   );
+}
+
+/** The calling file, or an error: a caller that cannot be identified must not be allowed or refused by guesswork. */
+export function requireCallingFile(stack: string, what: string): string {
+  const file = callingFileOf(stack);
+  if (file === '') throw new Error(`${what}: could not identify the test file that called it`);
+  return file;
 }
 
 /**
@@ -82,7 +89,7 @@ function callingFile(): string {
  * start the scenario at module scope and register its test inside the `describe`.
  */
 export function scenario(name: string, body: () => Promise<void> | void): Scenario {
-  const file = callingFile();
+  const file = requireCallingFile(new Error().stack ?? '', `scenario "${name}"`);
   if (settledFiles.has(file)) {
     throw new Error(
       `scenario "${name}" was started after settleScenarios() returned (inside a describe callback?): ` +
@@ -147,7 +154,7 @@ async function drainScenarios(): Promise<void> {
  * waits for the whole queue, so no run, however its tests are selected, ends with a scenario in flight.
  */
 export async function settleScenarios(): Promise<void> {
-  settledFiles.add(callingFile());
+  settledFiles.add(requireCallingFile(new Error().stack ?? '', 'settleScenarios()'));
   afterAll(drainScenarios);
   await scenarioQueue;
 }

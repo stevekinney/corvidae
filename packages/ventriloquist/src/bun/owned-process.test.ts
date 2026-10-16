@@ -345,4 +345,23 @@ describe('OwnedProcess', () => {
     expect(await owned.terminate()).toBe('complete');
     expect(signals).toEqual([`hangUp:${LEADER}`, 'SIGTERM']);
   });
+
+  test('does not sweep a session that emptied while the leader was given its head start', async () => {
+    // The leader exited and took its session with it: the number may be another process's by now.
+    const { owned, child, endLeader, signals } = harness({ hangUp: 'records' });
+    owned.adopt(child);
+    const outcome = owned.terminate();
+    await flush();
+    await endLeader(0);
+    expect(await outcome).toBe('complete');
+    expect(signals).toEqual([`hangUp:${LEADER}`]);
+  });
+
+  test('never hangs up a leader that is known to have exited, though its session outlived it', async () => {
+    const { owned, child, endLeader, signals } = harness({ hangUp: 'records', endsOn: 'SIGTERM' });
+    owned.adopt(child);
+    await endLeader(0, { groupEmpty: false });
+    expect(await owned.terminate()).toBe('complete');
+    expect(signals).toEqual(['SIGTERM']);
+  });
 });

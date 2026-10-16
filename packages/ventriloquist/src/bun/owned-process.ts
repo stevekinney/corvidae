@@ -117,7 +117,8 @@ export class OwnedProcess {
     if (this.#exiting) await this.#exit;
     if (this.#exited && this.#emptyAtExit) return scope;
     const { operations, clock, graceMilliseconds, observationMilliseconds, hangUp } = this.#options;
-    if (hangUp !== undefined) {
+    // A leader known to have exited is never hung up: its pid may belong to another process by now.
+    if (hangUp !== undefined && !this.#exited) {
       let hungUp = true;
       try {
         hangUp(child.pid);
@@ -125,7 +126,13 @@ export class OwnedProcess {
         // A courtesy only: the TERM and KILL sweep below is what ends the scope.
         hungUp = false;
       }
-      if (hungUp) await this.#headStart();
+      if (hungUp) {
+        await this.#headStart();
+        // The leader may have exited, and its session emptied, during the head start; then the
+        // number is no longer one to sweep.
+        if (this.#exiting) await this.#exit;
+        if (this.#exited && this.#emptyAtExit) return scope;
+      }
     }
     const ended = await terminateProcessGroup({
       group: child.pid,
