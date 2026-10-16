@@ -109,7 +109,8 @@ describe('copy and interrupt', () => {
         key('c', chord),
         context({ platform, captured, hasSelection: () => true }),
       );
-      expect(decision).toEqual(BROWSER);
+      // The browser keeps the key, and the decision names the copy so it can be announced.
+      expect(decision).toEqual({ ...BROWSER, effect: 'copy-selection' });
     }
   });
 

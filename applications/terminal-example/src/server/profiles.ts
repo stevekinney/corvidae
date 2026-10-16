@@ -14,6 +14,8 @@ const FIXTURES = join(import.meta.dirname, 'fixtures');
 export const REPLAY_FIXTURE = join(FIXTURES, 'replay.ansi');
 export const FULLSCREEN_PROGRAM = join(FIXTURES, 'fullscreen.sh');
 export const DIAGNOSTIC_PROGRAM = join(FIXTURES, 'diagnostic.sh');
+export const ESCAPED_PROGRAM = join(FIXTURES, 'escaped.sh');
+export const LINKS_FIXTURE = join(FIXTURES, 'links.ansi');
 
 /** Who the shell runs as, read from the operating system rather than from the page. */
 export type LocalUser = {
@@ -131,14 +133,29 @@ export function resolveProfile(
           acceptsInput: false,
         },
       };
+    case 'escaped':
+      return {
+        grant,
+        launch: {
+          mode: 'pty',
+          profile: {
+            executable: '/bin/sh',
+            argumentList: [ESCAPED_PROGRAM],
+            workingDirectory: FIXTURES,
+            environment: programEnvironment(context),
+          },
+          dimensions: DEFAULT_DIMENSIONS,
+        },
+      };
     case 'readonly-output':
+    case 'links':
       return {
         grant: 'read-only',
         launch: {
           mode: 'pipe',
           profile: {
             executable: '/bin/cat',
-            argumentList: [REPLAY_FIXTURE],
+            argumentList: [identifier === 'links' ? LINKS_FIXTURE : REPLAY_FIXTURE],
             workingDirectory: FIXTURES,
             environment: programEnvironment(context),
           },

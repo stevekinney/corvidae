@@ -29,7 +29,29 @@ export async function requestSession(
   readOnly: boolean,
   fetcher: Fetch = (input, init) => fetch(input, init),
 ): Promise<SessionOutcome> {
-  const body: SessionRequest = { profile, readOnly };
+  return postSession({ profile, readOnly } satisfies SessionRequest, fetcher);
+}
+
+/**
+ * The review controls' `failed` fault: ask for a profile identifier the server does not own. The
+ * request is otherwise the real one, so the refusal is the server's own (`400`), and still no
+ * executable, argument or environment is sent.
+ */
+export function requestUnknownProfile(
+  fetcher: Fetch = (input, init) => fetch(input, init),
+): Promise<SessionOutcome> {
+  return postSession({ profile: 'review-unknown-profile', readOnly: false }, fetcher);
+}
+
+/**
+ * The review controls' `denied` fault: a ticket the server never issued. The server redeems the
+ * ticket in `authorize`, so reversing the real one is a real refusal of the connection.
+ */
+export function reverseTicket(ticket: string): string {
+  return ticket.split('').toReversed().join('');
+}
+
+async function postSession(body: unknown, fetcher: Fetch): Promise<SessionOutcome> {
   const response = await fetcher('/session', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

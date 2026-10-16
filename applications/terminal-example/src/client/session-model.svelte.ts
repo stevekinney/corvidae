@@ -7,7 +7,18 @@ import {
 
 import { PROFILE_DESCRIPTIONS, type ProfileIdentifier } from '../shared/profile-catalog.ts';
 import { terminalStateFor } from './channel-view.ts';
-import { describeRefusal, requestSession, waitForFreeSlot } from './session-request.ts';
+import {
+  describeRefusal,
+  requestSession,
+  requestUnknownProfile,
+  reverseTicket,
+  waitForFreeSlot,
+} from './session-request.ts';
+
+/** Where the review controls hold the next session until the reviewer releases it. */
+export type HoldPoint = 'none' | 'loading' | 'connecting';
+/** A refusal the review controls ask for on the next session. Both come from the real server. */
+export type FaultMode = 'none' | 'denied' | 'failed';
 
 /**
  * The page's one terminal session, as state the components read. It owns the order of events the
@@ -26,9 +37,16 @@ export class SessionModel {
   cleanupPending = $state(false);
   /** Bumped for every session, so a late answer for an earlier one is ignored. */
   generation = $state(0);
+  /** Review control: where the next session waits for `release()`. Delays the page's own steps only. */
+  hold = $state<HoldPoint>('none');
+  /** Review control: the point a session is waiting at right now, if any. */
+  held = $state<HoldPoint | undefined>(undefined);
+  /** Review control: the refusal to ask the real server for on the next session. */
+  fault = $state<FaultMode>('none');
 
   #geometry: TerminalGeometry | undefined;
   #attempt = 0;
+  #release: (() => void) | undefined;
 
   get description() {
     return PROFILE_DESCRIPTIONS[this.profile];
@@ -37,6 +55,7 @@ export class SessionModel {
   /** Start a new session with the chosen profile. Whatever session there was has been ended first. */
   async begin(): Promise<void> {
     const attempt = ++this.#attempt;
+    this.#releaseHold();
     // End what is running first, so the server's cleanup is already under way when it is asked for a new session.
     const previous = this.client;
     this.client = undefined;
@@ -46,7 +65,12 @@ export class SessionModel {
     if (attempt !== this.#attempt) return;
     this.message = undefined;
     this.cleanupPending = false;
-    const outcome = await requestSession(this.profile, this.readOnly).catch(() => undefined);
+    if (await this.#holdAt('loading', attempt)) return;
+    const outcome = await (
+      this.fault === 'failed'
+        ? requestUnknownProfile()
+        : requestSession(this.profile, this.readOnly)
+    ).catch(() => undefined);
     if (attempt !== this.#attempt) return;
     if (outcome === undefined) {
       this.#fail('failed', 'The server could not be reached.');
@@ -63,7 +87,7 @@ export class SessionModel {
     const client = new TerminalWebSocketClient({
       url: `ws://${window.location.host}/terminal?profile=${encodeURIComponent(this.profile)}`,
       sessionId: outcome.grant.sessionId,
-      ticket: outcome.grant.ticket,
+      ticket: this.fault === 'denied' ? reverseTicket(outcome.grant.ticket) : outcome.grant.ticket,
       requestedMode: this.readOnly ? 'read-only' : 'interactive',
       // The page is served from loopback over plain HTTP, which is the one place a plain socket is allowed.
       allowInsecureLoopback: true,
@@ -78,6 +102,7 @@ export class SessionModel {
       }
     });
     try {
+      if (await this.#holdAt('connecting', attempt)) return;
       const capabilities = await client.connect();
       if (attempt !== this.#attempt) return;
       this.state = terminalStateFor(client.state, capabilities);
@@ -91,13 +116,29 @@ export class SessionModel {
     }
   }
 
-  /** Cancel a session that is still loading or connecting. Nothing is replayed or kept. */
+  /**
+   * Cancel a session that is still loading or connecting. Nothing is replayed or kept. While
+   * backpressured there is nothing to cancel: the client refuses input locally and queues none, so
+   * the session, its output and its recovery are left as they are.
+   */
   cancel(): void {
+    if (this.state === 'backpressured') return;
+    this.showEmpty();
+  }
+
+  /** Review control: end the page's session without a replacement and show `empty`. */
+  showEmpty(): void {
     this.#attempt += 1;
+    this.#releaseHold();
     this.#discardClient();
     this.cleanupPending = false;
     this.message = undefined;
     this.state = 'empty';
+  }
+
+  /** Review control: let a session held at `loading` or `connecting` carry on. */
+  release(): void {
+    this.#releaseHold();
   }
 
   /** Ask the host to end the session. The result is the host's own cleanup report. */
@@ -149,6 +190,24 @@ export class SessionModel {
         'The server could not prove the process is gone, so it will not start another.';
       this.state = 'cleanup-incomplete';
     }
+  }
+
+  /** Wait here when the reviewer asked to hold at `point`. True when the session was replaced meanwhile. */
+  async #holdAt(point: Exclude<HoldPoint, 'none'>, attempt: number): Promise<boolean> {
+    if (this.hold === point) {
+      this.held = point;
+      await new Promise<void>((resolve) => {
+        this.#release = resolve;
+      });
+    }
+    return attempt !== this.#attempt;
+  }
+
+  #releaseHold(): void {
+    this.held = undefined;
+    const release = this.#release;
+    this.#release = undefined;
+    release?.();
   }
 
   #discardClient(): void {

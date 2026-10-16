@@ -320,6 +320,30 @@ test.describe('interrupt and copy', () => {
     // checked wherever the browser reports it; the byte assertion above holds in every engine.
     if (copied.length > 0) expect(copied.at(-1)).toMatch(/^developer@/);
   });
+
+  test('copying the selection announces it once and sends nothing', async ({ terminalPage }) => {
+    const page = await terminalPage.open();
+    await focusTerminal(page);
+    const mac = await isMac(page);
+    const chord = mac ? 'Meta+c' : 'Control+c';
+    await resetSent(page);
+    const row = page.locator('.cinder-terminal__viewport .xterm-rows > div').first();
+    const box = (await row.boundingBox())!;
+    await page.mouse.move(box.x + 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 120, box.y + box.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await focusTerminal(page);
+    await expect(page.locator('.xterm-selection div').first()).toBeVisible();
+    expect(await announcementText(page), 'selecting alone announces nothing').not.toContain(
+      'Terminal selection copied',
+    );
+    await page.keyboard.press(chord);
+    await expect
+      .poll(async () => await announcementText(page))
+      .toContain('Terminal selection copied');
+    expect(await sentBytes(page), 'a copy sends no terminal byte').toEqual([]);
+  });
 });
 
 test.describe('paste review', () => {
