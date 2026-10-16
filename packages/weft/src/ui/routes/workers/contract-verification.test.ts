@@ -300,6 +300,23 @@ describe('classifyContractFailure', () => {
     });
   });
 
+  test('keeps a quoted key that contains a colon in the rejected path', () => {
+    expect(
+      classifyContractFailure('activity result["a: b"]: undefined is not valid worker JSON'),
+    ).toEqual({
+      kind: 'strict-payload',
+      path: 'activity result["a: b"]',
+      message: 'undefined is not valid worker JSON',
+    });
+    expect(
+      classifyContractFailure('value["x: y"][0]: sparse array slot is not valid worker JSON'),
+    ).toEqual({
+      kind: 'strict-payload',
+      path: 'value["x: y"][0]',
+      message: 'sparse array slot is not valid worker JSON',
+    });
+  });
+
   test('recognizes a WorkerJsonValidationError-shaped error by name and path', () => {
     const error = Object.assign(new TypeError('details.at: symbol is not valid worker JSON'), {
       name: 'WorkerJsonValidationError',
