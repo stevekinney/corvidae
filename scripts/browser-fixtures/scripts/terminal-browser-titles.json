@@ -36,6 +36,7 @@
     "the accessible output dialog › every control is a labelled button and Copy puts the snapshot on the clipboard",
     "the accessible output dialog › listed links are visible https text only, and a keyboard press activates one",
     "the accessible output dialog › opens a frozen snapshot, goes stale on new output, refreshes on request and closes to Export",
+    "the accessible output dialog › the snapshot fixtures report ready with their dialog already open",
     "the output tools › search finds literal text, steps through matches and closes back to Search",
     "the output tools › the three clears are local: nothing is sent and the right content goes",
     "the output tools › the tools stay available when the view is read-only and after the process exits"

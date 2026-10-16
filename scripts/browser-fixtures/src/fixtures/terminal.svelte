@@ -107,6 +107,20 @@
       (candidate) => candidate.textContent?.trim() === label,
     );
 
+  /**
+   * A control of the terminal's own, once it exists. The engine reports ready a flush before the
+   * output tools have read it (their toolbar appears when the inspection effect runs), so a step
+   * that clicks at once can find nothing, do nothing, and wait for a dialog that never opens.
+   */
+  const untilButton = async (label: string): Promise<HTMLButtonElement> => {
+    let found = button(label);
+    while (found === undefined) {
+      await frames(1);
+      found = button(label);
+    }
+    return found;
+  };
+
   const untilDialog = async (): Promise<void> => {
     while (document.querySelector('[role="dialog"], dialog[open]') === null) await frames(1);
     await frames(2);
@@ -125,7 +139,7 @@
 
   const runStep = async (step: FixtureStep): Promise<void> => {
     if (step === 'capture') {
-      button('Capture terminal keys')?.click();
+      (await untilButton('Capture terminal keys')).click();
       // The shared sweep blurs the focused element once the page is visible, which releases
       // capture as it should. Capture again after that one blur so the resting state is the one
       // the fixture names; a reader's own blur afterwards behaves normally.
@@ -143,7 +157,7 @@
       dispatchPaste('echo one\necho two\u001b[31m\n');
       await untilDialog();
     } else {
-      button('Export')?.click();
+      (await untilButton('Export')).click();
       await untilDialog();
       if (step === 'export-stale') {
         session.write('output after the snapshot\r\n');

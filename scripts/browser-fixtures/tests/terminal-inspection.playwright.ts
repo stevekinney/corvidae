@@ -86,6 +86,16 @@ test.describe('the accessible output dialog', () => {
       .toContain('Terminal snapshot truncated');
   });
 
+  test('the snapshot fixtures report ready with their dialog already open', async ({
+    terminalPage,
+  }) => {
+    for (const fixture of ['snapshot-modal', 'snapshot-modal-stale', 'snapshot-modal-truncated']) {
+      const page = await terminalPage.open({ fixture });
+      // No waiting: ready must mean the step has finished, or a sweep starts on a bare terminal.
+      expect(await dialog(page).isVisible(), fixture).toBe(true);
+    }
+  });
+
   test('a replaced session leaves the snapshot readable and no longer refreshable', async ({
     terminalPage,
   }) => {

@@ -22,7 +22,9 @@ export const TERMINAL_FILE_FILTER = String.raw`/tests/terminal-[^/]*\.playwright
  * terminal image while every guard still passes. This command is about the terminal, so the scope
  * is forced to it whatever the caller had set.
  */
-export function terminalEnvironment(base: Readonly<Record<string, string | undefined>>) {
+export function terminalEnvironment(
+  base: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> {
   return { ...base, CINDER_TEST_COMPONENTS: 'terminal' };
 }
 
