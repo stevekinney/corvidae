@@ -302,6 +302,11 @@ function attachListeners(
  * void setup;
  * ```
  */
+/** Start disposing `engine` without waiting; a cleanup failure must not mask the error being reported. */
+function disposeInBackground(engine: Engine): void {
+  engine[Symbol.asyncDispose]().catch(() => {});
+}
+
 export function setupServiceWorker(
   options: SetupServiceWorkerOptions = {},
 ): Promise<SetupServiceWorkerResult> {
@@ -381,11 +386,7 @@ export function setupServiceWorker(
       // asynchronous because `register` may leave work in flight (a workflow refresh refuses
       // synchronous disposal), and it is not awaited: a refresh source that ignores its abort
       // signal would otherwise hold back the registration error, which the caller needs now.
-      if (options.engine === undefined) {
-        engine[Symbol.asyncDispose]().catch(() => {
-          // Best-effort: a cleanup failure must not mask the registration error.
-        });
-      }
+      if (options.engine === undefined) disposeInBackground(engine);
       throw wrapped;
     },
   );
