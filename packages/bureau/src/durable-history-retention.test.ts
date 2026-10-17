@@ -6,10 +6,7 @@
  * keeps holding once the floor moves. Every window is measured on the bureau's
  * injected manual clock, which these tests move with `setTime`.
  */
-import {
-  createManualRuntimeServices,
-  type ManualRuntimeServices,
-} from '@lostgradient/lifecycle';
+import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import type { DurableEventEnvelope, GenerateFunction } from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
@@ -187,9 +184,9 @@ describe('eventRetention', () => {
       const subscription = bureau.subscribeEventHistory(owner, (event) => received.push(event), {
         since: cursor,
       });
-      expect(await pollUntil(() => received.some((event) => event.kind === DURABLE_HISTORY_GAP_KIND))).toBe(
-        true,
-      );
+      expect(
+        await pollUntil(() => received.some((event) => event.kind === DURABLE_HISTORY_GAP_KIND)),
+      ).toBe(true);
       subscription.unsubscribe();
       expect(received.filter((event) => event.kind === DURABLE_HISTORY_GAP_KIND)).toHaveLength(1);
       expect(received[0]?.kind).toBe(DURABLE_HISTORY_GAP_KIND);
@@ -293,15 +290,16 @@ describe('the audit trail beside an advancing floor', () => {
 });
 
 describe('taskRetention', () => {
-  it('deletes a terminal task once it is past 30 days by default, and not one inside the window', async () => {
+  it('deletes a terminal task once it is older than 30 days by default, and not one inside the window', async () => {
     await withBureau(async ({ bureau, at }) => {
       const run = await settledRun(bureau);
 
-      at(30 * DAY_MS - 1);
+      // A task exactly as old as the window is not older than it.
+      at(30 * DAY_MS);
       await bureau.runDurableMaintenance();
       expect(bureau.getRun(run.id)).toBeDefined();
 
-      at(30 * DAY_MS);
+      at(30 * DAY_MS + 1);
       await bureau.runDurableMaintenance();
       expect(bureau.getRun(run.id)).toBeUndefined();
     });
@@ -363,7 +361,7 @@ describe('taskRetention', () => {
 
         // `taskRetention` equals the binding retention, and the horizon passes
         // before the ledger sweep has run: the binding is expired but stored.
-        at(60_000);
+        at(60_001);
         expect(await bureau.locateRunCreationReceipt(locate)).toMatchObject({ status: 'expired' });
         await bureau.runDurableMaintenance();
 

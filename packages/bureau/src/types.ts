@@ -565,14 +565,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   eventRetention?: RetentionWindowOption;
   /**
    * COR-1477 — how long a terminal task (a run that completed, errored, or was
-   * aborted) is kept, measured from its terminal action on the runtime clock.
-   * Default `{ olderThan: 2592000000 }` (30 days); `'forever'` keeps every
-   * task. Durable maintenance removes a terminal task past the window through
+   * aborted) is kept, measured on the runtime clock from its closing
+   * `run.completed` or `run.aborted` action (`run.error` is followed by
+   * `run.completed`, so it does not start the window). Default
+   * `{ olderThan: 2592000000 }` (30 days); `'forever'` keeps every task.
+   * Durable maintenance removes a terminal task older than the window through
    * the run store, so Bureau's existing `run.removed` event fires for it and
    * everything keyed on the task releases its own state; deleting a task is
    * also what eventually releases a withdrawn agent's tombstone mount. A
-   * running task, and a terminal one still inside the window, is never
-   * removed. A task is also kept for as long as its run-creation binding
+   * running task, and a terminal one not yet older than the window, is never
+   * removed. Only tasks in this process's run store are candidates, so a
+   * terminal run from before a restart is not removed. A task is also kept for as long as its run-creation binding
    * ({@link BureauOptions.runCreationTerminalRetentionMs}) is stored, so an
    * exact retry of the request that created it always finds its task.
    * `olderThan` must be a finite, non-negative number; otherwise

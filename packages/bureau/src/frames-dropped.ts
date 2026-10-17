@@ -16,15 +16,23 @@
  *
  * After the marker the subscription resumes after the last cursor the reader
  * received, so the events the in-memory log still retains arrive next, in
- * order and without duplicates, and live delivery follows. An event the log has
- * already evicted is lost, and the marker is what tells the reader it may be.
- * The marker takes the position of the last event delivered, so a reader that
- * reconnects from its cursor does not skip anything the marker stood in front of.
+ * order and without duplicates, and live delivery follows. How much it can
+ * replay is whatever the log still holds (its `maxEvents`); an event the log
+ * has already evicted is lost, and the marker is what tells the reader it may
+ * be. The first retained event after the marker is then the oldest one left,
+ * not the one after the reader's cursor.
+ *
+ * The marker takes the position of the last event delivered (or the cursor the
+ * reader started from, when it has been sent nothing), so a reader that
+ * reconnects from its cursor does not skip anything the marker stood in front
+ * of. That means its `sequence` and `cursor` repeat the preceding event's: they
+ * are not unique across kinds, and a consumer must not use them as an SSE id
+ * with a skip-if-not-greater rule.
  *
  * @module frames-dropped
  */
 
-import type { ReplayLiveFeed, SequencedEventEnvelope } from '@lostgradient/weft';
+import { decodeCursor, type ReplayLiveFeed, type SequencedEventEnvelope } from '@lostgradient/weft';
 
 /** The `kind` of the marker that reports a live buffer overflow. */
 export const FRAMES_DROPPED_KIND = 'frames.dropped';
@@ -58,27 +66,36 @@ export function withFramesDroppedMarker<TEnvelope extends SequencedEventEnvelope
   };
 }
 
-async function* subscribeWithMarker<TEnvelope extends SequencedEventEnvelope>(
+type SubscribeOptions<TEnvelope extends SequencedEventEnvelope> = Parameters<
+  ReplayLiveFeed<TEnvelope>['subscribe']
+>[0];
+
+/**
+ * Starts the first subscription before returning, as the feed itself does: an
+ * invalid `fromCursor` throws from this call, and the live listener is
+ * registered now rather than on the first pull. Only the resumptions after an
+ * overflow start lazily.
+ */
+function subscribeWithMarker<TEnvelope extends SequencedEventEnvelope>(
   feed: ReplayLiveFeed<TEnvelope>,
   lifetime: AbortSignal,
   createMarker: (position: FramesDroppedPosition) => TEnvelope,
-  options: Parameters<ReplayLiveFeed<TEnvelope>['subscribe']>[0],
-): AsyncGenerator<TEnvelope, void, undefined> {
-  const signal = options?.signal;
-  let resumeAfter = options?.fromCursor;
-  let lastSequence = -1;
+  options: SubscribeOptions<TEnvelope>,
+): AsyncIterable<TEnvelope> {
   // The caller hears about replay completing once, not once per resumption.
   let replayCompleteReported = false;
-  let resuming = false;
-  while (true) {
-    const reportReplayComplete = options?.onReplayComplete;
+  const reportReplayComplete = options?.onReplayComplete;
+  const start = (resumeAfter: string | undefined, resuming: boolean) => {
     // `replayLimit` bounds how much a cold subscription may replay. After an
-    // overflow the replay is bounded by the buffer that overflowed, which can
-    // exceed that limit, and failing the resumed stream would end it right after
-    // the marker announced that it continues.
-    const { replayLimit: _replayLimit, createReplayLimitError: _createError, ...unlimited } =
-      options ?? {};
-    const subscription = feed.subscribe({
+    // overflow the replay is bounded only by what the in-memory log still holds
+    // (its `maxEvents`), which can exceed that limit; failing the resumed stream
+    // would end it right after the marker announced that it continues.
+    const {
+      replayLimit: _replayLimit,
+      createReplayLimitError: _createError,
+      ...unlimited
+    } = options ?? {};
+    return feed.subscribe({
       ...(resuming ? unlimited : options),
       ...(resumeAfter === undefined ? {} : { fromCursor: resumeAfter }),
       ...(reportReplayComplete === undefined
@@ -91,13 +108,26 @@ async function* subscribeWithMarker<TEnvelope extends SequencedEventEnvelope>(
             },
           }),
     });
-    for await (const envelope of subscription) {
-      resumeAfter = envelope.cursor;
-      lastSequence = envelope.sequence;
-      yield envelope;
+  };
+  const first = start(options?.fromCursor, false);
+
+  async function* generate(): AsyncGenerator<TEnvelope, void, undefined> {
+    const signal = options?.signal;
+    // Where the reader is: the cursor it asked to continue after until it has
+    // been sent something, then the last event it received.
+    let resumeAfter = options?.fromCursor;
+    let lastSequence = resumeAfter === undefined ? -1 : (decodeCursor(resumeAfter) ?? -1);
+    let subscription = first;
+    while (true) {
+      for await (const envelope of subscription) {
+        resumeAfter = envelope.cursor;
+        lastSequence = envelope.sequence;
+        yield envelope;
+      }
+      if (signal?.aborted === true || lifetime.aborted) return;
+      yield createMarker({ sequence: lastSequence, cursor: resumeAfter ?? '-1' });
+      subscription = start(resumeAfter, true);
     }
-    if (signal?.aborted === true || lifetime.aborted) return;
-    yield createMarker({ sequence: lastSequence, cursor: resumeAfter ?? '-1' });
-    resuming = true;
   }
+  return generate();
 }

@@ -9,7 +9,10 @@ import { type BureauEventEnvelope, createBureauEventFeed } from './bureau-event-
 import { RunRegisteredEvent } from './events.ts';
 import { FRAMES_DROPPED_KIND } from './frames-dropped.ts';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import { attachRunEventFeed, type MutableAgentRunEventRegistry } from './run-event-feed-attachment.ts';
+import {
+  attachRunEventFeed,
+  type MutableAgentRunEventRegistry,
+} from './run-event-feed-attachment.ts';
 
 /** The value a pull produced; fails the test if the stream ended instead. */
 async function valueOf<T>(pull: Promise<IteratorResult<T>>): Promise<T> {
@@ -37,7 +40,6 @@ async function pullUntil<T>(
   }
   return collected;
 }
-
 
 /**
  * Subscribes, consumes the replay (`replayed` events), and returns the iterator
@@ -71,9 +73,13 @@ describe('the frames-dropped marker on the bureau event feed', () => {
 
     // Five arrive in one turn while the reader is parked: two fit the buffer,
     // the rest overflow it, which ends the underlying stream.
-    for (let index = 1; index <= 5; index += 1) feed.publish(new RunRegisteredEvent(`run-${index}`));
+    for (let index = 1; index <= 5; index += 1)
+      feed.publish(new RunRegisteredEvent(`run-${index}`));
 
-    const received = [await valueOf(parked), ...(await pullUntil(iterator, (events) => events.length >= 5))];
+    const received = [
+      await valueOf(parked),
+      ...(await pullUntil(iterator, (events) => events.length >= 5)),
+    ];
     const kinds = received.map((event) => event.kind);
     expect(kinds.filter((kind) => kind === FRAMES_DROPPED_KIND)).toHaveLength(1);
     // The marker stands in front of the resumed stream and takes the position of
@@ -106,9 +112,13 @@ describe('the frames-dropped marker on the bureau event feed', () => {
       1,
     );
 
-    for (let index = 1; index <= 5; index += 1) feed.publish(new RunRegisteredEvent(`run-${index}`));
+    for (let index = 1; index <= 5; index += 1)
+      feed.publish(new RunRegisteredEvent(`run-${index}`));
 
-    const received = [await valueOf(parked), ...(await pullUntil(iterator, (events) => events.length >= 5))];
+    const received = [
+      await valueOf(parked),
+      ...(await pullUntil(iterator, (events) => events.length >= 5)),
+    ];
     expect(received.map((event) => event.kind)).toEqual([
       FRAMES_DROPPED_KIND,
       'run.registered',
@@ -118,6 +128,62 @@ describe('the frames-dropped marker on the bureau event feed', () => {
       'run.registered',
     ]);
     expect(received.slice(1).map((event) => event.sequence)).toEqual([1, 2, 3, 4, 5]);
+
+    await iterator.return?.();
+    feed.dispose();
+  });
+
+  it('throws an invalid fromCursor from subscribe() itself and registers the live listener then', () => {
+    const feed = createBureauEventFeed({ bureauId: 'bureau-1' });
+    expect(() => feed.feed.subscribe({ fromCursor: 'x' })).toThrow('Invalid cursor');
+    feed.dispose();
+  });
+
+  it('positions the marker at the cursor the reader started from when it has been sent nothing', async () => {
+    const feed = createBureauEventFeed({ bureauId: 'bureau-1', liveBufferSize: 2 });
+    feed.publish(new RunRegisteredEvent('run-0'));
+    feed.publish(new RunRegisteredEvent('run-1'));
+    const { iterator, parked } = await parkInLivePhase(
+      (options) => feed.feed.subscribe({ ...options, fromCursor: '1' }),
+      0,
+    );
+
+    for (let index = 2; index <= 6; index += 1)
+      feed.publish(new RunRegisteredEvent(`run-${index}`));
+
+    expect(await valueOf(parked)).toMatchObject({
+      kind: FRAMES_DROPPED_KIND,
+      sequence: 1,
+      cursor: '1',
+    });
+    await iterator.return?.();
+    feed.dispose();
+  });
+
+  it('resumes at the oldest retained event, not a throw, when the log has evicted past the overflow', async () => {
+    const feed = createBureauEventFeed({ bureauId: 'bureau-1', liveBufferSize: 2, maxEvents: 3 });
+    feed.publish(new RunRegisteredEvent('run-0'));
+    const { iterator, parked } = await parkInLivePhase(
+      (options) => feed.feed.subscribe({ ...options, replayLimit: 2 }),
+      1,
+    );
+
+    // Six arrive while the reader is parked; the log keeps only the last three.
+    for (let index = 1; index <= 6; index += 1)
+      feed.publish(new RunRegisteredEvent(`run-${index}`));
+
+    const received = [
+      await valueOf(parked),
+      ...(await pullUntil(iterator, (events) => events.length >= 3)),
+    ];
+    expect(received.map((event) => event.kind)).toEqual([
+      FRAMES_DROPPED_KIND,
+      'run.registered',
+      'run.registered',
+      'run.registered',
+    ]);
+    // Sequences 1-3 were evicted: the reader resumes at the oldest one left.
+    expect(received.slice(1).map((event) => event.sequence)).toEqual([4, 5, 6]);
 
     await iterator.return?.();
     feed.dispose();
@@ -169,7 +235,10 @@ describe('the frames-dropped marker on the bureau event feed', () => {
     feed.publish(new RunRegisteredEvent('run-1'));
     feed.publish(new RunRegisteredEvent('run-2'));
 
-    const received = [await valueOf(parked), ...(await pullUntil(iterator, (events) => events.length >= 3))];
+    const received = [
+      await valueOf(parked),
+      ...(await pullUntil(iterator, (events) => events.length >= 3)),
+    ];
     expect(received.map((event) => event.kind)).toEqual([
       FRAMES_DROPPED_KIND,
       'run.registered',
@@ -215,6 +284,7 @@ describe('the frames-dropped marker on the run event feed attachment', () => {
 
     attachRunEventFeed('run-1', activeRun as never, registry, { now: () => 3 });
     const feed = registry.get('run-1')!;
+    expect(() => feed.feed.subscribe({ fromCursor: 'x' })).toThrow('Invalid cursor');
     emit();
     const { iterator, parked, replay } = await parkInLivePhase(
       (options) => feed.feed.subscribe(options),
@@ -225,7 +295,10 @@ describe('the frames-dropped marker on the run event feed attachment', () => {
     // Weft's default live buffer holds 1000; this overflows it in one turn.
     for (let count = 0; count < 1_005; count += 1) emit();
 
-    const received = [await valueOf(parked), ...(await pullUntil(iterator, (events) => events.length >= 1_005))];
+    const received = [
+      await valueOf(parked),
+      ...(await pullUntil(iterator, (events) => events.length >= 1_005)),
+    ];
     expect(received.filter((event) => event.kind === FRAMES_DROPPED_KIND)).toHaveLength(1);
     expect(received[0]).toMatchObject({
       kind: FRAMES_DROPPED_KIND,

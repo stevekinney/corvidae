@@ -187,6 +187,7 @@ export {
   createDurableEventProducer,
   DEFAULT_PAGE_LIMIT,
   DURABLE_HISTORY_GAP_KIND,
+  ReservedDurableEventKindError,
   RUN_DURABLE_EVENT_TYPES,
   UnsupportedDurableEventSchemaVersionError,
 } from './durable-event-history';

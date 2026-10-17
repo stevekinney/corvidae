@@ -43,7 +43,9 @@ import {
   DEFAULT_PAGE_LIMIT,
   DURABLE_HISTORY_GAP_KIND,
   type DurableEventHistory,
+  ReservedDurableEventKindError,
 } from './durable-event-history';
+import { FRAMES_DROPPED_KIND } from './frames-dropped';
 import {
   ActionEvent,
   type BureauEventMap,
@@ -56,7 +58,7 @@ import {
   ReviewSupersededEvent,
 } from './events';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
-import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauDiagnostic } from './types';
 
 async function createMemoryStorage(): Promise<Storage> {
@@ -1976,46 +1978,116 @@ describe('createDurableEventHistory', () => {
       await history.dispose();
     });
 
-    it('delivers the gap event once to an open subscription whose undelivered backlog retain() overtakes mid-replay (COR-1477)', async () => {
+    it('delivers the gap event once to an open subscription whose undelivered backlog retain() overtakes mid-replay, naming the last event it was sent (COR-1477)', async () => {
       const storage = await createMemoryStorage();
       const runtime = createManualRuntimeServices();
       const owner = { kind: 'run' as const, id: 'run-1' };
+      const other = { kind: 'run' as const, id: 'run-2' };
       const total = 200;
+
+      // Even sequences belong to `owner`, odd ones to `other`, so what the feed
+      // has walked (sequence 127) and what the subscriber was sent (126) differ.
+      const writer = createDurableEventHistory(storage, runtime);
+      for (let index = 0; index < total; index += 1) {
+        await writer.record(
+          index % 2 === 0 ? owner : other,
+          'step.completed',
+          { index },
+          { emittedAtMs: index },
+        );
+      }
 
       // The third watermark read is the load of the second replay page: the
       // first page costs two reads (a snapshot and its confirmation).
-      const writer = createDurableEventHistory(storage, runtime);
-      for (let index = 0; index < total; index += 1) {
-        await writer.record(owner, 'step.completed', { index }, { emittedAtMs: index });
-      }
-
       const barrier = createReplayGateBarrier(storage, KEYS.fleetEventWatermark(), 3);
       const history = createDurableEventHistory(barrier.storage, runtime);
       const collector = createCollector();
       const subscription = history.subscribeEventHistory(owner, collector.push);
       await barrier.waitUntilGated();
-      // The consumer has been handed the first 128-record page and is paused
-      // before the next: it holds a backlog of 72 undelivered events.
-      await collector.waitForCount(128);
+      // The first 128-record page holds 64 of this owner's events; the
+      // consumer is paused before the next page with a backlog undelivered.
+      await collector.waitForCount(64);
 
       // Events 0-149 are older than the cutoff; `retainBefore` repeats Weft's
       // bounded `retain()` batches until the floor reaches sequence 150.
       expect(await writer.retainBefore(150)).toBe(150);
       barrier.release();
 
-      await collector.waitForSequence(total - 1);
+      await collector.waitForSequence(total - 2);
       const kinds = collector.events.map((event) => event.kind);
       expect(kinds.filter((kind) => kind === DURABLE_HISTORY_GAP_KIND)).toHaveLength(1);
       const gapIndex = kinds.indexOf(DURABLE_HISTORY_GAP_KIND);
       // Before any later event: everything before it is what was delivered.
-      expect(gapIndex).toBe(128);
+      expect(gapIndex).toBe(64);
       expect(collector.events[gapIndex]?.payload).toEqual({
-        requestedCursor: '127',
+        requestedCursor: '126',
         firstRetainedCursor: '150',
       });
       expect(collector.events.slice(gapIndex + 1).map((event) => event.sequence)).toEqual(
-        Array.from({ length: total - 150 }, (_, offset) => 150 + offset),
+        Array.from({ length: (total - 150) / 2 }, (_, offset) => 150 + offset * 2),
       );
+
+      subscription.unsubscribe();
+      await history.dispose();
+      await writer.dispose();
+    });
+
+    it('names the first gap, not the stale starting cursor, when the floor overtakes the subscription twice (COR-1477)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const owner = { kind: 'run' as const, id: 'run-1' };
+      const total = 200;
+      const writer = createDurableEventHistory(storage, runtime);
+      for (let index = 0; index < total; index += 1) {
+        await writer.record(owner, 'step.completed', { index }, { emittedAtMs: index });
+      }
+
+      // Reads 3 and 5 of the watermark are the loads of the second replay page
+      // and of the page that follows the first gap.
+      const gates = new Map(
+        [3, 5].map((read) => [
+          read,
+          { reached: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() },
+        ]),
+      );
+      let reads = 0;
+      const gated = new Proxy(storage, {
+        get(target, property, receiver) {
+          if (property === 'get') {
+            return async (key: string): Promise<Uint8Array | null> => {
+              if (key === KEYS.fleetEventWatermark()) {
+                reads += 1;
+                const gate = gates.get(reads);
+                if (gate) {
+                  gate.reached.resolve();
+                  await gate.release.promise;
+                }
+              }
+              return target.get(key);
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const history = createDurableEventHistory(gated, runtime);
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+
+      await gates.get(3)?.reached.promise;
+      await writer.retainBefore(140);
+      gates.get(3)?.release.resolve();
+      await gates.get(5)?.reached.promise;
+      await writer.retainBefore(150);
+      gates.get(5)?.release.resolve();
+
+      await collector.waitForSequence(total - 1);
+      const gaps = collector.events.filter((event) => event.kind === DURABLE_HISTORY_GAP_KIND);
+      expect(gaps.map((gap) => gap.payload)).toEqual([
+        { requestedCursor: '127', firstRetainedCursor: '140' },
+        // The second names the position the first left the subscriber at.
+        { requestedCursor: '139', firstRetainedCursor: '150' },
+      ]);
 
       subscription.unsubscribe();
       await history.dispose();
@@ -2051,6 +2123,22 @@ describe('createDurableEventHistory', () => {
     });
   });
 
+  describe('reserved kinds (COR-1477)', () => {
+    it.each([DURABLE_HISTORY_GAP_KIND, FRAMES_DROPPED_KIND])(
+      'refuses to record the synthesized kind %s',
+      async (kind) => {
+        const history = createDurableEventHistory(
+          await createMemoryStorage(),
+          createManualRuntimeServices(),
+        );
+        const failure = await rejectionOf(history.record({ kind: 'run', id: 'run-1' }, kind, {}));
+        expect(failure).toBeInstanceOf(ReservedDurableEventKindError);
+        expect(failure).toMatchObject({ kind });
+        await history.dispose();
+      },
+    );
+  });
+
   describe('retainBefore() (COR-1477)', () => {
     it('advances the floor over the contiguous prefix emitted before the cutoff and nothing newer', async () => {
       const storage = await createMemoryStorage();
@@ -2071,6 +2159,71 @@ describe('createDurableEventHistory', () => {
 
       // Nothing older than the cutoff is left at the head: a second pass is a no-op.
       expect(await history.retainBefore(250)).toBe(0);
+
+      await history.dispose();
+    });
+
+    it('keeps an event appended while the boundary scan runs, even when every event the scan saw is older (COR-1477)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const writer = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+      await writer.record(owner, 'old.a', {}, { emittedAtMs: 100 });
+      await writer.record(owner, 'old.b', {}, { emittedAtMs: 200 });
+
+      // A fresh event commits the moment the scan of the retained events ends.
+      let injected = false;
+      const proxied = new Proxy(storage, {
+        get(target, property, receiver) {
+          if (property === 'scan') {
+            return (prefix: string, options?: Parameters<Storage['scan']>[1]) => {
+              const inner = target.scan(prefix, options);
+              if (injected || prefix !== KEYS.fleetEventPrefix()) return inner;
+              injected = true;
+              return (async function* () {
+                yield* inner;
+                await writer.record(owner, 'fresh', {}, { emittedAtMs: 10_000 });
+              })();
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const maintenance = createDurableEventHistory(proxied, runtime);
+
+      expect(await maintenance.retainBefore(1_000)).toBe(2);
+      expect(injected).toBe(true);
+      const page = await writer.page(owner, { since: '1' });
+      expect('events' in page && page.events.map((event) => event.kind)).toEqual(['fresh']);
+
+      await maintenance.dispose();
+      await writer.dispose();
+    });
+
+    it('deletes the dedupe markers of the events it removed and keeps those of the events it kept (COR-1477)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'session-1' };
+      await history.record(owner, 'session.saved', {}, { dedupeKey: '1', emittedAtMs: 100 });
+      await history.record(owner, 'session.saved', {}, { dedupeKey: '2', emittedAtMs: 5_000 });
+      expect(await history.wasRecorded(owner, 'session.saved', '1')).toBe(true);
+
+      expect(await history.retainBefore(1_000)).toBe(1);
+
+      // The aged-out entry reads as not recorded, so a redelivery records it again
+      // instead of failing against a marker with no event behind it; the other stays.
+      expect(await history.wasRecorded(owner, 'session.saved', '1')).toBe(false);
+      expect(await history.wasRecorded(owner, 'session.saved', '2')).toBe(true);
+      const redelivered = await history.record(
+        owner,
+        'session.saved',
+        {},
+        { dedupeKey: '1', emittedAtMs: 6_000 },
+      );
+      expect(redelivered.kind).toBe('session.saved');
+      expect(await history.wasRecorded(owner, 'session.saved', '1')).toBe(true);
 
       await history.dispose();
     });

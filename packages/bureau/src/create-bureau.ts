@@ -288,6 +288,7 @@ import {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from './types';
+import { settledActionTimestamp } from './run-settlement';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { streamEventToFrame } from './websocket-frames';
 
@@ -7372,7 +7373,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1477 — removes every terminal task past {@link BureauOptions.taskRetention}
+   * COR-1477 — removes every terminal task older than {@link BureauOptions.taskRetention}
    * (default 30 days) through {@link deleteRun}, which removes the run from the
    * run store, so the store's `run.removed` event fires and Bureau's own
    * `run.removed` follows for dependents to release their state. A running
@@ -7391,9 +7392,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const cutoff = runtimeServices.clock.now() - retention.olderThan;
     const expired: string[] = [];
     for (const [runId, runState] of store.getState().runs) {
-      if (runState.status === 'running' || catalogRunIds.has(runId)) continue;
-      const settledAt = terminalActionTimestamp(runState.actions);
-      if (settledAt !== undefined && settledAt <= cutoff) expired.push(runId);
+      if (
+        runState.status === 'running' ||
+        runState.status === 'aborting' ||
+        catalogRunIds.has(runId)
+      ) {
+        continue;
+      }
+      // The closing action, not `terminalActionTimestamp`: a run between
+      // `run.error` and `run.completed` is still finishing.
+      const settledAt = settledActionTimestamp(runState.actions);
+      if (settledAt !== undefined && settledAt < cutoff) expired.push(runId);
     }
     if (expired.length === 0) return;
     const bound = (await runCreationLedger?.boundRunIds()) ?? new Set<string>();

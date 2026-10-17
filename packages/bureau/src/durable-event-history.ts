@@ -136,6 +136,7 @@ import {
 } from '@lostgradient/weft';
 
 import type { AgentDefinitions } from './agent-catalog';
+import { FRAMES_DROPPED_KIND } from './frames-dropped';
 import type { EventTimestampResolver } from './event-timestamp';
 import type {
   ActionEvent,
@@ -194,6 +195,9 @@ export interface DurableEventRecordOptions {
 
 /** The reserved storage-key prefix for {@link DurableEventRecordOptions.dedupeKey} markers — never a Weft-reserved prefix (see `WEFT_RESERVED_KEY_PREFIXES`). */
 const DEDUPE_MARKER_PREFIX = 'outbox-dedupe:';
+
+/** How many orphaned dedupe markers one storage batch deletes. */
+const RECONCILE_BATCH_SIZE = 100;
 
 function dedupeMarkerKey(owner: DurableEventOwner, kind: string, dedupeKey: string): string {
   return `${DEDUPE_MARKER_PREFIX}${encodeOwner(owner)}:${kind}:${dedupeKey}`;
@@ -659,6 +663,27 @@ export interface DurableHistoryGapPayload {
 }
 
 /**
+ * The kinds {@link DurableEventHistory.record} refuses: each is a signal a
+ * stream synthesizes for its reader, and a stored record carrying one would be
+ * indistinguishable from the signal.
+ */
+const RESERVED_DURABLE_EVENT_KINDS: ReadonlySet<string> = new Set([
+  DURABLE_HISTORY_GAP_KIND,
+  FRAMES_DROPPED_KIND,
+]);
+
+/** Thrown by {@link DurableEventHistory.record} for a reserved synthetic `kind`. */
+export class ReservedDurableEventKindError extends Error {
+  readonly kind: string;
+
+  constructor(kind: string) {
+    super(`Durable event kind "${kind}" is reserved for a signal a stream synthesizes.`);
+    this.name = 'ReservedDurableEventKindError';
+    this.kind = kind;
+  }
+}
+
+/**
  * Builds the gap event for a Weft `fleet:gap` envelope, or `undefined` when
  * `envelope` is not a well-formed one.
  */
@@ -666,7 +691,7 @@ function toGapEnvelope(
   envelope: FleetEventEnvelope,
   owner: DurableEventOwner,
   emittedAtMs: number,
-  walkedCursor: string | undefined,
+  deliveredCursor: string | undefined,
 ): DurableEventEnvelope | undefined {
   const payload = envelope.payload;
   if (typeof payload !== 'object' || payload === null) return undefined;
@@ -676,9 +701,10 @@ function toGapEnvelope(
     return undefined;
   }
   const gap: DurableHistoryGapPayload = {
-    // A subscription that has already walked part of the feed continues after
-    // the cursor it reached; one that has not continues after its `since`.
-    requestedCursor: walkedCursor ?? requestedCursor,
+    // A subscription that has been sent something continues after the last
+    // thing it was sent; one that has not continues after its `since`, which is
+    // what Weft's own `requestedCursor` carries.
+    requestedCursor: deliveredCursor ?? requestedCursor,
     firstRetainedCursor: encodeCursor(firstRetainedSequence),
   };
   return {
@@ -894,6 +920,7 @@ export function createDurableEventHistory(
     payload: unknown,
     options?: DurableEventRecordOptions,
   ): Promise<DurableEventEnvelope> {
+    if (RESERVED_DURABLE_EVENT_KINDS.has(kind)) throw new ReservedDurableEventKindError(kind);
     const emittedAtMs = options?.emittedAtMs ?? runtime.clock.now();
     const dedupeKey = options?.dedupeKey;
     if (dedupeKey === undefined) {
@@ -1056,29 +1083,24 @@ export function createDurableEventHistory(
     void deliver();
 
     async function deliver(): Promise<void> {
-      // The cursor of the last envelope the subscription walked, if any.
-      let walkedCursor: string | undefined;
+      // The cursor of the last envelope handed to the listener, a gap event
+      // included: what the subscriber has actually received, which is what a
+      // gap must name. Not the position the feed has walked to, which counts
+      // other owners' events and live events the subscriber has not been sent.
+      let deliveredCursor: string | undefined;
       try {
         for await (const envelope of feed.subscribe({
           ...(since === undefined ? {} : { fromCursor: since }),
           signal: combinedSignal,
           // The fleet-wide gap marker names no owner, so an owner-only filter
           // would drop it: admit it explicitly (COR-1477).
-          //
-          // The filter also sees every envelope the subscription walks, this
-          // owner's or not, which is what lets a gap name the cursor the
-          // subscriber had actually reached: Weft's own `requestedCursor` is
-          // only the one the subscription started from.
-          filterEnvelope: (candidate) => {
-            if (candidate.kind === 'fleet:gap') return true;
-            walkedCursor = candidate.cursor;
-            return candidate.workflowId === targetWorkflowId;
-          },
+          filterEnvelope: (candidate) =>
+            candidate.kind === 'fleet:gap' || candidate.workflowId === targetWorkflowId,
         })) {
           let mapped: DurableEventEnvelope;
           try {
             if (envelope.kind === 'fleet:gap') {
-              const gap = toGapEnvelope(envelope, owner, runtime.clock.now(), walkedCursor);
+              const gap = toGapEnvelope(envelope, owner, runtime.clock.now(), deliveredCursor);
               if (gap === undefined) {
                 throw new Error(
                   `Durable event history: fleet gap at sequence ${envelope.sequence} does not carry a recognized payload.`,
@@ -1101,6 +1123,7 @@ export function createDurableEventHistory(
             });
             return;
           }
+          deliveredCursor = mapped.cursor;
           try {
             listener(mapped);
           } catch (error) {
@@ -1336,17 +1359,23 @@ export function createDurableEventHistory(
   }
 
   async function retainBefore(cutoffMs: number): Promise<number> {
+    // Read BEFORE the scan (AB-393's rule for `scanRunOwnerIdsFrom`): an event
+    // appended while the scan runs is newer than anything the scan judged, and
+    // reading the tail afterwards would carry the boundary past it.
+    const tailBeforeScan = await feed.snapshotTailSequence();
     // The first retained event emitted at or after the cutoff bounds what may
-    // go; with none, everything retained is older and the whole log may.
+    // go; with none, everything the scan saw is older and may go, up to the tail
+    // read above and no further.
     let boundary: number | undefined;
     for await (const envelope of feed.replay({})) {
+      if (envelope.sequence > tailBeforeScan) break;
       if (envelope.kind === 'fleet:gap') continue;
       if (envelope.emittedAtMs >= cutoffMs) {
         boundary = envelope.sequence;
         break;
       }
     }
-    const beforeSequence = boundary ?? (await feed.snapshotTailSequence()) + 1;
+    const beforeSequence = boundary ?? tailBeforeScan + 1;
     let deleted = 0;
     // `retain()` deletes one bounded batch per call and advances the floor only
     // as far as that batch, so repeat until the floor reaches the boundary.
@@ -1355,7 +1384,47 @@ export function createDurableEventHistory(
     while ((await feed.snapshotRetentionFloor()) < beforeSequence) {
       deleted += await feed.retain({ beforeSequence });
     }
+    if (deleted > 0) await reconcileDedupeMarkers();
     return deleted;
+  }
+
+  /**
+   * Deletes the dedupe markers whose event retention removed. A marker is
+   * written in the same batch as its event and nothing else deletes it, so
+   * without this every outbox entry ever recorded would leave one behind
+   * forever; worse, a redelivery of an entry whose event has aged out would
+   * find the marker, find no event, and fail its compare-and-swap against it
+   * until the append budget ran out.
+   *
+   * The markers are listed BEFORE the retained events are read: a marker listed
+   * names an event that had already committed, so the read that follows sees it
+   * unless retention removed it, and a marker written after the listing is never
+   * a candidate.
+   */
+  async function reconcileDedupeMarkers(): Promise<number> {
+    const markerKeys: string[] = [];
+    for await (const [key] of storage.scan(DEDUPE_MARKER_PREFIX)) markerKeys.push(key);
+    if (markerKeys.length === 0) return 0;
+    const retainedMarkerKeys = new Set<string>();
+    for await (const envelope of feed.replay({})) {
+      if (envelope.workflowId === undefined || !isStoredDurableEventPayload(envelope.payload)) {
+        continue;
+      }
+      const dedupeKey = envelope.payload.dedupeKey;
+      if (dedupeKey === undefined) continue;
+      retainedMarkerKeys.add(
+        `${DEDUPE_MARKER_PREFIX}${envelope.workflowId}:${envelope.kind}:${dedupeKey}`,
+      );
+    }
+    const orphans = markerKeys.filter((key) => !retainedMarkerKeys.has(key));
+    for (let start = 0; start < orphans.length; start += RECONCILE_BATCH_SIZE) {
+      await storage.batch(
+        orphans
+          .slice(start, start + RECONCILE_BATCH_SIZE)
+          .map((key) => ({ type: 'delete' as const, key })),
+      );
+    }
+    return orphans.length;
   }
 
   function dispose(): Promise<void> {
@@ -1651,7 +1720,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
     // so a chain link never carries a failure into the next write. The first
     // write for an owner starts synchronously, as it did before the chain.
     const previous = writeChainsByOwner.get(ownerKey);
-    const write = previous === undefined ? work() : previous.then(work);
+    const write = previous === undefined ? work() : previous.then(work, work);
     writeChainsByOwner.set(ownerKey, write);
     void write.finally(() => {
       if (writeChainsByOwner.get(ownerKey) === write) writeChainsByOwner.delete(ownerKey);
