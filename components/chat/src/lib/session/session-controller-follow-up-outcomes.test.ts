@@ -250,6 +250,39 @@ describe('resending and receipts', () => {
   });
 });
 
+describe('a follow-up whose row a snapshot replaced', () => {
+  test('is reported instead of being resent as an empty turn', async () => {
+    const acknowledgement = deferred();
+    const harness = createHarness({
+      sendRunInput: async () => {
+        await acknowledgement.promise;
+      },
+    });
+    const run = harness.startRun();
+    await settle();
+    const sent = harness.controller.adapter.sendRunInput!(
+      'run-input',
+      { role: 'user', content: 'replaced' },
+      [],
+    );
+    await settle();
+    harness.releaseRun();
+    await run;
+    await settle();
+
+    // An authoritative snapshot for the same conversation arrives without the row.
+    harness.setConversation(createConversationHistory({ id: harness.conversation().id }));
+    acknowledgement.resolve();
+    await sent;
+    for (let index = 0; index < 5; index += 1) await settle();
+
+    expect(harness.turns).toHaveLength(1);
+    expect(harness.errors.map((error) => String(error))).toEqual([
+      'Error: This follow-up was not resent: its message is no longer in the conversation',
+    ]);
+  });
+});
+
 describe('browser-owned runs', () => {
   test('do not offer follow-ups, and a second turn during the run is refused as before', async () => {
     const gate = deferred();

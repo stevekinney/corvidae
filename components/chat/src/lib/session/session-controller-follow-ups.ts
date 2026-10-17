@@ -124,6 +124,18 @@ export function createFollowUpQueue({
       )
       .sort((a, b) => a.sequence - b.sequence)[0];
     if (!first) return;
+    if (!rowIsVisible(first)) {
+      // A snapshot adopted after the run ended replaced its row. Sending a turn now
+      // would carry no user message, so the input would vanish; report it instead.
+      first.state = 'failed';
+      const error = new Error(
+        'This follow-up was not resent: its message is no longer in the conversation',
+      );
+      reportError(error);
+      first.settled.reject(error);
+      void promoteNext();
+      return;
+    }
     // The next run's own end handles the rest, so they go out in order.
     try {
       await runAsTurn(first.id);
