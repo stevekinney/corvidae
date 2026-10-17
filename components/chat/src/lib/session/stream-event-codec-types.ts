@@ -221,6 +221,16 @@ export type ChatSerializedRunError = {
    * producer written before this field existed keeps working unchanged.
    */
   retryable?: boolean;
+  /**
+   * The code the failing backend gave the error, verbatim, when it is not one
+   * of this vocabulary's.
+   *
+   * `code` is a closed set the client can branch on, so a backend's own code
+   * (an AG-UI `RUN_ERROR.code`, a provider's error string) cannot be put in it
+   * without becoming a lie or a new member. It travels here instead, and the
+   * client can show or log it. Optional: absent means the backend gave none.
+   */
+  backendCode?: string;
 };
 
 /** Provider-neutral events emitted by a chat response stream. */

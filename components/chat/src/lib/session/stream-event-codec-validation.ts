@@ -293,8 +293,8 @@ export function isChatAgentRunErrorCode(value: unknown): value is ChatAgentRunEr
 
 /**
  * Validates and rebuilds a `SerializedAgentRunError`-shaped value into
- * exactly `{ name, message, kind, code }`, plus `retryable` when the producer
- * stated one. Rebuilding — rather than validating and returning the parsed
+ * exactly `{ name, message, kind, code }`, plus `retryable` and `backendCode`
+ * when the producer stated them. Rebuilding — rather than validating and returning the parsed
  * value as-is — is what actually drops an incoming `cause`: nothing here
  * re-attaches it, by construction rather than by convention.
  *
@@ -311,11 +311,14 @@ export function toChatSerializedRunError(value: unknown): ChatSerializedRunError
   if (!isChatAgentRunErrorCode(value['code'])) return undefined;
   const retryable = value['retryable'];
   if (retryable !== undefined && typeof retryable !== 'boolean') return undefined;
+  const backendCode = value['backendCode'];
+  if (backendCode !== undefined && typeof backendCode !== 'string') return undefined;
   return {
     name: value['name'],
     message: value['message'],
     kind: value['kind'],
     code: value['code'],
     ...(retryable === undefined ? {} : { retryable }),
+    ...(backendCode === undefined ? {} : { backendCode }),
   };
 }
