@@ -172,9 +172,16 @@ describe('setupServiceWorker', () => {
   });
 
   it('keeps the registration error when disposing the engine it created fails too', async () => {
-    const dispose = spyOn(Engine.prototype, Symbol.asyncDispose).mockRejectedValue(
-      new Error('dispose exploded'),
-    );
+    const realDispose = Engine.prototype[Symbol.asyncDispose];
+    let realDisposal: Promise<void> | undefined;
+    // Dispose for real, so no engine outlives the test, and then report the cleanup as failed.
+    const dispose = spyOn(Engine.prototype, Symbol.asyncDispose).mockImplementation(async function (
+      this: Engine,
+    ) {
+      realDisposal = realDispose.call(this);
+      await realDisposal;
+      throw new Error('dispose exploded');
+    });
     try {
       await withFakeSelf(createFakeServiceWorkerScope(), async () => {
         expect(
@@ -189,6 +196,7 @@ describe('setupServiceWorker', () => {
         ).toThrow('register exploded');
       });
       expect(dispose).toHaveBeenCalledTimes(1);
+      await realDisposal;
       // The background disposal's rejection is absorbed rather than surfacing unhandled.
       await new Promise<void>((resolve) => setImmediate(resolve));
     } finally {
