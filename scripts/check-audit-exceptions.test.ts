@@ -130,7 +130,6 @@ describe('registry validation', () => {
   });
 
   test('requires every chain of the shipped registry to end at its vulnerable package', () => {
-    expect(auditExceptions.length).toBeGreaterThan(0);
     for (const shipped of auditExceptions) {
       for (const chain of shipped.allowedChains) {
         expect(chain.at(-1)).toBe(shipped.package);
@@ -320,43 +319,6 @@ describe('reachability from the lockfile', () => {
         'root > other > micromatch > braces',
       ]);
     });
-  });
-});
-
-describe('the shipped braces exception', () => {
-  const shipped = auditExceptions.find((candidate) => candidate.package === 'braces');
-  if (shipped === undefined) throw new Error('the shipped registry has no braces exception');
-
-  /** The workspaces and importers the shipped chains name, with Stylelint reaching `braces`. */
-  const shippedShape = (stylelintDependencies: string) => `{
-    "lockfileVersion": 1,
-    "workspaces": {
-      "": { "name": "corvidae", "devDependencies": { "stylelint": "^1", "stylelint-use-logical": "^2" }, },
-      "components/cinder": { "name": "@lostgradient/cinder", "devDependencies": { "stylelint": "^1" }, },
-    },
-    "packages": {
-      "@lostgradient/cinder": ["@lostgradient/cinder@workspace:components/cinder"],
-      "stylelint": ["stylelint@1.0.0", "", { "dependencies": ${stylelintDependencies} }, "sha"],
-      "stylelint-use-logical": ["stylelint-use-logical@2.0.0", "", { "peerDependencies": { "stylelint": "^1" } }, "sha"],
-      "micromatch": ["micromatch@4.0.8", "", { "dependencies": { "braces": "^3" } }, "sha"],
-      "new-helper": ["new-helper@1.0.0", "", { "dependencies": { "braces": "^3" } }, "sha"],
-      "braces": ["braces@3.0.3", "", {}, "sha"],
-    },
-  }`;
-
-  test('accepts the route Stylelint has through micromatch', () => {
-    const graph = buildGraph(shippedShape('{ "micromatch": "^4" }'));
-    expect(findUnauthorizedPaths(graph, 'braces', shipped.allowedChains)).toEqual([]);
-  });
-
-  test('rejects a route Stylelint gains through a package the exception never named', () => {
-    const graph = buildGraph(shippedShape('{ "micromatch": "^4", "new-helper": "^1" }'));
-    const paths = findUnauthorizedPaths(graph, 'braces', shipped.allowedChains) ?? [];
-    expect(paths.toSorted()).toEqual([
-      '@lostgradient/cinder > stylelint > new-helper > braces',
-      'corvidae > stylelint > new-helper > braces',
-      'corvidae > stylelint-use-logical > stylelint > new-helper > braces',
-    ]);
   });
 });
 

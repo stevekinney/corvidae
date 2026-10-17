@@ -20,8 +20,7 @@ export type AuditException = {
    * chain that stops short of `package` is rejected, because it would also accept whatever its
    * last package gains later. When the importer is a workspace, its edge to the next package must
    * be a development dependency, so a runtime path can never match. `corvidae` is the root
-   * workspace, which declares Stylelint and its `stylelint-use-logical` plugin (a peer-dependency
-   * importer of Stylelint) for the repository's own lint.
+   * workspace.
    */
   readonly allowedChains: readonly (readonly string[])[];
   readonly reason: string;
@@ -31,35 +30,4 @@ export type AuditException = {
   readonly reviewBy: string;
 };
 
-export const auditExceptions: readonly AuditException[] = [
-  {
-    advisory: 'GHSA-vfj7-8cjw-p6xm',
-    package: 'braces',
-    allowedChains: [
-      ['@lostgradient/cinder', 'stylelint', 'micromatch', 'braces'],
-      ['@lostgradient/cinder', 'stylelint', 'fast-glob', 'micromatch', 'braces'],
-      ['@lostgradient/cinder', 'stylelint', 'globby', 'micromatch', 'braces'],
-      ['@lostgradient/cinder', 'stylelint', 'globby', 'fast-glob', 'micromatch', 'braces'],
-      ['corvidae', 'stylelint', 'micromatch', 'braces'],
-      ['corvidae', 'stylelint', 'fast-glob', 'micromatch', 'braces'],
-      ['corvidae', 'stylelint', 'globby', 'micromatch', 'braces'],
-      ['corvidae', 'stylelint', 'globby', 'fast-glob', 'micromatch', 'braces'],
-      ['corvidae', 'stylelint-use-logical', 'stylelint', 'micromatch', 'braces'],
-      ['corvidae', 'stylelint-use-logical', 'stylelint', 'fast-glob', 'micromatch', 'braces'],
-      ['corvidae', 'stylelint-use-logical', 'stylelint', 'globby', 'micromatch', 'braces'],
-      [
-        'corvidae',
-        'stylelint-use-logical',
-        'stylelint',
-        'globby',
-        'fast-glob',
-        'micromatch',
-        'braces',
-      ],
-    ],
-    reason:
-      'braces <= 3.0.3 has a stack-exhaustion denial of service on deeply nested patterns and no patched release exists (upstream fix: micromatch/braces#72). It is reached only through the Stylelint development toolchain, which expands the repository’s own glob patterns and never untrusted input.',
-    trackingIssue: 'COR-1423',
-    reviewBy: '2026-10-31',
-  },
-];
+export const auditExceptions: readonly AuditException[] = [];

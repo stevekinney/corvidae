@@ -39,7 +39,7 @@
  * live, so they are excluded. Tests, docs, examples, and generated output are
  * also excluded — this is a source-authoring rule.
  *
- * stylelint cannot express this (cross-file count baseline + per-reason
+ * A CSS linter cannot express this (cross-file count baseline + per-reason
  * classification + Svelte `<style>` extraction), so a scanned report with an
  * explicit reason allowlist is the simplest durable enforcement — mirroring
  * `check-platform-features.ts` and `check-no-cycle-imports.ts`.
@@ -164,8 +164,7 @@ function blankNonStyle(segment: string): string {
  * line-precise — a single file (e.g. color-picker.css) legitimately mixes a
  * `domain-rendering` hue spectrum, a `structural-pattern` checkerboard, and real
  * `migration-debt` shadows, so a file-level classification would be too coarse.
- * Mirrors the playground example-guard's inline-marker idiom and the existing
- * `/* stylelint-disable * /` convention in component CSS.
+ * Mirrors the playground example-guard's inline-marker idiom.
  *
  * `<reason>` must be `domain-rendering` or `structural-pattern` (the two
  * intentional classes); `migration-debt` is the implicit default and is never

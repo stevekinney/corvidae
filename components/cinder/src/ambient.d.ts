@@ -12,6 +12,6 @@ declare module '*.svelte' {
 // need a declaration to resolve against. This is the same wildcard that
 // bundler type packages ship (`vite/client.d.ts`). Note what it does not buy:
 // a wildcard ambient module satisfies the check without any file-existence
-// test, so a mistyped stylesheet path still type-checks. Stylelint and the
-// build cover that; the compiler does not.
+// test, so a mistyped stylesheet path still type-checks. The build covers
+// that; the compiler does not.
 declare module '*.css' {}

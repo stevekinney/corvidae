@@ -25,7 +25,7 @@
  * Run via `bun run --filter=@lostgradient/cinder platform:audit` (report) or
  * `platform:audit --strict` (gate; wired into `validate`).
  *
- * oxlint/stylelint cannot express this (cross-file inventory, the `@media` vs
+ * oxlint cannot express this (cross-file inventory, the `@media` vs
  * `@container` distinction, and the grandfathered baseline), so a scanned report
  * with an explicit tier table is the simplest durable enforcement — mirroring
  * `check-no-cycle-imports.ts`.

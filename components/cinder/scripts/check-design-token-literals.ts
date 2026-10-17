@@ -242,7 +242,7 @@ export const LITERAL_ALLOWLIST: Array<{ path: string; pattern: RegExp; reason: s
   // image-lightbox: the CSS close/nav `outline: 2px solid white` is a documented
   // exception (documentation/focus-ring-policy.md § Deviations — white-over-photo contrast).
   // It is not a token bypass but a deliberate literal white ring over a dark photo.
-  // Allowed via stylelint-disable and policy appendix; excluded here because it
+  // Allowed by the focus-ring policy appendix; excluded here because it
   // is outside our three targeted ring patterns (no 0 0 0 2px ring, no outline: 2px
   // in a focus-ring-width context — the white outline is a color-override, not a
   // width-only raw 2px focus ring).

@@ -2,7 +2,7 @@
 
 This document defines the approved strategies for `:focus-visible` rings in Cinder component CSS. Pick from this list. Do not invent a third approach.
 
-> [!NOTE] Default recipe Component `:focus-visible` rules should use **Strategy B** — the transparent-outline placeholder paired with `box-shadow: var(--_cinder-focus-ring-shadow)` — unless the component matches the documented SVG chart-mark exception below. The `cinder/no-focus-visible-colored-outline` Stylelint rule enforces this: colored `outline` channels are rejected outside `@media (forced-colors: active)`. Strategy A (a colored outline) is retained for the bare `:focus-visible` global default in `foundation.css` only.
+> [!NOTE] Default recipe Component `:focus-visible` rules should use **Strategy B** — the transparent-outline placeholder paired with `box-shadow: var(--_cinder-focus-ring-shadow)` — unless the component matches the documented SVG chart-mark exception below. Colored `outline` channels belong only inside `@media (forced-colors: active)`. Strategy A (a colored outline) is retained for the bare `:focus-visible` global default in `foundation.css` only.
 
 ## Token Reference
 
@@ -23,7 +23,7 @@ The default ring is tight. There is no offset band between the control and the r
 Use when:
 
 - The selector is the **bare `:focus-visible` global default** in `foundation.css`. That single low-specificity rule paints the baseline ring for any element a component CSS file does not own.
-- Otherwise, do not pick Strategy A for new component rules. The Stylelint rule will reject a colored `outline` in `:focus-visible`. Existing call sites that still use Strategy A should migrate to Strategy B opportunistically.
+- Otherwise, do not pick Strategy A for new component rules. A colored `outline` in `:focus-visible` is outside the policy. Existing call sites that still use Strategy A should migrate to Strategy B opportunistically.
 
 ```css
 .cinder-component:focus-visible {
@@ -189,21 +189,9 @@ A bordered control's resting border must not show inside the tight ring: togethe
 
 `.cinder-command-palette__input:focus-visible` paints no ring (`box-shadow: none`). The whole search row reads as the field and the caret shows focus; a ring around just the `<input>` left the search icon outside it and competed with the active option's fill. The rule keeps the transparent outline placeholder, and its `@media (forced-colors: active)` block repaints it with `Highlight`, so Windows High Contrast users still get a visible indicator.
 
-## Enforcement (Stylelint)
+## Enforcement
 
-The root `bun run lint` pipeline runs Stylelint over `packages/**/src/**/*.{css,svelte}` with the local `cinder/no-focus-visible-colored-outline` plugin (`scripts/stylelint/no-focus-visible-colored-outline.mjs`). The rule is configured at **`severity: error`**: every component-owned colored outline-only focus recipe has been migrated, so a colored `outline` in a non-forced-colors `:focus-visible` rule now fails the lint pipeline (non-zero exit) rather than emitting a tolerated warning. The only sanctioned colored-outline focus sites that remain are documented inline with a `stylelint-disable-next-line cinder/no-focus-visible-colored-outline -- <reason>` comment: the `foundation.css` Strategy A global default, the `:focus:not(:focus-visible)` reset, and the ImageLightbox white-over-photo allowlist (see the Deviations appendix).
-
-The rule:
-
-- Rejects colored `outline`, `outline-color`, `outline-style`, and `outline-width` declarations inside any non-forced-colors `:focus-visible` rule. Token aliases (`var(--cinder-ring-color)`, `CanvasText`, `currentColor`, `revert`, `auto`) are all rejected — only the exact transparent placeholder `outline: var(--cinder-ring-width) solid transparent` is permitted.
-- Allows colored outlines inside `@media (forced-colors: active)`. A comma-separated media query is treated as a forced-colors fallback only when **every** branch contains `(forced-colors: active)`; partial matches (e.g. `(forced-colors: active), (hover: hover)`) are rejected.
-- Permits `outline: none` inside `:focus-visible` only when preceded by a `/* cinder-focus-ring-owner: parent */` comment on the line above.
-
-Separate from the colored-outline allowlist above, `outline: none` inside a `:focus-visible` rule is permitted when a parent element owns the focus ring (it paints the ring via its own `box-shadow`, so the child must suppress the default outline rather than draw a second one). Mark each such site with the `/* cinder-focus-ring-owner: parent */` comment on the line directly above the `outline: none` declaration; the Stylelint rule already enforces that this comment is present before it allows the bare `outline: none`.
-
-The `box-shadow` half of Strategy B (the requirement to reference `var(--_cinder-focus-ring-shadow)` rather than reconstruct the formula longhand) is pinned by parser-based tests in `src/test/focus-ring-recipe.test.ts`. New components that follow Strategy B should be added to that test file as a regression target.
-
-Forced-colors fallbacks are exempt from the lint rule because `box-shadow` is suppressed in Windows High Contrast Mode — without an outline channel painted with a system color, the ring would vanish ([WCAG 2.4.7 Focus Visible](https://www.w3.org/WAI/WCAG21/Understanding/focus-visible.html) failure).
+No lint rule enforces this policy. Stylelint, which carried the `cinder/no-focus-visible-colored-outline` rule, was removed from the workspace in 2026-10 (COR-1423), so review is the guard: reject a colored `outline`, `outline-color`, `outline-style`, or `outline-width` in a non-forced-colors `:focus-visible` rule, and an `outline: none` there without a `/* cinder-focus-ring-owner: parent */` comment. The sanctioned colored-outline sites are the `foundation.css` Strategy A global default, the `:focus:not(:focus-visible)` reset, and the ImageLightbox white-over-photo allowlist (see the Deviations appendix). `src/test/focus-ring-recipe.test.ts` still pins the recipe on the selectors it names.
 
 ## Deviations Appendix
 
@@ -227,4 +215,4 @@ Forced-colors fallbacks are exempt from the lint rule because `box-shadow` is su
 
 Every converted selector that lacked one gained an `@media (forced-colors: active)` override (`ButtonText` for pressables/menuitems; B-inset close buttons use `outline-offset: calc(var(--cinder-ring-width) * -1)` so the HCM ring stays inside the clip). The toast shared forced-colors block was promoted from `outline-color: ButtonText` to a full `outline: var(--cinder-ring-width) solid ButtonText` so the transparent placeholder is overpainted. With the sweep complete, the Stylelint rule was promoted from `warning` to `error`.
 
-**ImageLightbox white-over-photo allowlist (documented exception, 2026-06).** `.lightbox-close` and `.lightbox-nav` (in `components/chat/src/lib/components/chat/message/image-lightbox.svelte`) keep `outline: 2px solid white`. These controls float over an arbitrary dimmed photo backdrop where the accent ring color cannot guarantee contrast; a literal white outline is the deliberate high-contrast choice, and a solid white outline is already preserved in Windows High Contrast Mode, so no forced-colors override is needed. Each is annotated with a `stylelint-disable-next-line cinder/no-focus-visible-colored-outline -- white-over-photo contrast` comment so the `error`-severity rule permits exactly these two sites.
+**ImageLightbox white-over-photo allowlist (documented exception, 2026-06).** `.lightbox-close` and `.lightbox-nav` (in `components/chat/src/lib/components/chat/message/image-lightbox.svelte`) keep `outline: 2px solid white`. These controls float over an arbitrary dimmed photo backdrop where the accent ring color cannot guarantee contrast; a literal white outline is the deliberate high-contrast choice, and a solid white outline is already preserved in Windows High Contrast Mode, so no forced-colors override is needed. These are the only two component sites the policy permits.
