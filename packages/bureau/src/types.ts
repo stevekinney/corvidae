@@ -698,6 +698,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * durable store: Weft fences each workflow to exactly one engine before its
    * generator runs, so a second process racing to resume the same workflow
    * fails closed instead of double-executing it.
+   *
+   * Under `'workflow-lease'`, run-ownership pruning (`runDurableMaintenance()`
+   * and the automatic maintenance timer) also skips any run whose workflow
+   * claim is currently live on any process; under `'none'` pruning is
+   * unchanged.
    */
   durableOwnership?: Pick<
     CreateRunEngineOptions,

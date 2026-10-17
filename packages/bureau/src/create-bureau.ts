@@ -6387,11 +6387,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * nothing has even been asked to retire.
    *
    * A candidate run (not in the retained set) is excluded from pruning —
-   * left in place for a later cycle — on any of three signals, the first
-   * two checked against the session's OWN metadata, never
-   * `runtime.durable.engine.get` (Codex/Copilot review, PR #568 — an
-   * earlier revision used that engine read and got both the "unknown run"
-   * case and the write-in-flight race below wrong):
+   * left in place for a later cycle — on any of four signals. None of them
+   * is `runtime.durable.engine.get` (Codex/Copilot review, PR #568 — an
+   * earlier revision used that run-state read and got both the "unknown
+   * run" case and the write-in-flight race below wrong, because workflow
+   * state cannot say whether a run's terminal outcome is fully durable):
    *
    * 1. `lastRequestAuthorities` still names the run. This map is written
    *    unconditionally at dispatch, in the SAME merge as
@@ -6424,6 +6424,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *    repopulated into `store` at boot, so a run this process never held
    *    can never be deleted by this process either, and correctly gets no
    *    protection here.
+   * 4. `runtime.durable!.engine.claimHolder(runId)` reports the run's
+   *    workflow-lease claim held by any process (COR-204). Checked last,
+   *    and only for a candidate the first three did not exclude, because
+   *    it is a storage read per candidate per update attempt; skipped
+   *    entirely under `durableOwnership: { ownership: 'none' }`, where no
+   *    claim exists. Unlike `engine.get`, it answers one narrow question,
+   *    whether some process still holds this run's live claim, and it can
+   *    only add an exclusion: no claim record or a stranded claim leaves
+   *    the decision to signals 1-3. Signals 2 and 3 are process-local, so
+   *    this is what protects a run still executing on ANOTHER instance
+   *    whose authority entry is already gone from the shared session store
+   *    (for example after `prunePersistedInvalidApprovalReviewState` on the
+   *    recovery path). An ordinary live run is protected by signal 1 in
+   *    every instance already. A claim a crashed instance never released
+   *    reads as held until its grace-adjusted expiry, so pruning that run
+   *    waits at most that long. A rejected read propagates out of the
+   *    updater like a rejected refresh: nothing is deleted and the pass is
+   *    diagnosed under `durable-maintenance`.
    *
    * The retained-owner set itself is REVALIDATED immediately before each
    * session's write, not read once for the whole pass (Codex review, PR
@@ -6446,17 +6464,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * that shared variable across iterations — including across an
    * individual call's own conflict retries — is race-free.
    *
-   * This does not close a genuinely cross-process race (another Bureau
-   * instance's write, committed after this process's fresh check but
-   * before this write lands) — no primitive here spans both the fleet
-   * feed and the session store in one atomic operation; see this issue's
-   * `followUps`. It DOES observe another instance's write that lands
-   * before the refresh runs, since `refreshRetainedRunOwnerIds` reads the
-   * same shared feed every writer appends to.
+   * Across instances sharing one backend, the pass observes another
+   * instance's write that lands before the refresh runs, since
+   * `refreshRetainedRunOwnerIds` reads the same shared feed every writer
+   * appends to, and under `'workflow-lease'` it leaves alone any run whose
+   * claim is live anywhere. Two states remain unprotected, because no
+   * primitive here spans the fleet feed and the session store in one atomic
+   * operation, and `claimHolder` is a point-in-time read, not a lock:
+   *
+   * - A terminal run whose claim was already released (Weft releases it
+   *   during terminal settlement, before Bureau's terminal persistence), on
+   *   another instance that still holds it in memory. That instance can
+   *   still record a `run.removed` (`deleteRun()`) or `review.*` event for
+   *   it after this pass prunes the entry; only that instance's own
+   *   signals 2 and 3 protect it.
+   * - Another instance's event for a candidate run that commits after this
+   *   attempt's refresh and before its session write.
    */
   async function pruneStaleRunOwnership(): Promise<void> {
     const sessionStore = runtime.sessionStore;
     if (!eventHistoryInstance || !sessionStore) return;
+    // `createRunEngine` defaults an omitted `ownership` to `'workflow-lease'`
+    // (AB-178), so only an explicit `'none'` turns the claim guard off.
+    const workflowLeaseOwnership =
+      (options.durableOwnership?.ownership ?? 'workflow-lease') === 'workflow-lease';
 
     let retainedRunOwners = await eventHistoryInstance.retainedRunOwnerIds();
     if (retainedRunOwners === undefined) return;
@@ -6547,6 +6578,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               // `hasActiveWrite` above already protects the write it
               // starts synchronously in the same call.
               if (store.getRun(runId) !== undefined) continue;
+              // COR-204: last, and only for a candidate the three signals
+              // above did not exclude, because it costs a storage read.
+              // `claimHolder` reads whether any process still holds this
+              // run's live workflow-lease claim, which is the one signal
+              // another instance's still-executing run leaves in shared
+              // storage once its authority entry is gone. A claim held
+              // anywhere defers pruning to a later pass; no claim record
+              // or a stranded one changes nothing. A rejection aborts this
+              // write exactly as a rejected refresh above does.
+              if (workflowLeaseOwnership) {
+                const claim = await runtime.durable!.engine.claimHolder(runId);
+                if (claim?.heldByAnyProcess) continue;
+              }
               delete nextOwners[runId];
               changed = true;
             }
