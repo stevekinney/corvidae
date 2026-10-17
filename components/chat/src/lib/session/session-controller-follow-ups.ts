@@ -24,13 +24,18 @@ type FollowUp = {
   sequence: number;
   /**
    * `queued` has not been handed to the hook yet, `handed` is with it,
-   * `acknowledged` was accepted and is waiting for its run to end, `delivered`
-   * is in the run's terminal history (or its fate could not be read),
-   * `cancelled` was accepted but never delivered and waits to be sent as an
-   * ordinary turn, `failed` was rejected or refused, and `promoted` became an
-   * ordinary turn.
+   * `acknowledged` was accepted, `delivered` is in its run's terminal history,
+   * `cancelled` was accepted but its run ended without delivering it, and waits
+   * to be sent as an ordinary turn, `failed` was rejected, refused or lost to a
+   * stop, and `promoted` became an ordinary turn.
    */
   state: 'queued' | 'handed' | 'acknowledged' | 'delivered' | 'cancelled' | 'failed' | 'promoted';
+  /**
+   * How the first run that ended after the hand-off ended, and the ids in the
+   * terminal history it carried. Together with the acknowledgement it decides
+   * the follow-up's fate; either can arrive first.
+   */
+  runEnd?: { outcome: RunOutcome; terminalIds: ReadonlySet<string> | undefined };
   /** Settles the promise the sender is waiting on. */
   settled: PromiseWithResolvers<void>;
 };
@@ -81,10 +86,47 @@ export function createFollowUpQueue({
     options.getConversation().id === record.conversationId &&
     options.getConversation().messages[record.id] !== undefined;
   const isRetired = (record: FollowUp): boolean => lifecycle.disposed || record.epoch !== epoch;
+  const invalidated = (): Error =>
+    new Error('This follow-up was not delivered: the session was invalidated first');
+  const isLive = (record: FollowUp): boolean =>
+    record.epoch === epoch && record.conversationId === options.getConversation().id;
   const markFailed = (record: FollowUp): void => {
     record.state = 'failed';
     if (rowIsVisible(record))
       update(markMessageDeliveryFailed(options.getConversation(), record.id));
+  };
+
+  /**
+   * Decides what became of an accepted follow-up once its run has ended. The run
+   * delivered it if its terminal history names the row. Otherwise the server
+   * cancelled it, including when the run ended with no terminal history at all:
+   * a stop by this client leaves it failed with a retry, and a completion or a
+   * failure leaves it to be sent as an ordinary turn.
+   */
+  const classify = (record: FollowUp): void => {
+    if (record.state !== 'acknowledged' || !record.runEnd) return;
+    const { outcome, terminalIds } = record.runEnd;
+    if (terminalIds?.has(record.id)) record.state = 'delivered';
+    else if (outcome === 'stopped') markFailed(record);
+    else record.state = 'cancelled';
+  };
+
+  /** Sends the earliest waiting follow-up as an ordinary turn, if no run is in progress. */
+  const promoteNext = async (): Promise<void> => {
+    if (lifecycle.disposed || lifecycle.running || hasRunInProgress()) return;
+    const first = [...records.values()]
+      .filter(
+        (record) => (record.state === 'queued' || record.state === 'cancelled') && isLive(record),
+      )
+      .sort((a, b) => a.sequence - b.sequence)[0];
+    if (!first) return;
+    // The next run's own end handles the rest, so they go out in order.
+    try {
+      await runAsTurn(first.id);
+      first.settled.resolve();
+    } catch (error) {
+      first.settled.reject(error);
+    }
   };
 
   const handOver = async (record: FollowUp): Promise<void> => {
@@ -94,10 +136,11 @@ export function createFollowUpQueue({
       return;
     }
     if (record.epoch !== epoch) {
-      record.state = 'failed';
-      record.settled.reject(
-        new Error('This follow-up was not delivered: the session was invalidated first'),
-      );
+      // Reported like a conversation change: the words must not vanish silently.
+      const error = invalidated();
+      markFailed(record);
+      reportError(error);
+      record.settled.reject(error);
       return;
     }
     if (options.getConversation().id !== record.conversationId) {
@@ -117,9 +160,10 @@ export function createFollowUpQueue({
         messageId: record.id,
       });
     } catch (error) {
-      // After an invalidation nothing the hook says is allowed to land.
+      // After an invalidation nothing the hook says is allowed to land, and
+      // the sender is told the input did not complete.
       if (isRetired(record)) {
-        record.settled.resolve();
+        record.settled.reject(invalidated());
         return;
       }
       markFailed(record);
@@ -135,6 +179,12 @@ export function createFollowUpQueue({
     if (rowIsVisible(record))
       update(clearMessageDeliveryStatus(options.getConversation(), record.id));
     record.settled.resolve();
+    // The run may have ended before this acknowledgement arrived. Now both
+    // halves are known, so the follow-up's fate is too.
+    if (record.runEnd) {
+      classify(record);
+      void promoteNext();
+    }
   };
 
   const takeNext = (): FollowUp | undefined => {
@@ -211,45 +261,30 @@ export function createFollowUpQueue({
     /**
      * Called when a run has ended (a run parked on an approval has not).
      *
-     * A follow-up the host accepted but the run's terminal history does not
-     * contain was cancelled by the server before it was delivered. Such a
-     * follow-up, and any still waiting for the hook, is sent as an ordinary turn
-     * on its existing row, one at a time with each run ending before the next
-     * starts, or failed with a retry when the user stopped the run.
+     * The run's outcome and terminal ids are stored on every follow-up handed to
+     * the hook, and each is classified once its acknowledgement is known too (see
+     * `classify`). A follow-up still waiting for the hook is sent as an ordinary
+     * turn, or failed with a retry when the user stopped the run; those go out
+     * one at a time, each run ending before the next starts.
      */
     async runEnded(outcome: RunOutcome, terminalIds?: ReadonlySet<string>): Promise<void> {
       if (lifecycle.disposed || lifecycle.running || hasRunInProgress()) return;
-      const isLive = (record: FollowUp): boolean =>
-        record.epoch === epoch && record.conversationId === options.getConversation().id;
       for (const record of records.values()) {
-        if (record.state !== 'acknowledged') continue;
-        // Without a terminal history there is nothing to read delivery from.
-        record.state =
-          terminalIds === undefined || terminalIds.has(record.id) ? 'delivered' : 'cancelled';
+        if ((record.state === 'handed' || record.state === 'acknowledged') && !record.runEnd) {
+          record.runEnd = { outcome, terminalIds };
+          classify(record);
+        }
       }
-      const waiting = [...records.values()]
-        .filter(
-          (record) => (record.state === 'queued' || record.state === 'cancelled') && isLive(record),
-        )
-        .sort((a, b) => a.sequence - b.sequence);
-      const first = waiting[0];
-      if (!first) return;
       if (outcome === 'stopped') {
-        for (const record of waiting) {
+        for (const record of records.values()) {
+          if (record.state !== 'queued' || !isLive(record)) continue;
           markFailed(record);
           record.settled.reject(
             new Error('This follow-up was not delivered: the run was stopped before it was sent'),
           );
         }
-        return;
       }
-      // The next run's own end handles the rest, so they go out in order.
-      try {
-        await runAsTurn(first.id);
-        first.settled.resolve();
-      } catch (error) {
-        first.settled.reject(error);
-      }
+      await promoteNext();
     },
     /** Retires every acknowledgement still owed, and drops what is waiting. */
     invalidate(): void {

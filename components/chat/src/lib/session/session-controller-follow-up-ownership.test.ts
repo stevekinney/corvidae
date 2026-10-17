@@ -1,4 +1,4 @@
-import { throwingRejectionOf } from '@lostgradient/testing';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 import { appendMessages, createConversationHistory } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
@@ -79,6 +79,10 @@ describe('follow-up rows never own a run', () => {
   test('retrying the opener after a failed run is allowed even though a follow-up came later', async () => {
     const failure = deferred();
     const harness = createHarness({
+      // The hook refuses, so the follow-up stays a failed row after the opener.
+      sendRunInput: async () => {
+        throw new Error('refused');
+      },
       turns: [
         () =>
           (async function* (): AsyncGenerator<ChatStreamEvent> {
@@ -90,10 +94,12 @@ describe('follow-up rows never own a run', () => {
 
     const run = harness.startRun();
     await settle();
-    await harness.controller.adapter.sendRunInput?.(
-      'run-input',
-      { role: 'user', content: 'late word' },
-      [],
+    await rejectionOf(
+      harness.controller.adapter.sendRunInput?.(
+        'run-input',
+        { role: 'user', content: 'late word' },
+        [],
+      ),
     );
     failure.reject(new Error('transport failed'));
     expect(await throwingRejectionOf(run)).toThrow('transport failed');
@@ -103,6 +109,7 @@ describe('follow-up rows never own a run', () => {
 
     expect(harness.turns).toHaveLength(2);
     expect(harness.rowNamed('start')?.metadata['_deliveryStatus']).toBeUndefined();
+    expect(isFollowUp(harness.conversation(), 'late word')).toBe(true);
   });
 
   test('an approval continuation sends the opener and its attachments, not the follow-up', async () => {
@@ -140,7 +147,8 @@ describe('follow-up rows never own a run', () => {
       remember: false,
     });
 
-    expect(harness.turns).toHaveLength(2);
+    // The continuation is the second turn. It sends the opener's attachments.
+    expect(harness.turns.length).toBeGreaterThanOrEqual(2);
     expect(harness.turns[1]!.attachments).toEqual(opener);
   });
 

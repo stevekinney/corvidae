@@ -137,6 +137,8 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     approvalOwners = new Map();
     pendingRetryMessageTokens = new Map();
     editingMessageIds = new Set();
+    // Follow-ups queued for the old conversation must not hold up the new one.
+    runInputQueue = Promise.resolve();
   });
 
   function dispatchCommand(
@@ -233,17 +235,27 @@ export function useChatCommandActions(options: CommandActionsOptions) {
       // never sees two in flight at once and a slow acknowledgement cannot be
       // overtaken. The conversation is read now, not when the call starts.
       const conversationId = options.getConversationIdentity();
-      const previous = runInputQueue;
-      const flight = dispatchCommand(
-        'sendRunInput',
-        (adapter) =>
-          adapter.sendRunInput
-            ? previous.then(() => adapter.sendRunInput?.(conversationId, message, attachments))
-            : undefined,
-        undefined,
-      );
-      // `dispatchCommand` reports a failure and settles, so the queue moves on.
-      runInputQueue = Promise.resolve(flight);
+      if (options.getAdapter()?.ordersRunInput) {
+        // The adapter orders its own input, so queueing here would only hold a
+        // later follow-up out of the transcript behind a slow acknowledgement.
+        void dispatchCommand(
+          'sendRunInput',
+          (adapter) => adapter.sendRunInput?.(conversationId, message, attachments),
+          undefined,
+        );
+      } else {
+        const previous = runInputQueue;
+        const flight = dispatchCommand(
+          'sendRunInput',
+          (adapter) =>
+            adapter.sendRunInput
+              ? previous.then(() => adapter.sendRunInput?.(conversationId, message, attachments))
+              : undefined,
+          undefined,
+        );
+        // `dispatchCommand` reports a failure and settles, so the queue moves on.
+        runInputQueue = Promise.resolve(flight);
+      }
     } else {
       void dispatchCommand(
         'sendMessage',

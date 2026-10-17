@@ -158,23 +158,6 @@ describe('follow-ups still queued when the run ends', () => {
     await first;
   });
 
-  test('a follow-up the hook already holds finishes its own delivery after the run ends', async () => {
-    const { harness, firstAck, send } = queuedBehindSlowAck();
-
-    const run = harness.startRun();
-    await settle();
-    const first = send('first');
-    await settle();
-    harness.releaseRun();
-    await run;
-
-    expect(deliveryStatus(harness.conversation(), 'first')).toBe('sending');
-    firstAck.resolve();
-    await first;
-    expect(deliveryStatus(harness.conversation(), 'first')).toBeUndefined();
-    expect(harness.turns).toHaveLength(1);
-  });
-
   test('a run parked on an approval has not ended, so nothing is promoted', async () => {
     const gate = deferred();
     const { harness, handed, firstAck, send } = queuedBehindSlowAck({
@@ -416,7 +399,7 @@ describe('invalidation and conversation changes', () => {
     await run;
   });
 
-  test('invalidate() retires a pending rejection too', async () => {
+  test('invalidate() retires a pending rejection, and tells the sender it did not complete', async () => {
     const ack = deferred();
     const harness = createHarness({ sendRunInput: () => ack.promise });
     const run = harness.startRun();
@@ -426,15 +409,17 @@ describe('invalidation and conversation changes', () => {
       { role: 'user', content: 'in flight' },
       [],
     );
+    const rejection = rejectionOf(sent);
     await settle();
 
     harness.controller.invalidate();
     ack.reject(new Error('refused'));
-    await sent;
-    harness.releaseRun();
 
+    expect(((await rejection) as Error).message).toContain('invalidated');
+    // Nothing lands: the row stays as it was, and the hook's refusal is not reported.
     expect(deliveryStatus(harness.conversation(), 'in flight')).toBe('sending');
     expect(harness.errors).toEqual([]);
+    harness.releaseRun();
     await run;
   });
 
@@ -455,7 +440,9 @@ describe('invalidation and conversation changes', () => {
     ack.resolve();
     await sent;
 
-    expect(deliveryStatus(harness.conversation(), 'handed over')).toBeUndefined();
+    // The acknowledgement still lands, and with the stop known the follow-up the
+    // run never delivered is failed with a retry rather than left pending.
+    expect(deliveryStatus(harness.conversation(), 'handed over')).toBe('failed');
   });
 
   test('a follow-up still queued when the host invalidates is rejected, not delivered', async () => {
@@ -474,6 +461,9 @@ describe('invalidation and conversation changes', () => {
 
     expect(((await rejection) as Error).message).toContain('invalidated');
     expect(handed).toEqual(['first']);
+    // Like a conversation change: the row is marked failed and the error reported.
+    expect(deliveryStatus(harness.conversation(), 'second')).toBe('failed');
+    expect(harness.errors).toHaveLength(1);
     harness.releaseRun();
     await run;
   });

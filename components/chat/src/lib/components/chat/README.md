@@ -120,7 +120,7 @@ The helpers immutably set or clear the transient `_deliveryStatus` metadata used
 
 ### Follow-ups during a run
 
-By default the composer is disabled while `streaming` is `true`, and the session controller refuses a second turn while a run is working or a tool approval is pending. A host that can deliver input to a run in flight opts in with `sendRunInput`. There are two hooks, and they are different types:
+By default the composer is disabled while `streaming` is `true`, and the session controller refuses a second turn while a run is working or a tool approval is pending. A host that owns the run on the server, and can deliver input to it in flight, opts in with `sendRunInput`. Follow-ups are supported only for server-owned runs (`executionOwner: 'server'`): with a browser-owned run the controller does not expose the hook, the composer does not offer follow-ups, and submitting during the run behaves as it did before. There are two hooks, and they are different types:
 
 - `ChatAdapter.sendRunInput(conversationId, message, attachments)` is the component-facing hook. It takes the same message and attachments as `sendMessage`, preceded by the conversation id. A raw adapter used without the controller gets no row id, and correlating its follow-ups is the host's problem.
 - `ChatSessionControllerOptions.sendRunInput(conversationId, message, attachments, { messageId })` is the host-facing hook. The controller appends a transcript row for the follow-up and fills `messageId` with that row's id, so a host can pass it on as the session input's own id (`submitSessionInput` accepts a caller-supplied `id`). A retry of the same row passes the same id. Providing it makes `controller.adapter` expose the adapter hook.
@@ -132,6 +132,7 @@ const session = createChatSessionController({
   getConversation: () => conversation,
   setConversation: (next) => (conversation = next),
   transport,
+  executionOwner: 'server',
   async sendRunInput(conversationId, message, attachments, { messageId }) {
     const result = await yourBackend.submitSessionInput({
       id: messageId,
@@ -157,11 +158,12 @@ With the hook present:
 - When the run's terminal history names the follow-up's row, the transcript keeps one row, moved to the position the terminal gives it, and the client's row wins, so its marker and delivery status survive.
 - A rejection marks that row failed with the usual Retry and leaves the run alone. Retrying resends it through the hook with the same `messageId` while a run is in progress, and otherwise promotes it to an ordinary turn.
 - A follow-up still waiting for the hook when the run ends (queued behind a slow acknowledgement) goes out as an ordinary turn on its existing row when the run completes or fails, one after another in the order sent. If the user stopped the run, it is marked failed with a Retry instead. A run parked on a pending approval has not ended.
-- A follow-up the host already accepted is cancelled when the run's terminal history (the history a `run.completed` frame carries) does not contain a message with its id. If this client did not press stop, the row is promoted to an ordinary turn after the run ends, reusing its row and attachments; if it did, the row is marked failed with a Retry. A follow-up still in the hook's hands when the run ends decides its own outcome through its receipt, and a run that ends without a terminal history leaves accepted follow-ups as they are.
-- `controller.invalidate()` retires every acknowledgement still owed: a late acknowledgement or rejection writes nothing. A stop does not.
+- Once a run ends, each follow-up the host accepted is classified. The run delivered it when its terminal history (the history a `run.completed` frame carries) names the row's id. Otherwise the server cancelled it, and that includes a run that ended with no terminal history at all, such as a stop mid-stream or a failure. If this client pressed stop, the row is marked failed with a Retry. If the run completed or failed, the row is promoted to an ordinary turn after the run ends, reusing its row and attachments. The decision waits for both the acknowledgement and the run's end, in either order, so an acknowledgement that arrives late is still classified. A follow-up the hook rejects is failed as above.
+- `controller.invalidate()` retires every acknowledgement still owed: a late acknowledgement or rejection writes nothing, and the sender's promise rejects with an invalidation error. A follow-up still queued when it happens is marked failed and reported through `onError`. A stop does not retire anything.
+- The controller's adapter orders its own input (`ChatAdapter.ordersRunInput`), so `Chat` hands it each follow-up at once and the row shows immediately; for a raw adapter, `Chat` queues the calls itself, one at a time, and drops that queue when the conversation changes.
 - A follow-up queued when the conversation changes is rejected through `onAdapterError` rather than dropped silently.
 
-A controller without `sendRunInput` behaves exactly as before. The "Follow-ups during a run" example shows the flow.
+A controller without `sendRunInput`, or with a browser-owned run, behaves exactly as before. The "Follow-ups during a run" example shows the flow.
 
 ### Edit and resend
 

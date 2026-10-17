@@ -4,7 +4,6 @@ import {
   type EventType,
 } from '@ag-ui/core';
 import { mergeAGUIMessages, type TokenUsage } from 'conversationalist';
-import { isFollowUpMessage } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 import { AGUIChatTransportError } from './ag-ui-transport-error.ts';
 import {
@@ -186,7 +185,7 @@ export function adoptSnapshot(state: MapperState, messages: ReadonlyArray<Snapsh
   // when it holds no user message because it snapshots only what it owns).
   const kept =
     state.base.ids.length > 0 && !sharesAnyRow(state.base, candidates)
-      ? thisTurnsOutput(candidates, state.base)
+      ? thisTurnsOutput(candidates)
       : candidates;
   try {
     // The client's rows stand: a snapshot adds the rows the client lacks and
@@ -201,19 +200,9 @@ export function adoptSnapshot(state: MapperState, messages: ReadonlyArray<Snapsh
   }
 }
 
-/**
- * The messages after the last user message, or all of them when there is none.
- *
- * A user message the conversation holds as a follow-up row is not the turn this
- * output answers: a follow-up never owns the run, so the search walks past it.
- */
-export function thisTurnsOutput(
-  messages: ReadonlyArray<SnapshotMessage>,
-  base: ConversationHistory,
-): ReadonlyArray<SnapshotMessage> {
-  const lastUser = messages.findLastIndex(
-    (message) => message.role === 'user' && !isFollowUpMessage(base.messages[message.id]),
-  );
+/** The messages after the last user message, or all of them when there is none. */
+function thisTurnsOutput(messages: ReadonlyArray<SnapshotMessage>): ReadonlyArray<SnapshotMessage> {
+  const lastUser = messages.findLastIndex((message) => message.role === 'user');
   return messages.slice(lastUser + 1);
 }
 

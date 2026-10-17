@@ -211,6 +211,34 @@ describe('Chat follow-ups during a run', () => {
     releases[1]!();
   });
 
+  test('follow-ups queued for one conversation do not hold up the next', async () => {
+    const seen: string[] = [];
+    const adapter: ChatAdapter = {
+      sendMessage: async () => undefined,
+      // The first acknowledgement never arrives.
+      sendRunInput: (_id, message) => {
+        seen.push(typeof message.content === 'string' ? message.content : '');
+        return new Promise<void>(() => undefined);
+      },
+    };
+    const rendered = render(Chat, {
+      id: 'chat-switch',
+      conversation: createConversationHistory({ id: 'before' }),
+      streaming: true,
+      adapter,
+    });
+    await submit(rendered.container, 'stuck');
+    await submit(rendered.container, 'behind it');
+    expect(seen).toEqual(['stuck']);
+
+    await rendered.rerender({ conversation: createConversationHistory({ id: 'after' }) });
+    await tick();
+    await submit(rendered.container, 'fresh');
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(seen).toEqual(['stuck', 'fresh']);
+  });
+
   test('sends an ordinary message through sendMessage when no run is active', async () => {
     const runInput: unknown[] = [];
     const sent: unknown[] = [];
@@ -248,6 +276,8 @@ describe('Chat follow-ups wired to the session controller', () => {
     // eslint-disable-next-line prefer-const -- assigned after the controller captures the closures
     let rendered: ReturnType<typeof render<typeof Chat>>;
     const controller = createChatSessionController({
+      // Follow-ups are offered for server-owned runs.
+      executionOwner: 'server',
       getConversation: () => conversation,
       setConversation: (next) => {
         conversation = next;
@@ -310,6 +340,40 @@ describe('Chat follow-ups wired to the session controller', () => {
     expect(rendered.container.querySelector('.chat-message-pending-label')).toBeNull();
     expect(rendered.container.querySelector('[data-pending]')).toBeNull();
 
+    release();
+    await run;
+  });
+
+  test('a second follow-up shows in the transcript at once, behind a slow first acknowledgement', async () => {
+    let releaseFirst: () => void = () => undefined;
+    const firstAcknowledgement = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let handedOver = 0;
+    const { controller, rendered, release } = createWiredChat(async (attempt) => {
+      handedOver = attempt;
+      if (attempt === 1) await firstAcknowledgement;
+    });
+    const run = controller.adapter.sendMessage({ role: 'user', content: 'start' }, []);
+    await settle();
+
+    expect(controller.adapter.ordersRunInput).toBe(true);
+    await submit(rendered.container, 'first');
+    await submit(rendered.container, 'second');
+    await settle();
+
+    // The controller orders its own input, so Chat does not hold the second
+    // follow-up back: it is in the transcript while the first is still pending.
+    const userRows = [...rendered.container.querySelectorAll('[data-message-role="user"]')].map(
+      (row) => row.textContent ?? '',
+    );
+    expect(userRows.some((text) => text.includes('second'))).toBe(true);
+    expect(handedOver).toBe(1);
+
+    releaseFirst();
+    await settle();
+    await settle();
+    expect(handedOver).toBe(2);
     release();
     await run;
   });

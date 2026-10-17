@@ -309,7 +309,7 @@ export function createChatSessionController(
     // forgotten on the way to saying so.
     if (row?.metadata['_deliveryStatus'] !== 'failed')
       throw new Error('Only a failed follow-up can be retried');
-    if (options.sendRunInput && followUps.has(messageId) && hasRunInProgress()) {
+    if (followUps.has(messageId) && hasRunInProgress()) {
       await followUps.resend(messageId);
       return;
     }
@@ -320,7 +320,11 @@ export function createChatSessionController(
 
   const adapter: ChatAdapter = {
     sendMessage,
-    ...(options.sendRunInput ? { sendRunInput } : {}),
+    // Follow-ups need the host to own the run: it is the host that cancels input
+    // a run ends without delivering. A browser-owned run does not offer them.
+    ...(options.sendRunInput && executionOwner === 'server'
+      ? { sendRunInput, ordersRunInput: true }
+      : {}),
     retryMessage: async (messageId) => {
       assertNotDisposed();
       if (isFollowUpMessage(options.getConversation().messages[messageId])) {

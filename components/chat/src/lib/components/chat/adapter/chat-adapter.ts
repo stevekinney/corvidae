@@ -129,6 +129,9 @@ export type ChatAdapter = {
    * and a rejection marks it failed with a retry action without touching the
    * run. Omit it and the composer stays disabled during a run, as before.
    *
+   * Follow-ups are supported only for server-owned runs: the session controller
+   * exposes this hook only when it was created with `executionOwner: 'server'`.
+   *
    * This hook has three arguments and no row id. The session controller's
    * host-facing `sendRunInput` is a distinct type that also receives the id of
    * the transcript row it appended.
@@ -138,6 +141,13 @@ export type ChatAdapter = {
     message: MessageInput,
     attachments: ChatAttachment[],
   ) => Promise<void>;
+  /**
+   * Set by an adapter that already hands its `sendRunInput` calls to the host one
+   * at a time, in the order sent (the session controller's adapter does). Chat
+   * otherwise queues the calls itself, which would hold a second follow-up out of
+   * the transcript until the first is acknowledged.
+   */
+  ordersRunInput?: boolean;
   /** Retry a previously-failed message by id. */
   retryMessage?: (messageId: string) => Promise<void>;
   /** Commit an edit to a user message. */

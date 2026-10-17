@@ -104,7 +104,8 @@ export function createHarness(options: HarnessOptions = {}) {
     setConversation: (next) => {
       conversation = next;
     },
-    ...(options.executionOwner ? { executionOwner: options.executionOwner } : {}),
+    // Follow-ups are a server-owned feature, so the harness is server-owned by default.
+    executionOwner: options.executionOwner ?? 'server',
     transport: async (request) => {
       turns.push({
         turn: turns.length,

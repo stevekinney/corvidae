@@ -74,7 +74,12 @@ export function mergeRunHistory(
   // the follow-up marker and any delivery status survive.
   const clientFollowUps = new Set(
     current.ids.filter(
-      (id) => isFollowUpMessage(current.messages[id]) && terminal.messages[id] !== undefined,
+      (id) =>
+        isFollowUpMessage(current.messages[id]) &&
+        terminal.messages[id] !== undefined &&
+        // Only a follow-up added after this run started: an earlier run's
+        // follow-ups were already on screen, so they stay where they are.
+        !runStartIds.has(id),
     ),
   );
   const isRemoved = (id: string): boolean =>

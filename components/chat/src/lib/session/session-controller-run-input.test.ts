@@ -141,6 +141,7 @@ describe('chat session controller run input', () => {
     let resolved = 0;
     let transportCalls = 0;
     const controller = createChatSessionController({
+      executionOwner: 'server',
       getConversation: () => conversation,
       setConversation: (next) => {
         conversation = next;

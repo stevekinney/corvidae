@@ -188,8 +188,11 @@ export type ChatSessionControllerOptions = {
   getConversation: () => ConversationHistory;
   setConversation: (conversation: ConversationHistory) => void;
   /**
-   * Hands a follow-up to the run in flight. Providing it makes the controller's
-   * adapter expose `ChatAdapter.sendRunInput`: a message submitted while a run is
+   * Hands a follow-up to the run in flight. Follow-ups are supported only for
+   * server-owned runs (`executionOwner: 'server'`): with a browser-owned run the
+   * option is ignored and a second turn during a run throws, as before. For a
+   * server-owned run, providing it makes the controller's adapter expose
+   * `ChatAdapter.sendRunInput`: a message submitted while a run is
    * active, or while a tool approval is pending, is appended to the transcript as
    * a pending follow-up row and handed here instead of being refused.
    *
@@ -198,9 +201,10 @@ export type ChatSessionControllerOptions = {
    * (`assertRunInputAccepted` checks this), and reject with an error that names
    * the state for anything else, including a `canceled` receipt from a
    * self-cancel and a replay of an input already cancelled. A rejection marks
-   * the row failed with a retry. A run's terminal history that lacks an
-   * accepted follow-up cancels it: the row is promoted to an ordinary turn
-   * after the run ends, or failed with a retry when this client pressed stop.
+   * the row failed with a retry. Once the run ends, an accepted follow-up its
+   * terminal history does not name (or that ended with no history) was
+   * cancelled: the row is promoted to an ordinary turn after the run ends, or
+   * failed with a retry when this client pressed stop.
    * Omit the option and a second turn during a run throws,
    * as before.
    */
