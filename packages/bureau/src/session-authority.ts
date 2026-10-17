@@ -149,6 +149,45 @@ export function isSessionAuthorityAuthorized(
 }
 
 /**
+ * Whether `principal` may read a session-scoped durable event history
+ * (`Bureau.eventHistory({ kind: 'session', id })`, COR-1382). It widens
+ * {@link isSessionAuthorityAuthorized} and never narrows it: whatever that
+ * rule allows, including every principal on a session with no recorded
+ * authority, is allowed here too. Beyond that, every principal that owned a
+ * run on the session, as recorded in the persisted `lastRunOwningPrincipals`
+ * map, may read it. That map survives terminal transitions and process
+ * restarts, unlike `lastRunId`, which is last-write-wins across concurrent
+ * runs and leaves an earlier run's owner denied once a later run finishes.
+ *
+ * The widening step fails closed on malformed authority metadata: when any
+ * recorded authority (every value of `lastRequestAuthorities`, plus a
+ * present `lastRequestAuthority`) is not a plain record with a string
+ * `principalId`, or `lastRequestAuthorities` is present but not a plain
+ * record, only the unchanged rule above decides. "Present" means
+ * `!== undefined`, so a stored JSON `null` is present and malformed. This is
+ * stricter than {@link lookupSessionAuthority}, which ignores entries keyed
+ * to other runs, because it gates only the widening.
+ */
+export function isSessionHistoryReadAuthorized(
+  metadata: Record<string, JSONValue>,
+  principal: string,
+): boolean {
+  if (isSessionAuthorityAuthorized(metadata, principal)) return true;
+  const isWellFormedAuthority = (value: JSONValue) =>
+    isPlainAuthorityRecord(value) && typeof value['principalId'] === 'string';
+  const authorities = metadata['lastRequestAuthorities'];
+  if (authorities !== undefined) {
+    if (!isPlainAuthorityRecord(authorities)) return false;
+    if (!Object.values(authorities).every(isWellFormedAuthority)) return false;
+  }
+  const legacy = metadata['lastRequestAuthority'];
+  if (legacy !== undefined && !isWellFormedAuthority(legacy)) return false;
+  const owners = metadata['lastRunOwningPrincipals'];
+  if (!isPlainAuthorityRecord(owners)) return false;
+  return Object.values(owners).some((owner) => owner === principal);
+}
+
+/**
  * The owning principal persisted for `runId` in a session's
  * `lastRunOwningPrincipals` map (AB-359), or `undefined` when nothing was
  * recorded, the map itself is malformed, or the recorded entry for this

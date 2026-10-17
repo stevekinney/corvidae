@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
+import type { JSONValue } from '@lostgradient/operative';
+
 import {
   isSessionAuthorityAuthorized,
+  isSessionHistoryReadAuthorized,
   isSessionRunTerminal,
   recordedSessionAuthorityPrincipalId,
   resolvePersistedRunOwningPrincipal,
@@ -369,5 +372,154 @@ describe('resolveSessionPreAdmission (COR-301)', () => {
     const open = { lastRunId: 'run-b', lastRunStatus: 'completed' };
     expect(resolveSessionPreAdmission(open, 'anyone', ['run-a'])).toBe('proceed');
     expect(resolveSessionPreAdmission(open, 'anyone', [])).toBe('session-terminal');
+  });
+});
+
+describe('isSessionHistoryReadAuthorized (COR-1382)', () => {
+  const alice = { principalId: 'alice' };
+  const bob = { principalId: 'bob' };
+  const owners = { 'run-a': 'alice', 'run-b': 'bob' };
+
+  function verdicts(metadata: Record<string, JSONValue>, principals: string[]) {
+    return Object.fromEntries(
+      principals.map((principal) => [
+        principal,
+        isSessionHistoryReadAuthorized(metadata, principal),
+      ]),
+    );
+  }
+
+  it('lets every co-owner read once both runs have finished', () => {
+    expect(
+      verdicts(
+        {
+          lastRunId: 'run-b',
+          lastRunStatus: 'completed',
+          lastRequestAuthorities: {},
+          lastRequestAuthority: bob,
+          lastRunOwningPrincipals: owners,
+        },
+        ['alice', 'bob', 'mallory'],
+      ),
+    ).toEqual({ alice: true, bob: true, mallory: false });
+  });
+
+  it('lets every co-owner read while an uncorrelated run is still live', () => {
+    expect(
+      verdicts(
+        {
+          lastRunId: 'run-b',
+          lastRunStatus: 'running',
+          lastRequestAuthorities: { 'run-a': alice },
+          lastRequestAuthority: bob,
+          lastRunOwningPrincipals: owners,
+        },
+        ['alice', 'bob', 'mallory'],
+      ),
+    ).toEqual({ alice: true, bob: true, mallory: false });
+  });
+
+  it('keeps the recorded-authority rule for a legacy record with no owners map', () => {
+    expect(
+      verdicts(
+        {
+          lastRunId: 'run-1',
+          lastRunStatus: 'completed',
+          lastRequestAuthorities: { 'run-1': alice },
+        },
+        ['alice', 'mallory'],
+      ),
+    ).toEqual({ alice: true, mallory: false });
+  });
+
+  it('keeps a session with no recorded authority open', () => {
+    expect(verdicts({}, ['alice', 'mallory'])).toEqual({ alice: true, mallory: true });
+    expect(
+      verdicts({ lastRunOwningPrincipals: { 'run-a': 'alice' } }, ['alice', 'mallory']),
+    ).toEqual({ alice: true, mallory: true });
+  });
+
+  it('fails closed when the authority map or an authority is malformed', () => {
+    const ownedByAlice = { lastRunOwningPrincipals: { 'run-a': 'alice' } };
+    expect(
+      isSessionHistoryReadAuthorized(
+        { ...ownedByAlice, lastRequestAuthorities: 'corrupt' },
+        'alice',
+      ),
+    ).toBe(false);
+    expect(
+      verdicts({ ...ownedByAlice, lastRequestAuthorities: null }, ['alice', 'mallory']),
+    ).toEqual({ alice: false, mallory: false });
+    expect(
+      isSessionHistoryReadAuthorized(
+        {
+          lastRunId: 'run-1',
+          lastRequestAuthorities: { 'run-1': 'garbage' },
+          lastRunOwningPrincipals: { 'run-1': 'alice' },
+        },
+        'alice',
+      ),
+    ).toBe(false);
+    expect(
+      isSessionHistoryReadAuthorized({ ...ownedByAlice, lastRequestAuthority: {} }, 'alice'),
+    ).toBe(false);
+
+    const nullLegacy = { ...ownedByAlice, lastRequestAuthority: null };
+    for (const principal of ['alice', 'mallory']) {
+      expect(isSessionHistoryReadAuthorized(nullLegacy, principal)).toBe(false);
+      expect(isSessionHistoryReadAuthorized(nullLegacy, principal)).toBe(
+        isSessionAuthorityAuthorized(nullLegacy, principal),
+      );
+    }
+  });
+
+  it("fails closed for a co-owner when another run's entry is malformed, but keeps the existing rule", () => {
+    expect(
+      verdicts(
+        {
+          lastRunId: 'run-b',
+          lastRequestAuthorities: { 'run-a': 'garbage', 'run-b': bob },
+          lastRunOwningPrincipals: owners,
+        },
+        ['alice', 'bob', 'mallory'],
+      ),
+    ).toEqual({ alice: false, bob: true, mallory: false });
+  });
+
+  it('never matches through a malformed owners map', () => {
+    const arrayOwners = {
+      lastRunId: 'run-b',
+      lastRequestAuthorities: { 'run-a': alice },
+      lastRunOwningPrincipals: ['alice'],
+    };
+    expect(isSessionHistoryReadAuthorized(arrayOwners, 'alice')).toBe(false);
+    expect(isSessionHistoryReadAuthorized(arrayOwners, 'alice')).toBe(
+      isSessionAuthorityAuthorized(arrayOwners, 'alice'),
+    );
+    expect(
+      isSessionHistoryReadAuthorized(
+        {
+          lastRunId: 'run-b',
+          lastRequestAuthorities: { 'run-a': alice },
+          lastRunOwningPrincipals: null,
+        },
+        'alice',
+      ),
+    ).toBe(false);
+  });
+
+  it('matches owner entries only by string equality', () => {
+    expect(
+      verdicts(
+        {
+          lastRunId: 'run-b',
+          lastRunStatus: 'completed',
+          lastRequestAuthorities: {},
+          lastRequestAuthority: bob,
+          lastRunOwningPrincipals: { 'run-a': 7 },
+        },
+        ['bob', 'alice', '7', 'mallory'],
+      ),
+    ).toEqual({ bob: true, alice: false, '7': false, mallory: false });
   });
 });
