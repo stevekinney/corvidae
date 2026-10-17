@@ -17,6 +17,7 @@ import type {
   AgentOutput,
   BureauAgentCatalog,
 } from './agent-catalog';
+import { createAgentCatalog } from './agent-catalog';
 import { createBureau } from './create-bureau';
 
 const plainAgent = createAgent({ generate: createMockGenerate([]), name: 'plain' });
@@ -194,3 +195,13 @@ async function bureauRunOutputInference() {
   expectNotEquals<FindReturnType, RunnableAgent<unknown, boolean>>();
 }
 void bureauRunOutputInference;
+
+// COR-1301 — an agent's descriptive metadata is readable through the catalog.
+const describedCatalogAgent = createAgent({
+  generate: createMockGenerate([]),
+  name: 'described',
+  description: 'Described.',
+});
+const describedCatalog = createAgentCatalog({ described: describedCatalogAgent });
+const catalogDescription: string | undefined = describedCatalog.get('described').description;
+void catalogDescription;

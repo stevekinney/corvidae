@@ -37,3 +37,44 @@ const missingHasOutput: RunnableAgent = {
   run: (): AgentRun => dummyRun,
 };
 void missingHasOutput;
+
+// COR-1301 — `description` and `skillDescriptors` are optional and readonly.
+// Presence: both accepted with their declared types.
+const describedAgent: RunnableAgent = {
+  name: 'described',
+  hasOutput: false,
+  description: 'Does things.',
+  skillDescriptors: [
+    {
+      id: 'do-things',
+      name: 'Do things',
+      description: 'Does things.',
+      tags: ['things'],
+      examples: ['do a thing'],
+      inputModes: ['text/plain'],
+      outputModes: ['application/json'],
+    },
+  ],
+  run: (): AgentRun => dummyRun,
+};
+void describedAgent;
+
+// Absence: `wideRunAgent` above omits both and still satisfies the contract.
+
+// A skill descriptor requires id, name, description, and tags.
+const incompleteSkill: RunnableAgent = {
+  name: 'incomplete',
+  hasOutput: false,
+  skillDescriptors: [
+    // @ts-expect-error — `tags` is required on a skill descriptor.
+    { id: 'x', name: 'X', description: 'X.' },
+  ],
+  run: (): AgentRun => dummyRun,
+};
+void incompleteSkill;
+
+// The metadata is readonly on a read agent.
+// @ts-expect-error — `description` is readonly.
+describedAgent.description = 'changed';
+// @ts-expect-error — `skillDescriptors` is readonly.
+describedAgent.skillDescriptors = [];

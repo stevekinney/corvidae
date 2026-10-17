@@ -12,6 +12,7 @@ import type { HookObservationCorrelation, HookRegistry } from '@lostgradient/lif
 import type { ConversationHistory } from 'conversationalist';
 
 import type { AgentRun, RunEvent } from './agent-run';
+import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
 import type { AgentGenerationProfile } from './generation-profile';
@@ -139,6 +140,25 @@ export interface AgentRunContext {
  */
 export interface RunnableAgent<O = never, H extends boolean = false> {
   readonly name: string;
+  /**
+   * A human-readable summary of what this agent does. Pure description: it is
+   * never sent to the model and does not affect a run. Bureau's agent discovery
+   * tool searches and returns it, and an A2A Agent Card would carry it as
+   * `AgentCard.description`.
+   */
+  readonly description?: string | undefined;
+  /**
+   * Descriptive metadata for the capabilities this agent offers, in the shape
+   * of A2A's `AgentSkill` (specification section 4.4.5). Pure description: it
+   * never reaches a run.
+   *
+   * Not the same as `skills`: `skills` is the runtime skill-catalog seam
+   * (`AgentSkills`) that gives a run activatable instructions and tools,
+   * while this list only tells a caller, or Bureau's agent discovery tool,
+   * what the agent can do. An A2A Agent Card would map it to
+   * `AgentCard.skills`.
+   */
+  readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
   /**
    * A runtime witness for `H` (AB-234). `AgentRun.unwrap()`/`.output()`
    * already close over a real `hasOutput` boolean independent of anything
