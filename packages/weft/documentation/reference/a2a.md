@@ -159,7 +159,7 @@ API keys and `jwt` together share the single `bearer` scheme. `securityRequireme
 
 ## Durable stores
 
-`createWeftA2ATaskStore` and `createWeftPushNotificationStore` implement the SDK's `TaskStore` and `PushNotificationStore` over any Weft storage adapter that reports `conditionalBatch` (memory, SQLite, LMDB, PostgreSQL, and the others that do). Each factory throws for an adapter that does not. Pass them to `DefaultRequestHandler` in place of the SDK's in-memory stores:
+`createWeftA2ATaskStore` and `createWeftPushNotificationStore` implement the SDK's `TaskStore` and `PushNotificationStore` over Weft storage. The task store accepts any adapter that reports `conditionalBatch`. The push store also requires `linearizable` read-after-write and `snapshot` scans, because a create decides whether a webhook is new by scanning the task's configurations: memory, SQLite, LMDB, and PostgreSQL qualify, while Turso (`session` reads), `HttpStorage` (`eventual` reads), and IndexedDB (`best-effort` scans) do not. Each factory throws for an adapter that falls short. Pass them to `DefaultRequestHandler` in place of the SDK's in-memory stores:
 
 ```ts
 import type { AgentCard } from '@a2a-js/sdk';
@@ -225,7 +225,7 @@ Every write is a compare-and-swap. A write that loses one is retried up to five 
 - `nextPageToken` is an opaque token carrying the last task's status timestamp and identifier, and is `""` on the last page. A page continues strictly after that position, so a task saved or removed between pages never makes another appear twice. A token is bound to the caller and the filter set: one minted for another user, tenant, or filter set, or a malformed one, throws `A2AStorePageTokenError`.
 - `totalSize` counts every matching task, before pagination.
 
-`prune()` removes every terminal task (completed, failed, canceled, or rejected) of the namespace, in every tenant and for every owner, whose last save is older than `terminalRetentionMs` (default `DEFAULT_A2A_TERMINAL_RETENTION_MS`, thirty days) by the store's clock (`now`, default `Date.now`), and resolves with how many it removed. A task saved again while the prune runs is kept. Nothing prunes on its own; call it on a schedule.
+`prune()` removes every terminal task (completed, failed, canceled, or rejected) of the namespace, in every tenant and for every owner, whose last save is older than `terminalRetentionMs` (default `DEFAULT_A2A_TERMINAL_RETENTION_MS`, thirty days) by the store's clock (`now`, default `Date.now`), and resolves with how many it removed. It also removes every push configuration, live or deleted, that a push store over the same storage and namespace holds for a pruned task, because once the task is gone no request reaches them and their credentials must not outlive it. A task saved again while the prune runs is kept, and a configuration created while it runs is removed with its task. Nothing prunes on its own; call it on a schedule.
 
 ### Push configurations
 

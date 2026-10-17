@@ -2,6 +2,8 @@ import { describe, expect, it } from 'bun:test';
 
 import { RequestMalformedError, toJsonRpcError } from '@a2a-js/sdk/errors';
 
+import type { StorageCapabilities } from '../storage/capabilities.ts';
+import type { Storage } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
@@ -22,22 +24,47 @@ import { A2APushConfigurationConflictError, A2AStoreRecordVersionError } from '.
 
 const ALICE = callContext({ user: 'alice' });
 
+/** A memory storage that reports `overrides` in place of its own capabilities. */
+function storageReporting(overrides: Partial<StorageCapabilities>): Storage {
+  const storage = new MemoryStorage();
+  return new Proxy(storage, {
+    get(target, property) {
+      if (property === 'capabilities') return () => ({ ...target.capabilities(), ...overrides });
+      const value: unknown = Reflect.get(target, property);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 describe('createWeftPushNotificationStore', () => {
   it('refuses a storage adapter without conditional batches', () => {
-    const storage = new MemoryStorage();
-    const withoutCas = new Proxy(storage, {
-      get(target, property) {
-        if (property === 'capabilities') {
-          return () => ({ ...target.capabilities(), conditionalBatch: false });
-        }
-        const value: unknown = Reflect.get(target, property);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-    });
     expect(() =>
-      createWeftPushNotificationStore({ storage: withoutCas, namespace: 'agent' }),
+      createWeftPushNotificationStore({
+        storage: storageReporting({ conditionalBatch: false }),
+        namespace: 'agent',
+      }),
     ).toThrow('requires storage capability "conditionalBatch"');
   });
+
+  // A create's scan decides whether a webhook is new, and its compare-and-swap fences
+  // only the head it read, so a lagging read or scan could store a duplicate webhook.
+  it.each([
+    [{ readAfterWrite: 'session' }, '"session" reads and "snapshot" scans'],
+    [{ readAfterWrite: 'eventual' }, '"eventual" reads and "snapshot" scans'],
+    [{ scanConsistency: 'best-effort' }, '"linearizable" reads and "best-effort" scans'],
+  ] satisfies Array<[Partial<StorageCapabilities>, string]>)(
+    'refuses storage reporting %o',
+    (overrides, reported) => {
+      expect(() =>
+        createWeftPushNotificationStore({
+          storage: storageReporting(overrides),
+          namespace: 'agent',
+        }),
+      ).toThrow(
+        `requires storage with linearizable read-after-write and snapshot scans, but this storage backend reports ${reported}`,
+      );
+    },
+  );
 });
 
 for (const backend of a2aStoreBackends) {

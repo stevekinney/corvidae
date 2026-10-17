@@ -10,11 +10,13 @@ import {
   callContext,
   interposedStorage,
   overwriteRecord,
+  pushConfigFixture,
   storedKeys,
   storedText,
   taskFixture,
   useBackendStorage,
 } from './a2a-store.test-support.ts';
+import { createWeftPushNotificationStore } from './push-notification-store.ts';
 import { A2AStoreConflictError, A2AStoreRecordVersionError } from './store-errors.ts';
 import { createWeftA2ATaskStore, DEFAULT_A2A_TERMINAL_RETENTION_MS } from './task-store.ts';
 
@@ -205,6 +207,68 @@ for (const backend of a2aStoreBackends) {
       expect(await store.load('recent', ALICE)).toMatchObject({ id: 'recent' });
       // Pruning one namespace leaves another's tasks alone.
       expect(await other.load('elsewhere', ALICE)).toMatchObject({ id: 'elsewhere' });
+    });
+
+    // Once a task is gone, no protocol route reaches its push configurations, so a
+    // prune that left them would keep their credentials in storage indefinitely.
+    it('removes the push configurations of every task it prunes', async () => {
+      const storage = openStorage();
+      let clock = 0;
+      const options = { storage, namespace: 'agent', now: () => clock };
+      const store = createWeftA2ATaskStore({ ...options, terminalRetentionMs: 10 });
+      const pushStore = createWeftPushNotificationStore(options);
+      const otherPushStore = createWeftPushNotificationStore({ ...options, namespace: 'other' });
+      const acme = callContext({ user: 'bob', tenant: 'acme' });
+      await store.save(taskFixture('done', { state: TaskState.TASK_STATE_COMPLETED }), acme);
+      await store.save(taskFixture('working'), acme);
+      const secret = pushConfigFixture('done', {
+        url: 'https://hooks.example.com/pruned',
+        token: 'pruned-token',
+        authentication: { scheme: 'Bearer', credentials: 'pruned-credential' },
+      });
+      const deleted = await pushStore.create('done', acme, pushConfigFixture('done'));
+      await pushStore.delete('done', acme, deleted.id);
+      await pushStore.create('done', acme, secret);
+      await pushStore.create('working', acme, pushConfigFixture('working'));
+      await otherPushStore.create('done', acme, pushConfigFixture('done'));
+
+      clock = 100;
+      expect(await store.prune()).toBe(1);
+
+      expect(await pushStore.load('done', acme)).toEqual([]);
+      expect(await storedKeys(storage, 'a2a:push')).toEqual([
+        'a2a:push-head:agent:acme:user%3Abob:working',
+        'a2a:push-head:other:acme:user%3Abob:done',
+        expect.stringMatching(/^a2a:push:agent:acme:user%3Abob:working:/),
+        expect.stringMatching(/^a2a:push:other:acme:user%3Abob:done:/),
+      ]);
+      for (const text of await storedText(storage)) {
+        expect(text).not.toContain('pruned');
+      }
+      expect(await pushStore.load('working', acme)).toHaveLength(1);
+      expect(await otherPushStore.load('done', acme)).toHaveLength(1);
+    });
+
+    it('removes a push configuration created while the prune runs', async () => {
+      const base = openStorage();
+      let clock = 0;
+      let created = false;
+      const { storage, outcomes } = interposedStorage(base, async (_conditions, operations) => {
+        if (!created && operations[0]?.type === 'delete') {
+          created = true;
+          await pushStore.create('task-1', ALICE, pushConfigFixture('task-1'));
+        }
+        return undefined;
+      });
+      const options = { storage, namespace: 'agent', now: () => clock };
+      const store = createWeftA2ATaskStore({ ...options, terminalRetentionMs: 10 });
+      const pushStore = createWeftPushNotificationStore(options);
+      await store.save(taskFixture('task-1', { state: TaskState.TASK_STATE_COMPLETED }), ALICE);
+      clock = 100;
+      expect(await store.prune()).toBe(1);
+      // The create's head bump fails the first delete, and the retry includes it.
+      expect(outcomes.slice(-2)).toEqual([false, true]);
+      expect(await storedKeys(storage)).toEqual([]);
     });
 
     it('keeps a terminal task that is saved again while the prune runs', async () => {

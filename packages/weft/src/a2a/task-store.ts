@@ -6,14 +6,19 @@
  * caller's owner, and the task identifier, and serialized with the SDK's own
  * `Task.toJSON`, so a task saved by one caller is invisible to every other.
  *
+ * Pruning a task also removes the push configurations stored for it under the same
+ * namespace and scope, because once the task is gone no protocol route can reach
+ * them, and their credentials must not outlive it.
+ *
  * @module a2a/task-store
  */
 
 import { type ListTasksRequest, type ListTasksResponse, Task, TaskState } from '@a2a-js/sdk';
 import type { ServerCallContext, TaskStore } from '@a2a-js/sdk/server';
 
+import { bytesEqual } from '../core/application-primitive-commit.ts';
 import { requireStorageCapability } from '../storage/capabilities.ts';
-import { type Storage, storageConditionalBatch } from '../storage/interface.ts';
+import type { BatchOperation, Storage } from '../storage/interface.ts';
 import {
   type A2APageCursor,
   callerScope,
@@ -26,6 +31,7 @@ import {
   resolvePageSize,
   scanRecords,
   scopedKey,
+  siblingKey,
   withCompareAndSwap,
 } from './store-support.ts';
 
@@ -52,8 +58,10 @@ export type WeftA2ATaskStoreOptions = {
 export interface WeftA2ATaskStore extends TaskStore {
   /**
    * Remove every terminal task of this namespace, in every tenant and for every
-   * owner, whose last save is older than `terminalRetentionMs`. Resolves with how many
-   * tasks it removed. A task saved again while the prune runs is kept.
+   * owner, whose last save is older than `terminalRetentionMs`, together with every
+   * push configuration (live or tombstoned) stored for it under this namespace.
+   * Resolves with how many tasks it removed. A task saved again while the prune runs
+   * is kept.
    */
   prune(): Promise<number>;
 }
@@ -130,6 +138,35 @@ export function createWeftA2ATaskStore(options: WeftA2ATaskStoreOptions): WeftA2
   const now = options.now ?? Date.now;
   const terminalRetentionMs = options.terminalRetentionMs ?? DEFAULT_A2A_TERMINAL_RETENTION_MS;
 
+  /**
+   * Delete one expired task and its push configurations, conditioned on the task
+   * record it was judged by and on the task's push head, which every push create and
+   * delete bumps. Resolves `false`, deleting nothing, once the task has been saved
+   * again (or removed) since it was judged.
+   */
+  async function pruneTask(key: string, judged: Uint8Array): Promise<boolean> {
+    const headKey = siblingKey(key, 'task', 'push-head');
+    const pushPrefix = `${siblingKey(key, 'task', 'push')}:`;
+    return withCompareAndSwap(storage, key, async () => {
+      const current = await storage.get(key);
+      if (current === null || !bytesEqual(current, judged)) return { result: false };
+      const head = await storage.get(headKey);
+      const operations: BatchOperation[] = [{ type: 'delete', key }];
+      if (head !== null) operations.push({ type: 'delete', key: headKey });
+      for await (const [pushKey] of storage.scan(pushPrefix)) {
+        operations.push({ type: 'delete', key: pushKey });
+      }
+      return {
+        conditions: [
+          { key, expectedValue: judged },
+          { key: headKey, expectedValue: head },
+        ],
+        operations,
+        result: true,
+      };
+    });
+  }
+
   return {
     async save(task: Task, context: ServerCallContext): Promise<void> {
       const key = scopedKey('task', callerScope(namespace, context), task.id);
@@ -197,13 +234,7 @@ export function createWeftA2ATaskStore(options: WeftA2ATaskStoreOptions): WeftA2
       });
       let removed = 0;
       for (const { key, bytes } of expired) {
-        // Delete only the record that was judged expired; one saved since is kept.
-        const deleted = await storageConditionalBatch(
-          storage,
-          [{ key, expectedValue: bytes }],
-          [{ type: 'delete', key }],
-        );
-        if (deleted) removed += 1;
+        if (await pruneTask(key, bytes)) removed += 1;
       }
       return removed;
     },

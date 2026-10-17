@@ -42,7 +42,10 @@ import {
 
 /** Options for {@link createWeftPushNotificationStore}. */
 export type WeftPushNotificationStoreOptions = {
-  /** Any Weft storage adapter that reports `conditionalBatch`. */
+  /**
+   * A Weft storage adapter that reports `conditionalBatch`, `linearizable`
+   * read-after-write, and `snapshot` scans.
+   */
   readonly storage: Storage;
   /** Separates one published agent's configurations from another's in shared storage. */
   readonly namespace: string;
@@ -171,6 +174,23 @@ function resolveCreate(
 }
 
 /**
+ * Refuse storage whose reads or scans can lag a commit. A create decides whether a
+ * webhook is new by scanning the task's configurations, and the compare-and-swap
+ * fences only the head record it read: a current head read beside a stale scan that
+ * omits a configuration or tombstone would commit a duplicate webhook or reuse a
+ * deleted identifier.
+ */
+function requirePushStorage(storage: Storage): void {
+  requireStorageCapability(storage, 'conditionalBatch', 'A2A push notification store');
+  const { readAfterWrite, scanConsistency } = storage.capabilities();
+  if (readAfterWrite !== 'linearizable' || scanConsistency !== 'snapshot') {
+    throw new Error(
+      `The A2A push notification store requires storage with linearizable read-after-write and snapshot scans, but this storage backend reports "${readAfterWrite}" reads and "${scanConsistency}" scans.`,
+    );
+  }
+}
+
+/**
  * Create an A2A `PushNotificationStore` over a Weft storage adapter, scoped by
  * `ServerCallContext.tenant`, the caller's `user`, and `namespace` exactly as
  * {@link createWeftA2ATaskStore} scopes tasks.
@@ -178,13 +198,14 @@ function resolveCreate(
  * Deleting a configuration replaces it with a tombstone holding only its identifier
  * and deletion fence, so its credentials leave storage and its `id` is never reused.
  *
- * @throws {Error} When `storage` does not report `conditionalBatch`.
+ * @throws {Error} When `storage` does not report `conditionalBatch`, `linearizable`
+ *   read-after-write, and `snapshot` scans.
  */
 export function createWeftPushNotificationStore(
   options: WeftPushNotificationStoreOptions,
 ): WeftPushNotificationStore {
   const { storage, namespace } = options;
-  requireStorageCapability(storage, 'conditionalBatch', 'A2A push notification store');
+  requirePushStorage(storage);
   const now = options.now ?? Date.now;
 
   async function readHead(

@@ -77,6 +77,16 @@ export function scopedKey(
   ].join(':');
 }
 
+/**
+ * The key of the `to` record that shares a `from` key's scope and parts (the
+ * push-configuration head of a task, for instance). Every part of a key is
+ * percent-encoded, so swapping the kind segment cannot move the key into another
+ * scope.
+ */
+export function siblingKey(key: string, from: A2ARecordKind, to: A2ARecordKind): string {
+  return `a2a:${to}:${key.slice(`a2a:${from}:`.length)}`;
+}
+
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
