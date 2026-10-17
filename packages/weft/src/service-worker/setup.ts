@@ -302,11 +302,6 @@ function attachListeners(
  * void setup;
  * ```
  */
-/** Start disposing `engine` without waiting; a cleanup failure must not mask the error being reported. */
-function disposeInBackground(engine: Engine): void {
-  engine[Symbol.asyncDispose]().catch(() => {});
-}
-
 export function setupServiceWorker(
   options: SetupServiceWorkerOptions = {},
 ): Promise<SetupServiceWorkerResult> {
@@ -393,6 +388,11 @@ export function setupServiceWorker(
 
   setupRegistry.set(scope, { status: 'initializing', resultPromise });
   return resultPromise;
+}
+
+/** Start disposing `engine` without waiting; a cleanup failure must not mask the error being reported. */
+function disposeInBackground(engine: Engine): void {
+  engine[Symbol.asyncDispose]().catch(() => {});
 }
 
 /**
