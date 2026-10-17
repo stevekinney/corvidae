@@ -116,15 +116,52 @@ describe('createA2AHandler: unary JSON-RPC', () => {
     expect(contexts).toEqual([]);
   });
 
-  test('passes an unparseable body to the SDK, which answers with its malformed-request error', async () => {
+  test('answers an unparseable body with the JSON-RPC parse error and a null id', async () => {
     const { handler, contexts } = capturingHandler();
 
     const body = await rpcJson(await handler(rpcRequest('{not json')));
 
-    // `@a2a-js/sdk@1.3.0` reports a JSON syntax error as `RequestMalformedError`.
-    expect(body.id).toBeNull();
-    expect(body.error?.code).toBe(A2A_ERROR_CODE.INVALID_PARAMS);
+    expect(body).toMatchObject({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: A2A_ERROR_CODE.PARSE_ERROR },
+    });
     expect(contexts).toEqual([]);
+  });
+
+  test('rejects an explicitly non-JSON Content-Type with ContentTypeNotSupportedError', async () => {
+    const { handler, contexts } = capturingHandler();
+
+    const response = await handler(
+      rpcRequest(sendMessageBody({ id: 'ct' }), { 'content-type': 'text/plain' }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await rpcJson(response)).toMatchObject({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: A2A_ERROR_CODE.CONTENT_TYPE_NOT_SUPPORTED },
+    });
+    expect(contexts).toEqual([]);
+  });
+
+  test('serves application/json with parameters, and a request with no Content-Type', async () => {
+    const { handler, contexts } = capturingHandler();
+    const withCharset = rpcRequest(sendMessageBody(), {
+      'content-type': 'Application/JSON; charset=utf-8',
+    });
+    const withoutContentType = new Request(RPC_URL, {
+      method: 'POST',
+      headers: { 'a2a-version': '1.0' },
+      body: new TextEncoder().encode(JSON.stringify(sendMessageBody())),
+    });
+
+    expect(withoutContentType.headers.get('content-type')).toBeNull();
+    const charsetBody = await rpcJson(await handler(withCharset));
+    const bareBody = await rpcJson(await handler(withoutContentType));
+    expect(charsetBody.error).toBeUndefined();
+    expect(bareBody.error).toBeUndefined();
+    expect(contexts).toHaveLength(2);
   });
 });
 

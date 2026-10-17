@@ -20,10 +20,14 @@ const streamEventCursors = new WeakMap<StreamResponse, string>();
 /** One recorded streamed event: the durable cursor it was tagged with, if any. */
 export type StreamCursorEntry = { readonly cursor: string | undefined };
 
+/** Characters that would end an SSE `id:` line early (CR, LF) or make clients ignore it (NUL). */
+const SSE_ID_FORBIDDEN = /[\r\n\0]/;
+
 /**
  * Tag a streamed event with its durable cursor, which the kit writes as the event's
- * SSE `id` so a client can resume with `Last-Event-ID`. Returns the same event, so a
- * request handler can tag as it yields:
+ * SSE `id` so a client can resume with `Last-Event-ID`. A cursor containing a carriage
+ * return, line feed, or NUL cannot be an SSE `id` and throws a `TypeError`. Returns the
+ * same event, so a request handler can tag as it yields:
  *
  * @example
  * ```ts
@@ -39,6 +43,11 @@ export function withStreamEventCursor<TEvent extends StreamResponse>(
   event: TEvent,
   cursor: string,
 ): TEvent {
+  if (SSE_ID_FORBIDDEN.test(cursor)) {
+    throw new TypeError(
+      'A2A stream cursor must not contain a carriage return, line feed, or NUL: it is written as an SSE id.',
+    );
+  }
   streamEventCursors.set(event, cursor);
   return event;
 }

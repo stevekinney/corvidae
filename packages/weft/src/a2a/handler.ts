@@ -15,7 +15,12 @@
  */
 
 import { Extensions } from '@a2a-js/sdk';
-import { RequestMalformedError, VersionNotSupportedError } from '@a2a-js/sdk/errors';
+import {
+  A2A_ERROR_CODE,
+  ContentTypeNotSupportedError,
+  RequestMalformedError,
+  VersionNotSupportedError,
+} from '@a2a-js/sdk/errors';
 import {
   type A2ARequestHandler,
   defaultServerCallContextBuilder,
@@ -92,6 +97,7 @@ export type A2AHandler = (request: Request) => Promise<Response>;
 export const DEFAULT_MAX_STREAM_DURATION_MS = 900_000;
 const A2A_PROTOCOL_VERSION = '1.0';
 const EXTENSIONS_HEADER = 'A2A-Extensions';
+const JSON_MEDIA_TYPE = 'application/json';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -99,12 +105,25 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const UNPARSEABLE = Symbol('unparseable JSON');
+
 function parseJson(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    return undefined;
+    return UNPARSEABLE;
   }
+}
+
+/**
+ * The SDK's own HTTP adapter accepts a request with no `Content-Type` and rejects one
+ * that names any media type other than `application/json`, before reading the body.
+ */
+function declaresNonJsonContentType(request: Request): string | undefined {
+  const contentType = request.headers.get('content-type');
+  if (contentType === null) return undefined;
+  const mediaType = (contentType.split(';', 1)[0] ?? '').trim().toLowerCase();
+  return mediaType === JSON_MEDIA_TYPE ? undefined : contentType;
 }
 
 function requestIdOf(body: unknown): string | number | null {
@@ -168,14 +187,23 @@ type ReceivedJsonRpcRequest = {
 };
 
 /**
- * Read a JSON-RPC body within its size limit, then check its `A2A-Version` and its
- * tenant. Returns the body to dispatch, or the response that rejects the request.
+ * Check a JSON-RPC request's `Content-Type`, read its body within the size limit and
+ * parse it, then check its `A2A-Version` and its tenant, in the order the SDK's HTTP
+ * adapter does. Returns the body to dispatch, or the response that rejects the request.
  */
 async function receiveJsonRpcRequest(
   request: Request,
   maxBodyBytes: number,
   tenant: string | undefined,
 ): Promise<ReceivedJsonRpcRequest | Response> {
+  const unsupportedContentType = declaresNonJsonContentType(request);
+  if (unsupportedContentType !== undefined) {
+    const error = new ContentTypeNotSupportedError(
+      `Unsupported Content-Type "${unsupportedContentType}"; expected ${JSON_MEDIA_TYPE}.`,
+    );
+    return jsonRpcResponse(errorEnvelope(null, error), undefined);
+  }
+
   let text: string;
   try {
     text = await readRestTextBody(request, { maxBodyBytes });
@@ -183,6 +211,10 @@ async function receiveJsonRpcRequest(
     return bodyReadFailure(error);
   }
   const parsed = parseJson(text);
+  if (parsed === UNPARSEABLE) {
+    const error = { code: A2A_ERROR_CODE.PARSE_ERROR, message: 'Invalid JSON payload.' };
+    return jsonRpcResponse({ jsonrpc: '2.0', id: null, error }, undefined);
+  }
   const requestId = requestIdOf(parsed);
 
   const requestedVersion = request.headers.get('A2A-Version');

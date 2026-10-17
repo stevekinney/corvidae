@@ -257,6 +257,16 @@ describe('createA2AHandler: streaming', () => {
 
     expect(await response.text()).toBe('');
   });
+
+  test.each([
+    ['a line feed', 'c-1\ndata: forged'],
+    ['a carriage return', 'c-1\rid: other'],
+    ['a NUL', 'c-1\u0000'],
+  ])('refuses a cursor containing %s, which would break SSE framing', (_label, cursor) => {
+    expect(() => withStreamEventCursor(statusEvent(0), cursor)).toThrow(
+      'A2A stream cursor must not contain a carriage return, line feed, or NUL',
+    );
+  });
 });
 
 describe('createA2AHandler: stream duration', () => {

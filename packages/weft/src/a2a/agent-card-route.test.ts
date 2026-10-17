@@ -162,7 +162,10 @@ describe('createA2AHandler: Agent Card signing', () => {
       const jwks = (await jwksResponse.json()) as JsonWebKeySet;
       expect(jwks.keys).toHaveLength(1);
       expect(jwks.keys[0]).toMatchObject({ kid: 'card-key-1', alg, use: 'sig' });
-      expect(jwks.keys[0]).not.toHaveProperty('d');
+      const publicMembers = alg === 'ES256' ? ['crv', 'kty', 'x', 'y'] : ['crv', 'kty', 'x'];
+      expect(Object.keys(jwks.keys[0] ?? {}).toSorted()).toEqual(
+        [...publicMembers, 'alg', 'kid', 'use'].toSorted(),
+      );
 
       const verify = verifyAgentCardSignature(async (kid, jku) => {
         expect(jku).toBe(JWKS_URL);
@@ -187,6 +190,62 @@ describe('createA2AHandler: Agent Card signing', () => {
     expect(card.supportedInterfaces[0]?.url).toBe(PUBLIC_URL);
     expect(protectedHeader(card)['jku']).toBe(
       'https://discovery.example.com/agents/support/.well-known/jwks.json',
+    );
+  });
+
+  test.each([
+    {
+      label: 'an HMAC secret',
+      alg: 'ES256' as const,
+      key: async () =>
+        crypto.subtle.generateKey({ name: 'HMAC', hash: 'SHA-256' }, true, ['sign', 'verify']),
+    },
+    {
+      label: 'an RSA private key',
+      alg: 'ES256' as const,
+      key: async () => {
+        const pair = await crypto.subtle.generateKey(
+          {
+            name: 'RSASSA-PKCS1-v1_5',
+            modulusLength: 2048,
+            publicExponent: new Uint8Array([1, 0, 1]),
+            hash: 'SHA-256',
+          },
+          true,
+          ['sign', 'verify'],
+        );
+        return pair.privateKey;
+      },
+    },
+    {
+      label: 'an ECDSA P-384 key',
+      alg: 'ES256' as const,
+      key: async () => {
+        const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-384' }, true, [
+          'sign',
+          'verify',
+        ]);
+        return pair.privateKey;
+      },
+    },
+    { label: 'an Ed25519 key', alg: 'ES256' as const, key: async () => signingKey('EdDSA') },
+    { label: 'an ECDSA P-256 key', alg: 'EdDSA' as const, key: async () => signingKey('ES256') },
+    {
+      label: 'a public key',
+      alg: 'ES256' as const,
+      key: async () => {
+        const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+          'sign',
+          'verify',
+        ]);
+        return pair.publicKey;
+      },
+    },
+  ])('rejects $label for alg $alg before any JWKS is served', async ({ alg, key }) => {
+    const privateKey = await key();
+
+    expect(() => cardHandler({ signing: { privateKey, kid: 'k', alg } })).toThrow(
+      `A2A signing.privateKey must be ${alg === 'ES256' ? 'an ECDSA P-256' : 'an Ed25519'} private key for alg '${alg}'.`,
     );
   });
 

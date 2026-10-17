@@ -76,12 +76,13 @@ A request passes through these steps in order, and the first that fails answers 
 
 1. `authenticate`. A returned `Response` is sent unchanged.
 2. The HTTP method: anything other than `POST` gets `405` with `Allow: POST`.
-3. The body, read up to `maxRequestBodyBytes`: a declared or streamed body beyond it gets `413`; a body stream that fails gets `400`.
-4. `A2A-Version`. Only `1.0` is served. Any other value, including an empty or absent header, gets a JSON-RPC `VersionNotSupportedError` (`-32009`).
-5. The request's `params.tenant`, described below.
-6. The SDK's `JsonRpcTransportHandler`, with a `ServerCallContext` built by the SDK's `defaultServerCallContextBuilder`. Its `user` is the result of `authenticate`, its `state` holds every request header under `STATE_HEADERS_KEY` (so a request handler can read `last-event-id` and `traceparent`), and its requested extensions come from the `A2A-Extensions` request header.
+3. `Content-Type`. A request without one is accepted; one naming any media type other than `application/json` gets a JSON-RPC `ContentTypeNotSupportedError` (`-32005`) with a `null` id, as the SDK's own HTTP adapter answers.
+4. The body, read up to `maxRequestBodyBytes`: a declared or streamed body beyond it gets `413`; a body stream that fails gets `400`. A body that is not JSON gets the JSON-RPC parse error (`-32700`) with a `null` id.
+5. `A2A-Version`. Only `1.0` is served. Any other value, including an empty or absent header, gets a JSON-RPC `VersionNotSupportedError` (`-32009`).
+6. The request's `params.tenant`, described below.
+7. The SDK's `JsonRpcTransportHandler`, with a `ServerCallContext` built by the SDK's `defaultServerCallContextBuilder`. Its `user` is the result of `authenticate`, its `state` holds every request header under `STATE_HEADERS_KEY` (so a request handler can read `last-event-id` and `traceparent`), and its requested extensions come from the `A2A-Extensions` request header.
 
-A unary result is a `200` `application/json` response. JSON-RPC errors, including the ones the kit raises in steps 4 and 5, are also `200` responses carrying an `error` envelope, as JSON-RPC prescribes. The response's `A2A-Extensions` header lists the extensions the request handler activated with `context.addActivatedExtension(uri)`.
+A unary result is a `200` `application/json` response. JSON-RPC errors, including the ones the kit raises in steps 3 through 6, are also `200` responses carrying an `error` envelope, as JSON-RPC prescribes. The response's `A2A-Extensions` header lists the extensions the request handler activated with `context.addActivatedExtension(uri)`.
 
 ### Tenant
 
@@ -108,11 +109,11 @@ async function* replay(events: AsyncIterable<{ cursor: string; event: StreamResp
 }
 ```
 
-The kit writes a tagged event's cursor as its SSE `id:` and writes no `id:` for an untagged one. The SDK's transport handler converts each yielded event into a new JSON-RPC response object, so the tag cannot ride on the event itself. Instead the kit wraps your request handler's streaming methods: the wrapper records one entry per yielded event, holding its cursor or none, and the SSE writer takes one entry per response, in order. The conversion is one response per event, in order, in `@a2a-js/sdk@1.3.0`.
+A cursor containing a carriage return, line feed, or NUL cannot be an SSE `id`, so `withStreamEventCursor` throws a `TypeError` for one. The kit writes a tagged event's cursor as its SSE `id:` and writes no `id:` for an untagged one. The SDK's transport handler converts each yielded event into a new JSON-RPC response object, so the tag cannot ride on the event itself. Instead the kit wraps your request handler's streaming methods: the wrapper records one entry per yielded event, holding its cursor or none, and the SSE writer takes one entry per response, in order. The conversion is one response per event, in order, in `@a2a-js/sdk@1.3.0`.
 
 ### Stream duration
 
-Every SSE response closes after `maxStreamDurationMs` with a final comment line (`: stream closed after … ms; reconnect to continue`). A long-lived subscription therefore reconnects, and its reconnect goes through `authenticate` again, so a revoked credential stops receiving events within that bound. When the client disconnects, or the duration runs out, the kit returns the request handler's stream, which stops at its next event.
+Every SSE response closes after `maxStreamDurationMs` with a final comment line (`: stream closed after … ms; reconnect to continue`). A client that wants to keep following the task must reconnect, with `SubscribeToTask` and the last cursor it saw as `Last-Event-ID`, and that request goes through `authenticate` again, so a revoked credential stops receiving events within that bound. The close is not a terminal task event, and the `@a2a-js/sdk@1.3.0` client does not reconnect on its own: its `sendMessageStream` and `resubscribeTask` iterators simply end, so the caller resubscribes. Raise `maxStreamDurationMs` for tasks whose subscriptions should outlast the default. When the client disconnects, or the duration runs out, the kit returns the request handler's stream, which stops at its next event.
 
 ## Agent Card
 
@@ -126,7 +127,7 @@ The served card is your `agentCard` with exactly one interface: `{ url: publicUr
 
 With `signing`, the card carries one signature from the SDK's `generateAgentCardSignature`. Its protected header holds `alg`, `kid`, `typ: "JOSE"`, and `jku: ${discoveryUrl}/.well-known/jwks.json`, and that route serves the public key as a JWKS (`kid`, `alg`, and `use: "sig"`, no private members). A client can verify the card with the SDK's `verifyAgentCardSignature` using only that JWKS.
 
-WebCrypto derives the public key only by exporting the private one, so `privateKey` must be created with `extractable: true`; `createA2AHandler` throws for a key that is not.
+WebCrypto derives the public key only by exporting the private one, so `privateKey` must be created with `extractable: true`. It must also be the private key `alg` names: an ECDSA P-256 key for `ES256`, an Ed25519 key for `EdDSA`. `createA2AHandler` throws for a key that is not, so no other key's members can reach the JWKS, which publishes only `kty`, `crv`, `x`, and (for P-256) `y`.
 
 ```ts partial
 const { privateKey } = await crypto.subtle.generateKey(
@@ -151,6 +152,8 @@ const handler = createA2AHandler({
 | `apiKeys` or `resolveApiKeyPrincipal` | `apiKeyHeader` (`apiKey` in the `X-API-Key` header) and `bearer` (`http`, scheme `bearer`) |
 | `jwt` | `bearer`, with `bearerFormat: "JWT"` |
 | `mtls` | `mutualTLS` |
+
+With `mtls.rejectUnauthorized: false` and no `verifyClientCertificate`, Weft's authenticator admits no one by certificate, so the card offers no `mutualTLS` scheme for that configuration.
 
 API keys and `jwt` together share the single `bearer` scheme. `securityRequirements` lists each scheme as its own alternative.
 

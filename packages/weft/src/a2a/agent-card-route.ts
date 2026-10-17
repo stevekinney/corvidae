@@ -21,7 +21,8 @@ export type A2AAgentCardInput = Omit<AgentCard, 'supportedInterfaces' | 'signatu
 /**
  * The key the kit signs the Agent Card with. The JWKS route publishes its public half,
  * which WebCrypto can only derive from an extractable key, so `privateKey` must be
- * created with `extractable: true`.
+ * created with `extractable: true`. It must also be the private key `alg` names: an
+ * ECDSA P-256 key for `ES256`, an Ed25519 key for `EdDSA`.
  */
 export type A2ASigningOptions = {
   readonly privateKey: CryptoKey;
@@ -97,22 +98,54 @@ async function buildServedCard(options: AgentCardRouteOptions): Promise<ServedCa
   return { body: JSON.stringify(json), etag: await strongEntityTag(json) };
 }
 
+/**
+ * Publish only the public members of the signing key. The key is checked against `alg`
+ * at construction, so it is an EC (`kty`, `crv`, `x`, `y`) or OKP (`kty`, `crv`, `x`)
+ * key, and nothing else from the export reaches the JWKS.
+ */
 async function publicJsonWebKeySet(signing: A2ASigningOptions): Promise<string> {
-  const exported = await crypto.subtle.exportKey('jwk', signing.privateKey);
-  const { d: _privateComponent, key_ops: _operations, ext: _extractable, ...publicKey } = exported;
+  const { kty, crv, x, y } = await crypto.subtle.exportKey('jwk', signing.privateKey);
   return JSON.stringify({
-    keys: [{ ...publicKey, kid: signing.kid, alg: signing.alg, use: 'sig' }],
+    keys: [
+      {
+        kty,
+        crv,
+        x,
+        ...(y === undefined ? {} : { y }),
+        kid: signing.kid,
+        alg: signing.alg,
+        use: 'sig',
+      },
+    ],
   });
+}
+
+function signingKeyMatchesAlgorithm(privateKey: CryptoKey, alg: A2ASigningOptions['alg']): boolean {
+  if (privateKey.type !== 'private') return false;
+  const algorithm = privateKey.algorithm as KeyAlgorithm & { readonly namedCurve?: string };
+  return alg === 'ES256'
+    ? algorithm.name === 'ECDSA' && algorithm.namedCurve === 'P-256'
+    : algorithm.name === 'Ed25519';
+}
+
+function assertSigningKey(signing: A2ASigningOptions): void {
+  if (!signing.privateKey.extractable) {
+    throw new TypeError(
+      'A2A signing.privateKey must be extractable: the JWKS route publishes its public key.',
+    );
+  }
+  if (!signingKeyMatchesAlgorithm(signing.privateKey, signing.alg)) {
+    const expected = signing.alg === 'ES256' ? 'an ECDSA P-256' : 'an Ed25519';
+    throw new TypeError(
+      `A2A signing.privateKey must be ${expected} private key for alg '${signing.alg}'.`,
+    );
+  }
 }
 
 /** Build the discovery routes for one handler. */
 export function createAgentCardRoutes(options: AgentCardRouteOptions): AgentCardRoutes {
   const signing = options.signing;
-  if (signing !== undefined && !signing.privateKey.extractable) {
-    throw new TypeError(
-      'A2A signing.privateKey must be extractable: the JWKS route publishes its public key.',
-    );
-  }
+  if (signing !== undefined) assertSigningKey(signing);
 
   let servedCard: Promise<ServedCard> | undefined;
   let jsonWebKeySet: Promise<string> | undefined;

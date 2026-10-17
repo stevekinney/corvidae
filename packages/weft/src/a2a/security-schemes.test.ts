@@ -61,6 +61,23 @@ describe('securitySchemesFromAuthConfig', () => {
     );
   });
 
+  test('offers mutualTLS without rejectUnauthorized only when verifyClientCertificate can admit', () => {
+    const listener = { ca: 'ca', cert: 'cert', key: 'key', rejectUnauthorized: false };
+
+    expect(securitySchemesFromAuthConfig({ mtls: listener })).toEqual({
+      securitySchemes: {},
+      securityRequirements: [],
+    });
+    expect(
+      securitySchemesFromAuthConfig({
+        mtls: { ...listener, verifyClientCertificate: () => true },
+      }),
+    ).toEqual({
+      securitySchemes: { mutualTLS },
+      securityRequirements: alternatives('mutualTLS'),
+    });
+  });
+
   test('gives apiKeys and jwt together a single bearer scheme', () => {
     const declaration = securitySchemesFromAuthConfig({
       apiKeys: ['key-1'],

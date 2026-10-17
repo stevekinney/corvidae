@@ -31,7 +31,9 @@ export type A2AAuthConfigShape = Pick<
  *   Weft accepts an API key in either place.
  * - `jwt` → `bearer` with `bearerFormat: "JWT"`. With API keys as well, the two share
  *   the single `bearer` scheme.
- * - `mtls` → `mutualTLS`.
+ * - `mtls` → `mutualTLS`, unless the configuration can admit no one by certificate:
+ *   with `rejectUnauthorized: false` and no `verifyClientCertificate`, Weft's
+ *   authenticator refuses every mTLS request, so the card does not offer it.
  *
  * `securityRequirements` lists each scheme as its own alternative: any one of them
  * admits a caller.
@@ -73,7 +75,11 @@ export function securitySchemesFromAuthConfig(
       },
     };
   }
-  if (authConfig.mtls !== undefined) {
+  const mtls = authConfig.mtls;
+  const mtlsCanAdmit =
+    mtls !== undefined &&
+    (mtls.rejectUnauthorized !== false || mtls.verifyClientCertificate !== undefined);
+  if (mtlsCanAdmit) {
     securitySchemes['mutualTLS'] = {
       scheme: { $case: 'mtlsSecurityScheme', value: { description: '' } },
     };
