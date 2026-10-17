@@ -16049,6 +16049,67 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     }
   });
 
+  it('delivers a session-scoped subscription to every principal that owned a run on the session, matching eventHistory (COR-1382)', async () => {
+    const databasePath = join(
+      tmpdir(),
+      `bureau-session-history-co-owners-subscribe-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    );
+
+    try {
+      const bureau = await createBureau({
+        agents: {},
+        generate: createMockGenerate('Done.'),
+        toolbox: createEmptyToolbox(),
+        storage: { type: 'sqlite', path: databasePath },
+        stopWhen: stopWhen.noToolCalls(),
+      });
+
+      try {
+        const runA = await bureau.createRun({ message: 'go A', principal: 'alice' });
+        await waitForRunState(bureau, runA.id);
+        const runB = await bureau.createRun({
+          message: 'go B',
+          sessionId: runA.sessionId,
+          principal: 'bob',
+        });
+        await waitForRunState(bureau, runB.id);
+
+        const page = await bureau.eventHistory(
+          { kind: 'session', id: runA.sessionId },
+          { principal: 'alice' },
+        );
+        if ('outcome' in page) throw new Error(`expected a page, got ${page.outcome}`);
+        expect(page.events.length).toBeGreaterThan(0);
+
+        const received: DurableEventEnvelope[] = [];
+        const subscription = bureau.subscribeEventHistory(
+          { kind: 'session', id: runA.sessionId },
+          (event) => {
+            received.push(event);
+          },
+          { principal: 'alice' },
+        );
+        try {
+          await waitForCondition(
+            () => received.length >= page.events.length,
+            "subscribeEventHistory never replayed the session's history to a co-owner",
+          );
+          expect(received.map((event) => event.cursor)).toEqual(
+            page.events.map((event) => event.cursor),
+          );
+        } finally {
+          subscription.unsubscribe();
+        }
+      } finally {
+        await bureau.dispose();
+      }
+    } finally {
+      await rm(databasePath, { force: true });
+      await rm(`${databasePath}-wal`, { force: true });
+      await rm(`${databasePath}-shm`, { force: true });
+    }
+  });
+
   it('lets the owner of a still-live run read the session-scoped eventHistory after a concurrent run on the session finishes (COR-1382)', async () => {
     const databasePath = join(
       tmpdir(),
