@@ -1339,6 +1339,8 @@ describe('createMCP', () => {
 
   it('supports single tool-like inputs in toMcpTools()', async () => {
     let receivedExecuteOptions: Record<string, unknown> | undefined;
+    let signalAfterRequestAbort: { aborted: boolean; reason: unknown } | undefined;
+    const controller = new AbortController();
     const toolLike = {
       name: 'single-tool-like',
       description: 'single tool-like input',
@@ -1346,6 +1348,10 @@ describe('createMCP', () => {
       tags: [],
       async executeWith(options: Record<string, unknown>) {
         receivedExecuteOptions = options;
+        // Cancelling the MCP request while the call is in flight must abort the execution's signal.
+        controller.abort(new Error('request cancelled'));
+        const signal = options['signal'] as AbortSignal;
+        signalAfterRequestAbort = { aborted: signal.aborted, reason: signal.reason };
         return {
           outcome: 'success',
           toolCallId: 'single-tool-like-call',
@@ -1358,7 +1364,6 @@ describe('createMCP', () => {
 
     const [mcpTool = requiredValue<never>(undefined, 'MCP tool')] = toMcpTools(toolLike);
     expect(mcpTool?.name).toBe('single-tool-like');
-    const controller = new AbortController();
     expect(
       await mcpTool.handler({}, {
         mcpReq: {
@@ -1375,8 +1380,8 @@ describe('createMCP', () => {
       elicit: expect.any(Function),
       executionContext: { mcp: { era: 'legacy', requestId: 'single-tool-like-request' } },
     });
-    // The execution owns its signal; the request's signal aborts it while the call is in flight.
-    expect(receivedExecuteOptions?.['signal']).toBeInstanceOf(AbortSignal);
+    expect(signalAfterRequestAbort?.aborted).toBe(true);
+    expect(signalAfterRequestAbort?.reason).toEqual(new Error('request cancelled'));
   });
 
   it('returns undefined when MCP content blocks are empty', async () => {
