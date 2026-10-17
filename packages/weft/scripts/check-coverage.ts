@@ -1425,7 +1425,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'The remaining HTTP lines are socket-close, stream-cancel, and response-write failure exits exercised through transport teardown without stable line attribution.',
-        lines: new Set([120, 121, 122, 123, 124, 125, 126, 127, 209, 210, 235, 429]),
+        lines: new Set([120, 121, 122, 123, 124, 125, 126, 127, 207, 208, 233, 470]),
         requireUncoveredLines: true,
       },
     ],
