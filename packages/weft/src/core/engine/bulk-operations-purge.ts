@@ -17,6 +17,7 @@ import { streamWorkflowStates } from './listing.ts';
 import { commitPurgeOrExplainLoss, isScannedRun } from './purge-supersession.ts';
 import { markPurgeWriteFailures } from './purge-write-tracking.ts';
 import { recordResultCommitter } from './result-committer.ts';
+import { waiterBelongsToRun } from './result-waiter-run.ts';
 import { streamExpiredRetentionWorkflowStates } from './retention-scan.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
@@ -258,6 +259,9 @@ export function clearPurgedWorkflowInMemoryState(
 function settleAndForgetPurgedResultWaiter(internals: EngineInternals, state: WorkflowState): void {
   const waiter = internals.resultResolvers.get(state.id);
   if (waiter === undefined) return;
+  // Bound to a different run than the one purged: it is the replacement's (or an older run's
+  // that the result poll retires), so this record's outcome is not its to receive.
+  if (!waiterBelongsToRun(waiter, state.workflowExecutionToken)) return;
   internals.resultResolvers.delete(state.id);
   recordResultCommitter(waiter, state.terminalCommittedBy);
   try {
