@@ -4,6 +4,14 @@
     display: block;
   }
 
+  /* With a load-more control the list is the scroll container LoadMore observes,
+     so the host bounds its height and the list scrolls inside it. The inline
+     padding keeps a row's focus ring from being clipped at the scrollport edge. */
+  .cinder-chat-conversation-list[data-cinder-conversation-list-scrolls] {
+    overflow-y: auto;
+    padding-inline: var(--cinder-ring-width);
+  }
+
   .cinder-chat-conversation-list__items {
     display: flex;
     flex-direction: column;
@@ -83,6 +91,26 @@
     overflow: hidden;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cinder-chat-conversation-list__meta {
+    grid-column: 1;
+    grid-row: 3;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1) var(--cinder-space-2);
+    min-width: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+  }
+
+  .cinder-chat-conversation-list__agent {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: var(--cinder-font-medium);
     text-overflow: ellipsis;
     white-space: nowrap;
   }

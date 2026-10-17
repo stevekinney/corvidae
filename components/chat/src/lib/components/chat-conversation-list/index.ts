@@ -6,6 +6,8 @@ export type { ChatConversationListProps } from './chat-conversation-list.types.t
 export {
   conversationSummaryTimestamp,
   deriveConversationSummary,
+  type ConversationActivity,
+  type ConversationAgent,
   type ConversationSummary,
 } from './conversation-summary.ts';
 export { ChatConversationList };

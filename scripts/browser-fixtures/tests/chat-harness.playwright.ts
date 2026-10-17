@@ -3165,6 +3165,57 @@ test.describe('chat harness — accessibility', () => {
   });
 });
 
+test.describe('chat conversation list — accessibility', () => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`the agent label, activity indicators, and load-more control have no serious axe violations (${colorScheme})`, async ({
+      browser,
+    }) => {
+      const context = await browser.newContext({
+        baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+        colorScheme,
+        reducedMotion: 'reduce',
+        viewport: { width: 1280, height: 900 },
+      });
+      try {
+        await context.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
+        const page = await context.newPage();
+        await page.goto(fixtureRoute('chat-conversation-list'), { waitUntil: 'load' });
+        const list = page.locator('nav.cinder-chat-conversation-list');
+        await list.waitFor({ state: 'visible', timeout: 20_000 });
+
+        // The fixture exercises the new surface: an agent label per row, both
+        // non-idle activity values (idle renders nothing), and LoadMore after
+        // the last row.
+        await expect(list.locator('[data-cinder-conversation-agent]')).toHaveCount(3);
+        await expect(list.locator('[data-cinder-conversation-activity="running"]')).toHaveCount(1);
+        await expect(
+          list.locator('[data-cinder-conversation-activity="awaiting-input"]'),
+        ).toHaveCount(1);
+        await expect(list.locator('[data-cinder-conversation-activity]')).toHaveCount(2);
+        await expect(list.getByRole('img', { name: 'Running' })).toBeVisible();
+        await expect(list.getByRole('img', { name: 'Awaiting input' })).toBeVisible();
+        await expect(list.getByRole('button', { name: 'Load more' })).toBeVisible();
+
+        const buckets = await runAxe(
+          page,
+          {
+            slug: 'chat-conversation-list',
+            theme: colorScheme,
+            viewport: 'desktop',
+            fixture: 'assertion',
+          },
+          { include: 'nav.cinder-chat-conversation-list' },
+        );
+        expect(buckets.critical, JSON.stringify(buckets.critical, null, 2)).toHaveLength(0);
+        expect(buckets.serious, JSON.stringify(buckets.serious, null, 2)).toHaveLength(0);
+        expect(buckets.moderate, JSON.stringify(buckets.moderate, null, 2)).toHaveLength(0);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+});
+
 // Regression suite for #1237's reopened symptoms, driven against the
 // `history-prepend-stress` example: an adapter-mode load-earlier flow inside
 // a full-height app shell whose header content (an event log line) grows when
