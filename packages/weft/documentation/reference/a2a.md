@@ -250,6 +250,131 @@ Authentication scheme names compare case-insensitively (`Bearer` and `bearer` ma
 
 The three errors a caller causes, `A2AStorePageSizeError`, `A2AStorePageTokenError`, and `A2APushConfigurationConflictError`, are the SDK's `RequestMalformedError`, so the JSON-RPC transport answers them as `-32602` (invalid params). Tell them apart by `code`. `A2AStoreRecordVersionError` and `A2AStoreConflictError` are server faults and answer as `-32603`.
 
+## Push delivery
+
+Push notifications go through a Weft `Outbox`, so a notification survives a restart, is retried with backoff, and is never sent twice under different identities. Four pieces fit together:
+
+- `createEgressPolicy(options)` decides whether a webhook URL may be contacted at all.
+- `createHttpDeliveryAdapter(options)` is the outbox's transport: it POSTs each delivery to an egress-checked URL, with A2A authentication and Standard Webhooks signatures.
+- `createOutboxPushNotificationSender({ outbox, pushStore })` is the SDK's `PushNotificationSender`. It enqueues one outbox delivery per push configuration instead of POSTing inline, and its `pushStore` deletes a configuration's pending deliveries with the configuration.
+- `startPushDelivery({ outbox, intervalMs, signal })` drains the outbox until `signal` aborts.
+
+```ts
+import type { AgentCard } from '@a2a-js/sdk';
+import { DefaultRequestHandler, type AgentExecutor } from '@a2a-js/sdk/server';
+import { LMDBStorage, Outbox } from '@lostgradient/weft';
+import {
+  createA2AHandler,
+  createEgressPolicy,
+  createHttpDeliveryAdapter,
+  createOutboxPushNotificationSender,
+  createWeftA2ATaskStore,
+  createWeftPushNotificationStore,
+  pushNotificationResolvers,
+  startPushDelivery,
+  withRedactedPushConfigurations,
+} from '@lostgradient/weft/a2a';
+
+declare const agentCard: AgentCard;
+declare const executor: AgentExecutor;
+
+const storage = new LMDBStorage('./data/agents');
+const taskStore = createWeftA2ATaskStore({ storage, namespace: 'support-agent' });
+const pushStore = createWeftPushNotificationStore({ storage, namespace: 'support-agent' });
+
+const outbox = new Outbox({
+  storage,
+  namespace: 'support-agent',
+  ownerId: 'push-notifications',
+  adapter: createHttpDeliveryAdapter({
+    ...pushNotificationResolvers(pushStore),
+    signingSecrets: [process.env['A2A_WEBHOOK_SECRET'] ?? ''],
+    egressPolicy: createEgressPolicy(),
+  }),
+});
+const sender = createOutboxPushNotificationSender({ outbox, pushStore });
+
+const handler = createA2AHandler({
+  requestHandler: withRedactedPushConfigurations(
+    new DefaultRequestHandler(agentCard, taskStore, executor, undefined, sender.pushStore, sender),
+  ),
+  agentCard,
+  publicUrl: 'https://agents.example.com/support',
+});
+
+const shutdown = new AbortController();
+const delivering = startPushDelivery({ outbox, signal: shutdown.signal });
+```
+
+Pass `sender.pushStore`, not the store itself, to the request handler: its `delete` is what stops a deleted configuration's deliveries. Use one outbox for push delivery alone.
+
+### Egress policy
+
+`createEgressPolicy({ allowInsecureHttp?, allowlist?, resolveHost? })` returns `{ check(url) }`, which the adapter calls before every request. It rejects:
+
+- a URL whose scheme is not `https`, unless `allowInsecureHttp` is set (then `http` is accepted too; nothing else ever is);
+- a host whose address is in a range the IANA special-purpose address registries mark as not globally reachable, or in multicast: loopback (`127.0.0.0/8`, `::1`), `0.0.0.0/8`, RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`, `fe80::/10`), unique-local (`fc00::/7`), carrier-grade NAT (`100.64.0.0/10`), IETF protocol assignments (`192.0.0.0/24`, `2001::/23`), documentation (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32`, `3fff::/20`), benchmarking (`198.18.0.0/15`), discard-only (`100::/64`), 6to4 (`2002::/16`), SRv6 SIDs (`5f00::/16`), local-use NAT64 (`64:ff9b:1::/48`), multicast (`224.0.0.0/4`, `ff00::/8`), reserved (`240.0.0.0/4`), or unspecified (`::`). Each block is rejected whole, including the few globally reachable addresses the registries carve out of `192.0.0.0/24` and `2001::/23`. An IPv6 address that embeds an IPv4 one (IPv4-mapped `::ffff:0:0/96`, IPv4-translated `::ffff:0:0:0/96`, NAT64 `64:ff9b::/96`, or IPv4-compatible `::/96`) is checked as that IPv4 address.
+
+An IP literal in the URL is checked directly (the URL parser has already normalized forms such as `0x7f.1` and `2130706433` to `127.0.0.1`). A hostname is resolved with `resolveHost`, which defaults to `node:dns` `lookup` where the runtime has it, and is rejected when any one of its addresses is non-public. With no resolver (`resolveHost: null`, or a runtime without `node:dns`), a hostname is rejected. A resolver that fails is not a rejection: the attempt is retried later.
+
+`allowlist` entries are exact `host:port` pairs, such as `127.0.0.1:8080` or `[::1]:8443`, that bypass the range check (not the scheme check), for loopback receivers in tests and development.
+
+The check cannot pin the connection. `fetch` resolves the name again when it connects, so a DNS-rebinding window remains between the check and the connection: a name that answered with a public address for the check can answer with a private one for the connection. Strict egress control needs an egress proxy that enforces the same ranges on the connection it makes.
+
+### HTTP delivery adapter
+
+`createHttpDeliveryAdapter({ resolveDestination, resolveCredential, signingSecrets?, egressPolicy, timeoutMs? })`:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `resolveDestination` | required | `(destinationRef) => url`, called on every attempt. `undefined` means the destination no longer exists. |
+| `resolveCredential` | required | `(credentialRef) => { scheme?, credentials?, notificationToken? }`, called on every attempt for a delivery with a `credentialRef`. `{}` means no authentication; `undefined` means the credential no longer exists. |
+| `signingSecrets` | unset | A non-empty list of Standard Webhooks secrets (`whsec_` followed by base64). |
+| `egressPolicy` | required | The policy every request passes first. |
+| `timeoutMs` | 10000 | How long one request may take, 10000–30000. Anything else throws at construction. |
+
+`pushNotificationResolvers(pushStore)` returns the two resolvers for push delivery: they read the configuration a delivery names from the push store on every attempt, so a delivery stores only a locator (tenant, owner, task, and configuration identifier) and never the configuration's URL, `token`, or credentials.
+
+Each delivery is a `POST` of the A2A `StreamResponse` JSON with `Content-Type: application/a2a+json`, and:
+
+- `Authorization: <scheme> <credentials>` when the configuration has authentication;
+- `X-A2A-Notification-Token: <token>` when it has a `token`, beside `Authorization` and any signature (the header name `@a2a-js/sdk` 1.3.0's own sender uses; A2A 1.0.1 names none);
+- `webhook-id`: the delivery's external idempotency key, or its delivery identifier when it has none. It is the receiver's idempotency evidence, so it is sent with or without `signingSecrets`;
+- with `signingSecrets`, `webhook-timestamp` and `webhook-signature`, with one `v1,` HMAC-SHA256 signature per secret, space-delimited, so a receiver holding any one secret verifies while secrets rotate;
+- `traceparent`, when the request that enqueued the delivery carried a valid one.
+
+Redirects are not followed. The outcome the outbox settles on:
+
+| What happened | Outcome |
+| --- | --- |
+| `2xx` | `acknowledged` |
+| Connection refused, a DNS failure, or a destination or credential resolver that failed, before anything was sent | `retryable` |
+| `408`, `429`, `5xx` | `retryable`, honoring `Retry-After` in delta-seconds or HTTP-date form, capped at 3600 seconds |
+| `3xx`, any other `4xx`, a URL the egress policy blocks, or a destination or credential that no longer exists | `rejected` |
+| A timeout, reset, or abort after the request began | `unknown` |
+
+### Sender
+
+`createOutboxPushNotificationSender({ outbox, pushStore })` throws unless the outbox's adapter came from `createHttpDeliveryAdapter` and its `timeoutMs` is lower than the outbox's `attemptTimeoutMs`. The adapter then always aborts its own request before the outbox stops waiting for it, so every attempt settles. `startPushDelivery` checks the same.
+
+For each event with a task, `send` enqueues one delivery per live configuration of that task in the caller's scope:
+
+- The idempotency key is `${tenant}:${owner}:${configId}:${taskId}:${digest}`, each identifier percent-encoded, where `tenant` and `owner` are the caller's scope as the push store keys it and `digest` is the SHA-256 of the event's [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) serialization, taken when `send` is called. The same event sent twice is one delivery per configuration; distinct events never share a key, and neither do two callers whose task and configuration identifiers coincide, since those are unique only within a scope.
+- `unknownOutcomePolicy` is `retry-with-idempotency` and `maxAttempts` is 8, because A2A requires receivers to process notifications idempotently. The `externalIdempotencyKey`, `msg_` and the SHA-256 of the idempotency key, is sent as `webhook-id`, so every attempt of one delivery carries the same `webhook-id`.
+- The enqueueing request's `traceparent` header, when it is a valid W3C trace context, is stored as the delivery's `causation.traceparent`.
+
+A full outbox backlog, or an idempotency key already bound to another delivery, makes `send` throw after it has enqueued what it could; `DefaultRequestHandler` logs the error.
+
+### Deleting a configuration
+
+`sender.pushStore.delete(taskId, context, configId?)` (what `DeleteTaskPushNotificationConfig` calls) deletes the configuration, which stops new enqueues for it, then cancels every queued or retry-scheduled delivery to it and aborts every claimed or attempting one. It returns once each of those deliveries is terminal (`acknowledged`, `rejected`, `cancelled`, `unknown-outcome`, or `dead-lettered`) with its attempt settled; `cancellation-requested` is waited through, for at most the adapter's `timeoutMs` plus one second. An attempt still unsettled by then, as one running in a process that died would be, makes `delete` throw, after the configuration itself is gone. A pending delivery the cancellation misses (one enqueued by a `send` racing the delete) resolves no destination when its attempt runs, and is rejected without a request.
+
+The deliveries are found by scanning every record the outbox retains, terminal ones included, so a delete costs time in proportion to the outbox's terminal retention.
+
+### Driving delivery
+
+`startPushDelivery({ outbox, intervalMs = 1000, signal, onError? })` calls `outbox.drain()` for everything due, waits `intervalMs`, and repeats until `signal` aborts, resolving once it has stopped. A drain that throws is reported to `onError` (default `console.error`) and the loop continues, even when `onError` itself throws. Because deliveries are durable, a delivery pending when the process stops is sent by the next process's loop over the same storage.
+
 ## Not covered
 
-The kit serves the JSON-RPC binding only. Push delivery, a Weft workflow backend for the request handler, the `openIdConnect` scheme, the HTTP+JSON and gRPC bindings, and the authenticated extended card are outside this subpath.
+The kit serves the JSON-RPC binding only. A Weft workflow backend for the request handler, the `openIdConnect` scheme, the HTTP+JSON and gRPC bindings, and the authenticated extended card are outside this subpath, and so are certificate pinning, DNS-rebinding protection, and an egress proxy for push delivery.
