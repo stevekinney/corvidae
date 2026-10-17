@@ -296,4 +296,22 @@ describe('RestartDialog', () => {
     expect(restarted).toBe(0);
     expect(closed).toBe(0);
   });
+
+  test('keeps Restart workflow disabled without signals:write, which weft.workflows.startorsignal also requires', async () => {
+    const { client, calls } = fakeClient();
+    const { getByRole, getByLabelText } = render(RestartDialogHarness, {
+      props: {
+        client,
+        workflow: workflow(),
+        principal: principal(['workflows:read', 'workflows:write']),
+        queryClient: newQueryClient(),
+      },
+    });
+
+    await fireEvent.input(getByLabelText('Signal name'), { target: { value: 'resync' } });
+    const confirm = getByRole('button', { name: 'Restart workflow' });
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+    await fireEvent.click(confirm);
+    expect(calls).toEqual([]);
+  });
 });

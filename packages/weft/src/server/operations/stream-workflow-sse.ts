@@ -36,7 +36,8 @@ export const streamWorkflowSseOperation = defineOperation({
   inputSchema: streamWorkflowSseInput,
   outputSchema: z.object({ chunks: z.array(z.unknown()) }),
   eventSchema: z.object({ sequence: z.number(), value: z.unknown() }),
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['streams:read'] } },
+  discoverable: true,
   producibleFaults: ['NotFound'],
   // SSE is a REST-shaped delivery format; JSON-RPC clients receive the
   // canonical `{ chunks }` envelope from the same operation. Keeping all

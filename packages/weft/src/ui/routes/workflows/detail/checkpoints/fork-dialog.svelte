@@ -17,9 +17,10 @@
    * (`weft.workflows.revisions.list`) when `workflows:read` is granted,
    * degrading to a free-text `Input` (with a note that the server still
    * validates it) when denied, mirroring `schedule-form-fields.svelte`'s
-   * identical registry-picker degrade. `weft.workflows.fork` itself is
-   * `access: { kind: 'public' }` — only the LISTING read needs the scope,
-   * so an operator without `workflows:read` can still legally fork against
+   * identical registry-picker degrade. `weft.workflows.fork` itself
+   * requires `workflows:write` (the Create fork button is disabled without
+   * it); only the LISTING read needs `workflows:read`, so an operator who
+   * holds `workflows:write` but not `workflows:read` can still fork against
    * an explicit revision id they already know.
    *
    * A rejection specifically coded `WorkflowRevisionUnavailableError`
@@ -148,6 +149,8 @@
 
   const principal = getPrincipalStore();
   const readGate = $derived(scopeGate(principal, ['workflows:read']));
+  // `weft.workflows.fork` requires `workflows:write`; without it the fork is refused.
+  const writeGate = $derived(scopeGate(principal, ['workflows:write']));
 
   let pickerOpen = $state(false);
   /** Bound to the `Select` (installed-revisions case) — `''` means "use source revision." Empty when `Select` isn't the active input. */
@@ -411,19 +414,21 @@
       <Button variant="ghost" size="sm" label="View →" onclick={viewForkedRun} />
     </div>
   {:else}
-    <Button
-      variant="primary"
-      size="sm"
-      fullWidth
-      label={forkMutation.isPending ? 'Forking…' : 'Create fork'}
-      loading={forkMutation.isPending}
-      disabled={parsedStep === null || forkMutation.isPending}
-      onclick={submit}
-    >
-      {#snippet leadingIcon()}
-        <GitFork aria-hidden="true" size={13} />
-      {/snippet}
-    </Button>
+    <Tooltip text={writeGate.title ?? ''}>
+      <Button
+        variant="primary"
+        size="sm"
+        fullWidth
+        label={forkMutation.isPending ? 'Forking…' : 'Create fork'}
+        loading={forkMutation.isPending}
+        disabled={writeGate.disabled || parsedStep === null || forkMutation.isPending}
+        onclick={submit}
+      >
+        {#snippet leadingIcon()}
+          <GitFork aria-hidden="true" size={13} />
+        {/snippet}
+      </Button>
+    </Tooltip>
   {/if}
 </div>
 

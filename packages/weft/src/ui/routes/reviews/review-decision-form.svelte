@@ -62,8 +62,10 @@
     Segment,
     SegmentedControl,
     Textarea,
+    Tooltip,
   } from '@lostgradient/cinder';
 
+  import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { humanizeKey, suggestOverallDecision, type SectionDecision } from './review-domain.ts';
 
   export interface ReviewDecisionSubmission {
@@ -78,9 +80,21 @@
     readonly sectionKeys: readonly string[];
     readonly submitting: boolean;
     readonly onSubmit: (submission: ReviewDecisionSubmission) => void;
+    /**
+     * Whether the principal holds `reviews:write`, which
+     * `weft.reviews.decision.submit` requires. Defaults to open so a caller
+     * that owns no principal (the unit tests) renders the form enabled.
+     */
+    readonly submitGate?: ScopeGate | undefined;
   }
 
-  let { reviewId, sectionKeys, submitting, onSubmit }: ReviewDecisionFormProps = $props();
+  let {
+    reviewId,
+    sectionKeys,
+    submitting,
+    onSubmit,
+    submitGate = { disabled: false, title: undefined },
+  }: ReviewDecisionFormProps = $props();
 
   let sectionDecisions = $state<Map<string, SectionDecision>>(new Map());
   let overallDecision = $state<ReviewDecision | undefined>(undefined);
@@ -111,7 +125,8 @@
     overallDecision === 'rejected' || overallDecision === 'needs-changes',
   );
   const canSubmit = $derived(
-    !submitting &&
+    !submitGate.disabled &&
+      !submitting &&
       overallDecision !== undefined &&
       reviewer.trim().length > 0 &&
       (!feedbackRequired || feedback.trim().length > 0),
@@ -194,12 +209,14 @@
       rows={3}
     />
 
-    <Button
-      variant="primary"
-      label={submitting ? 'Submitting…' : 'Submit decision'}
-      disabled={!canSubmit}
-      loading={submitting}
-      onclick={submit}
-    />
+    <Tooltip text={submitGate.title ?? ''}>
+      <Button
+        variant="primary"
+        label={submitting ? 'Submitting…' : 'Submit decision'}
+        disabled={!canSubmit}
+        loading={submitting}
+        onclick={submit}
+      />
+    </Tooltip>
   </div>
 </Card>

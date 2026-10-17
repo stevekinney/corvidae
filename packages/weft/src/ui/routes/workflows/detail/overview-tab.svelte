@@ -29,6 +29,7 @@
   import { CircleX, Plus, X } from '@lucide/svelte';
 
   import { queryKeys } from '../../../lib/query.ts';
+  import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import {
     classifyRevisionAgainstActive,
     type WorkflowCatalogActivePointerLike,
@@ -54,9 +55,16 @@
      * difference from `header.svelte`.
      */
     readonly activeRevision?: WorkflowCatalogActivePointerLike | null | undefined;
+    /** Whether the principal holds `tags:write`, which adding and removing tags requires; open when omitted. */
+    readonly tagGate?: ScopeGate | undefined;
   }
 
-  let { client, workflow, activeRevision }: OverviewTabProps = $props();
+  let {
+    client,
+    workflow,
+    activeRevision,
+    tagGate = { disabled: false, title: undefined },
+  }: OverviewTabProps = $props();
 
   const REVISION_COMPARISON_SUFFIX: Readonly<Record<'active' | 'stale' | 'unknown', string>> = {
     active: ' — active',
@@ -144,7 +152,8 @@
               type="button"
               class="weft-overview-tab__tag-remove"
               aria-label={`Remove tag ${tag}`}
-              disabled={removeTagMutation.isPending}
+              disabled={tagGate.disabled || removeTagMutation.isPending}
+              title={tagGate.title}
               onclick={() => removeTagMutation.mutate(tag)}
             >
               <X aria-hidden="true" size={10} />
@@ -156,6 +165,7 @@
           label="Add tag"
           labelVisible={false}
           placeholder="Add tag"
+          disabled={tagGate.disabled}
           bind:value={newTag}
           onkeydown={(event) => {
             if (event.key === 'Enter') {
@@ -169,7 +179,7 @@
           size="sm"
           iconOnly
           label="Add tag"
-          disabled={newTag.trim().length === 0 || addTagMutation.isPending}
+          disabled={tagGate.disabled || newTag.trim().length === 0 || addTagMutation.isPending}
           onclick={submitNewTag}
         >
           {#snippet leadingIcon()}

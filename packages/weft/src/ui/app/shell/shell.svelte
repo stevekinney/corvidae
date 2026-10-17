@@ -21,7 +21,7 @@
 
   import { provideClient } from '../../lib/client.ts';
   import type { Principal } from '../../lib/scopes.svelte.ts';
-  import { providePrincipalStore } from '../../lib/scopes.svelte.ts';
+  import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
   import { ThemeStore } from '../theme.svelte.ts';
@@ -119,4 +119,8 @@
   </div>
 </div>
 
-<CommandPaletteLauncher bind:open={paletteOpen} {client} />
+<CommandPaletteLauncher
+  bind:open={paletteOpen}
+  {client}
+  scheduleReadGate={scopeGate(principalStore, ['schedules:read'])}
+/>

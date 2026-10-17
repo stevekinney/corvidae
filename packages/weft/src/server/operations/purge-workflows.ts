@@ -28,7 +28,8 @@ export const purgeWorkflowsOperation = defineOperation({
   tags: ['Workflows'],
   inputSchema: bulkListFilterInputSchema,
   outputSchema: purgeOutputSchema,
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:admin'] } },
+  discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host: engine }): Promise<PurgeWorkflowsOutput> => {

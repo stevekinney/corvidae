@@ -16,7 +16,12 @@ import type {
   MinimalFetchEvent,
   MinimalPeriodicSyncEvent,
 } from './shared.ts';
-import { buildDelegatedRequest, DEFAULT_PERIODIC_SYNC_TAG, normalizePathPrefix } from './shared.ts';
+import {
+  buildDelegatedRequest,
+  DEFAULT_PERIODIC_SYNC_TAG,
+  normalizePathPrefix,
+  resolveFetchHandlerOptions,
+} from './shared.ts';
 
 export { ServiceWorkerScheduler } from './scheduler.ts';
 export type { ServiceWorkerSchedulerOptions } from './scheduler.ts';
@@ -62,7 +67,16 @@ export interface ServiceWorkerOptions {
    */
   engine: RegistryAgnosticEngine;
   pathPrefix?: string;
-  /** Handler options supported by the Service Worker runtime. */
+  /**
+   * Handler options supported by the Service Worker runtime. When no
+   * `authContext` is given, requests run as the `unauthenticated-local`
+   * principal (`unauthenticatedLocalAuthContext()`), exactly as in
+   * `setupServiceWorker()`: a same-origin Service Worker has one caller, who
+   * holds every scope. Pass an `authContext` to run requests as any other
+   * principal, or `handlerOptions: { authContext: { method: 'public' } }` to
+   * opt out of local trust and run them as an anonymous caller that reaches
+   * only `weft.system.principal`. A bare `handleRequest()` stays anonymous.
+   */
   handlerOptions?: ServiceWorkerHandlerOptions;
 }
 
@@ -107,9 +121,16 @@ export function createFetchHandler(
   const pathPrefix = normalizePathPrefix(options.pathPrefix);
 
   return (event: MinimalFetchEvent) => {
+    // Never answer a navigation: a cross-origin page can navigate to, or submit
+    // a form at, this origin's `pathPrefix`, and the handler below holds local
+    // trust (every scope) by default, so such a request must fall through to
+    // the network instead of reaching it.
+    if (event.request.mode === 'navigate') return;
     const delegatedRequest = buildDelegatedRequest(event, pathPrefix);
     if (delegatedRequest === null) return;
-    event.respondWith(handleRequest(delegatedRequest, engine, handlerOptions));
+    event.respondWith(
+      handleRequest(delegatedRequest, engine, resolveFetchHandlerOptions(handlerOptions)),
+    );
   };
 }
 

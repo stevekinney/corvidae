@@ -30,10 +30,9 @@
    * Admin gating: five of the six actions require `workflows:admin`
    * server-side (`bulkOperatorAccessPolicy`) — `scopes.svelte.ts`'s own
    * module doc calls this out explicitly as unsafe to optimistically grant.
-   * Purge's real `access` is `{ kind: 'public' }` (verified against
-   * `purge-workflows.ts`), but this bar still gates it behind the same
-   * `workflows:admin` `adminGate` prop for one consistent bar-wide rule —
-   * over-restrictive relative to the wire contract, never under.
+   * Purge's real `access` is `workflows:admin` too (verified against
+   * `purge-workflows.ts`), so every action in this bar shares the one
+   * `adminGate` rule.
    */
   import { CircleX, RotateCw, Tags, Trash } from '@lucide/svelte';
   import { Button, Checkbox, Input, Select, Textarea, Tooltip } from '@lostgradient/cinder';

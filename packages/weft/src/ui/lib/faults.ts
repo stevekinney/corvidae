@@ -2,7 +2,7 @@
  * Fault → UI treatment mapping (plan §10.4, T1.5). Frozen after the Phase 1
  * Foundation gate — see PROJECT-BRIEF "Shared contracts".
  *
- * Weft's wire `FaultCode` (13 values, `@lostgradient/weft`) is more granular
+ * Weft's wire `FaultCode` (17 values, `@lostgradient/weft`) is more granular
  * than the console's UI treatment vocabulary. The plan's "one FaultDisplay
  * treatment, six codes" (§10.4) is that coarser bucket, derived here from
  * `FaultCode` and its documented REST HTTP status
@@ -149,6 +149,12 @@ const FAULT_CODE_TREATMENT_KIND = {
   // retry policy treats it as retryable. See query.ts `shouldRetryQuery`.
   Timeout: 'internal',
   SubscriptionOverflow: 'internal',
+  StaleRevision: 'conflict',
+  // Transient by nature, like `Timeout`: a retry after the advertised delay
+  // can succeed, so they share its `internal` (retryable) bucket.
+  RateLimited: 'internal',
+  Unavailable: 'internal',
+  UnsupportedCapability: 'not-supported',
   EngineFailure: 'internal',
 } as const satisfies Record<FaultCode, FaultTreatmentKind>;
 

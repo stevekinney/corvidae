@@ -21,6 +21,7 @@
     humanizeKey,
     isReviewTimedOut,
   } from './review-domain.ts';
+  import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import ReviewDecisionForm, { type ReviewDecisionSubmission } from './review-decision-form.svelte';
 
   interface ReviewDetailPanelProps {
@@ -28,9 +29,11 @@
     readonly now: number;
     readonly submitting: boolean;
     readonly onSubmit: (reviewId: string, submission: ReviewDecisionSubmission) => void;
+    /** `reviews:write` gate for the decision form; open when omitted. */
+    readonly submitGate?: ScopeGate | undefined;
   }
 
-  let { entry, now, submitting, onSubmit }: ReviewDetailPanelProps = $props();
+  let { entry, now, submitting, onSubmit, submitGate }: ReviewDetailPanelProps = $props();
 
   const sections = $derived(extractReviewSections(entry.artifact));
   const metadataEntries = $derived(extractReviewMetadataEntries(entry.artifact));
@@ -103,6 +106,7 @@
       reviewId={entry.reviewId}
       sectionKeys={sections ? Object.keys(sections) : []}
       {submitting}
+      {submitGate}
       onSubmit={(submission) => onSubmit(entry.reviewId, submission)}
     />
   {/if}

@@ -373,6 +373,7 @@ export type { JsonRpcCallResult, JsonRpcErrorObject } from './client/json-rpc-re
 export * from './client/operation-client-runtime.ts';
 export { CodegenEmitError, jsonSchemaToTypeScript } from './json-schema/codegen-emit.ts';
 export * from './server/operation-catalog-snapshot.ts';
+export { staleRevisionFault } from './server/operation-fault.ts';
 export type { OperationFault } from './server/operation-fault.ts';
 
 export { REGISTRY_VERSION } from './core/registry-snapshot.ts';

@@ -21,12 +21,16 @@
  * this wire. The asymmetry is the current wire contract; see
  * `documentation/reference/api-errors.md#wire-envelopes`.
  *
- * Pure: no engine, no I/O. The fault decides the wire shape.
+ * No engine and no I/O, apart from one diagnostic when a malformed fault is
+ * replaced by the masked internal error (see `wireSafeFault`). The fault
+ * decides the wire shape.
  */
 
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
+  usableRetryAfterSeconds,
+  wireSafeFault,
   type OperationFault,
 } from './operation-fault.ts';
 
@@ -36,7 +40,8 @@ export type JsonRpcError = {
   data: Record<string, unknown>;
 };
 
-export function faultToJsonRpcError(fault: OperationFault): JsonRpcError {
+export function faultToJsonRpcError(unsafeFault: OperationFault): JsonRpcError {
+  const fault = wireSafeFault(unsafeFault);
   const code = FAULT_CODE_TO_JSON_RPC_CODE[fault.code];
   const httpStatus = FAULT_CODE_TO_HTTP_STATUS[fault.code];
   // Envelope keys are written LAST so a future payload field accidentally
@@ -80,6 +85,18 @@ const FAULT_DATA_EXTRACTORS: FaultExtractors = {
   SubscriptionOverflow: dataForSubscriptionOverflow,
   InvalidParams: dataForInvalidParams,
   MethodNotFound: (data) => ({ method: data.method }),
+  StaleRevision: (data) => ({
+    currentRevision: data.currentRevision,
+    ...(data.expectedRevision === undefined ? {} : { expectedRevision: data.expectedRevision }),
+  }),
+  RateLimited: (data) =>
+    filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
+  Unavailable: (data) =>
+    filterDefined({
+      reason: data.reason,
+      retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds),
+    }),
+  UnsupportedCapability: (data) => ({ capability: data.capability }),
 };
 
 function extractFaultDataPayload(fault: OperationFault): Record<string, unknown> {

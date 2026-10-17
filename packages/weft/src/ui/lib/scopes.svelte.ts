@@ -21,19 +21,20 @@
  * scopes, degrade on observed `403`s) is gone: scope gating now starts
  * from the server's authoritative answer.
  *
- * Three outcomes:
- * - **Authenticated** (`method` ≠ `'unauthenticated'`): the granted scopes
+ * Four outcomes:
+ * - **Authenticated** (a credential `method`): the granted scopes
  *   verbatim; no banner.
- * - **Anonymous but served** (`method: 'unauthenticated'`): the server has
- *   no `auth` configured — an auth-configured weft rejects uncredentialed
- *   requests at the transport edge before any operation dispatch, public
- *   ones included. Anonymous principals carry zero scopes, so every
- *   scope-gated surface renders disabled-with-reason (truthful: those
- *   operations genuinely reject anonymous callers), while public-access
- *   operations remain usable. `'warn'` vs `'allow'` are still
- *   wire-indistinguishable (both mean "no auth configured"; the option only
- *   gates server BOOT) — the more visible `'warn'` banner is the safe
- *   default.
+ * - **Local user** (`method: 'unauthenticated-local'`): the server has no
+ *   `auth` configured, so it runs every request as one local principal that
+ *   holds every scope. The scopes arrive verbatim and every scope-gated
+ *   surface is enabled, with the `'warn'` banner saying every operation is
+ *   open. `'warn'` vs `'allow'` are still wire-indistinguishable (the option
+ *   only gates server BOOT), so the more visible `'warn'` is the default.
+ * - **Anonymous** (`method: 'unauthenticated'`): zero scopes, so every
+ *   scope-gated surface renders disabled-with-reason. A server with no
+ *   `auth` no longer answers this way, and an auth-configured weft rejects
+ *   uncredentialed requests at the transport edge before any operation
+ *   dispatch, public ones included.
  * - **`401`**: no principal — the supplied credential was invalid/expired,
  *   or the server requires one (API-key entry must run). The two cases read
  *   identically to callers.
@@ -230,21 +231,27 @@ type PrincipalProbeClient = {
  * 0.18.0). The operation reports the credential's method, subject, and
  * ACTUAL granted scopes, so this module no longer infers any of it.
  *
- * Three outcomes, mapping the operation's `method` onto {@link Principal}:
+ * Four outcomes, mapping the operation's `method` onto {@link Principal}:
  *
  * - **`method` is a real credential kind** (`'jwt'`/`'api-key'`/`'mtls'`/
  *   `'stdio-local'`) — the server accepted a credential. Granted built-in
  *   scopes verbatim (package-registered scopes are left out),
  *   `unauthenticatedAccess: null` (no banner).
- * - **`method: 'unauthenticated'`** — the server served an anonymous caller,
- *   which only happens when it has no `auth` configured: an auth-configured
- *   weft rejects credential-less requests at the transport edge before any
- *   operation dispatch, `public` ones included (pinned by
+ * - **`method: 'unauthenticated-local'`** — the server has no `auth`
+ *   configured, so it runs every request as the one local user, who holds
+ *   every scope. Granted built-in scopes verbatim, like a credential, but
+ *   `unauthenticatedAccess: 'warn'`: nobody was authenticated, and the banner
+ *   says so. `'warn'` vs `'allow'` remain wire-indistinguishable (the option
+ *   only gates server BOOT), so the more visible `'warn'` stays the safe
+ *   default.
+ * - **`method: 'unauthenticated'`** — an anonymous caller was served, which a
+ *   server with no `auth` no longer does (it reports `'unauthenticated-local'`
+ *   above) and an auth-configured weft never does for a credential-less
+ *   request: it rejects them at the transport edge before any operation
+ *   dispatch, `public` ones included (pinned by
  *   `scopes.svelte.integration.test.ts`). Anonymous principals carry zero
  *   scopes, so scope-gated surfaces render disabled-with-reason — truthful,
- *   since those operations genuinely reject anonymous callers. `'warn'` vs
- *   `'allow'` remain wire-indistinguishable (the option only gates server
- *   BOOT), so the more visible `'warn'` stays the safe default.
+ *   since those operations genuinely reject anonymous callers.
  * - **`401`** — no principal. Either the supplied credential was
  *   invalid/expired or the server requires one and the API-key entry surface
  *   must run; both read identically to the caller as "no principal yet."
@@ -264,6 +271,10 @@ export async function resolvePrincipal(client: PrincipalProbeClient): Promise<Pr
 
   if (introspected.method === 'unauthenticated') {
     return { scopes: [], unauthenticatedAccess: 'warn' };
+  }
+
+  if (introspected.method === 'unauthenticated-local') {
+    return { scopes: introspected.scopes.filter(isConsoleScope), unauthenticatedAccess: 'warn' };
   }
 
   // A server may also grant package-registered scopes (`bureau.tasks:read`,

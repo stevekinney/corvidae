@@ -20,6 +20,10 @@ const ALL_FAULT_CODES: readonly FaultCode[] = [
   'SubscriptionOverflow',
   'InvalidParams',
   'MethodNotFound',
+  'StaleRevision',
+  'RateLimited',
+  'Unavailable',
+  'UnsupportedCapability',
   'EngineFailure',
 ];
 
@@ -54,6 +58,10 @@ describe('FAULT_CODE_TO_FAILURE_CATEGORY', () => {
       Unprocessable: 'application',
       InvalidParams: 'application',
       MethodNotFound: 'application',
+      StaleRevision: 'application',
+      RateLimited: 'resource',
+      Unavailable: 'system',
+      UnsupportedCapability: 'system',
       Timeout: 'timeout',
       PayloadTooLarge: 'resource',
       SubscriptionOverflow: 'resource',

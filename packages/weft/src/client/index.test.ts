@@ -2,8 +2,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { Engine } from '../core/engine.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { query, workflow } from '../core/types.ts';
-import { handleRequest } from '../server/handler.ts';
+import { AUTHORIZATION_SCOPES } from '../server/authorization-scope.ts';
 import { serve, type WeftServer } from '../server/index.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../server/local-user-request.test-support.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import {
   CONTRACT_PAYLOAD_CAP_BYTES,
@@ -524,13 +525,8 @@ beforeAll(() => {
     maxRequestBodyBytes: CONTRACT_PAYLOAD_CAP_BYTES * 3,
     auth: {
       apiKeys: [CONTRACT_API_KEY],
-      defaultApiKeyScopes: [
-        'events:read',
-        'reviews:read',
-        'system:read',
-        'workflows:read',
-        'workflows:write',
-      ],
+      // Every operation the shared client contract drives requires a scope.
+      defaultApiKeyScopes: AUTHORIZATION_SCOPES,
     },
   });
 

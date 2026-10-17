@@ -11,7 +11,7 @@
  * - EngineFailure fault shaper returns 500.
  *
  * REST tests inject an authContext with an api-key principal so the
- * `access:authenticated` check passes.
+ * `schedules:read` check passes.
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -95,7 +95,7 @@ describe('weft.schedules.list', () => {
     engine = createListSchedulesTestEngine();
 
     const liveRegistry = createLiveOperationRegistry();
-    const principal = principalFromApiKey({ subject: 'svc', scopes: [] });
+    const principal = principalFromApiKey({ subject: 'svc', scopes: ['schedules:read'] });
 
     const result = await executeOperation(
       'weft.schedules.list',

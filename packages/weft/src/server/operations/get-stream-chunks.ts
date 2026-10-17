@@ -29,7 +29,8 @@ export const getStreamChunksOperation = defineOperation({
   tags: ['Streams'],
   inputSchema: getStreamChunksInput,
   outputSchema: z.object({ chunks: z.array(z.unknown()) }),
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['streams:read'] } },
+  discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host: engine }): Promise<GetStreamChunksOutput> => {

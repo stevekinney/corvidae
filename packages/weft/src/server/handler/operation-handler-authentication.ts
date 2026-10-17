@@ -64,7 +64,7 @@ export type OperationHandlerAuthenticatorOptions = {
  *   operations: [],
  *   host: {},
  *   authenticate: createOperationHandlerAuthenticator(
- *     { apiKeys: ['s3cr3t'] },
+ *     { apiKeys: ['s3cr3t'], defaultApiKeyScopes: ['workflows:read'] },
  *     { additionalScopes: ['bureau.tasks:read'] },
  *   ),
  * });

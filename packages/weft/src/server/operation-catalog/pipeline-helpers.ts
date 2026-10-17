@@ -276,6 +276,10 @@ const FAULT_CODES = {
   SubscriptionOverflow: true,
   InvalidParams: true,
   MethodNotFound: true,
+  StaleRevision: true,
+  RateLimited: true,
+  Unavailable: true,
+  UnsupportedCapability: true,
   EngineFailure: true,
 } as const satisfies Readonly<Record<OperationFault['code'], true>>;
 

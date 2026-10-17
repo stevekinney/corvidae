@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import * as weft from '../../index.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
-import { createAuthenticator, signJWT } from '../authentication.ts';
+import { createAuthenticator, signJWT, type AuthContext } from '../authentication.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { ServerContext } from '../runtime/context.ts';
 import { authenticateRequest } from '../runtime/request-gate.ts';
@@ -248,7 +248,11 @@ describe('createOperationHandlerAuthenticator', () => {
   });
 
   it('rejects with the same 401 serve() returns', async () => {
-    const config = { apiKeys: ['the-right-key'], auditSink: quietAudit };
+    const config = {
+      apiKeys: ['the-right-key'],
+      defaultApiKeyScopes: ['workflows:read' as const],
+      auditSink: quietAudit,
+    };
     const request = new Request('http://localhost/jsonrpc', {
       headers: { Authorization: 'Bearer the-wrong-key' },
     });
@@ -299,6 +303,7 @@ describe('createOperationHandlerAuthenticator', () => {
       host: {},
       authenticate: createOperationHandlerAuthenticator({
         apiKeys: ['right-key'],
+        defaultApiKeyScopes: ['workflows:read'],
         auditSink: quietAudit,
       }),
       mounts: [
@@ -326,6 +331,7 @@ describe('createOperationHandlerAuthenticator', () => {
       host: {},
       authenticate: createOperationHandlerAuthenticator({
         apiKeys: ['right-key'],
+        defaultApiKeyScopes: ['workflows:read'],
         auditSink: quietAudit,
       }),
       mounts: [{ pathPrefix: '/v1/metrics', fetch: async () => new Response('mounted') }],
@@ -336,7 +342,11 @@ describe('createOperationHandlerAuthenticator', () => {
 
   it('refuses config.publicPaths, which would be a second place to decide them', () => {
     expect(() =>
-      createOperationHandlerAuthenticator({ apiKeys: ['k'], publicPaths: ['/v1/health'] }),
+      createOperationHandlerAuthenticator({
+        apiKeys: ['k'],
+        defaultApiKeyScopes: ['workflows:read'],
+        publicPaths: ['/v1/health'],
+      }),
     ).toThrow(/publicPaths is not accepted/);
   });
 
@@ -375,10 +385,28 @@ describe('createOperationHandlerAuthenticator', () => {
     expect(() => createOperationHandlerAuthenticator({})).toThrow(/at least one authentication/);
     expect(() =>
       createOperationHandlerAuthenticator(
-        { apiKeys: ['k'] },
+        { apiKeys: ['k'], defaultApiKeyScopes: ['workflows:read'] },
         { additionalScopes: ['weft.system:read'] },
       ),
     ).toThrow(/additionalScopes/);
+  });
+
+  it('accepts static apiKeys that hold no scope, which an authenticated-only catalog admits', async () => {
+    // Only `serve()` refuses an unscoped key; this handler's catalog is the
+    // caller's own and may hold operations that need no scope.
+    const authenticate = createOperationHandlerAuthenticator({
+      apiKeys: ['k'],
+      auditSink: quietAudit,
+    });
+    await authenticate.ready;
+
+    const outcome = await authenticate(
+      new Request('http://localhost/jsonrpc', { headers: { Authorization: 'Bearer k' } }),
+    );
+    expect(outcome).not.toBeInstanceOf(Response);
+    const context = outcome as AuthContext;
+    expect(context.method).toBe('api-key');
+    expect(context.principal?.scopes.size).toBe(0);
   });
 });
 

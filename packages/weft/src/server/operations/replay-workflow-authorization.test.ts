@@ -116,8 +116,10 @@ describe('weft.workflows.replay authorization parity', () => {
     });
     servers.push(anonymousServer, authenticatedServer);
 
-    const anonymousRest = await fetch(`${anonymousServer.url}/v1/workflows/${workflowId}/replay/2`);
-    expect(anonymousRest.status).toBe(401);
+    // A server with no authentication runs every request as the local user,
+    // who holds every scope, so the scoped replay operation is reachable.
+    const localRest = await fetch(`${anonymousServer.url}/v1/workflows/${workflowId}/replay/2`);
+    expect(localRest.status).toBe(200);
 
     const forbiddenRest = await fetch(
       `${authenticatedServer.url}/v1/workflows/${workflowId}/replay/2`,
@@ -141,14 +143,14 @@ describe('weft.workflows.replay authorization parity', () => {
     const successRestBody = await successRest.json();
     expect(successRestBody.revision).toBe(expectedRevision);
 
-    const anonymousJsonRpc = await postJsonRpc(anonymousServer, 'weft.workflows.replay', {
+    const localJsonRpc = await postJsonRpc(anonymousServer, 'weft.workflows.replay', {
       workflowId,
       step: 2,
     });
-    expect(anonymousJsonRpc.status).toBe(200);
-    const anonymousJsonRpcBody = await anonymousJsonRpc.json();
-    expect(anonymousJsonRpcBody).toMatchObject({ error: { data: { weftCode: 'Unauthorized' } } });
-    expect(anonymousJsonRpcBody).toMatchObject({ error: { data: { httpStatus: 401 } } });
+    expect(localJsonRpc.status).toBe(200);
+    const localJsonRpcBody = await localJsonRpc.json();
+    expect(localJsonRpcBody).not.toHaveProperty('error');
+    expect(localJsonRpcBody).toMatchObject({ result: { checkpoint: { step: 2 } } });
 
     const forbiddenJsonRpc = await postJsonRpc(
       authenticatedServer,
@@ -197,8 +199,9 @@ describe('weft.workflows.replay authorization parity', () => {
       }),
     );
     const anonymousResponse = await anonymousResponsePromise;
-    expect(anonymousResponse).toMatchObject({ error: { data: { weftCode: 'Unauthorized' } } });
-    expect(anonymousResponse).toMatchObject({ error: { data: { httpStatus: 401 } } });
+    // No authentication configured: the session is the local user, who holds every scope.
+    expect(anonymousResponse).not.toHaveProperty('error');
+    expect(anonymousResponse).toMatchObject({ result: { checkpoint: { step: 2 } } });
     anonymousSocket.close();
 
     const authenticatedEngine = createReplayEngine();

@@ -23,7 +23,8 @@ describe('AuthModeBanner', () => {
     });
 
     expect(getByText(/Running without authentication/)).not.toBeNull();
-    expect(getByText(/scopes this session doesn't have/)).not.toBeNull();
+    // The local user holds every scope, so the banner says every operation is open.
+    expect(getByText(/Every operation is open/)).not.toBeNull();
     expect(container.querySelector('[data-variant="warn"]')).not.toBeNull();
   });
 
@@ -33,6 +34,7 @@ describe('AuthModeBanner', () => {
     });
 
     expect(getByText(/by deployment choice/)).not.toBeNull();
+    expect(getByText(/Every operation is open/)).not.toBeNull();
     expect(container.querySelector('[data-variant="allow"]')).not.toBeNull();
   });
 

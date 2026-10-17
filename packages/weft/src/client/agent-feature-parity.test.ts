@@ -13,7 +13,8 @@ import { Engine } from '../core/engine.ts';
 import { ReviewCoordinator } from '../core/review/index.ts';
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
-import { handleRequest } from '../server/handler.ts';
+import { AUTHORIZATION_SCOPES } from '../server/authorization-scope.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../server/local-user-request.test-support.ts';
 import { principalFromApiKey } from '../server/principal.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { HttpClient } from './index.ts';
@@ -229,7 +230,7 @@ describe('Agent feature parity: HttpClient (server mode)', () => {
             method: 'api-key',
             principal: principalFromApiKey({
               subject: 'agent-feature-parity',
-              scopes: ['reviews:read'],
+              scopes: AUTHORIZATION_SCOPES,
             }),
           },
         });

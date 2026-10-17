@@ -104,4 +104,28 @@ describe('SignalsTab', () => {
     expect(outcome.called).toBe(false);
     expect(getByText(/Payload must be valid JSON/)).not.toBeNull();
   });
+
+  test('disables Send signal when the principal lacks signals:write', async () => {
+    const outcome: { called: boolean } = { called: false };
+    const client = {
+      signal: async () => {
+        outcome.called = true;
+      },
+      getTimeline: async (): Promise<WorkflowTimelineEntry[]> => [],
+    };
+
+    const { getByLabelText, getByRole } = render(SignalsTabHarness, {
+      props: {
+        client,
+        workflow: workflow(),
+        sendGate: { disabled: true, title: 'Requires signals:write' },
+      },
+    });
+
+    await fireEvent.input(getByLabelText('Signal name'), { target: { value: 'addItem' } });
+    const send = getByRole('button', { name: 'Send signal' });
+    expect(send.hasAttribute('disabled')).toBe(true);
+    await fireEvent.click(send);
+    expect(outcome.called).toBe(false);
+  });
 });

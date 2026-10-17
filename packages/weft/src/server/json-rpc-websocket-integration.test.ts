@@ -306,6 +306,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
       port: 0,
       auth: {
         apiKeys: ['weft_key_valid123456789012345678901'],
+        defaultApiKeyScopes: ['workflows:read'],
       },
     });
 
@@ -413,6 +414,7 @@ describe('serve() — WebSocket /jsonrpc', () => {
       port: 0,
       auth: {
         apiKeys: [apiKey],
+        defaultApiKeyScopes: ['workflows:read'],
       },
     });
 

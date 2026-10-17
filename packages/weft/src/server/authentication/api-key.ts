@@ -3,7 +3,11 @@ import {
   type AdditionalScopeSet,
   type AuthorizationScope,
 } from '../authorization-scope.ts';
-import { principalFromApiKey, type AuthenticatedPrincipal } from '../principal.ts';
+import {
+  principalFromApiKey,
+  SHARED_API_KEY_SUBJECT,
+  type AuthenticatedPrincipal,
+} from '../principal.ts';
 import {
   findConstantTimeApiKeyMatch,
   type ConstantTimeApiKeyEntry,
@@ -140,7 +144,7 @@ export async function tryAdmitApiKey(
   }
   if (apiKeyEntries !== null && findConstantTimeApiKeyMatch(presentedKey, apiKeyEntries) !== null) {
     const principal = principalFromApiKey({
-      subject: 'api-key-caller',
+      subject: SHARED_API_KEY_SUBJECT,
       scopes: defaultApiKeyScopes,
     });
     const admitted = deepFreezeApiKeyPrincipal(principal, additionalScopes);

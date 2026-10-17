@@ -5,10 +5,10 @@ import { DynamicWorkflowSourceUnavailableError } from '../../core/engine/dynamic
 import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { handleRequest } from '../handler.ts';
 import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
-import { anonymousPrincipal } from '../principal.ts';
+import { principalFromUnauthenticatedLocal } from '../principal.ts';
 import { createScheduleOperation, createScheduleRestBinding } from './create-schedule.ts';
 import { invalidJsonRequest, jsonRequest } from './operation-test-helpers.test-support.ts';
 
@@ -202,7 +202,7 @@ describe('weft.schedules.create', () => {
           },
         }),
       }),
-      { registry, host: engine, principal: anonymousPrincipal() },
+      { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
     );
 
     expect(response.status).toBe(200);
@@ -437,7 +437,7 @@ describe('weft.schedules.create DynamicWorkflowSourceUnavailableError wire mappi
             params: { type: 'echo', cronExpression: '0 * * * *', revisionPolicy: 'pinned' },
           }),
         }),
-        { registry, host: engine, principal: anonymousPrincipal() },
+        { registry, host: engine, principal: principalFromUnauthenticatedLocal() },
       );
       const text = await response.text();
 
