@@ -178,7 +178,6 @@ describe('internal workspace architecture', () => {
     const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
       'bun run lint:root',
-      'bun run lint:styles',
       'bun run typecheck:root',
       // Every workspace task in one turbo run, so lint, type-checks, tests, and coverage overlap
       // under the memory-scaled concurrency instead of waiting on each other stage by stage. The

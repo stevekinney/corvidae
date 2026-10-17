@@ -113,11 +113,9 @@
    reference. Do not add a negative margin — that would double-shift it. */
   .cinder-popover[data-cinder-placement^='bottom'] .cinder-popover__arrow {
     top: -8px;
-    /* stylelint-disable csstools/use-logical */
     border-left: 8px solid transparent;
     border-right: 8px solid transparent;
     border-bottom: 8px solid var(--cinder-surface-raised);
-    /* stylelint-enable csstools/use-logical */
   }
 
   .cinder-popover[data-cinder-placement^='bottom'] .cinder-popover__arrow::before {
@@ -131,34 +129,28 @@
      border-left is 8px, so `left: 0` here would start 8px right of the
      outer triangle's actual left edge; -8px cancels that inset back to 0. */
     left: -8px;
-    /* stylelint-disable csstools/use-logical */
     border-left: 8px solid transparent;
     border-right: 8px solid transparent;
     border-bottom: 8px solid var(--cinder-border);
-    /* stylelint-enable csstools/use-logical */
   }
 
   .cinder-popover[data-cinder-placement^='bottom'] .cinder-popover__arrow::after {
     content: '';
     position: absolute;
-    /* stylelint-disable csstools/use-logical */
     left: -7px;
     top: 1px;
     border-left: 7px solid transparent;
     border-right: 7px solid transparent;
     border-bottom: 7px solid var(--cinder-surface-raised);
-    /* stylelint-enable csstools/use-logical */
   }
 
   /* Panel is ABOVE trigger - arrow tip points DOWN. See bottom-placement
    note above re: Floating UI offsetWidth centering. */
   .cinder-popover[data-cinder-placement^='top'] .cinder-popover__arrow {
     bottom: -8px;
-    /* stylelint-disable csstools/use-logical */
     border-left: 8px solid transparent;
     border-right: 8px solid transparent;
     border-top: 8px solid var(--cinder-surface-raised);
-    /* stylelint-enable csstools/use-logical */
   }
 
   .cinder-popover[data-cinder-placement^='top'] .cinder-popover__arrow::before {
@@ -168,23 +160,19 @@
     /* See the bottom-placement `::before` comment above -- the containing
      block's left inset equals this parent's own border-left (8px). */
     left: -8px;
-    /* stylelint-disable csstools/use-logical */
     border-left: 8px solid transparent;
     border-right: 8px solid transparent;
     border-top: 8px solid var(--cinder-border);
-    /* stylelint-enable csstools/use-logical */
   }
 
   .cinder-popover[data-cinder-placement^='top'] .cinder-popover__arrow::after {
     content: '';
     position: absolute;
-    /* stylelint-disable csstools/use-logical */
     left: -7px;
     bottom: 1px;
     border-left: 7px solid transparent;
     border-right: 7px solid transparent;
     border-top: 7px solid var(--cinder-surface-raised);
-    /* stylelint-enable csstools/use-logical */
   }
 
   /* Panel is to the RIGHT of trigger - arrow tip points LEFT.
@@ -192,11 +180,9 @@
    reference vertically (offsetHeight=16); no negative margin needed. */
   .cinder-popover[data-cinder-placement^='right'] .cinder-popover__arrow {
     left: -8px;
-    /* stylelint-disable csstools/use-logical */
     border-top: 8px solid transparent;
     border-bottom: 8px solid transparent;
     border-right: 8px solid var(--cinder-surface-raised);
-    /* stylelint-enable csstools/use-logical */
   }
 
   .cinder-popover[data-cinder-placement^='right'] .cinder-popover__arrow::before {
@@ -208,34 +194,28 @@
      that back to 0. */
     top: -8px;
     left: 0;
-    /* stylelint-disable csstools/use-logical */
     border-top: 8px solid transparent;
     border-bottom: 8px solid transparent;
     border-right: 8px solid var(--cinder-border);
-    /* stylelint-enable csstools/use-logical */
   }
 
   .cinder-popover[data-cinder-placement^='right'] .cinder-popover__arrow::after {
     content: '';
     position: absolute;
-    /* stylelint-disable csstools/use-logical */
     left: 1px;
     top: -7px;
     border-top: 7px solid transparent;
     border-bottom: 7px solid transparent;
     border-right: 7px solid var(--cinder-surface-raised);
-    /* stylelint-enable csstools/use-logical */
   }
 
   /* Panel is to the LEFT of trigger - arrow tip points RIGHT. See
    right-placement note above re: Floating UI offsetHeight centering. */
   .cinder-popover[data-cinder-placement^='left'] .cinder-popover__arrow {
     right: -8px;
-    /* stylelint-disable csstools/use-logical */
     border-top: 8px solid transparent;
     border-bottom: 8px solid transparent;
     border-left: 8px solid var(--cinder-surface-raised);
-    /* stylelint-enable csstools/use-logical */
   }
 
   .cinder-popover[data-cinder-placement^='left'] .cinder-popover__arrow::before {
@@ -244,23 +224,19 @@
     /* See the right-placement `::before` comment above. */
     top: -8px;
     right: 0;
-    /* stylelint-disable csstools/use-logical */
     border-top: 8px solid transparent;
     border-bottom: 8px solid transparent;
     border-left: 8px solid var(--cinder-border);
-    /* stylelint-enable csstools/use-logical */
   }
 
   .cinder-popover[data-cinder-placement^='left'] .cinder-popover__arrow::after {
     content: '';
     position: absolute;
-    /* stylelint-disable csstools/use-logical */
     right: 1px;
     top: -7px;
     border-top: 7px solid transparent;
     border-bottom: 7px solid transparent;
     border-left: 7px solid var(--cinder-surface-raised);
-    /* stylelint-enable csstools/use-logical */
   }
 
   @media (prefers-reduced-motion: reduce) {

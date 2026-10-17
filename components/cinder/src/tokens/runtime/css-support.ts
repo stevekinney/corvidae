@@ -1,6 +1,6 @@
 import { type CorpusEntry, isPlainObject } from './corpus.ts';
+import { sanitizeComment } from './css-comments.ts';
 import { DEFERRED_COMPONENT_ALIAS_FAMILIES } from './css-configuration.ts';
-import { sanitizeComment, stylelintDisableCommentFor } from './css-stylelint.ts';
 import type { ValueResolver } from './resolve.ts';
 import { parseResolutionOrder } from './resolver-order.ts';
 import type { ResolverDocument } from './types.ts';
@@ -30,10 +30,9 @@ export function renderBaseDeclarations(
     // its referenced foundation token respond to scoped ancestor overrides.
     if (!isRootDeclaredEntry(entry)) continue;
     if (entry.description) lines.push(`/* ${sanitizeComment(entry.description)} */`);
-    const value = serializeEntryValue(entry, baseIndex, resolveReferences);
-    const stylelintDisable = stylelintDisableCommentFor(value);
-    if (stylelintDisable) lines.push(stylelintDisable);
-    lines.push(`${entry.cssProperty}: ${value};`);
+    lines.push(
+      `${entry.cssProperty}: ${serializeEntryValue(entry, baseIndex, resolveReferences)};`,
+    );
   }
   return lines.join('\n');
 }
@@ -49,10 +48,7 @@ export function renderOverrideDeclarations(
     if (!base?.cssProperty) {
       throw new Error(`Override token at "${path}" has no matching base token with a cssProperty.`);
     }
-    const value = serializeEntryValue(entry, baseIndex, resolveReferences);
-    const stylelintDisable = stylelintDisableCommentFor(value);
-    if (stylelintDisable) lines.push(stylelintDisable);
-    lines.push(`${base.cssProperty}: ${value};`);
+    lines.push(`${base.cssProperty}: ${serializeEntryValue(entry, baseIndex, resolveReferences)};`);
   }
   return lines.join('\n');
 }

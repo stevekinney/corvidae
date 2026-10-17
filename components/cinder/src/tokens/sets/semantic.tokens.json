@@ -335,7 +335,7 @@
     }
   },
   "control": {
-    "$description": "The one frame every text-entry control (Input, Textarea, Select, Combobox, and the fields composed from them) is drawn with. A control consumes these, including its disabled and invalid states, instead of choosing its own fill, edge, or radius, so the family stays consistent and a retune is one edit here. A control never sits on `surface` or `surface.inset` and never uses `radius.small`; `cinder/control-frame` (stylelint) rejects raw values on control selectors.",
+    "$description": "The one frame every text-entry control (Input, Textarea, Select, Combobox, and the fields composed from them) is drawn with. A control consumes these, including its disabled and invalid states, instead of choosing its own fill, edge, or radius, so the family stays consistent and a retune is one edit here. A control never sits on `surface` or `surface.inset` and never uses `radius.small`, and control selectors take no raw values.",
     "background": {
       "$root": {
         "$type": "color",

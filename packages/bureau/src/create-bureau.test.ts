@@ -25,6 +25,7 @@ import {
   type ActiveRun,
   type AgentInput,
   type AgentRunContext,
+  type AgentSession,
   type CombinedOperativeEventMap,
   createAgent,
   createAgentSession,
@@ -7123,6 +7124,81 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     } finally {
       releaseRunB.resolve();
       await bureau.dispose();
+    }
+  });
+
+  it("authorizes the run live in another process, not this process's finished run (COR-1569)", async () => {
+    // Two Bureaus over one SQLite file, sharing nothing else, as two
+    // processes would. Run A stays live in bureau A; run B, on the same
+    // session, finishes in bureau B. Bureau B hosts no live run, so only a
+    // backend-wide read knows A is still the session's sole live run.
+    const directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-two-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureauA = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+    });
+    const bureauB = await createBureau({
+      agents: {},
+      generate: async () => ({ content: 'B done', toolCalls: [] }),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    try {
+      const runA = await bureauA.createRun({ message: 'go A', principal: 'alice' });
+      expect(
+        await pollUntil(async () => {
+          const session = await bureauA.getSession(runA.sessionId);
+          return session?.metadata['lastRunStatus'] === 'running';
+        }, 200),
+      ).toBe(true);
+      const runB = await bureauB.createRun({
+        message: 'go B',
+        principal: 'bob',
+        sessionId: runA.sessionId,
+      });
+      await waitForRunSettled(bureauB, runB.id);
+      expect(
+        await pollUntil(async () => {
+          const session = await bureauB.getSession(runA.sessionId);
+          const metadata = session?.metadata ?? {};
+          const authorities = metadata['lastRequestAuthorities'];
+          return (
+            metadata['lastRunStatus'] === 'completed' &&
+            metadata['lastRunId'] === runB.id &&
+            typeof authorities === 'object' &&
+            authorities !== null &&
+            !Array.isArray(authorities) &&
+            !(runB.id in authorities) &&
+            runA.id in authorities
+          );
+        }, 200),
+      ).toBe(true);
+      expect(bureauA.getRun(runA.id)?.status).toBe('running');
+
+      const alice = await bureauB.submitSessionInput(runA.sessionId, {
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      const bob = await bureauB.submitSessionInput(runA.sessionId, {
+        principal: 'bob',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      expect({ alice: alice.outcome, bob }).toEqual({
+        alice: 'admitted',
+        bob: { outcome: 'not-found' },
+      });
+    } finally {
+      await bureauB.dispose();
+      await bureauA.dispose();
+      await rm(directory, { recursive: true, force: true });
     }
   });
 });
@@ -16157,6 +16233,45 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
 });
 
 describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () => {
+  async function removeDatabase(databasePath: string): Promise<void> {
+    await rm(databasePath, { force: true });
+    await rm(`${databasePath}-wal`, { force: true });
+    await rm(`${databasePath}-shm`, { force: true });
+  }
+
+  /**
+   * Appends an unrelated marker through a second handle and returns its
+   * sequence, which sorts after every event already in the feed.
+   */
+  async function appendFloorMarker(databasePath: string): Promise<number> {
+    const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+    const adminFeed = createFleetEventFeed(adminStorage);
+    try {
+      const marker = await adminFeed.append({
+        kind: 'review.approved',
+        workflowId: 'run:cor-204-floor-marker',
+        emittedAtMs: 0,
+        payload: {},
+      });
+      return marker.sequence;
+    } finally {
+      adminFeed.dispose();
+      adminStorage[Symbol.dispose]();
+    }
+  }
+
+  /** Moves the retention floor past `sequence` through a second handle. */
+  async function retainThrough(databasePath: string, sequence: number): Promise<void> {
+    const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+    const adminFeed = createFleetEventFeed(adminStorage);
+    try {
+      await adminFeed.retain({ beforeSequence: sequence + 1 });
+    } finally {
+      adminFeed.dispose();
+      adminStorage[Symbol.dispose]();
+    }
+  }
+
   it("drops a session's lastRunOwningPrincipals entry once its run's entire durable history — including a later deleteRun()'s own run.removed — is below the retention floor, leaves a still-retained run's entry alone, and the pruned run's history now reads back as a gap", async () => {
     const databasePath = join(
       tmpdir(),
@@ -17327,45 +17442,6 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       return prototype;
     }
 
-    async function removeDatabase(databasePath: string): Promise<void> {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
-    }
-
-    /**
-     * Appends an unrelated marker through a second handle and returns its
-     * sequence, which sorts after every event already in the feed.
-     */
-    async function appendFloorMarker(databasePath: string): Promise<number> {
-      const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
-      const adminFeed = createFleetEventFeed(adminStorage);
-      try {
-        const marker = await adminFeed.append({
-          kind: 'review.approved',
-          workflowId: 'run:cor-204-floor-marker',
-          emittedAtMs: 0,
-          payload: {},
-        });
-        return marker.sequence;
-      } finally {
-        adminFeed.dispose();
-        adminStorage[Symbol.dispose]();
-      }
-    }
-
-    /** Moves the retention floor past `sequence` through a second handle. */
-    async function retainThrough(databasePath: string, sequence: number): Promise<void> {
-      const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
-      const adminFeed = createFleetEventFeed(adminStorage);
-      try {
-        await adminFeed.retain({ beforeSequence: sequence + 1 });
-      } finally {
-        adminFeed.dispose();
-        adminStorage[Symbol.dispose]();
-      }
-    }
-
     it("leaves a run's ownership entry alone while another instance holds its live workflow claim, and prunes it once the run settles", async () => {
       const databasePath = join(
         tmpdir(),
@@ -17567,6 +17643,677 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       } finally {
         claimHolderSpy.mockRestore();
       }
+    });
+  });
+
+  describe('restores a pruned run-ownership entry when a retained event lands (COR-1380)', () => {
+    function databasePathFor(label: string): string {
+      return join(
+        tmpdir(),
+        `bureau-run-ownership-restore-${label}-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+      );
+    }
+
+    function ownersOf(session: AgentSession | undefined): unknown {
+      return session?.metadata['lastRunOwningPrincipals'];
+    }
+
+    async function removeRunOwner(bureau: Bureau, sessionId: string, runId: string) {
+      const sessionStore = bureau.sessionStore;
+      if (!sessionStore) throw new Error('expected a configured session store');
+      await sessionStore.update(sessionId, (session) => {
+        if (!session) return undefined;
+        const owners = session.metadata['lastRunOwningPrincipals'];
+        if (typeof owners !== 'object' || owners === null || Array.isArray(owners)) return session;
+        const remaining = Object.fromEntries(
+          Object.entries(owners).filter(([ownedRunId]) => ownedRunId !== runId),
+        );
+        return {
+          ...session,
+          metadata: { ...session.metadata, lastRunOwningPrincipals: remaining },
+        };
+      });
+    }
+
+    it('restores a pruned run-ownership entry when deleteRun records run.removed on another instance', async () => {
+      const databasePath = databasePathFor('delete-run');
+      const runtimeA = createManualRuntimeServices();
+      const sharedOptions = {
+        agents: {},
+        generate: createMockGenerate('Done.'),
+        toolbox: createEmptyToolbox(),
+        storage: { type: 'sqlite' as const, path: databasePath },
+        durableBackgroundTasks: 'manual' as const,
+        stopWhen: stopWhen.noToolCalls(),
+      };
+      try {
+        const bureauA = await createBureau({ ...sharedOptions, runtime: runtimeA });
+        const bureauB = await createBureau({
+          ...sharedOptions,
+          runtime: createManualRuntimeServices(),
+        });
+        try {
+          const run = await bureauA.createRun({ message: 'A', principal: 'alice' });
+          await waitForRunCompletion(bureauA, run.id);
+          await runtimeA.deferred.drain();
+          await retainThrough(databasePath, await appendFloorMarker(databasePath));
+
+          await bureauB.runDurableMaintenance();
+          const pruned = await bureauA.getSession(run.sessionId);
+          expect(
+            (ownersOf(pruned) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+
+          const sessionStore = bureauA.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const updateSpy = spyOn(sessionStore, 'update');
+          let restoreOptions: unknown[];
+          try {
+            await bureauA.deleteRun(run.id);
+            restoreOptions = updateSpy.mock.calls.map(([, , options]) => options);
+          } finally {
+            updateSpy.mockRestore();
+          }
+
+          const restored = await bureauA.getSession(run.sessionId);
+          expect(ownersOf(restored)).toEqual({ [run.id]: 'alice' });
+          expect(restoreOptions).toContainEqual({ refreshActivity: false });
+        } finally {
+          await bureauA.shutdown();
+          await bureauB.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    });
+
+    it('restores a pruned run-ownership entry when a review decision lands after another instance prunes it', async () => {
+      const databasePath = databasePathFor('review-decision');
+      const runtimeA = createManualRuntimeServices();
+      const sharedOptions = {
+        agents: {},
+        toolbox: createNeedsApprovalToolbox('cor-1380-review-secret', []),
+        storage: { type: 'sqlite' as const, path: databasePath },
+        durableBackgroundTasks: 'manual' as const,
+        stopWhen: stopWhen.toolOutcome('action_required'),
+      };
+      try {
+        const bureauA = await createBureau({
+          ...sharedOptions,
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'restore-call', name: 'charge-card', arguments: { cents: 125 } }],
+            },
+          ]),
+          runtime: runtimeA,
+        });
+        const bureauB = await createBureau({
+          ...sharedOptions,
+          generate: createMockGenerate(),
+          runtime: createManualRuntimeServices(),
+        });
+        try {
+          const run = await bureauA.createRun({ message: 'Charge it', principal: 'alice' });
+          await waitForRunCompletion(bureauA, run.id);
+          await runtimeA.deferred.drain();
+          const [review] = bureauA.listPendingReviews();
+          if (!review) throw new Error('expected one pending tool-approval review');
+          await retainThrough(databasePath, await appendFloorMarker(databasePath));
+
+          // The pending review's authority entry keeps the run's owner.
+          await bureauB.runDurableMaintenance();
+          const beforeDecision = await bureauA.getSession(run.sessionId);
+          expect(ownersOf(beforeDecision)).toEqual({ [run.id]: 'alice' });
+
+          // B prunes in the window after A's resolution write removes the
+          // run's authority entry and before A records `review.denied`.
+          const sessionStore = bureauA.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const originalUpdate = sessionStore.update.bind(sessionStore);
+          let viewFromB: AgentSession | undefined;
+          let prunedInWindow = false;
+          const updateSpy = spyOn(sessionStore, 'update').mockImplementation(
+            async (id, updater, options) => {
+              const result = await originalUpdate(id, updater, options);
+              const resolved = result?.metadata['resolvedReviewIds'];
+              const authorities = result?.metadata['lastRequestAuthorities'];
+              if (
+                !prunedInWindow &&
+                Array.isArray(resolved) &&
+                resolved.includes(review.id) &&
+                !(
+                  typeof authorities === 'object' &&
+                  authorities !== null &&
+                  !Array.isArray(authorities) &&
+                  run.id in authorities
+                )
+              ) {
+                prunedInWindow = true;
+                await bureauB.runDurableMaintenance();
+                viewFromB = await bureauB.getSession(id);
+              }
+              return result;
+            },
+          );
+          try {
+            await bureauA.resolveReview({
+              id: review.id,
+              decision: 'deny',
+              principal: 'operator-b',
+            });
+          } finally {
+            updateSpy.mockRestore();
+          }
+          expect(prunedInWindow).toBe(true);
+          expect(
+            (ownersOf(viewFromB) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+
+          const afterDecision = await bureauA.getSession(run.sessionId);
+          expect(ownersOf(afterDecision)).toEqual({ [run.id]: 'alice' });
+
+          const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+          const adminFeed = createFleetEventFeed(adminStorage);
+          const recorded: { workflowId: string | undefined; kind: string }[] = [];
+          try {
+            for await (const envelope of adminFeed.replay()) {
+              recorded.push({ workflowId: envelope.workflowId, kind: envelope.kind });
+            }
+          } finally {
+            adminFeed.dispose();
+            adminStorage[Symbol.dispose]();
+          }
+          expect(recorded).toContainEqual({ workflowId: `run:${run.id}`, kind: 'review.denied' });
+        } finally {
+          await bureauA.shutdown();
+          await bureauB.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    });
+
+    /** A completed, deleted run whose whole history is below the floor. */
+    async function withDeletedRunBelowFloor(
+      label: string,
+      runCount: number,
+      body: (context: {
+        bureau: Bureau;
+        runs: { id: string; sessionId: string }[];
+        databasePath: string;
+        diagnostics: string[];
+      }) => Promise<void>,
+    ): Promise<void> {
+      const databasePath = databasePathFor(label);
+      const runtime = createManualRuntimeServices();
+      const diagnostics: string[] = [];
+      try {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          storage: { type: 'sqlite', path: databasePath },
+          runtime,
+          durableBackgroundTasks: 'manual',
+          stopWhen: stopWhen.noToolCalls(),
+          onDiagnostic: (diagnostic) => {
+            diagnostics.push(diagnostic.message);
+          },
+        });
+        try {
+          const runs: { id: string; sessionId: string }[] = [];
+          for (let index = 0; index < runCount; index++) {
+            const run = await bureau.createRun({ message: `run ${index}`, principal: 'alice' });
+            await waitForRunCompletion(bureau, run.id);
+            runs.push(run);
+          }
+          for (const run of runs) await bureau.deleteRun(run.id);
+          await runtime.deferred.drain();
+          await retainThrough(databasePath, await appendFloorMarker(databasePath));
+          await body({ bureau, runs, databasePath, diagnostics });
+        } finally {
+          await bureau.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    }
+
+    it('restores a run-ownership entry when a retained event lands between the retained-owner refresh and the session write', async () => {
+      await withDeletedRunBelowFloor(
+        'refresh-window',
+        1,
+        async ({ bureau, runs, databasePath }) => {
+          const [run] = runs;
+          if (!run) throw new Error('expected one run');
+          const sessionStore = bureau.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const before = await bureau.getSession(run.sessionId);
+          const originalUpdate = sessionStore.update.bind(sessionStore);
+          const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+          const adminFeed = createFleetEventFeed(adminStorage);
+          let pruneResult: AgentSession | undefined;
+          let appended = false;
+          const updateSpy = spyOn(sessionStore, 'update').mockImplementationOnce(
+            async (id, updater, options) =>
+              originalUpdate(
+                id,
+                async (session) => {
+                  const result = await updater(session);
+                  pruneResult = result;
+                  if (!appended) {
+                    appended = true;
+                    await adminFeed.append({
+                      kind: 'review.approved',
+                      workflowId: `run:${run.id}`,
+                      emittedAtMs: 0,
+                      payload: {},
+                    });
+                  }
+                  return result;
+                },
+                options,
+              ),
+          );
+          try {
+            await bureau.runDurableMaintenance();
+          } finally {
+            updateSpy.mockRestore();
+            adminFeed.dispose();
+            adminStorage[Symbol.dispose]();
+          }
+
+          expect(appended).toBe(true);
+          expect(
+            (ownersOf(pruneResult) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+          const after = await bureau.getSession(run.sessionId);
+          expect(ownersOf(after)).toEqual({ [run.id]: 'alice' });
+          expect(after?.updatedAt).toBe(before?.updatedAt);
+        },
+      );
+    });
+
+    it('restores a pruned run-ownership entry when sweepExpiredReviews records review.expired', async () => {
+      const databasePath = databasePathFor('sweep');
+      const runtime = createManualRuntimeServices();
+      try {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'expiring-call', name: 'charge-card', arguments: { cents: 50 } }],
+            },
+          ]),
+          toolbox: createToolbox(
+            [
+              createTool({
+                name: 'charge-card',
+                version: '1.0.0',
+                description: 'Charge a payment card',
+                input: z.object({ cents: z.number() }),
+                async execute({ cents }) {
+                  return { charged: cents };
+                },
+              }),
+            ],
+            {
+              approvalSecret: 'cor-1380-expiry-secret',
+              approvalBindingTtlMs: 1000,
+              runtime,
+              policy: {
+                beforeExecute() {
+                  return {
+                    allow: false,
+                    status: 'needs_approval',
+                    reason: 'Operator approval required',
+                    action: { message: 'Approve charge' },
+                  };
+                },
+              },
+            },
+          ),
+          storage: { type: 'sqlite', path: databasePath },
+          runtime,
+          durableBackgroundTasks: 'manual',
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        });
+        try {
+          const run = await bureau.createRun({ message: 'Charge it', principal: 'alice' });
+          await waitForRunCompletion(bureau, run.id);
+          expect(bureau.listPendingReviews()).toHaveLength(1);
+          await runtime.advance(1500);
+
+          await removeRunOwner(bureau, run.sessionId, run.id);
+          const removed = await bureau.getSession(run.sessionId);
+          expect(
+            (ownersOf(removed) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+
+          expect(await bureau.sweepExpiredReviews()).toBe(1);
+
+          const restored = await bureau.getSession(run.sessionId);
+          expect(ownersOf(restored)).toEqual({ [run.id]: 'alice' });
+        } finally {
+          await bureau.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    });
+
+    it('never adds an ownership entry on deleteRun for a run recorded without a principal', async () => {
+      const databasePath = databasePathFor('no-principal');
+      const runtime = createManualRuntimeServices();
+      try {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          storage: { type: 'sqlite', path: databasePath },
+          runtime,
+          durableBackgroundTasks: 'manual',
+          stopWhen: stopWhen.noToolCalls(),
+        });
+        try {
+          const run = await bureau.createRun({ message: 'A' });
+          await waitForRunCompletion(bureau, run.id);
+          await bureau.deleteRun(run.id);
+          await runtime.deferred.drain();
+          const session = await bureau.getSession(run.sessionId);
+          expect(
+            (ownersOf(session) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+        } finally {
+          await bureau.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    });
+
+    async function recreateSession(bureau: Bureau, sessionId: string): Promise<string> {
+      const sessionStore = bureau.sessionStore;
+      if (!sessionStore) throw new Error('expected a configured session store');
+      await sessionStore.delete(sessionId);
+      await sessionStore.save(
+        createAgentSession({
+          id: sessionId,
+          agentName: 'recreated',
+          conversationHistory: createConversationHistory({ id: sessionId }),
+        }),
+      );
+      const recreated = await sessionStore.load(sessionId);
+      if (!recreated) throw new Error('expected the recreated session');
+      return recreated.incarnation;
+    }
+
+    it("never restores a run's ownership into a session recreated under the same id (writer side)", async () => {
+      const databasePath = databasePathFor('writer-incarnation');
+      const runtime = createManualRuntimeServices();
+      try {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          storage: { type: 'sqlite', path: databasePath },
+          runtime,
+          durableBackgroundTasks: 'manual',
+          stopWhen: stopWhen.noToolCalls(),
+        });
+        try {
+          const run = await bureau.createRun({ message: 'A', principal: 'alice' });
+          await waitForRunCompletion(bureau, run.id);
+          const original = await bureau.getSession(run.sessionId);
+          const recreatedIncarnation = await recreateSession(bureau, run.sessionId);
+          expect(recreatedIncarnation).not.toBe(original?.incarnation);
+
+          await bureau.deleteRun(run.id);
+          await runtime.deferred.drain();
+
+          const recreated = await bureau.getSession(run.sessionId);
+          expect(recreated?.incarnation).toBe(recreatedIncarnation);
+          expect(
+            (ownersOf(recreated) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+        } finally {
+          await bureau.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    });
+
+    it('never restores a pruned ownership entry into a session recreated after the prune (pruner side)', async () => {
+      await withDeletedRunBelowFloor(
+        'pruner-incarnation',
+        1,
+        async ({ bureau, runs, databasePath }) => {
+          const [run] = runs;
+          if (!run) throw new Error('expected one run');
+          const sessionStore = bureau.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const originalUpdate = sessionStore.update.bind(sessionStore);
+          const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+          const adminFeed = createFleetEventFeed(adminStorage);
+          let recreatedIncarnation: string | undefined;
+          const updateSpy = spyOn(sessionStore, 'update').mockImplementationOnce(
+            async (id, updater, options) => {
+              const result = await originalUpdate(id, updater, options);
+              await adminFeed.append({
+                kind: 'review.approved',
+                workflowId: `run:${run.id}`,
+                emittedAtMs: 0,
+                payload: {},
+              });
+              recreatedIncarnation = await recreateSession(bureau, id);
+              return result;
+            },
+          );
+          try {
+            await bureau.runDurableMaintenance();
+          } finally {
+            updateSpy.mockRestore();
+            adminFeed.dispose();
+            adminStorage[Symbol.dispose]();
+          }
+
+          const recreated = await bureau.getSession(run.sessionId);
+          expect(recreatedIncarnation).toBeDefined();
+          expect(recreated?.incarnation).toBe(recreatedIncarnation);
+          expect(
+            (ownersOf(recreated) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+        },
+      );
+    });
+
+    it('diagnoses a rejected writer-side restore and still resolves deleteRun', async () => {
+      const databasePath = databasePathFor('writer-failure');
+      const runtime = createManualRuntimeServices();
+      const diagnostics: string[] = [];
+      try {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          storage: { type: 'sqlite', path: databasePath },
+          runtime,
+          durableBackgroundTasks: 'manual',
+          stopWhen: stopWhen.noToolCalls(),
+          onDiagnostic: (diagnostic) => {
+            diagnostics.push(diagnostic.message);
+          },
+        });
+        try {
+          const run = await bureau.createRun({ message: 'A', principal: 'alice' });
+          await waitForRunCompletion(bureau, run.id);
+          await removeRunOwner(bureau, run.sessionId, run.id);
+
+          const sessionStore = bureau.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const originalUpdate = sessionStore.update.bind(sessionStore);
+          const updateSpy = spyOn(sessionStore, 'update').mockImplementation(
+            async (id, updater, options) => {
+              if (options?.refreshActivity === false) {
+                throw new Error('restore write rejected');
+              }
+              return originalUpdate(id, updater, options);
+            },
+          );
+          try {
+            await bureau.deleteRun(run.id);
+          } finally {
+            updateSpy.mockRestore();
+          }
+          expect(
+            diagnostics.some((message) => message.includes('Run-ownership restore failed')),
+          ).toBe(true);
+        } finally {
+          await bureau.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    });
+
+    it('diagnoses a rejected pruner-side restore and continues the pass with the next session', async () => {
+      await withDeletedRunBelowFloor(
+        'pruner-failure',
+        2,
+        async ({ bureau, runs, databasePath, diagnostics }) => {
+          const [first] = runs;
+          if (!first) throw new Error('expected two runs');
+          const sessionStore = bureau.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const originalUpdate = sessionStore.update.bind(sessionStore);
+          const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+          const adminFeed = createFleetEventFeed(adminStorage);
+          let firstSessionCalls = 0;
+          const updateSpy = spyOn(sessionStore, 'update').mockImplementation(
+            async (id, updater, options) => {
+              if (id !== first.sessionId) return originalUpdate(id, updater, options);
+              firstSessionCalls += 1;
+              if (firstSessionCalls > 1) throw new Error('restore write rejected');
+              return originalUpdate(
+                id,
+                async (session) => {
+                  const result = await updater(session);
+                  await adminFeed.append({
+                    kind: 'review.approved',
+                    workflowId: `run:${first.id}`,
+                    emittedAtMs: 0,
+                    payload: {},
+                  });
+                  return result;
+                },
+                options,
+              );
+            },
+          );
+          try {
+            await bureau.runDurableMaintenance();
+            expect(updateSpy).toHaveBeenCalledTimes(3);
+          } finally {
+            updateSpy.mockRestore();
+            adminFeed.dispose();
+            adminStorage[Symbol.dispose]();
+          }
+          expect(
+            diagnostics.some((message) => message.includes('Run-ownership restore failed')),
+          ).toBe(true);
+        },
+      );
+    });
+
+    describe('adds no session write when no restore is needed', () => {
+      async function countDeleteRunUpdates(
+        options: Partial<Parameters<typeof createBureau>[0]>,
+      ): Promise<number> {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+          ...options,
+        });
+        try {
+          const run = await bureau.createRun({ message: 'A', principal: 'alice' });
+          await waitForRunCompletion(bureau, run.id);
+          const sessionStore = bureau.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const updateSpy = spyOn(sessionStore, 'update');
+          try {
+            await bureau.deleteRun(run.id);
+            return updateSpy.mock.calls.length;
+          } finally {
+            updateSpy.mockRestore();
+          }
+        } finally {
+          await bureau.shutdown();
+        }
+      }
+
+      it('deleteRun on a bureau with no durable engine', async () => {
+        expect(
+          await countDeleteRunUpdates({ persistence: textValueStore(new MemoryStorage()) }),
+        ).toBe(3);
+      });
+
+      it('deleteRun on a durable engine over memory storage', async () => {
+        expect(
+          await countDeleteRunUpdates({ storage: { type: 'memory' }, durableExecution: true }),
+        ).toBe(3);
+      });
+
+      it('deleteRun on a sqlite-backed bureau whose entry is present', async () => {
+        const databasePath = databasePathFor('count');
+        try {
+          expect(
+            await countDeleteRunUpdates({
+              storage: { type: 'sqlite', path: databasePath },
+              runtime: createManualRuntimeServices(),
+              durableBackgroundTasks: 'manual',
+            }),
+          ).toBe(3);
+        } finally {
+          await removeDatabase(databasePath);
+        }
+      });
+
+      it('resolveReview deny on a bureau with no durable engine', async () => {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createSequentialGenerate([
+            {
+              content: '',
+              toolCalls: [{ id: 'count-call', name: 'charge-card', arguments: { cents: 10 } }],
+            },
+          ]),
+          toolbox: createNeedsApprovalToolbox('cor-1380-count-secret', []),
+          persistence: textValueStore(new MemoryStorage()),
+          stopWhen: stopWhen.toolOutcome('action_required'),
+        });
+        try {
+          const run = await bureau.createRun({ message: 'Charge it', principal: 'alice' });
+          await waitForRunCompletion(bureau, run.id);
+          const [review] = bureau.listPendingReviews();
+          if (!review) throw new Error('expected one pending review');
+          const sessionStore = bureau.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const updateSpy = spyOn(sessionStore, 'update');
+          try {
+            await bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'operator' });
+            expect(updateSpy.mock.calls.length).toBe(2);
+          } finally {
+            updateSpy.mockRestore();
+          }
+        } finally {
+          await bureau.shutdown();
+        }
+      });
     });
   });
 });
