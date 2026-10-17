@@ -174,6 +174,7 @@ async function executeLoopBody(
     options,
     conversation,
     emitter,
+    deps.runtime,
   );
   onHookPlanObserverAttached?.(stopObservingHookPlan);
   if (startError !== undefined) {
