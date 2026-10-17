@@ -35,7 +35,7 @@ bungalow.readSecret('api-key'); // the value, or undefined when never written
 bungalow.close();
 ```
 
-Opening creates the root (mode `0700`), `secrets/` (mode `0700`), `logs/`, the `lock` file, and the `deployment-id` file. It does not create the database or configuration file, and a missing configuration file is valid. Every open sets the root and `secrets/` to `0700`, tightening a directory that was looser, and once it holds the lock it removes the temporary files a crash left in the root and in `secrets/`. `readSecret` sets a secret file that group or others could reach back to `0600` before it reads it.
+Opening creates the root (mode `0700`), `secrets/` (mode `0700`), `logs/`, the `lock` file, and the `deployment-id` file. It does not create the database or configuration file, and a missing configuration file is valid. Every open sets the root and `secrets/` to `0700`, tightening a directory that was looser, and once it holds the lock it removes the temporary files a crash left in the root and in `secrets/`, matching only the names Bungalow itself gives them (`deployment-id.<pid>-<uuid>.tmp` in the root, `<key>.<pid>-<uuid>.tmp` in `secrets/`). `readSecret` sets a secret file that group or others could reach back to `0600` before it reads it.
 
 A secret is written to a temporary file that is `0600` from its first byte, synced, renamed into place, and the directory entry is synced, so a crash leaves the old value or the new one.
 
@@ -46,6 +46,8 @@ A secret is written to a temporary file that is `0600` from its first byte, sync
 Holding a handle holds an exclusive, non-blocking `flock(2)` on `<root>/lock`, taken through `bun:ffi` (`libSystem.B.dylib` on macOS, `libc.so.6` on Linux). The kernel is the arbiter: a second open of a held root, in this process or another, throws `BungalowLockedError`, and when a holder dies without closing, the kernel drops its lock at once. There is no stale lock to detect or reclaim, no process identifier to check for liveness, and no race between two openers.
 
 After taking the lock the holder truncates the file and writes its process identifier as the first line. A contender that is refused reads only that first line to name the holder in `BungalowLockedError.holderProcessIdentifier`, so a later version can add lines. The identifier is advisory: `BungalowLockedError.holderProcessIdentifier` is `undefined` or can still name the previous holder during the short window between a holder taking the lock and writing its own identifier, and a crashed holder's identifier stays in the file until the next holder overwrites it. `close()` clears the file, releases the lock by closing the descriptor, and never removes the file. It is idempotent once it has succeeded, and it can be retried after a failure. A closed handle throws `BungalowStateError` on any further use.
+
+The lock file is opened without following symbolic links and with close-on-exec, and a `lock` entry that is a symbolic link or not a regular file is refused.
 
 The root must be on a local filesystem that supports `flock`. Network filesystems that do not honour it are unsupported, and a host that refuses the lock for any reason other than contention throws `BungalowFilesystemError`. On any platform other than macOS and Linux, opening throws `BungalowUnsupportedError`, and so does a Linux whose C library is not glibc, such as Alpine's musl, because the lock is bound to `libc.so.6`.
 

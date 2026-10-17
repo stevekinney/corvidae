@@ -1,12 +1,15 @@
 import {
   appendFileSync,
   closeSync,
+  existsSync,
   fstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,7 +18,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, test } from 'bun:test';
 
 import { openBungalow } from './bungalow.ts';
-import { BungalowFilesystemError, BungalowLockedError } from './errors.ts';
+import { BungalowFilesystemError, BungalowLockedError, BungalowStateError } from './errors.ts';
 import { homeEnvironment, TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
 import { startLockChild } from './lock-children.test-support.ts';
 import { acquireRootLock, systemLockOperations, type LockOperations } from './lock.ts';
@@ -314,5 +317,30 @@ describe('a holder that is just starting or just finishing', () => {
     expect(error).toBeInstanceOf(BungalowLockedError);
     expect((error as BungalowLockedError).holderProcessIdentifier).toBe(4242);
     expect(attempts).toBe(1);
+  });
+});
+
+describe('a lock entry that is not a regular file', () => {
+  test('is refused when it is a symbolic link, and its target is left untouched', () => {
+    const root = temporaryDirectory();
+    const target = join(temporaryDirectory(), 'sentinel');
+    writeFileSync(target, 'sentinel bytes that must survive');
+    symlinkSync(target, join(root, 'lock'));
+    expect(thrownBy(() => openIn(root))).toBeInstanceOf(BungalowStateError);
+    expect(readFileSync(target, 'utf8')).toBe('sentinel bytes that must survive');
+  });
+
+  test('is refused when it is a dangling symbolic link, which is not created through', () => {
+    const root = temporaryDirectory();
+    const target = join(temporaryDirectory(), 'absent');
+    symlinkSync(target, join(root, 'lock'));
+    expect(thrownBy(() => openIn(root))).toBeInstanceOf(BungalowStateError);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  test('is refused when it is a directory', () => {
+    const root = temporaryDirectory();
+    mkdirSync(join(root, 'lock'));
+    expect(thrownBy(() => openIn(root))).toBeInstanceOf(BungalowFilesystemError);
   });
 });

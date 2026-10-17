@@ -16,6 +16,7 @@ import {
   BungalowError,
   BungalowFilesystemError,
   BungalowLockedError,
+  BungalowStateError,
   BungalowUnsupportedError,
 } from './errors.ts';
 
@@ -117,7 +118,7 @@ function openFlags(): number {
   const platform = process.platform;
   const closeOnExec =
     platform === 'darwin' || platform === 'linux' ? CLOSE_ON_EXEC_FLAG[platform] : 0;
-  return constants.O_RDWR | constants.O_CREAT | closeOnExec;
+  return constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW | closeOnExec;
 }
 
 function wrap(description: string, error: unknown): never {
@@ -164,10 +165,18 @@ export function acquireRootLock(
   try {
     descriptor = openSync(lockPath, openFlags(), 0o600);
   } catch (error) {
+    // `O_NOFOLLOW` refuses a `lock` that is a symbolic link, which would otherwise be opened and
+    // then truncated and overwritten at its target.
+    if (errorCode(error) === 'ELOOP') {
+      throw new BungalowStateError('The lock entry is a symbolic link, not a file.');
+    }
     return wrap('open the lock file', error);
   }
 
   try {
+    if (!fstatSync(descriptor).isFile()) {
+      throw new BungalowStateError('The lock entry is not a regular file.');
+    }
     let attempt = operations.tryLock(descriptor);
     // A holder takes the kernel lock before it writes its identifier and clears the file before it
     // releases the lock. A contender can therefore find the file empty because the holder is just

@@ -8,11 +8,17 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { openAtRoot, openBungalow, openTemporaryBungalow, resolveOpenRoot } from './bungalow.ts';
+import {
+  absoluteTemporaryDirectory,
+  openAtRoot,
+  openBungalow,
+  openTemporaryBungalow,
+  resolveOpenRoot,
+} from './bungalow.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import {
   BungalowFilesystemError,
@@ -337,7 +343,7 @@ describe('a root that already exists', () => {
     expect(modeOf(path)).toBe(0o755);
   });
 
-  test('has the temporary files a crash left behind removed, and only those', () => {
+  test('has the temporary files a crash left behind removed, and only those Bungalow names', () => {
     const root = temporaryDirectory();
     openIn(root).close();
     const uuid = '123e4567-e89b-12d3-a456-426614174000';
@@ -345,7 +351,14 @@ describe('a root that already exists', () => {
       join(root, `deployment-id.4242-${uuid}.tmp`),
       join(root, 'secrets', `token.4242-${uuid}.tmp`),
     ];
-    const kept = [join(root, 'notes.tmp'), join(root, 'secrets', 'token')];
+    const kept = [
+      join(root, 'notes.tmp'),
+      join(root, `notes.4242-${uuid}.tmp`),
+      join(root, `token.4242-${uuid}.tmp`),
+      join(root, 'secrets', 'token'),
+      join(root, 'secrets', `Not_A_Key.4242-${uuid}.tmp`),
+      join(root, 'secrets', `.hidden.4242-${uuid}.tmp`),
+    ];
     for (const path of [...leftovers, ...kept]) writeFileSync(path, 'x');
     using handle = openIn(root);
     expect(handle.root).toBe(root);
@@ -369,6 +382,13 @@ describe('openTemporaryBungalow', () => {
     }
     expect(existsSync(root)).toBe(false);
     expect(() => handle.close()).not.toThrow();
+  });
+
+  test('always has an absolute root, since TMPDIR may be relative', () => {
+    using handle = openTemporaryBungalow({ name: TEST_NAME });
+    expect(isAbsolute(handle.root)).toBe(true);
+    expect(isAbsolute(absoluteTemporaryDirectory('relative/tmp'))).toBe(true);
+    expect(absoluteTemporaryDirectory('/var/tmp/')).toBe('/var/tmp');
   });
 
   test('gives each call its own root', () => {

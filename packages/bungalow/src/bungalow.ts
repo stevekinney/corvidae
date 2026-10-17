@@ -15,7 +15,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import { processEnvironment } from './environment-configuration.ts';
 import { errorCode, sanitizeCause } from './error-code.ts';
@@ -36,8 +36,13 @@ import { assertBungalowName, assertDirectoryName, assertSecretKey } from './vali
 
 const DIRECTORY_MODE = 0o700;
 const SECRET_MODE = 0o600;
-/** The temporary files `writePrivateFile` makes: `<target>.<pid>-<uuid>.tmp`. */
-const TEMPORARY_FILE = /\.\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/;
+/** `<pid>-<uuid>`, the middle of the name `writePrivateFile` gives a temporary file. */
+const TEMPORARY_SUFFIX =
+  '\\.\\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.tmp';
+/** The only temporary file Bungalow writes in the root: beside `deployment-id`. */
+const ROOT_TEMPORARY_FILE = new RegExp(`^deployment-id${TEMPORARY_SUFFIX}$`);
+/** The only temporary files Bungalow writes in `secrets/`: beside a valid secret key. */
+const SECRET_TEMPORARY_FILE = new RegExp(`^[a-z0-9][a-z0-9-]*${TEMPORARY_SUFFIX}$`);
 
 /** An open application home. Holding one holds the root's single-instance lock. */
 export type Bungalow = {
@@ -161,11 +166,11 @@ function readPrivateFile(path: string): string | undefined {
 
 /**
  * Remove the temporary files a crash left behind. Only the lock holder may call this, since no one
- * else can then be mid-write, and only files named the way `writePrivateFile` names them go.
+ * else can then be mid-write, and only files named exactly the way `writePrivateFile` names them for this directory go.
  */
-function removeTemporaryFiles(directory: string): void {
+function removeTemporaryFiles(directory: string, ours: RegExp): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.isFile() && TEMPORARY_FILE.test(entry.name)) unlinkSync(join(directory, entry.name));
+    if (entry.isFile() && ours.test(entry.name)) unlinkSync(join(directory, entry.name));
   }
 }
 
@@ -215,8 +220,8 @@ export function openAtRoot(
     ensurePrivateDirectory(secrets, 'secrets directory');
     filesystem('prepare the root directory', () => {
       makeDirectory(logs);
-      removeTemporaryFiles(root);
-      removeTemporaryFiles(secrets);
+      removeTemporaryFiles(root, ROOT_TEMPORARY_FILE);
+      removeTemporaryFiles(secrets, SECRET_TEMPORARY_FILE);
     });
     deploymentId = filesystem('persist the deployment identifier', () =>
       loadDeploymentId(join(root, 'deployment-id')),
@@ -319,6 +324,11 @@ export function openBungalow(options: OpenBungalowOptions): Bungalow {
   return openAtRoot(options.name, root);
 }
 
+/** The temporary directory as an absolute path, since `TMPDIR` is allowed to be relative. */
+export function absoluteTemporaryDirectory(base: string = tmpdir()): string {
+  return resolve(base);
+}
+
 /**
  * Open a Bungalow in a fresh directory under the operating system's temporary directory, and
  * remove that directory on `close()`. Independent of `<NAME>_HOME` and safe under `NODE_ENV=test`.
@@ -326,7 +336,7 @@ export function openBungalow(options: OpenBungalowOptions): Bungalow {
 export function openTemporaryBungalow(options: OpenTemporaryBungalowOptions): Bungalow {
   assertBungalowName(options.name);
   const root = filesystem('create the temporary root', () =>
-    mkdtempSync(join(tmpdir(), `${options.name}-`)),
+    mkdtempSync(join(absoluteTemporaryDirectory(), `${options.name}-`)),
   );
   const remove = (): void => {
     filesystem('remove the temporary root', () => {
