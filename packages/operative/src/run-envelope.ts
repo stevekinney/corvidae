@@ -249,6 +249,8 @@ const runStartedFrameSchema = frameBaseSchema.extend({
   type: z.literal('run-started'),
   sessionId: z.string().optional(),
   agentName: z.string().optional(),
+  /** COR-1476 — present and `true` on a continuation run: it has no prompt of its own and answers the session's pending input. */
+  continuation: z.boolean().optional(),
 });
 
 const stepFrameSchema = frameBaseSchema.extend({
@@ -396,7 +398,12 @@ function now(clock?: () => number): number {
 }
 
 export function createRunStartedFrame(
-  input: { runId: string; sessionId?: string | undefined; agentName?: string | undefined },
+  input: {
+    runId: string;
+    sessionId?: string | undefined;
+    agentName?: string | undefined;
+    continuation?: boolean | undefined;
+  },
   clock?: () => number,
 ): RunStartedFrame {
   return {
@@ -405,6 +412,7 @@ export function createRunStartedFrame(
     runId: input.runId,
     sessionId: input.sessionId,
     agentName: input.agentName,
+    ...(input.continuation === true ? { continuation: true } : {}),
     timestamp: now(clock),
   };
 }

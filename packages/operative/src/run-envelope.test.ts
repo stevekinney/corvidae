@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { stringifyError } from './run-envelope';
+import { createRunStartedFrame, parseRunFrame, stringifyError } from './run-envelope';
 
 describe('stringifyError with a tool-protocol ToolError', () => {
   // COR-1261 made ordinary tool failures settle a `ToolError` rather than the
@@ -24,5 +24,14 @@ describe('stringifyError with a tool-protocol ToolError', () => {
     expect(stringifyError({ code: 'INTERNAL_ERROR', message: 'kaboom' })).toBe(
       '{"code":"INTERNAL_ERROR","message":"kaboom"}',
     );
+  });
+});
+
+describe('run-started frames mark a continuation run (COR-1476)', () => {
+  it('carries continuation: true for a continuation and omits it otherwise', () => {
+    const continuation = createRunStartedFrame({ runId: 'run-2', continuation: true });
+    expect(parseRunFrame(continuation)).toMatchObject({ type: 'run-started', continuation: true });
+    const ordinary = createRunStartedFrame({ runId: 'run-1' });
+    expect('continuation' in parseRunFrame(ordinary)).toBe(false);
   });
 });
