@@ -191,11 +191,13 @@ export interface CreateAgentCatalogOptions {
  *
  * `find`/`has` are exact-key lookups. The predecessor `AgentRegistry.query()`
  * matched `text` against agent name/description case-insensitively; that
- * shape doesn't survive here — `RunnableAgent` carries no `description`, and
- * `find`/`get`/`has` narrow (or must narrow) on an exact name so `has`
- * narrowing a literal string to `keyof D` isn't undermined by a lookup that
- * silently accepts a differently-cased name it wouldn't `.get()`. A
- * case-insensitive *search* is still available through `query(predicate)`,
+ * shape doesn't survive here, because `find`/`get`/`has` narrow (or must
+ * narrow) on an exact name so `has` narrowing a literal string to `keyof D`
+ * isn't undermined by a lookup that silently accepts a differently-cased name
+ * it wouldn't `.get()`. An agent's optional `description` and
+ * `skillDescriptors` (COR-1301) ride on the returned `RunnableAgent` object
+ * itself, so `get`/`entries` surface them with the object's identity
+ * unchanged. A case-insensitive *search* is still available through `query(predicate)`,
  * where the predicate can lower-case both sides itself.
  */
 export function createAgentCatalog<D extends AgentDefinitions>(

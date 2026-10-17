@@ -1991,3 +1991,33 @@ describe('createLazyAgent — generationProfile (AB-64 AC2, AB-245)', () => {
     ]);
   });
 });
+
+describe('createLazyAgent — descriptive metadata (COR-1301)', () => {
+  const skillDescriptors = [
+    { id: 'plan', name: 'Plan', description: 'Plans work.', tags: ['planning'] },
+  ] as const;
+
+  it('exposes the supplied description and skillDescriptors without invoking the loader', () => {
+    let loaderCalls = 0;
+    const lazy = createLazyAgent(
+      () => {
+        loaderCalls += 1;
+        throw new Error('the loader must not run for a metadata read');
+      },
+      { description: 'Plans things.', skillDescriptors },
+    );
+
+    expect(lazy.description).toBe('Plans things.');
+    expect(lazy.skillDescriptors).toBe(skillDescriptors);
+    expect(loaderCalls).toBe(0);
+  });
+
+  it('omits both properties when none are supplied', () => {
+    const lazy = createLazyAgent(() => {
+      throw new Error('the loader must not run for a metadata read');
+    });
+
+    expect('description' in lazy).toBe(false);
+    expect('skillDescriptors' in lazy).toBe(false);
+  });
+});

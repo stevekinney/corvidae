@@ -24,6 +24,7 @@ import { Conversation } from 'conversationalist';
 
 import type { AgentRun, RunEvent, UnwrappedValue } from './agent-run';
 import { CompletedRunIterationError } from './agent-run';
+import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import type { ChildRunDescriptor } from './child-run';
 import { createClosedAcknowledgement } from './closed-acknowledgement';
 import type { AgentRunError } from './errors';
@@ -96,6 +97,22 @@ export interface CreateLazyAgentOptions<H extends boolean = false> {
    * (`readGenerationProfile`'s default fallback).
    */
   generationProfile?: AgentGenerationProfile | undefined;
+
+  /**
+   * Descriptive summary exposed on the returned agent as `description`
+   * (COR-1301). Supplied by the caller, exactly like `generationProfile` and
+   * `label`, and never read from the loaded agent, so a description read
+   * never triggers a module load. Omitted means the lazy agent has none.
+   */
+  description?: string | undefined;
+
+  /**
+   * Descriptive skill metadata exposed on the returned agent as
+   * `skillDescriptors` (COR-1301), with the same ownership rule as
+   * `description`: caller-supplied, never read from the loaded agent. Not the
+   * runtime `skills` seam; see `RunnableAgent.skillDescriptors`.
+   */
+  skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
 
   /**
    * AB-92/AB-252 (AB-325): the clock the synthetic liveness snapshot reads
@@ -1122,6 +1139,10 @@ export function createLazyAgent<O = never, H extends boolean = false>(
 
   const agent = {
     name: options.label ?? '(lazy)',
+    ...(options.description === undefined ? {} : { description: options.description }),
+    ...(options.skillDescriptors === undefined
+      ? {}
+      : { skillDescriptors: options.skillDescriptors }),
     ...(options.generationProfile
       ? { generationProfile: freezeGenerationProfile(options.generationProfile) }
       : {}),
