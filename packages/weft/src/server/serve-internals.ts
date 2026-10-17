@@ -22,7 +22,11 @@ import {
   validateRateLimitConfig,
   type Authenticator,
 } from './authentication.ts';
-import { createAdditionalScopeSet } from './authorization-scope.ts';
+import {
+  createAdditionalScopeSet,
+  filterRecognizedScopes,
+  type AdditionalScopeSet,
+} from './authorization-scope.ts';
 import { DeadlineTracker } from './deadline-tracker.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
@@ -104,13 +108,15 @@ const AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE = 'WEFT_SERVER_AUTHENTICATION
  * `tests/auth-warning-filter.test.ts`) and not part of the public API surface.
  */
 export const NO_AUTHENTICATION_WARNING =
-  '[weft] WARNING: server started with NO authentication; all non-public operations are publicly accessible. Configure serve({ auth }) to lock down, or set unauthenticatedAccess: "reject" in production to fail closed.';
+  '[weft] WARNING: server started with NO authentication; every built-in operation is accessible to any caller, and every request runs as the "unauthenticated-local" principal holding every built-in scope (an operation that needs a package scope registered through additionalScopes still needs a credential holding it). Configure serve({ auth }) to lock down, or set unauthenticatedAccess: "reject" in production to fail closed.';
 export const MCP_ORIGIN_CONFIGURATION_WARNING =
   '[weft] WARNING: MCP HTTP transport is enabled without publicOrigin or trustedHosts. Cross-origin /mcp requests are rejected, and discovery routes that emit absolute URLs return 503. Configure serve({ publicOrigin: "https://api.example.com" }) or serve({ trustedHosts: ["api.example.com"] }) before exposing the server through a browser or reverse proxy.';
 const NO_AUTHENTICATION_REJECT_ERROR =
   '[weft] Refusing to start server with no authentication. Configure serve({ auth }) or set unauthenticatedAccess: "allow" only for trusted local development.';
 const NO_AUTHENTICATION_ENVIRONMENT_ERROR =
   '[weft] Refusing to start server with no authentication because WEFT_SERVER_AUTHENTICATION_REQUIRED requires authentication. Configure serve({ auth }) or unset WEFT_SERVER_AUTHENTICATION_REQUIRED only for trusted local development.';
+const STATIC_API_KEYS_WITHOUT_SCOPES_ERROR =
+  '[weft] Refusing to start server: auth.apiKeys admit callers with no scopes. Configure auth.defaultApiKeyScopes (the scopes every static API key holds) or auth.resolveApiKeyPrincipal (a per-key principal); every operation requires a scope, so an unscoped key would be refused everywhere.';
 const TRUTHY_AUTHENTICATION_REQUIREMENT_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSY_AUTHENTICATION_REQUIREMENT_VALUES = new Set(['0', 'false', 'no', 'off']);
 
@@ -152,6 +158,28 @@ function authenticationRequiredByEnvironment(rawValue: string | undefined): bool
   throw new Error(
     `[weft] Invalid ${AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE} value "${rawValue}". Use one of: 1, true, yes, on, 0, false, no, off.`,
   );
+}
+
+/**
+ * Refuse to start a server whose static API keys would admit callers holding no
+ * recognized scope. This belongs to `serve()` alone: Weft's own catalog is what
+ * makes such a key useless, because every operation except
+ * `weft.system.principal` requires a scope. A generic authenticator
+ * (`createAuthenticator`, `createOperationHandlerAuthenticator`) may serve a
+ * catalog whose operations are authenticated-only, and for those an unscoped
+ * key is valid. A `resolveApiKeyPrincipal` resolver is authoritative for the
+ * key space and supplies each key's scopes itself. A default scope the server
+ * does not recognize grants nothing, so it does not count.
+ */
+function assertStaticApiKeysHaveScopes(
+  auth: NonNullable<ServeOptions['auth']>,
+  additionalScopes: AdditionalScopeSet,
+): void {
+  if (auth.apiKeys === undefined || auth.apiKeys.length === 0) return;
+  if (auth.resolveApiKeyPrincipal !== undefined) return;
+  const granted = filterRecognizedScopes(auth.defaultApiKeyScopes ?? [], additionalScopes);
+  if (granted.length > 0) return;
+  throw new Error(STATIC_API_KEYS_WITHOUT_SCOPES_ERROR);
 }
 
 export function assertAuthenticationPosture(
@@ -229,12 +257,13 @@ function createServerAuthenticator(options: ServeOptions): Promise<Authenticator
  * synchronously so misconfigurations fail fast before `Bun.serve()` binds.
  */
 export function resolveNetworkConfig(options: ServeOptions): ResolvedNetworkConfig {
-  if (options.auth) {
-    validateAuthConfig(options.auth);
-  }
   // Fail fast before binding: a malformed or `weft.`-namespaced registration
   // would otherwise surface only as a rejected authenticator promise.
-  createAdditionalScopeSet(options.additionalScopes);
+  const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
+  if (options.auth) {
+    validateAuthConfig(options.auth);
+    assertStaticApiKeysHaveScopes(options.auth, additionalScopes);
+  }
   if (options.rateLimit) {
     // Fail fast before binding: a non-positive window or budget is a
     // misconfiguration that would otherwise admit an always-zero or

@@ -31,6 +31,10 @@ const HTTP_STATUS_FOR_FAULT_CODE: Readonly<Record<FaultCode, number>> = {
   SubscriptionOverflow: 500,
   InvalidParams: 400,
   MethodNotFound: 404,
+  StaleRevision: 409,
+  RateLimited: 429,
+  Unavailable: 503,
+  UnsupportedCapability: 501,
   EngineFailure: 500,
 };
 
@@ -62,6 +66,10 @@ describe('classifyFault — six-code truth table', () => {
     UnsupportedTransport: 'not-supported',
     Timeout: 'internal',
     SubscriptionOverflow: 'internal',
+    StaleRevision: 'conflict',
+    RateLimited: 'internal',
+    Unavailable: 'internal',
+    UnsupportedCapability: 'not-supported',
     EngineFailure: 'internal',
   };
   const FAULT_CODES = [
@@ -77,6 +85,10 @@ describe('classifyFault — six-code truth table', () => {
     'UnsupportedTransport',
     'Timeout',
     'SubscriptionOverflow',
+    'StaleRevision',
+    'RateLimited',
+    'Unavailable',
+    'UnsupportedCapability',
     'EngineFailure',
   ] as const satisfies readonly FaultCode[];
 
@@ -91,7 +103,7 @@ describe('classifyFault — six-code truth table', () => {
   test('every FaultCode is accounted for (no gaps if @lostgradient/weft adds one)', () => {
     const faultCodes = Object.keys(EXPECTED_KIND_FOR_FAULT_CODE);
     expect(new Set(faultCodes).size).toBe(faultCodes.length);
-    expect(faultCodes).toHaveLength(13);
+    expect(faultCodes).toHaveLength(17);
   });
 });
 

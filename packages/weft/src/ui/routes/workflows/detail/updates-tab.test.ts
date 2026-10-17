@@ -240,4 +240,20 @@ describe('UpdatesTab', () => {
 
     expect(getByRole('button', { name: 'Send update' }).hasAttribute('disabled')).toBe(true);
   });
+
+  test('disables Send update when the principal lacks updates:write', async () => {
+    const client = {
+      submitCoordinatedUpdate: async (): Promise<CoordinatedUpdateResult> => ({ updateId: 'u1' }),
+    };
+    const { getByLabelText, getByRole } = render(UpdatesTab, {
+      props: {
+        client,
+        workflow: workflow(),
+        sendGate: { disabled: true, title: 'Requires updates:write' },
+      },
+    });
+
+    await fireEvent.input(getByLabelText('Update name'), { target: { value: 'setStatus' } });
+    expect(getByRole('button', { name: 'Send update' }).hasAttribute('disabled')).toBe(true);
+  });
 });

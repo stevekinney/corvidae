@@ -59,6 +59,7 @@
   } from '@lucide/svelte';
 
   import { formatDuration, formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
+  import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import {
     classifyRevisionAgainstActive,
     EAGER_REVISION_HEDGE,
@@ -98,6 +99,14 @@
      * same dumb-component split as `onAction`.
      */
     readonly onRestart?: (() => void) | undefined;
+    /**
+     * Whether the principal holds `workflows:write`, which cancel, suspend,
+     * resume, and force-timeout require. Defaults to open so a caller that
+     * owns no principal (the unit tests) renders them enabled.
+     */
+    readonly actionGate?: ScopeGate | undefined;
+    /** Whether the principal holds `queries:read`, which `weft.workflows.query` requires. */
+    readonly queryGate?: ScopeGate | undefined;
   }
 
   let {
@@ -111,6 +120,8 @@
     onRunQuery,
     activeRevision,
     onRestart,
+    actionGate = { disabled: false, title: undefined },
+    queryGate = { disabled: false, title: undefined },
   }: WorkflowDetailHeaderProps = $props();
 
   const presentation = $derived(finalizerStatusPresentation(workflow.status, finalizerStatus));
@@ -288,14 +299,16 @@
 
   <div class="weft-workflow-detail__actions">
     {#each actions as action (action)}
-      <Button
-        variant="secondary"
-        size="sm"
-        label={actionLabel(action)}
-        loading={pendingAction === action}
-        disabled={pendingAction !== null && pendingAction !== action}
-        onclick={() => handleActionClick(action)}
-      />
+      <Tooltip text={actionGate.title ?? ''}>
+        <Button
+          variant="secondary"
+          size="sm"
+          label={actionLabel(action)}
+          loading={pendingAction === action}
+          disabled={actionGate.disabled || (pendingAction !== null && pendingAction !== action)}
+          onclick={() => handleActionClick(action)}
+        />
+      </Tooltip>
     {/each}
 
     {#if canRestart}
@@ -364,14 +377,16 @@
         placeholder={'{}'}
         bind:value={queryInputText}
       />
-      <Button
-        variant="primary"
-        size="sm"
-        label={queryPending ? 'Running…' : 'Run'}
-        loading={queryPending}
-        disabled={queryName.trim().length === 0}
-        onclick={() => void runQuery()}
-      />
+      <Tooltip text={queryGate.title ?? ''}>
+        <Button
+          variant="primary"
+          size="sm"
+          label={queryPending ? 'Running…' : 'Run'}
+          loading={queryPending}
+          disabled={queryGate.disabled || queryName.trim().length === 0}
+          onclick={() => void runQuery()}
+        />
+      </Tooltip>
       {#if queryError}
         <p class="weft-send-tab__error">{queryError}</p>
       {/if}

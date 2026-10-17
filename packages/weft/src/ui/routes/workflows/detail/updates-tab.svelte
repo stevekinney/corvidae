@@ -24,20 +24,27 @@
    * 30s" directly above completed rows with no separate fetch), plausibly
    * the intended behavior rather than a compromise.
    */
-  import { Badge, Button, Input, JsonEditor } from '@lostgradient/cinder';
+  import { Badge, Button, Input, JsonEditor, Tooltip } from '@lostgradient/cinder';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { CircleCheck, CircleX } from '@lucide/svelte';
   import { onDestroy } from 'svelte';
 
   import { formatRelativeTime } from '../../../lib/format/index.ts';
+  import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import { TickingClock } from './ticking-clock.svelte.ts';
 
   interface UpdatesTabProps {
     readonly client: Pick<HttpClient, 'submitCoordinatedUpdate'>;
     readonly workflow: WorkflowState;
+    /** Whether the principal holds `updates:write`, which `weft.workflows.update` requires; open when omitted. */
+    readonly sendGate?: ScopeGate | undefined;
   }
 
-  let { client, workflow }: UpdatesTabProps = $props();
+  let {
+    client,
+    workflow,
+    sendGate = { disabled: false, title: undefined },
+  }: UpdatesTabProps = $props();
 
   interface SentUpdate {
     readonly key: string;
@@ -213,15 +220,17 @@
     {#if payloadError}
       <p class="weft-send-tab__error">{payloadError}</p>
     {/if}
-    <Button
-      variant="primary"
-      size="sm"
-      fullWidth
-      label={submitting ? 'Sending…' : 'Send update'}
-      loading={submitting}
-      disabled={updateName.trim().length === 0 || submitting}
-      onclick={() => void submit()}
-    />
+    <Tooltip text={sendGate.title ?? ''}>
+      <Button
+        variant="primary"
+        size="sm"
+        fullWidth
+        label={submitting ? 'Sending…' : 'Send update'}
+        loading={submitting}
+        disabled={sendGate.disabled || updateName.trim().length === 0 || submitting}
+        onclick={() => void submit()}
+      />
+    </Tooltip>
   </div>
 </div>
 

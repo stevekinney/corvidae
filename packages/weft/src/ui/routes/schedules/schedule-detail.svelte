@@ -69,9 +69,13 @@
   const queryClient = useQueryClient();
   const fleetSource = getFleetEventSource();
 
+  // `weft.schedules.get` requires `schedules:read`; without it the query never fires.
+  const readGate = $derived(scopeGate(principal, ['schedules:read']));
+
   const detailQuery = createQuery(() => ({
     queryKey: scheduleDetailQueryKey(id),
     queryFn: () => fetchScheduleDetail(client, id),
+    enabled: !readGate.disabled,
   }));
 
   const historyQuery = createQuery(() => ({
@@ -133,7 +137,13 @@
     ← Back to schedules
   </button>
 
-  {#if detailQuery.isPending}
+  {#if readGate.disabled}
+    <EmptyState title="Schedule is locked" description={readGate.title ?? ''}>
+      {#snippet action()}
+        <Button variant="secondary" size="sm" onclick={backToList}>Back to schedules</Button>
+      {/snippet}
+    </EmptyState>
+  {:else if detailQuery.isPending}
     <div role="status" aria-busy="true" aria-label="Loading schedule">
       <Skeleton height="120px" />
       <Skeleton height="220px" />

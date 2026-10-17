@@ -22,7 +22,8 @@ export const listCheckpointsOperation = defineOperation({
   tags: ['Checkpoints'],
   inputSchema: listCheckpointsInput,
   outputSchema: listCheckpointsOutput,
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:read'] } },
+  discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   // Operation contract is transport-neutral: it returns the array of

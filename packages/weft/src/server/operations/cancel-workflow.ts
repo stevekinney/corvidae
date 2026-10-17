@@ -23,6 +23,7 @@ export const cancelWorkflowOperation = createSingleWorkflowControlOperation({
     'is irreversible from the caller perspective. Faults with NotFound when the workflow is ' +
     'not visible.',
   destructive: true,
+  scope: 'workflows:write',
   tags: ['Workflows'],
   inputSchema: cancelWorkflowInput,
   outputSchema: cancelWorkflowOutput,

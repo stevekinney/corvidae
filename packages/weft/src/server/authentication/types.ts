@@ -136,6 +136,7 @@ export type MTLSConfig = {
  *
  * const auth: AuthConfig = {
  *   apiKeys: [process.env['API_KEY'] ?? ''],
+ *   defaultApiKeyScopes: ['workflows:read'],
  *   jwt: {
  *     secret: process.env['JWT_SECRET'] ?? '',
  *     issuer: 'https://auth.example.com',
@@ -171,15 +172,19 @@ export type AuthConfig = {
    *   - throws → treated as `null` (rejected); server log records the
    *     throw detail, wire error stays generic.
    * When not configured, static `apiKeys` admits and the admitted
-   * principal's scopes come from `defaultApiKeyScopes ?? []`.
+   * principal's scopes come from `defaultApiKeyScopes`, which `serve()`
+   * requires to be non-empty whenever `apiKeys` is.
    */
   resolveApiKeyPrincipal?: (key: string) => Promise<AuthenticatedPrincipal | null>;
   /**
    * Scopes granted to principals admitted via static `apiKeys`. Ignored
    * when `resolveApiKeyPrincipal` is configured (the resolver's scopes
-   * are authoritative for keys it admits). Defaults to `[]`. A package
-   * scope is granted only when the handler lists it in `additionalScopes`;
-   * an unlisted one is dropped, as it would be from a JWT claim.
+   * are authoritative for keys it admits). `serve()` throws before binding
+   * when `apiKeys` is non-empty and neither this nor `resolveApiKeyPrincipal`
+   * grants a scope: every catalog operation except `weft.system.principal`
+   * requires one. A package scope is granted only when the handler lists it
+   * in `additionalScopes`; an unlisted one is dropped, as it would be from a
+   * JWT claim.
    */
   defaultApiKeyScopes?: ReadonlyArray<AuthorizationScope>;
   /**
@@ -203,13 +208,19 @@ export type AuthConfig = {
  *
  * Returned inside an {@link AuthResult} when `authenticated: true`.  Use this
  * to distinguish bearer-token callers from mTLS-authenticated services or to
- * log the admission method alongside the request trace.
+ * log the admission method alongside the request trace. `'unauthenticated-local'`
+ * is never returned by an authenticator: `serve()` with no authentication
+ * attaches it to every request's {@link AuthContext}, with a principal that
+ * holds every built-in scope.
  *
  * @example
  * ```ts
  * import { createAuthenticator, type AuthMethod } from '@lostgradient/weft';
  *
- * const authenticate = await createAuthenticator({ apiKeys: ['key-1'] });
+ * const authenticate = await createAuthenticator({
+ *   apiKeys: ['key-1'],
+ *   defaultApiKeyScopes: ['workflows:read'],
+ * });
  * const req = new Request('http://localhost/v1/workflows', {
  *   headers: { 'X-API-Key': 'key-1' },
  * });
@@ -220,7 +231,7 @@ export type AuthConfig = {
  * }
  * ```
  */
-export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public';
+export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public' | 'unauthenticated-local';
 
 /**
  * Shared context carried from the authenticator through the request
@@ -256,7 +267,10 @@ export type AuthContext = {
  * ```ts
  * import { createAuthenticator, type AuthResult } from '@lostgradient/weft';
  *
- * const authenticate = await createAuthenticator({ apiKeys: ['s3cr3t'] });
+ * const authenticate = await createAuthenticator({
+ *   apiKeys: ['s3cr3t'],
+ *   defaultApiKeyScopes: ['workflows:read'],
+ * });
  * const req = new Request('http://localhost/v1/workflows');
  * const result: AuthResult = await authenticate(req);
  * if (!result.authenticated) {
@@ -313,6 +327,7 @@ export type JWTPayload = Record<string, unknown>;
  *
  * const authenticate: Authenticator = await createAuthenticator({
  *   apiKeys: ['my-key'],
+ *   defaultApiKeyScopes: ['workflows:read'],
  * });
  *
  * const request = new Request('http://localhost/v1/workflows', {

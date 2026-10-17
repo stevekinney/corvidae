@@ -8,8 +8,8 @@ import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
-import { handleRequest } from '../handler.ts';
 import { serve, type WeftServer } from '../index.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
 import { jsonRequest } from './operation-test-helpers.test-support.ts';
 import {

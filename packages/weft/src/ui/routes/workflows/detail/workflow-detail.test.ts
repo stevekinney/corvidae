@@ -28,7 +28,7 @@ function baseWorkflow(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 const GRANTED_PRINCIPAL: Principal = {
-  scopes: ['workflows:read'],
+  scopes: ['workflows:read', 'workflows:write'],
   unauthenticatedAccess: null,
 };
 
@@ -139,6 +139,28 @@ describe('WorkflowDetail — loaded workflow', () => {
     });
 
     expect(await findByRole('tab', { name: 'Events', selected: true })).not.toBeNull();
+  });
+
+  test('disables the mutating header actions for a workflows:read-only principal', async () => {
+    const id = 'wf-detail-read-only-1';
+    fetchScript.routeUrl(`/workflows/${id}`, baseWorkflow({ id, status: 'running' }));
+    resetLocation(`/workflows/${id}`);
+
+    const { findByRole, getByRole } = render(WorkflowDetailHarness, {
+      props: {
+        client: realClient(),
+        principal: { scopes: ['workflows:read'], unauthenticatedAccess: null },
+        queryClient: newQueryClient(),
+      },
+    });
+
+    const suspendButton = await findByRole('button', { name: 'Suspend' });
+    expect(suspendButton.hasAttribute('disabled')).toBe(true);
+    expect(getByRole('button', { name: 'Cancel' }).hasAttribute('disabled')).toBe(true);
+    expect(getByRole('button', { name: 'Force timeout' }).hasAttribute('disabled')).toBe(true);
+
+    await fireEvent.click(suspendButton);
+    expect(fetchScript.calls.some((call) => call.url.includes('/suspend'))).toBe(false);
   });
 
   test('clicking Suspend calls the suspend endpoint and clears the pending state', async () => {

@@ -20,6 +20,7 @@ describe('single-workflow control operation helpers', () => {
       // Matches the real weft.workflows.cancel classification, and asserts the
       // factory plumbs `destructive` straight through to the definition.
       destructive: true,
+      scope: 'workflows:write',
       tags: ['Workflows'],
       inputSchema,
       outputSchema: z.undefined(),
@@ -51,6 +52,7 @@ describe('single-workflow control operation helpers', () => {
       name: 'weft.workflows.resume',
       summary: 'Resume a suspended workflow',
       destructive: false,
+      scope: 'workflows:write',
       tags: ['Workflows'],
       inputSchema,
       outputSchema: z.object({ id: z.string() }),

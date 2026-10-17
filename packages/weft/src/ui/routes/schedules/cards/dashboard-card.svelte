@@ -18,15 +18,19 @@
    * (dozens, not thousands); a full census would need pagination this
    * summary card doesn't need.
    */
-  import { Card, Skeleton, StatusDot } from '@lostgradient/cinder';
+  import { Card, EmptyState, Skeleton, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../../../lib/client.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
+  import { getPrincipalStore, scopeReason } from '../../../lib/scopes.svelte.ts';
 
   const client = getClient();
+  const principalStore = getPrincipalStore();
+  // `weft.schedules.list` requires `schedules:read`; without it the card is locked and never fetches.
+  const locked = $derived(!principalStore.hasScope('schedules:read'));
 
   const HEALTH_CARD_SCHEDULE_LIMIT = 200;
   const MISSED_WITHIN_MS = 24 * 60 * 60 * 1000;
@@ -36,6 +40,7 @@
   const query = createQuery(() => ({
     queryKey: queryKeys.schedules.list(filter),
     queryFn: () => client.listSchedules(filter),
+    enabled: !locked,
   }));
 
   const summary = $derived.by(() => {
@@ -66,13 +71,15 @@
   {#snippet header()}
     <div class="weft-dashboard-card__header">
       <span class="weft-dashboard-card__title">Schedule health</span>
-      {#if query.isSuccess}
+      {#if !locked && query.isSuccess}
         <span class="weft-dashboard-card__meta">{summary.total} schedules</span>
       {/if}
     </div>
   {/snippet}
 
-  {#if query.isPending}
+  {#if locked}
+    <EmptyState title="Locked" description={scopeReason('schedules:read')} headingLevel={4} />
+  {:else if query.isPending}
     <div
       class="weft-schedules-dashboard-card__skeleton"
       role="status"

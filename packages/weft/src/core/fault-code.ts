@@ -62,6 +62,10 @@ export type FaultCode =
   | 'SubscriptionOverflow'
   | 'InvalidParams'
   | 'MethodNotFound'
+  | 'StaleRevision'
+  | 'RateLimited'
+  | 'Unavailable'
+  | 'UnsupportedCapability'
   | 'EngineFailure';
 
 /**
@@ -91,14 +95,19 @@ export const FAULT_CODE_TO_FAILURE_CATEGORY = Object.freeze({
   Unprocessable: 'application',
   InvalidParams: 'application',
   MethodNotFound: 'application',
+  // The caller's expected revision no longer matches the current one.
+  StaleRevision: 'application',
   // Deadline exceeded.
   Timeout: 'timeout',
   // Capacity limits.
   PayloadTooLarge: 'resource',
   SubscriptionOverflow: 'resource',
+  RateLimited: 'resource',
   // Server cannot fulfill — infrastructure or unimplemented surface.
   NotImplemented: 'system',
   UnsupportedTransport: 'system',
+  Unavailable: 'system',
+  UnsupportedCapability: 'system',
   EngineFailure: 'system',
 } as const satisfies Readonly<Record<FaultCode, FailureCategory>>);
 

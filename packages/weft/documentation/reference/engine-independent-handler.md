@@ -132,7 +132,7 @@ export type OperationHandlerOptions<Host> = {
   readonly operations: ReadonlyArray<RegistrableOperation<NoInfer<Host>>>;
   /** Delivered as `host` to every `invoke` and `authorize` call. */
   readonly host: Host;
-  /** Resolves the caller. Omitted: every request is anonymous and only `public` operations pass. */
+  /** Resolves the caller. Omitted: every request is anonymous and only `public` operations pass. A single-user host admits every request with `async () => unauthenticatedLocalAuthContext()`. */
   readonly authenticate?: (request: Request) => Promise<AuthContext | Response>;
   /** Same validation and defaults as `ServeOptions.cors`; omitted means no CORS headers. */
   readonly cors?: CorsOptions;

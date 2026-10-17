@@ -167,7 +167,11 @@ describe('AsyncAPI document', () => {
   it('serves /asyncapi.json without an auth header when authentication is enabled', async () => {
     const engine = createEngine();
     engines.push(engine);
-    const server = serve({ engine, port: 0, auth: { apiKeys: ['test-key'] } });
+    const server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: ['test-key'], defaultApiKeyScopes: ['workflows:read'] },
+    });
     servers.push(server);
 
     const response = await fetch(`${server.url}/asyncapi.json`);

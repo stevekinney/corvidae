@@ -115,6 +115,8 @@
 
   const fleetSource = getFleetEventSource();
   const liveToggleGate = $derived(scopeGate(principalStore, ['events:read']));
+  // `weft.reviews.decision.submit` requires `reviews:write`.
+  const submitGate = $derived(scopeGate(principalStore, ['reviews:write']));
 
   $effect(() => {
     if (!live || liveToggleGate.disabled) return;
@@ -244,7 +246,7 @@
           </div>
         {:else if selectedEntry}
           <div class="weft-reviews-inbox__detail-pane">
-            <ReviewDetailPanel entry={selectedEntry} {now} {submitting} {onSubmit} />
+            <ReviewDetailPanel entry={selectedEntry} {now} {submitting} {onSubmit} {submitGate} />
           </div>
         {:else}
           <div class="weft-reviews-inbox__detail-pane">

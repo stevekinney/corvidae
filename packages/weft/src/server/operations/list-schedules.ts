@@ -110,7 +110,7 @@ export const listSchedulesOperation = defineOperation({
   tags: ['Schedules'],
   inputSchema: listSchedulesInput,
   outputSchema: listSchedulesOutput,
-  access: { kind: 'authenticated' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['schedules:read'] } },
   producibleFaults: ['Conflict'],
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },

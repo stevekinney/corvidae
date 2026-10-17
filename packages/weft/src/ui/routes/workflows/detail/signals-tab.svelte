@@ -7,20 +7,27 @@
    * wait point appear; a buffered-but-not-yet-awaited signal does not, which
    * is inherent to weft's model, not a client gap).
    */
-  import { Badge, Button, Input, JsonEditor, Skeleton } from '@lostgradient/cinder';
+  import { Badge, Button, Input, JsonEditor, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type { HttpClient, WorkflowState } from '@lostgradient/weft';
   import { Radio } from '@lucide/svelte';
 
   import { formatRelativeTime } from '../../../lib/format/index.ts';
+  import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import { signalHistoryFromTimeline, workflowTimelineQueryKey } from './workflow-timeline-data.ts';
 
   interface SignalsTabProps {
     readonly client: Pick<HttpClient, 'signal' | 'getTimeline'>;
     readonly workflow: WorkflowState;
+    /** Whether the principal holds `signals:write`, which `weft.workflows.signal` requires; open when omitted. */
+    readonly sendGate?: ScopeGate | undefined;
   }
 
-  let { client, workflow }: SignalsTabProps = $props();
+  let {
+    client,
+    workflow,
+    sendGate = { disabled: false, title: undefined },
+  }: SignalsTabProps = $props();
 
   const queryClient = useQueryClient();
 
@@ -123,14 +130,16 @@
           : 'Failed to send the signal.'}
       </p>
     {/if}
-    <Button
-      variant="primary"
-      size="sm"
-      fullWidth
-      label={sendSignalMutation.isPending ? 'Sending…' : 'Send signal'}
-      loading={sendSignalMutation.isPending}
-      disabled={!canSubmit}
-      onclick={submit}
-    />
+    <Tooltip text={sendGate.title ?? ''}>
+      <Button
+        variant="primary"
+        size="sm"
+        fullWidth
+        label={sendSignalMutation.isPending ? 'Sending…' : 'Send signal'}
+        loading={sendSignalMutation.isPending}
+        disabled={sendGate.disabled || !canSubmit}
+        onclick={submit}
+      />
+    </Tooltip>
   </div>
 </div>

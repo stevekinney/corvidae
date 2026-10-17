@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { Engine } from '../../core/engine.ts';
 import { workflow } from '../../core/types/workflow-function.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { handleRequest } from '../handler.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
 import { addWorkflowTagsOperation, addWorkflowTagsRestBinding } from './add-workflow-tags.ts';
 

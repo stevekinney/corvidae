@@ -8,11 +8,11 @@
  * method (verified against `weft/src/client/interface.ts` — only
  * `replayTo`/`fork` are ergonomic) — called via `client.operations[...]`
  * per plan §4 ("ergonomic methods first, `client.operations['weft.<name>']`
- * for the rest"). Both are `access: { kind: 'public' }`
- * (`weft/src/server/operations/{list-checkpoints,get-checkpoint-at}.ts`) —
- * no scope gate needed. `client.replayTo` (`weft.workflows.replay`)
- * requires `workflows:read`; `client.fork` (`weft.workflows.fork`) is
- * public — both verified against their operation definitions.
+ * for the rest"). Both require `workflows:read`
+ * (`weft/src/server/operations/{list-checkpoints,get-checkpoint-at}.ts`).
+ * `client.replayTo` (`weft.workflows.replay`) also requires
+ * `workflows:read`; `client.fork` (`weft.workflows.fork`) requires
+ * `workflows:write` — all verified against their operation definitions.
  *
  * Query keys are local to this module (matching `workflow-timeline-data.ts`'s
  * precedent) rather than added to the frozen `src/lib/query.ts` — that file

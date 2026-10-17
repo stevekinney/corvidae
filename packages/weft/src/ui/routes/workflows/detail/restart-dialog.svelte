@@ -42,7 +42,7 @@
    * (denied, never activated, or a failed lookup) degrades to an explicit
    * "could not be resolved" line and does not block the restart.
    */
-  import { Button, Input, Modal, Skeleton } from '@lostgradient/cinder';
+  import { Button, Input, Modal, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type {
     ClientStartOrSignalOptions,
@@ -89,6 +89,8 @@
   const queryClient = useQueryClient();
   const principal = getPrincipalStore();
   const readGate = $derived(scopeGate(principal, ['workflows:read']));
+  // The restart is `weft.workflows.startorsignal`, which requires both scopes.
+  const restartGate = $derived(scopeGate(principal, ['workflows:write', 'signals:write']));
 
   let open = $state(true);
   let signalName = $state('');
@@ -120,7 +122,10 @@
   });
 
   const canSubmit = $derived(
-    signalName.trim().length > 0 && payloadError === undefined && !signalledToLiveRun,
+    !restartGate.disabled &&
+      signalName.trim().length > 0 &&
+      payloadError === undefined &&
+      !signalledToLiveRun,
   );
 
   const restartMutation = createMutation(() => ({
@@ -240,14 +245,16 @@
     <Button variant="secondary" onclick={dismiss} disabled={restartMutation.isPending}
       >Cancel</Button
     >
-    <Button
-      variant="primary"
-      onclick={submit}
-      loading={restartMutation.isPending}
-      disabled={!canSubmit}
-    >
-      Restart workflow
-    </Button>
+    <Tooltip text={restartGate.title ?? ''}>
+      <Button
+        variant="primary"
+        onclick={submit}
+        loading={restartMutation.isPending}
+        disabled={!canSubmit}
+      >
+        Restart workflow
+      </Button>
+    </Tooltip>
   {/snippet}
 </Modal>
 

@@ -26,6 +26,7 @@ export const suspendWorkflowOperation = createSingleWorkflowControlOperation({
     'Faults with Unprocessable when the engine runs in worker execution mode (which cannot pause ' +
     'a run without cancelling it).',
   destructive: false,
+  scope: 'workflows:write',
   tags: ['Workflows'],
   inputSchema: suspendWorkflowInput,
   outputSchema: suspendWorkflowOutput,

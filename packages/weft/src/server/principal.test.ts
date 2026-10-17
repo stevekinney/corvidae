@@ -7,10 +7,12 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   anonymousPrincipal,
+  isCredentialBacked,
   principalFromApiKey,
   principalFromJwtClaims,
   principalFromMutualTls,
   principalFromStdioLocal,
+  principalFromUnauthenticatedLocal,
   type Principal,
 } from './principal.ts';
 
@@ -116,5 +118,36 @@ describe('anonymousPrincipal', () => {
   it('does not carry a hasScope method', () => {
     const principal: Principal = anonymousPrincipal();
     expect('hasScope' in principal).toBe(false);
+  });
+});
+
+describe('isCredentialBacked', () => {
+  it('is true for a credential that names its caller distinctly', () => {
+    expect(
+      isCredentialBacked(principalFromJwtClaims({ sub: 'alice', scope: 'workflows:read' })),
+    ).toBe(true);
+    expect(isCredentialBacked(principalFromApiKey({ subject: 'robot-1', scopes: [] }))).toBe(true);
+    expect(isCredentialBacked(principalFromMutualTls({ subject: 'CN=client-1', scopes: [] }))).toBe(
+      true,
+    );
+  });
+
+  it('is false for the shared fallback subjects every static key or mTLS caller maps to', () => {
+    expect(isCredentialBacked(principalFromApiKey({ subject: 'api-key-caller', scopes: [] }))).toBe(
+      false,
+    );
+    expect(isCredentialBacked(principalFromMutualTls({ subject: 'mtls-caller', scopes: [] }))).toBe(
+      false,
+    );
+  });
+
+  it('is false for a credential that carries no subject at all', () => {
+    expect(isCredentialBacked(principalFromJwtClaims({ scope: 'workflows:read' }))).toBe(false);
+  });
+
+  it('is false for host-minted and anonymous principals', () => {
+    expect(isCredentialBacked(principalFromUnauthenticatedLocal())).toBe(false);
+    expect(isCredentialBacked(principalFromStdioLocal())).toBe(false);
+    expect(isCredentialBacked(anonymousPrincipal())).toBe(false);
   });
 });

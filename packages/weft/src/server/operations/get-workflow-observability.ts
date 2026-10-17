@@ -55,7 +55,8 @@ export const getWorkflowScheduleProvenanceOperation = defineOperation({
   // Zod models an optional property as `number | undefined`; Engine omits the
   // property entirely under exactOptionalPropertyTypes.
   outputSchema: scheduleProvenanceOutput,
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:read'] } },
+  discoverable: true,
   producibleFaults: [],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
@@ -76,7 +77,8 @@ export const getWorkflowFinalizerOperation = defineOperation({
   tags: ['Workflows'],
   inputSchema: workflowObservabilityInput,
   outputSchema: finalizerStatusOutput,
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:read'] } },
+  discoverable: true,
   producibleFaults: [],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
