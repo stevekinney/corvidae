@@ -262,6 +262,33 @@ Chat's outer layout element is `height: 100%`. When no ancestor on the chain res
 </style>
 ```
 
+## Composer actions
+
+`composerActions` is an optional snippet rendered in the composer footer, beside Send, so a host can put its own controls next to the composer; the usual case is a model picker built from Cinder's `Select` (or `Combobox`). Chat does not ship a picker: the host owns the value and what it means.
+
+```svelte
+<script lang="ts">
+  import { Chat } from '@lostgradient/chat';
+  import { Select } from '@lostgradient/cinder';
+
+  let model = $state('balanced');
+</script>
+
+<Chat id="assistant-chat" {conversation} {adapter}>
+  {#snippet composerActions()}
+    <Select
+      id="assistant-chat-model"
+      bind:value={model}
+      options={models}
+      label="Model"
+      labelVisible={false}
+    />
+  {/snippet}
+</Chat>
+```
+
+The snippet takes no arguments. It stays interactive while a run streams and while a tool approval is pending, because Chat only disables the composer textarea, never the footer; the host decides whether a control should lock during a run. Without the snippet the composer renders as it always has. The "Composer actions" example shows the whole flow.
+
 ## Building composer overlays
 
 Slash-command, mention, and autocomplete overlays should use Chat's composer API instead of querying `.chat-input-editor` directly.
@@ -451,6 +478,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `virtualized` | `boolean` | no | — | Use the virtualized message render path for long transcripts. The complete `ConversationHistory` remains unchanged; only the DOM window is reduced. Default `false`. |
 | `adapter` | `(opaque)` | no | — | Optional command/transport boundary around `conversation`. Its methods take precedence over the matching callback props (e.g. `sendMessage` over `onSubmit`); omit it and Chat behaves exactly as with plain callbacks. Not expressible in JSON Schema; see the component types for the signature. |
 | `capabilities` | `(opaque)` | no | — | Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable individual Chat features (attachments, search, copy, editing, retry) as a group rather than as five separate boolean props. Not expressible in JSON Schema; see the component types for the signature. |
+| `composerActions` | `(opaque)` | no | — | Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. Not expressible in JSON Schema; see the component types for the signature. |
 | `conversation` | `(opaque)` | yes | — | The conversation transcript to render. Pass a {@link ConversationHistory} snapshot; consumers holding a stateful conversation object pass its current snapshot (e.g. `conversation.current`). Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `header` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

@@ -89,7 +89,7 @@
 
     // Snippets for extensibility
     /** Custom actions area (e.g., additional buttons) */
-    actions?: Snippet;
+    actions?: Snippet | undefined;
   };
 </script>
 

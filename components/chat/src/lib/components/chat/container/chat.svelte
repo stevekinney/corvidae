@@ -108,6 +108,7 @@
     loadEarlierLabel = 'Load earlier messages',
     loadingEarlierLabel = 'Loading earlier messages',
     header,
+    composerActions,
     empty,
     emptyPrompts,
     messageActions,
@@ -1804,6 +1805,7 @@
           disabled={streaming && !followUpsEnabled}
           sending={streaming}
           allowFollowUp={followUpsEnabled}
+          actions={composerActions}
           {allowAttachments}
           onstop={streaming ? handleStopGenerating : undefined}
           {onComposerInput}

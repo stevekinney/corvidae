@@ -39,6 +39,10 @@ When Chat accepts snippets or arbitrary children, the caller owns the semantics 
 
 When the adapter provides `sendRunInput`, the composer textarea stays enabled while `streaming` is `true`, so keyboard focus is never pulled out of it mid-run. Stop becomes a separate button beside Send, each with its own accessible name ("Stop generating", "Send message"), and the composer's shortcut description tells assistive technology that Enter sends a follow-up. A follow-up that is waiting for the transport shows a visible "Sending…" status (`role="status"`) rather than relying on color or opacity, and one that the transport rejected shows the existing "Failed to send" alert with a Retry button.
 
+## Composer actions
+
+`composerActions` renders host-owned controls in the composer footer, before Send, so they sit in the tab order between the attachment button and Send. The host owns their semantics: give a `Select` or `Combobox` an accessible name (a visually hidden `label` works when the footer has no room for a visible one), and keep their state announced the way the control already does. Chat does not disable them while a run streams or a tool approval is pending; if the host locks a control during a run, it should disable it natively so the state is exposed.
+
 ## scrollFadeVisible (Tier 3 polish)
 
 `scrollFadeVisible` paints an opaque, scroll-driven fade (never a `mask-`) on the top and bottom edges of the message timeline as it overflows, using `@lostgradient/cinder`'s shared `_scroll-fade.css` recipe. It is presentation-only and never the sole signal that more messages exist — the jump-to-latest button and unread-count indicator (`atBottom`, `unreadCount`, `newMessageIndicatorVisible`) remain the authoritative affordances, unaffected by this prop. The timeline's own `role="log"`/`aria-live` and `:focus-visible` ring (documented above) are unchanged. Only visible when `surfaceMode` is `'default'`: with `surfaceMode="transparent"` the timeline paints no background of its own, so the JS driver is gated off entirely rather than fading toward an incorrect color (see `chat.types.ts`). `@media (forced-colors: active)` disables the fade outright.
