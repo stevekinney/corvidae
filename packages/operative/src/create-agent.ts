@@ -13,6 +13,7 @@ import {
 } from './agent-policy';
 import type { AgentRun } from './agent-run';
 import { createAgentRun } from './agent-run';
+import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import { noToolCalls } from './conditions/predicates';
 import { createActiveRun } from './create-run';
 import type { AgentGenerationProfile, AgentPreferences } from './generation-profile';
@@ -62,6 +63,27 @@ export interface CreateAgentOptionsBase {
    * structurally without one, defaulting to `'(agent)'`.
    */
   name?: string | undefined;
+
+  /**
+   * A human-readable summary of what this agent does. Pure description: it is
+   * never sent to the model and does not affect a run. Bureau's agent discovery
+   * tool searches and returns it, and an A2A Agent Card would carry it as
+   * `AgentCard.description`.
+   */
+  description?: string | undefined;
+
+  /**
+   * Descriptive metadata for the capabilities this agent offers, in the shape
+   * of A2A's `AgentSkill` (specification section 4.4.5). Pure description: it
+   * never reaches a run.
+   *
+   * Not the same as `skills`: `skills` is the runtime skill-catalog seam
+   * (`AgentSkills`) that gives a run activatable instructions and tools,
+   * while this list only tells a caller, or Bureau's agent discovery tool,
+   * what the agent can do. An A2A Agent Card would map it to
+   * `AgentCard.skills`.
+   */
+  skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
 
   /**
    * System instructions injected as a system message on step 0.
@@ -398,6 +420,27 @@ export interface StandaloneAgent<
   readonly name: string;
 
   /**
+   * A human-readable summary of what this agent does. Pure description: it is
+   * never sent to the model and does not affect a run. Bureau's agent discovery
+   * tool searches and returns it, and an A2A Agent Card would carry it as
+   * `AgentCard.description`.
+   */
+  readonly description?: string | undefined;
+
+  /**
+   * Descriptive metadata for the capabilities this agent offers, in the shape
+   * of A2A's `AgentSkill` (specification section 4.4.5). Pure description: it
+   * never reaches a run.
+   *
+   * Not the same as `skills`: `skills` is the runtime skill-catalog seam
+   * (`AgentSkills`) that gives a run activatable instructions and tools,
+   * while this list only tells a caller, or Bureau's agent discovery tool,
+   * what the agent can do. An A2A Agent Card would map it to
+   * `AgentCard.skills`.
+   */
+  readonly skillDescriptors?: readonly AgentSkillDescriptor[] | undefined;
+
+  /**
    * A runtime witness for `H` (AB-234) — `output !== undefined` in the
    * options this agent was created with. See `RunnableAgent.hasOutput`'s
    * doc comment (`runnable-agent.ts`) for why this exists alongside the
@@ -596,6 +639,8 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     permissions,
     output,
     name: configuredName,
+    description,
+    skillDescriptors,
     // Default to `noToolCalls()` when the caller doesn't supply a `stopWhen`
     // — see the doc comment on `CreateAgentOptionsBase.stopWhen`. Falls back
     // to `createActiveRun`'s own "no stop conditions at all" behavior only
@@ -836,6 +881,8 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
   return {
     name: resolvedName,
     hasOutput: output !== undefined,
+    ...(description === undefined ? {} : { description }),
+    ...(skillDescriptors === undefined ? {} : { skillDescriptors }),
     generationProfile,
     // COR-1265 — omitted entirely rather than set to `undefined` when the
     // agent declares no hooks, so `'hooks' in agent` distinguishes "no tier"
