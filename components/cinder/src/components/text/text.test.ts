@@ -86,7 +86,9 @@ describe('Text', () => {
     expect(base).toContain('text-wrap: wrap;');
     expect(base).toContain('overflow-wrap: break-word;');
     for (const heading of ['h1', 'h2', 'h3', 'h4', 'h5']) {
-      const rule = textCss.match(new RegExp(`data-cinder-variant='${heading}'\\] \\{[^}]*\\}`))?.[0];
+      const rule = textCss.match(
+        new RegExp(`data-cinder-variant='${heading}'\\] \\{[^}]*\\}`),
+      )?.[0];
       expect(rule).toContain('letter-spacing: var(--cinder-tracking-tight);');
       expect(rule).toContain('text-wrap: balance;');
     }

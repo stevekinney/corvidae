@@ -26,8 +26,11 @@ const componentAcceptsMinimalRequired: Assignable<
 > = true;
 
 // `as` must exclude metadata and other non-content tags.
-const styleExcluded: [TextElement] extends ['style'] ? true : 'style' extends TextElement ? true : false =
-  false;
+const styleExcluded: [TextElement] extends ['style']
+  ? true
+  : 'style' extends TextElement
+    ? true
+    : false = false;
 const sectionAllowed: ['section' | 'span' | 'h2'] extends [TextElement] ? true : false = true;
 
 test('Text public prop surface unchanged', () => {
