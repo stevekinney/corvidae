@@ -175,6 +175,7 @@ function commitSerializedResumeState(
     callbacks,
   } = args;
   adoptLaunchCheckpoint(internals, workflowId, resumeCheckpoint, serializedCheckpoint);
+  internals.resumesAwaitingAdoption.delete(workflowId);
   internals.workflowVersionTuples.set(workflowId, registeredVersionTuple);
   internals.eventLogHeads.set(workflowId, restoredHead);
   setWorkflowStartHeaders(internals, workflowId, args.workflowStartHeaders, callbacks);

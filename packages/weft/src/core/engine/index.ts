@@ -267,7 +267,7 @@ import {
   resolveWorkflowTypeTarget as resolveWorkflowTypeTargetFromRegistration,
   type RegistrationCallbacks,
 } from './registration.ts';
-import { readHandleResultCommitter } from './result-committer.ts';
+import { readHandleResultCommitter, readHandleResultReplaced } from './result-committer.ts';
 import {
   ensureRetentionSweepInterval,
   getRetentionOverview as getRetentionOverviewSnapshot,
@@ -796,6 +796,7 @@ export class Engine<
     getInternals(this).parkedWorkflowReadyWaitersForTesting = new Map();
     getInternals(this).sleepTimerAcknowledgementWaiters = new Map();
     getInternals(this).durableInlineOperations = new Map();
+    getInternals(this).resumesAwaitingAdoption = new Map();
     getInternals(this).sleepTimersFiredWithoutResolver = new Map();
     getInternals(this).sleepTimerTokensFiredWithoutResolver = new Map();
     getInternals(this).interceptors = resolveEngineInterceptors(options);
@@ -2921,7 +2922,10 @@ export class Engine<
    * fail, cancel, timeout) records the committing engine's ID, and the handle keeps
    * that ID when its `result()` settles. It is exact for every terminal outcome,
    * belongs to the run the handle awaited (a later `start-new` run under the same
-   * workflow id never changes it), and reads no storage. `false` while the result is
+   * workflow id never changes it), and reads no storage. A run whose id a `start-new`
+   * replacement reused before this engine read its outcome rejects its `result()` and reports
+   * `true`: the replacement purged the outcome, and only another engine can have ended the run.
+   * `false` while the result is
    * unsettled or was never requested, when no committer was recorded (a result
    * settled without a terminal commit, or a record written before the engine
    * recorded one), and under every other ownership mode.
@@ -2929,6 +2933,9 @@ export class Engine<
   lostWorkflowClaim(handle: WorkflowClaimHandle): boolean {
     const engineId = getInternals(this).workflowClaimRegistry?.engineId;
     if (engineId === undefined) return false;
+    // The run was replaced before this engine read its outcome, which only another engine can have
+    // terminated; the replacement's committer says nothing about it.
+    if (readHandleResultReplaced(handle)) return true;
     const committedBy = readHandleResultCommitter(handle);
     return committedBy !== undefined && committedBy !== engineId;
   }

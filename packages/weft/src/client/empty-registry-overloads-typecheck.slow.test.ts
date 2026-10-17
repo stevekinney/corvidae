@@ -10,7 +10,7 @@ import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-suppor
 // tsconfig.test-d.json / tsconfig.package-test-d.json programs cannot). Not
 // added to `LOAD_SENSITIVE_TEST_PATHS` — the fixture is a tiny type-only
 // module (three declared client instances, nine calls), so the cold `tsc`
-// start dominates wall-clock cost the same way codegen-typecheck.test.ts's
+// start dominates wall-clock cost the same way codegen-typecheck.slow.test.ts's
 // fixture does; if this test starts flaking under the pre-commit hook's
 // parallel full-suite run the way that one did before isolation, move it
 // there rather than raise the LOAD_SENSITIVE_TEST_PATHS cap without cause.

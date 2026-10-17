@@ -116,6 +116,25 @@ describe('bulk purge helpers', () => {
     expect(internals.resultResolvers.size).toBe(0);
   });
 
+  it('leaves a result waiter bound to a different run alone when it purges an older run', () => {
+    const internals = createInternals(new MemoryStorage()) as {
+      resultResolvers: Map<string, Record<string, unknown>>;
+    };
+    const waiter = {
+      ...Promise.withResolvers<unknown>(),
+      workflowExecutionToken: 'replacement-run',
+    };
+    internals.resultResolvers.set('replaced-run', waiter);
+
+    clearPurgedWorkflowInMemoryState(
+      internals as never,
+      createWorkflowState('replaced-run', 1_000, { workflowExecutionToken: 'purged-run' }),
+      () => {},
+    );
+
+    expect(internals.resultResolvers.get('replaced-run')).toBe(waiter);
+  });
+
   it('applies the smaller of the filter limit and fallback limit during purge', async () => {
     const storage = new MemoryStorage();
     const internals = createInternals(storage);

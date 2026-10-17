@@ -121,6 +121,14 @@ export interface WorkflowResultWaiter {
   promise: Promise<unknown>;
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
+  /**
+   * The {@link WorkflowState.workflowExecutionToken} of the run this waiter was created for.
+   * `resultResolvers` is keyed by workflow id, and a `start-new` replacement reuses the id, so
+   * this is what keeps a settle that belongs to a different run from reaching the waiter. Bound
+   * when the waiter is created, or from the first durable read when this engine holds no local
+   * checkpoint for the run; `undefined` only for a run recorded before tokens existed.
+   */
+  workflowExecutionToken?: string | undefined;
 }
 
 export type EngineConstructorOptions<TServices = unknown> = Partial<EngineOptions<TServices>> & {

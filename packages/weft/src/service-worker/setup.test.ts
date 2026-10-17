@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { Engine } from '../core/engine.ts';
 import { WorkflowResumedEvent } from '../core/events.ts';
@@ -135,6 +135,100 @@ describe('setupServiceWorker', () => {
         await throwingRejectionOf(setupServiceWorker({ storage: new MemoryStorage() })),
       ).toThrow(/already initialized/);
       first.engine[Symbol.dispose]();
+    });
+  });
+
+  it('disposes the engine it created when registration fails, but not a caller-supplied one', async () => {
+    const dispose = spyOn(Engine.prototype, Symbol.asyncDispose);
+    try {
+      await withFakeSelf(createFakeServiceWorkerScope(), async () => {
+        await throwingRejectionOf(
+          setupServiceWorker({
+            storage: new MemoryStorage(),
+            register: async () => {
+              throw new Error('register exploded');
+            },
+          }),
+        );
+      });
+      expect(dispose).toHaveBeenCalledTimes(1);
+
+      dispose.mockClear();
+      using supplied = new Engine({ storage: new MemoryStorage() });
+      await withFakeSelf(createFakeServiceWorkerScope(), async () => {
+        await throwingRejectionOf(
+          setupServiceWorker({
+            engine: supplied,
+            register: async () => {
+              throw new Error('register exploded');
+            },
+          }),
+        );
+      });
+      expect(dispose).not.toHaveBeenCalled();
+    } finally {
+      dispose.mockRestore();
+    }
+  });
+
+  it('keeps the registration error when disposing the engine it created fails too', async () => {
+    const realDispose = Engine.prototype[Symbol.asyncDispose];
+    let realDisposal: Promise<void> | undefined;
+    // Dispose for real, so no engine outlives the test, and then report the cleanup as failed.
+    const dispose = spyOn(Engine.prototype, Symbol.asyncDispose).mockImplementation(async function (
+      this: Engine,
+    ) {
+      realDisposal = realDispose.call(this);
+      await realDisposal;
+      throw new Error('dispose exploded');
+    });
+    try {
+      await withFakeSelf(createFakeServiceWorkerScope(), async () => {
+        expect(
+          await throwingRejectionOf(
+            setupServiceWorker({
+              storage: new MemoryStorage(),
+              register: async () => {
+                throw new Error('register exploded');
+              },
+            }),
+          ),
+        ).toThrow('register exploded');
+      });
+      expect(dispose).toHaveBeenCalledTimes(1);
+      await realDisposal;
+      // The background disposal's rejection is absorbed rather than surfacing unhandled.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    } finally {
+      dispose.mockRestore();
+    }
+  });
+
+  it('keeps the registration error when register leaves a workflow refresh in flight', async () => {
+    const fetchReleased = Promise.withResolvers<void>();
+    const source = {
+      fetch: async () => {
+        await fetchReleased.promise;
+        throw new Error('refresh source offline');
+      },
+      warm: async () => {
+        throw new Error('never warmed');
+      },
+      validateRuntime: () => {},
+    };
+    await withFakeSelf(createFakeServiceWorkerScope(), async () => {
+      const setup = setupServiceWorker({
+        storage: new MemoryStorage(),
+        register: async (engine) => {
+          await engine.workflows.registerRefreshSource('checkout', source);
+          void engine.workflows.refresh('checkout').catch(() => {});
+          throw new Error('register exploded');
+        },
+      });
+      // The refresh never settles on its own (this source ignores its abort signal), and the
+      // registration error still arrives without waiting for the disposal that refresh holds up.
+      expect(await throwingRejectionOf(setup)).toThrow('register exploded');
+      fetchReleased.resolve();
     });
   });
 

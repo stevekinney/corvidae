@@ -46,6 +46,8 @@ const listedTestFiles = await outcomeOf(async () => {
 const benchmarkExclusions = await outcomeOf(async () => {
   const excluded = readTestScriptPathIgnorePatterns();
   expect(excluded).toEqual([
+    // The slow lane (`test:slow`) runs these alone, serially; coverage leaves them out with the test.
+    '**/*.slow.test.ts',
     'scripts/benchmarks/activity-completions.test.ts',
     'scripts/benchmarks/bun-sql.test.ts',
     'scripts/benchmarks/cold-start.test.ts',
@@ -62,6 +64,8 @@ const benchmarkExclusions = await outcomeOf(async () => {
   ]);
   const files = await listCoverageTestFiles();
   for (const path of excluded) expect(files).not.toContain(path);
+  expect(files).not.toContain('src/cli/codegen-typecheck.slow.test.ts');
+  expect(files).not.toContain('src/client/empty-registry-overloads-typecheck.slow.test.ts');
   // The benchmark directory's unit tests are not measurement runs and stay in the shard.
   expect(files).toContain('scripts/benchmarks/coverage-mode.test.ts');
   expect(files).toContain('scripts/benchmarks/environment-configuration.test.ts');

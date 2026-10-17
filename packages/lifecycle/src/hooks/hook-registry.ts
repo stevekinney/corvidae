@@ -2,6 +2,7 @@ import type {
   HookErrorHandler,
   HookMap,
   HookObservationContext,
+  HookObserverOptions,
   HookPlanDescription,
   HookPlanEntryDescription,
   HookPlanObservation,
@@ -44,7 +45,10 @@ export class HookRegistry<M extends HookMap> {
    * before the run, so the registry cannot name one run, but each observer of
    * it can name its own.
    */
-  readonly #observers = new Map<HookPlanObserver, HookObservationContext | undefined>();
+  readonly #observers = new Map<
+    HookPlanObserver,
+    { context: HookObservationContext | undefined; now: (() => number) | undefined }
+  >();
 
   constructor(options?: HookRegistryOptions) {
     this.registryOptions = options ?? {};
@@ -71,8 +75,12 @@ export class HookRegistry<M extends HookMap> {
    * deliberately does not replay them, so "observer attached late" stays
    * distinguishable from "entry registered late".
    */
-  observe(observer: HookPlanObserver, context?: HookObservationContext): () => void {
-    this.#observers.set(observer, context);
+  observe(
+    observer: HookPlanObserver,
+    context?: HookObservationContext,
+    options?: HookObserverOptions,
+  ): () => void {
+    this.#observers.set(observer, { context, now: options?.now });
     return () => {
       this.#observers.delete(observer);
     };
@@ -88,11 +96,18 @@ export class HookRegistry<M extends HookMap> {
    * it. The remaining observers still run: one broken observer does not
    * blind the others.
    */
-  #notify(observation: HookPlanObservation): void {
+  #notify(
+    observation: HookPlanObservation,
+    durationFor?: (observer: HookPlanObserver) => number,
+  ): void {
     if (this.#observers.size === 0) return;
-    for (const [observer, context] of this.#observers) {
+    for (const [observer, { context }] of this.#observers) {
+      const measured =
+        durationFor === undefined
+          ? observation
+          : { ...observation, durationMilliseconds: durationFor(observer) };
       try {
-        observer(context === undefined ? observation : { ...observation, ...context });
+        observer(context === undefined ? measured : { ...measured, ...context });
       } catch (error: unknown) {
         const errorHandler = this.registryOptions.onError;
         if (errorHandler) {
@@ -298,30 +313,64 @@ export class HookRegistry<M extends HookMap> {
     // not have to remember which tier announced that id, possibly in another
     // process before a recovery.
     const source = entrySource({ options: entry.options ?? {} });
-    const startedAt = this.registryOptions.now?.() ?? Date.now();
+    const stopClocks = this.#startClocks();
     try {
       const result = await Reflect.apply(handler, undefined, args);
-      this.#notify({
-        kind: 'invoked',
-        hookName,
-        id,
-        ...source,
-        revision: this.#revision,
-        durationMilliseconds: (this.registryOptions.now?.() ?? Date.now()) - startedAt,
-      });
+      const durationFor = stopClocks();
+      this.#notify(
+        {
+          kind: 'invoked',
+          hookName,
+          id,
+          ...source,
+          revision: this.#revision,
+          durationMilliseconds: 0,
+        },
+        durationFor,
+      );
       return result;
     } catch (error: unknown) {
-      this.#notify({
-        kind: 'failed',
-        hookName,
-        id,
-        ...source,
-        revision: this.#revision,
-        durationMilliseconds: (this.registryOptions.now?.() ?? Date.now()) - startedAt,
-        error,
-      });
+      const durationFor = stopClocks();
+      this.#notify(
+        {
+          kind: 'failed',
+          hookName,
+          id,
+          ...source,
+          revision: this.#revision,
+          durationMilliseconds: 0,
+          error,
+        },
+        durationFor,
+      );
       throw error;
     }
+  }
+
+  /**
+   * Starts one invocation's clocks. The returned function stops them all at
+   * once and reports how long the invocation ran for a given observer. An
+   * observer that attached with its own clock is measured on it; every other
+   * observer, including one that attaches while the handler is still running,
+   * gets the registry's clock. Every clock stops before any observer is told,
+   * so an observer that advances a shared clock cannot lengthen the duration
+   * the next one receives.
+   */
+  #startClocks(): () => (observer: HookPlanObserver) => number {
+    const registryNow = this.registryOptions.now ?? Date.now;
+    const registryStartedAt = registryNow();
+    const observerStarts = new Map<HookPlanObserver, { now: () => number; startedAt: number }>();
+    for (const [observer, { now }] of this.#observers) {
+      if (now !== undefined) observerStarts.set(observer, { now, startedAt: now() });
+    }
+    return () => {
+      const registryDuration = registryNow() - registryStartedAt;
+      const observerDurations = new Map<HookPlanObserver, number>();
+      for (const [observer, { now, startedAt }] of observerStarts) {
+        observerDurations.set(observer, now() - startedAt);
+      }
+      return (observer) => observerDurations.get(observer) ?? registryDuration;
+    };
   }
 
   private async dispatch(

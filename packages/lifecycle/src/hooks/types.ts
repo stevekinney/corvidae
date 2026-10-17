@@ -234,6 +234,26 @@ export interface HookPlanDescription {
  */
 export type HookPlanObserver = (observation: HookPlanObservation) => void;
 
+/**
+ * How one observer wants its observations measured, supplied when it attaches
+ * through {@link HookRegistry.observe}.
+ *
+ * Kept apart from {@link HookObservationContext} because the registry spreads
+ * that context into every observation, and a clock is not something an
+ * observation reports.
+ */
+export interface HookObserverOptions {
+  /**
+   * Clock backing the `durationMilliseconds` this observer receives. A run
+   * passes its runtime's monotonic clock, so a run on manual runtime services
+   * records durations that move only when that runtime's clock does. Takes
+   * precedence over {@link HookRegistryOptions.now}: a merged plan is built at
+   * dispatch with no clock of its own, so the registry's default is the real
+   * `Date.now` however the run that observes it is clocked.
+   */
+  now?: () => number;
+}
+
 export interface HookRegistryOptions {
   onError?: HookErrorHandler;
   /**
@@ -267,7 +287,8 @@ export interface HookRegistryOptions {
    */
   onUnclassifiedReplay?: (registration: { hookName: string; id: string }) => void;
   /**
-   * Clock backing the `durationMilliseconds` an observer receives. Defaults to
+   * Clock backing the `durationMilliseconds` an observer receives, unless that
+   * observer attached with its own {@link HookObserverOptions.now}. Defaults to
    * `Date.now`; inject for deterministic tests.
    */
   now?: () => number;

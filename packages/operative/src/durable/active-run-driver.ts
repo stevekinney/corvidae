@@ -84,7 +84,7 @@ export async function driveDurableRun(
   // with that same error instead of hanging forever.
   let startError: unknown;
   try {
-    const started = await startRunLifecycle(options, conversation, emitter);
+    const started = await startRunLifecycle(options, conversation, emitter, runtime);
     startError = started.error;
     // COR-766: released when this run reaches a terminal state, so a registry
     // that outlives the run does not accumulate an observer per run. A throw
