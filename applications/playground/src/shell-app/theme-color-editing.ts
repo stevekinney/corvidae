@@ -161,7 +161,7 @@ export function alphaStepsOf(envelope: ThemeEnvelope, path: string): AlphaStep[]
       visit(child, [...segments, key]);
     }
   };
-  for (const document of Object.values(envelope.base.documents)) visit(document as JsonObject, []);
+  for (const document of Object.values(envelope.base.documents)) visit(document, []);
   return [...steps]
     .map(([stepPath, alpha]) => ({ path: stepPath, alpha }))
     .toSorted((left, right) => left.alpha - right.alpha);
