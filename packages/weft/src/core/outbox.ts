@@ -25,6 +25,7 @@ import {
 } from './application-primitive-attempt-registry.ts';
 import type { JSONValue } from './json.ts';
 import type {
+  ApplicationDeliveryAdapter,
   ApplicationDeliveryAdmission,
   ApplicationDeliveryCancellationResult,
   ApplicationDeliveryCleanupResult,
@@ -228,6 +229,16 @@ export class Outbox {
   /** The durable backend every transition compares and swaps against. */
   get storage(): Storage {
     return this.#runtime.storage;
+  }
+
+  /** The transport `deliverNext()` and `drain()` run, when one was configured. */
+  get adapter(): ApplicationDeliveryAdapter | undefined {
+    return this.#runtime.adapter;
+  }
+
+  /** The default ceiling on one attempt, in milliseconds from its claim. */
+  get attemptTimeoutMs(): number {
+    return this.#runtime.policy.attemptTimeoutMs;
   }
 
   #assertLive(): void {
