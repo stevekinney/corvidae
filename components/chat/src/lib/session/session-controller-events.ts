@@ -81,6 +81,14 @@ export async function consumeSessionEvents(dependencies: SessionEventDependencie
 function reduceEvent(dependencies: SessionEventDependencies, event: ChatStreamEvent): true {
   const { controller, state, markProtocolFailure } = dependencies;
   switch (event.type) {
+    case 'run.started':
+      // Ordered first on purpose: the run's identity is recorded before any
+      // other frame in the stream is reduced. It names the run, not a row, so
+      // it changes nothing the transcript shows. The first frame wins and a
+      // repeat is ignored, like every other identity on this wire: a run does
+      // not change its mind about which run it is.
+      state.runId ??= event.runId;
+      return true;
     case 'text':
       // LEGACY and RICH are two projections of the same tokens, and a host
       // that emits both would otherwise have its text counted twice.

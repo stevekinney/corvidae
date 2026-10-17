@@ -17,14 +17,14 @@ type StreamGuardState = {
    * Separate from `mode` because the two answer different questions, and
    * only one of them can be asked per-frame. `mode` distinguishes a legacy
    * producer from a versioned one; this distinguishes two versioned
-   * vocabularies, and version 2 is a superset rather than a replacement —
-   * every version 1 member is also a legal version 2 member, so no
+   * vocabularies, and each version is a superset rather than a replacement —
+   * every version 1 member is also a legal version 2 or 3 member, so no
    * individual frame is malformed. A consumer that read the opening frame as
    * version 1 and then meets a version 2 frame has been told two different
    * things about which vocabulary it is reading, and the only place that is
    * visible is here.
    */
-  wireVersion: 1 | 2 | undefined;
+  wireVersion: 1 | 2 | 3 | undefined;
   sawTerminal: boolean;
   lastSequence: number | undefined;
 };

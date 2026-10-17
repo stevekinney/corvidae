@@ -26,10 +26,13 @@ export type ChatToolResult = ToolResult & {
  * stream wire contract: a supported `wireVersion` plus a request-local
  * monotonically increasing `sequence`.
  *
- * Version 2 adds the `assistant.step.*` vocabulary and nothing else. A
- * version 1 producer keeps working unchanged, and a version 1 frame is still
- * decoded exactly as before — the version is carried through rather than
- * normalized, so a consumer can tell which vocabulary it is reading.
+ * Version 2 adds the `assistant.step.*` and `elicitation.*` vocabulary.
+ * Version 3 adds the `run.started` frame and a required `messageId` on
+ * `stream:text-delta`, so the wire maps losslessly to AG-UI `RUN_STARTED` and
+ * `TEXT_MESSAGE_*`. A version 1 or 2 producer keeps working unchanged, and a
+ * frame of either version is still decoded exactly as before — the version is
+ * carried through rather than normalized, so a consumer can tell which
+ * vocabulary it is reading.
  *
  * These are REQUIRED on every member added by CIN-507 (`stream:*`, `tool.*`,
  * `run.*`) because that vocabulary is defined by the wire contract the
@@ -39,7 +42,7 @@ export type ChatToolResult = ToolResult & {
  * must decode them unchanged rather than break a deployed producer.
  */
 export type WireEnvelope = {
-  wireVersion: 1 | 2;
+  wireVersion: 1 | 2 | 3;
   sequence: number;
 };
 
@@ -47,10 +50,31 @@ export type WireEnvelope = {
  * The envelope a member introduced by wire version 2 requires. Declaring it
  * separately is what makes "this frame did not exist before version 2" a
  * type error rather than a convention: a version 1 producer cannot construct
- * an `assistant.step.*` frame at all.
+ * an `assistant.step.*` frame at all. Version 3 is a superset of version 2,
+ * so these members are equally legal at version 3.
  */
-export type V2WireEnvelope = {
-  wireVersion: 2;
+export type WireEnvelopeFromV2 = {
+  wireVersion: 2 | 3;
+  sequence: number;
+};
+
+/**
+ * The envelope a member introduced by wire version 3 requires: only a
+ * version 3 producer can construct a `run.started` frame.
+ */
+export type WireEnvelopeFromV3 = {
+  wireVersion: 3;
+  sequence: number;
+};
+
+/**
+ * The envelope of a frame whose body changed shape at version 3. A
+ * `stream:text-delta` carries no `messageId` before version 3, so its pre-3
+ * form is typed on this envelope alone, which keeps the two bodies from being
+ * mixed across versions.
+ */
+export type WireEnvelopeBeforeV3 = {
+  wireVersion: 1 | 2;
   sequence: number;
 };
 
@@ -93,11 +117,11 @@ export type WithOptionalEnvelope<T> =
 export type OptionalWireEnvelope = WireEnvelope | { wireVersion?: never; sequence?: never };
 
 /** The supported wire versions. Any other value is rejected outright. */
-export const SUPPORTED_WIRE_VERSIONS = [1, 2] as const;
+export const SUPPORTED_WIRE_VERSIONS = [1, 2, 3] as const;
 
 /** Narrows an untrusted value to a wire version this codec speaks. */
-export function isSupportedWireVersion(value: unknown): value is 1 | 2 {
-  return value === 1 || value === 2;
+export function isSupportedWireVersion(value: unknown): value is 1 | 2 | 3 {
+  return value === 1 || value === 2 || value === 3;
 }
 
 // ---------------------------------------------------------------------------
@@ -208,7 +232,23 @@ export type ChatStreamEvent =
   | ({ type: 'stream:block-start'; block: ChatStreamBlock } & WireEnvelope)
   | ({ type: 'stream:block-delta'; block: ChatStreamBlock; delta: string } & WireEnvelope)
   | ({ type: 'stream:block-complete'; block: ChatStreamBlock } & WireEnvelope)
-  | ({ type: 'stream:text-delta'; content: string; accumulated: string } & WireEnvelope)
+  // `messageId` is the host's identifier for the assistant message the delta
+  // belongs to — the `messageId` of the enclosing `assistant.step.started` —
+  // and exists only from wire version 3. Before version 3 a delta names no
+  // message, so the two bodies are separate members: a version 1 or 2 frame
+  // cannot carry a `messageId`, and a version 3 frame cannot omit it.
+  | ({
+      type: 'stream:text-delta';
+      content: string;
+      accumulated: string;
+      messageId?: never;
+    } & WireEnvelopeBeforeV3)
+  | ({
+      type: 'stream:text-delta';
+      content: string;
+      accumulated: string;
+      messageId: string;
+    } & WireEnvelopeFromV3)
   | ({ type: 'stream:tool-call-start'; toolName: string; blockId: string } & WireEnvelope)
   | ({
       type: 'stream:tool-call-delta';
@@ -280,6 +320,11 @@ export type ChatStreamEvent =
   | ({ type: 'run.error'; error: ChatSerializedRunError } & WireEnvelope)
   | ({ type: 'run.tripwire'; error: ChatSerializedRunError } & WireEnvelope)
   | ({ type: 'run.aborted'; reason?: string } & WireEnvelope)
+  // The start of a run (wire version 3). NON-terminal, unlike every other
+  // `run.*` frame: it opens the stream rather than closing it, so the
+  // terminal-frame bookkeeping must not count it. `runId` is the host's
+  // identifier for the run and is what AG-UI calls `runId` on `RUN_STARTED`.
+  | ({ type: 'run.started'; runId: string } & WireEnvelopeFromV3)
   // Assistant step boundaries (wire version 2).
   //
   // `messageId` is the HOST'S identifier for the row this step's text
@@ -288,8 +333,8 @@ export type ChatStreamEvent =
   // those are per-block and per-provider — and deliberately not something
   // the client minted, because then the client would be reconciling its own
   // guess against the server's history rather than being told.
-  | ({ type: 'assistant.step.started'; step: number; messageId: string } & V2WireEnvelope)
-  | ({ type: 'assistant.step.completed'; step: number; messageId: string } & V2WireEnvelope)
+  | ({ type: 'assistant.step.started'; step: number; messageId: string } & WireEnvelopeFromV2)
+  | ({ type: 'assistant.step.completed'; step: number; messageId: string } & WireEnvelopeFromV2)
   // Elicitation: a question the run is waiting on, and the human's answer.
   //
   // `elicitation.resolved` REPORTS THE HUMAN'S RESPONSE — it is not tool
@@ -323,10 +368,10 @@ export type ChatStreamEvent =
       toolCallId?: string;
       message: string;
       action?: ChatToolResult['action'];
-    } & V2WireEnvelope)
+    } & WireEnvelopeFromV2)
   | ({
       type: 'elicitation.resolved';
       requestId: string;
       toolCallId?: string;
       accepted: boolean;
-    } & V2WireEnvelope);
+    } & WireEnvelopeFromV2);

@@ -41,6 +41,7 @@ export function isToolEvent(event: ChatStreamEvent): event is ToolEvent {
 
 export function isRunEvent(event: ChatStreamEvent): event is RunEvent {
   return (
+    event.type === 'run.started' ||
     event.type === 'run.completed' ||
     event.type === 'run.error' ||
     event.type === 'run.tripwire' ||

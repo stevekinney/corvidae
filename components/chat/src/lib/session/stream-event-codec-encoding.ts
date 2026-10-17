@@ -230,13 +230,7 @@ function projectTextStreamEvent(
   >,
   envelope: Partial<WireEnvelope>,
 ): ProjectedChatStreamEvent {
-  if (event.type === 'stream:text-delta')
-    return {
-      type: event.type,
-      content: requireString(event.content, 'content'),
-      accumulated: requireString(event.accumulated, 'accumulated'),
-      ...envelope,
-    };
+  if (event.type === 'stream:text-delta') return projectTextDelta(event, envelope);
   if (event.type === 'stream:tool-call-start')
     return {
       type: event.type,
@@ -257,6 +251,29 @@ function projectTextStreamEvent(
     toolName: requireString(event.toolName, 'toolName'),
     blockId: requireString(event.blockId, 'blockId'),
     arguments: assertFiniteJSONValue(event.arguments, 'stream:tool-call-complete.arguments'),
+    ...envelope,
+  };
+}
+/**
+ * `messageId` is written exactly when the envelope says version 3, and is
+ * required then: the encoder must refuse a version 3 delta the decoder would
+ * reject, and must not put a field on a version 1 or 2 frame that the
+ * version does not define. A field the static type forbids but a runtime cast
+ * supplies is dropped for the same reason.
+ */
+function projectTextDelta(
+  event: Extract<StreamEvent, { type: 'stream:text-delta' }>,
+  envelope: Partial<WireEnvelope>,
+): ProjectedChatStreamEvent {
+  const body = {
+    type: event.type,
+    content: requireString(event.content, 'content'),
+    accumulated: requireString(event.accumulated, 'accumulated'),
+  };
+  if (envelope.wireVersion !== 3) return { ...body, ...envelope };
+  return {
+    ...body,
+    messageId: requireString(event.messageId, 'messageId'),
     ...envelope,
   };
 }
@@ -337,6 +354,11 @@ function projectRunEvent(
   event: RunEvent,
   envelope: Partial<WireEnvelope>,
 ): ProjectedChatStreamEvent {
+  if (event.type === 'run.started') {
+    if (envelope.wireVersion !== 3)
+      throw new Error('Invalid chat stream event: run.started requires wire version 3');
+    return { type: event.type, runId: requireString(event.runId, 'runId'), ...envelope };
+  }
   if (event.type === 'run.completed') return projectCompletedRun(event, envelope);
   if (event.type === 'run.error' || event.type === 'run.tripwire')
     return { type: event.type, error: projectChatSerializedRunError(event.error), ...envelope };
