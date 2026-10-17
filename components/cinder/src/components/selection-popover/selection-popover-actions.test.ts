@@ -160,6 +160,87 @@ describe('SelectionPopover actions snippet', () => {
   });
 });
 
+describe('SelectionPopover actions focus timing', () => {
+  function pointerEvent(type: string): Event {
+    return new (globalThis.PointerEvent ?? Event)(type, { bubbles: true });
+  }
+
+  /** Mounts the popover, presses a pointer on the window, then waits until it is positioned. */
+  async function openDuringPointerGesture(): Promise<void> {
+    render(SelectionPopover, {
+      props: {
+        id: 'selection-quote',
+        open: true,
+        position: basePosition,
+        actions: quoteActions(() => {}),
+      },
+    });
+    window.dispatchEvent(pointerEvent('pointerdown'));
+    const toolbar = screen.getByRole('toolbar');
+    await waitFor(() => {
+      expect(toolbar.getAttribute('data-cinder-position-ready')).toBe('true');
+    });
+  }
+
+  test('holds focus back while a pointer is down and moves it on pointerup', async () => {
+    await openDuringPointerGesture();
+    // Positioned and open, but the drag-select that opened it is still in progress.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(false);
+
+    window.dispatchEvent(pointerEvent('pointerup'));
+
+    await waitFor(() => {
+      expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(true);
+    });
+  });
+
+  test('moves focus on pointercancel as well', async () => {
+    await openDuringPointerGesture();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(false);
+
+    window.dispatchEvent(pointerEvent('pointercancel'));
+
+    await waitFor(() => {
+      expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(true);
+    });
+  });
+});
+
+describe('SelectionPopover actions keyboard model', () => {
+  test('is one Tab stop and roves between actions with Left, Right, Home and End', async () => {
+    const { toolbar } = await openWithActions();
+    const quote = screen.getByRole('button', { name: 'Quote' });
+    const share = screen.getByRole('button', { name: 'Share' });
+
+    expect(quote.getAttribute('tabindex')).toBe('0');
+    expect(share.getAttribute('tabindex')).toBe('-1');
+    await waitFor(() => {
+      expect(document.activeElement === quote).toBe(true);
+    });
+
+    await fireEvent.keyDown(quote, { key: 'ArrowRight' });
+    expect(document.activeElement === share).toBe(true);
+    expect(share.getAttribute('tabindex')).toBe('0');
+    expect(quote.getAttribute('tabindex')).toBe('-1');
+
+    await fireEvent.keyDown(share, { key: 'ArrowRight' });
+    expect(document.activeElement === quote).toBe(true);
+
+    await fireEvent.keyDown(quote, { key: 'End' });
+    expect(document.activeElement === share).toBe(true);
+
+    await fireEvent.keyDown(share, { key: 'Home' });
+    expect(document.activeElement === quote).toBe(true);
+
+    await fireEvent.keyDown(quote, { key: 'ArrowLeft' });
+    expect(document.activeElement === share).toBe(true);
+    expect(toolbar.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+  });
+});
+
 describe('SelectionPopover label', () => {
   test('defaults the toolbar name to "Selection actions"', () => {
     render(SelectionPopover, {
