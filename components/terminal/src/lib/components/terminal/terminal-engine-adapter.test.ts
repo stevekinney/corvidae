@@ -738,6 +738,20 @@ describe('match selection across a resize', () => {
     expect(captured.terminal.getSelection()).not.toBe('beta');
   });
 
+  test("a reader's selection of the same text elsewhere is not replaced on a resize", async () => {
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes('beta one\r\nbeta two')]);
+    const projection = captured.engine.readProjection().text;
+    const start = projection.lastIndexOf('beta');
+    captured.engine.selectMatch({ start, end: start + 4, text: 'beta' }, 100_000);
+    // The reader selects the OTHER "beta": same text, different place.
+    captured.terminal.select(0, 0, 4);
+    expect(captured.terminal.getSelection()).toBe('beta');
+    captured.engine.resize({ columns: 20, rows: 2 });
+    await Promise.resolve();
+    expect(captured.terminal.getSelectionPosition()?.start.y ?? 0).not.toBe(1);
+  });
+
   test('a cleared match selection is not brought back by a resize', async () => {
     const captured = mountedEngine({ geometry: { columns: 20, rows: 6 } });
     await captured.deliver([bytes('alpha beta')]);

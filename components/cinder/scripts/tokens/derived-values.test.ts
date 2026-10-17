@@ -144,6 +144,38 @@ describe('derived value materialization', () => {
     }
   });
 
+  test("a theme alias follows its base recipe's bare-variable arm", async () => {
+    const { resolver, sourceDocumentsByPath } = await loadCorpus();
+    const edited = new Map(sourceDocumentsByPath);
+    const semantic = structuredClone(edited.get('sets/semantic.tokens.json')!) as Record<
+      string,
+      any
+    >;
+    const extension = semantic['surface']['inverse']['$extensions']['com.lostgradient.cinder'];
+    extension['cssRecipe'] = 'light-dark(var(--cinder-text-default), var(--cinder-surface))';
+    edited.set('sets/semantic.tokens.json', semantic);
+
+    const materialized = materializeDerivedValues(resolver, edited);
+    const dark = materialized.get('themes/dark.tokens.json') as Record<string, any>;
+    expect(dark['surface']['inverse']).toEqual({ $value: '{surface.base}' });
+  });
+
+  test('a derived recipe outside the evaluator grammar fails generation', async () => {
+    const { resolver, sourceDocumentsByPath } = await loadCorpus();
+    const edited = new Map(sourceDocumentsByPath);
+    const semantic = structuredClone(edited.get('sets/semantic.tokens.json')!) as Record<
+      string,
+      any
+    >;
+    semantic['border']['muted']['$extensions']['com.lostgradient.cinder']['cssRecipe'] =
+      'color-mix(in srgb, var(--cinder-border-ink), transparent 90%)';
+    edited.set('sets/semantic.tokens.json', semantic);
+
+    expect(() => materializeDerivedValues(resolver, edited)).toThrow(
+      'Cannot evaluate the derived recipe of "border.muted"',
+    );
+  });
+
   test('rewriting a source document removes tokens the materialized document dropped', () => {
     const text =
       '{\n  "border": {\n    "muted": { "$value": 1 },\n    "strong": { "$value": 2 }\n  },\n  "only": { "gone": { "$value": 3 } }\n}';

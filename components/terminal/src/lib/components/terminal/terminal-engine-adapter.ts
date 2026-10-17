@@ -228,7 +228,10 @@ export function createRendererEngine(
   // Whether the current selection is one `selectMatch` made, so clearing never takes a reader's.
   let ownsSelection = false;
   // The match that selection is of, so a resize that clears it can put it back.
-  let selectedMatch: { match: SearchMatch; maximumBytes: number; selected: string } | undefined;
+  // `at` is where the selection was placed: identity is position, not text, because a reader can
+  // select another occurrence of the same text.
+  let selectedMatch: { match: SearchMatch; maximumBytes: number; at: string } | undefined;
+  const selectionAt = (): string => JSON.stringify(terminal.getSelectionPosition() ?? null);
 
   function notifyChange(): void {
     for (const listener of changeListeners) listener();
@@ -237,13 +240,12 @@ export function createRendererEngine(
   terminal.onResize(() => {
     // A resize clears the engine's selection. When that selection was the active search match,
     // select it again (reflowed to the new width), or the highlight vanishes whenever the panel
-    // around the terminal changes height. An empty selection means nothing of the reader's is
-    // replaced.
-    // Only the search's own selection comes back: if the reader has selected something else
-    // since, the match is no longer the selection, and ownership goes with it. The engine clears
+    // around the terminal changes height. Only the search's own selection comes back: if the
+    // reader has selected anything else since, even the same text elsewhere, the selection is no
+    // longer at the match's position, and ownership goes with it. The engine clears
     // its selection after this event fires, so that is checked now and restored a microtask later.
     if (!ownsSelection || selectedMatch === undefined) return notifyChange();
-    if (terminal.getSelection() !== selectedMatch.selected) {
+    if (selectionAt() !== selectedMatch.at) {
       ownsSelection = false;
       selectedMatch = undefined;
       return notifyChange();
@@ -282,7 +284,7 @@ export function createRendererEngine(
       terminal.select(cells.column, cells.row, cells.length);
       if (terminal.getSelection() === selected) {
         ownsSelection = true;
-        selectedMatch = { match, maximumBytes, selected };
+        selectedMatch = { match, maximumBytes, at: selectionAt() };
         revealRow(cells.row);
         return true;
       }

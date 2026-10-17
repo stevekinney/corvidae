@@ -238,6 +238,30 @@ function removeEntry(document: Record<string, unknown>, keys: readonly string[])
   }
 }
 
+/** The token a bare `var(--x)` arm aliases. */
+function aliasTarget(
+  token: DerivedToken,
+  recipe: string,
+  pathByProperty: ReadonlyMap<string, string>,
+): string {
+  const property = recipeInputs(recipe)[0]!;
+  const target = pathByProperty.get(property);
+  if (target === undefined) {
+    throw new Error(`"${token.path}" aliases ${property}, which no token declares.`);
+  }
+  return target;
+}
+
+/** Writes an alias entry at `keys`, replacing whatever was there. */
+function setAliasEntry(document: Record<string, unknown>, keys: readonly string[], alias: string) {
+  let node = document;
+  for (const key of keys.slice(0, -1)) {
+    if (!isPlainObject(node[key])) node[key] = {};
+    node = node[key] as Record<string, unknown>;
+  }
+  node[keys.at(-1)!] = { $value: alias };
+}
+
 function attachRecipe(entry: Record<string, unknown>, recipe: string): void {
   const extensions = isPlainObject(entry['$extensions']) ? entry['$extensions'] : {};
   const own = isPlainObject(extensions['com.lostgradient.cinder'])
@@ -288,10 +312,19 @@ export function materializeDerivedValues(
     const needed = tokensNeedingThemeEntries(derived, themeDocument, pathByProperty, theme);
     themeEntries.set(theme, needed);
     for (const token of derived) {
-      if (!needed.has(token.path) || tokenAt(themeDocument, token.keys)) continue;
-      // A bare `var()` arm is an alias, which the CSS projection already
-      // re-resolves per theme; it needs no materialized literal.
-      if (isBareVariable(recipeFor(token, theme))) continue;
+      if (!needed.has(token.path)) continue;
+      // A bare `var()` arm is an alias: the theme entry is written as that alias, every time, so
+      // a change to the base arm reaches the theme document instead of an old alias outliving it.
+      const recipe = recipeFor(token, theme);
+      if (isBareVariable(recipe)) {
+        const alias = `{${aliasTarget(token, recipe, pathByProperty)}}`;
+        const existing = tokenAt(themeDocument, token.keys);
+        if (existing?.['$value'] === alias && existing['$extensions'] === undefined) continue;
+        setAliasEntry(themeDocument, token.keys, alias);
+        changed.add(themePath);
+        continue;
+      }
+      if (tokenAt(themeDocument, token.keys)) continue;
       setThemeEntry(
         themeDocument,
         token.keys,
@@ -338,7 +371,16 @@ export function materializeDerivedValues(
         }
         for (const target of targets) {
           const evaluated = evaluateRecipe(recipeFor(token, theme), lookup);
-          if (!evaluated) continue;
+          // A recipe this step cannot evaluate would leave the last committed literal standing
+          // beside a recipe that no longer produces it; every artifact built from `$value` would
+          // then be wrong while `tokens:check` stayed green. That is a corpus error, not a skip.
+          if (!evaluated) {
+            throw new Error(
+              `Cannot evaluate the derived recipe of "${token.path}" (${theme}): ` +
+                `${recipeFor(token, theme)}. Use the supported grammar in recipe-evaluator.ts ` +
+                `or extend it.`,
+            );
+          }
           const value = toDtcgColor(evaluated);
           if (sameValue(target.entry['$value'], value)) continue;
           target.entry['$value'] = value;
