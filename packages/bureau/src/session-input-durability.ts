@@ -112,11 +112,11 @@ export const SESSION_INPUT_MAXIMUM_ATTEMPTS = 100;
 export const SESSION_INPUT_DELIVERY_RETENTION_MS = 9 * 86_400_000;
 
 /**
- * The cancellation reason that marks an input no run could be found to answer
- * (its session can no longer start one). Its receipt reads `rejected`, where any
- * other cancellation, such as the session's deletion, reads `canceled`.
+ * The cancellation reason for input a stopped run never put in its transcript.
+ * The user stopped the run on purpose, so nothing continues it; the input's
+ * receipt reads `canceled` and the client can send it again.
  */
-export const SESSION_INPUT_NO_SUCCESSOR_REASON = 'the run ended without a live successor';
+export const SESSION_INPUT_STOPPED_REASON = 'the run was stopped';
 
 /** One session's session-input mailbox — the durable log, FIFO sequencer, and per-session backlog authority. */
 export function createSessionInputMailbox(
@@ -311,9 +311,7 @@ function receiptState(
     case 'dead-lettered':
       return receipt.failure?.reason === 'deadline-exceeded' ? 'expired' : 'failed';
     case 'cancelled':
-      return receipt.cancellationReason === SESSION_INPUT_NO_SUCCESSOR_REASON
-        ? 'rejected'
-        : 'canceled';
+      return 'canceled';
     case 'rejected':
       return 'failed';
     default:

@@ -187,6 +187,16 @@ export interface SessionInputDeliveryStore {
   ): Promise<ReadonlyMap<string, SessionInputDeliveryClaim>>;
   /** Deletes `runId`'s unpromoted records, returning how many. Always safe: they are in no transcript. */
   release(sessionId: string, runId: string): Promise<number>;
+  /**
+   * Promotes deliveries `runId` owns outside a checkpoint write: an input whose
+   * user turn is in the transcript when the user stops the run, so it is part of
+   * the conversation even though no step answered it.
+   */
+  promote(
+    sessionId: string,
+    runId: string,
+    deliveries: readonly SessionInputDelivery[],
+  ): Promise<void>;
   /** The records of a session. */
   read(sessionId: string): Promise<SessionInputDeliveryRecords>;
 }
@@ -263,6 +273,13 @@ export function createSessionInputDeliveryStore(
         }
         return { ...(released > 0 ? { next } : {}), result: released };
       });
+    },
+
+    async promote(sessionId, runId, deliveries) {
+      await update(sessionId, async (records) => ({
+        next: planSessionInputPromotion(records, runId, deliveries),
+        result: undefined,
+      }));
     },
 
     async read(sessionId) {

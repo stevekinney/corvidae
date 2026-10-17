@@ -224,9 +224,11 @@ import {
   createSessionInputMailbox,
   type PersistedSessionInput,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
+  SESSION_INPUT_STOPPED_REASON,
 } from './session-input-durability';
 import {
   createSessionInputContinuation,
+  forEachOpenReceipt,
   type SessionInputRunOutcome,
 } from './session-input-continuation';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
@@ -1922,6 +1924,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         })
       : undefined;
 
+  /**
+   * The pending `run-ended` steering write of each run that is ending (COR-1476).
+   * It is the durable not-live write the run's reconcile waits for.
+   */
+  const steeringRunEndWrites = new Map<string, Promise<void>>();
+
+  /** The reconciles of runs that have ended and have not finished (COR-1476). */
+  const inFlightSessionInputReconciles = new Set<Promise<void>>();
+
+  /** Runs the user stopped with `abortRun` or `cancelDurableRun`: their session's input is settled, not continued. */
+  const explicitlyStoppedRuns = new Set<string>();
+
   /** The gate of each durable run that has one, disposed when the run ends however it ends. */
   const sessionInputGates = new Map<
     string,
@@ -2023,17 +2037,56 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * A run has ended, however it ended. Releases what it held, then makes sure a
-   * session that still has open input has a live run to answer it. Called after
-   * the run's terminal session write and its steering `run-ended`, so the
-   * liveness it reads no longer counts the ended run.
+   * session that still has open input has a live run to answer it.
+   *
+   * ORDERING (see `session-input-continuation.ts`): the run first becomes not
+   * live to everyone, which is its steering `run-ended` entry plus the engine's
+   * terminal workflow state, and this function waits for that write before it
+   * reads the session's marker and mailbox. `submitSessionInput` commits an
+   * admission before it reads liveness, so one side always sees the other.
    */
   async function reconcileSessionInputsAfterRunEnd(
     sessionId: string,
     runId: string,
-    outcome: SessionInputRunOutcome,
+    reportedOutcome: SessionInputRunOutcome,
   ): Promise<void> {
-    await releaseSessionInputs(sessionId, runId);
-    if (sessionInputContinuation === undefined || maintenanceAdmissionClosed) return;
+    const outcome: SessionInputRunOutcome =
+      reportedOutcome === 'aborted' && explicitlyStoppedRuns.delete(runId)
+        ? 'stopped'
+        : reportedOutcome;
+    try {
+      // The durable not-live write, before anything below reads the session.
+      await steeringRunEndWrites.get(runId);
+      steeringRunEndWrites.delete(runId);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] The end of run "${runId}" could not be recorded before its session input was reconciled: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+    if (outcome === 'stopped') {
+      // Stop means stop: nothing is continued. What the run's transcript holds
+      // is promoted, and the rest is cancelled so the client can resend it.
+      await settleSessionInputsAfterStop(sessionId, runId);
+    } else {
+      await releaseSessionInputs(sessionId, runId);
+    }
+    try {
+      await sessionInputContinuation?.settleEnded(sessionId, { runId, outcome });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not settle the continuation record of run "${runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+    // Shutdown only releases; a stop starts nothing.
+    if (sessionInputContinuation === undefined || outcome === 'stopped' || isSessionInputClosed()) {
+      return;
+    }
     try {
       await sessionInputContinuation.reconcile(sessionId, { runId, outcome });
     } catch (error) {
@@ -2041,6 +2094,126 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         level: 'error',
         scope: 'session-input',
         message: `[bureau] Could not reconcile the pending input of session "${sessionId}" after run "${runId}" ended: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /** Acknowledges the given commands, which are promoted and need only retiring. */
+  async function retirePromotedCommands(
+    mailbox: Mailbox,
+    commandIds: ReadonlySet<string>,
+  ): Promise<void> {
+    const remaining = new Set(commandIds);
+    for (let attempt = 0; remaining.size > 0 && attempt < commandIds.size + 5; attempt += 1) {
+      let result = await mailbox.claim();
+      if (result.status === 'held') {
+        await mailbox.waitForAvailable({
+          timeoutMs: 1_100,
+          pollIntervalMs: 10,
+          signal: AbortSignal.timeout(1_200),
+        });
+        result = await mailbox.claim();
+      }
+      if (result.status !== 'claimed') return;
+      const { claim } = result;
+      if (remaining.delete(claim.receipt.commandId)) {
+        await mailbox.acknowledge({
+          commandId: claim.receipt.commandId,
+          attemptToken: claim.attemptToken,
+        });
+      } else {
+        // Not ours to retire: back to the queue for whoever owns it.
+        await mailbox.reject({
+          commandId: claim.receipt.commandId,
+          attemptToken: claim.attemptToken,
+          failure: { reason: 'application', message: 'not retired by a stop' },
+          retry: true,
+        });
+      }
+    }
+  }
+
+  /** Whether the bureau is shutting down, when nothing may be started and nothing is a failure. */
+  function isSessionInputClosed(): boolean {
+    return runAdmissionClosed || maintenanceAdmissionClosed;
+  }
+
+  /**
+   * The user stopped a run. The session's input is settled, and nothing starts to
+   * answer it:
+   *
+   * - input whose user turn the run's transcript holds is promoted, whether or not
+   *   its answer landed: it is part of the conversation, and the stop ended its
+   *   answer. The next run the user starts answers the dangling turn;
+   * - every other open input is cancelled with `the run was stopped`, so its
+   *   receipt reads `canceled` and the client can resend it.
+   *
+   * With another run still live on the session that run answers the input, so the
+   * stop only releases what the stopped run held.
+   */
+  async function settleSessionInputsAfterStop(sessionId: string, runId: string): Promise<void> {
+    try {
+      const held = sessionInputGates.get(runId);
+      sessionInputGates.delete(runId);
+      await held?.gate.dispose?.();
+      const mailbox = tryGetSessionInputMailbox(sessionId);
+      const session = await runtime.sessionStore?.load(sessionId);
+      if (sessionInputDeliveryStore === undefined || mailbox === undefined) return;
+      if (session === undefined) {
+        await sessionInputDeliveryStore.release(sessionId, runId);
+        return;
+      }
+      const others = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
+      if (others.some((liveRunId) => liveRunId !== runId)) {
+        await sessionInputDeliveryStore.release(sessionId, runId);
+        return;
+      }
+      const transcript = new Conversation(session.conversationHistory).getMessages();
+      const records = await sessionInputDeliveryStore.read(sessionId);
+      const appended = new Map<string, string>();
+      for (const message of transcript) {
+        const commandId = message.metadata?.['sessionInputCommandId'];
+        if (typeof commandId === 'string') appended.set(commandId, message.id);
+      }
+      const cursor = await runtime.durable?.checkpointStore.loadCursor(runId);
+      const promotable = Object.entries(records)
+        .filter(
+          ([commandId, record]) =>
+            record.runId === runId && record.promotion === undefined && appended.has(commandId),
+        )
+        .map(([commandId]) => commandId);
+      if (promotable.length > 0) {
+        const deliveredAt = runtimeServices.clock.nowISO();
+        const promoted = await Promise.all(
+          promotable.map(async (commandId) => {
+            const receipt = await mailbox.receipt(commandId);
+            return {
+              id: receipt?.idempotencyKey ?? commandId,
+              commandId,
+              sessionId,
+              deliveredAt,
+              conversationMessageId: appended.get(commandId)!,
+              providerTurn: cursor?.step ?? 0,
+            };
+          }),
+        );
+        await sessionInputDeliveryStore.promote(sessionId, runId, promoted);
+      }
+      await sessionInputDeliveryStore.release(sessionId, runId);
+      const keep = new Set(promotable);
+      await forEachOpenReceipt(mailbox, async (commandId) => {
+        if (keep.has(commandId)) return;
+        await mailbox.requestCancellation({ commandId, reason: SESSION_INPUT_STOPPED_REASON });
+      });
+      // What the transcript holds is part of the conversation: retire its commands
+      // so no open input is left to start a run for.
+      await retirePromotedCommands(mailbox, keep);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not settle the session input of stopped run "${runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
         cause: error,
       });
     }
@@ -2056,16 +2229,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function retireSessionInputs(sessionId: string): Promise<void> {
     const mailbox = tryGetSessionInputMailbox(sessionId);
     if (mailbox === undefined) return;
-    const pending = await mailbox.list({
-      limit: 1000,
-      states: ['accepted', 'available', 'claimed'],
+    await forEachOpenReceipt(mailbox, async (commandId) => {
+      await mailbox.requestCancellation({ commandId, reason: 'the session was deleted' });
     });
-    for (const receipt of pending) {
-      await mailbox.requestCancellation({
-        commandId: receipt.commandId,
-        reason: 'the session was deleted',
-      });
-    }
   }
 
   /**
@@ -2092,6 +2258,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           isRunLive: isSessionRunLive,
           mailboxOf: tryGetSessionInputMailbox,
           newRunId: () => runtimeServices.identifiers.next('run'),
+          isClosed: isSessionInputClosed,
           startContinuation: async (sessionId, runId) => {
             const session = await runtime.sessionStore?.load(sessionId);
             if (session === undefined) throw new Error(`Session "${sessionId}" no longer exists.`);
@@ -2711,7 +2878,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     const { incarnation } = cursor;
-    void enqueueSteering(sessionId, () =>
+    const appended = enqueueSteering(sessionId, () =>
       appendThenApplySteering(kv, sessionId, incarnation, event),
     ).catch((error: unknown) => {
       // Not applied locally: the gate must never hold state the log lacks,
@@ -2725,6 +2892,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         message: `[bureau] Could not log a steering "${event.type}" event for run "${event.runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
       });
     });
+    // COR-1476 — the `run-ended` entry is the durable write that makes the run
+    // not live to every process reading `liveSessionRunIdsEverywhere`. The run's
+    // session-input reconcile awaits it before reading the session's marker and
+    // mailbox, which is the ordering that keeps admitted input from being stranded.
+    if (event.type === 'run-ended') steeringRunEndWrites.set(event.runId, appended);
   }
 
   /**
@@ -3208,9 +3380,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     saveSessionUpdate: () => Promise<unknown>,
     context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
   ): void {
-    void persistSessionUpdate(saveSessionUpdate, context).then(() =>
+    const reconciling = persistSessionUpdate(saveSessionUpdate, context).then(() =>
       reconcileSessionInputsAfterRunEnd(context.sessionId, context.runId, context.status),
     );
+    // Tracked, so shutdown lands every reconcile before it tears the stores down.
+    inFlightSessionInputReconciles.add(reconciling);
+    void reconciling.finally(() => inFlightSessionInputReconciles.delete(reconciling));
+  }
+
+  /** Resolves once every run-end session-input reconcile already started has settled. */
+  async function drainSessionInputReconciles(): Promise<void> {
+    while (inFlightSessionInputReconciles.size > 0) {
+      await Promise.allSettled(inFlightSessionInputReconciles);
+    }
   }
 
   // ── AB-391: review-transition audit records ride the session outbox ──
@@ -4462,6 +4644,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // COR-1476 — input admitted while this run is live, delivered at
             // each of its step boundaries.
             ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
+            ...(continuation ? { continuation: true } : {}),
             // COR-1265 criterion 8 — merged AFTER the trailing registration, so
             // the Bureau tier is complete before it becomes the merge's first
             // argument. A single-tier merge still copies every entry into a fresh
@@ -6459,6 +6642,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     if (!abortingRunIds.has(id)) {
       abortingRunIds.set(id, runtimeServices.clock.now());
+      // COR-1476 — the user stopped this run: its session's input is settled, not continued.
+      explicitlyStoppedRuns.add(id);
       runState.activeRun.abort('Aborted via API');
       // Evict the transitional marker once cleanup genuinely settles — never
       // on `abort()` returning, which is synchronous and proves nothing
@@ -6686,6 +6871,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (outcome.status === 'requested') {
       // Read before anything below can end the run's bookkeeping.
       const inputSessionId = sessionInputGates.get(runId)?.sessionId;
+      explicitlyStoppedRuns.add(runId);
       await revokePendingApprovalsForRun(runId, {
         status: 'canceled',
         principal: 'system:run-abort',
@@ -9054,27 +9240,45 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(request.supersedes !== undefined ? { supersedes: request.supersedes } : {}),
     };
 
-    const admission = admitSessionInput({
-      storage,
-      kv,
-      sessionMailbox,
-      sessionId,
-      id,
-      principal: request.principal,
-      deliveryMode: request.deliveryMode,
-      payload,
-      principalBacklogLimit: sessionInputPrincipalBacklogLimit,
-      sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
-      nowMs: runtimeServices.clock.now(),
-    })
+    // ORDERING (see `session-input-continuation.ts`): the session's marker is
+    // written BEFORE the admission, so admitted input is never missing from the
+    // sweep's index; the admission commits BEFORE liveness is read below, and the
+    // ending run reads the mailbox only after its own not-live write, so one side
+    // always sees the other. A failure writing the marker refuses the admission.
+    const admission = (async () => {
+      await sessionInputContinuation?.markOpen(sessionId);
+      return admitSessionInput({
+        storage,
+        kv,
+        sessionMailbox,
+        sessionId,
+        id,
+        principal: request.principal,
+        deliveryMode: request.deliveryMode,
+        payload,
+        principalBacklogLimit: sessionInputPrincipalBacklogLimit,
+        sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
+        nowMs: runtimeServices.clock.now(),
+      });
+    })()
       .then(async (outcome) => {
-        // COR-1476 — `admitted` promises the input is answered. The session is
-        // listed for the backstop sweep first, then liveness is read again: a run
-        // that ended between the pre-admission check and the admission has already
-        // reconciled without seeing this input, so the reconcile runs here.
-        if (outcome.outcome === 'admitted' && sessionInputContinuation !== undefined) {
+        // COR-1476 — the admission above is committed. Read liveness only now,
+        // and catch up the steering log first, so a run whose `run-ended` entry
+        // another process wrote is not counted live. No live run means the input
+        // would wait for nobody, so the reconcile runs here, whether or not the
+        // session is listed: it re-creates the marker whenever it finds open input.
+        if (
+          outcome.outcome === 'admitted' &&
+          sessionInputContinuation !== undefined &&
+          !isSessionInputClosed()
+        ) {
           try {
-            await sessionInputContinuation.noteOpen(sessionId);
+            const steeringKv = durableSteeringStore();
+            if (steeringKv !== undefined) {
+              await enqueueSteering(sessionId, () =>
+                catchUpSteering(steeringKv, sessionId, session.incarnation),
+              );
+            }
             const live = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
             if (live.length === 0) await sessionInputContinuation.reconcile(sessionId);
           } catch (error) {
@@ -11395,6 +11599,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       await childTopology.drain();
       await sessionPersistence.drain();
+      await drainSessionInputReconciles();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
         automaticRunOwnershipPruneTimerStarted = false;

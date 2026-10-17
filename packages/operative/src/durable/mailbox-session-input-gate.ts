@@ -251,7 +251,18 @@ export function createMailboxSessionInputGate(
         if (blocked) {
           await reject(claim, true, 'another run is delivering this input or one before it');
         } else if (outcome === 'promoted') {
-          await mailbox.acknowledge({ commandId, attemptToken: claim.attemptToken });
+          // Already in a transcript; only its command is left to retire. A failure
+          // to retire it is retried by the next boundary, never thrown out of this one.
+          try {
+            await mailbox.acknowledge({ commandId, attemptToken: claim.attemptToken });
+          } catch (error) {
+            onError?.(error);
+          }
+        } else if (leases.has(commandId)) {
+          // A command this gate already returned and has not settled: its lease
+          // lapsed under a step still running and was claimed again. The step in
+          // flight holds the input, so keep the new lease for it and return nothing.
+          leases.set(commandId, claim.attemptToken);
         } else {
           leases.set(commandId, claim.attemptToken);
           claimedInputs.push({

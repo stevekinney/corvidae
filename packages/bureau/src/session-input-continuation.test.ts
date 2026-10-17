@@ -337,7 +337,7 @@ describe('a run that is shut down or aborted releases its input (COR-1476)', () 
     }
   });
 
-  it('abortRun on a step that ignores its signal releases the input to the next run and leaves no renewal running', async () => {
+  it('abortRun on a step that ignores its signal cancels the input it held, starts no continuation, and leaves no renewal running', async () => {
     const storage = new MemoryStorage();
     const base = createDefaultRuntimeServices();
     let openIntervals = 0;
@@ -358,24 +358,19 @@ describe('a run that is shut down or aborted releases its input (COR-1476)', () 
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
     const stepOneStarted = deferred();
-    const prompts: { run: number; texts: string[] }[] = [];
-    let run = 0;
+    let runs = 0;
     const bureau = await openBureau(
       storage,
       async (context: GenerateContext) => {
-        if (context.step === 0) run += 1;
-        prompts.push({ run, texts: userTexts(context.conversation) });
-        if (run === 1 && context.step === 0) {
+        if (context.step === 0) runs += 1;
+        if (runs === 1 && context.step === 0) {
           stepZeroStarted.resolve();
           await releaseStepZero.promise;
           return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
         }
-        if (run === 1) {
-          stepOneStarted.resolve();
-          // Ignores its abort signal entirely.
-          return new Promise<never>(() => {});
-        }
-        return { content: 'answer', toolCalls: [] };
+        stepOneStarted.resolve();
+        // Ignores its abort signal entirely.
+        return new Promise<never>(() => {});
       },
       { runtime },
     );
@@ -390,11 +385,103 @@ describe('a run that is shut down or aborted releases its input (COR-1476)', () 
       expect(openIntervals).toBeGreaterThan(baseline);
 
       await bureau.abortRun(first.id);
-
-      await pollUntil(() => prompts.some((entry) => entry.run === 2));
-      expect(prompts.find((entry) => entry.run === 2)?.texts).toEqual(['First', 'first']);
       await pollUntil(() => openIntervals === baseline);
-      expect(openIntervals).toBe(baseline);
+
+      // Stop means stop: the input the run never put in its transcript is
+      // cancelled so the client can resend it, and no run starts to answer it.
+      const mailbox = createSessionInputMailbox(storage, first.sessionId, 100);
+      await pollUntil(async () => {
+        const [receipt] = await mailbox.list({ limit: 10 });
+        return receipt?.state === 'cancelled';
+      });
+      await bureau.runDurableMaintenance();
+      expect(runs).toBe(1);
+      const session = await bureau.getSession(first.sessionId);
+      expect(session?.metadata['lastRunId']).toBe(first.id);
+    } finally {
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it('settles an input whose user turn was saved as promoted when the run answering it is stopped, and the next run answers both turns', async () => {
+    const storage = new MemoryStorage();
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const secondRunStarted = deferred();
+    const runs: { run: number; texts: string[] }[] = [];
+    let run = 0;
+    const bureau = await openBureau(storage, async (context: GenerateContext) => {
+      if (context.step === 0) run += 1;
+      runs.push({ run, texts: userTexts(context.conversation) });
+      if (run === 1 && context.step === 0) {
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+        return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+      }
+      // The first run's second step fails after the input's turn was appended.
+      if (run === 1) throw new Error('the model is down');
+      if (run === 2) {
+        secondRunStarted.resolve();
+        // The continuation never answers; the user stops it.
+        return new Promise<never>(() => {});
+      }
+      return { content: `answer ${run}`, toolCalls: [] };
+    });
+    try {
+      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await stepZeroStarted.promise;
+      await bureau.submitSessionInput(first.sessionId, input('input-a', 'please answer this'));
+      releaseStepZero.resolve();
+
+      // The failing step saved the turn without an answer, so the input is not
+      // promoted, and the continuation answers it without appending it twice.
+      await secondRunStarted.promise;
+      expect(runs.filter((entry) => entry.run === 2)).toEqual([
+        { run: 2, texts: ['First', 'please answer this'] },
+      ]);
+      const secondSession = await bureau.getSession(first.sessionId);
+      const secondRunId = secondSession?.metadata['lastRunId'];
+      expect(secondRunId).not.toBe(first.id);
+
+      if (typeof secondRunId !== 'string') throw new Error('expected a run id');
+      await bureau.abortRun(secondRunId);
+      const mailbox = createSessionInputMailbox(storage, first.sessionId, 100);
+      await pollUntil(async () => {
+        const session = await bureau.getSession(first.sessionId);
+        return session?.metadata['lastRunStatus'] === 'aborted';
+      });
+      await bureau.runDurableMaintenance();
+
+      // No third run started, and the input reads promoted: it is part of the conversation.
+      const stoppedSession = await bureau.getSession(first.sessionId);
+      const incarnation = stoppedSession?.incarnation ?? '';
+      await pollUntil(async () => {
+        const replay = await admitSessionInput({
+          storage,
+          kv: textValueStore(storage),
+          sessionMailbox: mailbox,
+          sessionId: first.sessionId,
+          id: 'input-a',
+          principal: 'alice',
+          deliveryMode: 'steer',
+          payload: { incarnation, payload: 'please answer this' },
+          principalBacklogLimit: 100,
+          sessionBacklogLimitForCrossSessionRead: 100,
+          nowMs: Date.now(),
+        });
+        return replay.outcome === 'replayed' && replay.receipt.state === 'promoted';
+      });
+      expect(run).toBe(2);
+
+      // The next run the user starts answers the dangling turn together with its own.
+      await bureau.createRun({ message: 'again', principal: 'alice', sessionId: first.sessionId });
+      await pollUntil(() => run === 3);
+      expect(runs.find((entry) => entry.run === 3)?.texts).toEqual([
+        'First',
+        'please answer this',
+        'again',
+      ]);
     } finally {
       releaseStepZero.resolve();
       await bureau.dispose();

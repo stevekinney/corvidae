@@ -606,6 +606,13 @@ export interface RunOptionsBase {
    */
   sessionInput?: SessionInputGate | undefined;
   /**
+   * Set on a run that has no prompt of its own and exists only to answer the
+   * session's pending input (COR-1476). With nothing delivered at its first
+   * boundary and no unanswered user turn in the transcript, it ends without a
+   * model call.
+   */
+  continuation?: boolean | undefined;
+  /**
    * Set when this run was dispatched as another run's child (COR-1269), by
    * `dispatchChildRun` through `AgentRunContext.childCorrelation`.
    *
