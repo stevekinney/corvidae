@@ -8,6 +8,7 @@ import { Webhook } from 'standardwebhooks';
 
 import { Outbox } from '../core/outbox.ts';
 import { canonicalJson } from '../server/openapi-canonical-json.ts';
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   callContext,
   contextWithHeaders,
@@ -198,7 +199,9 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
     await createConfiguration(fixture, { id: 'config-1' });
     await createConfiguration(fixture, { id: 'config-2', token: 'token-2' });
 
-    await expect(fixture.sender.send(statusEvent(1), alice())).rejects.toThrow(/backlog is full/);
+    expect(await throwingRejectionOf(fixture.sender.send(statusEvent(1), alice()))).toThrow(
+      /backlog is full/,
+    );
   });
 
   test('throws when the idempotency key is already bound to another destination', async () => {
@@ -207,9 +210,9 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
     await createConfiguration(fixture, { context: callContext({ user: 'bob' }) });
 
     await fixture.sender.send(statusEvent(1), callContext({ user: 'alice' }));
-    await expect(fixture.sender.send(statusEvent(1), callContext({ user: 'bob' }))).rejects.toThrow(
-      /bound to another delivery/,
-    );
+    expect(
+      await throwingRejectionOf(fixture.sender.send(statusEvent(1), callContext({ user: 'bob' }))),
+    ).toThrow(/bound to another delivery/);
   });
 
   test('a configuration deleted between loading and enqueueing has its delivery cancelled', async () => {

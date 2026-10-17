@@ -214,7 +214,7 @@ function defaultResolver(): EgressHostResolver | null {
   const dns = tryLoadNodeBuiltin('node:dns');
   if (dns === undefined) return null;
   return async (hostname) => {
-    const results = await dns.promises.lookup(hostname, { all: true, verbatim: true });
+    const results = await dns.promises.lookup(hostname, { all: true });
     return results.map((result) => result.address);
   };
 }

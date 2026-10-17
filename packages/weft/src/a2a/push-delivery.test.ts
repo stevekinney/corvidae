@@ -4,6 +4,7 @@ import { Webhook } from 'standardwebhooks';
 
 import type { ApplicationDeliveryCancellationResult } from '../core/outbox-contract.ts';
 import { Outbox } from '../core/outbox.ts';
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   callContext,
   createConfiguration,
@@ -184,9 +185,9 @@ describe('deleting a push configuration', () => {
       return waiting;
     };
 
-    await expect(fixture.sender.pushStore.delete('task-1', alice(), 'config-1')).rejects.toThrow(
-      /did not settle after cancellation/,
-    );
+    expect(
+      await throwingRejectionOf(fixture.sender.pushStore.delete('task-1', alice(), 'config-1')),
+    ).toThrow(/did not settle after cancellation/);
     expect(budgets).toEqual([fixture.adapter.timeoutMs + 1000]);
   });
 
@@ -220,11 +221,15 @@ describe('startPushDelivery', () => {
     });
     onCleanup(() => other.dispose());
     const signal = new AbortController().signal;
-    await expect(startPushDelivery({ outbox: other, signal })).rejects.toThrow(TypeError);
+    expect(await throwingRejectionOf(startPushDelivery({ outbox: other, signal }))).toThrow(
+      TypeError,
+    );
     for (const intervalMs of [0, -1, 1.5]) {
-      await expect(
-        startPushDelivery({ outbox: fixture.outbox, intervalMs, signal }),
-      ).rejects.toThrow(RangeError);
+      expect(
+        await throwingRejectionOf(
+          startPushDelivery({ outbox: fixture.outbox, intervalMs, signal }),
+        ),
+      ).toThrow(RangeError);
     }
   });
 
