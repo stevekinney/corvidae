@@ -13,6 +13,7 @@
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts"
   },
   "dependencies": {
+    "@ag-ui/core": "catalog:",
     "conversationalist": "workspace:*",
     "decode-named-character-reference": "catalog:",
     "micromark-util-decode-numeric-character-reference": "catalog:",

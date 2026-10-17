@@ -14,6 +14,7 @@
     "scripts/browser-fixtures"
   ],
   "catalog": {
+    "@ag-ui/core": "1.0.3",
     "@anthropic-ai/sdk": "^0.122.0",
     "@arethetypeswrong/cli": "^0.18.5",
     "@axe-core/playwright": "^4.10.0",

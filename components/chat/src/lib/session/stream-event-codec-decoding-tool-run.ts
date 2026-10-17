@@ -5,7 +5,11 @@ import {
   isToolResult,
 } from '../components/chat/builders.ts';
 import type { ChatStreamEvent, WireEnvelope } from './stream-event-codec-types.ts';
-import { isRecord, toChatSerializedRunError } from './stream-event-codec-validation.ts';
+import {
+  isRecord,
+  requireEnvelopeFromV3,
+  toChatSerializedRunError,
+} from './stream-event-codec-validation.ts';
 
 export function decodeToolEvent(
   type: string,
@@ -127,11 +131,32 @@ export function decodeRunEvent(
   parsed: Record<string, unknown>,
   required: WireEnvelope,
 ): ChatStreamEvent {
+  if (type === 'run.started') return decodeStartedRun(parsed, required);
   if (type === 'run.completed') return decodeCompletedRun(parsed, required);
   if (type === 'run.error' || type === 'run.tripwire')
     return decodeRunError(type, parsed, required);
   if (type === 'run.aborted') return decodeAbortedRun(parsed, required);
   throw new Error('Invalid chat stream event');
+}
+/** `run.started` exists only from wire version 3, so any earlier envelope is refused. */
+function decodeStartedRun(
+  parsed: Record<string, unknown>,
+  required: WireEnvelope,
+): ChatStreamEvent {
+  const envelope = requireEnvelopeFromV3(required);
+  const { runId, threadId, parentRunId } = parsed;
+  if (typeof runId !== 'string') throw new Error('Invalid chat stream event');
+  if (threadId !== undefined && typeof threadId !== 'string')
+    throw new Error('Invalid chat stream event');
+  if (parentRunId !== undefined && typeof parentRunId !== 'string')
+    throw new Error('Invalid chat stream event');
+  return {
+    type: 'run.started',
+    runId,
+    ...(threadId === undefined ? {} : { threadId }),
+    ...(parentRunId === undefined ? {} : { parentRunId }),
+    ...envelope,
+  };
 }
 function decodeCompletedRun(
   parsed: Record<string, unknown>,
