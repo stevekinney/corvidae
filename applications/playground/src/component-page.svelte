@@ -2269,7 +2269,7 @@
     appearance: none;
     width: 100%;
     padding: var(--cinder-space-2) var(--cinder-space-3);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-canvas);
     color: var(--cinder-text-default);
@@ -2438,7 +2438,7 @@
     .dx-iconbtn:hover {
       background: var(--cinder-surface-hover);
       color: var(--cinder-text-default);
-      border-color: var(--cinder-border-muted);
+      border-color: var(--cinder-border-strong);
     }
   }
   .dx-iconbtn:focus-visible {
@@ -2764,7 +2764,7 @@
     }
   }
   .dx-viewport__size[aria-pressed='true'] {
-    border-color: var(--cinder-border);
+    border-color: var(--cinder-border-strong);
     background: var(--cinder-surface-canvas);
     color: var(--cinder-text-default);
   }
@@ -3471,7 +3471,7 @@
   .dx-ctl__select,
   .dx-ctl__input {
     color-scheme: inherit;
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-default);
@@ -3742,7 +3742,7 @@
     }
     .props-section :global(.cinder-table tr) {
       padding-block: var(--cinder-space-3);
-      border-block-end: 1px solid var(--cinder-border);
+      border-block-end: 1px solid var(--cinder-border-muted);
     }
     .props-section :global(.cinder-table td) {
       display: grid;

@@ -675,6 +675,95 @@ describe('retained projection', () => {
   });
 });
 
+describe('match selection', () => {
+  test('scrolls a selected match that sits outside the viewport into view', async () => {
+    // Mounted, because selection needs the engine's selection service. A mounted engine scrolls
+    // through a DOM container that has no layout here, so the requested scrolls are what is
+    // observed; the browser fixture's search spec covers the painted result.
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 4 } });
+    const text = Array.from({ length: 30 }, (_, index) => `row ${index}`).join('\r\n');
+    await captured.deliver([bytes(text)]);
+    const scrolledTo: number[] = [];
+    const scrollToLine = captured.terminal.scrollToLine.bind(captured.terminal);
+    captured.terminal.scrollToLine = (line: number) => {
+      scrolledTo.push(line);
+      scrollToLine(line);
+    };
+    const top = captured.terminal.buffer.active.viewportY;
+    const projection = captured.engine.readProjection().text;
+    const select = (needle: string) => {
+      const start =
+        projection.indexOf(`${needle}\n`) >= 0
+          ? projection.indexOf(`${needle}\n`)
+          : projection.lastIndexOf(needle);
+      return captured.engine.selectMatch(
+        { start, end: start + needle.length, text: needle },
+        100_000,
+      );
+    };
+
+    // Above the viewport: scroll so the match is the first visible row.
+    expect(select('row 3')).toBe(true);
+    expect(scrolledTo).toEqual([3]);
+    // On screen: no scroll.
+    expect(select(`row ${top + 1}`)).toBe(true);
+    expect(scrolledTo).toEqual([3]);
+  });
+});
+
+describe('match selection across a resize', () => {
+  test('a resize that clears the selection selects the active match again', async () => {
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes('alpha beta\r\nbeta gamma\r\ndelta')]);
+    const projection = captured.engine.readProjection().text;
+    const start = projection.lastIndexOf('beta');
+    expect(captured.engine.selectMatch({ start, end: start + 4, text: 'beta' }, 100_000)).toBe(
+      true,
+    );
+    captured.engine.resize({ columns: 20, rows: 2 });
+    await Promise.resolve();
+    expect(captured.terminal.getSelection()).toBe('beta');
+  });
+
+  test("a reader's own selection is not replaced by the match on a resize", async () => {
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes('alpha beta\r\nbeta gamma')]);
+    const start = captured.engine.readProjection().text.indexOf('beta');
+    captured.engine.selectMatch({ start, end: start + 4, text: 'beta' }, 100_000);
+    // The reader selects other text; the engine still believes it owns a selection.
+    captured.terminal.select(0, 0, 5);
+    expect(captured.terminal.getSelection()).toBe('alpha');
+    captured.engine.resize({ columns: 20, rows: 2 });
+    await Promise.resolve();
+    expect(captured.terminal.getSelection()).not.toBe('beta');
+  });
+
+  test("a reader's selection of the same text elsewhere is not replaced on a resize", async () => {
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes('beta one\r\nbeta two')]);
+    const projection = captured.engine.readProjection().text;
+    const start = projection.lastIndexOf('beta');
+    captured.engine.selectMatch({ start, end: start + 4, text: 'beta' }, 100_000);
+    // The reader selects the OTHER "beta": same text, different place.
+    captured.terminal.select(0, 0, 4);
+    expect(captured.terminal.getSelection()).toBe('beta');
+    captured.engine.resize({ columns: 20, rows: 2 });
+    await Promise.resolve();
+    expect(captured.terminal.getSelectionPosition()?.start.y ?? 0).not.toBe(1);
+  });
+
+  test('a cleared match selection is not brought back by a resize', async () => {
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes('alpha beta')]);
+    const start = captured.engine.readProjection().text.indexOf('beta');
+    captured.engine.selectMatch({ start, end: start + 4, text: 'beta' }, 100_000);
+    captured.engine.clearMatchSelection();
+    captured.engine.resize({ columns: 20, rows: 2 });
+    await Promise.resolve();
+    expect(captured.terminal.getSelection()).toBe('');
+  });
+});
+
 describe('reading position', () => {
   async function fill(captured: CapturedEngine, lines: number, from = 0): Promise<void> {
     const text = Array.from({ length: lines }, (_, index) => `row ${from + index}`).join('\r\n');

@@ -81,7 +81,7 @@ describe('the shared pairing table over the shipped theme', () => {
         3,
       );
     }
-    const border = readTranslucentToken('--cinder-border');
+    const border = readTranslucentToken('--cinder-border-control');
     const borderOnSurface = measurePairing(byId('border:control:surface'), properties, {
       theme: 'light',
     });

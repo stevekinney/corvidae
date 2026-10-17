@@ -94,9 +94,9 @@
     width: 1.125rem;
     height: 1.125rem;
     margin: 0;
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -112,7 +112,7 @@
  * "stick" after tap on touch devices that emulate :hover. */
   @media (hover: hover) {
     .cinder-radio:hover:not(:disabled) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -188,8 +188,8 @@
 
   .cinder-radio:disabled {
     cursor: not-allowed;
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
   }
 
   .cinder-radio:disabled:checked {
@@ -206,7 +206,7 @@
 
   .cinder-radio[aria-invalid='true'] {
     --_cinder-radio-ring: var(--cinder-status-danger-solid);
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   /* A checked radio is a solid accent fill, so the ring gets a page-coloured
@@ -287,7 +287,7 @@
   }
 
   .cinder-radio-group[data-variant='card'] .cinder-radio-row {
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-md);
     padding: var(--cinder-space-3);
     background: var(--cinder-surface-raised);
@@ -302,7 +302,7 @@
   @media (hover: hover) {
     .cinder-radio-group[data-variant='card']
       .cinder-radio-row:hover:not(.cinder-radio-row--disabled) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -314,13 +314,13 @@
 
   /* Invalid state on the card surface. Driven by the row's modifier class. */
   .cinder-radio-group[data-variant='card'] .cinder-radio-row--invalid {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   /* Disabled card — driven by the row's modifier class. */
   .cinder-radio-group[data-variant='card'] .cinder-radio-row--disabled {
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
     cursor: not-allowed;
   }
 

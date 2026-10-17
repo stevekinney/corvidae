@@ -24,10 +24,9 @@
   .toolbar-separator {
     width: 1px;
     height: 1rem;
-    /* Use --cinder-border (not --cinder-border-muted) so the separator
-       clears the 3:1 contrast floor against the toolbar surface (which
-       uses --cinder-surface-raised). The muted variant looked invisible
-       in dark mode (~1.4:1 against surface-raised). */
+    /* Use --cinder-border (not --cinder-border-muted): a vertical separator
+       between control clusters has no row context around it, and the 10%
+       muted tier reads as nothing against the raised toolbar surface. */
     background: var(--cinder-border);
     margin-inline: var(--cinder-space-1);
     flex-shrink: 0;

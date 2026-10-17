@@ -240,7 +240,7 @@
     flex: none;
     width: 13px;
     height: 13px;
-    border: 2px solid var(--cinder-status-info-solid);
+    border: 2px solid var(--cinder-status-info-border);
     border-top-color: transparent;
     border-radius: 50%;
     display: inline-block;

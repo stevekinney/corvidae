@@ -32,7 +32,7 @@
     align-items: center;
     gap: var(--cinder-space-1);
     --_cinder-rating-color: var(--cinder-status-warning-solid, oklch(80% 0.18 80));
-    --_cinder-rating-empty: var(--cinder-border-strong);
+    --_cinder-rating-empty: var(--cinder-border-control);
     --_cinder-rating-size: 1.5rem;
   }
 

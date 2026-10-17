@@ -255,7 +255,7 @@
     min-inline-size: 0;
     max-inline-size: 100%;
     padding: var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
   }

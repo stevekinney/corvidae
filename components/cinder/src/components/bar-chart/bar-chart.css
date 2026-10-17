@@ -26,7 +26,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-sm);
     background: var(--_cinder-chart-background, transparent);
     color: inherit;

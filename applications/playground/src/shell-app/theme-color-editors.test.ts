@@ -15,6 +15,7 @@ import {
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import { evaluator } from './theme-builder-test-support.ts';
 import {
+  alphaStepsOf,
   colorFromPicker,
   colorsByMode,
   effectiveBackground,
@@ -357,6 +358,79 @@ describe('dependent roles', () => {
     expect(links.map((link) => link.textContent)).toContain('accent.solid.hover');
     links.find((link) => link.textContent === 'accent.border')!.click();
     expect(followed).toEqual(['accent.border']);
+  });
+});
+
+describe('the border-ink editor previews every tier it drives', () => {
+  test('alphaStepsOf finds the five border tiers, lightest first', () => {
+    expect(alphaStepsOf(summaryEnvelope, 'border.ink')).toEqual([
+      { path: 'border.muted', alpha: 0.1 },
+      { path: 'border', alpha: 0.2 },
+      { path: 'border.strong', alpha: 0.32 },
+      { path: 'border.control', alpha: 0.48 },
+      { path: 'border.control.hover', alpha: 0.58 },
+    ]);
+    // Not border-specific: any alpha step over the edited color is previewed.
+    expect(alphaStepsOf(summaryEnvelope, 'accent.solid')).toEqual([
+      { path: 'accent.border', alpha: 0.4 },
+    ]);
+    expect(alphaStepsOf(summaryEnvelope, 'surface.raised')).toEqual([]);
+  });
+
+  test("each step is drawn over its own role's backdrop", () => {
+    mounted = mount(ThemeColorSummary, {
+      target,
+      props: {
+        row: catalogueRowByPath('accent.solid')!,
+        envelope: summaryEnvelope,
+        context: { colorMode: 'light', motion: 'default' },
+        color: readDtcgColor({ colorSpace: 'oklch', components: [0.5, 0.22, 270] })!,
+        onFollow: () => {},
+      },
+    });
+    flushSync();
+    const sample = target.querySelector('[data-testid="alpha-step-accent.border"] .steps__sample');
+    expect(sample?.getAttribute('aria-label')).toBe('accent.border over accent.background');
+  });
+
+  test('the summary draws each tier from the color being edited', async () => {
+    const inkRow = catalogueRowByPath('border.ink')!;
+    const render = (components: number[]) => {
+      if (mounted !== null) void unmount(mounted);
+      mounted = mount(ThemeColorSummary, {
+        target,
+        props: {
+          row: inkRow,
+          envelope: summaryEnvelope,
+          context: { colorMode: 'light', motion: 'default' },
+          color: readDtcgColor({ colorSpace: 'oklch', components })!,
+          onFollow: () => {},
+        },
+      });
+      flushSync();
+      return [...target.querySelectorAll('li[data-testid^="alpha-step-"]')].map((item) => ({
+        path: item.querySelector('button')?.textContent,
+        edge: item.querySelector<HTMLElement>('.steps__edge')?.dataset['composited'],
+        ratio: Number.parseFloat(
+          item.querySelector('[data-testid="alpha-step-ratio"]')?.textContent ?? 'NaN',
+        ),
+      }));
+    };
+    const shipped = render([0.2, 0.02, 255]);
+    expect(shipped.map((step) => step.path)).toEqual([
+      'border.muted',
+      'border',
+      'border.strong',
+      'border.control',
+      'border.control.hover',
+    ]);
+    // The ladder reads heavier at every step, and only the control tiers clear 3:1.
+    const ratios = shipped.map((step) => step.ratio);
+    expect(ratios).toEqual(ratios.toSorted((left, right) => left - right));
+    expect(ratios.map((ratio) => ratio >= 3)).toEqual([false, false, false, true, true]);
+    // A different ink retints every tier at once.
+    const retinted = render([0.5, 0.2, 30]);
+    expect(retinted.map((step) => step.edge)).not.toEqual(shipped.map((step) => step.edge));
   });
 });
 

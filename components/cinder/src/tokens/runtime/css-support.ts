@@ -74,7 +74,34 @@ export function withDependentBaseAliases(
       scoped.set(path, entry);
     }
   }
+  // An alias serializes to the same `var(--target)` in every block, so the comparison above never
+  // adds one. But a custom property's `var()` is substituted where it is declared: an alias left
+  // only at `:root` freezes to the root's theme, and a `[data-theme]` island inherits that frozen
+  // value instead of its own target. So every root-declared semantic alias (the control frame,
+  // for one) whose reference chain reaches a token this block declares is redeclared here too.
+  // Component aliases are left out on purpose: redeclaring them in a theme block would mask a
+  // consumer's override of the component token on an ancestor of that block.
+  for (let added = true; added;) {
+    added = false;
+    for (const [path, entry] of baseIndex) {
+      if (scoped.has(path) || entry.cssRecipe || entry.component) continue;
+      if (!isRootDeclaredEntry(entry)) continue;
+      if (referencedPaths(entry.value).some((target) => scoped.has(target))) {
+        scoped.set(path, entry);
+        added = true;
+      }
+    }
+  }
   return scoped;
+}
+
+/** The token paths a raw value references through `{a.b.c}` aliases. */
+function referencedPaths(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return [...value.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]!);
+  }
+  if (Array.isArray(value)) return value.flatMap(referencedPaths);
+  return isPlainObject(value) ? Object.values(value).flatMap(referencedPaths) : [];
 }
 
 /**

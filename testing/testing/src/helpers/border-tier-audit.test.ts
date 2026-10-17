@@ -55,6 +55,8 @@ describe('referencesBorderTier', () => {
     expect(referencesBorderTier('var(--cinder-border-muted)')).toBe(true);
     expect(referencesBorderTier('var(--cinder-border)')).toBe(true);
     expect(referencesBorderTier('var(--cinder-border-strong)')).toBe(true);
+    expect(referencesBorderTier('var(--cinder-border-control)')).toBe(true);
+    expect(referencesBorderTier('var(--cinder-border-control-hover)')).toBe(true);
   });
 
   test('is false for an unrelated custom property', () => {

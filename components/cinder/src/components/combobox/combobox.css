@@ -29,15 +29,15 @@
   .cinder-combobox__input {
     display: block;
     width: 100%;
-    min-height: 2.25rem;
+    min-height: var(--cinder-control-height-md);
     padding: var(--cinder-space-1-5) var(--cinder-space-3);
     font-size: var(--cinder-text-sm);
     font-family: inherit;
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-control-background);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     appearance: none;
     transition:
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
@@ -47,7 +47,7 @@
   /* Sticky-hover suppression on touch. */
   @media (hover: hover) {
     .cinder-combobox__input:hover:not(:disabled):not(:focus-visible) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -60,7 +60,7 @@
   }
 
   .cinder-combobox__input[aria-invalid='true'] {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   /* COR-1498: the tight ring sits directly on the control edge, so a visible
@@ -72,9 +72,9 @@
   }
 
   .cinder-combobox__input:disabled {
-    background: var(--cinder-surface-inset);
+    background: var(--cinder-control-background-disabled);
     color: var(--cinder-text-disabled);
-    border-color: var(--cinder-border-muted);
+    border-color: var(--cinder-control-border-disabled);
     cursor: not-allowed;
   }
 

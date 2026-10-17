@@ -82,7 +82,7 @@ describe('MultiSelect', () => {
     const boxRuleEnd = css.indexOf('}', boxRuleStart);
     expect(boxRuleStart).toBeGreaterThan(-1);
     const checkboxBoxRule = css.slice(boxRuleStart, boxRuleEnd);
-    expect(checkboxBoxRule).toContain('border: 1px solid var(--cinder-border)');
+    expect(checkboxBoxRule).toContain('border: 1px solid var(--cinder-control-border)');
     expect(checkboxBoxRule).toContain('background: var(--cinder-surface-raised)');
 
     expect(css).toContain('.cinder-multi-select__checkbox-box[data-cinder-checked] {');

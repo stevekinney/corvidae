@@ -117,6 +117,56 @@ function baseNode(envelope: ThemeEnvelope, path: string): JsonObject | undefined
   return undefined;
 }
 
+export type AlphaStep = { path: string; alpha: number };
+
+const ALPHA_STEP =
+  /^color-mix\(\s*in oklch,\s*var\(\s*(--[\w-]+)\s*\),\s*transparent\s+([\d.]+)%\s*\)$/;
+
+function cinderExtension(node: JsonObject): JsonObject | undefined {
+  const extensions = node['$extensions'];
+  const cinder =
+    typeof extensions === 'object' && extensions !== null && !Array.isArray(extensions)
+      ? extensions['com.lostgradient.cinder']
+      : undefined;
+  return typeof cinder === 'object' && cinder !== null && !Array.isArray(cinder)
+    ? cinder
+    : undefined;
+}
+
+/**
+ * The tokens composed as alpha steps over `path` -- `color-mix(in oklch, var(<its property>),
+ * transparent N%)` -- lightest first. For `border.ink` that is the five border tiers, which is
+ * what lets its editor preview every tier the ink drives instead of only the ink itself.
+ */
+export function alphaStepsOf(envelope: ThemeEnvelope, path: string): AlphaStep[] {
+  const source = baseNode(envelope, path);
+  const property = source === undefined ? undefined : cinderExtension(source)?.['cssProperty'];
+  if (typeof property !== 'string') return [];
+  const steps = new Map<string, number>();
+  const visit = (node: JsonValue, segments: string[]): void => {
+    if (typeof node !== 'object' || node === null || Array.isArray(node)) return;
+    if ('$value' in node) {
+      const recipe = cinderExtension(node)?.['cssRecipe'];
+      const match = typeof recipe === 'string' ? ALPHA_STEP.exec(recipe.trim()) : null;
+      if (match && match[1] === property) {
+        steps.set(
+          segments.filter((segment) => segment !== '$root').join('.'),
+          (100 - Number(match[2])) / 100,
+        );
+      }
+      return;
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (key.startsWith('$') && key !== '$root') continue;
+      visit(child, [...segments, key]);
+    }
+  };
+  for (const document of Object.values(envelope.base.documents)) visit(document, []);
+  return [...steps]
+    .map(([stepPath, alpha]) => ({ path: stepPath, alpha }))
+    .toSorted((left, right) => left.alpha - right.alpha);
+}
+
 const BACKGROUND_PATH = /^(surface|fill|overlay)\.|\.background$/;
 
 /** `contrastPairs` declared on the token's source node. */

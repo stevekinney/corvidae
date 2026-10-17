@@ -100,7 +100,7 @@
   .weft-replay-view {
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
-    border-inline-start: 3px solid var(--cinder-status-info-solid);
+    border-inline-start: 3px solid var(--cinder-status-info-border);
     border-radius: var(--cinder-radius-lg);
     overflow: hidden;
   }

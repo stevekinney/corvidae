@@ -170,7 +170,7 @@
   min-width: 300px;
   flex: 0 1 auto;
   padding: 7px 11px;
-  border: 1px solid var(--cinder-border);
+  border: 1px solid var(--cinder-border-strong);
   border-radius: var(--cinder-radius-md);
   background: var(--cinder-surface-inset);
   color: var(--cinder-text-subtle);
@@ -417,11 +417,11 @@
 }
 
 .weft-notification-panel__item[data-tier='critical'] {
-  border-inline-start-color: var(--cinder-status-danger-solid);
+  border-inline-start-color: var(--cinder-status-danger-border);
 }
 
 .weft-notification-panel__item[data-tier='warning'] {
-  border-inline-start-color: var(--cinder-status-warning-solid);
+  border-inline-start-color: var(--cinder-status-warning-border);
 }
 
 .weft-notification-panel__item-icon {

@@ -60,7 +60,7 @@ describe('Chip surface and CSS contracts', () => {
     const body = cssRuleBody(".cinder-chip[aria-pressed='true'][data-cinder-variant='neutral']");
     expect(body).toContain('background: var(--cinder-surface-pressed)');
     expect(body).toContain('color: var(--cinder-text-default)');
-    expect(body).toContain('border-color: var(--cinder-border-strong)');
+    expect(body).toContain('border-color: var(--cinder-border-control)');
     expect(body).not.toContain('background: var(--cinder-text-default)');
     expect(body).not.toContain('color: var(--cinder-surface-inset)');
   });

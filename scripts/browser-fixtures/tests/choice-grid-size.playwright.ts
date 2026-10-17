@@ -30,10 +30,19 @@ test.describe('ChoiceGrid compact size', () => {
     await page.waitForLoadState('networkidle');
 
     const box = await cellBox(page, '#example-mount-compact-single .cinder-choice-grid-item');
-    // --cinder-button-height-sm is 1.75rem (28px at the default root font
-    // size); allow a small tolerance for sub-pixel layout rounding.
-    expect(box.height).toBeGreaterThanOrEqual(26);
-    expect(box.height).toBeLessThanOrEqual(30);
+    // Read the button height the cell follows rather than restating it, so a
+    // retune of `--cinder-button-height-sm` cannot strand this assertion.
+    const buttonSm = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.blockSize = 'var(--cinder-button-height-sm)';
+      document.body.append(probe);
+      const height = probe.getBoundingClientRect().height;
+      probe.remove();
+      return height;
+    });
+    expect(buttonSm).toBeGreaterThan(0);
+    // A small tolerance for sub-pixel layout rounding.
+    expect(Math.abs(box.height - buttonSm)).toBeLessThanOrEqual(2);
   });
 
   test('coarse pointer: size="sm" cells floor at a 44×44 touch target', async ({ browser }) => {

@@ -58,8 +58,8 @@ describe('TimeField', () => {
     // (its inline-end padding is intentionally wider) so the two controls
     // read as a deliberate pair rather than independently tuned boxes.
     expect(rule).toContain('padding-block: var(--cinder-space-1-5);');
-    expect(rule).toContain('min-height: 2.25rem;');
-    expect(rule).toContain('border-radius: var(--cinder-radius-md);');
+    expect(rule).toContain('min-height: var(--cinder-control-height-md);');
+    expect(rule).toContain('border-radius: var(--cinder-control-radius);');
     expect(rule).toContain('font-size: var(--cinder-text-sm);');
     expect(rule).toContain('line-height: var(--cinder-leading-normal);');
   });

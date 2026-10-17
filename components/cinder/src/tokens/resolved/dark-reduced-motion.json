@@ -350,21 +350,21 @@
   "shadow.small": {
     "$value": [
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.09 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.35 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 1, "unit": "px" },
         "blur": { "value": 2, "unit": "px" },
         "spread": { "value": 0, "unit": "px" }
       },
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.05 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.25 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 1, "unit": "px" },
         "blur": { "value": 1, "unit": "px" },
         "spread": { "value": 0, "unit": "px" }
       }
     ],
-    "$description": "Hairline elevation for barely-raised surfaces. Gained a second hairline layer and higher alphas in this refinement pass (light 0.08 -> 0.1 plus a new 0.06 layer; dark 0.06 -> 0.09 plus a new 0.05 layer) for deeper, crisper elevation. Light and dark themes carry distinct explicit values (see the theme modifier documents) alongside this `light-dark()` recipe.",
+    "$description": "Hairline elevation for barely-raised surfaces: two layers, black in both themes (light 0.1 and 0.06; dark 0.35 and 0.25).",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-shadow-sm",
@@ -377,14 +377,14 @@
   "shadow.medium": {
     "$value": [
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.09 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.4 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 4, "unit": "px" },
         "blur": { "value": 6, "unit": "px" },
         "spread": { "value": -1, "unit": "px" }
       },
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.06 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.28 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 2, "unit": "px" },
         "blur": { "value": 4, "unit": "px" },
@@ -404,14 +404,14 @@
   "shadow.large": {
     "$value": [
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.11 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.45 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 10, "unit": "px" },
         "blur": { "value": 15, "unit": "px" },
         "spread": { "value": -3, "unit": "px" }
       },
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.07 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.32 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 4, "unit": "px" },
         "blur": { "value": 6, "unit": "px" },
@@ -445,7 +445,7 @@
         "spread": { "value": -4, "unit": "px" }
       }
     ],
-    "$description": "Elevation for modal/drawer overlay panels. Dark mode uses a stronger black shadow rather than the light-neutral lift the other tiers use, since overlay panels sit above a dimmed backdrop rather than page content.",
+    "$description": "Elevation for modal/drawer overlay panels. Black in both themes; its dark alphas (0.45 and 0.32) set the ceiling the other dark tiers step up to.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-shadow-overlay",
@@ -481,6 +481,19 @@
     },
     "$type": "dimension"
   },
+  "control.height.md": {
+    "$value": { "value": 2.25, "unit": "rem" },
+    "$description": "Medium control height; the form-field default (36px).",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-control-height-md",
+        "public": true,
+        "category": "size",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
   "control.height.lg": {
     "$value": { "value": 2.75, "unit": "rem" },
     "$description": "Large control height; clears the WCAG AAA touch target (44px).",
@@ -493,6 +506,97 @@
       }
     },
     "$type": "dimension"
+  },
+  "control.background": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.28, 0.045, 245] },
+    "$description": "Control fill.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-control-background",
+        "public": true,
+        "category": "color",
+        "cssRecipe": null
+      }
+    }
+  },
+  "control.background.disabled": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.3, 0.015, 245] },
+    "$description": "Disabled control fill: a flat neutral that reads as inert while staying inside the frame (a control never drops to `surface.inset`).",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-control-background-disabled",
+        "public": true,
+        "category": "color",
+        "cssRecipe": null
+      }
+    }
+  },
+  "control.border": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.48 },
+    "$description": "Resting control edge; clears 3:1 against every surface.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-control-border",
+        "public": true,
+        "category": "color",
+        "cssRecipe": null
+      }
+    }
+  },
+  "control.border.hover": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.58 },
+    "$description": "Hovered control edge.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-control-border-hover",
+        "public": true,
+        "category": "color",
+        "cssRecipe": null
+      }
+    }
+  },
+  "control.border.disabled": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.2 },
+    "$description": "Disabled control edge: the structural tier, since a disabled control is not an interactive boundary.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-control-border-disabled",
+        "public": true,
+        "category": "color",
+        "cssRecipe": null
+      }
+    }
+  },
+  "control.border.invalid": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.67, 0.19, 27] },
+    "$description": "Invalid control edge. The danger fill rather than `status.danger.border`, because on an invalid control this edge IS the control boundary and has to keep clearing 3:1; the decorative status border would not.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-control-border-invalid",
+        "public": true,
+        "category": "color",
+        "cssRecipe": null
+      }
+    }
+  },
+  "control.radius": {
+    "$type": "dimension",
+    "$value": { "value": 0.5, "unit": "rem" },
+    "$description": "Control corner radius.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-control-radius",
+        "public": true,
+        "category": "radius",
+        "cssRecipe": null
+      }
+    }
   },
   "font.sans": {
     "$type": "fontFamily",
@@ -1270,10 +1374,10 @@
     "$type": "color"
   },
   "surface.raised.hover": {
-    "$value": { "colorSpace": "oklch", "components": [0.298, 0.04387, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.298, 0.04388, 245] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 0) 2.5%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 2.5%)",
         "cssProperty": "--cinder-surface-raised-hover",
         "public": true,
         "category": "color"
@@ -1286,7 +1390,7 @@
     "$value": { "colorSpace": "oklch", "components": [0.3232, 0.0423, 245] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 0) 6%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 6%)",
         "cssProperty": "--cinder-surface-raised-pressed",
         "public": true,
         "category": "color"
@@ -1312,7 +1416,7 @@
     "$value": { "colorSpace": "oklch", "components": [0.22975, 0.039, 245] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 2.5%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 2.5%)",
         "cssProperty": "--cinder-surface-hover",
         "public": true,
         "category": "color"
@@ -1325,7 +1429,7 @@
     "$value": { "colorSpace": "oklch", "components": [0.2574, 0.0376, 245] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 6%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 6%)",
         "cssProperty": "--cinder-surface-pressed",
         "public": true,
         "category": "color"
@@ -1383,9 +1487,22 @@
     },
     "$type": "color"
   },
+  "border": {
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.2 },
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 80%)",
+        "cssProperty": "--cinder-border",
+        "public": true,
+        "category": "color"
+      }
+    },
+    "$description": "Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 20% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.",
+    "$type": "color"
+  },
   "border.ink": {
     "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250] },
-    "$description": "The single polarity-aware ink every neutral structural border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. `border.muted`, `border.control`, and `border.strong` are alpha steps over it, so each tier tracks the surface underneath it instead of being tuned per surface -- which is what holds each tier's contrast spread across the four legal surface tiers under 15% in both arms, against 29% for the opaque dark values it replaces. Overriding this one token at :root or in a [data-theme] block re-tints all three together; a subtree override does not reach them, because the tiers are declared at :root and descendants inherit the already-resolved values. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on. Two neutral aliases do follow it and become translucent with it: status.neutral.border aliases border.control, and border.inverse's dark arm aliases border.strong.",
+    "$description": "The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 10%, `border` 20%, `border.strong` 32%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-border-ink",
@@ -1401,13 +1518,27 @@
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 52%)",
-        "cssProperty": "--cinder-border",
+        "cssProperty": "--cinder-border-control",
         "public": true,
         "category": "color",
         "contrastPairs": ["surface.base", "surface.raised"]
       }
     },
-    "$description": "Functional control boundary that clears WCAG 1.4.11's 3:1 floor against every supported surface. It is the border of the secondary Button, whose fill is `surface.raised` -- white in light mode, a raised dark surface in dark mode -- so in both themes it is the only thing making that control read as a control. Composed as a 48% alpha step over `border.ink` rather than authored per arm, so it can no longer drift out of step with the other two tiers.",
+    "$description": "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. A 48% alpha step over `border.ink` that clears WCAG 1.4.11's 3:1 floor against every supported surface in both themes.",
+    "$type": "color"
+  },
+  "border.control.hover": {
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.58 },
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 42%)",
+        "cssProperty": "--cinder-border-control-hover",
+        "public": true,
+        "category": "color",
+        "contrastPairs": ["surface.base", "surface.raised"]
+      }
+    },
+    "$description": "Hovered control boundary, one step heavier than `border.control`. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface.",
     "$type": "color"
   },
   "border.faint": {
@@ -1424,33 +1555,33 @@
     "$type": "color"
   },
   "border.muted": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.19 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.1 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 81%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 90%)",
         "cssProperty": "--cinder-border-muted",
         "public": true,
         "category": "color"
       }
     },
-    "$description": "Decorative divider that wants less weight than `border.control`. Clears a separate 1.4:1 floor against its backdrop. Composed as a 19% alpha step over `border.ink`.",
+    "$description": "Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 10% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`.",
     "$type": "color"
   },
   "border.strong": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.58 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.32 },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 42%)",
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)",
         "cssProperty": "--cinder-border-strong",
         "public": true,
         "category": "color"
       }
     },
-    "$description": "Stronger control boundary. Clears WCAG 1.4.11's 3:1 floor against every supported surface, like `border.control`, with more weight. Composed as a 58% alpha step over `border.ink`.",
+    "$description": "Emphasized structural edge and the resting edge of secondary buttons and button-like chips, whose label already identifies them. A 32% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own.",
     "$type": "color"
   },
   "border.inverse": {
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.58 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.32 },
     "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -1649,7 +1780,8 @@
         "cssRecipe": "color-mix(in oklch, var(--cinder-accent-solid), transparent 60%)",
         "cssProperty": "--cinder-accent-border",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "contrastPairs": ["accent.background"]
       }
     },
     "$description": "Soft accent-tinted border, the accent color mixed 60% toward transparent."
@@ -2060,10 +2192,10 @@
   },
   "status.success.subtle": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.8304, 0.05, 181] },
+    "$value": { "colorSpace": "oklch", "components": [0.8304, 0.05, 149.589] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
+        "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
         "cssProperty": "--cinder-status-success-subtle",
         "public": true,
         "category": "color"
@@ -2073,10 +2205,10 @@
   },
   "status.success.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.5748, 0.05, 181] },
+    "$value": { "colorSpace": "oklch", "components": [0.5748, 0.05, 154.248] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
+        "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
         "cssProperty": "--cinder-status-success-muted",
         "public": true,
         "category": "color"
@@ -2176,10 +2308,10 @@
   },
   "status.warning.subtle": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.856, 0.05, 136.2] },
+    "$value": { "colorSpace": "oklch", "components": [0.856, 0.05, 75.772] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
+        "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
         "cssProperty": "--cinder-status-warning-subtle",
         "public": true,
         "category": "color"
@@ -2189,10 +2321,10 @@
   },
   "status.warning.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.6004, 0.05, 136.2] },
+    "$value": { "colorSpace": "oklch", "components": [0.6004, 0.05, 76.672] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
+        "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
         "cssProperty": "--cinder-status-warning-muted",
         "public": true,
         "category": "color"
@@ -2213,7 +2345,7 @@
     }
   },
   "status.danger.solid": {
-    "$value": { "colorSpace": "oklch", "components": [0.72, 0.172, 25] },
+    "$value": { "colorSpace": "oklch", "components": [0.67, 0.19, 27] },
     "$description": "Danger status fill color.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2227,8 +2359,8 @@
   },
   "status.danger.solid.active": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.6, 0.172, 25] },
-    "$description": "Active/pressed step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness.",
+    "$value": { "colorSpace": "oklch", "components": [0.59, 0.18, 27] },
+    "$description": "Active/pressed step for solid danger fills. The dark arm sits at L 59%, the darkest step at which `status.danger.contrast` still clears 4.5:1 (4.53:1); 56% would read 3.99:1.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-danger-solid-active",
@@ -2240,7 +2372,7 @@
   },
   "status.danger.solid.hover": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.64, 0.172, 25] },
+    "$value": { "colorSpace": "oklch", "components": [0.61, 0.19, 27] },
     "$description": "Hover step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2292,10 +2424,10 @@
   },
   "status.danger.subtle": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.792, 0.05, 334.6] },
+    "$value": { "colorSpace": "oklch", "components": [0.76, 0.05, 24.81] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
+        "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
         "cssProperty": "--cinder-status-danger-subtle",
         "public": true,
         "category": "color"
@@ -2305,10 +2437,10 @@
   },
   "status.danger.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.5364, 0.05, 334.6] },
+    "$value": { "colorSpace": "oklch", "components": [0.5044, 0.05, 22.403] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
+        "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
         "cssProperty": "--cinder-status-danger-muted",
         "public": true,
         "category": "color"
@@ -2408,10 +2540,10 @@
   },
   "status.info.subtle": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.8304, 0.05, 235.4] },
+    "$value": { "colorSpace": "oklch", "components": [0.8304, 0.05, 231.184] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
+        "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
         "cssProperty": "--cinder-status-info-subtle",
         "public": true,
         "category": "color"
@@ -2421,10 +2553,10 @@
   },
   "status.info.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.5748, 0.05, 235.4] },
+    "$value": { "colorSpace": "oklch", "components": [0.5748, 0.05, 232.198] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
+        "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",
         "cssProperty": "--cinder-status-info-muted",
         "public": true,
         "category": "color"
@@ -2459,7 +2591,7 @@
   },
   "status.neutral.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.48 },
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.2 },
     "$description": "Border color on the soft neutral surface.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2721,8 +2853,8 @@
   },
   "button.border": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.58 },
-    "$description": "Secondary (default) button border.",
+    "$value": { "colorSpace": "oklch", "components": [0.86, 0.065, 250], "alpha": 0.32 },
+    "$description": "Secondary (default) button border: `border.strong` in both themes. The label identifies the button, so this edge is structural rather than a 3:1 control boundary.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-button-border",
@@ -2831,8 +2963,8 @@
     "$type": "dimension"
   },
   "button.height.sm": {
-    "$value": { "value": 1.75, "unit": "rem" },
-    "$description": "Small button height (28px).",
+    "$value": { "value": 2, "unit": "rem" },
+    "$description": "Small button height: `control.height.sm` (32px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-button-height-sm",
@@ -2971,8 +3103,8 @@
     "$type": "dimension"
   },
   "button.padding.y.sm": {
-    "$value": { "value": 0.25, "unit": "rem" },
-    "$description": "Small button vertical padding.",
+    "$value": { "value": 0.375, "unit": "rem" },
+    "$description": "Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-button-padding-y-sm",
@@ -3098,28 +3230,30 @@
   },
   "toggle.track.off-resting": {
     "$value": { "colorSpace": "oklch", "components": [0.45, 0.02, 245] },
-    "$description": "Toggle track color in the off, resting state. Light arm preserves the `border.muted` look; dark arm raises lightness for >=3:1 shape contrast against the surface.",
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "oklch(45% 0.02 245)",
         "cssProperty": "--cinder-toggle-track-off-resting",
         "public": true,
         "category": "color",
         "component": "toggle"
       }
     },
+    "$description": "Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 control tier (`border.control`); the dark arm raises lightness for >=3:1 shape contrast against the surface.",
     "$type": "color"
   },
   "toggle.track.off-hover-resting": {
     "$value": { "colorSpace": "oklch", "components": [0.52, 0.02, 245] },
-    "$description": "Toggle track color in the off state on hover. Steps up from `off-resting` to be distinguishable.",
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "oklch(52% 0.02 245)",
         "cssProperty": "--cinder-toggle-track-off-hover-resting",
         "public": true,
         "category": "color",
         "component": "toggle"
       }
     },
+    "$description": "Toggle track color in the off state on hover: `border.control.hover` in the light arm, one step heavier than `off-resting`.",
     "$type": "color"
   },
   "accordion-item.trigger.gap": {
@@ -3655,15 +3789,16 @@
   "kanban-board.board.scroll-edge": {
     "$type": "color",
     "$value": { "colorSpace": "oklch", "components": [0.92, 0.02, 245], "alpha": 0.12 },
-    "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves.",
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)",
         "cssProperty": "--cinder-kanban-board-scroll-edge",
         "public": true,
         "category": "color",
         "component": "kanban-board"
       }
-    }
+    },
+    "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
   },
   "marquee.duration": {
     "$type": "duration",

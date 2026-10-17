@@ -10,6 +10,12 @@ export type InlineConfirmProps = {
   /** Marks the confirming action as destructive. Defaults to `false`. @default false */
   destructive?: boolean;
   /**
+   * The strip sits flush inside a bordered container. At the container's start or end it drops
+   * its own rule there instead of doubling the container's edge. Defaults to `false`.
+   * @default false
+   */
+  flush?: boolean;
+  /**
    * Whether the confirmation is open. Bindable, and component-owned on
    * close: confirming, clicking Cancel, and pressing Escape all set this
    * to `false` before calling `onConfirm`/`onCancel`, so a bound parent

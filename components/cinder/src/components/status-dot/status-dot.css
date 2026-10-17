@@ -96,7 +96,7 @@
   }
 
   .cinder-status-dot[data-cinder-status='neutral'] {
-    --cinder-status-dot-color: var(--cinder-border-strong);
+    --cinder-status-dot-color: var(--cinder-border-control);
   }
 
   .cinder-status-dot[data-cinder-status='success'] {

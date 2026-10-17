@@ -102,7 +102,7 @@
     gap: 8px;
     min-width: 0;
     padding: 12px;
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
   }
   .impact__title {

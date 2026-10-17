@@ -466,12 +466,12 @@
   justify-content: center;
   width: 34px;
   height: 34px;
-  border: 1px solid var(--cinder-border);
+  border: 1px solid var(--cinder-border-strong);
   flex: none;
 }
 
 .weft-start-advanced__add {
-  border: 1px dashed var(--cinder-border);
+  border: 1px dashed var(--cinder-border-strong);
   padding: 6px 10px;
 }
 

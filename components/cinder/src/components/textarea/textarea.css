@@ -52,9 +52,9 @@
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
 
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-control-background);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
 
     transition:
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
@@ -73,7 +73,7 @@
 
   @media (hover: hover) {
     .cinder-textarea:hover:not(:disabled):not(:focus-visible) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -128,7 +128,7 @@
  * ---------------------------------------- */
 
   .cinder-textarea[aria-invalid='true'] {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   .cinder-textarea[aria-invalid='true']:focus-visible {
@@ -154,9 +154,9 @@
   .cinder-textarea:disabled {
     cursor: not-allowed;
     resize: none;
-    background: var(--cinder-surface-inset);
+    background: var(--cinder-control-background-disabled);
     color: var(--cinder-text-disabled);
-    border-color: var(--cinder-border-muted);
+    border-color: var(--cinder-control-border-disabled);
   }
 
   /* ----------------------------------------

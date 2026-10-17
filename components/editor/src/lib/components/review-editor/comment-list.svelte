@@ -172,7 +172,7 @@
     gap: var(--cinder-space-2);
     padding: var(--cinder-space-3);
     background: var(--cinder-surface);
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
   }
 
@@ -251,9 +251,9 @@
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-control-background);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     resize: vertical;
   }
 
@@ -299,7 +299,7 @@
     height: 1.5rem;
     color: var(--cinder-text-muted);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-strong);
     border-radius: var(--cinder-radius-sm);
     cursor: pointer;
     transition:

@@ -267,9 +267,10 @@ const linkPopoverViewports = [
   { name: 'desktop' as const, width: 1280, height: 720 },
 ];
 
-const HEADER_FOOTER_MAX_HEIGHT = 41; // 40px density budget + 1px sub-pixel rounding allowance
+// 6px block padding either side of a small-Button-high row (32px), plus the band's 1px rule.
+const HEADER_FOOTER_MAX_HEIGHT = 45;
 const CONTENT_SPACING_MAX = 13; // --cinder-space-3 (12px) + 1px sub-pixel rounding allowance
-const CLOSE_BUTTON_FINE_POINTER_SIZE = 28;
+const CLOSE_BUTTON_FINE_POINTER_SIZE = 32; // --cinder-button-height-sm
 const TITLE_ICON_SIZE = 16;
 
 type PopoverDensity = {
@@ -345,17 +346,17 @@ async function assertLinkPopoverBoundsAndDensity(
     true,
   );
   expect(density.headerHeight, `${label}: header height measured`).not.toBeNull();
-  expect(density.headerHeight!, `${label}: header <= 40px`).toBeLessThanOrEqual(
+  expect(density.headerHeight!, `${label}: header <= 44px`).toBeLessThanOrEqual(
     HEADER_FOOTER_MAX_HEIGHT,
   );
-  expect(density.footerHeight!, `${label}: footer <= 40px`).toBeLessThanOrEqual(
+  expect(density.footerHeight!, `${label}: footer <= 44px`).toBeLessThanOrEqual(
     HEADER_FOOTER_MAX_HEIGHT,
   );
-  expect(density.closeWidth!, `${label}: close button width is 28px`).toBeCloseTo(
+  expect(density.closeWidth!, `${label}: close button width is 32px`).toBeCloseTo(
     CLOSE_BUTTON_FINE_POINTER_SIZE,
     0,
   );
-  expect(density.closeHeight!, `${label}: close button height is 28px`).toBeCloseTo(
+  expect(density.closeHeight!, `${label}: close button height is 32px`).toBeCloseTo(
     CLOSE_BUTTON_FINE_POINTER_SIZE,
     0,
   );

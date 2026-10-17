@@ -44,9 +44,9 @@
     line-height: 1;
     text-align: center;
     color: var(--cinder-text-default);
-    background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-control-background);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     appearance: none;
 
     transition:
@@ -56,7 +56,7 @@
 
   @media (hover: hover) {
     .cinder-pin-input__segment:hover:not(:disabled):not(:focus-visible) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -64,18 +64,18 @@
     outline: var(--cinder-ring-width) solid transparent;
     /* Ring replaces the border while focused rather than stacking on it — the two
        together read as one heavier shape than either was designed to be. This rule
-       previously ALSO strengthened the border to --cinder-border-strong on focus,
+       previously ALSO strengthened the border to --cinder-control-border-hover on focus,
        which is the exact double-treatment decision 7 is about: a segment got a
        heavier border AND a ring simultaneously. The strengthened border is dropped
        rather than kept, so the ring is the only focus affordance; the unfocused
        segments beside it keep their resting borders, which is what makes the
-       focused one read. Hover still steps up to --cinder-border-strong above. */
+       focused one read. Hover still steps up to --cinder-control-border-hover above. */
     border-color: transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   .cinder-pin-input[aria-invalid='true'] .cinder-pin-input__segment {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   /* COR-1498: the tight ring sits directly on the control edge, so a visible
@@ -89,7 +89,7 @@
   .cinder-pin-input__segment:disabled {
     cursor: not-allowed;
     color: var(--cinder-text-disabled);
-    background: var(--cinder-surface-inset);
+    background: var(--cinder-control-background-disabled);
   }
 
   @media (forced-colors: active) {

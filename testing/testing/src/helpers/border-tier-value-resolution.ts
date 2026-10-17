@@ -13,7 +13,7 @@ type ResolutionOptions = {
   /** Resolves literal currentColor in the context of the property being audited. */
   readonly currentColor?: () => TierReference | undefined;
 };
-const tierName = /^--cinder-border(?:-muted|-strong)?$/;
+const tierName = /^--cinder-border(?:-muted|-strong|-control(?:-hover)?)?$/;
 
 function terminalTierReference(
   reference: string,

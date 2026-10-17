@@ -254,7 +254,7 @@
   .scroll {
     max-height: 22rem;
     overflow: auto;
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
   }
   .scroll:focus-visible {

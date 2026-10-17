@@ -301,7 +301,7 @@
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     font: inherit;
     color: inherit;
     padding-block: var(--cinder-space-2);

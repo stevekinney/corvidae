@@ -137,10 +137,18 @@ export function pairingAdvisories(
   return records;
 }
 
-const TIERS = ['--cinder-border-muted', '--cinder-border', '--cinder-border-strong'] as const;
+/** The five neutral tiers, lightest first: three structural, then two control tiers. */
+const TIERS = [
+  '--cinder-border-muted',
+  '--cinder-border',
+  '--cinder-border-strong',
+  '--cinder-border-control',
+  '--cinder-border-control-hover',
+] as const;
+const TIER_NAMES = ['muted', 'border', 'strong', 'control', 'control hover'] as const;
 const SURFACES = SURFACE_PROPERTIES;
 
-/** Border tiers: consistent weight across surfaces, and strong > control > muted. */
+/** Border tiers: consistent weight across surfaces, and muted < border < strong < control < control hover. */
 export function borderHierarchyRecords(context: RecordContext): ReportRecord[] {
   const ratio = (tier: string, surface: string): number | null => {
     const probe: ContrastPairing = {
@@ -186,11 +194,12 @@ export function borderHierarchyRecords(context: RecordContext): ReportRecord[] {
     );
   });
   SURFACES.forEach((surface, surfaceIndex) => {
-    const [muted, control, strong] = grid.map((row) => Number(row[surfaceIndex]));
+    const ladder = grid.map((row) => Number(row[surfaceIndex]));
+    const ordered = ladder.every((value, index) => index === 0 || value > ladder[index - 1]!);
     records.push(
       advisoryRecord(context, 'cinder-border-hierarchy', `order:${surface}`, {
-        outcome: strong! > control! && control! > muted! ? 'pass' : 'fail',
-        message: `Border tiers on ${surface} read ${muted!.toFixed(2)}, ${control!.toFixed(2)}, ${strong!.toFixed(2)} (muted, control, strong).`,
+        outcome: ordered ? 'pass' : 'fail',
+        message: `Border tiers on ${surface} read ${ladder.map((value) => value.toFixed(2)).join(', ')} (${TIER_NAMES.join(', ')}).`,
         cssProperties: [...TIERS, surface],
         tokenPaths: paths(...TIERS, surface),
       }),

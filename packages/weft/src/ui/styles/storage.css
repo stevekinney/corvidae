@@ -163,7 +163,7 @@
   align-items: flex-end;
   gap: var(--cinder-space-2);
   padding: var(--cinder-space-2-5);
-  border: 1px solid var(--cinder-border-muted);
+  border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
 }
 
@@ -182,7 +182,7 @@
   padding: 0;
   color: var(--cinder-text-subtle);
   background: transparent;
-  border: 1px solid var(--cinder-border);
+  border: 1px solid var(--cinder-border-strong);
   border-radius: var(--cinder-radius-md);
   cursor: pointer;
 }

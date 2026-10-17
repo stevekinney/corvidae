@@ -6,7 +6,8 @@
     "./components/cinder/scripts/stylelint/require-forced-colors-focus-fallback.mjs",
     "./components/cinder/scripts/stylelint/z-index-scale.mjs",
     "./components/cinder/scripts/stylelint/no-surface-on-form-control.mjs",
-    "./components/cinder/scripts/stylelint/interior-border-weight.mjs"
+    "./components/cinder/scripts/stylelint/interior-border-weight.mjs",
+    "./components/cinder/scripts/stylelint/control-frame.mjs"
   ],
   "overrides": [
     {
@@ -27,6 +28,7 @@
     "cinder/z-index-scale": true,
     "cinder/no-surface-on-form-control": true,
     "cinder/interior-border-weight": true,
+    "cinder/control-frame": true,
     "csstools/use-logical": [
       "always",
       {

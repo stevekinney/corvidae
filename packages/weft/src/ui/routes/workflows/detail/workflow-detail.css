@@ -495,5 +495,5 @@
   letter-spacing: 0.05em;
   color: var(--cinder-text-subtle);
   background: var(--cinder-surface-inset);
-  border-bottom: 1px solid var(--cinder-border);
+  border-bottom: 1px solid var(--cinder-border-muted);
 }

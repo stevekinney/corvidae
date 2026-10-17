@@ -46,7 +46,7 @@
 <style>
   .chat-suggestion-chip {
     --cinder-chat-suggestion-bg: var(--cinder-surface-raised);
-    --cinder-chat-suggestion-border: var(--cinder-border);
+    --cinder-chat-suggestion-border: var(--cinder-border-strong);
     --cinder-chat-suggestion-text: var(--cinder-text-default);
     --cinder-chat-suggestion-bg-hover: var(--cinder-surface-hover);
 

@@ -98,3 +98,92 @@ test('a scoped border-ink override retints only where the tiers are redeclared',
   // either half alone would pass on a value that got the other half wrong.
   expect(resolved.inkAndTier).toBe('oklch(0.5 0.3 30 / 0.48)');
 });
+
+/**
+ * Inside a `[data-theme]` scope the derivation chain is live: every derived
+ * token is redeclared in each theme block (the generator materializes those
+ * entries from the base recipe), so overriding a base token on the scoped
+ * element re-derives its dependents right there instead of inheriting the
+ * values `:root` already computed.
+ */
+test('a base override inside a [data-theme] scope re-derives its dependents', async ({ page }) => {
+  await page.goto(tokenFixtureRoute);
+
+  const resolved = await page.evaluate(() => {
+    const read = (host: HTMLElement, property: string) => {
+      const child = document.createElement('div');
+      child.style.color = `var(${property})`;
+      host.append(child);
+      return getComputedStyle(child).color;
+    };
+    const theme = (overrides: Record<string, string>) => {
+      const host = document.createElement('div');
+      host.dataset['theme'] = 'light';
+      for (const [property, value] of Object.entries(overrides)) {
+        host.style.setProperty(property, value);
+      }
+      document.body.append(host);
+      return host;
+    };
+
+    const plain = theme({});
+    const accent = theme({ '--cinder-accent-solid': 'oklch(0.6 0.2 30)' });
+    const ink = theme({ '--cinder-border-ink': 'oklch(0.5 0.2 30)' });
+    return {
+      plainHover: read(plain, '--cinder-accent-solid-hover'),
+      accentHover: read(accent, '--cinder-accent-solid-hover'),
+      plainBorder: read(plain, '--cinder-border'),
+      inkBorder: read(ink, '--cinder-border'),
+      inkControl: read(ink, '--cinder-border-control'),
+    };
+  });
+
+  expect(resolved.accentHover).not.toBe(resolved.plainHover);
+  // calc(l - 0.08) over the override, hue and chroma unchanged.
+  expect(resolved.accentHover).toBe('oklch(0.52 0.2 30)');
+  expect(resolved.inkBorder).not.toBe(resolved.plainBorder);
+  expect(resolved.inkControl).toBe('oklch(0.5 0.2 30 / 0.48)');
+});
+
+/**
+ * An alias is substituted where it is declared, so one declared only at `:root` freezes to the
+ * root's theme. The generator redeclares every alias whose target a theme block declares, so a
+ * light island on a dark page gets the light control frame, not the page's dark one.
+ */
+test('aliases re-resolve inside a [data-theme] island on a differently themed page', async ({
+  page,
+}) => {
+  await page.goto(tokenFixtureRoute);
+
+  const resolved = await page.evaluate(() => {
+    const root = document.documentElement;
+    const previous = root.dataset['theme'];
+    root.dataset['theme'] = 'dark';
+    const read = (host: HTMLElement, property: string) => {
+      const probe = document.createElement('div');
+      probe.style.color = `var(${property})`;
+      host.append(probe);
+      const value = getComputedStyle(probe).color;
+      probe.remove();
+      return value;
+    };
+    const island = document.createElement('div');
+    island.dataset['theme'] = 'light';
+    document.body.append(island);
+    const result = {
+      islandFrame: read(island, '--cinder-control-background'),
+      islandSurface: read(island, '--cinder-surface-raised'),
+      islandEdge: read(island, '--cinder-control-border'),
+      islandControlTier: read(island, '--cinder-border-control'),
+      pageFrame: read(document.body, '--cinder-control-background'),
+    };
+    island.remove();
+    if (previous === undefined) delete root.dataset['theme'];
+    else root.dataset['theme'] = previous;
+    return result;
+  });
+
+  expect(resolved.islandFrame).toBe(resolved.islandSurface);
+  expect(resolved.islandEdge).toBe(resolved.islandControlTier);
+  expect(resolved.islandFrame).not.toBe(resolved.pageFrame);
+});

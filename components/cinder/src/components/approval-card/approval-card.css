@@ -243,10 +243,10 @@
   .cinder-approval-card__textarea {
     min-block-size: 10rem;
     resize: vertical;
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     padding: var(--cinder-space-2);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     color: var(--cinder-text-default);
     font-size: var(--cinder-text-sm);
   }

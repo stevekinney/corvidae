@@ -1,6 +1,6 @@
 # Translucent border seams
 
-CIN-245 made the three neutral structural border tiers — `--cinder-border-muted`, `--cinder-border`, and `--cinder-border-strong` — alpha steps over one polarity-aware ink instead of opaque per-arm colors. That change is invisible almost everywhere, because an alpha border painted once over a surface is just a color. It becomes visible in exactly one situation: when two of those borders land on the **same pixel**. Two 48% inks stacked resolve to 73%, not 48%, and the seam reads darker (or lighter, in dark mode) than every other edge in the component.
+CIN-245 made the neutral border tiers alpha steps over one polarity-aware ink (`--cinder-border-ink`) instead of opaque per-arm colors. There are now five of them, doing two jobs (below). That change is invisible almost everywhere, because an alpha border painted once over a surface is just a color. It becomes visible in exactly one situation: when two of those borders land on the **same pixel**. Two 48% inks stacked resolve to 73%, not 48%, and the seam reads darker (or lighter, in dark mode) than every other edge in the component.
 
 This audit names every place in the repository where that can happen, and says for each whether the overlap was removed, does not actually exist, or is intentional.
 
@@ -8,6 +8,34 @@ Two things are _not_ on this list, deliberately:
 
 - **Adjacent borders.** Two elements sitting side by side, each with its own 1px edge, produce a 2px line — but each layer composites over its own backdrop, so neither is diluted by the other. That was already a 2px line before this change and it still is. Only genuine overlap stacks alpha.
 - **`border-collapse: collapse`.** Collapsed borders resolve to one painted edge by definition, so there is nothing to stack. `Table` and `JsonSchemaEditor` are covered by this.
+
+## Two jobs, five tiers
+
+A neutral border does one of two jobs, and the two want opposite things.
+
+A **structural edge** separates regions or outlines a container. The region is already identified by its surface and its content, so the edge only has to be perceptible, and the quieter it is the calmer a dense screen reads. WCAG 1.4.11 does not apply to it.
+
+A **control boundary** is the only visible outline of something you can type into, check, or drag. Remove it and the control disappears into the page, so WCAG 1.4.11 requires it to clear 3:1 against whatever it sits on.
+
+Until this change one tier, `--cinder-border` at 48%, did both jobs. It was heavy enough for an input, which made every card, table, and dialog edge as loud as an input. The tiers are now split:
+
+| Tier | Alpha | Job | Gate |
+| --- | --- | --- | --- |
+| `--cinder-border-muted` | 10% | Interior dividers: row and cell rules, tab-list rules, the Divider component | Perceptible (1.1:1) and below `border.control` |
+| `--cinder-border` | 20% | Container outer edges: Card, Modal, Drawer, Popover, Feed log, DataTable, PayloadInspector, StatisticGroup, Toast, Sidebar, PageHeader | Perceptible (1.4:1) and below `border.control` |
+| `--cinder-border-strong` | 32% | Emphasized structure, the secondary Button edge, and button-like chips at rest | Perceptible (1.4:1) and below `border.control` |
+| `--cinder-border-control` | 48% | Control boundaries: text fields (through `--cinder-control-border`), the Checkbox and Radio box, and any indicator that is the only outline of something interactive | WCAG 1.4.11, 3:1 on all four surfaces in both themes |
+| `--cinder-border-control-hover` | 58% | The hovered control boundary, and anything that used `border.strong` as a control hover | WCAG 1.4.11 |
+
+`check-token-contrast-borders.test.ts` asserts every row of that table, including the hierarchy: no structural tier may read heavier than `border.control` on any surface, so the two jobs cannot swap places in a later retune.
+
+### Choosing a tier
+
+- Is it the only visible outline of something interactive (a text field, a check or radio box, a slider tick, a resize handle, a drop placeholder, a legend toggle, a dropzone)? Use `--cinder-border-control`, or the control frame (`--cinder-control-border`) for a text-entry control, and hover to `--cinder-border-control-hover`.
+- Is it a button-like chip whose label already says what it is (preset chips, copy buttons, Chat action, jump, and edit-cancel buttons, the Feed resume pill, dashed "add" buttons)? Rest on `--cinder-border-strong` and hover to `--cinder-border-control`.
+- Is it the outer edge of a container? Use `--cinder-border`.
+- Is it a rule between siblings inside a container, a table rule, or a tab-list rule? Use `--cinder-border-muted`.
+- Is it tinted by a status? Use `--cinder-status-*-border`, never `--cinder-status-*-solid`; an active or racing accent edge uses `--cinder-accent-border`. The one exception is the invalid control edge, which reaches the danger fill through `--cinder-control-border-invalid` because on an invalid field it is the control boundary and has to keep clearing 3:1.
 
 ## Candidate seams, and what each turned out to be
 
@@ -71,24 +99,23 @@ y=19  rgb(141,144,148)   the border.control border, 48% ink
 
 A stacked pair would have produced a single row at their combined weight. The edge is 2px of two different weights, which is what it was before the tiers were composed — both layers simply track the surface now.
 
-Fourteen sites are a real area rather than a hairline. All fourteen now carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. Two of the fourteen are outside `@lostgradient/cinder` (Chat's busy dot, the playground's stage dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet.
+Thirteen sites (fourteen declarations: the ColorField hatch has two stops) are a real area rather than a hairline. All of them carry their tier's alpha over whatever surface is behind them, and each of the three times this list was wrong, it was wrong the same way — the sweep only found sites shaped like the ones it had already found. One is outside `@lostgradient/cinder` (Chat's busy dot), and two never appear in a stylesheet at all: the Toggle track pair reaches the page as a corpus alias, through the generated token stylesheet. Every one of them is the only visible shape of an indicator, so since the two-job split every one is on a control tier.
 
 | site | tier | how it is painted |
 | --- | --- | --- |
-| `toggle` track (light arm) | `border.muted` | the full track |
-| `toggle` track hover (light arm) | `border.control` | the full track |
+| `toggle` track (light arm) | `border.control` (was `border.muted`) | the full track |
+| `toggle` track hover (light arm) | `border.control.hover` | the full track |
 | `parameter-field` rail | `border.control` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 3px wide, full body height |
 | `mega-menu` indicator track | `border.control` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 2px tall |
 | `media-controls` progress track | `border.control` | 4px tall |
 | `drawer` drag-handle pill | `border.control` | 40 × 4px |
 | `slider` tick | `border.control` | 2 × 8px, undiluted — the redundant `opacity: 0.6` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
 | `color-field` empty hatch | `border.control` | a 6px `linear-gradient` repeat across the swatch |
-| `feed-event` dot | `border.strong` | 8 × 8px |
-| `status-dot` neutral indicator | `border.strong` | `--cinder-status-dot-size` |
-| `rating` empty star | `border.strong` | a 1.5rem masked glyph |
-| `resizable-panels` grip | `border.strong` | `color:`, inherited by a child, undiluted — the child's `opacity: 0.5` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
+| `feed-event` dot | `border.control` (was `border.strong`) | 8 × 8px |
+| `status-dot` neutral indicator | `border.control` (was `border.strong`) | `--cinder-status-dot-size` |
+| `rating` empty star | `border.control` (was `border.strong`) | a 1.5rem masked glyph |
+| `resizable-panels` grip | `border.control` (was `border.strong`) | `color:`, inherited by a child, undiluted — the child's `opacity: 0.5` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
 | `entry-frame` busy dot (Chat) | `border.control` | 8 × 8px |
-| `dx-stage` dot (playground) | `border.strong` | 7 × 7px |
 
 Four of those do not reach the tier through `background` at all, which is how two earlier passes of this document missed them: `color-field` uses `background-image`, `resizable-panels` uses `color`, and `rating` and `status-dot` hop through a component token (`--_cinder-rating-empty`, `--cinder-status-dot-color`). `status-dot` borrows a border tier because every other status maps to a `*-solid` and neutral has none.
 
@@ -98,35 +125,12 @@ It scans the token corpus too, for the case no stylesheet sweep can reach: a com
 
 Against WCAG 1.4.11's 3:1 floor for meaningful non-text graphics, measured across all four surface tokens in both arms:
 
-- **`border.strong` sites clear it comfortably** — 4.268–4.444 light, 4.250–4.871 dark. The ResizablePanels grip was a former exception here, diluted by a child `opacity: 0.5` to ~1.9–2.1; [CIN-603](https://linear.app/lost-gradient/issue/CIN-603) removed that opacity, so it now clears the same undiluted range as every other `border.strong` site. See the compounded-sites section below for the before/after.
-- **`border.control` sites clear it** — 3.129–3.206 light, 3.338–3.624 dark. The Slider tick was a former exception here, carrying `opacity: 0.6` in the same rule for an effective ~29% ink and ~1.9:1; [CIN-603](https://linear.app/lost-gradient/issue/CIN-603) removed that opacity as redundant, so it now clears the same undiluted range too. See the compounded-sites section below.
-- **`border.muted` sites do not**, at 1.493–1.503 light and 1.445–1.580 dark, and in the dark arm this is a **regression** rather than a pre-existing shortfall carried forward. An earlier draft of this document compared only the light arm and concluded that composition "neither introduces nor worsens" the gap. That was wrong. Measured on both:
+- **Every area site is on `border.control`** and clears it: 3.15–3.23 light, 3.37–3.65 dark (`border.control.hover`, the Toggle hover track: 4.28–4.43 light, 4.24–4.85 dark). Before the two-job split, the `border.strong` areas sat at 58% ink; `border.strong` is now a 32% structural tier (2.04–2.31) that no indicator may use, so they moved to `border.control` rather than following it down.
+- **History.** Two of these sites (the ParameterField rail and the MegaMenu indicator track) once filled with `border.muted` and sat below 3:1, and two more (the Slider tick and the ResizablePanels grip) were diluted under 3:1 by an element `opacity`; [CIN-603](https://linear.app/lost-gradient/issue/CIN-603) fixed all four, and `check-token-contrast-border-indicators.test.ts` reads each site's real rule body so a revert fails. The two-job split also lowered `border.muted` to 10% (1.17–1.27:1), which is only acceptable because no area fill uses it any more.
 
-  | dark surface     | opaque `border.muted` | 19% ink | change |
-  | ---------------- | --------------------- | ------- | ------ |
-  | `surface-inset`  | 2.052                 | 1.456   | −29%   |
-  | `surface-canvas` | 1.974                 | 1.511   | −23%   |
-  | `surface`        | 1.814                 | 1.577   | −13%   |
-  | `surface-raised` | 1.460                 | 1.613   | +10%   |
+### Toggle track, light arm — intentional, and now a control tier
 
-  The tier still clears its own 1.4:1 decorative floor on every surface (1.456 is the worst case), and its spread collapses from 28.9% to 9.7%, which is what the ticket asks for. But the two sites that use the muted tier as an **area fill** rather than a hairline — the ParameterField rail and the MegaMenu indicator track — were already below 1.4.11's 3:1 in the dark arm and were, at that point, further below it on the three recessed surfaces.
-
-  **Resolved by [CIN-603](https://linear.app/lost-gradient/issue/CIN-603).** The muted tier's contract is a 1.4:1 decorative hairline; filling a persistent state indicator with it was a misuse that predated this work. Both sites moved onto `border.control` (3.129–3.206 light, 3.338–3.624 dark — the same range quoted for the tier throughout this document), which is exactly the fix this section originally deferred rather than a new decision. `toolbar-separator.svelte` reached the same conclusion independently, earlier: "the muted variant looked invisible in dark mode (~1.4:1 against surface-raised)", which is why it uses `border.control`.
-
-### Toggle track, light arm — intentional, and steadier than before
-
-`--cinder-toggle-track-off-resting` aliases `border.muted` in its light arm (the dark arm is an independent literal and is untouched). It is the largest of the eight area fills, and the only one whose before/after was measured surface by surface, so it is worth showing in full.
-
-The track now tracks the surface underneath it instead of being a fixed grey, which is the same improvement the borders get:
-
-| surface          | before                 | after                    | contrast (before → after) |
-| ---------------- | ---------------------- | ------------------------ | ------------------------- |
-| `surface-inset`  | `oklch(85% 0.004 255)` | `oklch(83.2% 0.007 255)` | 1.408 → 1.492             |
-| `surface-canvas` | `oklch(85% 0.004 255)` | `oklch(85.2% 0.005 255)` | 1.510 → 1.498             |
-| `surface`        | `oklch(85% 0.004 255)` | `oklch(86.1% 0.004 255)` | 1.554 → 1.500             |
-| `surface-raised` | `oklch(85% 0.004 255)` | `oklch(86.6% 0.003 255)` | 1.581 → 1.502             |
-
-The track reads at a near-identical weight on every surface now (1.49–1.50) rather than drifting across a 12% range, and its floor goes up rather than down. The dark arm's ≥3:1 shape-contrast requirement is unaffected — that arm is a literal, not an alias.
+`--cinder-toggle-track-off-resting` aliases `border.control` in its light arm, and its hover aliases `border.control.hover` (the dark arms are independent literals and are untouched). The off track is the only visible shape of the switch, so it is a control boundary in the sense of the two-job split above, and it moved from `border.muted` (a 19%, then 10%, decorative tier) to the 48% control tier: 3.15–3.23:1 on the four surfaces instead of about 1.5:1. Like every tier it tracks the surface underneath it rather than being a fixed grey, so it reads at a near-identical weight on every surface.
 
 ## Tier borders under an element opacity
 
@@ -287,7 +291,7 @@ The grip's two halves sit on a parent and its child; the Button, Toggle and Segm
 | --- | --- | --- | --- |
 | disabled icon-only ghost Button (`/page/button`) | `border-color` | `var(--cinder-border-muted)` | opacity compound: a variant-specific rule in `button.css` pairs `border-color` and `opacity: 0.6` in the SAME rule (also caught by the source-text scan), while `foundation.css`'s shared disabled-visual rule redundantly contributes the identical opacity from a second file; matched via CDP |
 | disabled secondary Button (`/page/button`) | `border-color` | `var(--cinder-border-muted)` | cross-file-only opacity compound: `button.css`'s base disabled rule sets `border-color: var(--cinder-border-muted)` alone (no same-rule `opacity`), and `opacity: 0.6` comes entirely from `foundation.css`'s shared disabled-visual rule -- the two declarations never appear together as literal text in any one file, matched on the same element via CDP |
-| resting Toggle track (`/page/toggle`) | `background` | `--cinder-toggle-track-off-resting` → `var(--cinder-border-muted)` | one-hop alias: a non-border property's `var()` fallback names a custom property whose own declaration (inherited from the generated `:root` block) names the tier |
+| resting Toggle track (`/page/toggle`) | `background` | `--cinder-toggle-track-off-resting` → `var(--cinder-border-control)` | one-hop alias: a non-border property's `var()` fallback names a custom property whose own declaration (inherited from the generated `:root` block) names the tier |
 
 Coverage note: this table currently audits, across three sites, the two shapes
 CIN-602 was scoped to prove (an opacity compound, and a corpus-alias area fill

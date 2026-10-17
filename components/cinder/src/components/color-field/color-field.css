@@ -18,7 +18,7 @@
     height: 18px;
     border-radius: var(--cinder-radius-sm);
     background-color: var(--cinder-color-field-swatch, transparent);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-control);
     vertical-align: middle;
     pointer-events: none;
     cursor: default;

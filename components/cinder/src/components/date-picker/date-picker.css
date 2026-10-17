@@ -23,14 +23,14 @@
     display: grid;
     grid-template-columns: 1fr auto;
     align-items: center;
-    min-height: 2.25rem;
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    min-height: var(--cinder-control-height-md);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     background: var(--cinder-surface-raised);
   }
 
   .cinder-date-picker__control[data-invalid] {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   .cinder-date-picker__input {
@@ -81,10 +81,10 @@
   }
 
   .cinder-date-picker__time-input {
-    min-height: 2rem;
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
+    min-height: var(--cinder-control-height-sm);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
+    background: var(--cinder-control-background);
     color: var(--cinder-text-default);
     padding: var(--cinder-space-1) var(--cinder-space-2);
   }

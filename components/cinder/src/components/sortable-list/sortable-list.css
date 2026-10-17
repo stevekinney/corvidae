@@ -57,7 +57,7 @@
    * it — puts the indicator at its tier's full, undiluted alpha instead.
    */
   .cinder-sortable-item--placeholder {
-    outline: 2px dashed var(--cinder-border);
+    outline: 2px dashed var(--cinder-border-control);
     outline-offset: -1px;
     border-radius: var(--cinder-radius-md);
     box-shadow: none;

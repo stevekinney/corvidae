@@ -706,22 +706,22 @@ describe('Input group (leading/trailing addons)', () => {
 
     const css = await Bun.file(new URL('./input.css', import.meta.url)).text();
     expect(css).toMatch(
-      /\.cinder-input-host\s*\{[^}]*display:\s*contents;[^}]*border-color:\s*var\(--cinder-border\);[^}]*\}/,
+      /\.cinder-input-host\s*\{[^}]*display:\s*contents;[^}]*border-color:\s*var\(--cinder-control-border\);[^}]*\}/,
     );
     // The host and the group are the same element, so the group's border-color
     // transition would otherwise run from `currentcolor` when an addon appears.
     expect(css).toMatch(
-      /\.cinder-input-host\[data-invalid\]\s*\{[^}]*border-color:\s*var\(--cinder-status-danger-solid\);/,
+      /\.cinder-input-host\[data-invalid\]\s*\{[^}]*border-color:\s*var\(--cinder-control-border-invalid\);/,
     );
     expect(css).toMatch(
-      /\.cinder-input-host\[data-disabled\]\s*\{[^}]*border-color:\s*var\(--cinder-border-muted\);/,
+      /\.cinder-input-host\[data-disabled\]\s*\{[^}]*border-color:\s*var\(--cinder-control-border-disabled\);/,
     );
     // Hover too: an addon can appear while the pointer is over the input, and
     // the host is hovered whenever its input is. Updated for COR-1498: hover
     // excludes the focused state, where the border is transparent under the
     // tight ring, so the selectors gain `:not(:focus-within)`.
     expect(css).toMatch(
-      /\.cinder-input-host:hover:not\(\[data-disabled\]\):not\(:focus-within\)\s*\{[^}]*border-color:\s*var\(--cinder-border-strong\);/,
+      /\.cinder-input-host:hover:not\(\[data-disabled\]\):not\(:focus-within\)\s*\{[^}]*border-color:\s*var\(--cinder-control-border-hover\);/,
     );
     expect(css).toMatch(
       /\.cinder-input-host\[data-invalid\]:hover:not\(\[data-disabled\]\):not\(:focus-within\)\s*\{[^}]*border-color:\s*var\(--_cinder-input-invalid-border-hover\);/,
@@ -735,7 +735,7 @@ describe('Input group (leading/trailing addons)', () => {
     // so they cannot drift apart: the bare input, the host that takes over when
     // an addon appears, and the group.
     expect(css).toMatch(
-      /\.cinder-input,\s*\.cinder-input-host,\s*\.cinder-input-group\s*\{[^}]*--_cinder-input-invalid-border-hover:\s*oklch\(\s*from var\(--cinder-status-danger-solid\) calc\(l - 0\.06\) c h\s*\);/,
+      /\.cinder-input,\s*\.cinder-input-host,\s*\.cinder-input-group\s*\{[^}]*--_cinder-input-invalid-border-hover:\s*oklch\(\s*from var\(--cinder-control-border-invalid\) calc\(l - 0\.06\) c h\s*\);/,
     );
     // And the reverse direction: the grouped input drops its border with
     // `border-style`, not the `border` shorthand, so its computed border-color

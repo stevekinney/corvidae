@@ -887,7 +887,7 @@
     gap: var(--cinder-space-2);
     padding: var(--cinder-space-1) var(--cinder-space-3);
     background: var(--cinder-surface-inset);
-    border-bottom: 1px solid var(--cinder-border);
+    border-bottom: 1px solid var(--cinder-border-muted);
     margin-top: var(--cinder-space-2);
   }
 

@@ -25,6 +25,8 @@ function ruleOpacity(body: string): number {
 const {
   bg,
   border,
+  borderControl,
+  borderControlHover,
   borderMuted,
   borderStrong,
   surface,
@@ -51,12 +53,16 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
     return readFileSync(join(componentsDirectory, ...segments), 'utf8');
   }
 
-  /** Which structural tier this rule body's fill/border actually references. */
+  /** Which border tier this rule body's fill/border actually references. */
   function ruleTier(body: string): TranslucentTokenArms {
+    if (/var\(--cinder-(?:border-control-hover|control-border-hover)[,)]/.test(body)) {
+      return borderControlHover;
+    }
+    if (/var\(--cinder-(?:border-control|control-border)[,)]/.test(body)) return borderControl;
     if (/var\(--cinder-border-muted\)/.test(body)) return borderMuted;
     if (/var\(--cinder-border-strong\)/.test(body)) return borderStrong;
     if (/var\(--cinder-border[,)]/.test(body)) return border;
-    throw new Error(`No structural border-tier reference found in rule body: ${body}`);
+    throw new Error(`No border-tier reference found in rule body: ${body}`);
   }
 
   const retunedSites: ReadonlyArray<{
@@ -78,12 +84,12 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
         readComponentCss('resizable-panels', 'resizable-panels.css'),
         '.cinder-resizable-panels__handle-line {',
       ),
-      // The tier (`border.strong`) is set via `color` on the PARENT
+      // The tier (`border.control`) is set via `color` on the PARENT
       // `.cinder-resizable-panels__handle` rule and consumed here through
       // `currentColor` -- this rule body has no `var(--cinder-border*)` of
       // its own to parse, so the tier is pinned explicitly. The opacity this
       // site actually compounded with is still read from THIS rule's body.
-      tierOverride: borderStrong,
+      tierOverride: borderControl,
     },
     {
       name: 'AreaChart legend toggle border',
@@ -91,7 +97,7 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
         readComponentCss('area-chart', 'area-chart.css'),
         "__legend button[aria-pressed='false'] {",
       ),
-      tierOverride: border,
+      tierOverride: borderControl,
     },
     {
       name: 'BarChart legend toggle border',
@@ -99,7 +105,7 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
         readComponentCss('bar-chart', 'bar-chart.css'),
         "__legend button[aria-pressed='false'] {",
       ),
-      tierOverride: border,
+      tierOverride: borderControl,
     },
     {
       name: 'LineChart legend toggle border',
@@ -107,12 +113,12 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
         readComponentCss('line-chart', 'line-chart.css'),
         "__legend button[aria-pressed='false'] {",
       ),
-      tierOverride: border,
+      tierOverride: borderControl,
     },
     {
       name: 'Select empty-state border',
       body: ruleBody(readComponentCss('select', 'select.css'), "[data-cinder-empty='true'] {"),
-      tierOverride: border,
+      tierOverride: borderControl,
     },
     {
       name: 'ParameterField rail',

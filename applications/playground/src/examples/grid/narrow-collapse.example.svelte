@@ -14,7 +14,7 @@
   narrowCollapseEnabled
   aria-label="Narrow collapse demo"
 >
-  <div style="padding: 1rem; border: 1px solid var(--cinder-border-muted);">One</div>
-  <div style="padding: 1rem; border: 1px solid var(--cinder-border-muted);">Two</div>
-  <div style="padding: 1rem; border: 1px solid var(--cinder-border-muted);">Three</div>
+  <div style="padding: 1rem; border: 1px solid var(--cinder-border);">One</div>
+  <div style="padding: 1rem; border: 1px solid var(--cinder-border);">Two</div>
+  <div style="padding: 1rem; border: 1px solid var(--cinder-border);">Three</div>
 </Grid>

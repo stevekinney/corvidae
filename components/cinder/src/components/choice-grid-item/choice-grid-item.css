@@ -16,7 +16,7 @@
     text-align: center;
     padding: var(--cinder-space-4) var(--cinder-space-3);
     border-radius: var(--cinder-radius-lg);
-    border: 2px solid var(--cinder-border-muted);
+    border: 2px solid var(--cinder-border-control);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);
     cursor: pointer;
@@ -56,7 +56,7 @@
     .cinder-choice-grid-item:not([data-cinder-disabled]):not([data-cinder-selected]):not(
         [data-cinder-state]
       ):hover {
-      border-color: var(--cinder-border);
+      border-color: var(--cinder-border-control-hover);
       background: var(--cinder-surface-raised);
     }
   }
@@ -152,7 +152,7 @@
    * token family `button` `sm` uses for padding and font-size too.
    *
    * Coarse pointer: floors the cell at the accessibility-standard 44×44 CSS
-   * pixel touch target instead of the 28px fine-pointer height. This floor
+   * pixel touch target instead of the 32px fine-pointer height. This floor
    * is deliberately unconditional on `columns` — whether the grid uses a
    * fixed column count or `responsive`, a minimum touch target is an
    * accessibility requirement, not a layout-mode-conditional feature.

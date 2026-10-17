@@ -36,7 +36,7 @@
     padding: 0;
     border: none;
     background: transparent;
-    color: var(--cinder-border-strong);
+    color: var(--cinder-border-control);
     position: relative;
   }
 

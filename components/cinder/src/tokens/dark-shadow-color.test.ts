@@ -5,9 +5,8 @@
  * a value assertion against the token source itself, not a computed-style or DOM
  * check — so a regression is caught before token generation ever runs.
  *
- * `shadow.overlay` is intentionally out of scope for the color change (it was
- * already black) and is asserted unchanged here as a guard against accidental
- * drift while editing the other three layers.
+ * The dark alphas step up to `shadow.overlay`'s, which is asserted unchanged
+ * as the ceiling the other three tiers are measured against.
  */
 
 import { expect, test } from 'bun:test';
@@ -38,11 +37,14 @@ const BLACK: Pick<ShadowColor, 'colorSpace' | 'components'> = {
   components: [0, 0, 0],
 };
 
-/** Each layer's two box-shadow arms, keyed by their existing (unchanged) alpha. */
+/**
+ * Each layer's two box-shadow alphas. A dark surface needs a denser shadow to
+ * read at all, so the dark ramp steps up to `shadow.overlay`'s 0.45 / 0.32.
+ */
 const EXPECTED_LAYER_ALPHAS = {
-  small: [0.09, 0.05],
-  medium: [0.09, 0.06],
-  large: [0.11, 0.07],
+  small: [0.35, 0.25],
+  medium: [0.4, 0.28],
+  large: [0.45, 0.32],
 } as const;
 
 const EXPECTED_OVERLAY_VALUE: ShadowLayer[] = [
@@ -67,7 +69,7 @@ async function readDarkTokens(): Promise<DarkShadowTokens> {
 }
 
 test.each(Object.entries(EXPECTED_LAYER_ALPHAS))(
-  'dark theme shadow.%s resolves both layers to black at the existing alpha',
+  'dark theme shadow.%s resolves both layers to black at its dark-mode alpha',
   async (layer, alphas) => {
     const dark = await readDarkTokens();
     const key = layer as keyof typeof EXPECTED_LAYER_ALPHAS;

@@ -139,7 +139,7 @@
     display: block;
     width: 100%;
     height: 28rem;
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-canvas);
   }

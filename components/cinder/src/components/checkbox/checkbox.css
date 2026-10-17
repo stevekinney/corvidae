@@ -42,9 +42,9 @@
     width: 1.125rem;
     height: 1.125rem;
     margin: 0;
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -60,7 +60,7 @@
  * "stick" after tap on touch devices that emulate :hover. */
   @media (hover: hover) {
     .cinder-checkbox:hover:not(:disabled) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -159,14 +159,14 @@
   /* Disabled state */
   .cinder-checkbox:disabled {
     cursor: not-allowed;
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
   }
 
   .cinder-checkbox--indicator[data-cinder-disabled] {
     cursor: not-allowed;
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
   }
 
   .cinder-checkbox:disabled:checked,
@@ -183,7 +183,7 @@
   /* Error / invalid state */
   .cinder-checkbox[aria-invalid='true'] {
     --_cinder-checkbox-ring: var(--cinder-status-danger-solid);
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   /* Checked and indeterminate boxes are solid accent fills, so the ring gets a

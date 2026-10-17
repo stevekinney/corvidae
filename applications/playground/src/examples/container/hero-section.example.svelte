@@ -47,7 +47,7 @@
           <div
             role="img"
             aria-label="Product dashboard preview"
-            style="inline-size: 100%; block-size: 100%; background: var(--cinder-surface-inset); border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-md);"
+            style="inline-size: 100%; block-size: 100%; background: var(--cinder-surface-inset); border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md);"
           ></div>
         </AspectRatio>
       </div>

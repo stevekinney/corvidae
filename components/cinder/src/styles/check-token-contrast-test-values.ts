@@ -9,6 +9,8 @@ export const {
   accentText,
   bg,
   border,
+  borderControl,
+  borderControlHover,
   borderFaint,
   borderInk,
   borderMuted,

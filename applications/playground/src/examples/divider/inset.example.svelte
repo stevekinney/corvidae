@@ -8,7 +8,7 @@
 </script>
 
 <div
-  style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-md);"
+  style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md);"
 >
   <span>Item one</span>
   <Divider inset />

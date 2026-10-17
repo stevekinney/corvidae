@@ -263,13 +263,17 @@ describe('LinkPopover — CSS contract', () => {
     expect(primaryRule).not.toMatch(/translateX/);
   });
 
-  test('close button is 28px on a fine pointer, with a 44px coarse-pointer override (COR-463)', async () => {
+  test('close button is the small Button height on a fine pointer, with a 44px coarse-pointer override (COR-463)', async () => {
     const source = await Bun.file(
       new URL('./link-popover.svelte', import.meta.url).pathname,
     ).text();
-    // Fine-pointer default: 28px, not the 44px touch target unconditionally.
-    expect(source).toMatch(/\.link-popover-close\s*\{[^}]*width:\s*28px/s);
-    expect(source).toMatch(/\.link-popover-close\s*\{[^}]*height:\s*28px/s);
+    // Fine-pointer default: the small Button height, not the 44px touch target unconditionally.
+    expect(source).toMatch(
+      /\.link-popover-close\s*\{[^}]*width:\s*var\(--cinder-button-height-sm\)/s,
+    );
+    expect(source).toMatch(
+      /\.link-popover-close\s*\{[^}]*height:\s*var\(--cinder-button-height-sm\)/s,
+    );
     // The existing pointer-aware convention (number-input's stepper) bumps it
     // to the 44px WCAG 2.2 AA target under `@media (pointer: coarse)`.
     const coarseBlockMatch = source.match(
@@ -444,7 +448,7 @@ describe('LinkPopover — density (COR-463)', () => {
     expect(panel?.classList.contains('cinder-_floating-surface')).toBe(true);
   });
 
-  test('header and footer use at-most-40px-high padding (space-1-5 block / space-3 inline)', async () => {
+  test('header and footer use at-most-44px-high padding (space-1-5 block / space-3 inline)', async () => {
     const source = await Bun.file(
       new URL('./link-popover.svelte', import.meta.url).pathname,
     ).text();

@@ -79,7 +79,7 @@
 
 .weft-reviews-inbox__count {
   padding: 11px 15px;
-  border-bottom: 1px solid var(--cinder-border);
+  border-bottom: 1px solid var(--cinder-border-muted);
   font-size: var(--cinder-text-xs);
   font-weight: 600;
   color: var(--cinder-text-subtle);
@@ -420,7 +420,7 @@
 .weft-reviews-archive th {
   padding: 9px 16px;
   background: var(--cinder-surface-inset);
-  border-bottom: 1px solid var(--cinder-border);
+  border-bottom: 1px solid var(--cinder-border-muted);
   text-align: start;
   font-size: var(--cinder-text-2xs);
   font-weight: 600;

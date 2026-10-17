@@ -37,12 +37,12 @@
 
   .cinder-tree__filter-input {
     inline-size: 100%;
-    min-block-size: 2.25rem;
+    min-block-size: var(--cinder-control-height-md);
     padding-block: var(--cinder-space-1, 0.25rem);
     padding-inline: var(--cinder-space-2, 0.5rem);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
+    background: var(--cinder-control-background);
     color: var(--cinder-text-default);
     font: inherit;
   }
@@ -88,7 +88,7 @@
     min-block-size: 2rem;
     padding-block: var(--cinder-space-1, 0.25rem);
     padding-inline: var(--cinder-space-2, 0.5rem);
-    border: 1px solid var(--cinder-border, currentColor);
+    border: 1px solid var(--cinder-border-strong, currentColor);
     border-radius: var(--cinder-radius-sm);
     background: var(--cinder-surface, transparent);
     color: var(--cinder-text-default, currentColor);
@@ -316,12 +316,12 @@
     flex: 1 1 auto;
     min-inline-size: 8rem;
     max-inline-size: 100%;
-    min-block-size: 2rem;
+    min-block-size: var(--cinder-control-height-sm);
     padding-block: var(--cinder-space-1, 0.25rem);
     padding-inline: var(--cinder-space-2, 0.5rem);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-sm);
-    background: var(--cinder-surface-raised);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
+    background: var(--cinder-control-background);
     color: var(--cinder-text-default);
     font: inherit;
   }
@@ -340,7 +340,7 @@
   }
 
   .cinder-tree-item__rename-input[aria-invalid='true'] {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   .cinder-tree-item__children {

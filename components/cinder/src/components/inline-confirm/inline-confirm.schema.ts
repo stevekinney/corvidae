@@ -22,6 +22,12 @@ const schema = {
       description: 'Marks the confirming action as destructive. Defaults to `false`.',
       default: false,
     },
+    flush: {
+      type: 'boolean',
+      description:
+        "The strip sits flush inside a bordered container. At the container's start or end it drops\nits own rule there instead of doubling the container's edge. Defaults to `false`.",
+      default: false,
+    },
     open: {
       type: 'boolean',
       description:

@@ -71,9 +71,11 @@ describe('Button sizes — xl', () => {
     expect(container.querySelector('button')?.getAttribute('data-cinder-size')).toBe('xl');
   });
 
-  test('sizes use the compact 24/28/32/36/40px height ladder', () => {
+  test('sizes use the compact 24/32/32/36/40px height ladder', () => {
+    // `sm` shares `control.height.sm` with toolbar SegmentedControl and Chip,
+    // so it matches `md`'s height and differs from it in padding and type.
     expect(readButtonHeightToken('xs')).toBe(1.5);
-    expect(readButtonHeightToken('sm')).toBe(1.75);
+    expect(readButtonHeightToken('sm')).toBe(2);
     expect(readButtonHeightToken('md')).toBe(2);
     expect(readButtonHeightToken('lg')).toBe(2.25);
     expect(readButtonHeightToken('xl')).toBe(2.5);

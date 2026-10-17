@@ -18,7 +18,7 @@
   }
 
   .cinder-number-input[data-invalid] .cinder-number-input__stepper {
-    border-inline-start-color: var(--cinder-status-danger-solid);
+    border-inline-start-color: var(--cinder-control-border-invalid);
   }
 
   .cinder-number-input__stepper {

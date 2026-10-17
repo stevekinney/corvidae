@@ -88,16 +88,16 @@
 
 <style>
   .front-matter-section {
-    border-bottom: 1px solid var(--cinder-border);
+    border-bottom: 1px solid var(--cinder-border-muted);
     margin-bottom: var(--cinder-space-2);
   }
 
   .front-matter-section[data-has-changes='true'] {
-    border-inline-start: 3px solid var(--cinder-status-warning-solid);
+    border-inline-start: 3px solid var(--cinder-status-warning-border);
   }
 
   .front-matter-content {
-    border-top: 1px solid var(--cinder-border);
+    border-top: 1px solid var(--cinder-border-muted);
     background: color-mix(in oklch, var(--cinder-surface-inset), transparent 50%);
   }
 </style>

@@ -95,7 +95,7 @@
     display: block;
     height: 2.5rem;
     margin-block-end: var(--cinder-space-2);
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-md);
   }
   .space-row {

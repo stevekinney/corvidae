@@ -70,7 +70,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.392, 0.05, 181]
+          "components": [0.392, 0.05, 148.675]
         },
         "$description": "Success color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -78,7 +78,7 @@
             "cssProperty": "--cinder-status-success-subtle",
             "public": true,
             "category": "color",
-            "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )"
+            "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )"
           }
         }
       },
@@ -86,7 +86,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.67784, 0.05, 184.6]
+          "components": [0.67784, 0.05, 145.387]
         },
         "$description": "Success color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -94,7 +94,7 @@
             "cssProperty": "--cinder-status-success-muted",
             "public": true,
             "category": "color",
-            "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )"
+            "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )"
           }
         }
       }
@@ -164,7 +164,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.4176, 0.05, 136.2]
+          "components": [0.4176, 0.05, 75.978]
         },
         "$description": "Warning color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -172,7 +172,7 @@
             "cssProperty": "--cinder-status-warning-subtle",
             "public": true,
             "category": "color",
-            "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )"
+            "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )"
           }
         }
       },
@@ -180,7 +180,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.70344, 0.05, 139.8]
+          "components": [0.70344, 0.05, 75]
         },
         "$description": "Warning color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -188,7 +188,7 @@
             "cssProperty": "--cinder-status-warning-muted",
             "public": true,
             "category": "color",
-            "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )"
+            "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )"
           }
         }
       }
@@ -229,7 +229,7 @@
       },
       "border": {
         "$type": "color",
-        "$value": "{border.control}",
+        "$value": "{border}",
         "$description": "Border color on the soft neutral surface.",
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -306,7 +306,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.392, 0.05, 334.6]
+          "components": [0.392, 0.05, 23.081]
         },
         "$description": "Danger color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -314,7 +314,7 @@
             "cssProperty": "--cinder-status-danger-subtle",
             "public": true,
             "category": "color",
-            "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )"
+            "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )"
           }
         }
       },
@@ -322,7 +322,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.67784, 0.05, 338.2]
+          "components": [0.67784, 0.05, 24.755]
         },
         "$description": "Danger color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -330,7 +330,7 @@
             "cssProperty": "--cinder-status-danger-muted",
             "public": true,
             "category": "color",
-            "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )"
+            "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )"
           }
         }
       }
@@ -400,7 +400,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.392, 0.05, 235.4]
+          "components": [0.392, 0.05, 231.393]
         },
         "$description": "Info color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -408,7 +408,7 @@
             "cssProperty": "--cinder-status-info-subtle",
             "public": true,
             "category": "color",
-            "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )"
+            "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )"
           }
         }
       },
@@ -416,7 +416,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.67784, 0.05, 239]
+          "components": [0.67784, 0.05, 230.275]
         },
         "$description": "Info color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors.",
         "$extensions": {
@@ -424,7 +424,7 @@
             "cssProperty": "--cinder-status-info-muted",
             "public": true,
             "category": "color",
-            "cssRecipe": "oklch( from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )"
+            "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )"
           }
         }
       }
@@ -460,6 +460,7 @@
           "cssProperty": "--cinder-accent-border",
           "public": true,
           "category": "color",
+          "contrastPairs": ["accent.background"],
           "cssRecipe": "color-mix(in oklch, var(--cinder-accent-solid), transparent 60%)"
         }
       }

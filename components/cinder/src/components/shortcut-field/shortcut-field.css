@@ -19,7 +19,7 @@
     gap: var(--cinder-space-1);
     flex: 1;
     padding: var(--cinder-space-2);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-sm);
     cursor: text;
   }
@@ -43,7 +43,7 @@
   .cinder-shortcut-field__clear {
     min-height: 2rem;
     padding: var(--cinder-space-2) var(--cinder-space-3);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-strong);
     border-radius: var(--cinder-radius-sm);
     background: var(--cinder-surface);
     color: var(--cinder-text-default);

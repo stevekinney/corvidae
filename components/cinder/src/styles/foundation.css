@@ -247,7 +247,7 @@
 
 :where(hr) {
   border: none;
-  border-top: 1px solid var(--cinder-border);
+  border-top: 1px solid var(--cinder-border-muted);
   margin: var(--cinder-space-6) 0;
 }
 
