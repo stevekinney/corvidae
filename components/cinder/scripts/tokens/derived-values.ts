@@ -276,10 +276,13 @@ export function materializeDerivedValues(
     // A theme entry that carries a recipe is one this step wrote (theme recipes are never
     // authored by hand). When its base token stops being derived -- its recipe removed or made
     // constant -- the entry would otherwise linger and silently override the new base value.
-    for (const { keys, token } of [...tokens(themeDocument as Record<string, unknown>)]) {
+    // Collected first: removing entries while the walk is still visiting the document would skip
+    // siblings of a removed entry.
+    const themeTokens = Array.from(tokens(themeDocument as Record<string, unknown>));
+    for (const { keys, token } of themeTokens) {
       if (typeof cinderExtensions(token)?.['cssRecipe'] !== 'string') continue;
       if (derivedPaths.has(dottedPath(keys))) continue;
-      removeEntry(themeDocument as Record<string, unknown>, keys);
+      removeEntry(themeDocument, keys);
       changed.add(themePath);
     }
     const needed = tokensNeedingThemeEntries(derived, themeDocument, pathByProperty, theme);
@@ -382,7 +385,7 @@ export function rewriteSourceText(
   const target = JSON.parse(protectIntegerKeys(originalText)) as Record<string, unknown>;
   const protect = (keys: readonly string[]) =>
     keys.map((key) => (/^\d+$/.test(key) ? `#int#${key}` : key));
-  for (const { keys } of tokens(original as Record<string, unknown>)) {
+  for (const { keys } of tokens(original)) {
     if (tokenAt(materialized, keys) === undefined) removeEntry(target, protect(keys));
   }
   for (const { keys, token } of tokens(materialized)) {
