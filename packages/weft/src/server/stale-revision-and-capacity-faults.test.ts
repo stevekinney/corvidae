@@ -4,7 +4,7 @@
  * code and payload, failure category, and OpenRPC listing.
  */
 
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { failureCategoryForFaultCode, isFaultCode } from '../core/fault-code.ts';
@@ -16,6 +16,7 @@ import { buildOpenRpcComponentsErrors } from './openrpc-errors.ts';
 import { generateOpenRpcDocument } from './openrpc.ts';
 import { createOperationRegistry } from './operation-catalog.ts';
 import {
+  assertFiniteFaultData,
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
   shapeOperationFaultAsJson,
@@ -200,15 +201,27 @@ describe('Retry-After', () => {
           );
         });
 
-        it(`${field} = ${String(value)} is refused on REST and on JSON-RPC, never sent as null`, () => {
+        it(`${field} = ${String(value)} is never sent as null: REST and JSON-RPC answer with the masked internal error`, async () => {
           const fault = {
             code: 'StaleRevision',
             message: 'stale',
             data: { currentRevision: 5, [field]: value },
           } as AddedFault;
-          expect(() => faultToHttpResponse(fault)).toThrow(TypeError);
-          expect(() => shapeOperationFaultAsJson(fault)).toThrow(TypeError);
-          expect(() => faultToJsonRpcError(fault)).toThrow(TypeError);
+          const errors = spyOn(console, 'error').mockImplementation(() => {});
+          try {
+            const rest = faultToHttpResponse(fault);
+            expect(rest.status).toBe(500);
+            expect(await rest.json()).toEqual({ error: 'Internal server error' });
+            expect((await shapeOperationFaultAsJson(fault).json()) as unknown).toEqual({
+              error: 'Internal server error',
+            });
+            const rpc = faultToJsonRpcError(fault);
+            expect(rpc.data).toEqual({ weftCode: 'EngineFailure', httpStatus: 500 });
+            expect(errors).toHaveBeenCalledTimes(3);
+            expect(String(errors.mock.calls[0]?.[0])).toContain(`data.${field}`);
+          } finally {
+            errors.mockRestore();
+          }
         });
       }
     }
@@ -228,8 +241,17 @@ describe('Retry-After', () => {
         message: 'too large',
         data: { maxBytes: Number.NaN },
       };
-      expect(() => faultToHttpResponse(payloadTooLarge)).toThrow(TypeError);
-      expect(() => faultToJsonRpcError(payloadTooLarge)).toThrow(TypeError);
+      expect(() => assertFiniteFaultData(payloadTooLarge)).toThrow(TypeError);
+      const errors = spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        expect(faultToHttpResponse(payloadTooLarge).status).toBe(500);
+        expect(faultToJsonRpcError(payloadTooLarge).data).toEqual({
+          weftCode: 'EngineFailure',
+          httpStatus: 500,
+        });
+      } finally {
+        errors.mockRestore();
+      }
     });
   });
 

@@ -321,15 +321,15 @@ export function shapeRestFaultAsJson(
   fault: OperationFault,
   options: RestFaultResponseOptions = {},
 ): Response {
-  assertFiniteFaultData(fault);
-  const body = shapeRestFaultBody(fault, options.message);
+  const safeFault = wireSafeFault(fault);
+  const body = shapeRestFaultBody(safeFault, options.message);
   const status =
-    fault.code === 'EngineFailure'
+    safeFault.code === 'EngineFailure'
       ? 500
-      : (options.status ?? FAULT_CODE_TO_HTTP_STATUS[fault.code]);
+      : (options.status ?? FAULT_CODE_TO_HTTP_STATUS[safeFault.code]);
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const retryAfter = retryAfterHeaderValue(fault);
+  const retryAfter = retryAfterHeaderValue(safeFault);
   if (retryAfter !== undefined) headers['Retry-After'] = retryAfter;
 
   return new Response(JSON.stringify(body), { status, headers });
@@ -356,18 +356,46 @@ function retryAfterHeaderValue(fault: OperationFault): string | undefined {
  * contract. The one exception is `retryAfterSeconds`, a hint a client can do
  * without: {@link usableRetryAfterSeconds} drops it from every projection.
  *
- * Called by the fault factories, and again by both wire projections as the
- * boundary check, so a fault written as an object literal is covered too.
+ * Called by the fault factories. The wire projections use {@link wireSafeFault}
+ * instead, so a fault written as an object literal still gets a reply.
  */
 export function assertFiniteFaultData(fault: OperationFault): void {
+  const field = findNonFiniteFaultField(fault);
+  if (field !== undefined) {
+    throw new TypeError(
+      `The ${fault.code} fault's data.${field} must be a finite number, got ${String(faultDataValue(fault, field))}`,
+    );
+  }
+}
+
+/** The first `data` field (other than `retryAfterSeconds`) holding a non-finite number. */
+function findNonFiniteFaultField(fault: OperationFault): string | undefined {
   for (const [field, value] of Object.entries(fault.data)) {
     if (field === 'retryAfterSeconds') continue;
-    if (typeof value === 'number' && !Number.isFinite(value)) {
-      throw new TypeError(
-        `The ${fault.code} fault's data.${field} must be a finite number, got ${String(value)}`,
-      );
-    }
+    if (typeof value === 'number' && !Number.isFinite(value)) return field;
   }
+  return undefined;
+}
+
+function faultDataValue(fault: OperationFault, field: string): unknown {
+  return (fault.data as Record<string, unknown>)[field];
+}
+
+/**
+ * The fault a wire projection may send. A fault whose `data` holds a non-finite
+ * number is a programming error that slipped past the factories (for example,
+ * a fault written as an object literal). Throwing from a projection would leave
+ * the request without a reply (a JSON-RPC WebSocket client would wait forever),
+ * so the projection logs it and answers with the masked internal error instead,
+ * keeping the request's id.
+ */
+export function wireSafeFault(fault: OperationFault): OperationFault {
+  const field = findNonFiniteFaultField(fault);
+  if (field === undefined) return fault;
+  console.error(
+    `[weft] The ${fault.code} fault's data.${field} is not a finite number (${String(faultDataValue(fault, field))}); answering with an internal error instead.`,
+  );
+  return { code: 'EngineFailure', message: 'internal error', data: {} };
 }
 
 /**

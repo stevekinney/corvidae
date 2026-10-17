@@ -55,7 +55,7 @@ A REST fault response carries the status from the table above and a JSON body sh
 
 `currentRevision` is what tells a client to re-read and retry rather than treat the fault as a plain `Conflict`. `retryAfterSeconds` is also emitted as the REST `Retry-After` header, rounded up to whole seconds. A value that is absent, negative, or not finite is dropped from the header, the REST body, and the JSON-RPC payload alike. `Unavailable.reason` is the only field of these four codes sent over JSON-RPC alone; REST omits it as internal detail.
 
-The in-process rate limiter (`serve({ rateLimit })`) answers in the same shape. When a key is over budget, the middleware responds `429` with the `RateLimited` body `{ "error": "Too Many Requests", "data": { "retryAfterSeconds": <n> } }`, the matching `Retry-After` header, and `X-RateLimit-Limit` and `X-RateLimit-Remaining`. It does so because the limiter knows when the window resets.
+The in-process rate limiter (`serve({ rateLimit })`) answers in the same shape. When a key is over budget, the middleware responds `429` with the `RateLimited` body `{ "error": "Too Many Requests", "data": { "retryAfterSeconds": <n> } }`, the matching `Retry-After` header, and `X-RateLimit-Limit` and `X-RateLimit-Remaining`. It does so because the limiter knows when the window resets. The generated OpenAPI document lists `429` only on operations that declare `RateLimited`; it does not add the middleware's `429` to every route, so a client of a server configured with `rateLimit` should expect it on any authenticated route.
 
 `EngineFailure` is masked: its body is exactly `{ "error": "Internal server error" }` with status 500, regardless of any route override.
 
