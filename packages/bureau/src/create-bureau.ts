@@ -1775,6 +1775,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // attribution deliberately outlives that release, since `eventHistory`'s
   // principal gate reads it.
   const runAttribution = new Map<string, RunAttribution>();
+  /**
+   * COR-1380 — the session incarnation each run was saved into at dispatch,
+   * or recovered against. A run-ownership restore writes only into that
+   * incarnation, never into a session deleted and recreated under the same
+   * id, where the run's owner would otherwise become a co-owner of a session
+   * they never touched. Cleared with `runAttribution` in `deleteRun`.
+   */
+  const runSessionIncarnations = new Map<string, string>();
   // COR-424 — the run-creation command ledger, in the same store as this
   // bureau's sessions. Receipts promise that a retry after a restart finds
   // the original run, so the ledger exists only where a restart can recover
@@ -4053,6 +4061,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const steeringKv = durableSteeringStore();
       const steeringSession =
         steeringKv === undefined ? undefined : await runtime.sessionStore?.load(sessionId);
+      if (savedAsRunning) runSessionIncarnations.set(runId, savedAsRunning.incarnation);
       if (
         steeringKv !== undefined &&
         (steeringSession === undefined ||
@@ -4791,6 +4800,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     if (!liveFramesSubscribed) bootFrameRunIds.add(runId);
+    if (steeringIncarnation !== undefined) runSessionIncarnations.set(runId, steeringIncarnation);
 
     const recoveredRun = reattachDurableActiveRun(
       {
@@ -6262,8 +6272,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     });
     const sessionId = getRunSessionIdentifier(runState);
     const ownerPrincipal = runAttribution.get(id)?.principal;
+    const ownerIncarnation = runSessionIncarnations.get(id);
     runSessionIdentifiers.delete(runState.activeRun);
     runAttribution.delete(id);
+    runSessionIncarnations.delete(id);
     runRequestContexts.delete(id);
     for (const reviewId of pendingApprovalOverrides.keys()) {
       if (reviewId.startsWith(`approval:${id}:`)) pendingApprovalOverrides.delete(reviewId);
@@ -6279,7 +6291,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runToolboxesByRunId.delete(id);
     humanWaitParkBaseline.delete(id);
     store.removeRun(id);
-    await restoreRunOwnershipAfterEvent(id, sessionId, ownerPrincipal);
+    await restoreRunOwnershipAfterEvent(id, sessionId, ownerPrincipal, ownerIncarnation);
     if (sessionId) {
       await retryRunDeletionPersistenceWrite('pending-approvals', sessionId, `approval:${id}:`);
       await retryRunDeletionPersistenceWrite('resolved-reviews', sessionId, `approval:${id}:`);
@@ -6377,15 +6389,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /**
    * COR-1380 — `session` with `runId`'s `lastRunOwningPrincipals` entry set
    * back to `principal`, or `undefined` (no write) when the session is gone,
-   * the entry is already present, or the map is present but malformed: a
-   * corrupted map fails closed here as it does for the pruner.
+   * is no longer the `incarnation` the entry belonged to (deleted and
+   * recreated under the same id), the entry is already present, or the map
+   * is present but malformed: a corrupted map fails closed here as it does
+   * for the pruner.
    */
   function withRestoredRunOwner(
     session: AgentSession | undefined,
     runId: string,
     principal: string,
+    incarnation: string,
   ): AgentSession | undefined {
-    if (!session) return undefined;
+    if (!session || session.incarnation !== incarnation) return undefined;
     const owners = session.metadata['lastRunOwningPrincipals'];
     if (owners !== undefined && !isPlainAuthorityRecord(owners)) return undefined;
     if (owners?.[runId] !== undefined) return undefined;
@@ -6408,23 +6423,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * the acting principal of the deletion or review. Attempted once; a
    * failure is diagnosed and never thrown, so the caller's own outcome
    * stands. No-op without a durable event producer, a session store, a
-   * principal, or a session id.
+   * principal, a session id, or the incarnation the run was saved into.
    */
   async function restoreRunOwnershipAfterEvent(
     runId: string,
     sessionId: string,
     principal: string | undefined,
+    incarnation: string | undefined,
   ): Promise<void> {
     const producer = durableEventProducerInstance;
     const sessionStore = runtime.sessionStore;
-    if (!producer || !sessionStore || principal === undefined || !sessionId) return;
+    if (
+      !producer ||
+      !sessionStore ||
+      principal === undefined ||
+      incarnation === undefined ||
+      !sessionId
+    ) {
+      return;
+    }
     try {
       await producer.waitForActiveWrites({ kind: 'run', id: runId });
       const session = await sessionStore.load(sessionId);
-      if (!withRestoredRunOwner(session, runId, principal)) return;
+      if (!withRestoredRunOwner(session, runId, principal, incarnation)) return;
       await sessionStore.update(
         sessionId,
-        (fresh) => withRestoredRunOwner(fresh, runId, principal),
+        (fresh) => withRestoredRunOwner(fresh, runId, principal, incarnation),
         { refreshActivity: false },
       );
     } catch (error: unknown) {
@@ -6570,8 +6594,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *   commit and its restore can leave the entry absent.
    * - An instance with no in-memory principal for the run (its
    *   `runAttribution` was rehydrated at boot after the entry was already
-   *   pruned), or a run recorded without a principal, gets no writer-side
-   *   restore.
+   *   pruned), or no recorded session incarnation for it (a run recovered
+   *   without one), or a run recorded without a principal, gets no
+   *   writer-side restore.
+   * - A restore never writes into a session deleted and recreated under the
+   *   same id since the entry was removed: both sides fence on the session
+   *   incarnation the entry belonged to.
    * - `run.completed`, `run.error`, `run.aborted`, `run.tripwire`,
    *   `schedule.completed`, and `schedule.failed` events under a run owner
    *   have no writer-side restore; they are covered only by the exclusion
@@ -6622,11 +6650,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // Reset on every updater attempt, so a conflict retry restores only
         // what the attempt that committed actually deleted.
         let deletedOwners: Record<string, string> = {};
+        let prunedIncarnation = '';
         await sessionStore.update(
           summary.id,
           async (session) => {
             deletedOwners = {};
             if (!session) return undefined;
+            prunedIncarnation = session.incarnation;
             const currentOwners = session.metadata['lastRunOwningPrincipals'];
             if (!isPlainAuthorityRecord(currentOwners)) return undefined;
 
@@ -6734,7 +6764,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             (session) => {
               let restored = session;
               for (const [runId, principal] of toRestore) {
-                restored = withRestoredRunOwner(restored, runId, principal) ?? restored;
+                restored =
+                  withRestoredRunOwner(restored, runId, principal, prunedIncarnation) ?? restored;
               }
               return restored === session ? undefined : restored;
             },
@@ -10231,6 +10262,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       review.runId,
       review.sessionId,
       runAttribution.get(review.runId)?.principal,
+      runSessionIncarnations.get(review.runId),
     );
   }
 
@@ -10322,6 +10354,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       review.runId,
       review.sessionId,
       runAttribution.get(review.runId)?.principal,
+      runSessionIncarnations.get(review.runId),
     );
   }
 
