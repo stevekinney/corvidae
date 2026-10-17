@@ -27,7 +27,10 @@
     scopes?: readonly AuthorizationScope[];
   }
 
-  let { client, scopes = ['reviews:read', 'events:read'] }: ReviewsTestHarnessProps = $props();
+  let {
+    client,
+    scopes = ['reviews:read', 'reviews:write', 'events:read'],
+  }: ReviewsTestHarnessProps = $props();
 
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },

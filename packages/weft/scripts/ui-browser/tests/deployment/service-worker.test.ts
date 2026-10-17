@@ -23,8 +23,9 @@
  * `ServiceWorkerHandlerOptions` subset (`authContext`, `workflowEventFeed`,
  * `fleetEventFeed`, `acquireWorkflowStreamConnection`). The suite below
  * proves both sides through the REAL `setupServiceWorker` fetch listener:
- *   1. Omitting `handlerOptions` keeps the old default — anonymous
- *      principal, so a `scoped` operation (fleet SSE, `events:read`) 401s.
+ *   1. Omitting `handlerOptions` runs requests as the `unauthenticated-local`
+ *      principal (every scope), so a `scoped` operation is served; an explicit
+ *      `authContext` replaces that default.
  *   2. Passing `handlerOptions: { authContext, fleetEventFeed }` makes the
  *      same fleet SSE request stream — genuinely incrementally (a
  *      live-appended event arrives over the open Response body without the
@@ -144,6 +145,8 @@ describe('Service Worker mode — REST via a real setupServiceWorker() fetch lis
           register: (engine) => {
             engine.register(pingWorkflow);
           },
+          // No `handlerOptions`: the listener runs as the local user, who holds
+          // `workflows:read`, which `weft.workflows.get` requires.
         });
 
         const handle = await setup.engine.start('deployment-sw-ping', { message: 'hello' });
@@ -151,7 +154,7 @@ describe('Service Worker mode — REST via a real setupServiceWorker() fetch lis
         // `pathPrefix` defaults to `/weft/`; the fetch listener strips it
         // before delegating, so `/weft/v1/workflows/:id` reaches
         // `handleRequest` as `/v1/workflows/:id` — `weft.workflows.get`'s
-        // REST binding (`access: 'public'`, confirmed in
+        // REST binding (`workflows:read`, confirmed in
         // `src/server/operations/get-workflow.ts`).
         const response = await dispatchFetch(
           new Request(`https://sw-host.example/weft/v1/workflows/${handle.id}`),
@@ -171,27 +174,58 @@ describe('Service Worker mode — REST via a real setupServiceWorker() fetch lis
     }
   });
 
-  it('stays anonymous without handlerOptions — a scoped operation (fleet SSE) 401s', async () => {
+  it('runs as the local user without handlerOptions — a scoped operation (workflow read) is served', async () => {
     const { scope, dispatchFetch } = createFakeServiceWorkerScope();
     const { storage, cleanup } = createIndexedDbStorage();
 
     try {
       await withFakeSelf(scope, async () => {
-        await setupServiceWorker({ storage });
+        const setup = await setupServiceWorker({
+          storage,
+          register: (engine) => {
+            engine.register(pingWorkflow);
+          },
+        });
+        const handle = await setup.engine.start('deployment-sw-ping', { message: 'hello' });
 
-        const response = await dispatchFetch(
-          new Request('https://sw-host.example/weft/v1/events/sse', {
-            headers: { Accept: 'text/event-stream' },
-          }),
+        // `weft.workflows.get` declares `workflows:read`. With no `authContext`,
+        // `setupServiceWorker` defaults to `unauthenticatedLocalAuthContext()`:
+        // a same-origin Service Worker has one caller, who holds every scope.
+        const served = await dispatchFetch(
+          new Request(`https://sw-host.example/weft/v1/workflows/${handle.id}`),
         );
+        expect(served.status).toBe(200);
 
-        // `weft.events.sse` declares `access: { kind: 'scoped', scopes: {
-        // anyOf: ['events:read'] } }` (`src/server/operations/fleet-events-sse.ts`).
-        // With no `handlerOptions`, `buildFetchListener` still delegates
-        // with no `authContext`, so `authContextToPrincipal(undefined)`
-        // resolves to `anonymousPrincipal()` — the pre-0.16 default is
-        // unchanged for callers that omit the option.
-        expect(response.status).toBe(401);
+        const principal = await dispatchFetch(
+          new Request('https://sw-host.example/weft/v1/principal'),
+        );
+        expect(await principal.json()).toMatchObject({ method: 'unauthenticated-local' });
+      });
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('an explicit authContext replaces the local default — a scope it lacks is refused', async () => {
+    const { scope, dispatchFetch } = createFakeServiceWorkerScope();
+    const { storage, cleanup } = createIndexedDbStorage();
+
+    try {
+      await withFakeSelf(scope, async () => {
+        await setupServiceWorker({
+          storage,
+          handlerOptions: {
+            authContext: {
+              method: 'api-key',
+              principal: principalFromApiKey({ subject: 'sw-narrow', scopes: ['system:read'] }),
+            },
+          },
+        });
+
+        const refused = await dispatchFetch(
+          new Request('https://sw-host.example/weft/v1/workflows/any-workflow'),
+        );
+        expect(refused.status).toBe(403);
       });
     } finally {
       cleanup();

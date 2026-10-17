@@ -21,7 +21,8 @@ export const getUpdateResultOperation = defineOperation({
   tags: ['Updates'],
   inputSchema: getUpdateResultInput,
   outputSchema: getUpdateResultOutput,
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:read'] } },
+  discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host: engine }): Promise<GetUpdateResultOutput> => {

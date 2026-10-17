@@ -8,11 +8,11 @@
    * `ReviewsInbox`'s "Decided" state and `ReviewsArchive` both read the same
    * `completed` query, so TanStack Query dedupes the network request.
    *
-   * `submitReviewDecisionOperation` is `access: { kind: 'public' }` (no
-   * scope required to SUBMIT a decision — verified against
-   * `weft/src/server/operations/submit-review-decision.ts`), so only the
-   * list query is scope-gated here; the decision form itself is never
-   * disabled for a missing scope.
+   * `submitReviewDecisionOperation` requires `reviews:write` (verified
+   * against `weft/src/server/operations/submit-review-decision.ts`). This
+   * route gates the list query on `reviews:read`; the decision form
+   * (`review-decision-form.svelte`) disables its own submit button without
+   * `reviews:write`.
    */
   import { EmptyState, Segment, SegmentedControl } from '@lostgradient/cinder';
   import Lock from '@lucide/svelte/icons/lock';

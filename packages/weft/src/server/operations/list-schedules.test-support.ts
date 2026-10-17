@@ -23,7 +23,7 @@ export function createListSchedulesApiKeyAuthContext() {
   return {
     authContext: {
       method: 'api-key' as const,
-      principal: principalFromApiKey({ subject: 'test', scopes: [] }),
+      principal: principalFromApiKey({ subject: 'test', scopes: ['schedules:read'] }),
     },
   };
 }

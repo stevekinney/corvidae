@@ -55,6 +55,10 @@ export type JwtClaims = Record<string, unknown>;
  * implement their own local admission gate; public transports should not mint
  * it for remote callers.
  *
+ * The `'unauthenticated-local'` principal is what a `serve()` with no
+ * authentication gives every request: nobody is identified, so it is the
+ * single-user model, and it holds every built-in scope.
+ *
  * @example
  * ```ts
  * import { principalFromApiKey, type AuthenticatedPrincipal } from '@lostgradient/weft';
@@ -67,7 +71,7 @@ export type JwtClaims = Record<string, unknown>;
  * ```
  */
 export type AuthenticatedPrincipal = {
-  readonly method: 'jwt' | 'api-key' | 'mtls' | 'stdio-local';
+  readonly method: 'jwt' | 'api-key' | 'mtls' | 'stdio-local' | 'unauthenticated-local';
   readonly scopes: ReadonlySet<AuthorizationScope>;
   readonly claims: JwtClaims | undefined;
   readonly subject: string | undefined;
@@ -244,9 +248,113 @@ export function principalFromStdioLocal(): AuthenticatedPrincipal {
   };
 }
 
+/**
+ * Build the principal a `serve()` with no authentication gives every request.
+ * The server identifies no caller, so every caller is the one local user and
+ * holds every built-in scope (`AUTHORIZATION_SCOPES`), so every built-in
+ * operation is reachable. It holds no package scope, as with `stdio-local`, so
+ * an operation that needs a scope registered through `additionalScopes` still
+ * needs a credential holding it. The same instance is returned every time, so
+ * two requests compare as the same owner.
+ *
+ * @example
+ * ```ts
+ * import { principalFromUnauthenticatedLocal } from '@lostgradient/weft';
+ *
+ * const principal = principalFromUnauthenticatedLocal();
+ * console.log(principal.method); // 'unauthenticated-local'
+ * console.log(principal.hasScope('workflows:write')); // true
+ * ```
+ */
+export function principalFromUnauthenticatedLocal(): AuthenticatedPrincipal {
+  return UNAUTHENTICATED_LOCAL;
+}
+
 const ANONYMOUS: UnauthenticatedPrincipal = { method: 'unauthenticated' };
+
+/**
+ * Whether a principal was rebuilt from a credential the caller presented on
+ * this request and names that caller distinctly (`jwt`, `api-key`, or `mtls`
+ * with a subject of its own). Only such a principal separates one caller from
+ * another by itself.
+ *
+ * `stdio-local` and `unauthenticated-local` are minted by the host and shared
+ * by every caller it serves, an anonymous principal is a shared singleton, and
+ * the shared fallback subjects ({@link SHARED_API_KEY_SUBJECT},
+ * {@link SHARED_MUTUAL_TLS_SUBJECT}) are common to every static key or mTLS
+ * caller, so none of them is credential-backed: a session bound to one needs a
+ * per-session secret of its own to be isolated from other callers.
+ */
+export function isCredentialBacked(principal: Principal): boolean {
+  if (!CREDENTIAL_BACKED_METHODS.has(principal.method)) return false;
+  if (!isAuthenticated(principal)) return false;
+  // Every static API key, and every mTLS caller admitted without a distinct
+  // identity, maps to one shared fallback subject, so two such callers present
+  // the same principal. Presenting a credential does not separate them.
+  // A credential with no subject names nobody, so it separates nobody either.
+  return principal.subject !== undefined && !SHARED_FALLBACK_SUBJECTS.has(principal.subject);
+}
+
+/**
+ * An allowlist, so a principal method added later is treated as host-minted
+ * (and its sessions keep needing a token) until someone decides otherwise.
+ */
+const CREDENTIAL_BACKED_METHODS: ReadonlySet<Principal['method']> = new Set([
+  'jwt',
+  'api-key',
+  'mtls',
+]);
+
+/** The subject every statically configured API key is admitted under. */
+export const SHARED_API_KEY_SUBJECT = 'api-key-caller';
+
+/** The subject an mTLS caller is admitted under when it carries no identity of its own. */
+export const SHARED_MUTUAL_TLS_SUBJECT = 'mtls-caller';
+
+const SHARED_FALLBACK_SUBJECTS: ReadonlySet<string> = new Set([
+  SHARED_API_KEY_SUBJECT,
+  SHARED_MUTUAL_TLS_SUBJECT,
+]);
 
 /** Type guard separating authenticated from unauthenticated principals. */
 export function isAuthenticated(principal: Principal): principal is AuthenticatedPrincipal {
   return principal.method !== 'unauthenticated';
 }
+
+/**
+ * A scope set that refuses to change. `Object.freeze` cannot freeze a `Set`'s
+ * contents, and the local principal is one shared instance whose `scopes` are
+ * public, so a caller that widened or emptied the set would change what every
+ * request is allowed to do.
+ */
+class ImmutableScopeSet extends Set<AuthorizationScope> {
+  constructor(scopes: Iterable<AuthorizationScope>) {
+    super();
+    for (const scope of scopes) super.add(scope);
+  }
+
+  override add(): never {
+    throw new TypeError('The scopes of the unauthenticated-local principal are immutable');
+  }
+
+  override delete(): never {
+    throw new TypeError('The scopes of the unauthenticated-local principal are immutable');
+  }
+
+  override clear(): never {
+    throw new TypeError('The scopes of the unauthenticated-local principal are immutable');
+  }
+}
+
+const UNAUTHENTICATED_LOCAL: AuthenticatedPrincipal = (() => {
+  const scopes = new ImmutableScopeSet(AUTHORIZATION_SCOPES);
+  return Object.freeze({
+    method: 'unauthenticated-local' as const,
+    scopes,
+    claims: undefined,
+    subject: 'unauthenticated-local',
+    hasScope(scope: AuthorizationScope) {
+      return scopes.has(scope);
+    },
+  });
+})();

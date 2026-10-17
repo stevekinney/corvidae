@@ -415,7 +415,7 @@ describe('serve', () => {
         expect.stringContaining('server started with NO authentication'),
       );
       expect(warningSpy).toHaveBeenCalledWith(
-        expect.stringContaining('all non-public operations are publicly accessible'),
+        expect.stringContaining('every built-in operation is accessible to any caller'),
       );
     } finally {
       warningSpy.mockRestore();
@@ -462,7 +462,7 @@ describe('serve', () => {
       server = serveTestServer({
         engine,
         port: 0,
-        auth: { apiKeys: ['test-key'] },
+        auth: { apiKeys: ['test-key'], defaultApiKeyScopes: ['workflows:read'] },
         publicOrigin: 'http://localhost',
       });
 
@@ -480,7 +480,11 @@ describe('serve', () => {
     console.warn = () => {};
     const apiKey = 'mcp-discovery-live-key';
     engine = createEngine();
-    server = serveTestServer({ engine, port: 0, auth: { apiKeys: [apiKey] } });
+    server = serveTestServer({
+      engine,
+      port: 0,
+      auth: { apiKeys: [apiKey], defaultApiKeyScopes: ['workflows:read'] },
+    });
 
     try {
       const discoveryResponse = await fetch(`${server.url}/.well-known/mcp.json`);
@@ -531,9 +535,14 @@ describe('serve', () => {
       expect(initializeResponse.status).toBe(200);
       const sessionId = initializeResponse.headers.get('Mcp-Session-Id');
       expect(sessionId).toBeTruthy();
+      // A static API key is the shared `api-key-caller`, so the session needs
+      // its continuation token as well as the credential.
+      const sessionToken = initializeResponse.headers.get('Mcp-Session-Token');
+      expect(sessionToken).toBeTruthy();
 
       const sessionHeaders = {
         ...authorization,
+        'Mcp-Session-Token': sessionToken!,
         accept: 'application/json, text/event-stream',
         'content-type': 'application/json',
         'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION,
@@ -979,6 +988,7 @@ describe('serve', () => {
       port: 0,
       auth: {
         apiKeys: ['weft_key_valid123456789012345678901'],
+        defaultApiKeyScopes: ['workflows:read'],
       },
     });
 
@@ -1022,6 +1032,7 @@ describe('serve', () => {
       port: 0,
       auth: {
         apiKeys: ['weft_key_valid123456789012345678901'],
+        defaultApiKeyScopes: ['workflows:read'],
       },
     });
 
@@ -1287,6 +1298,7 @@ describe('serve', () => {
       port: 0,
       auth: {
         apiKeys: ['weft_key_valid123456789012345678901'],
+        defaultApiKeyScopes: ['workflows:read'],
       },
     });
 

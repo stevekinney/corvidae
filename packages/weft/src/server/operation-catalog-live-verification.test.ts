@@ -59,7 +59,7 @@ async function issueJwt(): Promise<string> {
   return signJWT(
     {
       sub: 'operation-catalog-user',
-      scope: ['system:admin', 'workflows:read', 'workflows:write'].join(' '),
+      scope: ['signals:write', 'system:admin', 'workflows:read', 'workflows:write'].join(' '),
     },
     TEST_SECRET,
   );

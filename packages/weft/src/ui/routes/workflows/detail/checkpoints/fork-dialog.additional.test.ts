@@ -12,8 +12,9 @@ function allScopesPrincipal(): Principal {
   return { scopes: AUTHORIZATION_SCOPES, unauthenticatedAccess: null };
 }
 
+/** Holds `workflows:write`, which the fork needs, but not the `workflows:read` the revision listing needs. */
 function deniedPrincipal(): Principal {
-  return { scopes: [], unauthenticatedAccess: null };
+  return { scopes: ['workflows:write'], unauthenticatedAccess: null };
 }
 
 function newQueryClient(): QueryClient {

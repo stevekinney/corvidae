@@ -1,6 +1,11 @@
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
 import { WeftError } from '../core/weft-error.ts';
-import { anonymousPrincipal, isAuthenticated, type Principal } from '../server/principal.ts';
+import {
+  anonymousPrincipal,
+  isAuthenticated,
+  isCredentialBacked,
+  type Principal,
+} from '../server/principal.ts';
 import { dispatchMcpMessage } from './dispatcher.ts';
 import {
   accepts,
@@ -193,11 +198,9 @@ function resolvePostSession(
   if (shouldCreateSessionForPost(message, sessionHeader)) {
     const principal = principalFromOptions(options);
     try {
-      return {
-        session: options.sessionManager.create(principal),
-        createdSession: true,
-        principal,
-      };
+      const session = options.sessionManager.create(principal);
+      bindSharedKeySession(session, principal, options.request.headers);
+      return { session, createdSession: true, principal };
     } catch (error) {
       if (error instanceof McpSessionLimitExceededError) {
         return new Response(error.message, { status: 429, headers: noStoreHeaders() });
@@ -211,7 +214,7 @@ function resolvePostSession(
   if (session === undefined) return new Response('MCP session not found', { status: 404 });
   const principal = principalFromOptions(options);
   if (
-    !isAuthorizedForSession(session, principal, sessionTokenFromHeaders(options.request.headers))
+    !isAuthorizedForSession(session, principal, continuationCredentials(options.request.headers))
   ) {
     return new Response('Forbidden', { status: 403, headers: noStoreHeaders() });
   }
@@ -237,7 +240,7 @@ function handleMcpGet(options: McpHttpRequestOptions): Response {
   if (session === undefined) return new Response('MCP session not found', { status: 404 });
   const principal = principalFromOptions(options);
   if (
-    !isAuthorizedForSession(session, principal, sessionTokenFromHeaders(options.request.headers))
+    !isAuthorizedForSession(session, principal, continuationCredentials(options.request.headers))
   ) {
     return new Response('Forbidden', { status: 403, headers: noStoreHeaders() });
   }
@@ -285,7 +288,7 @@ function handleMcpDelete(options: McpHttpRequestOptions): Response {
     !isAuthorizedForSession(
       session,
       principalFromOptions(options),
-      sessionTokenFromHeaders(options.request.headers),
+      continuationCredentials(options.request.headers),
     )
   ) {
     return new Response('Forbidden', { status: 403, headers: noStoreHeaders() });
@@ -296,6 +299,42 @@ function handleMcpDelete(options: McpHttpRequestOptions): Response {
 
 function sessionIdFromHeaders(headers: Headers): string | null {
   return headers.get('Mcp-Session-Id') ?? headers.get('MCP-Session-Id');
+}
+
+/** What a continuation request presents to prove it belongs to a session. */
+type ContinuationCredentials = {
+  readonly sessionToken: string | null;
+  readonly apiKey: string | null;
+};
+
+function continuationCredentials(headers: Headers): ContinuationCredentials {
+  return { sessionToken: sessionTokenFromHeaders(headers), apiKey: presentedApiKey(headers) };
+}
+
+/**
+ * The API key a request presents, read the way the authenticator reads it:
+ * `X-API-Key`, else the bearer token of `Authorization`.
+ */
+function presentedApiKey(headers: Headers): string | null {
+  const headerKey = headers.get('X-API-Key');
+  if (headerKey) return headerKey;
+  const authorization = headers.get('Authorization');
+  return authorization?.startsWith('Bearer ') ? authorization.slice(7) : null;
+}
+
+/**
+ * Bind a new session to the API key its client presented when its principal is
+ * the shared static-key subject. Every static key maps to that one subject, so
+ * the principal alone cannot tell two keys apart; the key's digest can. A
+ * standard MCP client sends no `Mcp-Session-Token` but presents the same key on
+ * every request, so this keeps it working while a different key is refused. An
+ * mTLS caller is not bound: the client certificate is not visible on the
+ * `Request`, so its sessions keep requiring the token.
+ */
+function bindSharedKeySession(session: McpSession, principal: Principal, headers: Headers): void {
+  if (principal.method !== 'api-key' || isCredentialBacked(principal)) return;
+  const apiKey = presentedApiKey(headers);
+  if (apiKey !== null) session.bindCredential(apiKey);
 }
 
 function sessionTokenFromHeaders(headers: Headers): string | null {
@@ -342,22 +381,30 @@ function principalFromOptions(options: McpHttpRequestOptions): Principal {
  * Returns `true` when the caller may drive, read, or terminate the session.
  *
  * Two layers: the caller's principal must own the session ({@link isSameSessionOwner}),
- * AND — for sessions whose principal carries no distinguishing secret (anonymous
- * sessions under `authRequired: false`) — the caller must echo the per-session
- * continuation token. Anonymous principals are the shared singleton, so the owner
- * check alone admits any anonymous caller; the token is the per-session secret that
- * actually isolates them. Authenticated callers already re-present their credential
- * each request (it is what rebuilds the principal), so they are isolated without a
- * token and are not gated on one — keeping their session binding unchanged.
+ * AND the caller must prove it is the client that created it:
+ *
+ * - Callers holding a credential that names them distinctly (`jwt`, or an
+ *   `api-key` or `mtls` principal with a subject of its own) re-present it on
+ *   every request, which is what rebuilds the principal, so they need nothing more.
+ * - A session bound to a shared static-key subject (`api-key-caller`) admits a
+ *   request that presents the same API key (compared by digest) or the
+ *   per-session `Mcp-Session-Token`. A standard MCP client sends the key on every
+ *   request and no token, so the digest keeps it working, while a different key
+ *   holding only the session id is refused.
+ * - Every other session (anonymous, `unauthenticated-local`, `stdio-local`, and
+ *   the shared `mtls-caller`, whose certificate is not visible on the `Request`)
+ *   shares its principal with every caller, so only the token separates them.
  */
 function isAuthorizedForSession(
   session: McpSession,
   caller: Principal,
-  presentedToken: string | null,
+  presented: ContinuationCredentials,
 ): boolean {
   if (!isSameSessionOwner(session.principal, caller)) return false;
-  if (isAuthenticated(session.principal)) return true;
-  return presentedToken !== null && presentedToken === session.token;
+  if (isCredentialBacked(session.principal)) return true;
+  if (presented.sessionToken !== null && presented.sessionToken === session.token) return true;
+  // A shared static-key session also admits the key it was bound to.
+  return session.isBoundToCredential(presented.apiKey);
 }
 
 function isSameSessionOwner(left: Principal, right: Principal): boolean {

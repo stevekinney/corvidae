@@ -25,8 +25,10 @@
  */
 
 import {
+  assertFiniteFaultData,
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
+  usableRetryAfterSeconds,
   type OperationFault,
 } from './operation-fault.ts';
 
@@ -37,6 +39,7 @@ export type JsonRpcError = {
 };
 
 export function faultToJsonRpcError(fault: OperationFault): JsonRpcError {
+  assertFiniteFaultData(fault);
   const code = FAULT_CODE_TO_JSON_RPC_CODE[fault.code];
   const httpStatus = FAULT_CODE_TO_HTTP_STATUS[fault.code];
   // Envelope keys are written LAST so a future payload field accidentally
@@ -80,6 +83,18 @@ const FAULT_DATA_EXTRACTORS: FaultExtractors = {
   SubscriptionOverflow: dataForSubscriptionOverflow,
   InvalidParams: dataForInvalidParams,
   MethodNotFound: (data) => ({ method: data.method }),
+  StaleRevision: (data) => ({
+    currentRevision: data.currentRevision,
+    ...(data.expectedRevision === undefined ? {} : { expectedRevision: data.expectedRevision }),
+  }),
+  RateLimited: (data) =>
+    filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
+  Unavailable: (data) =>
+    filterDefined({
+      reason: data.reason,
+      retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds),
+    }),
+  UnsupportedCapability: (data) => ({ capability: data.capability }),
 };
 
 function extractFaultDataPayload(fault: OperationFault): Record<string, unknown> {

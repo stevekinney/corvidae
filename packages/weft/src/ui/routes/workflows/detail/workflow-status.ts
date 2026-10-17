@@ -127,12 +127,11 @@ export function isTerminalStatus(status: WorkflowStatus): boolean {
 }
 
 /**
- * Contextual header actions this track owns (plan T2.4). `client.get()`
- * catalog verification (weft v0.11.0
- * `src/server/operations/single-workflow-control-operation.ts`): cancel,
- * suspend, resume, and force-timeout all declare `access: { kind: 'public'
- * }` — no scope is required server-side, so these are never scope-gated in
- * the UI (a scope tooltip here would be fabricated). `suspend` is a no-op on
+ * Contextual header actions this track owns (plan T2.4). Cancel, suspend,
+ * resume, and force-timeout are built by
+ * `src/server/operations/single-workflow-control-operation.ts`, and each
+ * declares `workflows:write` (`ACTION_REQUIRED_SCOPE`), so the header disables
+ * them for a principal without it. `suspend` is a no-op on
  * a non-running workflow per its own description, so it's only offered while
  * `running`; `resume` targets the interactive `suspended` case.
  */
@@ -147,6 +146,9 @@ const ACTIONS_BY_STATUS: Readonly<Record<WorkflowStatus, readonly WorkflowContex
   cancelled: [],
   'timed-out': [],
 };
+
+/** The scope the server requires to run any contextual action (`weft.workflows.{cancel,suspend,resume,timeout}`). */
+export const ACTION_REQUIRED_SCOPE = 'workflows:write';
 
 export function availableActions(status: WorkflowStatus): readonly WorkflowContextualAction[] {
   return ACTIONS_BY_STATUS[status];

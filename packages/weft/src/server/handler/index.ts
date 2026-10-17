@@ -25,7 +25,10 @@ import {
 import { matchDirectRoute } from './route-matching.ts';
 import type { LiveEventStreamContext } from './sse-route-dispatch.ts';
 
-export { authContextToPrincipal } from './auth-context-principal.ts';
+export {
+  authContextToPrincipal,
+  unauthenticatedLocalAuthContext,
+} from './auth-context-principal.ts';
 export {
   createOperationHandlerAuthenticator,
   type OperationHandlerAuthenticate,

@@ -43,6 +43,9 @@ import { isWeftErrorCode, type WeftErrorCode } from '../core/weft-error.ts';
 /** Transport identifiers as seen by `executeOperation`. */
 export type TransportKind = 'http-rest' | 'jsonRpcHttp' | 'jsonRpcWebSocket' | 'jsonRpcStdio';
 
+/** A revision identifier: a counter or an opaque token. */
+export type RevisionToken = string | number;
+
 /** A flattened zod issue, kept loose so we don't pin a zod version here. */
 export type FlattenedZodIssue = {
   readonly path: ReadonlyArray<string | number>;
@@ -122,6 +125,31 @@ export type OperationFault =
       data: { issues: ReadonlyArray<FlattenedZodIssue>; weftCode?: WeftErrorCode };
     }
   | { code: 'MethodNotFound'; message: string; data: { method: string } }
+  // The caller's optimistic-concurrency precondition no longer holds: the
+  // resource has moved past the revision the caller expected. Distinct from
+  // `Conflict` so a client can re-read and retry without parsing a reason.
+  | {
+      code: 'StaleRevision';
+      message: string;
+      data: {
+        expectedRevision?: RevisionToken | undefined;
+        // Required: it is what tells a client to re-read and retry, rather than
+        // treat the fault as a plain `Conflict`.
+        currentRevision: RevisionToken;
+      };
+    }
+  // A rate or quota limit was hit. `retryAfterSeconds` is emitted as the REST
+  // `Retry-After` header and mirrored into `data` on both transports.
+  | { code: 'RateLimited'; message: string; data: { retryAfterSeconds?: number | undefined } }
+  // The server (or a dependency) cannot serve the request right now but may
+  // later. `reason` is JSON-RPC only; REST discloses just `retryAfterSeconds`.
+  | {
+      code: 'Unavailable';
+      message: string;
+      data: { reason?: string | undefined; retryAfterSeconds?: number | undefined };
+    }
+  // The server understands the request but lacks a capability it needs.
+  | { code: 'UnsupportedCapability'; message: string; data: { capability: string } }
   | { code: 'EngineFailure'; message: string; data: Record<string, never> };
 
 /**
@@ -143,6 +171,10 @@ export const FAULT_CODE_TO_HTTP_STATUS: Readonly<Record<FaultCode, number>> = Ob
   SubscriptionOverflow: 500,
   InvalidParams: 400,
   MethodNotFound: 404,
+  StaleRevision: 409,
+  RateLimited: 429,
+  Unavailable: 503,
+  UnsupportedCapability: 501,
   EngineFailure: 500,
 });
 
@@ -249,6 +281,18 @@ const REST_FAULT_DATA_EXTRACTORS: RestFaultDataExtractors = {
           })),
         },
   MethodNotFound: (data) => ({ method: data.method }),
+  // Typed data lets a REST client tell "re-read and retry" (`StaleRevision`)
+  // from a plain `Conflict`, and learn when to retry. `Unavailable.reason` is
+  // internal detail and stays JSON-RPC only.
+  StaleRevision: (data) => ({
+    currentRevision: data.currentRevision,
+    ...(data.expectedRevision === undefined ? {} : { expectedRevision: data.expectedRevision }),
+  }),
+  RateLimited: (data) =>
+    filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
+  Unavailable: (data) =>
+    filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
+  UnsupportedCapability: (data) => ({ capability: data.capability }),
 };
 
 /**
@@ -277,16 +321,76 @@ export function shapeRestFaultAsJson(
   fault: OperationFault,
   options: RestFaultResponseOptions = {},
 ): Response {
+  assertFiniteFaultData(fault);
   const body = shapeRestFaultBody(fault, options.message);
   const status =
     fault.code === 'EngineFailure'
       ? 500
       : (options.status ?? FAULT_CODE_TO_HTTP_STATUS[fault.code]);
 
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const retryAfter = retryAfterHeaderValue(fault);
+  if (retryAfter !== undefined) headers['Retry-After'] = retryAfter;
+
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
+/**
+ * The `Retry-After` delay-seconds value for a fault that carries
+ * `retryAfterSeconds`. A non-finite or negative value is dropped rather than
+ * emitted as a malformed header, and a fraction rounds up so a client never
+ * retries earlier than the server asked.
+ */
+function retryAfterHeaderValue(fault: OperationFault): string | undefined {
+  if (fault.code !== 'RateLimited' && fault.code !== 'Unavailable') return undefined;
+  const seconds = usableRetryAfterSeconds(fault.data.retryAfterSeconds);
+  return seconds === undefined ? undefined : String(Math.ceil(seconds));
+}
+
+/**
+ * Refuse a fault whose `data` carries a number that JSON cannot represent.
+ * `NaN` and `Infinity` serialize as `null`, so a `StaleRevision` with a
+ * non-finite `currentRevision`, for one, would put a `null` on the wire where
+ * the schema requires a revision. That is a programming error in whoever built
+ * the fault, so it throws rather than producing a body that violates the
+ * contract. The one exception is `retryAfterSeconds`, a hint a client can do
+ * without: {@link usableRetryAfterSeconds} drops it from every projection.
+ *
+ * Called by the fault factories, and again by both wire projections as the
+ * boundary check, so a fault written as an object literal is covered too.
+ */
+export function assertFiniteFaultData(fault: OperationFault): void {
+  for (const [field, value] of Object.entries(fault.data)) {
+    if (field === 'retryAfterSeconds') continue;
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+      throw new TypeError(
+        `The ${fault.code} fault's data.${field} must be a finite number, got ${String(value)}`,
+      );
+    }
+  }
+}
+
+/**
+ * Build a `StaleRevision` fault. Throws a `TypeError` when `currentRevision` or
+ * `expectedRevision` is a non-finite number ({@link assertFiniteFaultData}).
+ */
+export function staleRevisionFault(
+  message: string,
+  data: Extract<OperationFault, { code: 'StaleRevision' }>['data'],
+): Extract<OperationFault, { code: 'StaleRevision' }> {
+  const fault = { code: 'StaleRevision', message, data } as const;
+  assertFiniteFaultData(fault);
+  return fault;
+}
+
+/**
+ * A `retryAfterSeconds` a client can act on: finite and not negative. `NaN`
+ * and `Infinity` do not survive JSON (they serialize as `null`), and a
+ * negative delay is meaningless, so every wire projection drops them.
+ */
+export function usableRetryAfterSeconds(seconds: number | undefined): number | undefined {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return undefined;
+  return seconds;
 }
 
 /** Build the audited canonical REST body. */
@@ -348,4 +452,8 @@ export const FAULT_CODE_TO_JSON_RPC_CODE: Readonly<Record<FaultCode, number>> = 
   EngineFailure: -32099,
   InvalidParams: -32602,
   MethodNotFound: -32601,
+  StaleRevision: -32026,
+  RateLimited: -32027,
+  Unavailable: -32028,
+  UnsupportedCapability: -32029,
 });

@@ -298,4 +298,17 @@ describe('OverviewTab', () => {
     expect(getByText(/agent gpt-5/)).not.toBeNull();
     expect(getByText(/tools 2/)).not.toBeNull();
   });
+
+  test('disables adding and removing tags when the principal lacks tags:write', async () => {
+    const { getByRole } = render(OverviewTabHarness, {
+      props: {
+        client: baseClient(),
+        workflow: workflow({ tags: ['vip'] }),
+        tagGate: { disabled: true, title: 'Requires tags:write' },
+      },
+    });
+
+    expect(getByRole('button', { name: 'Remove tag vip' }).hasAttribute('disabled')).toBe(true);
+    expect(getByRole('button', { name: 'Add tag' }).hasAttribute('disabled')).toBe(true);
+  });
 });

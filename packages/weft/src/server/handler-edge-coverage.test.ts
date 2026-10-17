@@ -5,7 +5,8 @@ import { StartWorkflowValidationError } from '../core/start-workflow-validation.
 import type { WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { handleRequest, type HandlerOptions } from './handler.ts';
+import { type HandlerOptions } from './handler.ts';
+import { handleRequestAsLocalUser as handleRequest } from './local-user-request.test-support.ts';
 import { principalFromApiKey } from './principal.ts';
 
 const echoWorkflow = workflow({ name: 'echo' }).execute(async function* (
@@ -21,7 +22,7 @@ function apiKeyAuth(): HandlerOptions {
       method: 'api-key' as const,
       principal: principalFromApiKey({
         subject: 'test',
-        scopes: ['workflows:read', 'workflows:admin'],
+        scopes: ['workflows:read', 'workflows:admin', 'schedules:read'],
       }),
     },
   };

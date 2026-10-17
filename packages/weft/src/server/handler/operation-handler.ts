@@ -65,6 +65,11 @@ export type OperationHandlerOptions<Host> = {
    * Resolves the caller. Omitted, every request is anonymous and only
    * `public` operations pass. See `createOperationHandlerAuthenticator` for
    * Weft's API-key and JWT schemes, including package `additionalScopes`.
+   *
+   * A host with exactly one caller, such as an embedded single-user app, can
+   * admit every request as the `unauthenticated-local` principal, which holds
+   * every built-in scope, as `serve()` with no `auth` does:
+   * `authenticate: async () => unauthenticatedLocalAuthContext()`.
    */
   readonly authenticate?: OperationHandlerAuthenticate;
   /** Same validation and defaults as `ServeOptions.cors`; omitted means no CORS headers. */

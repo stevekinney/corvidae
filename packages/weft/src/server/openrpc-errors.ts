@@ -54,6 +54,17 @@ export const InvalidParamsDataSchema = z.object({
     .readonly(),
 });
 export const MethodNotFoundDataSchema = z.object({ method: z.string() });
+const RevisionTokenSchema = z.union([z.string(), z.number()]);
+export const StaleRevisionDataSchema = z.object({
+  expectedRevision: RevisionTokenSchema.optional(),
+  currentRevision: RevisionTokenSchema,
+});
+export const RateLimitedDataSchema = z.object({ retryAfterSeconds: z.number().optional() });
+export const UnavailableDataSchema = z.object({
+  reason: z.string().optional(),
+  retryAfterSeconds: z.number().optional(),
+});
+export const UnsupportedCapabilityDataSchema = z.object({ capability: z.string() });
 export const EngineFailureDataSchema = z.object({});
 
 const FAULT_DATA_SCHEMAS: Record<FaultCode, z.ZodType> = {
@@ -69,6 +80,10 @@ const FAULT_DATA_SCHEMAS: Record<FaultCode, z.ZodType> = {
   SubscriptionOverflow: SubscriptionOverflowDataSchema,
   InvalidParams: InvalidParamsDataSchema,
   MethodNotFound: MethodNotFoundDataSchema,
+  StaleRevision: StaleRevisionDataSchema,
+  RateLimited: RateLimitedDataSchema,
+  Unavailable: UnavailableDataSchema,
+  UnsupportedCapability: UnsupportedCapabilityDataSchema,
   EngineFailure: EngineFailureDataSchema,
 };
 

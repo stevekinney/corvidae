@@ -17,16 +17,15 @@
  *   let public operations through unauthenticated, this test fails and the
  *   `'warn'` banner would start lying — hence pinning it here rather than
  *   trusting the prose.
- * - **no auth configured** — the anonymous caller is served, reporting
- *   `method: 'unauthenticated'` with zero scopes.
+ * - **no auth configured** — every caller is the local user, reporting
+ *   `method: 'unauthenticated-local'` holding every scope, with the warn banner.
  *
  * `port: 0` gives each server an ephemeral port so these can run alongside
  * the other integration suites without collisions.
  */
-import { Engine, HttpClient, serve } from '@lostgradient/weft';
+import { AUTHORIZATION_SCOPES, Engine, HttpClient, serve } from '@lostgradient/weft';
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 
-import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { workflows } from '../fixtures/workflows.ts';
 import { resolvePrincipal, type AuthorizationScope } from './scopes.svelte.ts';
 
@@ -106,21 +105,22 @@ describe('resolvePrincipal against a real auth-configured serve()', () => {
 });
 
 describe('resolvePrincipal against a real serve() with no auth configured', () => {
-  test('the anonymous caller is served, with zero scopes and the warn banner', async () => {
+  test('the local user is served, with every scope and the warn banner', async () => {
     const client = new HttpClient({ baseUrl: anonymousBaseUrl });
 
     const principal = await resolvePrincipal(client);
 
-    expect(principal).toEqual({ scopes: [], unauthenticatedAccess: 'warn' });
+    expect(principal?.unauthenticatedAccess).toBe('warn');
+    expect([...(principal?.scopes ?? [])].toSorted()).toEqual([...AUTHORIZATION_SCOPES].toSorted());
   });
 
-  test('zero scopes is truthful: a scoped operation really does reject this caller', async () => {
-    // The console renders scope-gated surfaces disabled-with-reason off the
-    // empty scope set above. That is only honest if the operations actually
-    // refuse — assert it rather than assuming, so a future weft that grants
-    // anonymous callers real scopes surfaces here as a contradiction.
+  test('every scope is truthful: a scoped operation really does serve this caller', async () => {
+    // The console enables scope-gated surfaces off the full scope set above.
+    // That is only honest if the operations actually answer — assert it
+    // rather than assuming, so a server that stops granting the local user
+    // its scopes surfaces here as a contradiction.
     const client = new HttpClient({ baseUrl: anonymousBaseUrl });
 
-    expect(await throwingRejectionOf(client.operations['weft.system.registry']({}))).toThrow();
+    expect(await client.operations['weft.system.registry']({})).toBeDefined();
   });
 });

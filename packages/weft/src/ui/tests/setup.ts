@@ -115,6 +115,14 @@ function setupHappyDom(): void {
 // files race to dynamically import the same module at module-init).
 setupHappyDom();
 
+// KaTeX, which Cinder loads, warns "doesn't work in quirks mode" the first time
+// it loads in a document without a doctype, and a test document has none.
+// Report standards mode so the warning (a console defect) never fires.
+Object.defineProperty(globalThis.document, 'compatMode', {
+  value: 'CSS1Compat',
+  configurable: true,
+});
+
 await plugin(sveltePlugin());
 
 let cleanupRegistered = false;
