@@ -33,3 +33,7 @@ The wrapper exposes data attributes consumers can target:
 ## Not for people
 
 `Image` does not render initials and has no concept of identity. For person-shaped thumbnails with initials fallback, use `Avatar`.
+
+## Fit and size
+
+`fit` and `size` are presentational only: they set `object-fit` and the wrapper's dimensions through the `data-cinder-fit` and `data-cinder-size` attributes and change neither the accessible name nor the fallback behavior. A `fit` of `none` or `contain` can leave empty space inside the box, so keep `alt` describing the whole image rather than the visible region.

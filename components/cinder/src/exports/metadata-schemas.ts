@@ -9,6 +9,7 @@ export { default as alertSchema } from '../components/alert/alert.schema.ts';
 export { default as approvalCardSchema } from '../components/approval-card/approval-card.schema.ts';
 export { default as areaChartSchema } from '../components/area-chart/area-chart.schema.ts';
 export { default as aspectRatioSchema } from '../components/aspect-ratio/aspect-ratio.schema.ts';
+export { default as audioPlayerSchema } from '../components/audio-player/audio-player.schema.ts';
 export { default as autocompleteSchema } from '../components/autocomplete/autocomplete.schema.ts';
 export { default as avatarGroupSchema } from '../components/avatar-group/avatar-group.schema.ts';
 export { default as avatarSchema } from '../components/avatar/avatar.schema.ts';
@@ -197,6 +198,7 @@ export { default as tooltipSchema } from '../components/tooltip/tooltip.schema.t
 export { default as transferListSchema } from '../components/transfer-list/transfer-list.schema.ts';
 export { default as treeItemSchema } from '../components/tree-item/tree-item.schema.ts';
 export { default as treeSchema } from '../components/tree/tree.schema.ts';
+export { default as videoPlayerSchema } from '../components/video-player/video-player.schema.ts';
 export { default as virtualListSchema } from '../components/virtual-list/virtual-list.schema.ts';
 export { default as visuallyHiddenSchema } from '../components/visually-hidden/visually-hidden.schema.ts';
 export { default as waveformSchema } from '../components/waveform/waveform.schema.ts';

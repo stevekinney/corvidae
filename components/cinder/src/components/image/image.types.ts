@@ -1,5 +1,11 @@
 import type { Snippet } from 'svelte';
 import type { HTMLImgAttributes } from 'svelte/elements';
+/** Values accepted by `fit`. */
+export type ImageFit = 'contain' | 'cover' | 'fill' | 'none' | 'scale-down';
+
+/** Values accepted by `size`. */
+export type ImageSize = 'icon' | 'avatar' | 'small' | 'medium' | 'large' | 'header';
+
 /**
  * Props for the Image component.
  *
@@ -37,6 +43,18 @@ export type ImageProps = Omit<
    * stable while the image loads.
    */
   ratio?: string;
+  /**
+   * How the image fills its box, mapped onto CSS `object-fit`. Omitted, the
+   * image covers the box (`cover`).
+   */
+  fit?: ImageFit;
+  /**
+   * Token-based dimensions. `icon` and `avatar` are squares; `small`,
+   * `medium`, and `large` set the width and let `ratio` or the image's own
+   * proportions set the height; `header` spans the container at a banner
+   * height. Omitted, the image keeps its natural, container-driven size.
+   */
+  size?: ImageSize;
   /** Loading strategy. Default `lazy`. Override to `eager` for above-the-fold images. */
   loading?: 'lazy' | 'eager';
   /** Decoding hint. Default `async`. */
