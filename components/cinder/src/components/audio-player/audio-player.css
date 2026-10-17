@@ -1,0 +1,16 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-audio-player {
+    display: grid;
+    gap: var(--cinder-space-2);
+    max-inline-size: 100%;
+  }
+
+  .cinder-audio-player__media {
+    display: none;
+  }
+
+  .cinder-audio-player__controls {
+    inline-size: 100%;
+  }
+}

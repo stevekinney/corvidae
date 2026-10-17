@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "audio-player",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Basic audio player",
+      "description": "Play, pause, and seek from the media controls. Only https, http, and blob sources load.",
+      "code": "<script lang=\"ts\">\n  import { AudioPlayer } from '@lostgradient/cinder';\n</script>\n\n<AudioPlayer src=\"https://example.com/media/briefing.mp3\" label=\"Daily briefing\" />\n"
+    },
+    {
+      "id": "unavailable",
+      "title": "Unavailable source",
+      "description": "A source whose scheme is not https, http, or blob never loads and renders the unavailable controls.",
+      "code": "<script lang=\"ts\">\n  import { AudioPlayer } from '@lostgradient/cinder';\n</script>\n\n<AudioPlayer src=\"data:text/html,unsupported\" label=\"Blocked source\" />\n"
+    }
+  ]
+}

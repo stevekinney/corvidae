@@ -19,7 +19,7 @@ export type MediaControlsProps = Omit<
   /** Controls are unavailable (e.g. media source missing). @default false */
   unavailable?: boolean;
   /** Progress value between 0 and 1. Omit to hide the progress bar. */
-  progress?: number;
+  progress?: number | undefined;
   /** Human-readable accessible label for the progress bar. @default "Playback progress" */
   progressLabel?: string;
   /** Layout mode: `compact` renders icon-only, `expanded` renders icon+label. @default "compact" */
@@ -30,6 +30,11 @@ export type MediaControlsProps = Omit<
   onPause?: () => void;
   /** Called when the user triggers replay. */
   onReplay?: () => void;
+  /**
+   * Called with the requested position (0 to 1) when the user drags or keys the seek slider.
+   * Providing it turns the progress bar into a seek slider; it needs `progress` to render.
+   */
+  onSeek?: (progress: number) => void;
   /** Additional class names merged with `.cinder-media-controls`. */
   class?: string;
 };
@@ -80,4 +85,6 @@ export interface MediaControlsSchemaProps {
   onPause?: () => void;
   /** Called when the replay action is triggered. */
   onReplay?: () => void;
+  /** Called with the requested position (0 to 1) when the seek slider changes. */
+  onSeek?: (progress: number) => void;
 }

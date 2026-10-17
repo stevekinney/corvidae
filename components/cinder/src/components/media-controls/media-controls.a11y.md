@@ -24,6 +24,8 @@ Keep focus indicators visible. If you wrap or restyle MediaControls, verify the 
 
 The primary button stays in the tab order and reports `aria-disabled="true"` rather than the native `disabled` attribute while `loading` or `unavailable` is true. Native `disabled` removes an element from the accessibility tree, which would also hide `aria-busy` and the "Loading playback controls" / "Playback unavailable" label from assistive technology at the exact moment they matter most. The click handler still no-ops in these states, so the button is inert without being invisible to screen readers.
 
+When `onSeek` is provided together with `progress`, the progress bar becomes a native range input named by `progressLabel`, so the arrow, Home, End, and Page keys seek without extra handlers.
+
 ## Names, roles, and state
 
 Use the public props and documented examples to provide accessible names, descriptions, current state, disabled state, selection state, or value text. Do not rely on color, icon shape, placeholder text, or layout position as the only way to communicate meaning.
