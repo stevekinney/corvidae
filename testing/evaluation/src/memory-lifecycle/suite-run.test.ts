@@ -1,3 +1,4 @@
+import { outcomeOf, rethrow } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
 import { MEMORY_BASELINES } from './baselines/adapter';
@@ -10,9 +11,43 @@ import {
   type TrialResult,
 } from './suite-run';
 
+// The first caller of the shared run pays for it (a whole deterministic suite run), which a
+// loaded host stretches past Bun's five-second per-test clock. Resolve it at module scope, which
+// has no per-test timeout, so no test pays for it.
+await suiteRun();
+
 function isForumTrial(trial: TrialResult): boolean {
   return trial.scenarioId === 'unverified-forum-procedure';
 }
+
+// The stochastic lane runs repeated trials, twice here, which a loaded host stretches past Bun's
+// five-second per-test clock. It runs at module scope, where Bun applies no per-test timeout, and
+// its test rethrows the outcome.
+const stochasticTrials = await outcomeOf(async () => {
+  const seen: string[] = [];
+  const run = await runMemoryLifecycleSuite({
+    lane: 'stochastic',
+    baselines: ['raw-log-search'],
+    seed: 'fixed-recorded-configuration',
+    onArtifact: (artifact) => {
+      seen.push(artifact.id);
+    },
+  });
+  const [raw] = run.baselines;
+  expect(run.ablations).toEqual([]);
+  expect(raw!.configuration.repetitions).toBe(5);
+  expect(raw!.trials).toHaveLength(5 * memoryLifecycleSuite().scenarios.length);
+  expect(seen).toEqual(raw!.artifacts.map((artifact) => artifact.id));
+  expect(seen[0]).toBe('stochastic.raw-log-search.ship-after-moves.1');
+  const again = await runMemoryLifecycleSuite({
+    lane: 'stochastic',
+    baselines: ['raw-log-search'],
+    seed: 'fixed-recorded-configuration',
+  });
+  expect(again.baselines[0]!.artifacts.map((artifact) => artifact.digest)).toEqual(
+    raw!.artifacts.map((artifact) => artifact.digest),
+  );
+});
 
 describe('runMemoryLifecycleSuite', () => {
   test('runs every scenario against all four baselines under one envelope', async () => {
@@ -148,31 +183,8 @@ describe('runMemoryLifecycleSuite', () => {
     );
   });
 
-  test('runs repeated, recorded trials in the stochastic lane and hands each artifact over', async () => {
-    const seen: string[] = [];
-    const run = await runMemoryLifecycleSuite({
-      lane: 'stochastic',
-      baselines: ['raw-log-search'],
-      seed: 'fixed-recorded-configuration',
-      onArtifact: (artifact) => {
-        seen.push(artifact.id);
-      },
-    });
-    const [raw] = run.baselines;
-    expect(run.ablations).toEqual([]);
-    expect(raw!.configuration.repetitions).toBe(5);
-    expect(raw!.trials).toHaveLength(5 * memoryLifecycleSuite().scenarios.length);
-    expect(seen).toEqual(raw!.artifacts.map((artifact) => artifact.id));
-    expect(seen[0]).toBe('stochastic.raw-log-search.ship-after-moves.1');
-    const again = await runMemoryLifecycleSuite({
-      lane: 'stochastic',
-      baselines: ['raw-log-search'],
-      seed: 'fixed-recorded-configuration',
-    });
-    expect(again.baselines[0]!.artifacts.map((artifact) => artifact.digest)).toEqual(
-      raw!.artifacts.map((artifact) => artifact.digest),
-    );
-  });
+  test('runs repeated, recorded trials in the stochastic lane and hands each artifact over', () =>
+    rethrow(stochasticTrials));
 
   test('records a trial whose subject could not run as an infrastructure failure, with no artifact', async () => {
     const run = await runMemoryLifecycleSuite({
