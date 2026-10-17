@@ -4,10 +4,8 @@
  * files this audit targets. Raw string matching is too brittle — `postcss` is
  * already a dependency used by `scripts/check-component-css.ts`, so reuse it.
  *
- * The Stylelint plugin (`cinder/no-focus-visible-colored-outline`) handles
- * forward enforcement; these tests pin the specific selectors required by the
- * task plan and prove the `box-shadow` half of the recipe, which the lint rule
- * does not enforce by itself.
+ * These tests pin the specific selectors required by the task plan and prove
+ * the `box-shadow` half of the recipe.
  */
 
 import { readFileSync } from 'node:fs';
@@ -16,13 +14,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'bun:test';
 
 import { parse as parsePostcss, type Rule } from 'postcss';
-import stylelint from 'stylelint';
 
-// Shared helper — same forced-colors detection the Stylelint plugin uses.
-// Keeping it in one place means the two enforcement layers can't disagree
-// about whether a rule is inside `@media (forced-colors: active)`.
-import { isUnderForcedColors } from '../../scripts/stylelint/focus-ring-helpers.mjs';
 import { DEFAULT_CHART_FOCUS_RING_STROKE_PADDING } from '../_internal/chart/chart-focus-ring.ts';
+import { isUnderForcedColors } from './focus-ring-helpers.ts';
 
 function loadCss(relativePath: string): string {
   const fullPath = fileURLToPath(new URL(relativePath, import.meta.url));
@@ -54,9 +48,7 @@ const capabilityGateCss = loadCss('../components/capability-gate/capability-gate
 // Button is deliberately NOT added in their place. This list pins the canonical
 // transparent-outline + var(--_cinder-focus-ring-shadow) recipe from issue #460's
 // remediation set; Button diverges on purpose, composing its ring from
-// var(--_cinder-button-ring, ...) so variants can retint it. Forward enforcement for
-// every component, Button included, is the Stylelint plugin's job
-// (cinder/no-focus-visible-colored-outline), as this file's header notes.
+// var(--_cinder-button-ring, ...) so variants can retint it.
 const mediaControlsCss = loadCss('../components/media-controls/media-controls.css');
 const permissionMatrixCss = loadCss('../components/permission-matrix/permission-matrix.css');
 const shareCardCss = loadCss('../components/share-card/share-card.css');
@@ -798,44 +790,6 @@ describe('SVG chart focus-ring recipe', () => {
 // review-editor and markdown-editor CSS, which moved to
 // @lostgradient/editor (see documentation/decisions/package-boundaries.md) and no
 // longer lives in this package's source tree.
-
-describe('focus-ring lint rule gates at error severity', () => {
-  // Proves the enforcement promotion: a colored outline-only :focus-visible must
-  // be reported by stylelint as an ERROR (not a warning) when linted through the
-  // repo's real .stylelintrc.json. Uses the stylelint Node API with `configFile`
-  // (the same deterministic approach as the dedicated plugin test) rather than
-  // spawning a `bunx stylelint` subprocess — the subprocess form re-resolved a
-  // stylelint without the local plugin in CI and produced empty output.
-  const ruleName = 'cinder/no-focus-visible-colored-outline';
-  const projectConfig = fileURLToPath(new URL('../../../../.stylelintrc.json', import.meta.url));
-
-  async function lintWithProjectConfig(css: string) {
-    return stylelint.lint({ code: css, configFile: projectConfig });
-  }
-
-  function warningsFor(result: Awaited<ReturnType<typeof stylelint.lint>>) {
-    return result.results.flatMap((file) => file.warnings ?? []).filter((w) => w.rule === ruleName);
-  }
-
-  test('a colored outline-only focus-visible rule is reported as an error', async () => {
-    const result = await lintWithProjectConfig(
-      '.x:focus-visible { outline: 2px solid var(--cinder-accent-solid); }\n',
-    );
-    const hits = warningsFor(result);
-    expect(hits.length).toBeGreaterThan(0);
-    // The gate is the SEVERITY: at `severity: warning` this would be a warning,
-    // not an error, and would not block CI.
-    expect(hits[0]?.severity).toBe('error');
-    expect(result.errored).toBe(true);
-  });
-
-  test('the shared transparent-outline + box-shadow recipe passes', async () => {
-    const result = await lintWithProjectConfig(
-      '.x:focus-visible { outline: var(--cinder-ring-width) solid transparent; box-shadow: var(--_cinder-focus-ring-shadow); }\n',
-    );
-    expect(warningsFor(result)).toEqual([]);
-  });
-});
 
 // ============================================================================
 // Issue #460 — forced-colors fallbacks for components with box-shadow focus

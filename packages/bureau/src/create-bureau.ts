@@ -1775,6 +1775,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // attribution deliberately outlives that release, since `eventHistory`'s
   // principal gate reads it.
   const runAttribution = new Map<string, RunAttribution>();
+  /**
+   * COR-1380 — the session incarnation each run was saved into at dispatch,
+   * or recovered against. A run-ownership restore writes only into that
+   * incarnation, never into a session deleted and recreated under the same
+   * id, where the run's owner would otherwise become a co-owner of a session
+   * they never touched. Cleared with `runAttribution` in `deleteRun`.
+   */
+  const runSessionIncarnations = new Map<string, string>();
   // COR-424 — the run-creation command ledger, in the same store as this
   // bureau's sessions. Receipts promise that a retry after a restart finds
   // the original run, so the ledger exists only where a restart can recover
@@ -4053,6 +4061,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const steeringKv = durableSteeringStore();
       const steeringSession =
         steeringKv === undefined ? undefined : await runtime.sessionStore?.load(sessionId);
+      if (savedAsRunning) runSessionIncarnations.set(runId, savedAsRunning.incarnation);
       if (
         steeringKv !== undefined &&
         (steeringSession === undefined ||
@@ -4791,6 +4800,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     if (!liveFramesSubscribed) bootFrameRunIds.add(runId);
+    if (steeringIncarnation !== undefined) runSessionIncarnations.set(runId, steeringIncarnation);
 
     const recoveredRun = reattachDurableActiveRun(
       {
@@ -6261,8 +6271,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       principal: 'system:run-deletion',
     });
     const sessionId = getRunSessionIdentifier(runState);
+    const ownerPrincipal = runAttribution.get(id)?.principal;
+    const ownerIncarnation = runSessionIncarnations.get(id);
     runSessionIdentifiers.delete(runState.activeRun);
     runAttribution.delete(id);
+    runSessionIncarnations.delete(id);
     runRequestContexts.delete(id);
     for (const reviewId of pendingApprovalOverrides.keys()) {
       if (reviewId.startsWith(`approval:${id}:`)) pendingApprovalOverrides.delete(reviewId);
@@ -6278,6 +6291,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runToolboxesByRunId.delete(id);
     humanWaitParkBaseline.delete(id);
     store.removeRun(id);
+    await restoreRunOwnershipAfterEvent(id, sessionId, ownerPrincipal, ownerIncarnation);
     if (sessionId) {
       await retryRunDeletionPersistenceWrite('pending-approvals', sessionId, `approval:${id}:`);
       await retryRunDeletionPersistenceWrite('resolved-reviews', sessionId, `approval:${id}:`);
@@ -6370,6 +6384,81 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function listDurableRuns(filter?: ListFilter, requestOptions?: ListOptions) {
     if (!runtime.durable) return undefined;
     return runtime.durable.engine.list(filter, requestOptions);
+  }
+
+  /**
+   * COR-1380 — `session` with `runId`'s `lastRunOwningPrincipals` entry set
+   * back to `principal`, or `undefined` (no write) when the session is gone,
+   * is no longer the `incarnation` the entry belonged to (deleted and
+   * recreated under the same id), the entry is already present, or the map
+   * is present but malformed: a corrupted map fails closed here as it does
+   * for the pruner.
+   */
+  function withRestoredRunOwner(
+    session: AgentSession | undefined,
+    runId: string,
+    principal: string,
+    incarnation: string,
+  ): AgentSession | undefined {
+    if (!session || session.incarnation !== incarnation) return undefined;
+    const owners = session.metadata['lastRunOwningPrincipals'];
+    if (owners !== undefined && !isPlainAuthorityRecord(owners)) return undefined;
+    if (owners?.[runId] !== undefined) return undefined;
+    return {
+      ...session,
+      metadata: {
+        ...session.metadata,
+        lastRunOwningPrincipals: { ...owners, [runId]: principal },
+      },
+    };
+  }
+
+  /**
+   * COR-1380 — the writer side of the both-sides-verify rule
+   * `pruneStaleRunOwnership` documents. Called right after `deleteRun()` or a
+   * `review.*` transition dispatches its durable event for `runId`: waits
+   * for that write to settle, then reads the run's ownership entry, and
+   * writes it back if a pruner on any instance removed it in the meantime.
+   * `principal` is always the run owner's (from `runAttribution`), never
+   * the acting principal of the deletion or review. Attempted once; a
+   * failure is diagnosed and never thrown, so the caller's own outcome
+   * stands. No-op without a durable event producer, a session store, a
+   * principal, a session id, or the incarnation the run was saved into.
+   */
+  async function restoreRunOwnershipAfterEvent(
+    runId: string,
+    sessionId: string,
+    principal: string | undefined,
+    incarnation: string | undefined,
+  ): Promise<void> {
+    const producer = durableEventProducerInstance;
+    const sessionStore = runtime.sessionStore;
+    if (
+      !producer ||
+      !sessionStore ||
+      principal === undefined ||
+      incarnation === undefined ||
+      !sessionId
+    ) {
+      return;
+    }
+    try {
+      await producer.waitForActiveWrites({ kind: 'run', id: runId });
+      const session = await sessionStore.load(sessionId);
+      if (!withRestoredRunOwner(session, runId, principal, incarnation)) return;
+      await sessionStore.update(
+        sessionId,
+        (fresh) => withRestoredRunOwner(fresh, runId, principal, incarnation),
+        { refreshActivity: false },
+      );
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Run-ownership restore failed for run "${runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
   }
 
   /**
@@ -6469,18 +6558,53 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * instance's write that lands before the refresh runs, since
    * `refreshRetainedRunOwnerIds` reads the same shared feed every writer
    * appends to, and under `'workflow-lease'` it leaves alone any run whose
-   * claim is live anywhere. Two states remain unprotected, because no
-   * primitive here spans the fleet feed and the session store in one atomic
-   * operation, and `claimHolder` is a point-in-time read, not a lock:
+   * claim is live anywhere. No primitive here spans the fleet feed and the
+   * session store in one atomic operation, and `claimHolder` is a
+   * point-in-time read, not a lock, so an event for a pruned run can still
+   * land after the delete (COR-1380): a terminal run whose claim was already
+   * released can still be deleted (`run.removed`) or have a review resolved
+   * (`review.*`) by an instance that holds it in memory, and another
+   * instance's event can commit between this attempt's refresh and its
+   * session write.
    *
-   * - A terminal run whose claim was already released (Weft releases it
-   *   during terminal settlement, before Bureau's terminal persistence), on
-   *   another instance that still holds it in memory. That instance can
-   *   still record a `run.removed` (`deleteRun()`) or `review.*` event for
-   *   it after this pass prunes the entry; only that instance's own
-   *   signals 2 and 3 protect it.
-   * - Another instance's event for a candidate run that commits after this
-   *   attempt's refresh and before its session write.
+   * Both sides therefore verify after they write. Whichever read comes
+   * second sees the other side's write, so one of them restores the entry
+   * with an idempotent union write (`{ refreshActivity: false }`, and
+   * nothing when the entry is already back or the map is malformed):
+   *
+   * - The pruner deletes, then reads the feed again
+   *   (`refreshRetainedRunOwnerIds`) once per committed delete, and puts
+   *   back, with the principal it just removed, every deleted run that is
+   *   now retained, whatever kind of event made it so. A rejected restore
+   *   write is diagnosed for that session and the pass continues.
+   * - The event writer (`deleteRun()`, and every `review.*` transition
+   *   through `recordReviewDecision` and `recordReviewStatusTransition`)
+   *   records its event, waits for that write to settle, then reads the
+   *   run's entry and restores it with the run owner's principal from
+   *   `runAttribution` (`restoreRunOwnershipAfterEvent`).
+   *
+   * Guarantee: once a pass and a `deleteRun()` or `review.*` transition on
+   * the same run have both settled, the run's entry exists whenever a
+   * retained `run.removed` or `review.*` event for it exists, provided the
+   * recording instance holds the run's principal in memory. Limits that
+   * remain:
+   *
+   * - The entry is briefly absent between a prune commit and its restore.
+   * - A pass that crashes, or whose post-delete refresh rejects, between its
+   *   commit and its restore can leave the entry absent.
+   * - An instance with no in-memory principal for the run (its
+   *   `runAttribution` was rehydrated at boot after the entry was already
+   *   pruned), or no recorded session incarnation for it (a run recovered
+   *   without one), or a run recorded without a principal, gets no
+   *   writer-side restore.
+   * - A restore never writes into a session deleted and recreated under the
+   *   same id since the entry was removed: both sides fence on the session
+   *   incarnation the entry belonged to.
+   * - `run.completed`, `run.error`, `run.aborted`, `run.tripwire`,
+   *   `schedule.completed`, and `schedule.failed` events under a run owner
+   *   have no writer-side restore; they are covered only by the exclusion
+   *   signals above and, when they land before the pruner's re-read, by the
+   *   pruner-side restore.
    */
   async function pruneStaleRunOwnership(): Promise<void> {
     const sessionStore = runtime.sessionStore;
@@ -6523,10 +6647,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // the session is active, so it must not reorder or resurrect an
         // otherwise-inactive session in `listSessions()`'s default sort or
         // `cleanup({ olderThan })`'s age cutoff.
+        // Reset on every updater attempt, so a conflict retry restores only
+        // what the attempt that committed actually deleted.
+        let deletedOwners: Record<string, string> = {};
+        let prunedIncarnation = '';
         await sessionStore.update(
           summary.id,
           async (session) => {
+            deletedOwners = {};
             if (!session) return undefined;
+            prunedIncarnation = session.incarnation;
             const currentOwners = session.metadata['lastRunOwningPrincipals'];
             if (!isPlainAuthorityRecord(currentOwners)) return undefined;
 
@@ -6592,6 +6722,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 const claim = await runtime.durable!.engine.claimHolder(runId);
                 if (claim?.heldByAnyProcess) continue;
               }
+              const deletedPrincipal = nextOwners[runId];
+              if (typeof deletedPrincipal === 'string') deletedOwners[runId] = deletedPrincipal;
               delete nextOwners[runId];
               changed = true;
             }
@@ -6613,6 +6745,40 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           },
           { refreshActivity: false },
         );
+        if (Object.keys(deletedOwners).length === 0) continue;
+
+        // COR-1380: the pruner side of the both-sides-verify rule. Read the
+        // feed again after the delete committed: an event recorded for a
+        // deleted run since this attempt's refresh means the run is still
+        // retained, so its entry goes back with the principal just removed.
+        // A rejected refresh propagates like the in-updater one does.
+        retainedRunOwners =
+          await eventHistoryInstance.refreshRetainedRunOwnerIds(retainedRunOwners);
+        const toRestore = Object.entries(deletedOwners).filter(([runId]) =>
+          retainedRunOwners!.ownerIds.has(runId),
+        );
+        if (toRestore.length === 0) continue;
+        try {
+          await sessionStore.update(
+            summary.id,
+            (session) => {
+              let restored = session;
+              for (const [runId, principal] of toRestore) {
+                restored =
+                  withRestoredRunOwner(restored, runId, principal, prunedIncarnation) ?? restored;
+              }
+              return restored === session ? undefined : restored;
+            },
+            { refreshActivity: false },
+          );
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Run-ownership restore failed for session "${summary.id}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
       }
 
       if (page.length < pageLimit) break;
@@ -8354,17 +8520,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!session || !sessionStoreForInput) {
       return { outcome: 'not-found' };
     }
-    // COR-301: the same live-run-aware checks steering makes. A request
-    // carries no run id, so authorization targets the session's sole live
-    // run, and a session with any live run is not terminal even when a
-    // concurrent run's terminal write was the last to set `lastRunStatus`.
-    const preAdmission = resolveSessionPreAdmission(
-      session.metadata,
+    // COR-301/COR-1569: the same live-run-aware checks steering makes,
+    // across every process sharing this backend. A request carries no run
+    // id, so authorization targets the session's sole live run.
+    const preAdmission = await resolveLiveSessionPreAdmission(
+      sessionId,
+      session,
       request.principal,
-      liveSessionRunIds(sessionId),
     );
-    if (preAdmission === 'not-found') return { outcome: 'not-found' };
-    if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
+    if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
+    if (preAdmission.verdict === 'session-terminal') {
+      return { outcome: 'session-terminal', sessionId };
+    }
 
     const sessionMailbox = getSessionInputMailbox(sessionId);
     const storage = runtime.durableStorage;
@@ -8501,68 +8668,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
     let liveRunIds: string[] = [];
     if (!keyAlreadyBound) {
-      try {
-        const steeringKv = durableSteeringStore();
-        if (steeringKv === undefined) {
-          liveRunIds = liveSessionRunIds(sessionId);
-        } else {
-          // Fold the log first: a run promoted elsewhere whose workflow does
-          // not exist yet is known only from its `promoted` entry, and the
-          // terminal decision below must count it.
-          await enqueueSteering(sessionId, () =>
-            catchUpSteering(steeringKv, sessionId, session.incarnation),
-          );
-          liveRunIds = await liveSessionRunIdsEverywhere(
-            sessionId,
-            session.incarnation,
-            request.runId,
-          );
-        }
-      } catch (error) {
-        // Deleted meanwhile by another process: its log was read mid-deletion.
-        const afterFailure = await runtime.sessionStore?.load(sessionId);
-        if (afterFailure?.incarnation !== session.incarnation) return { outcome: 'not-found' };
-        // A request naming its run sees the failure if it is still authorized
-        // against that run on the session as it stands now.
-        if (request.runId !== undefined) {
-          if (
-            !isSessionAuthorityAuthorized(afterFailure.metadata, request.principal, request.runId)
-          ) {
-            return { outcome: 'not-found' };
-          }
-          throw error;
-        }
-        // An unscoped request's authority depends on which run is live, so a
-        // failed query is masked until this caller is shown to be authorized
-        // against the run this process can see.
-        const localTarget = liveSessionRunIdsOfIncarnation(sessionId, session.incarnation);
-        if (
-          !isSessionAuthorityAuthorized(
-            afterFailure.metadata,
-            request.principal,
-            localTarget.length === 1 ? localTarget[0] : undefined,
-          )
-        ) {
-          return { outcome: 'not-found' };
-        }
-        throw error;
-      }
-      // The live runs were read across awaits that the session itself may
-      // have changed under (a new sole run saved with its own authority), so
-      // the caller is checked against the session as it stands after them.
-      const afterLiveness =
-        durableSteeringStore() === undefined
-          ? session
-          : await runtime.sessionStore?.load(sessionId);
-      if (afterLiveness?.incarnation !== session.incarnation) return { outcome: 'not-found' };
-      const preAdmission = resolveSessionPreAdmission(
-        afterLiveness.metadata,
+      const preAdmission = await resolveLiveSessionPreAdmission(
+        sessionId,
+        session,
         request.principal,
-        liveRunIds,
         request.runId,
       );
-      if (preAdmission === 'not-found') return { outcome: 'not-found' };
-      if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
+      if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
+      if (preAdmission.verdict === 'session-terminal') {
+        return { outcome: 'session-terminal', sessionId };
+      }
+      liveRunIds = preAdmission.liveRunIds;
     }
     // A refusal Bureau decides here, before the gate, is logged like the
     // gate's own refusals on a durable session, so a caller-supplied id
@@ -8844,6 +8960,83 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-301/COR-1569 — the pre-admission verdict (AB-42's order:
+   * authorization, then lifecycle) that steering and session input share,
+   * decided against the session's live runs in every process sharing this
+   * backend. A request without `namedRunId` is authorized against the
+   * session's sole live run, wherever it runs, and a session with any live
+   * run is not terminal, whichever run's terminal write set `lastRunStatus`.
+   * Without a durable steering store, this process's runs are all there are.
+   */
+  async function resolveLiveSessionPreAdmission(
+    sessionId: string,
+    session: AgentSession,
+    principal: string,
+    namedRunId?: string,
+  ): Promise<{
+    verdict: 'not-found' | 'session-terminal' | 'proceed';
+    liveRunIds: string[];
+  }> {
+    const notFound = { verdict: 'not-found' as const, liveRunIds: [] as string[] };
+    let liveRunIds: string[] = [];
+    try {
+      const steeringKv = durableSteeringStore();
+      if (steeringKv === undefined) {
+        liveRunIds = liveSessionRunIds(sessionId);
+      } else {
+        // Fold the log first: a run promoted elsewhere whose workflow does
+        // not exist yet is known only from its `promoted` entry, and the
+        // terminal decision below must count it.
+        await enqueueSteering(sessionId, () =>
+          catchUpSteering(steeringKv, sessionId, session.incarnation),
+        );
+        liveRunIds = await liveSessionRunIdsEverywhere(sessionId, session.incarnation, namedRunId);
+      }
+    } catch (error) {
+      // Deleted meanwhile by another process: its log was read mid-deletion.
+      const afterFailure = await runtime.sessionStore?.load(sessionId);
+      if (afterFailure?.incarnation !== session.incarnation) return notFound;
+      // A request naming its run sees the failure if it is still authorized
+      // against that run on the session as it stands now.
+      if (namedRunId !== undefined) {
+        if (!isSessionAuthorityAuthorized(afterFailure.metadata, principal, namedRunId)) {
+          return notFound;
+        }
+        throw error;
+      }
+      // An unscoped request's authority depends on which run is live, so a
+      // failed query is masked until this caller is shown to be authorized
+      // against the run this process can see.
+      const localTarget = liveSessionRunIdsOfIncarnation(sessionId, session.incarnation);
+      if (
+        !isSessionAuthorityAuthorized(
+          afterFailure.metadata,
+          principal,
+          localTarget.length === 1 ? localTarget[0] : undefined,
+        )
+      ) {
+        return notFound;
+      }
+      throw error;
+    }
+    // The live runs were read across awaits that the session itself may
+    // have changed under (a new sole run saved with its own authority), so
+    // the caller is checked against the session as it stands after them.
+    const afterLiveness =
+      durableSteeringStore() === undefined ? session : await runtime.sessionStore?.load(sessionId);
+    if (afterLiveness?.incarnation !== session.incarnation) return notFound;
+    return {
+      verdict: resolveSessionPreAdmission(
+        afterLiveness.metadata,
+        principal,
+        liveRunIds,
+        namedRunId,
+      ),
+      liveRunIds,
+    };
+  }
+
+  /**
    * This process's running runs of one session incarnation: a run of a
    * deleted incarnation still settling here is not the recreated session's.
    */
@@ -8869,8 +9062,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * The session incarnation's live runs, as far as steering admission needs
-   * to know them, in EVERY process sharing this backend: this process's own
+   * The session incarnation's live runs, as far as steering and session
+   * input admission need to know them, in EVERY process sharing this backend: this process's own
    * running runs, plus non-terminal durable `agentRun` workflows tagged
    * with the session incarnation (`steeringSessionRunTag`), whichever
    * process runs them. A deleted incarnation's still-running workflows carry
@@ -10092,6 +10285,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     } else {
       emitter.dispatch(new ReviewDeniedEvent(review.id, review.runId, principal, review.kind));
     }
+    await restoreRunOwnershipAfterEvent(
+      review.runId,
+      review.sessionId,
+      runAttribution.get(review.runId)?.principal,
+      runSessionIncarnations.get(review.runId),
+    );
   }
 
   /**
@@ -10178,6 +10377,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
         break;
     }
+    await restoreRunOwnershipAfterEvent(
+      review.runId,
+      review.sessionId,
+      runAttribution.get(review.runId)?.principal,
+      runSessionIncarnations.get(review.runId),
+    );
   }
 
   /**

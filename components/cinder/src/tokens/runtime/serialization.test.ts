@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { CorpusEntry } from './corpus.ts';
-import { stylelintDisableCommentFor } from './css-stylelint.ts';
 import { renderBaseDeclarations, renderOverrideDeclarations } from './css-support.ts';
 import { buildTokenRegistryFromIndexes, serializeTokenRegistry } from './registry.ts';
 import { serializeEntryValue } from './value-entry.ts';
@@ -51,12 +50,6 @@ describe('entry serialization', () => {
 });
 
 describe('stylesheet declaration rendering', () => {
-  test('flags the canonical status-mixing formula for the stylelint exemption', () => {
-    const mixed = 'color-mix(in oklch, var(--cinder-danger), transparent 50%)';
-    expect(stylelintDisableCommentFor(mixed)).toContain('stylelint-disable-next-line');
-    expect(stylelintDisableCommentFor('var(--cinder-text-default)')).toBeUndefined();
-  });
-
   test('rejects a base token that declares no custom property', () => {
     const base = new Map([['a', entry('a', { cssProperty: undefined })]]);
     expect(() => renderBaseDeclarations(base, identity)).toThrow(
@@ -68,22 +61,6 @@ describe('stylesheet declaration rendering', () => {
     const overrides = new Map([['a', entry('a')]]);
     expect(() => renderOverrideDeclarations(overrides, new Map(), identity)).toThrow(
       'Override token at "a" has no matching base token with a cssProperty.',
-    );
-  });
-
-  test('adds the stylelint exemption above an override that mixes a status color', () => {
-    const base = new Map([['a', entry('a', { type: 'color' })]]);
-    const overrides = new Map([
-      [
-        'a',
-        entry('a', {
-          type: 'color',
-          cssRecipe: 'color-mix(in oklch, var(--cinder-success), transparent 40%)',
-        }),
-      ],
-    ]);
-    expect(renderOverrideDeclarations(overrides, base, identity)).toContain(
-      'stylelint-disable-next-line',
     );
   });
 });

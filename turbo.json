@@ -226,11 +226,5 @@
       ]
     }
   },
-  "globalDependencies": [
-    ".oxlintrc.json",
-    ".prettierrc.json",
-    ".prettierignore",
-    ".stylelintrc.json",
-    "tsconfig.json"
-  ]
+  "globalDependencies": [".oxlintrc.json", ".prettierrc.json", ".prettierignore", "tsconfig.json"]
 }
