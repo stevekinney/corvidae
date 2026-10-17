@@ -474,3 +474,17 @@ export {
   bureauEventsSubscriptionOperation,
   createBureauEventRegistry,
 } from './bureau-events-operation';
+
+/*
+ * A Bureau as a fetch handler, built on Weft's engine-independent operation
+ * handler. It serves the event feeds and the review queue; protocol adapters
+ * attach through its `mounts` option.
+ */
+export {
+  type BureauHandlerHost,
+  type BureauHandlerSource,
+  type BureauHandlerOptions,
+  createBureauHandler,
+  PUBLISHED_AGENT_NAME_PATTERN,
+} from './http/create-bureau-handler';
+export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
