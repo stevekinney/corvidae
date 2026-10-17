@@ -14,6 +14,7 @@ import {
   queueDirectoryFor,
   reclaimAbandoned,
   runExclusively,
+  withPreflight,
   withTurborepoDefaults,
   type HostLockHolder,
   type OwnerRecord,
@@ -672,5 +673,11 @@ describe('withTurborepoDefaults', () => {
       TURBO_CONCURRENCY: '1',
       PATH: '/bin',
     });
+  });
+});
+
+describe('withPreflight', () => {
+  test('checks the install against the lockfile before the command runs', () => {
+    expect(withPreflight('turbo run lint')).toBe('bun install --frozen-lockfile && turbo run lint');
   });
 });

@@ -178,9 +178,11 @@ describe('internal workspace architecture', () => {
       'bun run lint:root',
       'bun run lint:styles',
       'bun run typecheck:root',
-      // Every workspace task in one turbo run, so lint, type-checks, tests, coverage, and builds
-      // overlap under the memory-scaled concurrency instead of waiting on each other stage by stage.
-      'turbo run lint typecheck test:self test test:browser-fixtures test:coverage build',
+      // Every workspace task in one turbo run, so lint, type-checks, tests, and coverage overlap
+      // under the memory-scaled concurrency instead of waiting on each other stage by stage. The
+      // applications' builds stay out: the playground's static export alone takes about five
+      // minutes, and `bun run build` and the Vercel project's own build still run it.
+      'turbo run lint typecheck test:self test test:browser-fixtures test:coverage',
       // COR-1499: slow correctness tests run serially after the parallel phase, then the duration
       // report (warnings only) reads the fast phase's reports.
       'bun run test:slow',

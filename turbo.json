@@ -48,20 +48,15 @@
       "persistent": true,
       "cache": false
     },
-    "//#preflight": {
-      "cache": false,
-      "inputs": ["bun.lock"]
-    },
     "transit": {
-      "dependsOn": ["//#preflight", "^transit"]
+      "dependsOn": ["^transit"]
     },
     "//#test:self": {
-      "dependsOn": ["//#preflight"],
       "env": ["CODEX_CI", "NODE_ENV"],
       "outputs": ["test-output/junit/self.xml"]
     },
     "//#test:browser-fixtures": {
-      "dependsOn": ["//#preflight", "@lostgradient/browser-fixtures#transit"],
+      "dependsOn": ["@lostgradient/browser-fixtures#transit"],
       "env": ["CODEX_CI", "TMPDIR"],
       "outputs": [
         "scripts/browser-fixtures/.playwright/manifest.json",

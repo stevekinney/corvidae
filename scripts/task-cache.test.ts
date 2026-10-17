@@ -413,15 +413,12 @@ test('the root package depends on no workspace but its compiler configuration', 
   expect(workspaceDependencies).toEqual(['@lostgradient/typescript']);
 });
 
-test('the preflight and global inputs name files, not the whole repository', async () => {
+test('no install task sits in the graph, and global inputs name files, not the whole repository', async () => {
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
-  // Every task depends on `//#preflight`, so its inputs are part of every task key. It never caches,
-  // so it re-verifies the install against the lockfile on every run whatever its inputs are; the
-  // inputs only decide which edits re-key every task. The lockfile changes whenever any dependency
-  // does. A manifest edit that leaves it alone (a script, a field) re-keys only that package and its
-  // dependents, through `transit`, rather than the whole repository. No inputs at all would mean
-  // Turborepo's default, every file in the repository.
-  expect(configuration.tasks['//#preflight']?.inputs).toEqual(['bun.lock']);
+  // The install check runs before turbo, in `scripts/run-exclusively.ts`, not as a task: a task
+  // every other task depends on folds its own `package.json` into every key, so any root manifest
+  // edit would re-run the whole repository.
+  expect(configuration.tasks['//#preflight']).toBeUndefined();
   // A directory glob in `globalDependencies` invalidates every task when anything under it changes.
   for (const dependency of configuration.globalDependencies as string[]) {
     expect(dependency, dependency).not.toContain('*');
@@ -496,10 +493,9 @@ test('the bureau tests hash the runtime contracts guide they compare a fixture w
 /**
  * A static model of turbo's `dependsOn` resolution: it strips a leading `^`
  * and falls back from `<package>#<task>` to the bare `<task>` definition. It
- * proves the wiring in `turbo.json`, not the runtime ordering — a real
- * `turbo run` showing `//:preflight` ahead of the task is what confirms that.
+ * proves the wiring in `turbo.json`, not the runtime ordering.
  */
-function reachesPreflight(
+function reachesTransit(
   taskKey: string,
   tasks: Record<string, { dependsOn?: string[] }>,
   seen = new Set<string>(),
@@ -509,26 +505,28 @@ function reachesPreflight(
   const scope = taskKey.includes('#') ? taskKey.slice(0, taskKey.indexOf('#')) : '';
   for (const declared of tasks[taskKey]?.dependsOn ?? []) {
     const entry = declared.startsWith('^') ? declared.slice(1) : declared;
-    if (entry === '//#preflight') return true;
+    if (entry === 'transit' || entry.endsWith('#transit')) return true;
     const candidates = entry.includes('#') ? [entry] : [`${scope}#${entry}`, entry];
     for (const candidate of candidates) {
-      if (candidate in tasks && reachesPreflight(candidate, tasks, seen)) return true;
+      if (candidate in tasks && reachesTransit(candidate, tasks, seen)) return true;
     }
   }
   return false;
 }
 
-test('every cacheable turbo task reaches the install preflight', async () => {
-  // A cached task that never routes through `//#preflight` can restore a result
-  // computed against a `node_modules` that had drifted from `bun.lock`, because
-  // turbo hashes the lockfile but never the installed tree. A package-specific
-  // override replaces the generic task definition rather than merging with it,
-  // so adding an `env` key to `<package>#test` silently drops the inherited
-  // `dependsOn` — which is exactly how `@lostgradient/weft#test` lost it.
+test('every cacheable package task reaches transit, so its key follows its dependencies', async () => {
+  // `transit` is what folds each upstream workspace's hash into a task's key, so a change to a
+  // library's source re-runs its dependents. A package-specific override replaces the generic task
+  // definition rather than merging with it, so adding an `env` key to `<package>#test` silently
+  // drops the inherited `dependsOn`, which is exactly how `@lostgradient/weft#test` once lost it.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const tasks: Record<string, { cache?: boolean; dependsOn?: string[] }> = configuration.tasks;
   const uncovered = Object.keys(tasks).filter(
-    (key) => key !== '//#preflight' && tasks[key]?.cache !== false && !reachesPreflight(key, tasks),
+    (key) =>
+      key !== 'transit' &&
+      !key.startsWith('//#') &&
+      tasks[key]?.cache !== false &&
+      !reachesTransit(key, tasks),
   );
   expect(uncovered).toEqual([]);
 });
@@ -547,9 +545,9 @@ test('the evaluation coverage gate runs in the root coverage graph and caches it
   });
 });
 
-test('the root package defines the preflight script the turbo task runs', async () => {
-  // Turbo treats a task whose script is missing as a silent no-op, so deleting
-  // or renaming this script would disable the gate above without failing.
+test('the root package defines the preflight script the lock wrapper runs', async () => {
+  // `scripts/run-exclusively.ts` runs the same command before every heavy stage; the script keeps
+  // it available on its own as `bun run preflight`.
   const manifest = await Bun.file(join(root, 'package.json')).json();
   expect(manifest.scripts?.preflight).toBe('bun install --frozen-lockfile');
 });

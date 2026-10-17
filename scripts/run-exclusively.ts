@@ -77,6 +77,18 @@ export function withTurborepoDefaults(
   };
 }
 
+/**
+ * Verifies the install against `bun.lock` before a wrapped command runs. It runs here rather than
+ * as a turbo task, because a task every other task depends on folds its own `package.json` into
+ * every cache key, so any edit to the root manifest would re-run the whole repository.
+ */
+export const preflightCommand = 'bun install --frozen-lockfile';
+
+/** `script` preceded by the install check, so a stale `node_modules` fails before turbo runs. */
+export function withPreflight(script: string): string {
+  return `${preflightCommand} && ${script}`;
+}
+
 /** The directory of waiting tickets beside the lock. */
 export function queueDirectoryFor(lockDirectory: string): string {
   return `${lockDirectory}.queue`;
@@ -592,7 +604,7 @@ if (import.meta.main) {
       lockDirectory: commonDirectoryLookup.then((directory) =>
         join(directory, 'corvidae-host-lock'),
       ),
-      script,
+      script: withPreflight(script),
       args,
       environment:
         commonDirectory === undefined
