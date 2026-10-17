@@ -41,6 +41,7 @@ import {
   createDurableEventHistory,
   createDurableEventProducer,
   DEFAULT_PAGE_LIMIT,
+  DURABLE_HISTORY_GAP_KIND,
   type DurableEventHistory,
 } from './durable-event-history';
 import {
@@ -84,8 +85,10 @@ async function createMemoryStorage(): Promise<Storage> {
 function createReplayGateBarrier(
   storage: Storage,
   gateKey: string,
+  occurrence = 1,
 ): { readonly storage: Storage; waitUntilGated(): Promise<void>; release(): void } {
   let hasGated = false;
+  let reads = 0;
   let resolveGated!: () => void;
   const gated = new Promise<void>((resolve) => {
     resolveGated = resolve;
@@ -99,7 +102,7 @@ function createReplayGateBarrier(
     get(target, property, receiver) {
       if (property === 'get') {
         return async (key: string): Promise<Uint8Array | null> => {
-          if (!hasGated && key === gateKey) {
+          if (!hasGated && key === gateKey && ++reads === occurrence) {
             hasGated = true;
             resolveGated();
             await released;
@@ -1928,7 +1931,7 @@ describe('createDurableEventHistory', () => {
       await history.dispose();
     });
 
-    it('silently skips a since predating the retention floor, delivering only what is still retained — unlike page(), which reports an explicit gap', async () => {
+    it('reports a since predating the retention floor as exactly one gap event, then continues from the floor (COR-1477)', async () => {
       const storage = await createMemoryStorage();
       const runtime = createManualRuntimeServices();
       const history = createDurableEventHistory(storage, runtime);
@@ -1942,8 +1945,8 @@ describe('createDurableEventHistory', () => {
       await adminFeed.retain({ beforeSequence: 2 });
       adminFeed.dispose();
 
-      // Confirm page() would report a gap for the very same since — the
-      // contrast this test is named for.
+      // page() reports the same gap as a value; the subscription, which has no
+      // return value to carry it, reports it as an event.
       const gap = await history.page(owner, { since: first.cursor });
       expect(gap).toEqual({
         outcome: 'gap',
@@ -1952,12 +1955,142 @@ describe('createDurableEventHistory', () => {
       });
 
       const collector = createCollector();
-      const subscription = history.subscribeEventHistory(owner, collector.push);
+      const subscription = history.subscribeEventHistory(owner, collector.push, {
+        since: first.cursor,
+      });
 
       await collector.waitForSequence(third.sequence);
-      expect(collector.events.map((event) => event.sequence)).toEqual([2]);
+      expect(collector.events.map((event) => event.kind)).toEqual([
+        DURABLE_HISTORY_GAP_KIND,
+        'run.completed',
+      ]);
+      expect(collector.events[0]?.payload).toEqual({
+        requestedCursor: first.cursor,
+        firstRetainedCursor: third.cursor,
+      });
+      // A client resuming from the gap event's own cursor lands exactly on
+      // the first retained event, with no second gap.
+      expect(collector.events[0]?.cursor).toBe('1');
 
       subscription.unsubscribe();
+      await history.dispose();
+    });
+
+    it('delivers the gap event once to an open subscription whose undelivered backlog retain() overtakes mid-replay (COR-1477)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const owner = { kind: 'run' as const, id: 'run-1' };
+      const total = 200;
+
+      // The third watermark read is the load of the second replay page: the
+      // first page costs two reads (a snapshot and its confirmation).
+      const writer = createDurableEventHistory(storage, runtime);
+      for (let index = 0; index < total; index += 1) {
+        await writer.record(owner, 'step.completed', { index }, { emittedAtMs: index });
+      }
+
+      const barrier = createReplayGateBarrier(storage, KEYS.fleetEventWatermark(), 3);
+      const history = createDurableEventHistory(barrier.storage, runtime);
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+      await barrier.waitUntilGated();
+      // The consumer has been handed the first 128-record page and is paused
+      // before the next: it holds a backlog of 72 undelivered events.
+      await collector.waitForCount(128);
+
+      // Events 0-149 are older than the cutoff; `retainBefore` repeats Weft's
+      // bounded `retain()` batches until the floor reaches sequence 150.
+      expect(await writer.retainBefore(150)).toBe(150);
+      barrier.release();
+
+      await collector.waitForSequence(total - 1);
+      const kinds = collector.events.map((event) => event.kind);
+      expect(kinds.filter((kind) => kind === DURABLE_HISTORY_GAP_KIND)).toHaveLength(1);
+      const gapIndex = kinds.indexOf(DURABLE_HISTORY_GAP_KIND);
+      // Before any later event: everything before it is what was delivered.
+      expect(gapIndex).toBe(128);
+      expect(collector.events[gapIndex]?.payload).toEqual({
+        requestedCursor: '127',
+        firstRetainedCursor: '150',
+      });
+      expect(collector.events.slice(gapIndex + 1).map((event) => event.sequence)).toEqual(
+        Array.from({ length: total - 150 }, (_, offset) => 150 + offset),
+      );
+
+      subscription.unsubscribe();
+      await history.dispose();
+      await writer.dispose();
+    });
+
+    it('delivers no gap event to an idle subscription drained to the tail when retain() advances the floor (COR-1477)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'run.started', {});
+      const last = await history.record(owner, 'run.completed', {});
+
+      const collector = createCollector();
+      const subscription = history.subscribeEventHistory(owner, collector.push);
+      await collector.waitForSequence(last.sequence);
+
+      // Retention takes everything: the floor lands just past the tail.
+      expect(await history.retainBefore(Number.MAX_SAFE_INTEGER)).toBe(2);
+
+      const next = await history.record(owner, 'run.restarted', {});
+      await collector.waitForSequence(next.sequence);
+      expect(collector.events.map((event) => event.kind)).toEqual([
+        'run.started',
+        'run.completed',
+        'run.restarted',
+      ]);
+
+      subscription.unsubscribe();
+      await history.dispose();
+    });
+  });
+
+  describe('retainBefore() (COR-1477)', () => {
+    it('advances the floor over the contiguous prefix emitted before the cutoff and nothing newer', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+
+      await history.record(owner, 'a', {}, { emittedAtMs: 100 });
+      await history.record(owner, 'b', {}, { emittedAtMs: 200 });
+      await history.record(owner, 'c', {}, { emittedAtMs: 300 });
+      // Stamped out of order behind a newer event: stays until `c` ages out.
+      await history.record(owner, 'd', {}, { emittedAtMs: 150 });
+
+      expect(await history.retainBefore(250)).toBe(2);
+      expect(await history.retentionFloorTimestamp()).toBe(150);
+      const page = await history.page(owner, { since: '1' });
+      expect('events' in page && page.events.map((event) => event.kind)).toEqual(['c', 'd']);
+
+      // Nothing older than the cutoff is left at the head: a second pass is a no-op.
+      expect(await history.retainBefore(250)).toBe(0);
+
+      await history.dispose();
+    });
+
+    it('moves the floor past the tail when every retained event is older than the cutoff', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'run' as const, id: 'run-1' };
+      await history.record(owner, 'a', {}, { emittedAtMs: 100 });
+      await history.record(owner, 'b', {}, { emittedAtMs: 200 });
+
+      expect(await history.retainBefore(1_000)).toBe(2);
+      expect(await history.retentionFloorTimestamp()).toBeUndefined();
+      expect(await history.page(owner, { since: '0' })).toEqual({
+        outcome: 'gap',
+        requestedCursor: '0',
+        firstRetainedSequence: 2,
+      });
+
       await history.dispose();
     });
   });
@@ -2124,6 +2257,9 @@ function createRecordingHistory(
     retentionFloorTimestamp() {
       throw new Error('unused by createDurableEventProducer');
     },
+    retainBefore() {
+      throw new Error('unused by createDurableEventProducer');
+    },
     dispose: async () => {},
   };
   return { history, calls };
@@ -2194,6 +2330,72 @@ describe('createDurableEventProducer()', () => {
     await producer.dispose();
   });
 
+  it('starts a task-owner append only after the previous append for that owner commits, so a delayed first append still receives the earlier cursor (COR-1477)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    let releaseFirstAppend!: () => void;
+    const firstAppendGate = new Promise<void>((resolve) => {
+      releaseFirstAppend = resolve;
+    });
+    const { history, calls } = createRecordingHistory(async (_owner, kind) => {
+      if (kind === 'run.error') await firstAppendGate;
+    });
+    const producer = createDurableEventProducer(bureau, history, runtime);
+
+    dispatchAction(createAction({ type: 'run.error', runId: 'run-1', sequence: 1 }));
+    dispatchAction(createAction({ type: 'run.completed', runId: 'run-1', sequence: 2 }));
+    await runtime.deferred.drain();
+
+    // The second append must not have started while the first is uncommitted.
+    expect(calls.map((call) => call.kind)).toEqual(['run.error']);
+
+    releaseFirstAppend();
+    await runtime.deferred.drain();
+    await producer.waitForActiveWrites({ kind: 'run', id: 'run-1' });
+
+    expect(calls.map((call) => call.kind)).toEqual(['run.error', 'run.completed']);
+
+    await producer.dispose();
+  });
+
+  it('gives the later event the later cursor even when the earlier append is the slow one (COR-1477)', async () => {
+    const runtime = createManualRuntimeServices();
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const real = createDurableEventHistory(await createMemoryStorage(), runtime);
+    let releaseFirstAppend!: () => void;
+    const firstAppendGate = new Promise<void>((resolve) => {
+      releaseFirstAppend = resolve;
+    });
+    // Delays only the first-generated append, so an unordered producer would
+    // commit the second event first and hand it the earlier cursor.
+    const history: DurableEventHistory = {
+      ...real,
+      async record(owner, kind, payload, options) {
+        if (kind === 'run.error') await firstAppendGate;
+        return real.record(owner, kind, payload, options);
+      },
+    };
+    const producer = createDurableEventProducer(bureau, history, runtime);
+    const owner = { kind: 'run' as const, id: 'run-1' };
+
+    dispatchAction(createAction({ type: 'run.error', runId: 'run-1', sequence: 1 }));
+    dispatchAction(createAction({ type: 'run.completed', runId: 'run-1', sequence: 2 }));
+    await runtime.deferred.drain();
+    releaseFirstAppend();
+    await producer.waitForActiveWrites(owner);
+
+    const page = await real.page(owner, { since: undefined });
+    if (!('events' in page)) throw new Error('expected a page of events');
+    const [first, second] = page.events;
+    expect(first?.kind).toBe('run.error');
+    expect(second?.kind).toBe('run.completed');
+    expect(second?.sequence).toBeGreaterThan(first?.sequence ?? Number.POSITIVE_INFINITY);
+    expect(Number(second?.cursor)).toBeGreaterThan(Number(first?.cursor));
+
+    await producer.dispose();
+    await real.dispose();
+  });
+
   describe('hasActiveWrite() (AB-363)', () => {
     it('reports true while a write is in flight and false once it settles, scoped to the exact owner', async () => {
       const runtime = createManualRuntimeServices();
@@ -2250,8 +2452,13 @@ describe('createDurableEventProducer()', () => {
       expect(producer.hasActiveWrite(owner)).toBe(true);
 
       gates[0]?.();
-      await Promise.resolve();
+      // COR-1477: a task's appends are ordered, so the second write starts
+      // only once the first has committed. Let it start before checking it.
+      for (let turn = 0; turn < 50 && gates[1] === undefined; turn += 1) {
+        await Promise.resolve();
+      }
       // The SECOND write is still outstanding.
+      expect(gates[1]).toBeDefined();
       expect(producer.hasActiveWrite(owner)).toBe(true);
 
       gates[1]?.();

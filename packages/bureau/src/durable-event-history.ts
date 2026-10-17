@@ -129,6 +129,7 @@ import {
   type Cursor,
   decodeCursor,
   encode,
+  encodeCursor,
   type FleetEventEnvelope,
   type FleetEventFeed,
   type Storage,
@@ -372,16 +373,20 @@ export interface DurableEventHistory {
    * and envelope decoding.
    *
    * Construction never starts work: a fresh, never-appended-to `owner`
-   * replays zero events and then waits live with no error. A `since` older
-   * than the store's retention floor is NOT reported as a
-   * {@link DurableEventGap} the way `page()` reports one — unlike `page()`,
-   * a live subscription cannot return a value to signal the gap, and
-   * `FleetEventFeed.subscribe()`'s own retained-history replay already
-   * skips silently past a compacted floor (yielding an internal
-   * `fleet:gap` envelope with no `workflowId`, which this owner filter
-   * necessarily excludes) — every event still within retention is still
-   * delivered, in order; nothing beyond the floor is fabricated or
-   * reported as missing.
+   * replays zero events and then waits live with no error.
+   *
+   * COR-1477 — a subscription whose next cursor is below the retention floor
+   * receives exactly one {@link DURABLE_HISTORY_GAP_KIND} event, carrying the
+   * cursor it asked to continue after and the first retained cursor
+   * ({@link DurableHistoryGapPayload}), before any later event, and then
+   * continues from the floor. That covers a `since` older than the floor and
+   * an open subscription with an undelivered backlog that `retain()` overtakes
+   * mid-replay (its requested cursor is its own next cursor). A subscription
+   * drained to the tail is unaffected: its next cursor is never below a floor,
+   * because the floor never passes the tail. The gap is built from Weft's
+   * internal `fleet:gap` envelope, which carries no `workflowId` and which an
+   * owner-only filter would drop; it is delivered through `listener`, so a
+   * caller never observes a silent skip.
    *
    * A listener that throws is isolated (reported to the diagnostic sink,
    * delivery continues); a corrupt stored record ends the subscription
@@ -584,6 +589,22 @@ export interface DurableEventHistory {
    * carries no meaningful `emittedAtMs` for this purpose and is skipped.
    */
   retentionFloorTimestamp(): Promise<number | undefined>;
+  /**
+   * COR-1477 — advances the fleet feed's retention floor past every event
+   * emitted before `cutoffMs` (epoch milliseconds on the runtime clock),
+   * through Weft's `FleetEventFeed.retain()`, and resolves how many events
+   * were deleted. This is the maintenance pass's one call that moves the floor;
+   * `eventRetention` supplies the cutoff.
+   *
+   * The floor only ever advances over a contiguous prefix: it stops at the
+   * first retained event emitted at or after `cutoffMs`, so an older event
+   * stamped out of sequence order behind a newer one stays until the newer one
+   * ages out too. Nothing newer than the cutoff is ever deleted. When every
+   * retained event is older, the floor moves to just past the tail. An
+   * open subscription whose next cursor ends up below the new floor receives
+   * the {@link DURABLE_HISTORY_GAP_KIND} event on its next read.
+   */
+  retainBefore(cutoffMs: number): Promise<number>;
   /** Releases the underlying `FleetEventFeed`. Idempotent. */
   dispose(): Promise<void>;
 }
@@ -618,6 +639,58 @@ interface StoredDurableEventPayload {
 
 /** The only schema version this slice ever writes. */
 const CURRENT_SCHEMA_VERSION = 1;
+
+/**
+ * COR-1477 — the `kind` of the one event {@link DurableEventHistory.subscribeEventHistory}
+ * delivers when its next cursor has fallen below the retention floor. Not a
+ * stored record: the subscription builds it from Weft's internal `fleet:gap`
+ * envelope, which the owner filter would otherwise drop. Its envelope `cursor`
+ * is the last cursor before the first retained event, so a client resuming
+ * from the gap event's own cursor continues exactly at the floor.
+ */
+export const DURABLE_HISTORY_GAP_KIND = 'history.gap';
+
+/** The payload of a {@link DURABLE_HISTORY_GAP_KIND} event. */
+export interface DurableHistoryGapPayload {
+  /** The cursor the subscriber asked to continue after (`-1` for the start of history). */
+  readonly requestedCursor: string;
+  /** The cursor of the first event the feed still retains; delivery continues there. */
+  readonly firstRetainedCursor: string;
+}
+
+/**
+ * Builds the gap event for a Weft `fleet:gap` envelope, or `undefined` when
+ * `envelope` is not a well-formed one.
+ */
+function toGapEnvelope(
+  envelope: FleetEventEnvelope,
+  owner: DurableEventOwner,
+  emittedAtMs: number,
+  walkedCursor: string | undefined,
+): DurableEventEnvelope | undefined {
+  const payload = envelope.payload;
+  if (typeof payload !== 'object' || payload === null) return undefined;
+  const requestedCursor: unknown = Reflect.get(payload, 'requestedCursor');
+  const firstRetainedSequence: unknown = Reflect.get(payload, 'firstRetainedSequence');
+  if (typeof requestedCursor !== 'string' || typeof firstRetainedSequence !== 'number') {
+    return undefined;
+  }
+  const gap: DurableHistoryGapPayload = {
+    // A subscription that has already walked part of the feed continues after
+    // the cursor it reached; one that has not continues after its `since`.
+    requestedCursor: walkedCursor ?? requestedCursor,
+    firstRetainedCursor: encodeCursor(firstRetainedSequence),
+  };
+  return {
+    kind: DURABLE_HISTORY_GAP_KIND,
+    owner,
+    sequence: envelope.sequence,
+    cursor: envelope.cursor,
+    emittedAtMs,
+    payload: gap,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+  };
+}
 
 /**
  * Thrown when a stored durable event record carries a `schemaVersion` this
@@ -983,15 +1056,38 @@ export function createDurableEventHistory(
     void deliver();
 
     async function deliver(): Promise<void> {
+      // The cursor of the last envelope the subscription walked, if any.
+      let walkedCursor: string | undefined;
       try {
         for await (const envelope of feed.subscribe({
           ...(since === undefined ? {} : { fromCursor: since }),
           signal: combinedSignal,
-          filterEnvelope: (candidate) => candidate.workflowId === targetWorkflowId,
+          // The fleet-wide gap marker names no owner, so an owner-only filter
+          // would drop it: admit it explicitly (COR-1477).
+          //
+          // The filter also sees every envelope the subscription walks, this
+          // owner's or not, which is what lets a gap name the cursor the
+          // subscriber had actually reached: Weft's own `requestedCursor` is
+          // only the one the subscription started from.
+          filterEnvelope: (candidate) => {
+            if (candidate.kind === 'fleet:gap') return true;
+            walkedCursor = candidate.cursor;
+            return candidate.workflowId === targetWorkflowId;
+          },
         })) {
           let mapped: DurableEventEnvelope;
           try {
-            mapped = toDurableEventEnvelope(envelope, owner);
+            if (envelope.kind === 'fleet:gap') {
+              const gap = toGapEnvelope(envelope, owner, runtime.clock.now(), walkedCursor);
+              if (gap === undefined) {
+                throw new Error(
+                  `Durable event history: fleet gap at sequence ${envelope.sequence} does not carry a recognized payload.`,
+                );
+              }
+              mapped = gap;
+            } else {
+              mapped = toDurableEventEnvelope(envelope, owner);
+            }
           } catch (error) {
             // A corrupt stored record. `Subscription` has no error channel
             // (AB-34/AB-88's `LivenessObservable` precedent this mirrors
@@ -1239,6 +1335,29 @@ export function createDurableEventHistory(
     return minTimestamp;
   }
 
+  async function retainBefore(cutoffMs: number): Promise<number> {
+    // The first retained event emitted at or after the cutoff bounds what may
+    // go; with none, everything retained is older and the whole log may.
+    let boundary: number | undefined;
+    for await (const envelope of feed.replay({})) {
+      if (envelope.kind === 'fleet:gap') continue;
+      if (envelope.emittedAtMs >= cutoffMs) {
+        boundary = envelope.sequence;
+        break;
+      }
+    }
+    const beforeSequence = boundary ?? (await feed.snapshotTailSequence()) + 1;
+    let deleted = 0;
+    // `retain()` deletes one bounded batch per call and advances the floor only
+    // as far as that batch, so repeat until the floor reaches the boundary.
+    // Each call that finds records deletes them; one that finds none sets the
+    // floor to the boundary, so the loop always terminates.
+    while ((await feed.snapshotRetentionFloor()) < beforeSequence) {
+      deleted += await feed.retain({ beforeSequence });
+    }
+    return deleted;
+  }
+
   function dispose(): Promise<void> {
     feed.dispose();
     return Promise.resolve();
@@ -1265,6 +1384,7 @@ export function createDurableEventHistory(
     refreshRetainedRunOwnerIds,
     latestDeletionMarker,
     retentionFloorTimestamp,
+    retainBefore,
     dispose,
   };
 }
@@ -1469,6 +1589,13 @@ function extractSessionId(detail: unknown): string | undefined {
  *   own `{ kind: 'run', id: runId }` owner with a minimal, privileged
  *   payload (`reviewId`/`runId`/`principal`/`kind`) — see this module's
  *   top-of-file doc comment.
+ *
+ * COR-1477 — appends are ordered per owner. A task's events are appended in
+ * the order they were generated, each append starting only after the previous
+ * one for the same owner has settled, so the fleet cursor order matches the
+ * task's generation order even when one append is slow. Distinct owners do
+ * not wait on each other. A failed append is diagnosed and does not hold back
+ * the next one.
  */
 export function createDurableEventProducer<D extends AgentDefinitions = AgentDefinitions>(
   bureau: Bureau<D>,
@@ -1510,9 +1637,25 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
   // still participates in the SAME `activeWrites`/`activeWriteCountsByOwner`/
   // `activeWritesByOwner` bookkeeping every other listener's write does
   // (Copilot review finding, PR #580).
-  function trackWrite(ownerKey: string, work: () => Promise<void>): void {
+  // COR-1477 — the tail of each owner's append chain. A task's events are
+  // appended strictly in the order they were generated: a write starts only
+  // after the previous one for the same owner has settled, so the fleet cursor
+  // order matches generation order even when one append is slow. Owners do not
+  // wait on each other. An entry exists only while that owner has a write in
+  // flight.
+  const writeChainsByOwner = new Map<string, Promise<void>>();
+
+  function trackWrite(ownerKey: string, work: () => Promise<void>): Promise<void> {
     activeWriteCountsByOwner.set(ownerKey, (activeWriteCountsByOwner.get(ownerKey) ?? 0) + 1);
-    const write = work();
+    // `work` never rejects (each caller maps a failed append to a diagnostic),
+    // so a chain link never carries a failure into the next write. The first
+    // write for an owner starts synchronously, as it did before the chain.
+    const previous = writeChainsByOwner.get(ownerKey);
+    const write = previous === undefined ? work() : previous.then(work);
+    writeChainsByOwner.set(ownerKey, write);
+    void write.finally(() => {
+      if (writeChainsByOwner.get(ownerKey) === write) writeChainsByOwner.delete(ownerKey);
+    });
     activeWrites.add(write);
     let ownerWrites = activeWritesByOwner.get(ownerKey);
     if (!ownerWrites) {
@@ -1532,6 +1675,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
       }
     });
     runtime.deferred.track(write, 'durable-event-record');
+    return write;
   }
 
   function sink(
@@ -1541,7 +1685,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
     options?: DurableEventRecordOptions,
   ): void {
     if (signal?.aborted) return;
-    trackWrite(encodeOwner(owner), () =>
+    void trackWrite(encodeOwner(owner), () =>
       history.record(owner, kind, payload, options).then(
         () => undefined,
         (error: unknown) => {
@@ -1827,8 +1971,8 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
     // distinct strings.
     const dedupeKey = JSON.stringify([ownerKey, event.incarnation]);
     if (pendingSessionDeletionWrites.has(dedupeKey)) return;
-    trackWrite(ownerKey, () => {
-      const write = history
+    const write = trackWrite(ownerKey, () =>
+      history
         .record(
           owner,
           'session.deleted',
@@ -1879,14 +2023,16 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
               cause: error,
             });
           },
-        );
-      pendingSessionDeletionWrites.set(dedupeKey, write);
-      void write.finally(() => {
-        if (pendingSessionDeletionWrites.get(dedupeKey) === write) {
-          pendingSessionDeletionWrites.delete(dedupeKey);
-        }
-      });
-      return write;
+        ),
+    );
+    // Registered synchronously, not from inside the write: this owner's chain
+    // (COR-1477) may hold the write back behind an earlier one, and a second
+    // dispatch of the same event must still find it pending.
+    pendingSessionDeletionWrites.set(dedupeKey, write);
+    void write.finally(() => {
+      if (pendingSessionDeletionWrites.get(dedupeKey) === write) {
+        pendingSessionDeletionWrites.delete(dedupeKey);
+      }
     });
   };
   bureau.addEventListener('session.deleted', sessionDeletedListener);

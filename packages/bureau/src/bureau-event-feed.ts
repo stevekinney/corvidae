@@ -26,6 +26,7 @@ import {
   type SequencedEventEnvelope,
 } from '@lostgradient/weft';
 
+import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
 import {
   ActionEvent,
   BureauDisposedEvent,
@@ -201,6 +202,12 @@ export type BureauEventFeed = {
 export type BureauEventFeedOptions = {
   bureauId: string;
   maxEvents?: number;
+  /**
+   * How many live envelopes one subscriber may fall behind before its buffer
+   * overflows. Defaults to Weft's. An overflow yields one
+   * {@link FRAMES_DROPPED_KIND} marker and the stream continues (COR-1477).
+   */
+  liveBufferSize?: number;
   now?: () => number;
 };
 
@@ -211,9 +218,26 @@ export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEv
       options.maxEvents === undefined ? {} : { maxEvents: options.maxEvents },
     );
   const lifetime = new AbortController();
-  const feed = bindFeedLifetime(
-    createReplayLiveFeed<BureauEventEnvelope>(backend),
+  const feed = withFramesDroppedMarker(
+    bindFeedLifetime(
+      createReplayLiveFeed<BureauEventEnvelope>(
+        backend,
+        options.liveBufferSize === undefined ? {} : { liveBufferSize: options.liveBufferSize },
+      ),
+      lifetime.signal,
+    ),
     lifetime.signal,
+    // Positioned at the last event the reader received, so resuming from the
+    // marker's cursor skips nothing. It names no projection, so it is not in
+    // `PUBLISHED_BUREAU_EVENT_KINDS` and a `kinds` filter never hides it.
+    ({ sequence: lastSequence, cursor }) => ({
+      sequence: lastSequence,
+      cursor,
+      bureauId: options.bureauId,
+      kind: FRAMES_DROPPED_KIND,
+      emittedAtMs: now(),
+      payload: {},
+    }),
   );
   let sequence = 0;
 

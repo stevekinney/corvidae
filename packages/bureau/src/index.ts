@@ -176,6 +176,7 @@ export {
 export type {
   DurableEventHistory,
   DurableEventHistoryPageOptions,
+  DurableHistoryGapPayload,
   DurableEventHistorySubscribeOptions,
   DurableEventProducer,
   DurableEventProducerOptions,
@@ -185,6 +186,7 @@ export {
   createDurableEventHistory,
   createDurableEventProducer,
   DEFAULT_PAGE_LIMIT,
+  DURABLE_HISTORY_GAP_KIND,
   RUN_DURABLE_EVENT_TYPES,
   UnsupportedDurableEventSchemaVersionError,
 } from './durable-event-history';
@@ -415,6 +417,7 @@ export type {
   RedactedProviderConfiguration,
   ResolveReviewInput,
   ResolveReviewResult,
+  RetentionWindowOption,
   RoutingConfiguration,
   RunDetail,
   RunEventRecord,

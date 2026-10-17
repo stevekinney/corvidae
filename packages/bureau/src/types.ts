@@ -326,6 +326,12 @@ export interface BureauMemoryAuthorityOptions {
   readonly purpose?: string;
 }
 
+/**
+ * COR-1477 — how long a kind of history is kept: `'forever'`, or
+ * `{ olderThan: milliseconds }` on the runtime clock.
+ */
+export type RetentionWindowOption = 'forever' | { readonly olderThan: number };
+
 export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * This bureau's identity, as {@link Bureau.id} and as the `bureauId` a
@@ -540,6 +546,39 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * `BureauError(..., 'BAD_REQUEST')` for any other value.
    */
   runCreationTerminalRetentionMs?: number | undefined;
+  /**
+   * COR-1477 — how long the durable event history keeps an event, measured
+   * from when it was emitted on the runtime clock. Default
+   * `{ olderThan: 604800000 }` (7 days); `'forever'` keeps every event. Each
+   * durable maintenance pass advances the fleet feed's retention floor past
+   * the events older than the window (`FleetEventFeed.retain()`), so the
+   * history is bounded. A reader that resumes from a cursor below the new
+   * floor receives one gap event instead of a silent skip, and an open
+   * subscription the floor overtakes receives it too. The audit trail's own
+   * {@link BureauOptions.auditRetention} never prunes a record the retained
+   * history still describes, so a shorter event window lets audit pruning
+   * proceed no further than its own setting allows. Has effect only where a
+   * persistent durable event history is composed. `olderThan` must be a
+   * finite, non-negative number; otherwise `createBureau` throws
+   * `BureauError(..., 'BAD_REQUEST')`.
+   */
+  eventRetention?: RetentionWindowOption;
+  /**
+   * COR-1477 — how long a terminal task (a run that completed, errored, or was
+   * aborted) is kept, measured from its terminal action on the runtime clock.
+   * Default `{ olderThan: 2592000000 }` (30 days); `'forever'` keeps every
+   * task. Durable maintenance removes a terminal task past the window through
+   * the run store, so Bureau's existing `run.removed` event fires for it and
+   * everything keyed on the task releases its own state; deleting a task is
+   * also what eventually releases a withdrawn agent's tombstone mount. A
+   * running task, and a terminal one still inside the window, is never
+   * removed. A task is also kept for as long as its run-creation binding
+   * ({@link BureauOptions.runCreationTerminalRetentionMs}) is stored, so an
+   * exact retry of the request that created it always finds its task.
+   * `olderThan` must be a finite, non-negative number; otherwise
+   * `createBureau` throws `BureauError(..., 'BAD_REQUEST')`.
+   */
+  taskRetention?: RetentionWindowOption;
   /**
    * COR-41 — governed memory for the Bureau's recall and persistence hooks.
    * Recall goes through mandatory recall admission (trust minimums, detector

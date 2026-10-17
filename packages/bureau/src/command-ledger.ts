@@ -306,6 +306,13 @@ export interface CommandLedger<TClaim, TResult> {
    * records whose binding is gone and whose own window has passed.
    */
   prune(): Promise<CommandLedgerPruneResult>;
+  /**
+   * The claim of every binding the ledger still stores, expired ones
+   * included: an expired binding stays stored until {@link prune} deletes it,
+   * and so still names its claim. Rejects when a stored entry is unreadable,
+   * because its claim cannot be ruled out.
+   */
+  listClaims(): Promise<readonly TClaim[]>;
 }
 
 export interface CreateCommandLedgerOptions<TClaim = unknown, TResult = unknown> {
@@ -705,6 +712,16 @@ export function createCommandLedger<TClaim, TResult>(
       return conflicts;
     },
 
+    async listClaims() {
+      const claims: TClaim[] = [];
+      for (const key of await kv.list(ENTRY_KEY_PREFIX)) {
+        const raw = await kv.get(key);
+        // Deleted between the listing and the read: no longer a binding.
+        if (raw !== null) claims.push(parseEntry<TClaim, TResult>(key, raw).claim);
+      }
+      return claims;
+    },
+
     async prune() {
       let entries = 0;
       let conflicts = 0;
@@ -900,6 +917,12 @@ export interface RunCreationLedger {
   locate(input: LocateRunCreationReceiptInput): Promise<RunCreationReceiptLocation>;
   /** Delete expired bindings and their conflict records. */
   prune(): Promise<CommandLedgerPruneResult>;
+  /**
+   * The run id of every run-creation binding still stored, expired but not
+   * yet pruned included: an exact retry finds its run through the binding, so
+   * the run must outlive it. Rejects when a stored entry is unreadable.
+   */
+  boundRunIds(): Promise<ReadonlySet<string>>;
 }
 
 /** Maps a durable workflow status onto the `RunSummary` status vocabulary. */
@@ -1197,6 +1220,10 @@ export function createRunCreationLedger(
     ledger,
     locate,
     prune: () => ledger.prune(),
+    async boundRunIds() {
+      const claims = await ledger.listClaims();
+      return new Set(claims.map((claim) => claim.runId));
+    },
     async begin(input) {
       const identity = runCreationIdentity(input);
       const key = entryKey(identity);
