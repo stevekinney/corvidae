@@ -32,6 +32,7 @@ export function observeHookPlan(
   emitter: EventDispatcher | undefined,
   runId: string | undefined,
   context?: Omit<HookObservationContext, 'runId'>,
+  now?: () => number,
 ): () => void {
   if (!hooks || !emitter) return () => {};
 
@@ -98,5 +99,10 @@ export function observeHookPlan(
       }
     },
     { ...(runId === undefined ? {} : { runId }), ...context },
+    // A hook's duration is measured on the run's own clock rather than the
+    // registry's. A merged plan carries no clock, so its default is the real
+    // `Date.now`, and two identically seeded manual runtimes would otherwise
+    // record traces that differ by whatever a handler happened to take.
+    now === undefined ? undefined : { now },
   );
 }

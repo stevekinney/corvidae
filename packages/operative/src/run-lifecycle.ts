@@ -101,13 +101,20 @@ export async function startRunLifecycle(
   >,
   conversation: Conversation,
   emitter: EventDispatcher | undefined,
+  runtime: RuntimeServices,
 ): Promise<{ error: unknown; stopObservingHookPlan: () => void }> {
   emitter?.dispatch(new RunStartedEvent(conversation));
 
-  const stopObservingHookPlan = observeHookPlan(options.hooks, emitter, options.runId, {
-    ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
-    ...(options.childCorrelation === undefined ? {} : { correlation: options.childCorrelation }),
-  });
+  const stopObservingHookPlan = observeHookPlan(
+    options.hooks,
+    emitter,
+    options.runId,
+    {
+      ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
+      ...(options.childCorrelation === undefined ? {} : { correlation: options.childCorrelation }),
+    },
+    () => runtime.monotonic.now(),
+  );
 
   if (options.hooks?.has('onRunStart')) {
     try {

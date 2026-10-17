@@ -191,6 +191,75 @@ describe('plan observation (COR-766)', () => {
     ]);
   });
 
+  it("measures each observer's durations on that observer's clock, not the registry's", async () => {
+    // A run observes a merged plan built with no clock of its own, so the
+    // registry's default is the real `Date.now`. The duration the run records
+    // must come from the run's runtime clock instead, or two identically
+    // seeded manual runtimes record different traces (AB-321).
+    let registryClock = 1_000;
+    let runClock = 0;
+    const registry = new HookRegistry<ContextHooks>({
+      now: () => registryClock,
+      onError: () => 'continue',
+    });
+    registry.on(
+      'prepare',
+      () => {
+        registryClock += 40;
+        runClock += 7;
+        return undefined;
+      },
+      { id: 'advances' },
+    );
+    registry.on(
+      'select',
+      () => {
+        registryClock += 40;
+        runClock += 3;
+        throw new Error('boom');
+      },
+      { id: 'throws' },
+    );
+
+    const runObserved: HookPlanObservation[] = [];
+    const plainObserved: HookPlanObservation[] = [];
+    registry.observe(
+      (observation) => runObserved.push(observation),
+      { runId: 'run-1' },
+      {
+        now: () => runClock,
+      },
+    );
+    registry.observe((observation) => plainObserved.push(observation));
+
+    await registry.runFirst('prepare', { step: 0 });
+    await registry.runFirst('select', { step: 0 });
+
+    expect(runObserved).toEqual([
+      {
+        kind: 'invoked',
+        hookName: 'prepare',
+        id: 'advances',
+        durationMilliseconds: 7,
+        revision: 2,
+        runId: 'run-1',
+      },
+      {
+        kind: 'failed',
+        hookName: 'select',
+        id: 'throws',
+        durationMilliseconds: 3,
+        error: expect.any(Error),
+        revision: 2,
+        runId: 'run-1',
+      },
+    ]);
+    // An observer that brings no clock keeps the registry's.
+    expect(
+      plainObserved.map((entry) => 'durationMilliseconds' in entry && entry.durationMilliseconds),
+    ).toEqual([40, 40]);
+  });
+
   it('does not replay registrations that predate the observer', () => {
     const observed: HookPlanObservation[] = [];
     const registry = new HookRegistry<ContextHooks>();

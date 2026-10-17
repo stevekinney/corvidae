@@ -15,6 +15,7 @@ export type {
   HookPlanObservation,
   HookPlanObservationIdentity,
   HookPlanObserver,
+  HookObserverOptions,
   HookRegistrationOptions,
   HookRegistryOptions,
   HookReplayPolicy,
