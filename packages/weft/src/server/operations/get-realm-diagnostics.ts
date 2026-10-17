@@ -118,7 +118,7 @@ export const getRealmDiagnosticsOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine }): Promise<GetRealmDiagnosticsOutput> => {
+  invoke: async ({ host: engine }): Promise<GetRealmDiagnosticsOutput> => {
     if (!(engine instanceof Engine)) {
       throw new TypeError('Realm diagnostics requires a concrete Engine instance.');
     }

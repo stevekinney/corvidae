@@ -11,7 +11,7 @@ import { dispatchUnary } from './operation-catalog/operation-dispatch.ts';
 import type { OperationFault } from './operation-fault.ts';
 import { anonymousPrincipal } from './principal.ts';
 
-const fakeEngine: Parameters<typeof executeOperation>[2]['engine'] = {};
+const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 const ENGINE_FAILURE_FAULT = {
   code: 'EngineFailure',
   message: 'internal error',
@@ -48,7 +48,7 @@ describe('executeOperation — defensive schema guards', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry: Reflect.apply(registryFor, undefined, [
           malformedDispatchOperation(base, { inputSchema: z.string() }),
@@ -62,7 +62,7 @@ describe('executeOperation — defensive schema guards', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry: Reflect.apply(registryFor, undefined, [
           malformedDispatchOperation(base, {

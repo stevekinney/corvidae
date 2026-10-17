@@ -47,7 +47,7 @@ function call(engine: Engine, method: string, scheduleId: string) {
   const principal = principalFromApiKey({ subject: 'svc', scopes: [] });
   return dispatchJsonRpc(
     JSON.stringify({ jsonrpc: '2.0', method, params: { scheduleId }, id: 1 }),
-    { principal, engine, transport: 'jsonRpcHttp', registry },
+    { principal, host: engine, transport: 'jsonRpcHttp', registry },
   );
 }
 

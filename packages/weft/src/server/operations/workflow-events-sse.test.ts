@@ -375,7 +375,7 @@ describe('weft.workflows.events.sse', () => {
       await authorize({
         input: { workflowId: 'wf-sse', selector: 'events' },
         principal: anonymousPrincipal(),
-        engine: {},
+        host: {},
         transport: 'http-rest',
       }),
     ).toEqual({
@@ -408,7 +408,7 @@ describe('weft.workflows.events.sse', () => {
         workflowEventsSseOperation.invoke({
           input: { workflowId: 'wf-sse', selector: 'events' },
           principal: principalFromApiKey({ subject: 'tester', scopes: ['events:read'] }),
-          engine: null,
+          host: null,
           transport: 'http-rest',
         }),
       ),

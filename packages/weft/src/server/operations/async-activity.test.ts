@@ -101,7 +101,7 @@ describe('weft.workflows.activities.pending.list', () => {
       const result = await executeOperation(
         'weft.workflows.activities.pending.list',
         { workflowId: handle.id, limit: 1 },
-        { engine, registry, principal, transport },
+        { host: engine, registry, principal, transport },
       );
       expect(result).toEqual({
         ok: true,

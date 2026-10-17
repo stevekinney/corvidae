@@ -120,7 +120,7 @@ describe('weft.schedules.update', () => {
           },
         }),
       }),
-      { registry, engine, principal: anonymousPrincipal() },
+      { registry, host: engine, principal: anonymousPrincipal() },
     );
 
     expect(response.status).toBe(200);
@@ -252,7 +252,7 @@ describe('weft.schedules.update', () => {
           },
         }),
       }),
-      { registry, engine, principal: anonymousPrincipal() },
+      { registry, host: engine, principal: anonymousPrincipal() },
     );
 
     expect(response.status).toBe(200);
@@ -288,7 +288,7 @@ describe('weft.schedules.update', () => {
           },
         }),
       }),
-      { registry, engine, principal: anonymousPrincipal() },
+      { registry, host: engine, principal: anonymousPrincipal() },
     );
 
     expect(response.status).toBe(200);
@@ -324,7 +324,7 @@ describe('weft.schedules.update', () => {
             },
           }),
         }),
-        { registry, engine, principal: anonymousPrincipal() },
+        { registry, host: engine, principal: anonymousPrincipal() },
       );
 
       expect(response.status).toBe(200);
@@ -590,7 +590,7 @@ describe('weft.schedules.update DynamicWorkflowSourceUnavailableError wire mappi
             },
           }),
         }),
-        { registry, engine, principal: anonymousPrincipal() },
+        { registry, host: engine, principal: anonymousPrincipal() },
       );
       const text = await response.text();
 

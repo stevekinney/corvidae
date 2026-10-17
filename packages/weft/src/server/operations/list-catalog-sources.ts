@@ -52,7 +52,7 @@ export const listCatalogSourcesOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine, input }): Promise<ListCatalogSourcesOutput> => {
+  invoke: async ({ host: engine, input }): Promise<ListCatalogSourcesOutput> => {
     assertOperationEngineObject(engine);
     const entries = listWorkflowSources(engine);
     const limit = input.limit ?? 100;

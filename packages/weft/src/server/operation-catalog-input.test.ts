@@ -24,7 +24,7 @@ import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
 import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { anonymousPrincipal } from './principal.ts';
 
-const fakeEngine: Parameters<typeof executeOperation>[2]['engine'] = {};
+const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 
 describe('executeOperation — step 4: zod parse', () => {
   const registry = createOperationRegistry([
@@ -42,7 +42,7 @@ describe('executeOperation — step 4: zod parse', () => {
       { id: 'x', count: 'not-a-number' },
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },
@@ -57,7 +57,7 @@ describe('executeOperation — step 4: zod parse', () => {
   it('null input is rejected as InvalidParams', async () => {
     const result = await executeOperation('weft.test.typed', null, {
       principal: anonymousPrincipal(),
-      engine: fakeEngine,
+      host: fakeEngine,
       transport: 'http-rest',
       registry,
     });

@@ -24,7 +24,7 @@ import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
 import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { anonymousPrincipal } from './principal.ts';
 
-const fakeEngine: Parameters<typeof executeOperation>[2]['engine'] = {};
+const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 
 async function* streamFixture() {
   yield { chunk: 'should-not-run' };
@@ -46,7 +46,7 @@ describe('executeOperation — step 2: transport availability', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'jsonRpcHttp',
         registry,
       },
@@ -80,7 +80,7 @@ describe('executeOperation — step 2: transport availability', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'jsonRpcHttp',
         registry,
       },

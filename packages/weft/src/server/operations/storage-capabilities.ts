@@ -34,7 +34,8 @@ export const storageCapabilitiesOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine }) => requireOperationStorage(engine, ['capabilities']).capabilities(),
+  invoke: async ({ host: engine }) =>
+    requireOperationStorage(engine, ['capabilities']).capabilities(),
 });
 
 export const storageCapabilitiesRestBinding: UnknownRestBinding = {

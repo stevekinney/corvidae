@@ -31,7 +31,7 @@ export const getReviewOperation = defineOperation({
   producibleFaults: ['NotFound'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetReviewOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetReviewOutput> => {
     assertOperationEngineMethods(engine, ['getReview']);
     const e = engine;
     const review = await e.getReview(input.workflowId, input.reviewId);

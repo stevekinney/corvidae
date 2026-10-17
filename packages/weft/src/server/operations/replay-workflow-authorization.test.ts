@@ -268,7 +268,7 @@ describe('weft.workflows.replay authorization parity', () => {
       { workflowId, step: 2 },
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry,
       },
@@ -284,7 +284,7 @@ describe('weft.workflows.replay authorization parity', () => {
       { workflowId, step: 2 },
       {
         principal: principalFromJwtClaims({ sub: 'track-8-user', scope: 'workflows:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry,
       },

@@ -469,7 +469,7 @@ export {
 export {
   bureauEventEnvelopeSchema,
   type BureauEventRegistry,
-  type BureauEventsOperationEngine,
+  type BureauEventsOperationHost,
   type BureauEventsSubscriptionInput,
   bureauEventsSubscriptionOperation,
   createBureauEventRegistry,

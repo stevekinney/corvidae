@@ -32,7 +32,7 @@ export const setWorkflowAttributesOperation = defineOperation({
   access: { kind: 'public' },
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<SetWorkflowAttributesOutput> => {
+  invoke: async ({ input, host: engine }): Promise<SetWorkflowAttributesOutput> => {
     assertOperationEngineMethods(engine, ['setAttributes']);
     const e = engine;
 

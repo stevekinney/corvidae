@@ -187,7 +187,12 @@ describe('runtime operation cross-transport contract', () => {
     const stdioResult = await executeOperation(
       'weft.system.metrics',
       {},
-      { engine, registry: liveRegistry, principal: stdioPrincipal, transport: 'jsonRpcStdio' },
+      {
+        host: engine,
+        registry: liveRegistry,
+        principal: stdioPrincipal,
+        transport: 'jsonRpcStdio',
+      },
     );
     expect(stdioResult.ok).toBe(false);
     if (!stdioResult.ok) {

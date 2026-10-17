@@ -25,7 +25,7 @@ import { createOperationRegistry, executeOperation } from './operation-catalog.t
 import { dispatchUnary } from './operation-catalog/operation-dispatch.ts';
 import { anonymousPrincipal, principalFromApiKey } from './principal.ts';
 
-const fakeEngine: Parameters<typeof executeOperation>[2]['engine'] = {};
+const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 
 describe('executeOperation — step 6: authorize hook', () => {
   it('rejects malformed authorize hook return values', async () => {
@@ -45,7 +45,7 @@ describe('executeOperation — step 6: authorize hook', () => {
       {},
       {
         principal: principalFromApiKey({ subject: 'k', scopes: [] }),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },
@@ -75,14 +75,14 @@ describe('executeOperation — step 6: authorize hook', () => {
     const allowed = await executeOperation(
       'weft.test.hooked',
       { workflowId: 'allowed' },
-      { principal, engine: fakeEngine, transport: 'http-rest', registry },
+      { principal, host: fakeEngine, transport: 'http-rest', registry },
     );
     expect(allowed.ok).toBe(true);
 
     const denied = await executeOperation(
       'weft.test.hooked',
       { workflowId: 'forbidden' },
-      { principal, engine: fakeEngine, transport: 'http-rest', registry },
+      { principal, host: fakeEngine, transport: 'http-rest', registry },
     );
     if (denied.ok) throw new Error('expected fault');
     expect(denied.fault.code).toBe('Forbidden');
@@ -109,7 +109,7 @@ describe('executeOperation — step 6: authorize hook', () => {
     const result = await executeOperation(
       'weft.test.hookunauthorized',
       {},
-      { principal: anonymousPrincipal(), engine: fakeEngine, transport: 'http-rest', registry },
+      { principal: anonymousPrincipal(), host: fakeEngine, transport: 'http-rest', registry },
     );
 
     if (result.ok) throw new Error('expected fault');
@@ -136,7 +136,7 @@ describe('executeOperation — step 6: authorize hook', () => {
       {},
       {
         principal: principalFromApiKey({ subject: 'k', scopes: [] }),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },

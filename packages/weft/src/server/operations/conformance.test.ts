@@ -101,7 +101,7 @@ async function runReport(target: string, conformanceTargetRunner = runnerFor({})
       { target },
       {
         principal: adminPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([
           createRunConformanceReportOperation({ conformanceTargetRunner }),
@@ -349,7 +349,7 @@ describe('weft.conformance.report — target selection and access', () => {
         { target: 'reference' },
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createLiveOperationRegistry({
             conformanceTargetRunner: runnerFor({ reference: { command: conformingWorker } }),
@@ -393,7 +393,7 @@ describe('weft.conformance.report — target selection and access', () => {
         { target: 'reference' },
         {
           principal: adminPrincipal(),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createOperationRegistry([runConformanceReportOperation]),
         },

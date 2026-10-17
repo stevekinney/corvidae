@@ -191,8 +191,13 @@ export interface ServeOptions {
    *
    * A duplicate name fails registry construction — synchronously, before a
    * port is bound — so a foreign operation cannot shadow one of Weft's.
+   *
+   * `serve()` hands each operation its `Engine` as `host`, so an operation
+   * that needs more than an engine provides (a `bureauFeeds` registry, say)
+   * is a type error here rather than a runtime failure. Serve those through
+   * `createOperationHandler`, which delivers the host they declare.
    */
-  operations?: ReadonlyArray<RegistrableOperation>;
+  operations?: ReadonlyArray<RegistrableOperation<RegistryAgnosticEngine>>;
   /**
    * Package scopes this server recognizes beyond Weft's built-in vocabulary,
    * such as `bureau.tasks:read`, for the packages whose `operations` require

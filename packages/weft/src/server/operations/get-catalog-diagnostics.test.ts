@@ -192,7 +192,7 @@ describe('weft.catalog.diagnostics — REST GET /v1/catalog/:name/revisions/:rev
       { name: '', revision: 'r1' },
       {
         principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry,
       },
@@ -229,7 +229,7 @@ describe('weft.catalog.diagnostics — REST GET /v1/catalog/:name/revisions/:rev
     expect(
       await throwingRejectionOf(
         getCatalogDiagnosticsOperation.invoke({
-          engine: {},
+          host: {},
           principal: { method: 'unauthenticated' },
           transport: 'jsonRpcStdio',
           input: { name: 'anything', revision: 'anything' },

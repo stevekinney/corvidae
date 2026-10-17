@@ -65,6 +65,13 @@ export async function executeSubscription(
     envelope: unknown;
     iterable: AsyncIterable<unknown>;
     close: () => Promise<void>;
+    /**
+     * Settles once the subscription has delivered everything that was already
+     * recorded, when the operation's iterable reports it. A transport that
+     * wants a replay-complete marker (the SSE ping) reads it here, because the
+     * validating wrapper around `iterable` cannot carry it.
+     */
+    replayComplete?: Promise<void>;
   }>
 > {
   const prepared = await prepareLongLivedOperation(
@@ -93,6 +100,7 @@ export async function executeSubscription(
       envelope: envelope.value,
       iterable: validateElements(invocation.iterable, eventSchema),
       close: invocation.close,
+      ...replayCompleteOf(invocation.iterable),
     },
   };
 }
@@ -163,6 +171,13 @@ async function* validateElements(
     }
     yield parsed.data;
   }
+}
+
+function replayCompleteOf(iterable: AsyncIterable<unknown>): { replayComplete?: Promise<void> } {
+  if ('replayComplete' in iterable && iterable.replayComplete instanceof Promise) {
+    return { replayComplete: iterable.replayComplete };
+  }
+  return {};
 }
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {

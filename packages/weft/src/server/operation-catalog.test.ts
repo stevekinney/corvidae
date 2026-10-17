@@ -24,7 +24,7 @@ import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
 import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { anonymousPrincipal } from './principal.ts';
 
-const fakeEngine: Parameters<typeof executeOperation>[2]['engine'] = {};
+const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 
 describe('executeOperation — happy path', () => {
   it('parses input, invokes, returns ok', async () => {
@@ -41,7 +41,7 @@ describe('executeOperation — happy path', () => {
       { value: 'hi' },
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },

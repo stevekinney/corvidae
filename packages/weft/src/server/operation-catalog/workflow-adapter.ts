@@ -108,7 +108,7 @@ export function catalogWorkflow(
     transports: { ...options.transports },
     unknownKeyPolicy: { ...options.unknownKeyPolicy },
     ...(options.authorize === undefined ? {} : { authorize: options.authorize }),
-    invoke: async ({ input, engine }): Promise<StartHandle> => {
+    invoke: async ({ input, host: engine }): Promise<StartHandle> => {
       // Engine is supplied by the dispatch context, whose shared shape keeps
       // the engine slot unknown. The runtime view keeps workflow-type strings
       // validated by Engine.start() instead of by a module augmentation.

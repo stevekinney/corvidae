@@ -35,10 +35,13 @@ const DEFAULT_MAX_BODY_BYTES = 1 * 1024 * 1024;
 
 export type JsonRpcHttpContext = {
   readonly registry: OperationRegistry;
-  readonly engine: unknown;
+  /** See `OperationContext.host`. */
+  readonly host: unknown;
   readonly principal: Principal;
   /** Hard cap on request body size. Defaults to 1 MB. */
   readonly maxBodyBytes?: number;
+  /** See `DispatchJsonRpcContext.discoverDocument`. */
+  readonly discoverDocument?: () => Record<string, unknown>;
 };
 
 /**
@@ -89,9 +92,12 @@ export async function handleJsonRpcHttpRequest(
 
   const dispatchContext: DispatchJsonRpcContext = {
     registry: context.registry,
-    engine: context.engine,
+    host: context.host,
     principal: context.principal,
     transport: 'jsonRpcHttp',
+    ...(context.discoverDocument === undefined
+      ? {}
+      : { discoverDocument: context.discoverDocument }),
   };
 
   const result = await dispatchJsonRpc(bodyText, dispatchContext);

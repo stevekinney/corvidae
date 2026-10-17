@@ -393,7 +393,7 @@ describe('weft.events.sse', () => {
         fleetEventsSseOperation.invoke({
           input: {},
           principal: principalFromApiKey({ subject: 'tester', scopes: ['events:read'] }),
-          engine: null,
+          host: null,
           transport: 'http-rest',
         }),
       ),
