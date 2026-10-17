@@ -358,6 +358,9 @@ export type { DropdownTriggerProps } from './components/dropdown-trigger/index.t
 export { default as EmptyState } from './components/empty-state/index.ts';
 export type { EmptyStateProps } from './components/empty-state/index.ts';
 
+export { default as ErrorState } from './components/error-state/index.ts';
+export type { ErrorStateProps } from './components/error-state/index.ts';
+
 export { default as FilterBar } from './components/filter-bar/index.ts';
 export type {
   AppliedFilter,

@@ -118,6 +118,7 @@ const EXAMPLE_FILES = [
   'existing-comments.example.svelte',
   'keyboard.example.svelte',
   'null-position.example.svelte',
+  'quote.example.svelte',
   'toggled.example.svelte',
   'viewport-clamping.example.svelte',
 ];
@@ -131,6 +132,7 @@ const SELECTION_DRIVEN_EXAMPLES = [
   'basic.example.svelte',
   'existing-comments.example.svelte',
   'keyboard.example.svelte',
+  'quote.example.svelte',
 ];
 
 describe('selection-popover examples — no default-open popovers on load', () => {

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "error-state",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "with-retry",
+      "title": "With retry",
+      "description": "A failed query with a fault code and a retry button.",
+      "code": "<script lang=\"ts\">\n  import { ErrorState } from '@lostgradient/cinder';\n\n  let attempts = $state(0);\n</script>\n\n<ErrorState\n  title=\"Could not load runs\"\n  description=\"The server did not respond in time.\"\n  detail=\"E_TIMEOUT\"\n  onRetry={() => (attempts += 1)}\n/>\n<p>Retried {attempts} times.</p>\n"
+    },
+    {
+      "id": "without-retry",
+      "title": "Without retry",
+      "description": "Omit onRetry when the failure cannot be retried from this region.",
+      "code": "<script lang=\"ts\">\n  import { ErrorState } from '@lostgradient/cinder';\n</script>\n\n<ErrorState\n  title=\"You do not have access\"\n  description=\"Ask a workspace owner to grant you access to this view.\"\n  headingLevel={3}\n/>\n"
+    }
+  ]
+}
