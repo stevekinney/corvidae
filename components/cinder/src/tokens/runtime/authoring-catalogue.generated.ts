@@ -11534,7 +11534,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Active/pressed step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness.',
+        'Active/pressed step for solid danger fills. The dark arm sits at L 59%, the darkest step at which `status.danger.contrast` still clears 4.5:1 (4.53:1); 56% would read 3.99:1.',
       themeAware: true,
       deprecated: false,
       profile: 'color',

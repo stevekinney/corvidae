@@ -391,10 +391,10 @@ Single-value status tokens for solid fills like badges and dot indicators. For s
 | `--cinder-status-info-solid` | `light-dark(oklch(50% 0.098 230), oklch(78% 0.13 230))` | Info status fill color. |
 | `--cinder-status-success-solid` | `light-dark(oklch(50% 0.157 145), oklch(78% 0.14 145))` | Success status fill color. |
 | `--cinder-status-warning-solid` | `light-dark(oklch(54% 0.113 75), oklch(82% 0.156 75))` | Warning status fill color. |
-| `--cinder-status-danger-solid` | `light-dark(oklch(50% 0.202 25), oklch(72% 0.172 25))` | Danger status fill color. |
+| `--cinder-status-danger-solid` | `light-dark(oklch(50% 0.202 25), oklch(67% 0.19 27))` | Danger status fill color. |
 | `--cinder-status-danger-contrast` | `light-dark(oklch(100% 0 0), oklch(12% 0.02 25))` | Label color for solid danger fills. Dark-mode danger is ~72% lightness; pure white fails WCAG AA on it, so the dark arm uses a near-black ink instead. |
-| `--cinder-status-danger-solid-hover` | `light-dark(oklch(42% 0.171 25), oklch(64% 0.172 25))` | Hover step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness. |
-| `--cinder-status-danger-solid-active` | `light-dark(oklch(35% 0.142 25), oklch(60% 0.172 25))` | Active/pressed step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness. |
+| `--cinder-status-danger-solid-hover` | `light-dark(oklch(42% 0.171 25), oklch(61% 0.19 27))` | Hover step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness. |
+| `--cinder-status-danger-solid-active` | `light-dark(oklch(35% 0.142 25), oklch(59% 0.18 27))` | Active/pressed step for solid danger fills. The dark arm sits at L 59%, the darkest step at which `status.danger.contrast` still clears 4.5:1 (4.53:1); 56% would read 3.99:1. |
 | `--cinder-status-info-solid-hover` | `light-dark(oklch(42% 0.079 230), oklch(70% 0.13 230))` | Hover step for solid info fills. |
 | `--cinder-status-info-solid-active` | `light-dark(oklch(35% 0.065 230), oklch(62% 0.12 230))` | Active/pressed step for solid info fills. |
 | `--cinder-status-success-solid-hover` | `light-dark(oklch(42% 0.12 145), oklch(70% 0.14 145))` | Hover step for solid success fills. |

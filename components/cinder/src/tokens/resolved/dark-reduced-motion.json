@@ -574,7 +574,7 @@
   },
   "control.border.invalid": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.72, 0.172, 25] },
+    "$value": { "colorSpace": "oklch", "components": [0.67, 0.19, 27] },
     "$description": "Invalid control edge. The danger fill rather than `status.danger.border`, because on an invalid control this edge IS the control boundary and has to keep clearing 3:1; the decorative status border would not.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2344,7 +2344,7 @@
     }
   },
   "status.danger.solid": {
-    "$value": { "colorSpace": "oklch", "components": [0.72, 0.172, 25] },
+    "$value": { "colorSpace": "oklch", "components": [0.67, 0.19, 27] },
     "$description": "Danger status fill color.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2358,8 +2358,8 @@
   },
   "status.danger.solid.active": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.6, 0.172, 25] },
-    "$description": "Active/pressed step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness.",
+    "$value": { "colorSpace": "oklch", "components": [0.59, 0.18, 27] },
+    "$description": "Active/pressed step for solid danger fills. The dark arm sits at L 59%, the darkest step at which `status.danger.contrast` still clears 4.5:1 (4.53:1); 56% would read 3.99:1.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-status-danger-solid-active",
@@ -2371,7 +2371,7 @@
   },
   "status.danger.solid.hover": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.64, 0.172, 25] },
+    "$value": { "colorSpace": "oklch", "components": [0.61, 0.19, 27] },
     "$description": "Hover step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -2423,7 +2423,7 @@
   },
   "status.danger.subtle": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.792, 0.05, 22.466] },
+    "$value": { "colorSpace": "oklch", "components": [0.76, 0.05, 24.81] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l min(c, 0.05) h )",
@@ -2436,7 +2436,7 @@
   },
   "status.danger.muted": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.5364, 0.05, 19.661] },
+    "$value": { "colorSpace": "oklch", "components": [0.5044, 0.05, 22.403] },
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssRecipe": "oklch( from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l min(c, 0.05) h )",

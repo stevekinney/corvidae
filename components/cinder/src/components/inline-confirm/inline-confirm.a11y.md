@@ -6,7 +6,7 @@
 - Review outcome: Final review complete—approved.
 - Nearest neighbours: ConfirmDialog, Alert, ButtonGroup.
 - Why this component exists: It keeps a short, reversible confirmation beside the action without interrupting the page with a top-layer dialog.
-- Findings and resolutions: It uses document flow and existing Button primitives. It intentionally has no scrim, `aria-modal`, focus trap, body scroll lock, or modal backdrop. The non-destructive surface is neutral; the destructive variant explicitly applies danger styling to the surface and confirm button while prompt and action labels remain visible text.
+- Findings and resolutions: It uses document flow and existing Button primitives. It intentionally has no scrim, `aria-modal`, focus trap, body scroll lock, or modal backdrop. The non-destructive strip is a soft neutral; the destructive strip is a soft danger tint, and the tone is carried by the prompt (danger text color plus a decorative `aria-hidden` warning glyph) and the danger confirm button, while prompt and action labels remain visible text. At the start or end of a container the strip drops its own rule so it does not double the container's edge.
 
 ## Novel interaction accessibility review
 
@@ -16,7 +16,7 @@
 
 ### Focus management
 
-The visible prompt labels `role="group"`. On open, focus moves to Cancel, the safe action. On cancel, confirm, or Escape, focus returns to the element active when the confirmation opened.
+The visible prompt labels `role="group"`. On open, focus moves to Cancel, the safe action. The focus ring shows when the strip was opened from the keyboard and not when it was opened with a pointer: the component remembers whether the last input was a `keydown` or a `pointerdown` and passes `focusVisible` to `focus()` accordingly. On cancel, confirm, or Escape, focus returns to the element active when the confirmation opened.
 
 ### Keyboard matrix
 

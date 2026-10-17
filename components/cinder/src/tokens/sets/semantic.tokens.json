@@ -1310,7 +1310,7 @@
               "cssProperty": "--cinder-status-danger-solid",
               "public": true,
               "category": "color",
-              "cssRecipe": "light-dark(oklch(50% 0.202 25), oklch(72% 0.172 25))",
+              "cssRecipe": "light-dark(oklch(50% 0.202 25), oklch(67% 0.19 27))",
               "palette": {
                 "family": "danger",
                 "role": "solid",
@@ -1325,13 +1325,13 @@
             "colorSpace": "oklch",
             "components": [0.35, 0.142, 25]
           },
-          "$description": "Active/pressed step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness.",
+          "$description": "Active/pressed step for solid danger fills. The dark arm sits at L 59%, the darkest step at which `status.danger.contrast` still clears 4.5:1 (4.53:1); 56% would read 3.99:1.",
           "$extensions": {
             "com.lostgradient.cinder": {
               "cssProperty": "--cinder-status-danger-solid-active",
               "public": true,
               "category": "color",
-              "cssRecipe": "light-dark(oklch(35% 0.142 25), oklch(60% 0.172 25))",
+              "cssRecipe": "light-dark(oklch(35% 0.142 25), oklch(59% 0.18 27))",
               "palette": {
                 "family": "danger",
                 "role": "solid-active"
@@ -1351,7 +1351,7 @@
               "cssProperty": "--cinder-status-danger-solid-hover",
               "public": true,
               "category": "color",
-              "cssRecipe": "light-dark(oklch(42% 0.171 25), oklch(64% 0.172 25))",
+              "cssRecipe": "light-dark(oklch(42% 0.171 25), oklch(61% 0.19 27))",
               "palette": {
                 "family": "danger",
                 "role": "solid-hover"

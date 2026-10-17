@@ -401,11 +401,11 @@
   /* Label color for solid danger fills. Dark-mode danger is ~72% lightness; pure white fails WCAG AA on it, so the dark arm uses a near-black ink instead. */
   --cinder-status-danger-contrast: light-dark(oklch(100% 0 0), oklch(12% 0.02 25));
   /* Danger status fill color. */
-  --cinder-status-danger-solid: light-dark(oklch(50% 0.202 25), oklch(72% 0.172 25));
-  /* Active/pressed step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness. */
-  --cinder-status-danger-solid-active: light-dark(oklch(35% 0.142 25), oklch(60% 0.172 25));
+  --cinder-status-danger-solid: light-dark(oklch(50% 0.202 25), oklch(67% 0.19 27));
+  /* Active/pressed step for solid danger fills. The dark arm sits at L 59%, the darkest step at which `status.danger.contrast` still clears 4.5:1 (4.53:1); 56% would read 3.99:1. */
+  --cinder-status-danger-solid-active: light-dark(oklch(35% 0.142 25), oklch(59% 0.18 27));
   /* Hover step for solid danger fills, explicitly authored and fitted to the in-gamut chroma maximum at this lightness. */
-  --cinder-status-danger-solid-hover: light-dark(oklch(42% 0.171 25), oklch(64% 0.172 25));
+  --cinder-status-danger-solid-hover: light-dark(oklch(42% 0.171 25), oklch(61% 0.19 27));
   /* Soft danger-tinted surface background. */
   --cinder-status-danger-background: light-dark(oklch(94.5% 0.026 25), oklch(28% 0.09 25));
   /* Foreground color on the soft danger surface. */
@@ -828,9 +828,9 @@
       min(c, 0.05) h
   );
   --cinder-status-danger-contrast: oklch(12% 0.02 25);
-  --cinder-status-danger-solid: oklch(72% 0.172 25);
-  --cinder-status-danger-solid-active: oklch(60% 0.172 25);
-  --cinder-status-danger-solid-hover: oklch(64% 0.172 25);
+  --cinder-status-danger-solid: oklch(67% 0.19 27);
+  --cinder-status-danger-solid-active: oklch(59% 0.18 27);
+  --cinder-status-danger-solid-hover: oklch(61% 0.19 27);
   --cinder-status-info-background: oklch(28% 0.057 230);
   --cinder-status-info-text: oklch(88% 0.071 230);
   --cinder-status-info-border: oklch(45% 0.08 230);

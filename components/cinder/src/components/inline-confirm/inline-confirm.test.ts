@@ -94,10 +94,55 @@ describe('InlineConfirm', () => {
     });
     const root = container.querySelector('.cinder-inline-confirm');
     expect(root?.hasAttribute('data-cinder-destructive')).toBe(false);
-    const css = readFileSync(new URL('./inline-confirm.css', import.meta.url), 'utf8');
-    expect(css).toContain('background: var(--cinder-status-neutral-background)');
+    expect(root?.querySelector('.cinder-inline-confirm__glyph')).toBeNull();
     await rerender({ destructive: true });
     expect(root?.hasAttribute('data-cinder-destructive')).toBe(true);
-    expect(css).toContain('.cinder-inline-confirm[data-cinder-destructive]');
+    // The tone rides on the prompt: a glyph, hidden from assistive tech
+    // because the prompt text already says what is being confirmed.
+    const glyph = root?.querySelector('.cinder-inline-confirm__glyph');
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
   });
+
+  test('softens the strip into the raised surface and leaves container edges alone', () => {
+    const css = readFileSync(new URL('./inline-confirm.css', import.meta.url), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    );
+    expect(css).toContain(
+      'color-mix( in oklab, var(--cinder-status-neutral-background) 60%, var(--cinder-surface-raised) )',
+    );
+    expect(css).toContain(
+      'color-mix( in oklab, var(--cinder-status-danger-background) 45%, var(--cinder-surface-raised) )',
+    );
+    expect(css).toMatch(/\.cinder-inline-confirm:first-child \{ border-block-start: 0; \}/);
+    expect(css).toMatch(/\.cinder-inline-confirm:last-child \{ border-block-end: 0; \}/);
+  });
+
+  test.each([
+    ['a keyboard activation', 'keyboard', true],
+    ['a pointer activation', 'pointer', false],
+  ] as const)(
+    'moves focus to Cancel with a visible ring only after %s',
+    async (_name, modality, visible) => {
+      const focusOptions: Array<FocusOptions | undefined> = [];
+      const original = HTMLElement.prototype.focus;
+      HTMLElement.prototype.focus = function (this: HTMLElement, options?: FocusOptions) {
+        if (this.hasAttribute('data-cinder-inline-cancel')) focusOptions.push(options);
+        original.call(this, options);
+      };
+      try {
+        const view = render(InlineConfirm, {
+          prompt: 'Delete this comment?',
+          confirmLabel: 'Delete comment',
+        });
+        if (modality === 'keyboard') await fireEvent.keyDown(document.body, { key: 'Enter' });
+        else await fireEvent.pointerDown(document.body);
+        await view.rerender({ open: true });
+        await waitFor(() => expect(focusOptions).toHaveLength(1));
+        expect(focusOptions[0]).toEqual({ preventScroll: true, focusVisible: visible });
+      } finally {
+        HTMLElement.prototype.focus = original;
+      }
+    },
+  );
 });

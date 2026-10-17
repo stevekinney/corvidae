@@ -896,7 +896,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.792, 0.05, 22.466]
+          "components": [0.76, 0.05, 24.81]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -908,7 +908,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.5364, 0.05, 19.661]
+          "components": [0.5044, 0.05, 22.403]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -928,21 +928,21 @@
         "$root": {
           "$value": {
             "colorSpace": "oklch",
-            "components": [0.72, 0.172, 25]
+            "components": [0.67, 0.19, 27]
           }
         },
         "active": {
           "$type": "color",
           "$value": {
             "colorSpace": "oklch",
-            "components": [0.6, 0.172, 25]
+            "components": [0.59, 0.18, 27]
           }
         },
         "hover": {
           "$type": "color",
           "$value": {
             "colorSpace": "oklch",
-            "components": [0.64, 0.172, 25]
+            "components": [0.61, 0.19, 27]
           }
         }
       }
