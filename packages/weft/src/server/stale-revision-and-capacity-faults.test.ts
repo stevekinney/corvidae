@@ -56,6 +56,7 @@ type AddedCodeRow = {
   readonly jsonRpc: number;
   readonly category: FailureCategory;
   readonly jsonRpcData: Record<string, unknown>;
+  readonly restData: Record<string, unknown>;
 };
 
 const ADDED_CODES: AddedCodeRow[] = [
@@ -65,6 +66,7 @@ const ADDED_CODES: AddedCodeRow[] = [
     jsonRpc: -32026,
     category: 'application',
     jsonRpcData: { expectedRevision: 3, currentRevision: 5 },
+    restData: { expectedRevision: 3, currentRevision: 5 },
   },
   {
     fault: rateLimited,
@@ -72,6 +74,7 @@ const ADDED_CODES: AddedCodeRow[] = [
     jsonRpc: -32027,
     category: 'resource',
     jsonRpcData: { retryAfterSeconds: 30 },
+    restData: { retryAfterSeconds: 30 },
   },
   {
     fault: unavailable,
@@ -79,6 +82,8 @@ const ADDED_CODES: AddedCodeRow[] = [
     jsonRpc: -32028,
     category: 'system',
     jsonRpcData: { reason: 'storage is recovering', retryAfterSeconds: 7 },
+    // `reason` is internal detail: REST discloses only the retry delay.
+    restData: { retryAfterSeconds: 7 },
   },
   {
     fault: unsupportedCapability,
@@ -86,6 +91,7 @@ const ADDED_CODES: AddedCodeRow[] = [
     jsonRpc: -32029,
     category: 'system',
     jsonRpcData: { capability: 'streams' },
+    restData: { capability: 'streams' },
   },
 ];
 
@@ -103,9 +109,9 @@ describe.each(ADDED_CODES)('$fault.code', (row) => {
     expect(shapeOperationFaultAsJson(row.fault).status).toBe(row.http);
   });
 
-  it('serializes a REST body that discloses no payload', async () => {
+  it('serializes the typed data an audited REST body discloses', async () => {
     const body = await faultToHttpResponse(row.fault).json();
-    expect(body).toEqual({ error: row.fault.message });
+    expect(body).toEqual({ error: row.fault.message, data: row.restData });
   });
 
   it('maps to its JSON-RPC code and payload', () => {
@@ -152,6 +158,17 @@ describe('Retry-After', () => {
   it('is never emitted for other fault codes', () => {
     expect(faultToHttpResponse(staleRevision).headers.has('Retry-After')).toBe(false);
     expect(faultToHttpResponse(unsupportedCapability).headers.has('Retry-After')).toBe(false);
+  });
+
+  it('keeps a non-finite or negative delay out of every wire payload', async () => {
+    for (const retryAfterSeconds of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      for (const base of [rateLimited, unavailable]) {
+        const fault: AddedFault = { ...base, data: { ...base.data, retryAfterSeconds } };
+        expect(faultToJsonRpcError(fault).data).not.toHaveProperty('retryAfterSeconds');
+        const restBody = (await faultToHttpResponse(fault).json()) as { data?: object };
+        expect(restBody.data ?? {}).not.toHaveProperty('retryAfterSeconds');
+      }
+    }
   });
 
   it('keeps an undefined delay out of the wire payloads', async () => {

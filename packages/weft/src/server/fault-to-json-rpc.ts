@@ -27,6 +27,7 @@
 import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
+  usableRetryAfterSeconds,
   type OperationFault,
 } from './operation-fault.ts';
 
@@ -85,9 +86,13 @@ const FAULT_DATA_EXTRACTORS: FaultExtractors = {
       expectedRevision: data.expectedRevision,
       currentRevision: data.currentRevision,
     }),
-  RateLimited: (data) => filterDefined({ retryAfterSeconds: data.retryAfterSeconds }),
+  RateLimited: (data) =>
+    filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
   Unavailable: (data) =>
-    filterDefined({ reason: data.reason, retryAfterSeconds: data.retryAfterSeconds }),
+    filterDefined({
+      reason: data.reason,
+      retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds),
+    }),
   UnsupportedCapability: (data) => ({ capability: data.capability }),
 };
 

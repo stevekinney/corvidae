@@ -279,13 +279,19 @@ const REST_FAULT_DATA_EXTRACTORS: RestFaultDataExtractors = {
           })),
         },
   MethodNotFound: (data) => ({ method: data.method }),
-  // The OpenAPI `Error` schema pins its `data` properties, so these four codes
-  // disclose nothing in the REST body. A retry delay travels in the
-  // `Retry-After` header; revisions and capability names travel over JSON-RPC.
-  StaleRevision: () => NO_REST_FAULT_DATA,
-  RateLimited: () => NO_REST_FAULT_DATA,
-  Unavailable: () => NO_REST_FAULT_DATA,
-  UnsupportedCapability: () => NO_REST_FAULT_DATA,
+  // Typed data lets a REST client tell "re-read and retry" (`StaleRevision`)
+  // from a plain `Conflict`, and learn when to retry. `Unavailable.reason` is
+  // internal detail and stays JSON-RPC only.
+  StaleRevision: (data) =>
+    filterDefined({
+      expectedRevision: data.expectedRevision,
+      currentRevision: data.currentRevision,
+    }),
+  RateLimited: (data) =>
+    filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
+  Unavailable: (data) =>
+    filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
+  UnsupportedCapability: (data) => ({ capability: data.capability }),
 };
 
 /**
@@ -335,9 +341,18 @@ export function shapeRestFaultAsJson(
  */
 function retryAfterHeaderValue(fault: OperationFault): string | undefined {
   if (fault.code !== 'RateLimited' && fault.code !== 'Unavailable') return undefined;
-  const seconds = fault.data.retryAfterSeconds;
+  const seconds = usableRetryAfterSeconds(fault.data.retryAfterSeconds);
+  return seconds === undefined ? undefined : String(Math.ceil(seconds));
+}
+
+/**
+ * A `retryAfterSeconds` a client can act on: finite and not negative. `NaN`
+ * and `Infinity` do not survive JSON (they serialize as `null`), and a
+ * negative delay is meaningless, so every wire projection drops them.
+ */
+export function usableRetryAfterSeconds(seconds: number | undefined): number | undefined {
   if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return undefined;
-  return String(Math.ceil(seconds));
+  return seconds;
 }
 
 /** Build the audited canonical REST body. */
