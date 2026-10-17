@@ -154,9 +154,9 @@ describe('Chat composerActions', () => {
     });
 
     const right = footerRight(container);
-    expect(right.querySelector<HTMLSelectElement>('[data-testid="model-picker"]')?.disabled).toBe(
-      false,
-    );
+    const picker = right.querySelector<HTMLSelectElement>('[data-testid="model-picker"]')!;
+    expect(picker.disabled).toBe(false);
+    expect(picker.closest('[inert]')).toBeNull();
     expect(right.querySelector('button[aria-label="Send message"]')).not.toBeNull();
     expect(right.querySelector('button[aria-label="Stop generating"]')).not.toBeNull();
   });
@@ -170,6 +170,7 @@ describe('Chat composerActions', () => {
 
     const picker = container.querySelector<HTMLSelectElement>('[data-testid="model-picker"]')!;
     expect(picker.disabled).toBe(false);
+    expect(picker.closest('[inert]')).toBeNull();
     picker.value = 'deep';
     await fireEvent.change(picker);
     expect(picker.value).toBe('deep');
