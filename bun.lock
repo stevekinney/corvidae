@@ -87,6 +87,7 @@
     "components/chat": {
       "name": "@lostgradient/chat",
       "dependencies": {
+        "@ag-ui/core": "catalog:",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/markdown": "workspace:*",
         "conversationalist": "workspace:*",

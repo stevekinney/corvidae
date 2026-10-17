@@ -95,3 +95,18 @@ The Mermaid snippet has type `Snippet<[content: string, type: 'mermaid']>`. `Art
 ```
 
 This is a deliberate difference from `@lostgradient/editor`'s `DiffViewer`, whose `toolbar` override is total replacement with no `renderDefault`—the [Editor README](../editor/README.md#diffviewer-toolbar-override) explains why. Message-part and row rendering carry built-in behavior (streaming state, tool-call presentation, artifact resolution) that most wrappers want to keep and only augment. That is what `renderDefault` is for.
+
+## AG-UI transport
+
+`createChatSessionController` can be driven by an [AG-UI](https://docs.ag-ui.com) 1.0 event stream without changing the native chat wire. `createAGUIChatTransport` returns a chat session transport that maps each event onto the version 3 wire, and `mapAGUIEventsToChatStream` is the same mapping over any iterable of events.
+
+```ts
+const controller = createChatSessionController({
+  executionOwner: 'server',
+  getConversation,
+  setConversation,
+  transport: createAGUIChatTransport((request) => runAgent(request.conversation, request.signal)),
+});
+```
+
+Every event is validated against the pinned `@ag-ui/core` schema, and an invalid or out-of-order one fails the run with an `AGUIChatTransportError`. `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, `STEP_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `REASONING_*`, and `MESSAGES_SNAPSHOT` are mapped; the types in `AG_UI_UNSUPPORTED_EVENT_TYPES` (state, activity, raw, custom, and subagent events) are validated and then ignored. The terminal `run.completed` frame carries the last `MESSAGES_SNAPSHOT` plus everything the run produced afterward, or the history the run was asked from when the stream sends no snapshot, so use `executionOwner: 'server'`: the AG-UI backend runs the whole turn.

@@ -11,6 +11,13 @@ export {
 } from './components/chat-composer-popover/chat-composer-mention.ts';
 export * from './components/chat/index.ts';
 export {
+  AGUIChatTransportError,
+  AG_UI_UNSUPPORTED_EVENT_TYPES,
+  createAGUIChatTransport,
+  mapAGUIEventsToChatStream,
+  type AGUIChatTransportErrorKind,
+} from './session/ag-ui-transport.ts';
+export {
   ChatRunFailureError,
   type ChatElicitationActivity,
   type ChatExecutionOwner,
