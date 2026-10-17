@@ -74,6 +74,14 @@ export function defaultDashboardDirectory(): string {
   return url.fileURLToPath(new URL('../../dashboard', import.meta.url));
 }
 
+/**
+ * The directory {@link dashboard} serves: `distDir` when given, otherwise
+ * {@link defaultDashboardDirectory}.
+ */
+export function dashboardDirectory(distDir: string | undefined): string {
+  return distDir ?? defaultDashboardDirectory();
+}
+
 function isFile(path: string): boolean {
   try {
     return process.getBuiltinModule('node:fs').statSync(path).isFile();
@@ -127,7 +135,7 @@ function createDashboardRoutes(distDir: string): ServeRoutes {
  * ```
  */
 export function dashboard(options: DashboardOptions): WeftServer {
-  const { distDir = defaultDashboardDirectory(), routes: callerRoutes, ...serveOptions } = options;
+  const { distDir, routes: callerRoutes, ...serveOptions } = options;
   const conflicts = Object.keys(callerRoutes ?? {}).filter((routeKey) =>
     DASHBOARD_ROUTE_KEYS.includes(routeKey),
   );
@@ -136,5 +144,8 @@ export function dashboard(options: DashboardOptions): WeftServer {
       `dashboard() registers these routes itself, so remove them from routes: ${conflicts.join(', ')}`,
     );
   }
-  return serve({ ...serveOptions, routes: { ...callerRoutes, ...createDashboardRoutes(distDir) } });
+  return serve({
+    ...serveOptions,
+    routes: { ...callerRoutes, ...createDashboardRoutes(dashboardDirectory(distDir)) },
+  });
 }

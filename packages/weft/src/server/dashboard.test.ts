@@ -5,7 +5,7 @@
  * `distDir`.
  */
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,7 @@ import {
   dashboard,
   DASHBOARD_BUILD_COMMAND,
   DASHBOARD_SHELL_ROUTES,
+  dashboardDirectory,
   defaultDashboardDirectory,
   type DashboardOptions,
 } from './dashboard.ts';
@@ -231,13 +232,21 @@ describe('dashboard', () => {
     expect(manifest.name).toBe('@lostgradient/weft');
   });
 
-  // Applies to a checkout without a dashboard build; a built tree serves it instead.
-  it.skipIf(existsSync(join(PACKAGE_ROOT, 'dashboard', 'index.html')))(
-    'without distDir, names the default directory and the build command when it is not built',
-    () => {
-      expect(() => dashboard({ engine, port: 0, unauthenticatedAccess: 'allow' })).toThrow(
-        `Weft's dashboard is not built: ${join(PACKAGE_ROOT, 'dashboard')} has no index.html. Build it by running \`bun scripts/build-dashboard.ts\` in the @lostgradient/weft package, or pass distDir.`,
+  it('serves distDir when given and the default directory when it is omitted', () => {
+    expect(dashboardDirectory(undefined)).toBe(defaultDashboardDirectory());
+    expect(dashboardDirectory(distDir)).toBe(distDir);
+  });
+
+  it('names the directory and the build command when distDir has no index.html', () => {
+    const emptyDirectory = mkdtempSync(join(tmpdir(), 'weft-dashboard-empty-'));
+    try {
+      expect(DASHBOARD_BUILD_COMMAND).toBe('bun scripts/build-dashboard.ts');
+      expect(() => startDashboard({ distDir: emptyDirectory })).toThrow(
+        `Weft's dashboard is not built: ${emptyDirectory} has no index.html. Build it by running \`bun scripts/build-dashboard.ts\` in the @lostgradient/weft package, or pass distDir.`,
       );
-    },
-  );
+      expect(server).toBeUndefined();
+    } finally {
+      rmSync(emptyDirectory, { recursive: true, force: true });
+    }
+  });
 });
