@@ -9,13 +9,13 @@ import {
   type InputRequest,
   type ServerContext,
 } from '@modelcontextprotocol/server';
+import { z } from 'zod';
 
 import type {
   ToolElicitationRequest,
   ToolElicitationRequester,
   ToolElicitationResult,
 } from '../../is-tool';
-import { jsonSchemaToZod } from '../../json-schema-to-zod';
 
 // `toElicitRequestParams` is a standalone request-shaping utility, not
 // composed from any toolbox's own `RuntimeServices`, so its identifier
@@ -87,9 +87,8 @@ export function fromElicitResult(
   if (result.action === 'accept') {
     const content = result.content ?? {};
     if (request.mode !== 'url') {
-      const schema = jsonSchemaToZod(request.schema ?? EMPTY_FORM_SCHEMA);
-      const parsed = schema?.safeParse(content);
-      if (parsed && !parsed.success) {
+      const parsed = toRequestedSchema(request.message, request.schema).safeParse(content);
+      if (!parsed.success) {
         throw new TypeError(
           `Elicitation response for "${request.message}" did not match the requested schema: ${parsed.error.message}`,
         );
@@ -101,6 +100,25 @@ export function fromElicitResult(
     return { action: 'decline' };
   }
   return { action: 'cancel' };
+}
+
+/**
+ * Converts a form request's JSON Schema strictly (draft 2020-12), so every
+ * constraint it states — `pattern`, `minimum`, `format`, enums — is enforced
+ * on the answer. A schema that cannot be converted fails closed.
+ */
+function toRequestedSchema(
+  message: string,
+  schema: Record<string, unknown> | undefined,
+): z.ZodType {
+  try {
+    return z.fromJSONSchema(schema ?? EMPTY_FORM_SCHEMA, { defaultTarget: 'draft-2020-12' });
+  } catch (error) {
+    throw new TypeError(
+      `Elicitation schema for "${message}" cannot be enforced: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
 }
 
 /** Translates an MCP `ElicitRequest`'s params into our transport-agnostic shape. */

@@ -90,9 +90,7 @@ export function readRequestFacts(
   const progressToken = meta?.['progressToken'] as ProgressToken | undefined;
   return {
     context: mcp,
-    ...(trace?.traceparent !== undefined
-      ? { traceContext: propagation.extract(ROOT_CONTEXT, trace) }
-      : {}),
+    ...(trace !== undefined ? { traceContext: propagation.extract(ROOT_CONTEXT, trace) } : {}),
     ...(progressToken !== undefined ? { progressToken } : {}),
   };
 }
@@ -130,8 +128,18 @@ export function createProgressForwarder() {
   let sink: McpProgressSink | undefined;
   let last = 0;
   let percentSeen = false;
+  // The token `last` and `percentSeen` belong to; it outlives the sink, which
+  // is cleared between rounds.
+  let sequenceToken: ProgressToken | undefined;
   return {
     setSink(next: McpProgressSink | undefined) {
+      // Ordering is scoped to a progress token, so a round that brings a new
+      // token starts its own increasing sequence.
+      if (next !== undefined && next.token !== sequenceToken) {
+        sequenceToken = next.token;
+        last = 0;
+        percentSeen = false;
+      }
       sink = next;
     },
     forward(update: { percent?: number | undefined; message?: string | undefined }) {

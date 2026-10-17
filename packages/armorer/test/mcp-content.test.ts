@@ -17,6 +17,11 @@ describe('MCP content mapping', () => {
     expect(toCallToolResult({ outcome: 'success', result: value } as never)).toEqual(value);
   });
 
+  it('forwards the result metadata of an MCP-shaped result (server direction)', () => {
+    const value = { content: [text], _meta: { 'example.com/trace': 'abc' } };
+    expect(toCallToolResult({ outcome: 'success', result: value } as never)).toEqual(value);
+  });
+
   it('round-trips ordered blocks in both directions', () => {
     const blocks = [text, image, { type: 'resource_link' as const, uri: 'file:///a', name: 'a' }];
     const parsed = parseMcpCallResult({ content: blocks });

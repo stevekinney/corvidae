@@ -17,6 +17,7 @@ type CallToolResultShape = {
   content: ContentBlock[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
+  _meta?: Record<string, unknown>;
 };
 
 const CALL_TOOL_RESULT_KEYS = new Set(['content', 'structuredContent', 'isError', '_meta']);
@@ -44,6 +45,8 @@ function isCallToolResultShape(value: unknown): value is CallToolResultShape {
   if (!content.every((block) => isSpecType.ContentBlock(block))) return false;
   const structured = value['structuredContent'];
   if (structured !== undefined && !isRecord(structured)) return false;
+  const meta = value['_meta'];
+  if (meta !== undefined && !isRecord(meta)) return false;
   const isError = value['isError'];
   return isError === undefined || typeof isError === 'boolean';
 }
@@ -66,6 +69,7 @@ export function toCallToolResult(result: ToolResultLike): CallToolResult {
         ? { structuredContent: executionValue.structuredContent }
         : {}),
       ...(executionValue.isError !== undefined ? { isError: executionValue.isError } : {}),
+      ...(executionValue._meta !== undefined ? { _meta: executionValue._meta } : {}),
     };
   }
 
