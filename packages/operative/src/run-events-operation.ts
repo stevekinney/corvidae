@@ -12,6 +12,7 @@
 
 import {
   createReplayAwareClosableIterable,
+  decodeCursor,
   defineOperation,
   type ReplayLiveSubscribeOptions,
 } from '@lostgradient/weft';
@@ -48,7 +49,14 @@ const runEventKindSchema = z.enum(PUBLISHED_RUN_EVENT_KINDS);
 const runEventsSubscriptionInput = z.object({
   runId: z.string().min(1),
   kinds: z.union([runEventKindSchema, z.array(runEventKindSchema).min(1)]).optional(),
-  fromCursor: z.string().min(1).optional(),
+  // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
+  // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
+  // route) instead of an error thrown later from inside the feed.
+  fromCursor: z
+    .string()
+    .min(1)
+    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
+    .optional(),
 });
 
 const runEventsSubscriptionEnvelope = z.object({
@@ -155,7 +163,13 @@ export const runEventsSubscriptionOperation = defineOperation<
     if (runFeed === undefined) {
       // An unknown run is a caller error, not a transport failure: the run may
       // have completed and been reaped between listing it and subscribing.
-      throw new Error(`Unknown run "${input.runId}"`);
+      // Thrown as a plain fault, which the catalog pipeline passes through intact.
+      const notFound = {
+        code: 'NotFound' as const,
+        message: `Unknown run "${input.runId}"`,
+        data: { resource: 'run', identifier: input.runId },
+      };
+      throw notFound;
     }
 
     // Only the session's own signal is needed: `createAgentRunEventFeed`

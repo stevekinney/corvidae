@@ -85,6 +85,46 @@ export type ResolvedMounts = {
   readonly publicPaths: ReadonlySet<string>;
 };
 
+/**
+ * The paths the handler itself answers without authentication unless the host
+ * says otherwise: health and the three discovery documents.
+ */
+export const DEFAULT_OPERATION_HANDLER_PUBLIC_PATHS: ReadonlyArray<string> = [
+  '/v1/health',
+  '/openapi.json',
+  '/openrpc.json',
+  '/asyncapi.json',
+];
+
+/**
+ * Validate the handler's own `publicPaths` once, at construction, with the
+ * rules a mount's `publicPaths` follow: an entry is an absolute path, belongs
+ * to a route the handler serves (anything else is inert and almost certainly a
+ * typo), and is not claimed by a mount, so an unauthenticated path has exactly
+ * one owner.
+ */
+export function resolveHandlerPublicPaths(
+  paths: ReadonlyArray<string>,
+  mounts: ResolvedMounts,
+): ReadonlySet<string> {
+  const resolved = new Set<string>();
+  for (const path of paths) {
+    const normalized = assertMountPath(path, 'publicPaths entry');
+    if (!OPERATION_HANDLER_CATALOG_ROUTE_PATHS.some((route) => isAtOrUnder(normalized, route))) {
+      throw new Error(
+        `createOperationHandler: publicPaths entry "${normalized}" is not a path the handler serves`,
+      );
+    }
+    if (mounts.match(normalized) !== undefined) {
+      throw new Error(
+        `createOperationHandler: publicPaths entry "${normalized}" belongs to a mount; declare it in that mount's publicPaths`,
+      );
+    }
+    resolved.add(normalized);
+  }
+  return resolved;
+}
+
 type NormalizedMount = {
   readonly mount: OperationHandlerMount;
   readonly pathPrefix: string;

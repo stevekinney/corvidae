@@ -292,6 +292,72 @@ describe('createOperationHandlerAuthenticator', () => {
     expect((admitted as { method: string }).method).toBe('api-key');
   });
 
+  it('has no public paths of its own, so a mount sees only what it declared', async () => {
+    let reached = false;
+    const handler = createOperationHandler({
+      operations: [],
+      host: {},
+      authenticate: createOperationHandlerAuthenticator({
+        apiKeys: ['right-key'],
+        auditSink: quietAudit,
+      }),
+      mounts: [
+        {
+          pathPrefix: '/.well-known',
+          fetch: async () => {
+            reached = true;
+            return new Response('mounted');
+          },
+        },
+      ],
+    });
+
+    const mcp = await handler(new Request('http://localhost/.well-known/mcp.json'));
+    const catalog = await handler(new Request('http://localhost/.well-known/api-catalog'));
+
+    expect(mcp.status).toBe(401);
+    expect(catalog.status).toBe(401);
+    expect(reached).toBe(false);
+  });
+
+  it('does not answer /v1/metrics as public either', async () => {
+    const handler = createOperationHandler({
+      operations: [],
+      host: {},
+      authenticate: createOperationHandlerAuthenticator({
+        apiKeys: ['right-key'],
+        auditSink: quietAudit,
+      }),
+      mounts: [{ pathPrefix: '/v1/metrics', fetch: async () => new Response('mounted') }],
+    });
+
+    expect(await statusOf(handler, new Request('http://localhost/v1/metrics'))).toBe(401);
+  });
+
+  it('refuses config.publicPaths, which would be a second place to decide them', () => {
+    expect(() =>
+      createOperationHandlerAuthenticator({ apiKeys: ['k'], publicPaths: ['/v1/health'] }),
+    ).toThrow(/publicPaths is not accepted/);
+  });
+
+  it('exposes a readiness promise that settles for a usable key', async () => {
+    const authenticate = createOperationHandlerAuthenticator({
+      jwt: { secret: SECRET },
+      auditSink: quietAudit,
+    });
+
+    expect(await authenticate.ready).toBeUndefined();
+  });
+
+  it('rejects the readiness promise when a key cannot be imported', async () => {
+    const authenticate = createOperationHandlerAuthenticator({
+      jwt: { algorithm: 'RS256', publicKey: 'not a public key' },
+      auditSink: quietAudit,
+    });
+
+    expect(await throwingRejectionOf(authenticate.ready)).toThrow();
+  });
+
   it('surfaces a key that cannot be imported on the first request, not at construction', async () => {
     const authenticate = createOperationHandlerAuthenticator({
       jwt: { algorithm: 'RS256', publicKey: 'not a public key' },
@@ -313,6 +379,64 @@ describe('createOperationHandlerAuthenticator', () => {
         { additionalScopes: ['weft.system:read'] },
       ),
     ).toThrow(/additionalScopes/);
+  });
+});
+
+describe('createOperationHandler publicPaths', () => {
+  const rejecting: OperationHandlerAuthenticate = async () => new Response('nope', { status: 401 });
+
+  it('authenticates health and the documents when publicPaths is empty', async () => {
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      authenticate: rejecting,
+      publicPaths: [],
+    });
+
+    for (const path of ['/v1/health', '/openapi.json', '/openrpc.json', '/asyncapi.json']) {
+      expect(await statusOf(handler, new Request(`http://localhost${path}`))).toBe(401);
+    }
+  });
+
+  it('serves only the listed paths without authentication', async () => {
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      authenticate: rejecting,
+      publicPaths: ['/v1/health'],
+    });
+
+    expect(await statusOf(handler, new Request('http://localhost/v1/health'))).toBe(200);
+    expect(await statusOf(handler, new Request('http://localhost/openapi.json'))).toBe(401);
+  });
+
+  it('refuses an entry the handler does not serve, or that a mount claims', () => {
+    const build =
+      (publicPaths: string[], mountPrefix = '/a2a') =>
+      () =>
+        createOperationHandler({
+          operations: [],
+          host: {},
+          publicPaths,
+          mounts: [{ pathPrefix: mountPrefix, fetch: async () => new Response('mounted') }],
+        });
+
+    expect(build(['/nothing-here'])).toThrow(/is not a path the handler serves/);
+    expect(build(['health'])).toThrow(/absolute path/);
+    expect(
+      createOperationHandler.bind(null, {
+        operations: [],
+        host: {},
+        publicPaths: ['/v1/health'],
+        mounts: [
+          {
+            pathPrefix: '/a2a',
+            publicPaths: ['/.well-known/agent-card.json'],
+            fetch: async () => new Response('mounted'),
+          },
+        ],
+      }),
+    ).not.toThrow();
   });
 });
 
@@ -367,6 +491,64 @@ describe('createOperationHandler CORS', () => {
       'https://dashboard.example.com',
     );
     expect(denied.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
+  it('decorates a response whose headers are immutable', async () => {
+    // Bun's own responses have mutable headers, but the Fetch spec guards
+    // them on a `fetch()` result and on other runtimes, so build one the way
+    // those runtimes do: headers that refuse a write.
+    const immutable = (): Response => {
+      const response = new Response(null, { status: 302, headers: { location: '/elsewhere' } });
+      const guarded = new Headers(response.headers);
+      for (const method of ['set', 'append', 'delete'] as const) {
+        Object.defineProperty(guarded, method, {
+          value: () => {
+            throw new TypeError('immutable headers');
+          },
+        });
+      }
+      Object.defineProperty(response, 'headers', { value: guarded });
+      return response;
+    };
+    expect(() => immutable().headers.set('X-Probe', '1')).toThrow();
+    const handler = createOperationHandler({
+      operations: [],
+      host: {},
+      cors,
+      authenticate: async () => immutable(),
+      mounts: [{ pathPrefix: '/adapter', fetch: async () => immutable() }],
+      publicPaths: [],
+    });
+    const origin = { Origin: 'https://dashboard.example.com' };
+
+    const fromAuthenticate = await handler(
+      new Request('http://localhost/v1/health', { headers: origin }),
+    );
+    const fromMount = await handler(new Request('http://localhost/adapter/x', { headers: origin }));
+
+    for (const response of [fromAuthenticate, fromMount]) {
+      expect(response.status).toBe(302);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+        'https://dashboard.example.com',
+      );
+    }
+  });
+
+  it('returns a response that cannot be copied undecorated instead of failing', async () => {
+    const handler = createOperationHandler({
+      operations: [],
+      host: {},
+      cors,
+      mounts: [{ pathPrefix: '/adapter', fetch: async () => Response.error() }],
+    });
+
+    const response = await handler(
+      new Request('http://localhost/adapter/x', {
+        headers: { Origin: 'https://dashboard.example.com' },
+      }),
+    );
+
+    expect(response.type).toBe('error');
   });
 
   it('emits no CORS headers when cors is omitted', async () => {

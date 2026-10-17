@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { defineOperation } from '../operation-registry.ts';
+import { createReplayAwareClosableIterable } from '../operations/event-stream-contracts.ts';
 import { DEFAULT_MAX_STREAM_DURATION_MS } from './operation-handler-subscription.ts';
 import {
   createManualScheduler,
@@ -13,6 +14,7 @@ import {
   scopedEchoOperation,
   statusOf,
   strangerContext,
+  type TestEvent,
 } from './operation-handler.test-support.ts';
 import { createOperationHandler } from './operation-handler.ts';
 
@@ -245,7 +247,9 @@ describe('GET /v1/subscriptions/:operationName', () => {
         iterable: (async function* () {
           yield { value: 'no cursor' };
         })(),
-        close: async () => undefined,
+        close: async () => {
+          host.closed.count += 1;
+        },
       }),
     });
     const handler = createOperationHandler({
@@ -260,6 +264,151 @@ describe('GET /v1/subscriptions/:operationName', () => {
     expect(body).toContain('event: error');
     expect(body).toContain('Internal server error');
     expect(body).not.toContain('no cursor');
+    expect(host.closed.count).toBe(1);
+  });
+
+  it('refuses an element whose cursor or kind would forge an SSE field', async () => {
+    const host = createTestHost();
+    const hostile = (name: string, element: { kind: string; cursor: string }) =>
+      defineOperation<
+        typeof eventsOperation.inputSchema,
+        typeof eventsOperation.outputSchema,
+        typeof eventsOperation.eventSchema,
+        typeof host
+      >({
+        ...eventsOperation,
+        name,
+        invoke: async () => ({
+          envelope: { subscriptionId: 'sub_1', cursor: '0' },
+          iterable: (async function* () {
+            yield { ...element, emittedAtMs: 1, payload: {} };
+          })(),
+          close: async () => {
+            host.closed.count += 1;
+          },
+        }),
+      });
+    const handler = createOperationHandler({
+      operations: [
+        hostile('probe.hostile.cursor', { kind: 'ok', cursor: '1\nevent: error' }),
+        hostile('probe.hostile.kind', { kind: 'ok\r\nid: 99', cursor: '1' }),
+      ],
+      host,
+      authenticate: async () => readerContext(),
+    });
+
+    for (const name of ['probe.hostile.cursor', 'probe.hostile.kind']) {
+      const response = await handler(eventStreamRequest(`/v1/subscriptions/${name}`));
+      const body = await response.text();
+
+      expect(body).toBe(
+        'event: error\ndata: {"code":"EngineFailure","message":"Internal server error"}\n\n',
+      );
+    }
+    expect(host.closed.count).toBe(2);
+  });
+
+  it('releases the subscription when the client disconnects', async () => {
+    const { host, handler } = setup();
+    host.feed.publish('only');
+    const disconnect = new AbortController();
+
+    const response = await handler(
+      new Request('http://localhost/v1/subscriptions/probe.events', {
+        headers: { Accept: 'text/event-stream' },
+        signal: disconnect.signal,
+      }),
+    );
+    const reader = response.body!.getReader();
+    await readFrames(reader, 1);
+    expect(host.closed.count).toBe(0);
+
+    disconnect.abort();
+    await Bun.sleep(0);
+
+    expect(host.closed.count).toBe(1);
+    await reader.cancel();
+  });
+
+  it('marks the end of the replay with a ping when the operation reports it', async () => {
+    const host = createTestHost();
+    const replayAware = defineOperation<
+      typeof eventsOperation.inputSchema,
+      typeof eventsOperation.outputSchema,
+      typeof eventsOperation.eventSchema,
+      typeof host
+    >({
+      ...eventsOperation,
+      name: 'probe.replayaware',
+      invoke: async ({ input }) => {
+        const controller = new AbortController();
+        const iterable = createReplayAwareClosableIterable<TestEvent>(
+          (onReplayComplete) => {
+            queueMicrotask(onReplayComplete);
+            return host.feed.subscribe(input.fromCursor, controller.signal);
+          },
+          { close: () => controller.abort() },
+        );
+        return {
+          envelope: { subscriptionId: 'sub_1', cursor: '0' },
+          iterable,
+          close: () => iterable.close(),
+        };
+      },
+    });
+    host.feed.publish('first');
+    const handler = createOperationHandler({
+      operations: [replayAware],
+      host,
+      authenticate: async () => readerContext(),
+    });
+
+    const response = await handler(eventStreamRequest('/v1/subscriptions/probe.replayaware'));
+    const reader = response.body!.getReader();
+    const frames = await readFrames(reader, 2);
+    await reader.cancel();
+
+    const ping = frames.find((frame) => frame.startsWith('event: ping')) ?? '';
+    expect(ping).toContain('"replayComplete":true');
+    expect(ping).not.toContain('id:');
+    expect(frames.some((frame) => frame.startsWith('id: 1\nevent: first'))).toBe(true);
+  });
+});
+
+describe('construction', () => {
+  it('refuses an http subscription whose input has no fromCursor', () => {
+    const host = createTestHost();
+    const noCursor = defineOperation<
+      z.ZodObject<{ topic: z.ZodOptional<z.ZodString> }>,
+      typeof eventsOperation.outputSchema,
+      typeof eventsOperation.eventSchema,
+      typeof host
+    >({
+      ...eventsOperation,
+      name: 'probe.nocursor',
+      inputSchema: z.object({ topic: z.string().optional() }),
+    });
+
+    expect(() => createOperationHandler({ operations: [noCursor], host })).toThrow(
+      /subscription "probe\.nocursor".*no fromCursor/,
+    );
+  });
+
+  it('accepts a subscription without fromCursor when it is not served over http', () => {
+    const host = createTestHost();
+    const socketOnly = defineOperation<
+      z.ZodObject<{}>,
+      typeof eventsOperation.outputSchema,
+      typeof eventsOperation.eventSchema,
+      typeof host
+    >({
+      ...eventsOperation,
+      name: 'probe.socketonly',
+      inputSchema: z.object({}),
+      transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+    });
+
+    expect(() => createOperationHandler({ operations: [socketOnly], host })).not.toThrow();
   });
 });
 
@@ -284,6 +433,39 @@ describe('maxStreamDurationMs', () => {
     expect(host.closed.count).toBe(1);
     expect(clock.cancelled(60_000)).toBe(1);
     expect(clock.cancelled(15_000)).toBe(1);
+  });
+
+  it('ends the response at the deadline even when the close hook never settles', async () => {
+    const clock = createManualScheduler();
+    const host = createTestHost();
+    const stalled = defineOperation<
+      typeof eventsOperation.inputSchema,
+      typeof eventsOperation.outputSchema,
+      typeof eventsOperation.eventSchema,
+      typeof host
+    >({
+      ...eventsOperation,
+      name: 'probe.stalled',
+      invoke: async ({ input }) => ({
+        envelope: { subscriptionId: 'sub_1', cursor: '0' },
+        iterable: host.feed.subscribe(input.fromCursor, new AbortController().signal),
+        close: () => new Promise<void>(() => undefined),
+      }),
+    });
+    const handler = createOperationHandler({
+      operations: [stalled],
+      host,
+      authenticate: async () => readerContext(),
+      maxStreamDurationMs: 60_000,
+      heartbeat: { intervalMs: 15_000, schedule: clock.schedule, now: () => 0 },
+    });
+
+    const response = await handler(eventStreamRequest('/v1/subscriptions/probe.stalled'));
+    const reader = response.body!.getReader();
+    clock.fire(60_000);
+    const next = await reader.read();
+
+    expect(next.done).toBe(true);
   });
 
   it('defaults to fifteen minutes', async () => {
@@ -322,10 +504,16 @@ describe('maxStreamDurationMs', () => {
   });
 
   it('is validated as a positive integer at construction', () => {
-    for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    for (const value of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648]) {
       expect(() =>
         createOperationHandler({ operations: [], host: {}, maxStreamDurationMs: value }),
       ).toThrow(/maxStreamDurationMs/);
     }
+  });
+
+  it('accepts the largest delay a timer honors', () => {
+    expect(() =>
+      createOperationHandler({ operations: [], host: {}, maxStreamDurationMs: 2_147_483_647 }),
+    ).not.toThrow();
   });
 });

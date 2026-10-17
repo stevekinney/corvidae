@@ -215,14 +215,17 @@ export function createEventEnvelopeSSEStream<TEnvelope extends ServerSentEventEn
         // The scheduler is interval-shaped, so a second tick is possible
         // before the cleanup cancels it; ending twice is a no-op.
         clearDeadline = heartbeat.schedule(() => {
-          void (async () => {
-            await closeResources();
-            try {
-              controller.close();
-            } catch {
-              // The stream may already have ended.
-            }
-          })();
+          // Release the timers and mark the stream closed synchronously, end
+          // the response, and only then let the (possibly stalled) close hook
+          // run on its own: a hook that never settles must not hold the
+          // connection open.
+          const cleanup = closeResources();
+          try {
+            controller.close();
+          } catch {
+            // The stream may already have ended.
+          }
+          void cleanup;
         }, options.maxDurationMs);
       }
 

@@ -12,6 +12,7 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   createReplayAwareClosableIterable,
+  decodeCursor,
   defineOperation,
   type ReplayLiveSubscribeOptions,
 } from '@lostgradient/weft';
@@ -32,7 +33,14 @@ const bureauEventsSubscriptionInput = z.object({
   bureauId: z.string().min(1),
   /** One kind, or several. Omitting it delivers every published kind. */
   kinds: z.union([bureauEventKindSchema, z.array(bureauEventKindSchema).min(1)]).optional(),
-  fromCursor: z.string().min(1).optional(),
+  // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
+  // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
+  // route) instead of an error thrown later from inside the feed.
+  fromCursor: z
+    .string()
+    .min(1)
+    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
+    .optional(),
 });
 
 const bureauEventsSubscriptionEnvelope = z.object({
@@ -115,7 +123,15 @@ export const bureauEventsSubscriptionOperation = defineOperation<
       const runtime = host.runtime ?? createDefaultRuntimeServices();
       const bureauFeed = host.bureauFeeds.get(input.bureauId);
       if (bureauFeed === undefined) {
-        throw new Error(`Unknown bureau "${input.bureauId}"`);
+        // An unknown bureau is a caller error: it may have been disposed
+        // between listing it and subscribing.
+        // Thrown as a plain fault, which the catalog pipeline passes through intact.
+        const notFound = {
+          code: 'NotFound' as const,
+          message: `Unknown bureau "${input.bureauId}"`,
+          data: { resource: 'bureau', identifier: input.bureauId },
+        };
+        throw notFound;
       }
 
       // Only the session's own signal: the feed binds its own lifetime into

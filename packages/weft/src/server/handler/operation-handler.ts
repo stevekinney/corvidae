@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import type { AuthContext } from '../authentication.ts';
 import type { DiscoveryInfo } from '../discovery-info.ts';
 import { handleJsonRpcHttpRequest } from '../json-rpc-http.ts';
@@ -26,7 +28,9 @@ import {
   type OperationHandlerDocuments,
 } from './operation-handler-discovery.ts';
 import {
+  DEFAULT_OPERATION_HANDLER_PUBLIC_PATHS,
   isAtOrUnder,
+  resolveHandlerPublicPaths,
   resolveMounts,
   type OperationHandlerMount,
   type OperationHandlerMountContext,
@@ -45,7 +49,15 @@ import { errorResponse, jsonResponse, negotiatedResponse } from './response-help
  * operation that needs a capability the host lacks is a compile error here.
  */
 export type OperationHandlerOptions<Host> = {
-  /** The whole catalog this handler serves. Weft's own operations are not added. */
+  /**
+   * The whole catalog this handler serves. Weft's own operations are not added.
+   *
+   * A `subscription` that declares `transports.http` must accept `fromCursor`
+   * in its input: the route delivers `Last-Event-ID` as `fromCursor`, and
+   * construction throws naming an operation that does not. The cursor's format
+   * is the operation's own; it should reject a malformed one as
+   * `InvalidParams` (a schema `refine` does), which answers 400.
+   */
   readonly operations: ReadonlyArray<RegistrableOperation<NoInfer<Host>>>;
   /** Delivered as `host` to every `invoke` and `authorize` call. */
   readonly host: Host;
@@ -59,13 +71,24 @@ export type OperationHandlerOptions<Host> = {
   readonly cors?: CorsOptions;
   /** Adapters that claim a path prefix ahead of catalog routing. */
   readonly mounts?: ReadonlyArray<OperationHandlerMount>;
+  /**
+   * Exact paths the handler answers without calling `authenticate`. Defaults
+   * to `/v1/health` and the three discovery documents; `[]` authenticates all
+   * of them. This is the only place the handler's own public paths are
+   * decided: `createOperationHandlerAuthenticator` has none of its own, and a
+   * mount's `publicPaths` cover its paths. An entry must be a path the handler
+   * serves and must not belong to a mount.
+   */
+  readonly publicPaths?: ReadonlyArray<string>;
   readonly discoveryInfo?: DiscoveryInfo;
   /** Maximum JSON-RPC request body size in bytes. Defaults to 1 MB. */
   readonly maxRequestBodyBytes?: number;
   /**
    * How long one Server-Sent Events subscription response may stream before
    * the handler ends it cleanly, so a client resumes with `Last-Event-ID`.
-   * A positive integer number of milliseconds; defaults to fifteen minutes.
+   * A positive integer number of milliseconds, at most 2147483647 (a larger
+   * value overflows the timer, which then fires immediately); defaults to
+   * fifteen minutes.
    * It applies to `GET /v1/subscriptions/:operationName` only.
    */
   readonly maxStreamDurationMs?: number;
@@ -81,13 +104,40 @@ export type OperationHandlerOptions<Host> = {
 export type OperationHandler = (request: Request) => Promise<Response>;
 
 const HEALTH_PATH = '/v1/health';
-const DOCUMENT_PATHS = ['/openapi.json', '/openrpc.json', '/asyncapi.json'] as const;
-const PUBLIC_PATHS: ReadonlySet<string> = new Set([HEALTH_PATH, ...DOCUMENT_PATHS]);
 
-function assertPositiveInteger(value: number | undefined, name: string): void {
+/** The largest delay a timer honors; above it the runtime clamps the delay to 1 ms. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+function assertPositiveInteger(
+  value: number | undefined,
+  name: string,
+  max: number = Number.MAX_SAFE_INTEGER,
+): void {
   if (value === undefined) return;
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`createOperationHandler: ${name} must be a positive integer (got ${value})`);
+  if (!Number.isSafeInteger(value) || value <= 0 || value > max) {
+    const bound = max === Number.MAX_SAFE_INTEGER ? '' : ` no greater than ${max}`;
+    throw new Error(
+      `createOperationHandler: ${name} must be a positive integer${bound} (got ${value})`,
+    );
+  }
+}
+
+/**
+ * The `fromCursor` contract: `Last-Event-ID` is delivered to a subscription as
+ * its `fromCursor` input, so a subscription served over HTTP has to accept one.
+ * Checked at construction so a missing field is a startup error naming the
+ * operation, not a 400 on every reconnect.
+ */
+function assertSubscriptionsAcceptFromCursor(registry: OperationRegistry): void {
+  for (const operation of registry.list()) {
+    if (operation.kind !== 'subscription' || !operation.transports.http) continue;
+    const accepts =
+      operation.inputSchema instanceof z.ZodObject && 'fromCursor' in operation.inputSchema.shape;
+    if (!accepts) {
+      throw new Error(
+        `createOperationHandler: subscription "${operation.name}" declares transports.http but its input has no fromCursor field, so Last-Event-ID cannot resume it`,
+      );
+    }
   }
 }
 
@@ -143,10 +193,15 @@ export function createOperationHandler<Host>(
   options: OperationHandlerOptions<Host>,
 ): OperationHandler {
   assertPositiveInteger(options.maxRequestBodyBytes, 'maxRequestBodyBytes');
-  assertPositiveInteger(options.maxStreamDurationMs, 'maxStreamDurationMs');
+  assertPositiveInteger(options.maxStreamDurationMs, 'maxStreamDurationMs', MAX_TIMER_DELAY_MS);
   const authenticate = options.authenticate;
   const registry = createOperationRegistry<Host>(options.operations);
+  assertSubscriptionsAcceptFromCursor(registry);
   const mounts = resolveMounts(options.mounts ?? []);
+  const publicPaths = resolveHandlerPublicPaths(
+    options.publicPaths ?? DEFAULT_OPERATION_HANDLER_PUBLIC_PATHS,
+    mounts,
+  );
   const corsPolicy =
     options.cors === undefined
       ? undefined
@@ -160,7 +215,7 @@ export function createOperationHandler<Host>(
 
   const handle = async (request: Request): Promise<Response> => {
     const pathname = normalizedPathname(request);
-    const isPublic = PUBLIC_PATHS.has(pathname) || mounts.publicPaths.has(pathname);
+    const isPublic = publicPaths.has(pathname) || mounts.publicPaths.has(pathname);
     let authContext: AuthContext | undefined;
     if (authenticate !== undefined && !isPublic) {
       const outcome = await authenticate(request);
@@ -191,10 +246,30 @@ export function createOperationHandler<Host>(
       });
       response = errorResponse('Internal server error', 500);
     }
-    return corsPolicy === undefined
-      ? response
-      : decorateResponseWithCors(corsPolicy, request, response);
+    return corsPolicy === undefined ? response : decorate(corsPolicy, request, response);
   };
+}
+
+/**
+ * Add the CORS headers to a mutable copy of the response. A `fetch()` result,
+ * `Response.redirect()`, or any response a hook hands back may carry immutable
+ * headers, and `decorateResponseWithCors` sets them in place. The copy shares
+ * the body stream, so nothing is buffered; a response that cannot be copied
+ * (`Response.error()`) is returned undecorated, which is also how a browser
+ * reads it.
+ */
+function decorate(
+  policy: Parameters<typeof decorateResponseWithCors>[0],
+  request: Request,
+  response: Response,
+): Response {
+  let copy: Response;
+  try {
+    copy = new Response(response.body, response);
+  } catch {
+    return response;
+  }
+  return decorateResponseWithCors(policy, request, copy);
 }
 
 function mountContext(

@@ -51,13 +51,18 @@ type SseEnvelope = {
   readonly emittedAtMs: number;
 };
 
+/** A carriage return or line feed in a field would end it and start a forged one. */
+const LINE_BREAK = /[\r\n]/;
+
 function isSseEnvelope(value: unknown): value is SseEnvelope {
   if (value === null || typeof value !== 'object') return false;
   return (
     'kind' in value &&
     typeof value.kind === 'string' &&
+    !LINE_BREAK.test(value.kind) &&
     'cursor' in value &&
     typeof value.cursor === 'string' &&
+    !LINE_BREAK.test(value.cursor) &&
     'emittedAtMs' in value &&
     typeof value.emittedAtMs === 'number'
   );
@@ -65,8 +70,11 @@ function isSseEnvelope(value: unknown): value is SseEnvelope {
 
 /**
  * A subscription's elements reach the wire as SSE frames keyed by `cursor`, so
- * every element must carry one. Anything else is the operation's defect, not
- * the caller's, and ends the stream with a sanitized error frame.
+ * every element must carry one, and `cursor` and `kind` become the `id:` and
+ * `event:` lines, so neither may contain a line break (an operation echoing
+ * caller-controlled text there could forge a frame). Anything else is the
+ * operation's defect, not the caller's, and ends the stream with a sanitized
+ * error frame.
  */
 async function* asEnvelopes(iterable: AsyncIterable<unknown>): AsyncGenerator<SseEnvelope> {
   for await (const element of iterable) {
@@ -97,6 +105,7 @@ function streamResponse(
     close: invocation.close,
     signal: request.signal,
     maxDurationMs: context.maxStreamDurationMs,
+    ...(invocation.replayComplete === undefined ? {} : { ready: invocation.replayComplete }),
     ...(context.heartbeat === undefined ? {} : { heartbeat: context.heartbeat }),
   });
   return new Response(stream, { status: 200, headers: SSE_RESPONSE_HEADERS });
@@ -105,7 +114,7 @@ function streamResponse(
 type SubscriptionRouteInvocation = Pick<
   SubscriptionOperationInvocation<unknown, unknown>,
   'iterable' | 'close'
->;
+> & { readonly replayComplete?: Promise<void> };
 
 /**
  * Serve `GET /v1/subscriptions/:operationName`: the catalog subscription

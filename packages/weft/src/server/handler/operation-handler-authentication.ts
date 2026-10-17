@@ -17,6 +17,17 @@ import { authContextFromAuthResult, unauthorizedResponse } from '../runtime/requ
  */
 export type OperationHandlerAuthenticate = (request: Request) => Promise<AuthContext | Response>;
 
+/**
+ * The authenticator `createOperationHandlerAuthenticator` builds: an
+ * `authenticate` hook plus `ready`, which settles once the credential keys
+ * have been imported and rejects when one cannot be. Await it at startup to
+ * fail the way `serve()` does, rather than answering every request with a 500
+ * for the life of the process.
+ */
+export type OperationHandlerAuthenticator = OperationHandlerAuthenticate & {
+  readonly ready: Promise<void>;
+};
+
 export type OperationHandlerAuthenticatorOptions = {
   /**
    * Package scopes the handler's operations require beyond Weft's built-in
@@ -38,7 +49,8 @@ export type OperationHandlerAuthenticatorOptions = {
  * `createAuthenticator` underneath, the same forwarded principal, and the same
  * 401 (body and `WWW-Authenticate` challenge) for a rejected credential. A bad
  * `config` or `additionalScopes` entry throws here, synchronously, before the
- * handler serves a request.
+ * handler serves a request, and so does a `config.publicPaths`: the handler owns
+ * public paths. A key that cannot be imported rejects `ready`.
  *
  * mTLS is admitted only on positive evidence of a verified client certificate,
  * and a fetch handler has no transport to supply it, so a request there is
@@ -62,21 +74,33 @@ export type OperationHandlerAuthenticatorOptions = {
 export function createOperationHandlerAuthenticator(
   config: AuthConfig,
   options: OperationHandlerAuthenticatorOptions = {},
-): OperationHandlerAuthenticate {
+): OperationHandlerAuthenticator {
   validateAuthConfig(config);
+  if (config.publicPaths !== undefined) {
+    throw new Error(
+      'createOperationHandlerAuthenticator: config.publicPaths is not accepted. Public paths ' +
+        "are decided in one place, `createOperationHandler({ publicPaths })` and each mount's " +
+        '`publicPaths`; the authenticator itself has none.',
+    );
+  }
   createAdditionalScopeSet(options.additionalScopes);
+  // The authenticator's built-in public paths (`/v1/metrics`, `/.well-known/*`)
+  // would admit those requests unauthenticated at a mount that never declared
+  // them, so the inner authenticator is given none.
   const authenticatorPromise = createAuthenticator(
-    config,
+    { ...config, publicPaths: [] },
     options.additionalScopes === undefined ? {} : { additionalScopes: options.additionalScopes },
   );
-  // A key that fails to import rejects here. The first request surfaces it;
-  // this keeps the rejection from being reported as unhandled meanwhile.
-  authenticatorPromise.catch(() => undefined);
+  // A key that fails to import rejects `ready` and every request. Neither is
+  // reported as an unhandled rejection while nothing is awaiting it yet.
+  const ready = authenticatorPromise.then(() => undefined);
+  ready.catch(() => undefined);
 
-  return async (request) => {
-    const authenticate = await authenticatorPromise;
-    const result = await authenticate(request);
+  const authenticate: OperationHandlerAuthenticate = async (request) => {
+    const authenticator = await authenticatorPromise;
+    const result = await authenticator(request);
     if (!result.authenticated) return unauthorizedResponse(result.error);
     return authContextFromAuthResult(result);
   };
+  return Object.assign(authenticate, { ready });
 }

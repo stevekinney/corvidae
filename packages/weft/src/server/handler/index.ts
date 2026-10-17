@@ -29,6 +29,7 @@ export { authContextToPrincipal } from './auth-context-principal.ts';
 export {
   createOperationHandlerAuthenticator,
   type OperationHandlerAuthenticate,
+  type OperationHandlerAuthenticator,
   type OperationHandlerAuthenticatorOptions,
 } from './operation-handler-authentication.ts';
 export type {
