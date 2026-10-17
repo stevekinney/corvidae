@@ -1,3 +1,9 @@
+import {
+  createContextKey,
+  propagation,
+  type Context,
+  type TextMapPropagator,
+} from '@opentelemetry/api';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -36,6 +42,20 @@ const RICH_BLOCKS = [
 const TRACEPARENT = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01';
 
 type Observed = { mcp?: MCPRequestExecutionContext; traceContext?: unknown; aborted?: boolean };
+
+/**
+ * Records the carrier the global propagator was asked to extract, so a test
+ * can tell that the trace context the tool received came from the request's
+ * `_meta` rather than an empty root context.
+ */
+const EXTRACTED_TRACEPARENT = createContextKey('armorer.test.extracted-traceparent');
+const recordingPropagator: TextMapPropagator = {
+  inject() {},
+  extract(context, carrier, getter) {
+    return context.setValue(EXTRACTED_TRACEPARENT, getter.get(carrier, 'traceparent'));
+  },
+  fields: () => ['traceparent', 'tracestate'],
+};
 
 const holdStarted = { resolve: () => {} };
 
@@ -179,6 +199,7 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
     const { client } = await connectInProcessClient(mcp, mode, {
       capabilities: { elicitation: {} },
     });
+    propagation.setGlobalPropagator(recordingPropagator);
     try {
       await client.callTool({
         name: 'sum',
@@ -192,7 +213,9 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
         trace: { traceparent: TRACEPARENT, tracestate: 'armorer=1' },
       });
       expect(call?.mcp?.requestId).toBeString();
-      expect(call?.traceContext).toBeDefined();
+      expect((call?.traceContext as Context | undefined)?.getValue(EXTRACTED_TRACEPARENT)).toBe(
+        TRACEPARENT,
+      );
       if (era === 'modern') {
         // The 2026-07-28 envelope carries these on every request.
         expect(call?.mcp).toMatchObject({
@@ -206,6 +229,7 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
         expect(call?.mcp?.clientCapabilities).toBeUndefined();
       }
     } finally {
+      propagation.disable();
       await client.close();
     }
   });
