@@ -193,11 +193,15 @@ export type ChatSessionControllerOptions = {
    * active, or while a tool approval is pending, is appended to the transcript as
    * a pending follow-up row and handed here instead of being refused.
    *
-   * The promise resolving is the acknowledgement, and it means the host admitted
-   * the input. It does not promise the input reaches this run. Map the host's
-   * outcomes accordingly: resolve for an admitted or replayed input, and reject
-   * with an error that names the outcome for anything else, which marks the row
-   * failed with a retry. Omit the option and a second turn during a run throws,
+   * The promise resolving is the acknowledgement: the host accepted the input.
+   * Resolve only when the input's receipt is `accepted`, `queued`, or `promoted`
+   * (`assertRunInputAccepted` checks this), and reject with an error that names
+   * the state for anything else, including a `canceled` receipt from a
+   * self-cancel and a replay of an input already cancelled. A rejection marks
+   * the row failed with a retry. A run's terminal history that lacks an
+   * accepted follow-up cancels it: the row is promoted to an ordinary turn
+   * after the run ends, or failed with a retry when this client pressed stop.
+   * Omit the option and a second turn during a run throws,
    * as before.
    */
   sendRunInput?: ChatSessionRunInput;

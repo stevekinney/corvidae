@@ -162,8 +162,13 @@ export function createChatSessionController(
     emit,
     notifyStreaming,
     reportError,
+    onTerminalHistory: (terminal) => {
+      terminalIds = new Set(terminal.ids);
+    },
   });
   let stopRequested = false;
+  // The ids in the history the run's terminal frame carried, if one arrived.
+  let terminalIds: ReadonlySet<string> | undefined;
   const stopActiveRun = async (): Promise<void> => {
     stopRequested = true;
     await stopRunner();
@@ -174,6 +179,7 @@ export function createChatSessionController(
     attachments: ChatAttachment[] = [],
   ): Promise<void> => {
     stopRequested = false;
+    terminalIds = undefined;
     let outcome: RunOutcome = 'completed';
     try {
       await executeRunner(userMessageId, attachments);
@@ -184,7 +190,7 @@ export function createChatSessionController(
     } finally {
       // Not awaited: this run's promise is about this run. A follow-up that
       // becomes its own turn reports through its own send promise.
-      void followUps.runEnded(outcome);
+      void followUps.runEnded(outcome, terminalIds);
     }
   };
   const send = async (message: MessageInput, attachments: ChatAttachment[] = []): Promise<void> => {

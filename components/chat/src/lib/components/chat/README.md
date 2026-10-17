@@ -126,25 +126,26 @@ By default the composer is disabled while `streaming` is `true`, and the session
 - `ChatSessionControllerOptions.sendRunInput(conversationId, message, attachments, { messageId })` is the host-facing hook. The controller appends a transcript row for the follow-up and fills `messageId` with that row's id, so a host can pass it on as the session input's own id (`submitSessionInput` accepts a caller-supplied `id`). A retry of the same row passes the same id. Providing it makes `controller.adapter` expose the adapter hook.
 
 ```ts
+import { assertRunInputAccepted } from '@lostgradient/chat';
+
 const session = createChatSessionController({
   getConversation: () => conversation,
   setConversation: (next) => (conversation = next),
   transport,
   async sendRunInput(conversationId, message, attachments, { messageId }) {
-    const outcome = await yourBackend.submitSessionInput({
+    const result = await yourBackend.submitSessionInput({
       id: messageId,
       conversationId,
       message,
       attachments,
     });
-    if (outcome.status !== 'admitted' && outcome.status !== 'replayed') {
-      throw new Error(`Input was not admitted: ${outcome.status}`);
-    }
+    if (!result.receipt) throw new Error(`Input was not admitted: ${result.outcome}`);
+    assertRunInputAccepted(result.receipt);
   },
 });
 ```
 
-The promise resolving is the acknowledgement, and it means the host admitted the input. In `submitSessionInput`'s terms `admitted` and `replayed` resolve, and every other outcome rejects with an error that names the outcome, so the row is marked failed with a Retry button. Admission does not promise the input reaches this run: a run that ends first can leave the input to be answered by another run, which is the host's to show.
+The promise resolving is the acknowledgement, and it resolves only when the input's receipt is `accepted`, `queued`, or `promoted`. Every other receipt rejects with an error that names its state, so the row is marked failed with a Retry button. `assertRunInputAccepted(receipt)` does this for you. Read the receipt, not just the submission outcome: a `canceled` receipt from an immediate self-cancel (no run is live) and a `replayed` outcome whose receipt is already `canceled` both reject. Admission is not delivery, because the server cancels input a run ends without delivering it, and never answers it in a continuation run.
 
 With the hook present:
 
@@ -155,7 +156,8 @@ With the hook present:
 - A follow-up row never owns the run. Retrying after a failed run, finding the owner of a tool call that arrives after a follow-up, an approval continuation's turn and attachments, and the AG-UI transport's choice of turn all stay with the turn that opened the run. Rows without the marker are not follow-ups, including rows installed with `adoptHistory`.
 - When the run's terminal history names the follow-up's row, the transcript keeps one row, moved to the position the terminal gives it, and the client's row wins, so its marker and delivery status survive.
 - A rejection marks that row failed with the usual Retry and leaves the run alone. Retrying resends it through the hook with the same `messageId` while a run is in progress, and otherwise promotes it to an ordinary turn.
-- A follow-up still waiting for the hook when the run ends (queued behind a slow acknowledgement) goes out as an ordinary turn on its existing row when the run completes or fails, one after another in the order sent. If the user stopped the run, it is marked failed with a Retry instead. A run parked on a pending approval has not ended. A row already handed to the hook finishes its own delivery.
+- A follow-up still waiting for the hook when the run ends (queued behind a slow acknowledgement) goes out as an ordinary turn on its existing row when the run completes or fails, one after another in the order sent. If the user stopped the run, it is marked failed with a Retry instead. A run parked on a pending approval has not ended.
+- A follow-up the host already accepted is cancelled when the run's terminal history (the history a `run.completed` frame carries) does not contain a message with its id. If this client did not press stop, the row is promoted to an ordinary turn after the run ends, reusing its row and attachments; if it did, the row is marked failed with a Retry. A follow-up still in the hook's hands when the run ends decides its own outcome through its receipt, and a run that ends without a terminal history leaves accepted follow-ups as they are.
 - `controller.invalidate()` retires every acknowledgement still owed: a late acknowledgement or rejection writes nothing. A stop does not.
 - A follow-up queued when the conversation changes is rejected through `onAdapterError` rather than dropped silently.
 

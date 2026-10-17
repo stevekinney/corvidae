@@ -20,12 +20,17 @@ type FollowUp = {
   attachments: ChatAttachment[];
   /** The invalidation epoch the follow-up was queued under. */
   epoch: number;
+  /** Send order, which decides the order promoted follow-ups go out in. */
+  sequence: number;
   /**
    * `queued` has not been handed to the hook yet, `handed` is with it,
-   * `acknowledged` was admitted, `failed` was rejected or refused, and
-   * `promoted` became an ordinary turn.
+   * `acknowledged` was accepted and is waiting for its run to end, `delivered`
+   * is in the run's terminal history (or its fate could not be read),
+   * `cancelled` was accepted but never delivered and waits to be sent as an
+   * ordinary turn, `failed` was rejected or refused, and `promoted` became an
+   * ordinary turn.
    */
-  state: 'queued' | 'handed' | 'acknowledged' | 'failed' | 'promoted';
+  state: 'queued' | 'handed' | 'acknowledged' | 'delivered' | 'cancelled' | 'failed' | 'promoted';
   /** Settles the promise the sender is waiting on. */
   settled: PromiseWithResolvers<void>;
 };
@@ -69,6 +74,7 @@ export function createFollowUpQueue({
   const order: FollowUp[] = [];
   let epoch = 0;
   let pumping = false;
+  let nextSequence = 0;
 
   const rowIsVisible = (record: FollowUp): boolean =>
     !lifecycle.disposed &&
@@ -179,6 +185,7 @@ export function createFollowUpQueue({
         input,
         attachments: [...attachments],
         epoch,
+        sequence: (nextSequence += 1),
         state: 'queued',
         settled: Promise.withResolvers<void>(),
       };
@@ -202,18 +209,29 @@ export function createFollowUpQueue({
       records.delete(messageId);
     },
     /**
-     * Called when a run has ended. Anything still waiting for the hook is sent
-     * as an ordinary turn (one at a time, each after the previous run ends),
-     * or failed with a retry when the user stopped the run.
+     * Called when a run has ended (a run parked on an approval has not).
+     *
+     * A follow-up the host accepted but the run's terminal history does not
+     * contain was cancelled by the server before it was delivered. Such a
+     * follow-up, and any still waiting for the hook, is sent as an ordinary turn
+     * on its existing row, one at a time with each run ending before the next
+     * starts, or failed with a retry when the user stopped the run.
      */
-    async runEnded(outcome: RunOutcome): Promise<void> {
+    async runEnded(outcome: RunOutcome, terminalIds?: ReadonlySet<string>): Promise<void> {
       if (lifecycle.disposed || lifecycle.running || hasRunInProgress()) return;
-      const waiting = order.filter(
-        (record) =>
-          record.state === 'queued' &&
-          record.epoch === epoch &&
-          record.conversationId === options.getConversation().id,
-      );
+      const isLive = (record: FollowUp): boolean =>
+        record.epoch === epoch && record.conversationId === options.getConversation().id;
+      for (const record of records.values()) {
+        if (record.state !== 'acknowledged') continue;
+        // Without a terminal history there is nothing to read delivery from.
+        record.state =
+          terminalIds === undefined || terminalIds.has(record.id) ? 'delivered' : 'cancelled';
+      }
+      const waiting = [...records.values()]
+        .filter(
+          (record) => (record.state === 'queued' || record.state === 'cancelled') && isLive(record),
+        )
+        .sort((a, b) => a.sequence - b.sequence);
       const first = waiting[0];
       if (!first) return;
       if (outcome === 'stopped') {
