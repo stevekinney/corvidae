@@ -14,6 +14,7 @@ import {
 } from '../src/integrations/mcp';
 import { fromMcpClientTools } from '../src/integrations/mcp/oauth';
 import type { ToolElicitationRequest, ToolElicitationResult } from '../src/is-tool';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
 import { connectInProcessClient } from './fixtures/mcp-in-process-client';
 
 /**
@@ -199,9 +200,10 @@ describe('MCP input_required (2026-07-28)', () => {
     const ledger = newLedger();
     const { client } = await setup(ledger, async () => ({ action: 'cancel' }));
     const round = await firstRound(client);
-    await expect(
-      retry(client, `${round.requestState}tampered`, { [MCP_ELICITATION_INPUT_KEY]: ACCEPT }),
-    ).rejects.toThrow('Invalid or expired requestState');
+    const tampered = retry(client, `${round.requestState}tampered`, {
+      [MCP_ELICITATION_INPUT_KEY]: ACCEPT,
+    });
+    expect(await throwingRejectionOf(tampered)).toThrow('Invalid or expired requestState');
     expect(ledger.charges).toBe(0);
   });
 

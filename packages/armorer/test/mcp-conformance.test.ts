@@ -12,6 +12,7 @@ import {
   type MCPRequestExecutionContext,
   type MCPServer,
 } from '../src/index';
+import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
 import { connectInProcessClient, type NegotiationMode } from './fixtures/mcp-in-process-client';
 
 /**
@@ -221,7 +222,7 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
       const call = client.callTool({ name: 'hold', arguments: {} }, { signal: controller.signal });
       await started;
       controller.abort(new Error('user pressed stop'));
-      await expect(call).rejects.toThrow();
+      expect(await throwingRejectionOf(call)).toThrow();
       if (era === 'modern') {
         // 2026-07-28: closing the request's response stream aborts the execution.
         await mcp.executionLifecycle.whenIdle();
