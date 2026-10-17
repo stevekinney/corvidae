@@ -43,6 +43,55 @@ export function parseJSONValue(value: string): JSONValue | undefined {
 }
 
 /**
+ * Converts a tool result to the string a provider message carries. A successful
+ * result is its bare content; any other outcome is wrapped in the canonical
+ * payload so {@link parseToolResultText} can recover the outcome.
+ */
+export function stringifyToolResult(result: ToolResult): string {
+  const payload =
+    result.outcome === 'success'
+      ? result.content
+      : {
+          outcome: result.outcome,
+          content: result.content,
+          ...(result.error ? { error: result.error } : {}),
+          ...(result.action ? { action: result.action } : {}),
+        };
+
+  if (typeof payload === 'string') {
+    return payload;
+  }
+  return JSON.stringify(payload);
+}
+
+/**
+ * Parses the string a provider message carries back into a tool result: the
+ * inverse of {@link stringifyToolResult}. Text that is not a canonical payload
+ * becomes the content of a successful result.
+ */
+export function parseToolResultText(callId: string, serialized: string): ToolResult {
+  const parsed = parseJSONValue(serialized);
+
+  if (parsed !== undefined && isCanonicalToolResultPayload(parsed)) {
+    return {
+      callId,
+      outcome: parsed.outcome,
+      content: parsed.content,
+      ...(parsed.error ? { error: parsed.error } : {}),
+      ...(parsed.action ? { action: parsed.action } : {}),
+      ...(typeof parsed.inputDigest === 'string' ? { inputDigest: parsed.inputDigest } : {}),
+      ...(typeof parsed.outputDigest === 'string' ? { outputDigest: parsed.outputDigest } : {}),
+    };
+  }
+
+  return {
+    callId,
+    outcome: 'success',
+    content: parsed ?? serialized,
+  };
+}
+
+/**
  * Type guard that checks whether a JSONValue is a canonical tool-result payload
  * (i.e., an object with `outcome` and `content` fields).
  */

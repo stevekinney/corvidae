@@ -851,6 +851,21 @@ const updated = appendGeminiMessages(history, payload);
 
 **Key exports:** `toGeminiMessages`, `fromGeminiMessages`, `appendGeminiMessages`, `geminiConversationAdapter`. Type exports: `GeminiConversation`, `GeminiContent`, `GeminiPart`, `GeminiTextPart`, `GeminiInlineDataPart`, `GeminiFileDataPart`, `GeminiFunctionCallPart`, `GeminiFunctionResponsePart`.
 
+### AG-UI message mapping
+
+Maps Conversationalist history to and from the `messages` of an [AG-UI](https://docs.ag-ui.com) 1.0 `MESSAGES_SNAPSHOT` event, using the types and schemas of the pinned `@ag-ui/core` package. Event streaming is not included.
+
+```ts
+import { agUiConversationAdapter, fromAGUIMessages, toAGUIMessages } from 'conversationalist';
+
+const messages = toAGUIMessages(history); // validated against the @ag-ui/core message schema
+const imported = fromAGUIMessages(messages);
+```
+
+`system`, `developer`, `user`, and `assistant` messages keep their roles. A `thinking` part becomes a `reasoning` message placed before its assistant message, with the signature as `encryptedValue`, and returns as a `thinking` part of the assistant message that follows; reasoning is therefore hoisted ahead of text. Consecutive `tool-call` messages collapse into one assistant message with `toolCalls` and split again on the way in, and a `tool-result` becomes a `tool` message. Hidden, streaming, and `snapshot` messages are skipped on export, and `activity` messages are skipped on import. Content with no AG-UI representation (`redacted_thinking`, provider server-tool and container blocks, non-text system or assistant content) throws an `AGUIMappingError` whose `kind` names it, and an inbound message that fails the `@ag-ui/core` schema throws one with `kind: 'message'`. An assistant message's text parts join with a blank line, AG-UI ids are not adopted on import, and token usage, goal completion, and cache boundaries are not exported.
+
+**Key exports:** `toAGUIMessages`, `fromAGUIMessages`, `appendAGUIMessages`, `agUiConversationAdapter`, `AGUIMappingError`. Type exports: `AGUIMessage`, `AGUIUserMessage`, `AGUIAssistantMessage`, `AGUISystemMessage`, `AGUIDeveloperMessage`, `AGUIToolMessage`, `AGUIReasoningMessage`, `AGUIToolCall`, `AGUIContentPart`.
+
 ### A2A content mapping
 
 Pure content-shape mapping between Conversationalist messages and [A2A](https://a2a-protocol.org/) 1.0.1 `Message`, `Artifact`, and `Part` values. The A2A types are hand-written from `specification/a2a.proto` at tag `v1.0.1` and follow its proto3 JSON form. Transport and the A2A task lifecycle are not included.
