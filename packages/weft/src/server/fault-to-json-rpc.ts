@@ -80,6 +80,15 @@ const FAULT_DATA_EXTRACTORS: FaultExtractors = {
   SubscriptionOverflow: dataForSubscriptionOverflow,
   InvalidParams: dataForInvalidParams,
   MethodNotFound: (data) => ({ method: data.method }),
+  StaleRevision: (data) =>
+    filterDefined({
+      expectedRevision: data.expectedRevision,
+      currentRevision: data.currentRevision,
+    }),
+  RateLimited: (data) => filterDefined({ retryAfterSeconds: data.retryAfterSeconds }),
+  Unavailable: (data) =>
+    filterDefined({ reason: data.reason, retryAfterSeconds: data.retryAfterSeconds }),
+  UnsupportedCapability: (data) => ({ capability: data.capability }),
 };
 
 function extractFaultDataPayload(fault: OperationFault): Record<string, unknown> {

@@ -8,21 +8,25 @@ This page covers both vocabularies, how each transport puts them on the wire, an
 
 `FAULT_CODE_TO_HTTP_STATUS`, `FAULT_CODE_TO_JSON_RPC_CODE`, and `FAULT_CODE_TO_FAILURE_CATEGORY` map every fault code. The JSON-RPC codes follow the specification for its reserved errors (`InvalidParams` and `MethodNotFound`) and use the Weft domain band `-32010` through `-32099` for everything else. The failure category is derived, not carried on the wire: compute it with `failureCategoryForFaultCode()`.
 
-| `FaultCode`            | HTTP status | JSON-RPC code | Failure category |
-| ---------------------- | ----------- | ------------- | ---------------- |
-| `Unauthorized`         | 401         | -32010        | `application`    |
-| `Forbidden`            | 403         | -32011        | `application`    |
-| `NotFound`             | 404         | -32020        | `application`    |
-| `Conflict`             | 409         | -32021        | `application`    |
-| `Unprocessable`        | 422         | -32022        | `application`    |
-| `Timeout`              | 408         | -32023        | `timeout`        |
-| `PayloadTooLarge`      | 413         | -32024        | `resource`       |
-| `NotImplemented`       | 501         | -32025        | `system`         |
-| `UnsupportedTransport` | 501         | -32030        | `system`         |
-| `SubscriptionOverflow` | 500         | -32031        | `resource`       |
-| `InvalidParams`        | 400         | -32602        | `application`    |
-| `MethodNotFound`       | 404         | -32601        | `application`    |
-| `EngineFailure`        | 500         | -32099        | `system`         |
+| `FaultCode`             | HTTP status | JSON-RPC code | Failure category |
+| ----------------------- | ----------- | ------------- | ---------------- |
+| `Unauthorized`          | 401         | -32010        | `application`    |
+| `Forbidden`             | 403         | -32011        | `application`    |
+| `NotFound`              | 404         | -32020        | `application`    |
+| `Conflict`              | 409         | -32021        | `application`    |
+| `Unprocessable`         | 422         | -32022        | `application`    |
+| `Timeout`               | 408         | -32023        | `timeout`        |
+| `PayloadTooLarge`       | 413         | -32024        | `resource`       |
+| `NotImplemented`        | 501         | -32025        | `system`         |
+| `UnsupportedTransport`  | 501         | -32030        | `system`         |
+| `SubscriptionOverflow`  | 500         | -32031        | `resource`       |
+| `InvalidParams`         | 400         | -32602        | `application`    |
+| `MethodNotFound`        | 404         | -32601        | `application`    |
+| `StaleRevision`         | 409         | -32026        | `application`    |
+| `RateLimited`           | 429         | -32027        | `resource`       |
+| `Unavailable`           | 503         | -32028        | `system`         |
+| `UnsupportedCapability` | 501         | -32029        | `system`         |
+| `EngineFailure`         | 500         | -32099        | `system`         |
 
 No fault code maps to the `cancellation` category: an aborted request never crosses the fault wire.
 
@@ -37,8 +41,10 @@ The two transports use the same key, `weftCode`, for different vocabularies. Rea
 A REST fault response carries the status from the table above and a JSON body shaped `{ error, weftCode?, data? }`:
 
 - `error`: the human-readable message.
-- `weftCode`: the fine-grained `WeftErrorCode` of the error class behind the fault, present only when the fault carried one. It is never a `FaultCode`, and the body carries no coarse code at all. The HTTP status is derived from the `FaultCode` but does not identify it: several codes share a status (`NotFound` and `MethodNotFound` are both 404, `NotImplemented` and `UnsupportedTransport` both 501, `SubscriptionOverflow` and `EngineFailure` both 500).
+- `weftCode`: the fine-grained `WeftErrorCode` of the error class behind the fault, present only when the fault carried one. It is never a `FaultCode`, and the body carries no coarse code at all. The HTTP status is derived from the `FaultCode` but does not identify it: several codes share a status (`NotFound` and `MethodNotFound` are both 404, `NotImplemented`, `UnsupportedTransport`, and `UnsupportedCapability` all 501, `Conflict` and `StaleRevision` both 409, `SubscriptionOverflow` and `EngineFailure` both 500).
 - `data`: an audited, deny-by-default subset of the fault's payload, omitted when no field is safe to expose. `REST_FAULT_DATA_EXTRACTORS` in `operation-fault.ts` lists the exposed fields per fault code.
+
+`RateLimited` and `Unavailable` may carry `retryAfterSeconds`. Over REST it is emitted as the `Retry-After` header, rounded up to whole seconds and omitted when absent, negative, or not finite; the four codes `StaleRevision`, `RateLimited`, `Unavailable`, and `UnsupportedCapability` disclose nothing else in the REST body. Over JSON-RPC the full payload travels in `data` (`expectedRevision` and `currentRevision` for `StaleRevision`, `retryAfterSeconds` for `RateLimited`, `reason` and `retryAfterSeconds` for `Unavailable`, `capability` for `UnsupportedCapability`).
 
 `EngineFailure` is masked: its body is exactly `{ "error": "Internal server error" }` with status 500, regardless of any route override.
 

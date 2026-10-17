@@ -33,6 +33,14 @@ describe('faultToHttpResponse', () => {
       },
       InvalidParams: { code: 'InvalidParams', message: 'Invalid', data: { issues: [] } },
       MethodNotFound: { code: 'MethodNotFound', message: 'Missing', data: { method: 'missing' } },
+      StaleRevision: { code: 'StaleRevision', message: 'Stale', data: {} },
+      RateLimited: { code: 'RateLimited', message: 'Slow down', data: {} },
+      Unavailable: { code: 'Unavailable', message: 'Unavailable', data: {} },
+      UnsupportedCapability: {
+        code: 'UnsupportedCapability',
+        message: 'Unsupported',
+        data: { capability: 'streams' },
+      },
       EngineFailure: { code: 'EngineFailure', message: 'private detail', data: {} },
     } satisfies Record<FaultCode, OperationFault>;
 
