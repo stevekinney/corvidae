@@ -6,110 +6,30 @@ import {
   appendUserMessage,
   createConversationHistory,
 } from '../components/chat/builders.ts';
-import type { ConversationHistory, MessageInput } from '../components/chat/conversation-model.ts';
-import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
-import type { ChatSessionControllerOptions } from './session-controller-support.ts';
+import {
+  approvalAction,
+  attachment,
+  createHarness,
+  deferred,
+  deliveryStatus,
+  eventsOf,
+  settle,
+  textOf,
+} from './session-controller-run-input-test-support.ts';
 import { createChatSessionController } from './session-controller.ts';
 import type { ChatStreamEvent } from './stream-event-codec.ts';
-
-type Deferred<T> = {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error: unknown) => void;
-};
-
-function deferred<T = void>(): Deferred<T> {
-  let resolveDeferred!: (value: T) => void;
-  let rejectDeferred!: (error: unknown) => void;
-  const promise = new Promise<T>((resolve, reject) => {
-    resolveDeferred = resolve;
-    rejectDeferred = reject;
-  });
-  return { promise, resolve: resolveDeferred, reject: rejectDeferred };
-}
-
-function textOf(message: MessageInput): string {
-  return typeof message.content === 'string' ? message.content : '';
-}
-
-async function settle(): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0));
-}
-
-type RunInputCall = {
-  conversationId: string;
-  message: MessageInput;
-  attachments: ChatAttachment[];
-};
-
-/** A controller whose first run stays open until the test releases it. */
-function createHarness(
-  options: {
-    conversation?: ConversationHistory;
-    sendRunInput?: ChatSessionControllerOptions['sendRunInput'] | null;
-    transport?: ChatSessionControllerOptions['transport'];
-  } = {},
-) {
-  let conversation = options.conversation ?? createConversationHistory({ id: 'run-input' });
-  const calls: RunInputCall[] = [];
-  const run = deferred();
-  const errors: unknown[] = [];
-  const sendRunInput: ChatSessionControllerOptions['sendRunInput'] =
-    options.sendRunInput === undefined
-      ? async (conversationId, message, attachments) => {
-          calls.push({ conversationId, message, attachments });
-        }
-      : (options.sendRunInput ?? undefined);
-  const controller = createChatSessionController({
-    getConversation: () => conversation,
-    setConversation: (next) => {
-      conversation = next;
-    },
-    transport:
-      options.transport ??
-      (async () => {
-        async function* held(): AsyncGenerator<ChatStreamEvent> {
-          yield { type: 'text', text: 'working' };
-          await run.promise;
-        }
-        return held();
-      }),
-    ...(sendRunInput ? { sendRunInput } : {}),
-    hooks: { onError: (error) => errors.push(error) },
-  });
-  const startRun = async () => {
-    const pending = controller.adapter.sendMessage({ role: 'user', content: 'start' }, []);
-    await settle();
-    return pending;
-  };
-  return {
-    controller,
-    calls,
-    errors,
-    releaseRun: () => run.resolve(),
-    startRun,
-    conversation: () => conversation,
-    rows: () => conversation.ids.map((id) => conversation.messages[id]!),
-  };
-}
-
-function deliveryStatus(history: ConversationHistory, content: string): unknown {
-  return Object.values(history.messages).find((message) => message.content === content)?.metadata[
-    '_deliveryStatus'
-  ];
-}
 
 describe('chat session controller run input', () => {
   test('a message submitted during a run goes through sendRunInput with its attachments', async () => {
     const harness = createHarness();
-    const attachment = { id: 'a', name: 'notes.txt' } as unknown as ChatAttachment;
+    const file = attachment('notes');
 
     const run = harness.startRun();
     await settle();
     await harness.controller.adapter.sendRunInput?.(
       'run-input',
       { role: 'user', content: 'also this' },
-      [attachment],
+      [file],
     );
     harness.releaseRun();
     await run;
@@ -118,7 +38,8 @@ describe('chat session controller run input', () => {
       {
         conversationId: 'run-input',
         message: { role: 'user', content: 'also this' },
-        attachments: [attachment],
+        attachments: [file],
+        options: { messageId: harness.rowNamed('also this')!.id },
       },
     ]);
   });
@@ -213,14 +134,7 @@ describe('chat session controller run input', () => {
         callId: 'call',
         outcome: 'action_required',
         content: null,
-        action: {
-          type: 'approval',
-          message: 'Approve this tool call',
-          risk: 'high',
-          operation: { kind: 'command', command: 'echo approval', argsPreview: {} },
-          policyVersion: 'test-policy',
-          idempotencyKey: 'test-approval',
-        },
+        action: approvalAction,
       },
     );
     const received: string[] = [];
@@ -274,6 +188,10 @@ describe('chat session controller run input', () => {
     });
 
     const run = harness.startRun();
+    let runSettled = false;
+    void run.then(() => {
+      runSettled = true;
+    });
     await settle();
     expect(
       await throwingRejectionOf(
@@ -288,7 +206,9 @@ describe('chat session controller run input', () => {
     expect(deliveryStatus(harness.conversation(), 'nope')).toBe('failed');
     expect(harness.errors).toHaveLength(1);
 
-    // The run is untouched: it is still streaming and finishes normally.
+    // The run is untouched: it is still streaming until the test releases it.
+    await settle();
+    expect(runSettled).toBe(false);
     harness.releaseRun();
     await run;
     expect(harness.rows().some((row) => row.content === 'working')).toBe(true);
@@ -298,42 +218,16 @@ describe('chat session controller run input', () => {
     );
   });
 
-  test('retrying a failed follow-up resends it as run input while the run is active', async () => {
-    let attempts = 0;
-    const sent: string[] = [];
-    const harness = createHarness({
-      sendRunInput: async (_id, message) => {
-        attempts += 1;
-        sent.push(textOf(message));
-        if (attempts === 1) throw new Error('input refused');
-      },
-    });
-
-    const run = harness.startRun();
-    await settle();
-    await harness.controller.adapter
-      .sendRunInput?.('run-input', { role: 'user', content: 'again' }, [])
-      .catch(() => undefined);
-    const failedId = harness.rows().find((row) => row.content === 'again')!.id;
-
-    await harness.controller.adapter.retryMessage?.(failedId);
-
-    expect(sent).toEqual(['again', 'again']);
-    expect(deliveryStatus(harness.conversation(), 'again')).toBeUndefined();
-    harness.releaseRun();
-    await run;
-  });
-
   test('a run that fails keeps the follow-ups the user sent while it worked', async () => {
     const failure = deferred();
     const harness = createHarness({
-      transport: async () => {
-        async function* failing(): AsyncGenerator<ChatStreamEvent> {
-          yield { type: 'text', text: 'partial' };
-          await failure.promise;
-        }
-        return failing();
-      },
+      turns: [
+        () =>
+          (async function* (): AsyncGenerator<ChatStreamEvent> {
+            yield { type: 'text', text: 'partial' };
+            await failure.promise;
+          })(),
+      ],
     });
 
     const run = harness.startRun();
@@ -352,10 +246,7 @@ describe('chat session controller run input', () => {
 
   test('with nothing running, sendRunInput behaves as an ordinary send', async () => {
     const harness = createHarness({
-      transport: async () =>
-        (async function* (): AsyncGenerator<ChatStreamEvent> {
-          yield { type: 'text', text: 'reply' };
-        })(),
+      turns: [() => eventsOf([{ type: 'text', text: 'reply' }])],
     });
 
     await harness.controller.adapter.sendRunInput?.(

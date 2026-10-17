@@ -1,4 +1,4 @@
-import type { ConversationHistory } from './conversation-model.ts';
+import type { ConversationHistory, Message } from './conversation-model.ts';
 
 /**
  * Conversation builders re-exported from Chat's direct Conversationalist
@@ -56,6 +56,18 @@ export {
 export type { MessageUpdate } from 'conversationalist';
 
 const DELIVERY_STATUS_METADATA_KEY = '_deliveryStatus';
+
+/**
+ * Transient metadata key the session controller stamps on a message the user
+ * sent while a run was working. Such a row never owns the run: ownership stays
+ * with the turn that opened it.
+ */
+export const FOLLOW_UP_METADATA_KEY = '_followUp';
+
+/** Whether a message is a follow-up row the controller appended during a run. */
+export function isFollowUpMessage(message: Message | undefined): boolean {
+  return message?.metadata?.[FOLLOW_UP_METADATA_KEY] === true;
+}
 
 function markMessageDeliveryStatus(
   history: ConversationHistory,
@@ -123,3 +135,47 @@ export function clearMessageDeliveryStatus(
  * as the explicit migration path for consumers upgrading to Conversationalist 0.5.
  */
 export { createConversationHistory as createConversation } from 'conversationalist';
+
+/**
+ * Stamps a message as a follow-up. Used by the session controller on the rows
+ * it appends during a run; Chat's `_followUp` marker is transient metadata and
+ * is stripped on export.
+ */
+export function markMessageFollowUp(
+  history: ConversationHistory,
+  messageId: string,
+): ConversationHistory {
+  const message = history.messages[messageId];
+  if (!message || isFollowUpMessage(message)) return history;
+  return {
+    ...history,
+    messages: {
+      ...history.messages,
+      [messageId]: {
+        ...message,
+        metadata: { ...message.metadata, [FOLLOW_UP_METADATA_KEY]: true },
+      },
+    },
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Turns a follow-up row into an ordinary turn: drops the follow-up marker and
+ * any pending or failed delivery status in one write.
+ */
+export function promoteFollowUpMessage(
+  history: ConversationHistory,
+  messageId: string,
+): ConversationHistory {
+  const message = history.messages[messageId];
+  if (!message) return history;
+  const metadata = { ...message.metadata };
+  delete metadata[FOLLOW_UP_METADATA_KEY];
+  delete metadata[DELIVERY_STATUS_METADATA_KEY];
+  return {
+    ...history,
+    messages: { ...history.messages, [messageId]: { ...message, metadata } },
+    updatedAt: new Date().toISOString(),
+  };
+}

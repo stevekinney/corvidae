@@ -1,3 +1,4 @@
+import { isFollowUpMessage } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 
 /**
@@ -48,6 +49,10 @@ export function remapMessageId(
  * identifier, it is kept rather than deleted and reinserted: approval
  * resolution associates a tool call with the turn that owns it by identifier,
  * and swapping that identifier mid-run would orphan a pending approval.
+ *
+ * One exception to "rows the run did not append stay where they are": a
+ * follow-up row the terminal names under its own identifier moves to the
+ * position the terminal gives it, and the client's object wins.
  */
 export function mergeRunHistory(
   current: ConversationHistory,
@@ -62,17 +67,32 @@ export function mergeRunHistory(
   // delivery-failure marker, an unsaved-turn annotation — that the server has
   // no idea about and would silently strip if its copy won.
   const retained = new Set([...runStartIds].filter((id) => terminal.messages[id] !== undefined));
+  // A follow-up the user sent mid-run, which the terminal names under its own
+  // identifier, is the one exception to "rows the run did not append stay where
+  // they are": it moves to the position the terminal gives it, so the transcript
+  // keeps a single row in the order the server saw. The client's object wins, so
+  // the follow-up marker and any delivery status survive.
+  const clientFollowUps = new Set(
+    current.ids.filter(
+      (id) => isFollowUpMessage(current.messages[id]) && terminal.messages[id] !== undefined,
+    ),
+  );
+  const isRemoved = (id: string): boolean =>
+    (provisionalIds.has(id) && !retained.has(id)) || clientFollowUps.has(id);
   const firstProvisional = current.ids.findIndex(
     (id) => provisionalIds.has(id) && !retained.has(id),
   );
-  const insertionIndex = firstProvisional === -1 ? current.ids.length : firstProvisional;
-  const ids = current.ids.filter((id) => !provisionalIds.has(id) || retained.has(id));
+  const insertionIndex =
+    firstProvisional === -1
+      ? current.ids.length
+      : current.ids.slice(0, firstProvisional).filter((id) => !isRemoved(id)).length;
+  const ids = current.ids.filter((id) => !isRemoved(id));
   for (const id of provisionalIds) {
     if (!retained.has(id)) delete messages[id];
   }
   const canonicalIds = terminal.ids.filter((id) => !retained.has(id));
   for (const id of canonicalIds) {
-    const message = terminal.messages[id];
+    const message = clientFollowUps.has(id) ? current.messages[id] : terminal.messages[id];
     if (message !== undefined) messages[id] = message;
   }
   ids.splice(
@@ -89,16 +109,16 @@ export function mergeRunHistory(
  *
  * A failed run restores the history it captured earlier, which predates any
  * follow-up the user sent while it was working. Those rows were never the run's
- * to discard — the transport may already have them — so they are carried over
- * from what is on screen, in their current order and with their delivery state.
+ * to discard — the transport may already have them — so every row marked as a
+ * follow-up is carried over from what is on screen, in its current order and
+ * with its delivery state.
  */
 export function restoreFollowUps(
   rolledBack: ConversationHistory,
   current: ConversationHistory,
-  followUps: ReadonlyMap<string, unknown>,
 ): ConversationHistory {
   const missing = current.ids.filter(
-    (id) => followUps.has(id) && rolledBack.messages[id] === undefined,
+    (id) => isFollowUpMessage(current.messages[id]) && rolledBack.messages[id] === undefined,
   );
   if (missing.length === 0) return rolledBack;
   const messages = { ...rolledBack.messages };

@@ -457,7 +457,7 @@
 
     {#if isPending}
       <div class="chat-message-pending-actions">
-        <span class="chat-message-pending-label" role="status">Sending…</span>
+        <span class="chat-message-pending-label">Sending…</span>
       </div>
     {/if}
 

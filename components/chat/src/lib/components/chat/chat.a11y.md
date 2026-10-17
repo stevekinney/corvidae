@@ -37,7 +37,7 @@ When Chat accepts snippets or arbitrary children, the caller owns the semantics 
 
 ## Follow-ups during a run
 
-When the adapter provides `sendRunInput`, the composer textarea stays enabled while `streaming` is `true`, so keyboard focus is never pulled out of it mid-run. Stop becomes a separate button beside Send, each with its own accessible name ("Stop generating", "Send message"), and the composer's shortcut description tells assistive technology that Enter sends a follow-up. A follow-up that is waiting for the transport shows a visible "Sending…" status (`role="status"`) rather than relying on color or opacity, and one that the transport rejected shows the existing "Failed to send" alert with a Retry button.
+When the adapter provides `sendRunInput`, the composer textarea stays enabled while `streaming` is `true`, so keyboard focus is never pulled out of it mid-run. Stop becomes a separate button beside Send, each with its own accessible name ("Stop generating", "Send message"), and the composer's shortcut description names the key the composer's `submitOn` listens for, so a modifier-Enter composer never announces a bare Enter. When the run ends and the side Stop button unmounts while it has focus, focus moves to Send, or to the textarea while Send is disabled. A follow-up that is waiting for the transport shows a visible "Sending…" label rather than relying on color or opacity; the row adds no live region of its own, because the transcript's log region announces the added message. One that the transport rejected shows the existing "Failed to send" alert with a Retry button.
 
 ## Composer actions
 

@@ -28,6 +28,8 @@ export {
   type ChatSessionControllerOptions,
   type ChatSessionHooks,
   type ChatSessionRequest,
+  type ChatSessionRunInput,
+  type ChatSessionRunInputOptions,
   type ChatSessionTransport,
   type ChatSessionTransportResult,
   type ChatToolActivity,

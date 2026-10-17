@@ -1,8 +1,12 @@
 import type { ApprovalResolution } from '@lostgradient/cinder';
 import type { JSONValue } from 'conversationalist';
 import type { ChatAdapter, ChatToolResult } from '../components/chat/adapter/chat-adapter.ts';
-import { removeMessage } from '../components/chat/builders.ts';
-import type { ConversationHistory, ToolResult } from '../components/chat/conversation-model.ts';
+import { isFollowUpMessage, removeMessage } from '../components/chat/builders.ts';
+import type {
+  ConversationHistory,
+  MessageInput,
+  ToolResult,
+} from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
 import {
   decodeChatStreamEvents,
@@ -157,21 +161,46 @@ export type ChatSessionHooks = {
   onError?: (error: unknown) => void;
   onStreamingChange?: (streaming: boolean) => void;
 };
+/**
+ * Identifies the follow-up a {@link ChatSessionRunInput} call is for.
+ *
+ * `messageId` is the id of the transcript row the controller appended. A host
+ * passes it on as the session input's own id (`submitSessionInput` accepts a
+ * caller-supplied `id`), so a retry of the same row is the same input.
+ */
+export type ChatSessionRunInputOptions = { messageId: string };
+
+/**
+ * The host-facing hook the controller calls with a follow-up. A distinct type
+ * from `ChatAdapter.sendRunInput`: the component's hook has no row id to give
+ * (a raw adapter used without the controller gets none), while the controller
+ * always knows the row it appended.
+ */
+export type ChatSessionRunInput = (
+  conversationId: string,
+  message: MessageInput,
+  attachments: ChatAttachment[],
+  options: ChatSessionRunInputOptions,
+) => Promise<void>;
+
 export type ChatSessionControllerOptions = {
   transport: ChatSessionTransport;
   getConversation: () => ConversationHistory;
   setConversation: (conversation: ConversationHistory) => void;
   /**
-   * Delivers a follow-up to the run in flight, with the same arguments as
-   * `ChatAdapter.sendMessage` plus the session's conversation id. Providing it
-   * makes the controller's adapter expose `sendRunInput`: a message submitted
-   * while a run is active, or while a tool approval is pending, is appended to
-   * the transcript as pending and handed here instead of being refused. The
-   * promise resolving is the acknowledgement; rejecting marks the message
-   * failed and leaves the run untouched. Omit it and a second turn during a run
-   * throws, as before.
+   * Hands a follow-up to the run in flight. Providing it makes the controller's
+   * adapter expose `ChatAdapter.sendRunInput`: a message submitted while a run is
+   * active, or while a tool approval is pending, is appended to the transcript as
+   * a pending follow-up row and handed here instead of being refused.
+   *
+   * The promise resolving is the acknowledgement, and it means the host admitted
+   * the input. It does not promise the input reaches this run. Map the host's
+   * outcomes accordingly: resolve for an admitted or replayed input, and reject
+   * with an error that names the outcome for anything else, which marks the row
+   * failed with a retry. Omit the option and a second turn during a run throws,
+   * as before.
    */
-  sendRunInput?: ChatAdapter['sendRunInput'];
+  sendRunInput?: ChatSessionRunInput;
   executionOwner?: ChatExecutionOwner;
   maxContinuationTurns?: number;
   hooks?: ChatSessionHooks;
@@ -275,7 +304,8 @@ function recordAttachmentOwnership(
 ): string | undefined {
   if (message?.role === 'user') {
     retainedOwners.add(id);
-    return id;
+    // A follow-up keeps its own attachments, but never owns a tool call.
+    return isFollowUpMessage(message) ? latestUserMessageId : id;
   }
   recordToolCallOwner(message, latestUserMessageId, callOwners);
   recordToolResultOwner(message, callOwners, retainedOwners);

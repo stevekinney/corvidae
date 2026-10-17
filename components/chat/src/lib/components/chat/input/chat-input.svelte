@@ -115,7 +115,7 @@
    * ```
    */
 
-  import { flushSync } from 'svelte';
+  import { flushSync, untrack } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { createIdFactory, useStableId } from '../../../utilities/id-factory.ts';
@@ -188,6 +188,17 @@
   const showSideStopButton = $derived(sending && onstop !== undefined && allowFollowUp);
   const showSendingSpinner = $derived(sending && !allowFollowUp);
   const sendBlocked = $derived(sending && !allowFollowUp);
+  // Names the key the composer's `submitOn` actually listens for, so a
+  // modifier-enter composer never announces a bare Enter.
+  const followUpInstruction = $derived.by(() => {
+    if (submitOn === 'modifier-enter')
+      return 'Press Command+Enter or Control+Enter to send a follow-up.';
+    if (submitOn === 'enter-if-single-line')
+      return value.includes('\n')
+        ? 'This message has multiple lines. Use the send button to send a follow-up.'
+        : 'Press Enter to send a single-line follow-up.';
+    return 'Press Enter to send a follow-up.';
+  });
 
   // Refs
   let formElement = $state<HTMLFormElement | null>(null);
@@ -195,6 +206,16 @@
   let fileInputRef = $state<HTMLInputElement | null>(null);
   let sendButtonRef = $state<HTMLButtonElement | null>(null);
   let stopButtonRef = $state<HTMLButtonElement | null>(null);
+
+  // When the run ends the side Stop button unmounts. If it held focus, hand focus
+  // to Send (or the textarea while Send is disabled) before it goes, so focus is
+  // not dropped to the document body.
+  $effect.pre(() => {
+    if (showSideStopButton) return;
+    const stopButton = untrack(() => stopButtonRef);
+    if (stopButton === null || document.activeElement !== stopButton) return;
+    (canSubmit ? sendButtonRef : editorElement)?.focus();
+  });
 
   // Internal state
   let attachments = $state<ChatAttachment[]>([]);
@@ -896,8 +917,7 @@
         {#if showStopButton}
           Response is streaming. Use the stop button to stop generation.
         {:else if showSideStopButton}
-          Response is streaming. Press Enter to send a follow-up, or use the stop button to stop
-          generation.
+          Response is streaming. {followUpInstruction} Use the stop button to stop generation.
         {:else if submitOn === 'modifier-enter'}
           Press Command+Enter or Control+Enter to send. Press Enter for a newline.
         {:else if submitOn === 'enter-if-single-line' && value.includes('\n')}

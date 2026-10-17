@@ -120,29 +120,46 @@ The helpers immutably set or clear the transient `_deliveryStatus` metadata used
 
 ### Follow-ups during a run
 
-By default the composer is disabled while `streaming` is `true`, and the session controller refuses a second turn while a run is working or a tool approval is pending. A host that can deliver input to a run in flight opts in by providing `sendRunInput` on the adapter (or on `createChatSessionController`, which then exposes it on `controller.adapter`):
+By default the composer is disabled while `streaming` is `true`, and the session controller refuses a second turn while a run is working or a tool approval is pending. A host that can deliver input to a run in flight opts in with `sendRunInput`. There are two hooks, and they are different types:
+
+- `ChatAdapter.sendRunInput(conversationId, message, attachments)` is the component-facing hook. It takes the same message and attachments as `sendMessage`, preceded by the conversation id. A raw adapter used without the controller gets no row id, and correlating its follow-ups is the host's problem.
+- `ChatSessionControllerOptions.sendRunInput(conversationId, message, attachments, { messageId })` is the host-facing hook. The controller appends a transcript row for the follow-up and fills `messageId` with that row's id, so a host can pass it on as the session input's own id (`submitSessionInput` accepts a caller-supplied `id`). A retry of the same row passes the same id. Providing it makes `controller.adapter` expose the adapter hook.
 
 ```ts
 const session = createChatSessionController({
   getConversation: () => conversation,
   setConversation: (next) => (conversation = next),
   transport,
-  async sendRunInput(conversationId, message, attachments) {
-    await yourBackend.sendRunInput(conversationId, message, attachments);
+  async sendRunInput(conversationId, message, attachments, { messageId }) {
+    const outcome = await yourBackend.submitSessionInput({
+      id: messageId,
+      conversationId,
+      message,
+      attachments,
+    });
+    if (outcome.status !== 'admitted' && outcome.status !== 'replayed') {
+      throw new Error(`Input was not admitted: ${outcome.status}`);
+    }
   },
 });
 ```
 
-`sendRunInput` takes the same message and attachments as `sendMessage`, preceded by the session's conversation id. With it present:
+The promise resolving is the acknowledgement, and it means the host admitted the input. In `submitSessionInput`'s terms `admitted` and `replayed` resolve, and every other outcome rejects with an error that names the outcome, so the row is marked failed with a Retry button. Admission does not promise the input reaches this run: a run that ends first can leave the input to be answered by another run, which is the host's to show.
+
+With the hook present:
 
 - The textarea stays enabled during a run, Send and Stop sit side by side, and Enter submits a follow-up.
-- The follow-up appears in the transcript at once with a pending "Sending…" state. The promise resolving is the acknowledgement and clears it.
-- Follow-ups are handed over one at a time, in the order they were sent, so a slow acknowledgement cannot be overtaken by the next message.
+- The follow-up appears in the transcript at once as a row stamped `metadata._followUp`, with a pending "Sending…" state that the acknowledgement clears.
+- Follow-ups are handed over one at a time, in the order they were sent, so a slow acknowledgement cannot be overtaken. `Chat` also serializes calls to a raw adapter the same way.
 - A follow-up is accepted while an approval is pending and does not resolve it.
-- A rejection marks that message failed with the usual Retry button and leaves the run alone. Retry resends it as run input while the run is still active.
-- If the run has already ended by the time the message is submitted, it is sent as an ordinary turn.
+- A follow-up row never owns the run. Retrying after a failed run, finding the owner of a tool call that arrives after a follow-up, an approval continuation's turn and attachments, and the AG-UI transport's choice of turn all stay with the turn that opened the run. Rows without the marker are not follow-ups, including rows installed with `adoptHistory`.
+- When the run's terminal history names the follow-up's row, the transcript keeps one row, moved to the position the terminal gives it, and the client's row wins, so its marker and delivery status survive.
+- A rejection marks that row failed with the usual Retry and leaves the run alone. Retrying resends it through the hook with the same `messageId` while a run is in progress, and otherwise promotes it to an ordinary turn.
+- A follow-up still waiting for the hook when the run ends (queued behind a slow acknowledgement) goes out as an ordinary turn on its existing row when the run completes or fails, one after another in the order sent. If the user stopped the run, it is marked failed with a Retry instead. A run parked on a pending approval has not ended. A row already handed to the hook finishes its own delivery.
+- `controller.invalidate()` retires every acknowledgement still owed: a late acknowledgement or rejection writes nothing. A stop does not.
+- A follow-up queued when the conversation changes is rejected through `onAdapterError` rather than dropped silently.
 
-Server-side delivery of the input to the run's next step is the host's concern. A controller without `sendRunInput` behaves exactly as before. The "Follow-ups during a run" example shows the whole flow.
+A controller without `sendRunInput` behaves exactly as before. The "Follow-ups during a run" example shows the flow.
 
 ### Edit and resend
 

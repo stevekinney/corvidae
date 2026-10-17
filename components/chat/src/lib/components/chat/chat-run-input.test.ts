@@ -182,6 +182,35 @@ describe('Chat follow-ups during a run', () => {
     expect(resolved).toEqual([]);
   });
 
+  test('hands follow-ups to a raw adapter one at a time, in the order sent', async () => {
+    const seen: string[] = [];
+    const releases: Array<() => void> = [];
+    const adapter: ChatAdapter = {
+      sendMessage: async () => undefined,
+      sendRunInput: (_id, message) => {
+        seen.push(typeof message.content === 'string' ? message.content : '');
+        return new Promise<void>((resolve) => releases.push(resolve));
+      },
+    };
+    const { container } = render(Chat, {
+      id: 'chat-serial',
+      conversation: createConversationHistory({ id: 'serial' }),
+      streaming: true,
+      adapter,
+    });
+
+    await submit(container, 'first');
+    await submit(container, 'second');
+    await tick();
+
+    // The first acknowledgement is slow, so the second has not been handed over.
+    expect(seen).toEqual(['first']);
+    releases[0]!();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual(['first', 'second']);
+    releases[1]!();
+  });
+
   test('sends an ordinary message through sendMessage when no run is active', async () => {
     const runInput: unknown[] = [];
     const sent: unknown[] = [];
@@ -270,9 +299,10 @@ describe('Chat follow-ups wired to the session controller', () => {
     await settle();
 
     expect(rendered.container.textContent).toContain('a follow-up');
-    expect(rendered.container.querySelector('.chat-message-pending-label')?.textContent).toBe(
-      'Sending…',
-    );
+    const pendingLabel = rendered.container.querySelector('.chat-message-pending-label');
+    expect(pendingLabel?.textContent).toBe('Sending…');
+    // The transcript's log region announces the addition; the row adds no live region.
+    expect(pendingLabel?.hasAttribute('role')).toBe(false);
     expect(rendered.container.querySelector('[data-pending]')).not.toBeNull();
 
     acknowledge();
@@ -298,7 +328,8 @@ describe('Chat follow-ups wired to the session controller', () => {
     expect(rendered.container.querySelector('[data-failed]')?.textContent).toContain('try this');
     const retry = rendered.container.querySelector<HTMLButtonElement>('.chat-message-retry')!;
     expect(retry).not.toBeNull();
-    // The run keeps streaming: the composer is still live.
+    // The run keeps streaming: Stop is still offered and the composer is still live.
+    expect(rendered.container.querySelector('button[aria-label="Stop generating"]')).not.toBeNull();
     expect(composerOf(rendered.container).disabled).toBe(false);
 
     await fireEvent.click(retry);

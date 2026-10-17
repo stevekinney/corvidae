@@ -146,6 +146,70 @@ describe('ChatInput', () => {
     expect(submitCount).toBe(1);
   });
 
+  test.each([
+    ['enter', 'Press Enter to send a follow-up.'],
+    ['modifier-enter', 'Press Command+Enter or Control+Enter to send a follow-up.'],
+    ['enter-if-single-line', 'Press Enter to send a single-line follow-up.'],
+  ] as const)('the follow-up instruction follows submitOn %s', (submitOn, expected) => {
+    const { container } = render(ChatInput, {
+      id: `follow-up-instruction-${submitOn}`,
+      sending: true,
+      allowFollowUp: true,
+      submitOn,
+      onstop: () => undefined,
+    });
+
+    const composer = container.querySelector('textarea.chat-input-editor')!;
+    const description = container.querySelector(`#${composer.getAttribute('aria-describedby')}`);
+    const text = description?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    expect(text).toContain(expected);
+    if (submitOn === 'modifier-enter') expect(text).not.toContain('Press Enter to send');
+  });
+
+  test('moves focus off the side Stop button when it unmounts', async () => {
+    const props = {
+      id: 'stop-focus',
+      sending: true,
+      allowFollowUp: true,
+      value: 'ready',
+      onstop: () => undefined,
+    };
+    const rendered = render(ChatInput, props);
+    const stop = rendered.container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Stop generating"]',
+    )!;
+    stop.focus();
+    expect(document.activeElement).toBe(stop);
+
+    await rendered.rerender({ ...props, sending: false });
+    await tick();
+
+    expect(rendered.container.querySelector('button[aria-label="Stop generating"]')).toBeNull();
+    expect(document.activeElement).toBe(
+      rendered.container.querySelector('button[aria-label="Send message"]'),
+    );
+  });
+
+  test('falls back to the textarea when Send is disabled as the Stop button unmounts', async () => {
+    const props = {
+      id: 'stop-focus-empty',
+      sending: true,
+      allowFollowUp: true,
+      onstop: () => undefined,
+    };
+    const rendered = render(ChatInput, props);
+    rendered.container
+      .querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]')!
+      .focus();
+
+    await rendered.rerender({ ...props, sending: false });
+    await tick();
+
+    expect(document.activeElement).toBe(
+      rendered.container.querySelector('textarea.chat-input-editor'),
+    );
+  });
+
   test('without allowFollowUp a sending composer cannot submit', async () => {
     let submitCount = 0;
     const { container } = render(ChatInput, {

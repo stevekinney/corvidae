@@ -128,6 +128,10 @@ export type ChatAdapter = {
    * acknowledgement: the message shows as pending in the transcript until then,
    * and a rejection marks it failed with a retry action without touching the
    * run. Omit it and the composer stays disabled during a run, as before.
+   *
+   * This hook has three arguments and no row id. The session controller's
+   * host-facing `sendRunInput` is a distinct type that also receives the id of
+   * the transcript row it appended.
    */
   sendRunInput?: (
     conversationId: string,

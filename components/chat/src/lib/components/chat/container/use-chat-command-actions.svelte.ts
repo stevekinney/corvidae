@@ -126,6 +126,8 @@ export function useChatCommandActions(options: CommandActionsOptions) {
   let approvalOwners = $state(new Map<string, ApprovalOwner>());
   let editingMessageIds = $state(new Set<string>());
   let pendingRetryMessageTokens = $state(new Map<string, symbol>());
+  // The tail of the follow-ups handed to the adapter, so they go one at a time.
+  let runInputQueue: Promise<unknown> = Promise.resolve();
 
   $effect(() => {
     options.getConversationIdentity();
@@ -226,17 +228,22 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     const runInput = options.getAdapter()?.sendRunInput;
     if (runInput && (options.getStreaming() || hasPendingApproval())) {
       // The run is still working (or waiting on an approval): hand the message
-      // to it as input instead of starting another turn.
-      void dispatchCommand(
+      // to it as input instead of starting another turn. Each call starts only
+      // after the previous one settles, in submission order, so a raw adapter
+      // never sees two in flight at once and a slow acknowledgement cannot be
+      // overtaken. The conversation is read now, not when the call starts.
+      const conversationId = options.getConversationIdentity();
+      const previous = runInputQueue;
+      const flight = dispatchCommand(
         'sendRunInput',
         (adapter) =>
           adapter.sendRunInput
-            ? Promise.resolve(
-                adapter.sendRunInput(options.getConversationIdentity(), message, attachments),
-              )
+            ? previous.then(() => adapter.sendRunInput?.(conversationId, message, attachments))
             : undefined,
         undefined,
       );
+      // `dispatchCommand` reports a failure and settles, so the queue moves on.
+      runInputQueue = Promise.resolve(flight);
     } else {
       void dispatchCommand(
         'sendMessage',
