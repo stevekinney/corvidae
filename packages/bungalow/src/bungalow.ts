@@ -94,9 +94,9 @@ function makeDirectory(path: string): void {
 }
 
 /** Create the directory if absent, and make it private if it already was not. */
-function ensurePrivateDirectory(path: string): void {
-  makeDirectory(path);
-  chmodSync(path, DIRECTORY_MODE);
+function ensurePrivateDirectory(path: string, label: string): void {
+  filesystem(`create the ${label}`, () => makeDirectory(path));
+  filesystem(`set the permissions of the ${label}`, () => chmodSync(path, DIRECTORY_MODE));
 }
 
 /** Make the rename durable: a file is only as durable as the directory entry that names it. */
@@ -206,14 +206,14 @@ export function openAtRoot(
   dependencies: OpenAtRootDependencies = {},
 ): Bungalow {
   const { acquireLock = acquireRootLock, onClose } = dependencies;
-  filesystem('create the root directory', () => ensurePrivateDirectory(root));
+  ensurePrivateDirectory(root, 'root directory');
   const lock = acquireLock(root);
   const secrets = join(root, 'secrets');
   const logs = join(root, 'logs');
   let deploymentId: string;
   try {
+    ensurePrivateDirectory(secrets, 'secrets directory');
     filesystem('prepare the root directory', () => {
-      ensurePrivateDirectory(secrets);
       makeDirectory(logs);
       removeTemporaryFiles(root);
       removeTemporaryFiles(secrets);
@@ -283,6 +283,18 @@ function isEmpty(value: string | undefined): boolean {
 }
 
 /**
+ * The root `openBungalow` will use: `resolveBungalowRoot` with the process's home directory as the
+ * default. Pure, so a test can check the default without opening anything.
+ */
+export function resolveOpenRoot(options: OpenBungalowOptions): string {
+  return resolveBungalowRoot({
+    name: options.name,
+    environment: options.environment ?? processEnvironment(),
+    homeDirectory: options.homeDirectory ?? homedir(),
+  });
+}
+
+/**
  * Open (creating if needed) an application's home and take its single-instance lock. The root is
  * `<NAME>_HOME` or `~/.<name>`; see `resolveBungalowRoot`.
  *
@@ -303,11 +315,7 @@ export function openBungalow(options: OpenBungalowOptions): Bungalow {
         `Set ${variable} to a disposable directory, or use openTemporaryBungalow.`,
     );
   }
-  const root = resolveBungalowRoot({
-    name: options.name,
-    environment,
-    homeDirectory: options.homeDirectory ?? homedir(),
-  });
+  const root = resolveOpenRoot({ ...options, environment });
   return openAtRoot(options.name, root);
 }
 

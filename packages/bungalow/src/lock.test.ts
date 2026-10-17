@@ -1,6 +1,9 @@
 import {
   appendFileSync,
+  closeSync,
+  fstatSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   statSync,
@@ -15,7 +18,7 @@ import { openBungalow } from './bungalow.ts';
 import { BungalowFilesystemError, BungalowLockedError } from './errors.ts';
 import { homeEnvironment, TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
 import { startLockChild } from './lock-children.test-support.ts';
-import { acquireRootLock, type LockOperations } from './lock.ts';
+import { acquireRootLock, systemLockOperations, type LockOperations } from './lock.ts';
 
 const temporaryDirectory = useTemporaryDirectories();
 
@@ -238,5 +241,78 @@ describe('acquireRootLock against a host that refuses', () => {
     writeFileSync(join(root, 'lock'), '');
     const error = thrownBy(() => acquireRootLock(join(root, 'lock'), refusing('acquired')));
     expect(error).toBeInstanceOf(BungalowFilesystemError);
+  });
+});
+
+describe('the lock descriptor', () => {
+  test('is close-on-exec, so no process this one execs can hold the lock past it', () => {
+    const system = systemLockOperations();
+    let observed: boolean | undefined;
+    const lock = acquireRootLock(temporaryDirectory(), {
+      tryLock(descriptor) {
+        observed = system.isCloseOnExec(descriptor);
+        return system.tryLock(descriptor);
+      },
+    });
+    lock.release();
+    expect(observed).toBe(true);
+  });
+
+  test('is released at most once, so a repeated release cannot close a recycled descriptor', () => {
+    const root = temporaryDirectory();
+    const system = systemLockOperations();
+    let held: number | undefined;
+    const lock = acquireRootLock(root, {
+      tryLock(descriptor) {
+        held = descriptor;
+        return system.tryLock(descriptor);
+      },
+    });
+    lock.release();
+
+    // The next descriptor the process opens takes the number the lock just gave up.
+    const recycled = openSync(join(root, 'other'), 'w');
+    try {
+      expect(recycled).toBe(held!);
+      lock.release();
+      expect(() => fstatSync(recycled)).not.toThrow();
+    } finally {
+      closeSync(recycled);
+    }
+  });
+});
+
+describe('a holder that is just starting or just finishing', () => {
+  test('is waited for: a contender that finds the file empty takes the lock when the holder goes', () => {
+    const root = temporaryDirectory();
+    const system = systemLockOperations();
+    let attempts = 0;
+    const lock = acquireRootLock(root, {
+      tryLock(descriptor) {
+        attempts += 1;
+        // The first attempt loses to a holder that has already cleared the file and is closing.
+        return attempts === 1 ? 'contended' : system.tryLock(descriptor);
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(readFileSync(join(root, 'lock'), 'utf8')).toBe(`${process.pid}\n`);
+    lock.release();
+  });
+
+  test('is reported as soon as the file names it, without waiting', () => {
+    const root = temporaryDirectory();
+    writeFileSync(join(root, 'lock'), '4242\n');
+    let attempts = 0;
+    const error = thrownBy(() =>
+      acquireRootLock(root, {
+        tryLock: () => {
+          attempts += 1;
+          return 'contended';
+        },
+      }),
+    );
+    expect(error).toBeInstanceOf(BungalowLockedError);
+    expect((error as BungalowLockedError).holderProcessIdentifier).toBe(4242);
+    expect(attempts).toBe(1);
   });
 });

@@ -35,17 +35,29 @@ export type LockOperations = {
   tryLock(descriptor: number): LockAttempt;
 };
 
-type NativeLock = LockOperations;
+/** The platform's `O_CLOEXEC`, which Node's `constants` leaves undefined on macOS. */
+const CLOSE_ON_EXEC_FLAG = { darwin: 0x01000000, linux: 0x80000 } as const;
+const GET_DESCRIPTOR_FLAGS = 1;
+const CLOSE_ON_EXEC = 1;
+
+/** The real calls. `isCloseOnExec` is for tests that check how a descriptor was opened. */
+export type NativeLock = LockOperations & {
+  isCloseOnExec(descriptor: number): boolean;
+};
 
 let native: NativeLock | undefined;
 
 /**
  * `flock(2)` through `bun:ffi`, which Bun's own filesystem API does not expose. The lock belongs to
  * the open file description, so a second descriptor opened on the same file conflicts with the
- * first even inside one process, the kernel drops it when the last descriptor closes or the
- * process dies, and a child process does not inherit it (Bun opens descriptors close-on-exec).
+ * first even inside one process, and the kernel drops it when the last descriptor closes or the
+ * process dies. The lock file is opened with `O_CLOEXEC` so that no child this process execs can
+ * hold the lock past it; Node and Bun do not set it on a plain `open`.
+ *
+ * `fcntl` is variadic, and a plain FFI call to it does nothing on Apple arm64, so the flag is set
+ * at `open` rather than with `F_SETFD`. `F_GETFD` takes no third argument and reads correctly.
  */
-function loadNativeLock(): NativeLock {
+export function systemLockOperations(): NativeLock {
   if (native !== undefined) return native;
   const platform = process.platform;
   if (platform !== 'darwin' && platform !== 'linux') {
@@ -54,23 +66,32 @@ function loadNativeLock(): NativeLock {
     );
   }
   const flockDefinition = { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } as const;
+  const fcntlDefinition = {
+    args: [FFIType.i32, FFIType.i32, FFIType.i32],
+    returns: FFIType.i32,
+  } as const;
   const errnoDefinition = { args: [], returns: FFIType.ptr } as const;
   let flock: (descriptor: number, operation: number) => number;
+  let fcntl: (descriptor: number, command: number, argument: number) => number;
   let errnoLocation: () => Parameters<typeof read.i32>[0] | null;
   try {
     if (platform === 'darwin') {
       const { symbols } = dlopen('libSystem.B.dylib', {
         flock: flockDefinition,
+        fcntl: fcntlDefinition,
         __error: errnoDefinition,
       });
       flock = symbols.flock;
+      fcntl = symbols.fcntl;
       errnoLocation = symbols['__error'];
     } else {
       const { symbols } = dlopen('libc.so.6', {
         flock: flockDefinition,
+        fcntl: fcntlDefinition,
         __errno_location: errnoDefinition,
       });
       flock = symbols.flock;
+      fcntl = symbols.fcntl;
       errnoLocation = symbols['__errno_location'];
     }
   } catch (error) {
@@ -85,8 +106,18 @@ function loadNativeLock(): NativeLock {
       const errno = location === null ? -1 : read.i32(location);
       return errno === WOULD_BLOCK[platform] ? 'contended' : { errno };
     },
+    isCloseOnExec(descriptor) {
+      return (fcntl(descriptor, GET_DESCRIPTOR_FLAGS, 0) & CLOSE_ON_EXEC) !== 0;
+    },
   };
   return native;
+}
+
+function openFlags(): number {
+  const platform = process.platform;
+  const closeOnExec =
+    platform === 'darwin' || platform === 'linux' ? CLOSE_ON_EXEC_FLAG[platform] : 0;
+  return constants.O_RDWR | constants.O_CREAT | closeOnExec;
 }
 
 function wrap(description: string, error: unknown): never {
@@ -111,20 +142,6 @@ function readHolder(lockPath: string): number | undefined {
   return Number.isSafeInteger(holder) && holder > 0 ? holder : undefined;
 }
 
-/**
- * A holder takes the kernel lock and only then writes its identifier, so a contender that loses
- * can find the file empty or still naming the previous holder. Reading a few times closes most of
- * that window; the identifier is advisory either way.
- */
-function readHolderAfterContention(lockPath: string): number | undefined {
-  let holder = readHolder(lockPath);
-  for (let attempt = 1; holder === undefined && attempt < HOLDER_READ_ATTEMPTS; attempt += 1) {
-    Bun.sleepSync(HOLDER_READ_INTERVAL_MILLISECONDS);
-    holder = readHolder(lockPath);
-  }
-  return holder;
-}
-
 export type RootLock = { release(): void };
 
 /**
@@ -140,20 +157,29 @@ export type RootLock = { release(): void };
  */
 export function acquireRootLock(
   root: string,
-  operations: LockOperations = loadNativeLock(),
+  operations: LockOperations = systemLockOperations(),
 ): RootLock {
   const lockPath = join(root, LOCK_FILE);
   let descriptor: number;
   try {
-    descriptor = openSync(lockPath, constants.O_RDWR | constants.O_CREAT, 0o600);
+    descriptor = openSync(lockPath, openFlags(), 0o600);
   } catch (error) {
     return wrap('open the lock file', error);
   }
 
   try {
-    const attempt = operations.tryLock(descriptor);
-    if (attempt === 'contended') {
-      throw new BungalowLockedError(root, readHolderAfterContention(lockPath));
+    let attempt = operations.tryLock(descriptor);
+    // A holder takes the kernel lock before it writes its identifier and clears the file before it
+    // releases the lock. A contender can therefore find the file empty because the holder is just
+    // starting or just finishing: poll, and take the lock if the holder goes. A readable
+    // identifier means the lock was held a moment ago, and that is reported.
+    for (let polls = 0; attempt === 'contended'; polls += 1) {
+      const holder = readHolder(lockPath);
+      if (holder !== undefined || polls >= HOLDER_READ_ATTEMPTS) {
+        throw new BungalowLockedError(root, holder);
+      }
+      Bun.sleepSync(HOLDER_READ_INTERVAL_MILLISECONDS);
+      attempt = operations.tryLock(descriptor);
     }
     if (attempt !== 'acquired') {
       throw new BungalowFilesystemError('Could not lock the lock file.', {
@@ -177,20 +203,24 @@ export function acquireRootLock(
     throw error;
   }
 
+  // The descriptor work happens at most once: once it has begun, the number may name something
+  // else (the process reuses descriptor numbers at once), so a retried release must not touch it.
+  let consumed = false;
   return {
     release() {
+      if (consumed) return;
+      consumed = true;
+      // Leave no identifier behind, so a contender never names a holder that has gone. A crash
+      // cannot do this, and the next holder overwrites what the crash left.
       try {
-        // Leave no identifier behind, so a contender never names a holder that has gone. A crash
-        // cannot do this, and the next holder overwrites what the crash left.
-        try {
-          ftruncateSync(descriptor, 0);
-        } catch {
-          // Closing the descriptor is what releases the lock; the truncation is a courtesy.
-        }
+        ftruncateSync(descriptor, 0);
+      } catch {
+        // Closing the descriptor is what releases the lock; the truncation is a courtesy.
+      }
+      try {
         closeSync(descriptor);
       } catch (error) {
-        // A repeat of a close that already took effect.
-        if (errorCode(error) !== 'EBADF') wrap('release the lock file', error);
+        wrap('release the lock file', error);
       }
     },
   };

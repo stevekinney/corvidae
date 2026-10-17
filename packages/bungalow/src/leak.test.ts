@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
 
@@ -81,6 +81,8 @@ describe('neither a secret value nor a secret key appears in an error', () => {
     expect(Object.keys(cause).toSorted()).toEqual(['code', 'errno', 'syscall']);
     expect(cause['code']).toBeString();
     expectNoLeak(renameFailure);
+    // The temporary file that held the value was removed, not left in secrets/.
+    expect(readdirSync(handle.secrets).toSorted()).toEqual([KEY_SENTINEL, 'known'].toSorted());
 
     // A missing secrets directory makes the temporary file's creation fail.
     rmSync(handle.secrets, { recursive: true, force: true });

@@ -7,12 +7,12 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, test } from 'bun:test';
 
-import { openAtRoot, openBungalow, openTemporaryBungalow } from './bungalow.ts';
+import { openAtRoot, openBungalow, openTemporaryBungalow, resolveOpenRoot } from './bungalow.ts';
 import { processEnvironment } from './environment-configuration.ts';
 import {
   BungalowFilesystemError,
@@ -283,6 +283,27 @@ describe('NODE_ENV=test guard', () => {
       environment: { NODE_ENV: 'test', ...homeEnvironment(root) },
     });
     expect(handle.root).toBe(root);
+  });
+});
+
+describe('resolveOpenRoot', () => {
+  test("defaults the home directory to the operating system's, without opening anything", () => {
+    expect(resolveOpenRoot({ name: TEST_NAME, environment: {} })).toBe(
+      join(homedir(), `.${TEST_NAME}`),
+    );
+  });
+
+  test('uses an injected home directory, and <NAME>_HOME over either', () => {
+    expect(resolveOpenRoot({ name: TEST_NAME, environment: {}, homeDirectory: '/h' })).toBe(
+      `/h/.${TEST_NAME}`,
+    );
+    expect(
+      resolveOpenRoot({
+        name: TEST_NAME,
+        environment: homeEnvironment('/srv/root'),
+        homeDirectory: '/h',
+      }),
+    ).toBe('/srv/root');
   });
 });
 
