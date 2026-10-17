@@ -348,6 +348,7 @@ const SIDEBAR_BASELINE = [
   'tag-input',
   'terminal-frame',
   'terminal-output',
+  'text',
   'textarea',
   'time-field',
   'timeline',

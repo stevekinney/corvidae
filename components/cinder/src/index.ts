@@ -968,6 +968,9 @@ export type {
 export { default as Tabs } from './components/tabs/index.ts';
 export type { TabsContext, TabsOrientation, TabsProps } from './components/tabs/index.ts';
 
+export { default as Text } from './components/text/index.ts';
+export type { TextElement, TextProps, TextVariant } from './components/text/index.ts';
+
 export { default as Textarea } from './components/textarea/index.ts';
 export type { TextareaProps, TextareaVariant } from './components/textarea/index.ts';
 

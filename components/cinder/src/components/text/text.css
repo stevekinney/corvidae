@@ -1,0 +1,51 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * TEXT
+ * Color is inherited from the container so the run of text follows whatever
+ * surface it sits on in both themes.
+ * ======================================== */
+
+  .cinder-text {
+    margin: 0;
+    color: currentColor;
+    font-family: var(--cinder-font-sans);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-normal);
+    line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-text[data-cinder-variant='h1'] {
+    font-size: var(--cinder-text-3xl);
+    font-weight: var(--cinder-font-bold);
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-text[data-cinder-variant='h2'] {
+    font-size: var(--cinder-text-2xl);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-text[data-cinder-variant='h3'] {
+    font-size: var(--cinder-text-xl);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-text[data-cinder-variant='h4'] {
+    font-size: var(--cinder-text-lg);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-text[data-cinder-variant='h5'] {
+    font-size: var(--cinder-text-md);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-text[data-cinder-variant='caption'] {
+    font-size: var(--cinder-text-xs);
+  }
+}
