@@ -74,6 +74,12 @@ export {
   isDeadlineElapsed,
   remainingMilliseconds,
 } from './goal-workflow-transitions';
+export { createMailboxSessionInputGate } from './mailbox-session-input-gate';
+export type {
+  DecodedSessionInput,
+  MailboxSessionInputGateOptions,
+  SessionInputPromotionStore,
+} from './mailbox-session-input-gate';
 export { readDurableRunResult } from './read-run-result';
 export type { DurableRunReading, ReadDurableRunResultOptions } from './read-run-result';
 export { createRunWorkflow } from './run-workflow';
@@ -103,6 +109,7 @@ export {
 } from './tool-activity-liveness';
 export type { ToolCallLivenessWatchdog, ToolCallProgressUpdate } from './tool-activity-liveness';
 export type {
+  ClaimedSessionInput,
   DurableRunDeps,
   PendingWakeup,
   RunCheckpoint,
@@ -110,8 +117,10 @@ export type {
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
   SessionInputConflict,
+  SessionInputDelivery,
   SessionInputDeliveryMode,
   SessionInputFailure,
+  SessionInputGate,
   SessionInputPayload,
   SessionInputPromotion,
   SessionInputReceipt,

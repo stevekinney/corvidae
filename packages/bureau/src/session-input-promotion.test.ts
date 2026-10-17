@@ -33,16 +33,13 @@ import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
  * that each crash window below is safe.
  *
  * Scope note: this file proves promotion's OWN atomicity and idempotency.
- * It does not exercise the (separate, not-yet-built) trigger that decides
- * WHEN to promote a pending session-input at a run's next safe boundary —
- * that wiring is out of scope for COR-435 (see the coordinator's ruling:
- * `ctx.memo` is structurally unreachable from where `submitSessionInput`
- * lives, and the actual step-boundary consumer belongs to
- * `packages/operative`'s run-workflow, not this package). "The message"
- * proven non-duplicated here is the durable `SessionOutboxEntry` attachment
- * describing it — the one fact a downstream conversation-append consumer
- * would drain exactly once via the outbox's own pre-existing claim/
- * acknowledge exclusivity (AB-390), not yet built here.
+ * The trigger that decides WHEN to promote a pending session-input at a
+ * run's next step boundary lives in `packages/operative`'s run workflow and
+ * is covered by `run-workflow-session-input.test.ts` there (COR-1476).
+ * "The message" proven non-duplicated here is the durable
+ * `SessionOutboxEntry` attachment describing it — the one fact a downstream
+ * conversation-append consumer drains exactly once via the outbox's own
+ * claim/acknowledge exclusivity (AB-390).
  */
 
 const FIXED_NOW_ISO = '2026-01-01T00:00:00.000Z';

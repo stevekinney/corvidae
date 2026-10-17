@@ -281,6 +281,22 @@ export function createRunWorkflow(
             snapshot = conversationAfterStep(snapshot, stepResult);
             lastStepSnapshot = snapshot;
 
+            // COR-1476 — the step's result, which already holds the delivered
+            // session inputs as messages, is durable here. Only now is each input
+            // marked promoted and retired from the gate's pending set, so a crash
+            // before this point re-asks the gate and a crash after it replays
+            // this memo. Settling is idempotent per input id; a failure fails
+            // the run rather than risk the same input reaching the model twice.
+            // The memo exists only for a step that delivered something, so a run
+            // that never receives session input records no extra operation.
+            if (stepResult.sessionInputDeliveries !== undefined) {
+              const deliveries = stepResult.sessionInputDeliveries;
+              yield* ctx.memo(`session-input-settle-${stepIndex}`, async () => {
+                await runDepsFrom(ctx.services).options.sessionInput?.settle(deliveries);
+                return { settled: deliveries.length };
+              });
+            }
+
             // Accumulate park requests from this step's memoized result. Last-write-
             // wins across steps, matching the in-process tool semantics (a later
             // `scheduleWakeup`/`requestHumanInput` call overwrites a prior one).

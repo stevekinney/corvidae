@@ -18,7 +18,7 @@ import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
 import type { ContextEpochSealer } from './context-epoch';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
-import type { SteeringDesiredState } from './durable/types';
+import type { SessionInputGate, SteeringDesiredState } from './durable/types';
 import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
 import type { OperativeHookMap } from './hooks';
 import type { DelegatedAuthority } from './providers/policy.ts';
@@ -597,6 +597,14 @@ export interface RunOptionsBase {
    * session simply omits it.
    */
   sessionId?: string | undefined;
+  /**
+   * Where this durable run receives session input admitted while it is live
+   * (COR-1476). The run workflow asks it at each step boundary and appends what
+   * it returns to the conversation before the step generates. Honoured only by
+   * the durable run workflow; the in-memory loop ignores it. A run without one
+   * receives no session input.
+   */
+  sessionInput?: SessionInputGate | undefined;
   /**
    * Set when this run was dispatched as another run's child (COR-1269), by
    * `dispatchChildRun` through `AgentRunContext.childCorrelation`.

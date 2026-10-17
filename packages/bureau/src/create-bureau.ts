@@ -69,6 +69,7 @@ import {
   SessionDeletedEvent,
   type SessionInputAdmissionOutcome,
   type SessionInputAdmissionRequest,
+  type SessionInputGate,
   type SessionListOptions,
   SessionOutboxAppendedEvent,
   type SessionOutboxEntry,
@@ -222,6 +223,8 @@ import {
   createSessionInputMailbox,
   type PersistedSessionInput,
 } from './session-input-durability';
+import { createSessionInputDeliveryGate } from './session-input-delivery';
+import { SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE } from './session-input-promotion';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import {
   normalizeRunRequestContext,
@@ -1345,12 +1348,10 @@ export function createPendingApprovalPersistHook(
 export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
-  // AB-194: validated here (BAD_REQUEST at construction time) though not yet
-  // enforced — every reachable `submitSessionInput` outcome today is a
-  // pre-admission rejection, before any backlog could exist to check
-  // against. Enforcement lands with the mailbox-backed `ab-42-bureau-b` slice
-  // once WFT-84 ships, using these same validated values (defaulting to
-  // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`).
+  // AB-194: validated here (BAD_REQUEST at construction time). Admission
+  // enforces these same validated values (defaulting to
+  // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`)
+  // against the session mailbox.
   validateSessionInputBacklogLimit(
     options.sessionInput?.sessionBacklogLimit,
     'sessionBacklogLimit',
@@ -1853,6 +1854,42 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       sessionInputMailboxes.set(sessionId, mailbox);
     }
     return mailbox;
+  }
+
+  /**
+   * COR-1476 — the gate through which one of this session's durable runs
+   * receives input `submitSessionInput` admitted while it is live. `undefined`
+   * when the bureau has no durable mailbox or session store, in which case
+   * admission itself answers `unsupported-capability` and there is nothing to
+   * deliver.
+   */
+  function sessionInputGateFor(sessionId: string): SessionInputGate | undefined {
+    let mailbox: Mailbox | undefined;
+    try {
+      mailbox = getSessionInputMailbox(sessionId);
+    } catch {
+      // Weft refuses a mailbox for a resource id it cannot address (over 256
+      // bytes). Such a session can still run, but admission has no mailbox to
+      // write to, so no input can ever be waiting for it: nothing to deliver.
+      return undefined;
+    }
+    const gateSessionStore = runtime.sessionStore;
+    if (mailbox === undefined || gateSessionStore === undefined) return undefined;
+    return createSessionInputDeliveryGate({
+      sessionId,
+      mailbox,
+      sessionStore: gateSessionStore,
+      nowISO: runtimeServices.clock.nowISO,
+    });
+  }
+
+  /**
+   * Hands a recovered durable run its session's input gate before replay
+   * resumes, the way {@link recoverRunSteering} hands it its steering gate.
+   */
+  function attachRecoveredSessionInput(sessionId: string, services: DurableRunDeps): void {
+    const gate = sessionInputGateFor(sessionId);
+    if (gate !== undefined) services.options = { ...services.options, sessionInput: gate };
   }
 
   /**
@@ -4137,6 +4174,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `steering.ts`'s `forRun` doc comment): a pause bound to a DIFFERENT
       // concurrent run on this same session must never block this one.
       const runSteeringGate = steeringGate.forRun(runId);
+      const runSessionInputGate = sessionInputGateFor(sessionId);
 
       // COR-690: the last admission check before the run and its toolbox are
       // registered. Everything from here to that registration is synchronous,
@@ -4159,6 +4197,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ...(runSteeringGate ? { steering: runSteeringGate } : {}),
             // COR-1269 — stamped onto this run's hook-plan observations.
             sessionId,
+            // COR-1476 — input admitted while this run is live, delivered at
+            // each of its step boundaries.
+            ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
             // COR-1265 criterion 8 — merged AFTER the trailing registration, so
             // the Bureau tier is complete before it becomes the merge's first
             // argument. A single-tier merge still copies every entry into a fresh
@@ -5353,6 +5394,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       info.workflowId,
       services,
     );
+    attachRecoveredSessionInput(info.input.sessionId, services);
     const eventSurface = createRecoveredRunEventSurface(
       services,
       info.workflowId,
@@ -5793,6 +5835,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             } catch {
               fallbackSteeringGate = undefined;
             }
+          }
+          if (recoveredServices !== undefined) {
+            attachRecoveredSessionInput(ownedSessionId!, recoveredServices);
           }
           reattachRecoveredRun(
             handle.id,
@@ -7045,7 +7090,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // own next tick, or a peer's) gets a fresh look at it.
         if (
           entry.kind === 'session.attachment' &&
-          entry.namespace !== REVIEW_AUDIT_OUTBOX_NAMESPACE
+          entry.namespace !== REVIEW_AUDIT_OUTBOX_NAMESPACE &&
+          entry.namespace !== SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE
         ) {
           diagnose({
             level: 'error',
@@ -7641,6 +7687,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       return 'continue';
     };
+
+    // COR-1476 — `promoteSessionInput` rides this namespace so its commit is
+    // atomic with the session's own metadata. The promotion is complete in that
+    // commit (the receipt reads `promoted` from session metadata, and the
+    // mailbox command is settled by the run that delivered it), so there is
+    // nothing to replay: it is retired here so it never jams the ordinal-ordered
+    // drain behind it.
+    if (entry.namespace === SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE) return acknowledge();
 
     // `REVIEW_AUDIT_OUTBOX_NAMESPACE` IS this bureau's own — this code is
     // the only writer of it, via `reviewAuditOutboxAttachment`, which
@@ -8484,11 +8538,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * (`unsupported-capability`) — reversing the first two would let an
    * unauthorized caller learn a session exists.
    *
-   * Every reachable outcome here is a pre-admission rejection: no adopted
-   * `@lostgradient/weft` version exposes WFT-84's durable mailbox yet, so
-   * every authorized, non-terminal request unconditionally returns
-   * `unsupported-capability`. No `SessionInputRecord` is created and no `id`
-   * is consumed by this method today.
+   * COR-435/COR-1476: on a durably-configured bureau an authorized request to
+   * a non-terminal session is admitted to the session's mailbox (`admitted`,
+   * `replayed`, `conflict`, or `backlog-exhausted`), and the session's live
+   * durable run delivers it at its next step boundary, in admission order and
+   * exactly once, which moves its receipt to `promoted`. `steer` and `queue`
+   * share that one FIFO path. A bureau with no durable mailbox answers
+   * `unsupported-capability`.
    */
   /**
    * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern

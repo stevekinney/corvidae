@@ -362,6 +362,65 @@ export interface SessionInputFailure {
     | 'promotion-failed';
 }
 
+/**
+ * One admitted session input a run's step boundary received from its
+ * {@link SessionInputGate} (COR-1476). Plain data: it is read inside a step's
+ * memo and nothing live crosses a checkpoint.
+ */
+export interface ClaimedSessionInput {
+  /** The input's caller-facing identity, unique within its session. */
+  readonly id: string;
+  readonly deliveryMode: SessionInputDeliveryMode;
+  readonly payload: SessionInputPayload;
+  /**
+   * `true` when an earlier boundary already made this input a model-visible
+   * message and only its settlement was left undone (a crash or an expired
+   * lease between the two). The workflow must not append it again; it only
+   * hands it back to {@link SessionInputGate.settle}.
+   */
+  readonly delivered: boolean;
+}
+
+/** An input a step boundary appended to the conversation, handed to {@link SessionInputGate.settle}. */
+export interface SessionInputDelivery {
+  readonly id: string;
+  /** The conversation message the input became. Absent for a settle-only entry. */
+  readonly conversationMessageId?: string | undefined;
+  /** The step index of the provider-turn boundary the input was consumed at. */
+  readonly providerTurn: number;
+}
+
+/**
+ * The seam through which a durable run receives session input admitted while it
+ * is live (COR-1476). The run workflow consults it at every step boundary,
+ * before the step generates: whatever {@link SessionInputGate.claimPending}
+ * returns is appended to the conversation as user messages, in the order
+ * returned, as part of the same memoized step. Once that step's result is
+ * durable the workflow calls {@link SessionInputGate.settle} so the input's
+ * receipt reaches `promoted`.
+ *
+ * Operative owns the contract and Bureau supplies the implementation over its
+ * session-input mailbox, exactly as `SteeringGate` is supplied. Supplied via
+ * `RunOptions.sessionInput`; a run without one receives no session input.
+ *
+ * Exactly-once delivery rests on two facts the implementation must keep:
+ * `claimPending` is idempotent across a replay of the same boundary, and
+ * `settle` is idempotent per input id.
+ */
+export interface SessionInputGate {
+  /**
+   * The inputs to deliver at this boundary, in admission order. Never returns
+   * an input out of order: when an earlier input is still leased, it returns
+   * nothing rather than skip it.
+   */
+  claimPending(): Promise<readonly ClaimedSessionInput[]>;
+  /**
+   * Records the inputs the boundary delivered (making each receipt
+   * `promoted`) and retires them from the pending set. Idempotent per `id`.
+   */
+  settle(deliveries: readonly SessionInputDelivery[]): Promise<void>;
+}
+
 // AB-67 — the runtime steering contract (decision record, ratified
 // 2026-09-01). Type-only export; no runtime behavior attached. See
 // `documentation/operative-type-safe-api.md`'s "## Steering commands"

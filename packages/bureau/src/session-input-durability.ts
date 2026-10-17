@@ -202,7 +202,7 @@ function encodeSessionInputKind(deliveryMode: SessionInputDeliveryMode): string 
 }
 
 /** Inverse of {@link encodeSessionInputKind}. Throws on a kind this module never produced. */
-function decodeSessionInputKind(kind: string): SessionInputDeliveryMode {
+export function decodeSessionInputKind(kind: string): SessionInputDeliveryMode {
   if (kind === 'session-input:steer') return 'steer';
   if (kind === 'session-input:queue') return 'queue';
   throw new Error(

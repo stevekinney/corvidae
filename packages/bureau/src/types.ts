@@ -1531,12 +1531,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `lastRunStatus`, and authorization targets the session's sole live run,
    * falling back to `lastRunId` only when several runs are live.
    *
-   * Until `ab-42-bureau-b` lands (WFT-84's durable application command
-   * mailbox), every other authorized, non-terminal request unconditionally
-   * returns `{ outcome: 'unsupported-capability', reason:
-   * 'durable-mailbox-unavailable' }` — no `SessionInputRecord` is created and
-   * no `id` is consumed by this method today. `admitted`/`replayed`/
-   * `conflict`/`backlog-exhausted` are structurally unreachable until then.
+   * On a durably-configured Bureau every other authorized, non-terminal
+   * request is admitted to the session's durable mailbox (`admitted`,
+   * `replayed`, `conflict`, or `backlog-exhausted`). The session's live
+   * durable run delivers the input at its next step boundary, in admission
+   * order and exactly once (including across a restart), appending it to the
+   * conversation before that step generates; the receipt then reads
+   * `promoted`. `steer` and `queue` share that one FIFO path. A Bureau with no
+   * session mailbox, durable storage, or key-value store returns `{ outcome:
+   * 'unsupported-capability', reason: 'durable-mailbox-unavailable' }`.
    */
   submitSessionInput(
     sessionId: string,
