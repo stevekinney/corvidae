@@ -298,3 +298,27 @@ describe('AG-UI chunk runs and the events between them', () => {
     ]);
   });
 });
+
+describe('AG-UI events after the run ends', () => {
+  const ignored = [
+    { type: 'STATE_SNAPSHOT', snapshot: {} },
+    { type: 'STATE_DELTA', delta: [] },
+    { type: 'CUSTOM', name: 'n', value: 1 },
+    { type: 'RAW', event: {} },
+    { type: 'ACTIVITY_SNAPSHOT', messageId: 'act', activityType: 'PLAN', content: {} },
+    { type: 'ACTIVITY_DELTA', messageId: 'act', activityType: 'PLAN', patch: [] },
+  ];
+
+  for (const [label, ending] of [
+    ['RUN_FINISHED', runFinished],
+    ['RUN_ERROR', { type: 'RUN_ERROR', message: 'failed' }],
+  ] as const) {
+    for (const event of ignored) {
+      test(`${event.type} after ${label} is a lifecycle error`, async () => {
+        const error = await failure([runStarted, ending, event]);
+        expect(error).toMatchObject({ kind: 'protocol', eventIndex: 2 });
+        expect((error as Error).message).toMatch(/arrived after the run ended/);
+      });
+    }
+  }
+});

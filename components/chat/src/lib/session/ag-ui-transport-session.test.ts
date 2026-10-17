@@ -488,4 +488,43 @@ describe('driving a chat session from an AG-UI stream', () => {
       expect(contents(session.conversation)).toHaveLength(4);
     });
   });
+
+  test('a snapshot holding a still-open message that already made a call and got its result is valid', async () => {
+    const call = {
+      id: 'c1',
+      type: 'function' as const,
+      function: { name: 'lookup', arguments: '{}' },
+    };
+    const session = createSession((request) => {
+      const [question] = toAGUIMessages(request.conversation);
+      return [
+        { type: 'RUN_STARTED', threadId: 't', runId: 'r' },
+        { type: 'TEXT_MESSAGE_START', messageId: 'm1' },
+        { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm1', delta: 'Let me ' },
+        {
+          type: 'TOOL_CALL_START',
+          toolCallId: 'c1',
+          toolCallName: 'lookup',
+          parentMessageId: 'm1',
+        },
+        { type: 'TOOL_CALL_END', toolCallId: 'c1' },
+        { type: 'TOOL_CALL_RESULT', messageId: 'c1-result', toolCallId: 'c1', content: 'found' },
+        {
+          type: 'MESSAGES_SNAPSHOT',
+          messages: [
+            question,
+            { id: 'm1', role: 'assistant', content: 'Let me ', toolCalls: [call] },
+            { id: 'c1-result', role: 'tool', toolCallId: 'c1', content: 'found' },
+          ],
+        },
+        { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm1', delta: 'look.' },
+        { type: 'TEXT_MESSAGE_END', messageId: 'm1' },
+        { type: 'RUN_FINISHED', threadId: 't', runId: 'r' },
+      ];
+    });
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'question' }, []);
+    expect(session.errors).toEqual([]);
+    expect(session.conversation.ids.slice(1)).toEqual(['m1', 'm1:call:c1', 'c1-result']);
+    expect(session.conversation.messages['m1']?.content).toBe('Let me look.');
+  });
 });

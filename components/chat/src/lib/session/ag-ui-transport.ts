@@ -133,11 +133,13 @@ export async function* mapAGUIEventsToChatStream(
     try {
       const event = parseEvent(raw, eventIndex);
       if (isSubagentEvent(event)) continue;
+      // The lifecycle comes first: nothing, ignored or not, follows the end.
+      if (state.finished) throw protocolError(`${event.type} arrived after the run ended.`);
       if (unsupportedTypes.has(event.type)) {
         yield* closeLanes(state);
         continue;
       }
-      assertCanAccept(state, event);
+      assertStarted(state, event);
       yield* reduceEvent(state, event);
     } catch (error) {
       throw error instanceof AGUIChatTransportError ? withIndex(error, eventIndex) : error;
@@ -193,8 +195,7 @@ function isSubagentEvent(event: AGUIEvent): boolean {
   return 'subagentRunId' in event && event.subagentRunId !== undefined;
 }
 
-function assertCanAccept(state: MapperState, event: AGUIEvent): void {
-  if (state.finished) throw protocolError(`${event.type} arrived after the run ended.`);
+function assertStarted(state: MapperState, event: AGUIEvent): void {
   if (
     event.type !== EventType.RUN_STARTED &&
     event.type !== EventType.RUN_ERROR &&

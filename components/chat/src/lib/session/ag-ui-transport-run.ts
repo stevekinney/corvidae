@@ -164,8 +164,19 @@ export function adoptSnapshot(state: MapperState, messages: ReadonlyArray<Snapsh
     ...state.openText.keys(),
     ...[...state.reasoningMessages].filter(([, message]) => message.open).map(([id]) => id),
   ]);
+  const excluded = messages.filter((message) => streaming.has(message.id));
+  // A tool result whose call is in a message left out would be an orphan, and
+  // the result is streamed on its own anyway.
+  const orphanedCalls = new Set(
+    excluded.flatMap((message) =>
+      message.role === 'assistant' ? (message.toolCalls ?? []).map((call) => call.id) : [],
+    ),
+  );
   const candidates = messages.filter(
-    (message) => message.subagentRunId === undefined && !streaming.has(message.id),
+    (message) =>
+      message.subagentRunId === undefined &&
+      !streaming.has(message.id) &&
+      !(message.role === 'tool' && orphanedCalls.has(message.toolCallId)),
   );
   // A snapshot that shares nothing with a thread the client already holds is
   // not a copy of that thread, and merging all of it would add the history a
