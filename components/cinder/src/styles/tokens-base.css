@@ -220,24 +220,24 @@
   /* Hover state of the raised surface. Light mode washes toward the accent; dark mode mixes toward white. */
   --cinder-surface-raised-hover: light-dark(
     color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 6%),
-    color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 0) 2.5%)
+    color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 2.5%)
   );
   /* Pressed state of the raised surface. Light mode washes toward the accent; dark mode mixes toward white. */
   --cinder-surface-raised-pressed: light-dark(
     color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 12%),
-    color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 0) 6%)
+    color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 6%)
   );
   /* Sunken region inside a card body (code blocks, wells, recessed sub-regions). */
   --cinder-surface-inset: light-dark(oklch(96% 0.005 255), oklch(11% 0.03 245));
   /* Hover state of the default surface. Light mode washes toward the accent rather than darkening toward black: once the light ramp is anchored at white, its four resting tiers occupy only 0.040 lightness points, so a proportional lightness-only mix would be wider than the whole ramp it has to stay clear of. A light-mode hover that washes toward the brand accent separates by chroma and hue as well, staying legible at a lightness step small enough to fit the ramp. */
   --cinder-surface-hover: light-dark(
     color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%),
-    color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 2.5%)
+    color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 2.5%)
   );
   /* Pressed state of the default surface. Same accent-wash rationale as `surface.hover`, at a stronger mix percentage. */
   --cinder-surface-pressed: light-dark(
     color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 12%),
-    color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 6%)
+    color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 6%)
   );
   /* Inverse surface, used by Tooltip to stay a dark overlay in both themes. Light arm mirrors the text/surface swap (dark bg, light fg); dark arm uses the elevated surface + near-white text so the tooltip reads as a dark elevated layer rather than inverting to light. */
   --cinder-surface-inverse: light-dark(var(--cinder-text-default), var(--cinder-surface-raised));
@@ -366,12 +366,12 @@
   --cinder-status-success-border: light-dark(oklch(80% 0.05 145), oklch(45% 0.09 145));
   /* Success color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-success-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   /* Success color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-success-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   /* Label color for solid warning fills. */
@@ -390,12 +390,12 @@
   --cinder-status-warning-border: light-dark(oklch(80% 0.06 75), oklch(50% 0.1 75));
   /* Warning color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-warning-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   /* Warning color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-warning-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   /* Label color for solid danger fills. Dark-mode danger is ~72% lightness; pure white fails WCAG AA on it, so the dark arm uses a near-black ink instead. */
@@ -414,12 +414,12 @@
   --cinder-status-danger-border: light-dark(oklch(80% 0.06 25), oklch(50% 0.11 25));
   /* Danger color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-danger-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   /* Danger color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-danger-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   /* Label color for solid info fills. */
@@ -438,12 +438,12 @@
   --cinder-status-info-border: light-dark(oklch(80% 0.05 230), oklch(45% 0.08 230));
   /* Info color moved toward the current text color. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-info-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   /* Info color moved toward the current surface. Derived in one polarity-aware recipe shared by all four status colors. */
   --cinder-status-info-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   /* Soft neutral-tinted surface background. Neutral retains the status-triple shape so components never need ad hoc surface mixing for the default variant. */
@@ -717,16 +717,16 @@
   --cinder-surface-raised-hover: color-mix(
     in oklch,
     var(--cinder-surface-raised),
-    oklch(100% 0 0) 2.5%
+    oklch(100% 0 none) 2.5%
   );
   --cinder-surface-raised-pressed: color-mix(
     in oklch,
     var(--cinder-surface-raised),
-    oklch(100% 0 0) 6%
+    oklch(100% 0 none) 6%
   );
   --cinder-surface-inset: oklch(11% 0.03 245);
-  --cinder-surface-hover: color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 2.5%);
-  --cinder-surface-pressed: color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 6%);
+  --cinder-surface-hover: color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 2.5%);
+  --cinder-surface-pressed: color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 6%);
   --cinder-surface-inverse: var(--cinder-surface-raised);
   --cinder-surface-upcoming-marker: var(--cinder-surface);
   --cinder-surface-canvas: oklch(15% 0.035 245);
@@ -787,11 +787,11 @@
   --cinder-status-success-text: oklch(88% 0.11 145);
   --cinder-status-success-border: oklch(45% 0.09 145);
   --cinder-status-success-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-success-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-success-contrast: oklch(15% 0.03 145);
@@ -802,11 +802,11 @@
   --cinder-status-warning-text: oklch(90% 0.08 75);
   --cinder-status-warning-border: oklch(50% 0.1 75);
   --cinder-status-warning-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-warning-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-warning-contrast: oklch(20% 0.04 75);
@@ -820,11 +820,11 @@
   --cinder-status-danger-text: oklch(90% 0.05 25);
   --cinder-status-danger-border: oklch(50% 0.11 25);
   --cinder-status-danger-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-danger-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-danger-contrast: oklch(12% 0.02 25);
@@ -835,11 +835,11 @@
   --cinder-status-info-text: oklch(88% 0.071 230);
   --cinder-status-info-border: oklch(45% 0.08 230);
   --cinder-status-info-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-info-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-info-contrast: oklch(15% 0.03 230);
@@ -958,11 +958,11 @@
   --cinder-status-success-text: oklch(40% 0.127 145);
   --cinder-status-success-border: oklch(80% 0.05 145);
   --cinder-status-success-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-success-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-success-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-success-contrast: oklch(100% 0 0);
@@ -973,11 +973,11 @@
   --cinder-status-warning-text: oklch(40% 0.085 75);
   --cinder-status-warning-border: oklch(80% 0.06 75);
   --cinder-status-warning-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-warning-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-warning-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-warning-contrast: oklch(100% 0 0);
@@ -991,11 +991,11 @@
   --cinder-status-danger-text: oklch(42% 0.16 25);
   --cinder-status-danger-border: oklch(80% 0.06 25);
   --cinder-status-danger-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-danger-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-danger-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-danger-contrast: oklch(100% 0 0);
@@ -1006,11 +1006,11 @@
   --cinder-status-info-text: oklch(40% 0.079 230);
   --cinder-status-info-border: oklch(80% 0.05 230);
   --cinder-status-info-subtle: oklch(
-    from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l
+    from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-text-default) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-info-muted: oklch(
-    from color-mix(in oklch, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l
+    from color-mix(in oklab, var(--cinder-status-info-solid), var(--cinder-surface) 36%) l
       min(c, 0.05) h
   );
   --cinder-status-info-contrast: oklch(100% 0 0);

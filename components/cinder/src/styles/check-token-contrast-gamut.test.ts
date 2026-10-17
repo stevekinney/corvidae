@@ -180,7 +180,7 @@ describe('sRGB gamut integrity (no silent chroma clamping)', () => {
     ];
     const declarations = [
       ...css.matchAll(
-        /--cinder-status-(?:info|success|warning|danger)-(?:muted|subtle):\s*oklch\(\s*from\s+color-mix\(\s*in oklch,\s*var\(--cinder-status-(?:info|success|warning|danger)-solid\),\s*var\(--cinder-(?:surface|text-default)\)\s+36%\s*\)\s*l\s*min\(c,\s*0\.05\)\s*h\s*\);/g,
+        /--cinder-status-(?:info|success|warning|danger)-(?:muted|subtle):\s*oklch\(\s*from\s+color-mix\(\s*in oklab,\s*var\(--cinder-status-(?:info|success|warning|danger)-solid\),\s*var\(--cinder-(?:surface|text-default)\)\s+36%\s*\)\s*l\s*min\(c,\s*0\.05\)\s*h\s*\);/g,
       ),
     ];
 

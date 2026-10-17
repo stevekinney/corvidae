@@ -55,7 +55,7 @@
             "cssProperty": "--cinder-surface-raised-hover",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 6%), color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 0) 2.5%) )"
+            "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 6%), color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 2.5%) )"
           }
         }
       },
@@ -70,7 +70,7 @@
             "cssProperty": "--cinder-surface-raised-pressed",
             "public": true,
             "category": "color",
-            "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 12%), color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 0) 6%) )"
+            "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 12%), color-mix(in oklch, var(--cinder-surface-raised), oklch(100% 0 none) 6%) )"
           }
         }
       }
@@ -105,7 +105,7 @@
           "cssProperty": "--cinder-surface-hover",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 2.5%) )"
+          "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 6%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 2.5%) )"
         }
       }
     },
@@ -120,7 +120,7 @@
           "cssProperty": "--cinder-surface-pressed",
           "public": true,
           "category": "color",
-          "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 12%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 0) 6%) )"
+          "cssRecipe": "light-dark( color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 12%), color-mix(in oklch, var(--cinder-surface), oklch(100% 0 none) 6%) )"
         }
       }
     },

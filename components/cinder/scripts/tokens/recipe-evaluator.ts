@@ -26,6 +26,9 @@ export type Oklch = { l: number; c: number; h: number | undefined; alpha: number
 /** Looks up a custom property's current value as OKLCH, or `undefined` when it is not a color. */
 export type PropertyLookup = (property: string) => Oklch | undefined;
 
+/** Called for every `color-mix()` evaluated, with its resolved operands. */
+export type MixObserver = (space: 'oklch' | 'oklab', first: Oklch, second: Oklch) => void;
+
 type Cursor = { text: string; index: number };
 
 const HUE_EPSILON = 1e-6;
@@ -179,7 +182,7 @@ function readChannel(cursor: Cursor, channels: Channels): number {
   throw new RecipeSyntaxError(`unknown channel keyword "${word}"`, cursor);
 }
 
-function readColor(cursor: Cursor, lookup: PropertyLookup): Oklch {
+function readColor(cursor: Cursor, lookup: PropertyLookup, observe?: MixObserver): Oklch {
   skipSpace(cursor);
   const word = readWord(cursor);
   if (word === 'transparent') return { l: 0, c: 0, h: undefined, alpha: 0 };
@@ -202,12 +205,13 @@ function readColor(cursor: Cursor, lookup: PropertyLookup): Oklch {
       throw new RecipeSyntaxError(`unsupported color-mix space "${space}"`, cursor);
     }
     expect(cursor, ',');
-    const first = readColor(cursor, lookup);
+    const first = readColor(cursor, lookup, observe);
     const firstWeight = peekIsNumber(cursor) ? readNumber(cursor).value / 100 : undefined;
     expect(cursor, ',');
-    const second = readColor(cursor, lookup);
+    const second = readColor(cursor, lookup, observe);
     const secondWeight = peekIsNumber(cursor) ? readNumber(cursor).value / 100 : undefined;
     expect(cursor, ')');
+    observe?.(space, first, second);
     return mixColors(space, first, second, firstWeight, secondWeight);
   }
   if (word === 'oklch') {
@@ -216,7 +220,7 @@ function readColor(cursor: Cursor, lookup: PropertyLookup): Oklch {
     const from = /^from\s/.exec(cursor.text.slice(cursor.index));
     if (from) {
       cursor.index += from[0].length;
-      const origin = readColor(cursor, lookup);
+      const origin = readColor(cursor, lookup, observe);
       const channels: Channels = {
         l: origin.l,
         c: origin.c,
@@ -232,23 +236,28 @@ function readColor(cursor: Cursor, lookup: PropertyLookup): Oklch {
     }
     const l = readNumber(cursor);
     const c = readNumber(cursor);
-    const h = readNumber(cursor);
+    // `none` is a missing hue: it takes the other operand's hue in a mix.
+    const h = consume(cursor, 'none') ? undefined : readNumber(cursor).value;
     let alpha = 1;
     if (consume(cursor, '/')) {
       const parsed = readNumber(cursor);
       alpha = parsed.percent ? parsed.value / 100 : parsed.value;
     }
     expect(cursor, ')');
-    return { l: l.percent ? l.value / 100 : l.value, c: c.value, h: h.value, alpha };
+    return { l: l.percent ? l.value / 100 : l.value, c: c.value, h, alpha };
   }
   throw new RecipeSyntaxError(`unsupported color function "${word}"`, cursor);
 }
 
 /** Evaluates a recipe, or returns `undefined` when it uses anything outside the supported grammar. */
-export function evaluateRecipe(recipe: string, lookup: PropertyLookup): Oklch | undefined {
+export function evaluateRecipe(
+  recipe: string,
+  lookup: PropertyLookup,
+  observe?: MixObserver,
+): Oklch | undefined {
   const cursor: Cursor = { text: recipe, index: 0 };
   try {
-    const color = readColor(cursor, lookup);
+    const color = readColor(cursor, lookup, observe);
     skipSpace(cursor);
     return cursor.index === recipe.length ? color : undefined;
   } catch (error) {
