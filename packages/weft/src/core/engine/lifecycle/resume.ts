@@ -86,7 +86,50 @@ async function releaseFreshClaimOnRejectionUnlessDeferred(
   }
 }
 
-export async function resumeWorkflowFromStorage(
+/**
+ * Resume `workflowId` from durable storage, joining a resume of it that is already in flight in
+ * this engine and has not yet adopted the checkpoint.
+ *
+ * Until that adoption the engine holds no local checkpoint and no inline execution for the run, so
+ * `recoverAll()`'s preflight and `resume()`'s local-ownership check both treat it as idle. A
+ * resume parked in `resolveWorkflowServices` (a reclaim held while a Bureau finishes composing,
+ * say) would otherwise be followed by a second resume of the same run that drives it in parallel;
+ * the later checkpoint commit then loses its compare-and-swap and abandons the run. The joiner
+ * receives the in-flight resume's handle or rejection. Its own `onRecoveredWorkflow` hook does not
+ * fire for that run, because the run was recovered once, by the resume it joined.
+ */
+export function resumeWorkflowFromStorage(
+  internals: EngineInternals,
+  workflowId: string,
+  dispatchResumedEvent: boolean,
+  callbacks: LifecycleCallbacks,
+  onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'],
+  options?: ResumeFromStorageOptions,
+): Promise<WorkflowHandle> {
+  const inFlight = internals.resumesAwaitingAdoption.get(workflowId);
+  if (inFlight !== undefined) return inFlight;
+  const resuming = resumeWorkflowFromStorageOnce(
+    internals,
+    workflowId,
+    dispatchResumedEvent,
+    callbacks,
+    onRecoveredWorkflow,
+    options,
+  );
+  internals.resumesAwaitingAdoption.set(workflowId, resuming);
+  // A resume that settles before adopting the checkpoint (a rejection, usually) leaves the map
+  // here. The cleanup hangs off a side branch so the caller's promise settles in exactly as many
+  // microtask turns as before: settlement order on this path is load-bearing (see COR-1425).
+  const forget = (): void => {
+    if (internals.resumesAwaitingAdoption.get(workflowId) === resuming) {
+      internals.resumesAwaitingAdoption.delete(workflowId);
+    }
+  };
+  resuming.then(forget).catch(forget);
+  return resuming;
+}
+
+async function resumeWorkflowFromStorageOnce(
   internals: EngineInternals,
   workflowId: string,
   dispatchResumedEvent: boolean,

@@ -796,6 +796,7 @@ export class Engine<
     getInternals(this).parkedWorkflowReadyWaitersForTesting = new Map();
     getInternals(this).sleepTimerAcknowledgementWaiters = new Map();
     getInternals(this).durableInlineOperations = new Map();
+    getInternals(this).resumesAwaitingAdoption = new Map();
     getInternals(this).sleepTimersFiredWithoutResolver = new Map();
     getInternals(this).sleepTimerTokensFiredWithoutResolver = new Map();
     getInternals(this).interceptors = resolveEngineInterceptors(options);

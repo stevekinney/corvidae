@@ -198,6 +198,13 @@ export interface EngineInternals {
    */
   activityRegistriesByWorkflow: Map<string, ActivityRegistry>;
   /**
+   * Resumes from storage that have not yet adopted their workflow's checkpoint. Until adoption the
+   * engine holds neither a local checkpoint nor an inline execution for the run, so nothing else
+   * marks it as being resumed here; a second resume that started in that window would drive the
+   * same run alongside the first. `resumeWorkflowFromStorage` joins a resume already listed here.
+   */
+  resumesAwaitingAdoption: Map<string, Promise<WorkflowHandle>>;
+  /**
    * Per-workflow definition references — the actual `WorkflowDefinition`
    * object passed to `engine.register(workflow)`. Used for collision detection
    * (same-reference re-register is idempotent; same-name-different-object

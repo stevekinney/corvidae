@@ -166,6 +166,7 @@ function createResumeWorkflowFromStorageInternals({
     options: { development: false, getNow: () => 1_000, historyPolicy: { maxEvents: null } },
     parkedInlineWorkflows: new Set<string>(),
     registrations: RESUME_TEST_REGISTRATIONS,
+    resumesAwaitingAdoption: new Map(),
     storage,
     strategy,
     terminalizingWorkflows,
@@ -1211,6 +1212,7 @@ describe('engine lifecycle coverage helpers', () => {
       await throwingRejectionOf(
         resumeWorkflowFromStorage(
           {
+            resumesAwaitingAdoption: new Map(),
             registrations: new Map(),
             storage,
           } as never,
@@ -1248,6 +1250,7 @@ describe('engine lifecycle coverage helpers', () => {
       await throwingRejectionOf(
         resumeWorkflowFromStorage(
           {
+            resumesAwaitingAdoption: new Map(),
             registrations: new Map(),
             storage,
             options: { ownershipMode: 'workflow-lease' },
@@ -1278,6 +1281,7 @@ describe('engine lifecycle coverage helpers', () => {
       await throwingRejectionOf(
         resumeWorkflowFromStorage(
           {
+            resumesAwaitingAdoption: new Map(),
             registrations: new Map(),
             storage,
             options: { ownershipMode: 'none' },
@@ -1302,6 +1306,7 @@ describe('engine lifecycle coverage helpers', () => {
       await throwingRejectionOf(
         resumeWorkflowFromStorage(
           {
+            resumesAwaitingAdoption: new Map(),
             registrations: new Map(),
             storage,
             options: { ownershipMode: 'none' },
@@ -1486,6 +1491,7 @@ describe('engine lifecycle coverage helpers', () => {
 
     const handle = { id: workflowId };
     const internals = {
+      resumesAwaitingAdoption: new Map(),
       checkpoints: new Map<string, Checkpoint>(),
       eventLogHeads: new Map(),
       inlineStrategy: null,
