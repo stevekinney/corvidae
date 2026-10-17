@@ -144,6 +144,17 @@ describe('Service Worker mode — REST via a real setupServiceWorker() fetch lis
           register: (engine) => {
             engine.register(pingWorkflow);
           },
+          // `weft.workflows.get` requires `workflows:read`; a fetch listener
+          // with no `handlerOptions` is anonymous and is refused it.
+          handlerOptions: {
+            authContext: {
+              method: 'api-key',
+              principal: principalFromApiKey({
+                subject: 'sw-deployment-test',
+                scopes: ['workflows:read'],
+              }),
+            },
+          },
         });
 
         const handle = await setup.engine.start('deployment-sw-ping', { message: 'hello' });
@@ -151,7 +162,7 @@ describe('Service Worker mode — REST via a real setupServiceWorker() fetch lis
         // `pathPrefix` defaults to `/weft/`; the fetch listener strips it
         // before delegating, so `/weft/v1/workflows/:id` reaches
         // `handleRequest` as `/v1/workflows/:id` — `weft.workflows.get`'s
-        // REST binding (`access: 'public'`, confirmed in
+        // REST binding (`workflows:read`, confirmed in
         // `src/server/operations/get-workflow.ts`).
         const response = await dispatchFetch(
           new Request(`https://sw-host.example/weft/v1/workflows/${handle.id}`),

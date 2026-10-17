@@ -447,6 +447,49 @@ decodeCursor('-1'); // -1 (start of the feed)
 decodeCursor('garbage'); // null
 ```
 
+### Authentication and Scopes
+
+`serve({ auth })` accepts API keys, JWTs, and mutual TLS. Every operation except `weft.system.principal` requires an authorization scope, and the scope a caller holds comes from its credential: a JWT's `scope`, `scp`, and `permissions` claims, the `defaultApiKeyScopes` you give static API keys, or the principal your `resolveApiKeyPrincipal` returns.
+
+```typescript partial
+import { serve } from '@lostgradient/weft/server';
+
+await using server = serve({
+  engine,
+  port: 7233,
+  auth: {
+    apiKeys: [process.env['OPERATOR_API_KEY'] ?? ''],
+    // Every static key holds these. Required: a key with no scope is refused everywhere.
+    defaultApiKeyScopes: ['workflows:read', 'workflows:write', 'signals:write'],
+  },
+});
+```
+
+`serve()` throws before it binds a port when `auth.apiKeys` is non-empty and neither a non-empty `defaultApiKeyScopes` nor a `resolveApiKeyPrincipal` resolver is configured; the error names both options. A client reads its own method, subject, and scopes from `weft.system.principal` (`GET /v1/principal`), the one operation that is public, so it works for every credential state.
+
+A `serve()` with no `auth` identifies nobody. With `unauthenticatedAccess` set to `'warn'` (the default) or `'allow'`, every request runs as one local principal, `method: 'unauthenticated-local'` and `subject: 'unauthenticated-local'`, which holds every scope in `AUTHORIZATION_SCOPES`, so every operation is reachable by anyone who can reach the port. Set `unauthenticatedAccess: 'reject'`, or `WEFT_SERVER_AUTHENTICATION_REQUIRED=1`, and the server refuses to start without `auth`. A `handleRequest()` call made without an `authContext` is anonymous and may reach only `weft.system.principal`, and so is a `setupServiceWorker()` fetch listener unless you pass `handlerOptions: { authContext }`.
+
+The scope each operation requires:
+
+| Operations | Required scope |
+| --- | --- |
+| `weft.workflows.get`, `weft.workflows.list`, `weft.workflows.aggregate`, `weft.workflows.timeline.get`, `weft.workflows.result.get`, `weft.workflows.checkpoints.get`, `weft.workflows.checkpoints.list`, `weft.workflows.scheduleprovenance.get`, `weft.workflows.finalizer.get`, `weft.updates.result.get` | `workflows:read` |
+| `weft.workflows.start`, `weft.workflows.startorsignal`, `weft.workflows.fork`, `weft.workflows.cancel`, `weft.workflows.suspend`, `weft.workflows.resume`, `weft.workflows.timeout` | `workflows:write` |
+| `weft.workflows.signal` | `signals:write` |
+| `weft.workflows.tags.add`, `weft.workflows.tags.remove` | `tags:write` |
+| `weft.workflows.purge`, `weft.recover.all` | `workflows:admin` |
+| `weft.workflows.update` | `updates:write` |
+| `weft.workflows.query` | `queries:read` |
+| `weft.workflows.events.list` | `events:read` |
+| `weft.workflows.attributes.get`, `weft.workflows.attributes.set` | `attributes:read`, `attributes:write` |
+| `weft.workflows.streams.chunks`, `weft.workflows.streams.sse` | `streams:read` |
+| `weft.schedules.create`, `weft.schedules.update`, `weft.schedules.pause`, `weft.schedules.resume`, `weft.schedules.cancel` | `schedules:write` |
+| `weft.reviews.get`, `weft.reviews.decision.submit` | `reviews:read`, `reviews:write` |
+| `weft.retention.get` | `system:read` |
+| `weft.system.principal` | none (public) |
+
+Scopes are flat: `workflows:admin` does not imply `workflows:read`. Operations outside this table, such as the registry, storage, worker, and diagnostic operations, declare their own scopes through the same mechanism.
+
 ### Dashboard and Extra Routes
 
 `dashboard()` starts the same server with Weft's prebuilt dashboard mounted on the same origin, and returns the same `WeftServer` handle. It accepts every `serve()` option plus `distDir`: the directory holding the built `index.html` and its `assets/` directory, which defaults to the `dashboard/` directory in the `@lostgradient/weft` package. It throws before binding the port when that directory has no `index.html`.

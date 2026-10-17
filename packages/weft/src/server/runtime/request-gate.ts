@@ -17,13 +17,15 @@
 
 import type { AuthContext, AuthResult } from '../authentication.ts';
 import { DEFAULT_PUBLIC_PATHS, normalizeRequestPathname } from '../authentication/types.ts';
+import { principalFromUnauthenticatedLocal } from '../principal.ts';
 import type { ServerContext } from './context.ts';
 
 const DEFAULT_PUBLIC_PATH_SET = new Set(DEFAULT_PUBLIC_PATHS);
 
 /**
  * Outcome of {@link authenticateRequest}: the resolved auth context (absent for
- * public-path bypass and unauthenticated servers), a short-circuit `response`
+ * a public-path bypass on an authenticating server; the `unauthenticated-local`
+ * context on a server with no authentication), a short-circuit `response`
  * (a 401 on rejection, else `null`), and whether the request hit a public path.
  */
 export type AuthenticationOutcome = {
@@ -75,7 +77,17 @@ export async function authenticateRequest(
     // No authenticator is configured. Rate limiting still respects the default
     // public-path list so health, metrics, and discovery probes are exempt.
     const publicBypass = DEFAULT_PUBLIC_PATH_SET.has(normalizeRequestPathname(request));
-    return { response: null, publicBypass };
+    // The server identifies nobody, so every request is the one local user.
+    // `weft.system.principal` and the audit actor report it, and it holds
+    // every built-in scope so every operation stays reachable.
+    return {
+      authContext: {
+        method: 'unauthenticated-local',
+        principal: principalFromUnauthenticatedLocal(),
+      },
+      response: null,
+      publicBypass,
+    };
   }
 
   const authenticator = await context.authenticatorPromise;
@@ -103,6 +115,10 @@ export async function authenticateRequest(
  * admissions.
  */
 function subjectFromAuthContext(authContext: AuthContext | undefined): string | undefined {
+  // Every request on a server with no authentication shares this one subject,
+  // so keying by it would put all clients in a single bucket. Fall through to
+  // the client address, as the limiter did before the local principal existed.
+  if (authContext?.method === 'unauthenticated-local') return undefined;
   if (authContext?.principal?.subject !== undefined) {
     return authContext.principal.subject;
   }

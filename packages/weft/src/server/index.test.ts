@@ -415,7 +415,7 @@ describe('serve', () => {
         expect.stringContaining('server started with NO authentication'),
       );
       expect(warningSpy).toHaveBeenCalledWith(
-        expect.stringContaining('all non-public operations are publicly accessible'),
+        expect.stringContaining('every operation is accessible to any caller'),
       );
     } finally {
       warningSpy.mockRestore();
@@ -462,7 +462,7 @@ describe('serve', () => {
       server = serveTestServer({
         engine,
         port: 0,
-        auth: { apiKeys: ['test-key'] },
+        auth: { apiKeys: ['test-key'], defaultApiKeyScopes: ['workflows:read'] },
         publicOrigin: 'http://localhost',
       });
 
@@ -480,7 +480,11 @@ describe('serve', () => {
     console.warn = () => {};
     const apiKey = 'mcp-discovery-live-key';
     engine = createEngine();
-    server = serveTestServer({ engine, port: 0, auth: { apiKeys: [apiKey] } });
+    server = serveTestServer({
+      engine,
+      port: 0,
+      auth: { apiKeys: [apiKey], defaultApiKeyScopes: ['workflows:read'] },
+    });
 
     try {
       const discoveryResponse = await fetch(`${server.url}/.well-known/mcp.json`);
@@ -979,6 +983,7 @@ describe('serve', () => {
       port: 0,
       auth: {
         apiKeys: ['weft_key_valid123456789012345678901'],
+        defaultApiKeyScopes: ['workflows:read'],
       },
     });
 
@@ -1022,6 +1027,7 @@ describe('serve', () => {
       port: 0,
       auth: {
         apiKeys: ['weft_key_valid123456789012345678901'],
+        defaultApiKeyScopes: ['workflows:read'],
       },
     });
 
@@ -1287,6 +1293,7 @@ describe('serve', () => {
       port: 0,
       auth: {
         apiKeys: ['weft_key_valid123456789012345678901'],
+        defaultApiKeyScopes: ['workflows:read'],
       },
     });
 

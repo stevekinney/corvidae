@@ -4,6 +4,7 @@ import {
   principalFromApiKey,
   principalFromJwtClaims,
   principalFromMutualTls,
+  principalFromUnauthenticatedLocal,
   type Principal,
 } from '../principal.ts';
 
@@ -43,6 +44,8 @@ export function authContextToPrincipal(authContext: AuthContext | undefined): Pr
       return principalFromApiKey({ subject: 'api-key-caller', scopes: [] });
     case 'mtls':
       return principalFromMutualTls({ subject: 'mtls-caller', scopes: [] });
+    case 'unauthenticated-local':
+      return principalFromUnauthenticatedLocal();
     case 'public':
       return anonymousPrincipal();
     default: {

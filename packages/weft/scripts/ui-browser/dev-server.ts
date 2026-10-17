@@ -25,35 +25,20 @@
  * WebSocket upgrades and JSON-RPC over HTTP (`/api/jsonrpc`) work in this
  * dev harness.
  *
- * **Auth — real, not full-trust, and narrower than the old harness.**
- * `unauthenticatedAccess: 'warn'` only controls whether `serve()` refuses to
- * *start* with no `auth` configured (fail-closed vs warn-and-proceed) — it
- * has no per-request effect once the process is up
- * (`assertAuthenticationPosture`, `weft/src/server/serve-internals.ts`).
- * Every credential-less request still resolves to `anonymousPrincipal()`
- * (zero scopes, `weft/src/server/handler/auth-context-principal.ts`), so
- * only `access: { kind: 'public' }` operations — most workflow reads and
- * single-item actions — actually succeed here. `access: 'scoped'`/
- * `'authenticated'` operations (schedules list/get, reviews list, storage,
- * system/registry, …) 401 with no credential, confirmed live (`curl
- * localhost:7233/api/v1/schedules` → `401 {"error":"authentication
- * required"}`). This is narrower than the OLD `handleRequest`-based harness,
- * which hand-injected a full-scope `principalFromStdioLocal()` principal on
- * every request regardless of credentials — `serve()` has no equivalent
- * hook; the only way to grant elevated scopes to anonymous callers would be
- * `serve({ auth: { apiKeys: […] } })` plus a matching token the console
- * itself sends — which is exactly what this harness now does, as of the
- * weft 0.18.0 adoption. The deferral reasoned that it "touches the frozen
- * `index.html`/`client.ts` runtime-config contract"; it turns out not to,
- * because the Bun browser host attaches the header on the way
- * through and no build artifact ever carries a token. See
- * `dev-credentials.ts` for why an authenticated harness became
- * necessary once `resolvePrincipal()` started reporting the server's real
- * answer instead of optimistically granting every scope. Scoped surfaces
- * (schedules, storage, system, workers) work here now; they used to 401.
- * This is a dev-only harness serving a `MemoryStorage`-backed engine on
- * localhost; there is no real access boundary to preserve for what IS
- * reachable.
+ * **Auth — real, with a key that holds every scope.** A `serve()` with no
+ * `auth` runs every request as the `unauthenticated-local` principal, which
+ * holds every scope, so the harness could skip authentication outright. It
+ * does not: it configures `serve({ auth: { apiKeys: […], defaultApiKeyScopes:
+ * AUTHORIZATION_SCOPES } })` plus a matching token the console itself sends,
+ * so `resolvePrincipal()` reports a real credential and the console exercises
+ * the same authenticated path a deployment does. `serve()` requires
+ * `defaultApiKeyScopes` whenever `apiKeys` is set, because every operation
+ * except `weft.system.principal` requires a scope. The Bun browser host
+ * attaches the header on the way through and no build artifact ever carries a
+ * token; see `dev-credentials.ts`. A credential-less request is refused with
+ * a 401, including for `weft.system.principal`. This is a dev-only harness
+ * serving a `MemoryStorage`-backed engine on localhost; there is no real
+ * access boundary to preserve for what IS reachable.
  *
  * **Seed-after-serve, not serve-after-seed.** `serve()` binds the port and
  * wires event broadcasting synchronously (no `await` inside it), so calling

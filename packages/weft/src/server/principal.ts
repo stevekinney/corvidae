@@ -55,6 +55,10 @@ export type JwtClaims = Record<string, unknown>;
  * implement their own local admission gate; public transports should not mint
  * it for remote callers.
  *
+ * The `'unauthenticated-local'` principal is what a `serve()` with no
+ * authentication gives every request: nobody is identified, so it is the
+ * single-user model, and it holds every built-in scope.
+ *
  * @example
  * ```ts
  * import { principalFromApiKey, type AuthenticatedPrincipal } from '@lostgradient/weft';
@@ -67,7 +71,7 @@ export type JwtClaims = Record<string, unknown>;
  * ```
  */
 export type AuthenticatedPrincipal = {
-  readonly method: 'jwt' | 'api-key' | 'mtls' | 'stdio-local';
+  readonly method: 'jwt' | 'api-key' | 'mtls' | 'stdio-local' | 'unauthenticated-local';
   readonly scopes: ReadonlySet<AuthorizationScope>;
   readonly claims: JwtClaims | undefined;
   readonly subject: string | undefined;
@@ -244,9 +248,42 @@ export function principalFromStdioLocal(): AuthenticatedPrincipal {
   };
 }
 
+/**
+ * Build the principal a `serve()` with no authentication gives every request.
+ * The server identifies no caller, so every caller is the one local user and
+ * holds every built-in scope (`AUTHORIZATION_SCOPES`); it holds no package
+ * scope, as with `stdio-local`. The same instance is returned every time, so
+ * two requests compare as the same owner.
+ *
+ * @example
+ * ```ts
+ * import { principalFromUnauthenticatedLocal } from '@lostgradient/weft';
+ *
+ * const principal = principalFromUnauthenticatedLocal();
+ * console.log(principal.method); // 'unauthenticated-local'
+ * console.log(principal.hasScope('workflows:write')); // true
+ * ```
+ */
+export function principalFromUnauthenticatedLocal(): AuthenticatedPrincipal {
+  return UNAUTHENTICATED_LOCAL;
+}
+
 const ANONYMOUS: UnauthenticatedPrincipal = { method: 'unauthenticated' };
 
 /** Type guard separating authenticated from unauthenticated principals. */
 export function isAuthenticated(principal: Principal): principal is AuthenticatedPrincipal {
   return principal.method !== 'unauthenticated';
 }
+
+const UNAUTHENTICATED_LOCAL: AuthenticatedPrincipal = (() => {
+  const scopes = new Set<AuthorizationScope>(AUTHORIZATION_SCOPES);
+  return Object.freeze({
+    method: 'unauthenticated-local' as const,
+    scopes,
+    claims: undefined,
+    subject: 'unauthenticated-local',
+    hasScope(scope: AuthorizationScope) {
+      return scopes.has(scope);
+    },
+  });
+})();

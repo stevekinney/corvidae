@@ -42,7 +42,7 @@ describe('serve() with rate limiting', () => {
     server = serve({
       engine,
       port: 0,
-      auth: { apiKeys: [TEST_API_KEY] },
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
       rateLimit: { maxRequests: 3, windowMs: 60_000 },
     });
 
@@ -74,7 +74,7 @@ describe('serve() with rate limiting', () => {
     server = serve({
       engine,
       port: 0,
-      auth: { apiKeys: [TEST_API_KEY] },
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
       rateLimit: { maxRequests: 1, windowMs: 60_000 },
     });
 
@@ -105,7 +105,11 @@ describe('serve() with rate limiting', () => {
 
   it('does not rate-limit when rateLimit is omitted', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
+    });
 
     for (let i = 0; i < 10; i++) {
       const response = await fetch(`${server.url}/v1/workflows`, {
@@ -166,7 +170,7 @@ describe('serve() with rate limiting', () => {
     server = serve({
       engine,
       port: 0,
-      auth: { apiKeys: [TEST_API_KEY] },
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
       rateLimit: { maxRequests: 2, windowMs: 60_000 },
     });
 
@@ -270,7 +274,11 @@ describe('serve() auth audit trail', () => {
     server = serve({
       engine,
       port: 0,
-      auth: { apiKeys: [TEST_API_KEY], auditSink: (event) => events.push(event) },
+      auth: {
+        apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
+        auditSink: (event) => events.push(event),
+      },
     });
 
     const health = await fetch(`${server.url}/v1/health`);

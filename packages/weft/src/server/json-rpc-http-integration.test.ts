@@ -324,7 +324,7 @@ describe('serve() — POST /jsonrpc', () => {
     server = serve({
       engine,
       port: 0,
-      auth: { apiKeys: ['valid-key'] },
+      auth: { apiKeys: ['valid-key'], defaultApiKeyScopes: ['workflows:read'] },
     });
 
     const response = await fetch(`${server.url}/jsonrpc`, {
@@ -356,7 +356,7 @@ describe('serve() — POST /jsonrpc', () => {
     server = serve({
       engine,
       port: 0,
-      auth: { apiKeys: ['valid-key'] },
+      auth: { apiKeys: ['valid-key'], defaultApiKeyScopes: ['workflows:read'] },
     });
 
     // Fire a burst of invalid requests to confirm the serve() loop
@@ -387,7 +387,7 @@ describe('serve() — POST /jsonrpc', () => {
     server = serve({
       engine,
       port: 0,
-      auth: { apiKeys: ['valid-key'] },
+      auth: { apiKeys: ['valid-key'], defaultApiKeyScopes: ['workflows:read'] },
     });
 
     const response = await fetch(`${server.url}/jsonrpc`, {

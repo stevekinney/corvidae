@@ -8,8 +8,8 @@ import { assertOperationEngineMethods, shapeRestFault } from './operation-helper
 
 // Intentionally accept no input fields. `acknowledgeUnknownWorkflowTypes` is
 // the dangerous opt-out that lets recovery silently skip unknown stored
-// workflow types — exposing it on this `kind: 'public'` operation would let
-// an unauthenticated caller abandon in-flight workflows over HTTP. The
+// workflow types — exposing it on this operation would let any caller holding
+// `workflows:admin` abandon in-flight workflows over HTTP. The
 // in-process flag is still available via `engine.recoverAll(...)` for code
 // paths that have already established the operator's intent.
 const recoverAllInput = z.object({});
@@ -29,7 +29,8 @@ export const recoverAllOperation = defineOperation({
   tags: ['System'],
   inputSchema: recoverAllInput,
   outputSchema: recoverAllOutput,
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:admin'] } },
+  discoverable: true,
   producibleFaults: ['Conflict'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },

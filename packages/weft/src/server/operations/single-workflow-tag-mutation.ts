@@ -6,6 +6,7 @@ import {
   coerceStartWorkflowTags,
   StartWorkflowValidationError,
 } from '../../core/start-workflow-validation.ts';
+import type { AuthorizationScope } from '../authorization-scope.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation, type SchemaOperationDefinition } from '../operation-registry.ts';
 import type { RestBinding } from '../rest-binding.ts';
@@ -34,6 +35,8 @@ type SingleWorkflowTagMutationOperationConfiguration = {
   readonly summary: string;
   /** Whether this tag mutation irreversibly mutates state. Required. */
   readonly destructive: boolean;
+  /** The scope a caller must hold to run this operation. Required: no tag mutation is public. */
+  readonly scope: AuthorizationScope;
   readonly requiredEngineMethods: readonly OperationEngineMethodName[];
   readonly mutateTags: (
     engine: Pick<Engine, OperationEngineMethodName>,
@@ -61,7 +64,8 @@ export function createSingleWorkflowTagMutationOperation(
     destructive: configuration.destructive,
     inputSchema: singleWorkflowTagMutationInput,
     outputSchema: singleWorkflowTagMutationOutput,
-    access: { kind: 'public' },
+    access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: [configuration.scope] } },
+    discoverable: true,
     producibleFaults: ['Unprocessable', 'NotFound'],
     transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },

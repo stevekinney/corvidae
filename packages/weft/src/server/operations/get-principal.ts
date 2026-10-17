@@ -21,7 +21,14 @@ import { shapeOperationFaultAsJson } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 
-const principalMethodSchema = z.enum(['jwt', 'api-key', 'mtls', 'stdio-local', 'unauthenticated']);
+const principalMethodSchema = z.enum([
+  'jwt',
+  'api-key',
+  'mtls',
+  'stdio-local',
+  'unauthenticated-local',
+  'unauthenticated',
+]);
 const getPrincipalInput = z.object({});
 const getPrincipalOutput = z.object({
   method: principalMethodSchema,
@@ -63,11 +70,13 @@ export const getPrincipalOperation = defineOperation({
   summary: "Report the caller's resolved principal and granted scopes",
   description:
     "Report the caller's own resolved principal: the authentication method ('jwt', 'api-key', " +
-    "'mtls', 'stdio-local', or 'unauthenticated'), the normalized subject when one exists, and " +
+    "'mtls', 'stdio-local', 'unauthenticated-local', or 'unauthenticated'), the normalized subject " +
+    'when one exists, and ' +
     'the granted authorization scopes, sorted. Public access: an unauthenticated caller ' +
     "receives method 'unauthenticated' with an empty scope list rather than an error, so " +
     'clients can distinguish "no credential" from "credential with few scopes" without probing ' +
-    'other operations. Reflects only the request credential — never server auth configuration.',
+    "other operations. A server with no authentication reports 'unauthenticated-local' holding " +
+    'every scope. Reflects only the request credential — never server auth configuration.',
   destructive: false,
   tags: ['System'],
   inputSchema: getPrincipalInput,

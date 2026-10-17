@@ -887,8 +887,13 @@ describe('createAuthenticator — mTLS', () => {
 describe('createAuthenticator — no admission without positive evidence', () => {
   // Every credential-bearing AuthMethod must appear here. Each row configures
   // the method but withholds the evidence it needs; the Record type makes
-  // adding a method to AuthMethod without a row a type error.
-  const withheldEvidence: Record<Exclude<AuthMethod, 'public'>, () => Promise<AuthResult>> = {
+  // adding a method to AuthMethod without a row a type error. `public` and
+  // `unauthenticated-local` carry no credential: an authenticator never
+  // returns either of them for a presented one.
+  const withheldEvidence: Record<
+    Exclude<AuthMethod, 'public' | 'unauthenticated-local'>,
+    () => Promise<AuthResult>
+  > = {
     'api-key': async () =>
       (await createAuthenticator({ apiKeys: [TEST_API_KEY] }))(
         makeRequest('http://localhost/v1/workflows', { 'X-API-Key': 'not-the-key' }),
@@ -985,7 +990,11 @@ describe('serve() with authentication', () => {
 
   it('rejects unauthenticated requests when auth is configured', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
+    });
 
     const response = await fetch(`${server.url}/v1/workflows`);
 
@@ -996,7 +1005,11 @@ describe('serve() with authentication', () => {
 
   it('allows authenticated API key requests', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
+    });
 
     const response = await fetch(`${server.url}/v1/workflows`, {
       method: 'POST',
@@ -1014,7 +1027,7 @@ describe('serve() with authentication', () => {
     engine = createEngine();
     server = serve({ engine, port: 0, auth: { jwt: { secret: TEST_SECRET } } });
 
-    const token = await signJWT({ sub: 'user-1' }, TEST_SECRET);
+    const token = await signJWT({ sub: 'user-1', scope: 'workflows:write' }, TEST_SECRET);
 
     const response = await fetch(`${server.url}/v1/workflows`, {
       method: 'POST',
@@ -1030,7 +1043,11 @@ describe('serve() with authentication', () => {
 
   it('allows health check without authentication', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
+    });
 
     const response = await fetch(`${server.url}/v1/health`);
 
@@ -1039,7 +1056,11 @@ describe('serve() with authentication', () => {
 
   it('allows metrics endpoint without authentication', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
+    });
 
     const response = await fetch(`${server.url}/v1/metrics`);
 
@@ -1048,7 +1069,11 @@ describe('serve() with authentication', () => {
 
   it('rejects requests with an invalid API key', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
+    });
 
     const response = await fetch(`${server.url}/v1/workflows`, {
       headers: { Authorization: 'Bearer wrong-key' },
@@ -1059,7 +1084,11 @@ describe('serve() with authentication', () => {
 
   it('includes WWW-Authenticate header on 401 responses', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read', 'workflows:write'] },
+    });
 
     const response = await fetch(`${server.url}/v1/workflows`);
 
@@ -1069,7 +1098,12 @@ describe('serve() with authentication', () => {
 
   it('requires worker write scope for long-poll task endpoints', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    // A key that holds a scope, but not the one under test, so it is admitted and then refused.
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
+    });
 
     const noAuthResponse = await fetch(`${server.url}/v1/tasks/default?activity=charge&timeout=50`);
     expect(noAuthResponse.status).toBe(401);
@@ -1100,7 +1134,12 @@ describe('serve() with authentication', () => {
 
   it('requires worker write scope for task result endpoints', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    // A key that holds a scope, but not the one under test, so it is admitted and then refused.
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
+    });
 
     const noAuthResponse = await fetch(`${server.url}/v1/tasks/default/result`, {
       method: 'POST',
@@ -1178,7 +1217,12 @@ describe('serve() with authentication', () => {
 
   it('requires system read scope for task diagnostics REST requests', async () => {
     engine = createEngine();
-    server = serve({ engine, port: 0, auth: { apiKeys: [TEST_API_KEY] } });
+    // A key that holds a scope, but not the one under test, so it is admitted and then refused.
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
+    });
 
     const unauthenticatedResponse = await fetch(`${server.url}/v1/tasks/diagnostics`);
     expect(unauthenticatedResponse.status).toBe(401);

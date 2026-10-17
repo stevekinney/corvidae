@@ -161,7 +161,7 @@ export type UnauthenticatedAccessPolicy = 'warn' | 'allow' | 'reject';
  * const options: ServeOptions = {
  *   engine,
  *   port: 3000,
- *   auth: { apiKeys: ['secret'] },
+ *   auth: { apiKeys: ['secret'], defaultApiKeyScopes: ['workflows:read'] },
  * };
  * await using server = serve(options);
  * console.log(server.url); // http://localhost:3000
@@ -267,7 +267,14 @@ export interface ServeOptions {
    * fall through to Weft.
    */
   routes?: ServeRoutes;
-  /** Authentication configuration. When provided, all non-public endpoints require valid credentials. */
+  /**
+   * Authentication configuration. When provided, all non-public endpoints require valid credentials.
+   *
+   * Every catalog operation except `weft.system.principal` requires a scope, so
+   * static `apiKeys` need `defaultApiKeyScopes` (the scopes each key holds), or
+   * a `resolveApiKeyPrincipal` resolver: `serve()` throws before binding when
+   * `apiKeys` is non-empty and neither is configured.
+   */
   auth?: AuthConfig;
   /**
    * In-process request rate limiting. When provided, the server throttles
@@ -301,6 +308,10 @@ export interface ServeOptions {
    * the server and logs a loud warning. Set `'reject'` for production
    * deployments so an omitted auth configuration fails closed before binding.
    * Set `'allow'` only for explicitly trusted local process boundaries.
+   *
+   * With `'warn'` or `'allow'`, the server identifies nobody: every request
+   * runs as the `unauthenticated-local` principal, which holds every built-in
+   * scope, so every operation is reachable by any caller that can reach the port.
    */
   unauthenticatedAccess?: UnauthenticatedAccessPolicy;
   /**

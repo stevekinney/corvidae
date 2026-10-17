@@ -171,15 +171,19 @@ export type AuthConfig = {
    *   - throws → treated as `null` (rejected); server log records the
    *     throw detail, wire error stays generic.
    * When not configured, static `apiKeys` admits and the admitted
-   * principal's scopes come from `defaultApiKeyScopes ?? []`.
+   * principal's scopes come from `defaultApiKeyScopes`, which `serve()`
+   * requires to be non-empty whenever `apiKeys` is.
    */
   resolveApiKeyPrincipal?: (key: string) => Promise<AuthenticatedPrincipal | null>;
   /**
    * Scopes granted to principals admitted via static `apiKeys`. Ignored
    * when `resolveApiKeyPrincipal` is configured (the resolver's scopes
-   * are authoritative for keys it admits). Defaults to `[]`. A package
-   * scope is granted only when the handler lists it in `additionalScopes`;
-   * an unlisted one is dropped, as it would be from a JWT claim.
+   * are authoritative for keys it admits). `serve()` throws before binding
+   * when `apiKeys` is non-empty and neither this nor `resolveApiKeyPrincipal`
+   * grants a scope: every catalog operation except `weft.system.principal`
+   * requires one. A package scope is granted only when the handler lists it
+   * in `additionalScopes`; an unlisted one is dropped, as it would be from a
+   * JWT claim.
    */
   defaultApiKeyScopes?: ReadonlyArray<AuthorizationScope>;
   /**
@@ -203,7 +207,10 @@ export type AuthConfig = {
  *
  * Returned inside an {@link AuthResult} when `authenticated: true`.  Use this
  * to distinguish bearer-token callers from mTLS-authenticated services or to
- * log the admission method alongside the request trace.
+ * log the admission method alongside the request trace. `'unauthenticated-local'`
+ * is never returned by an authenticator: `serve()` with no authentication
+ * attaches it to every request's {@link AuthContext}, with a principal that
+ * holds every built-in scope.
  *
  * @example
  * ```ts
@@ -220,7 +227,7 @@ export type AuthConfig = {
  * }
  * ```
  */
-export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public';
+export type AuthMethod = 'api-key' | 'jwt' | 'mtls' | 'public' | 'unauthenticated-local';
 
 /**
  * Shared context carried from the authenticator through the request

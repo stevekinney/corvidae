@@ -7,9 +7,9 @@ import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
 import { VersionMismatchError } from '../../core/versioning.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { handleRequest } from '../handler.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
-import { anonymousPrincipal } from '../principal.ts';
+import { principalFromUnauthenticatedLocal } from '../principal.ts';
 import { createLiveOperationRegistry } from '../rest-bindings.ts';
 import { forkWorkflowOperation, forkWorkflowRestBinding } from './fork-workflow.ts';
 import { invalidJsonRequest, jsonRequest } from './operation-test-helpers.test-support.ts';
@@ -102,7 +102,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', fromStep: 2, revision: 'a-specific-revision' },
         {
-          principal: anonymousPrincipal(),
+          principal: principalFromUnauthenticatedLocal(),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -164,7 +164,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', revision: 'unresolvable-revision' },
         {
-          principal: anonymousPrincipal(),
+          principal: principalFromUnauthenticatedLocal(),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -220,7 +220,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123', revision: 'incompatible-revision' },
         {
-          principal: anonymousPrincipal(),
+          principal: principalFromUnauthenticatedLocal(),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
@@ -271,7 +271,7 @@ describe('weft.workflows.fork', () => {
         'weft.workflows.fork',
         { workflowId: 'workflow-123' },
         {
-          principal: anonymousPrincipal(),
+          principal: principalFromUnauthenticatedLocal(),
           host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,

@@ -14,6 +14,7 @@ export {
   principalFromJwtClaims,
   principalFromMutualTls,
   principalFromStdioLocal,
+  principalFromUnauthenticatedLocal,
 } from '../server/principal.ts';
 export type {
   AuthenticatedPrincipal,
