@@ -71,12 +71,12 @@
 
   .cinder-image[data-cinder-size='icon'] {
     width: var(--cinder-space-4);
-    height: var(--cinder-space-4);
+    aspect-ratio: 1;
   }
 
   .cinder-image[data-cinder-size='avatar'] {
     width: var(--cinder-space-10);
-    height: var(--cinder-space-10);
+    aspect-ratio: 1;
   }
 
   .cinder-image[data-cinder-size='small'] {

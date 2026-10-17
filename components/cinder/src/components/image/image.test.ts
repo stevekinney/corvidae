@@ -24,6 +24,8 @@ const [imageServerHtml, placeholderImageServerHtml] = await Promise.all([
   }),
 ]);
 
+const imageCss = await Bun.file(join(import.meta.dir, 'image.css')).text();
+
 const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
 const { default: Image } = await import('./image.svelte');
 const { default: ImageWithFallback } =
@@ -353,6 +355,34 @@ describe('Image fit and size', () => {
     test(`marks fit="${fit}" on the wrapper`, () => {
       const { container } = render(Image, { src: '/a.jpg', alt: 'A', fit });
       expect(container.querySelector('.cinder-image')?.getAttribute('data-cinder-fit')).toBe(fit);
+    });
+  }
+
+  const ruleBody = (selector: string): string => {
+    const start = imageCss.indexOf(`${selector} {`);
+    expect(start).toBeGreaterThanOrEqual(0);
+    return imageCss.slice(start, imageCss.indexOf('}', start));
+  };
+  const expectedSizeRules = {
+    icon: ['width: var(--cinder-space-4);', 'aspect-ratio: 1;'],
+    avatar: ['width: var(--cinder-space-10);', 'aspect-ratio: 1;'],
+    small: ['width: var(--cinder-space-16);'],
+    medium: ['width: var(--cinder-space-32);'],
+    large: ['width: calc(var(--cinder-space-32) * 2);'],
+    header: ['width: 100%;', 'height: calc(var(--cinder-space-32) * 1.5);'],
+  } as const;
+
+  for (const fit of fits) {
+    test(`maps fit="${fit}" to object-fit in the stylesheet`, () => {
+      const body = ruleBody(`.cinder-image[data-cinder-fit='${fit}'] .cinder-image__img`);
+      expect(body).toContain(`object-fit: ${fit};`);
+    });
+  }
+
+  for (const size of sizes) {
+    test(`maps size="${size}" to its dimensions in the stylesheet`, () => {
+      const body = ruleBody(`.cinder-image[data-cinder-size='${size}']`);
+      for (const declaration of expectedSizeRules[size]) expect(body).toContain(declaration);
     });
   }
 

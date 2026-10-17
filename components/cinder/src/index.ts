@@ -439,7 +439,7 @@ export { default as HostProvider } from './components/host-provider/index.ts';
 export type { HostPlatform, HostProviderProps } from './components/host-provider/index.ts';
 
 export { default as Image } from './components/image/index.ts';
-export type { ImageProps } from './components/image/index.ts';
+export type { ImageFit, ImageProps, ImageSize } from './components/image/index.ts';
 
 export { default as Input } from './components/input/index.ts';
 export type { InputProps, InputType, InputVariant } from './components/input/index.ts';
