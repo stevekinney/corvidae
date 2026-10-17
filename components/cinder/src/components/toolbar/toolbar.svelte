@@ -15,33 +15,23 @@
 </script>
 
 <script lang="ts">
-  import { untrack } from 'svelte';
   import type { HTMLAttributes } from 'svelte/elements';
-  import { on } from 'svelte/events';
 
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
-  import { handleRovingKeydown } from '../../utilities/roving-tabindex.ts';
+  import {
+    createRovingToolbar,
+    ROVING_TOOLBAR_MUTATION_OPTIONS,
+  } from '../../utilities/roving-toolbar.ts';
   import { useMutationObserver } from '../../utilities/use-mutation-observer.svelte.ts';
   import type { ToolbarProps } from './toolbar.types.ts';
 
-  type EditableElement = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
   type ToolbarRuntimeProps = ToolbarProps & {
     role?: unknown;
     'aria-orientation'?: unknown;
     onkeydown?: HTMLAttributes<HTMLDivElement>['onkeydown'];
     onfocusin?: HTMLAttributes<HTMLDivElement>['onfocusin'];
   };
-
-  const focusableSelector = [
-    'button',
-    'a[href]',
-    'input',
-    'select',
-    'textarea',
-    '[tabindex]',
-    '[data-cinder-toolbar-item]',
-  ].join(',');
 
   let {
     class: className,
@@ -57,302 +47,7 @@
   }: ToolbarRuntimeProps = $props();
 
   let rootElement: HTMLDivElement | null = null;
-  let toolbarItems = $state<HTMLElement[]>([]);
-  let activeItem = $state<HTMLElement | null>(null);
-
-  const originalTabIndexes = new WeakMap<HTMLElement, string | null>();
-  let previousManagedItems = new Set<HTMLElement>();
   let lastWarnedNameSource = '';
-
-  function isHTMLElement(value: Element | EventTarget | null): value is HTMLElement {
-    return value instanceof HTMLElement;
-  }
-
-  function isHiddenInput(element: HTMLElement): boolean {
-    return element instanceof HTMLInputElement && element.type === 'hidden';
-  }
-
-  function isEditableTarget(element: HTMLElement): element is EditableElement {
-    if (element instanceof HTMLTextAreaElement) return true;
-    if (element instanceof HTMLInputElement) {
-      return ![
-        'button',
-        'checkbox',
-        'file',
-        'hidden',
-        'image',
-        'radio',
-        'range',
-        'reset',
-        'submit',
-      ].includes(element.type);
-    }
-    return element.isContentEditable;
-  }
-
-  function isSpinButtonLike(element: HTMLElement): boolean {
-    if (element.getAttribute('role') === 'spinbutton') return true;
-    if (!(element instanceof HTMLInputElement)) return false;
-    return element.closest('.cinder-number-input') !== null;
-  }
-
-  function hasCollapsedSelectionAtBoundary(
-    element: HTMLElement,
-    direction: -1 | 1,
-  ): element is HTMLInputElement | HTMLTextAreaElement {
-    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement))
-      return false;
-    if (typeof element.selectionStart !== 'number' || typeof element.selectionEnd !== 'number')
-      return false;
-    if (element.selectionStart !== element.selectionEnd) return false;
-    const valueLength = element.value.length;
-    return direction === -1 ? element.selectionStart === 0 : element.selectionEnd === valueLength;
-  }
-
-  function placeCaret(element: HTMLElement, placement: 'start' | 'end'): void {
-    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) return;
-    if (typeof element.setSelectionRange !== 'function') return;
-    const position = placement === 'end' ? element.value.length : 0;
-    element.setSelectionRange(position, position);
-  }
-
-  /**
-   * Whether an ancestor is `display: none`. Deliberately narrower than the
-   * candidate's own check below — `visibility` is inherited and a descendant
-   * can override an ancestor's `visibility: hidden` back to `visible`, so an
-   * ancestor's `visibility` alone must not veto its descendants. `display:
-   * none` has no such override, so it is the only ancestor-level signal.
-   * Memoized in `hiddenCache` so an ancestor shared by multiple candidates
-   * during one `getToolbarItems()` pass only calls `getComputedStyle` once.
-   */
-  function isAncestorDisplayNone(
-    element: HTMLElement,
-    hiddenCache: Map<Element, boolean>,
-  ): boolean {
-    const cached = hiddenCache.get(element);
-    if (cached !== undefined) return cached;
-    const hidden = getComputedStyle(element).display === 'none';
-    hiddenCache.set(element, hidden);
-    return hidden;
-  }
-
-  function isCssHidden(element: HTMLElement, hiddenCache: Map<Element, boolean>): boolean {
-    const elementStyle = getComputedStyle(element);
-    if (elementStyle.display === 'none' || elementStyle.visibility === 'hidden') return true;
-
-    let current = element === rootElement ? null : element.parentElement;
-    while (current) {
-      if (isAncestorDisplayNone(current, hiddenCache)) return true;
-      if (current === rootElement) break;
-      current = current.parentElement;
-    }
-    return false;
-  }
-
-  function isDisabledByFieldset(element: HTMLElement): boolean {
-    const disabledFieldset = element.closest('fieldset[disabled]');
-    if (!disabledFieldset) return false;
-    const firstLegend = disabledFieldset.querySelector('legend');
-    return firstLegend ? !firstLegend.contains(element) : true;
-  }
-
-  function isDisabledToolbarItem(element: HTMLElement): boolean {
-    if (element.hasAttribute('disabled')) return true;
-    if (element.getAttribute('aria-disabled') === 'true') return true;
-    if ('disabled' in element && typeof (element as HTMLButtonElement).disabled === 'boolean') {
-      if ((element as HTMLButtonElement).disabled) return true;
-    }
-    return isDisabledByFieldset(element);
-  }
-
-  function isToolbarItemCandidate(
-    element: HTMLElement,
-    hiddenCache: Map<Element, boolean> = new Map(),
-  ): boolean {
-    if (!rootElement || element === rootElement) return false;
-    if (!rootElement.contains(element)) return false;
-    if (isHiddenInput(element)) return false;
-    if (element.hasAttribute('hidden')) return false;
-    if (element.getAttribute('aria-hidden') === 'true') return false;
-    if (element.closest('[hidden],[aria-hidden="true"],[data-cinder-toolbar-exclude]'))
-      return false;
-    if (element.closest('[inert]')) return false;
-    if (isCssHidden(element, hiddenCache)) return false;
-    const authoredTabIndex = element.getAttribute('tabindex');
-    if (
-      authoredTabIndex === '-1' &&
-      !previousManagedItems.has(element) &&
-      !element.hasAttribute('data-cinder-toolbar-item')
-    ) {
-      return false;
-    }
-    return true;
-  }
-
-  function getToolbarItems(): HTMLElement[] {
-    if (!rootElement) return [];
-    const hiddenCache = new Map<Element, boolean>();
-    return Array.from(rootElement.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-      (element) => isToolbarItemCandidate(element, hiddenCache),
-    );
-  }
-
-  function getActiveIndex(items: HTMLElement[], preferredItem: HTMLElement | null): number {
-    if (preferredItem) {
-      const preferredIndex = items.indexOf(preferredItem);
-      if (preferredIndex >= 0 && !isDisabledToolbarItem(preferredItem)) return preferredIndex;
-    }
-    return items.findIndex((item) => !isDisabledToolbarItem(item));
-  }
-
-  function restoreDepartedItems(nextItems: HTMLElement[]): void {
-    const nextItemSet = new Set(nextItems);
-    for (const item of previousManagedItems) {
-      if (nextItemSet.has(item)) continue;
-      const original = originalTabIndexes.get(item);
-      if (original === null) item.removeAttribute('tabindex');
-      else if (original !== undefined) item.setAttribute('tabindex', original);
-      originalTabIndexes.delete(item);
-    }
-    previousManagedItems = nextItemSet;
-  }
-
-  function syncToolbarItems(preferredItem: HTMLElement | null = activeItem): void {
-    const items = getToolbarItems();
-    restoreDepartedItems(items);
-
-    if (items.length === 0) {
-      toolbarItems = [];
-      activeItem = null;
-      return;
-    }
-
-    for (const item of items) {
-      if (!originalTabIndexes.has(item)) {
-        originalTabIndexes.set(item, item.getAttribute('tabindex'));
-      }
-    }
-
-    const activeIndex = getActiveIndex(items, preferredItem);
-    const resolvedActiveItem = activeIndex >= 0 ? (items[activeIndex] ?? null) : null;
-
-    for (const [index, item] of items.entries()) {
-      const nextTabIndex = index === activeIndex ? 0 : -1;
-      if (item.tabIndex !== nextTabIndex) {
-        item.tabIndex = nextTabIndex;
-      }
-    }
-
-    toolbarItems = items;
-    activeItem = resolvedActiveItem;
-  }
-
-  function moveFocus(nextIndex: number, caretPlacement: 'start' | 'end'): void {
-    const nextItem = toolbarItems[nextIndex];
-    if (!nextItem) return;
-    activeItem = nextItem;
-    syncToolbarItems(nextItem);
-    nextItem.focus();
-    placeCaret(nextItem, caretPlacement);
-  }
-
-  function getCurrentToolbarIndex(target: HTMLElement): number {
-    return toolbarItems.indexOf(target);
-  }
-
-  function handleEditableEscape(target: HTMLElement): boolean {
-    if (!isEditableTarget(target)) return false;
-    const currentIndex = getCurrentToolbarIndex(target);
-    if (currentIndex < 0) return false;
-    const forwardIndex = toolbarItems.findIndex(
-      (item, index) => index > currentIndex && !isDisabledToolbarItem(item),
-    );
-    let nextIndex = forwardIndex;
-    if (nextIndex < 0) {
-      for (let index = currentIndex - 1; index >= 0; index -= 1) {
-        const item = toolbarItems[index];
-        if (item && !isDisabledToolbarItem(item)) {
-          nextIndex = index;
-          break;
-        }
-      }
-    }
-    if (nextIndex < 0) return false;
-    moveFocus(nextIndex, nextIndex > currentIndex ? 'start' : 'end');
-    return true;
-  }
-
-  function handleToolbarKeyDown(event: KeyboardEvent): void {
-    consumerOnKeyDown?.(event as KeyboardEvent & { currentTarget: EventTarget & HTMLDivElement });
-    if (event.defaultPrevented) return;
-    if (!isHTMLElement(event.target)) return;
-
-    const target = event.target.closest<HTMLElement>(focusableSelector);
-    if (!target || !toolbarItems.includes(target)) return;
-
-    const currentIndex = getCurrentToolbarIndex(target);
-    if (currentIndex < 0) return;
-
-    const horizontal = orientation !== 'vertical';
-    const targetIsEditable = isEditableTarget(target);
-
-    if (event.key === 'Escape' && targetIsEditable) {
-      if (!handleEditableEscape(target)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-
-    if ((event.key === 'Home' || event.key === 'End') && targetIsEditable) {
-      return;
-    }
-
-    if (horizontal && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-      if (
-        targetIsEditable &&
-        !hasCollapsedSelectionAtBoundary(target, event.key === 'ArrowLeft' ? -1 : 1)
-      ) {
-        return;
-      }
-    }
-
-    if (!horizontal && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-      if (targetIsEditable || isSpinButtonLike(target)) return;
-    }
-
-    if (horizontal && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-      return;
-    }
-
-    if (!horizontal && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-      return;
-    }
-
-    const nextIndex = handleRovingKeydown(event, currentIndex, toolbarItems.length, {
-      horizontal,
-      vertical: !horizontal,
-      isDisabled: (index) => {
-        const item = toolbarItems[index];
-        return item === undefined || isDisabledToolbarItem(item);
-      },
-    });
-    if (nextIndex === null || nextIndex === currentIndex) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    moveFocus(
-      nextIndex,
-      event.key === 'ArrowLeft' || event.key === 'ArrowUp' || event.key === 'End' ? 'end' : 'start',
-    );
-  }
-
-  function handleToolbarFocusIn(event: FocusEvent): void {
-    consumerOnFocusIn?.(event as FocusEvent & { currentTarget: EventTarget & HTMLDivElement });
-    if (!isHTMLElement(event.target)) return;
-    const target = event.target.closest<HTMLElement>(focusableSelector);
-    if (!target || !isToolbarItemCandidate(target) || isDisabledToolbarItem(target)) return;
-    syncToolbarItems(target);
-  }
 
   function resolveAccessibleNameSource(): string {
     const inlineLabel = ariaLabel?.trim() ?? '';
@@ -391,45 +86,34 @@
   function toolbarSetup(node: HTMLDivElement) {
     rootElement = node;
 
-    syncToolbarItems(untrack(() => activeItem));
+    // The roving keyboard model, tab stops, and focusability observation are shared with
+    // SelectionPopover's custom actions; see utilities/roving-toolbar.ts.
+    const roving = createRovingToolbar({
+      root: node,
+      orientation: () => (orientation === 'vertical' ? 'vertical' : 'horizontal'),
+      onKeydown: (event) =>
+        consumerOnKeyDown?.(
+          event as KeyboardEvent & { currentTarget: EventTarget & HTMLDivElement },
+        ),
+      onFocusIn: (event) =>
+        consumerOnFocusIn?.(event as FocusEvent & { currentTarget: EventTarget & HTMLDivElement }),
+    });
 
-    const cleanupKeyboardListener = on(node, 'keydown', handleToolbarKeyDown, { capture: true });
-    const cleanupFocusInListener = on(node, 'focusin', handleToolbarFocusIn);
+    roving.sync();
 
-    const detachMutationObserver = useMutationObserver(
-      () => {
-        syncToolbarItems(activeItem);
-        warnAboutAccessibleName();
-      },
-      {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        attributeFilter: [
-          'aria-disabled',
-          'aria-hidden',
-          'aria-label',
-          'aria-labelledby',
-          'class',
-          'data-cinder-toolbar-exclude',
-          'data-cinder-toolbar-item',
-          'disabled',
-          'hidden',
-          'inert',
-          'style',
-          'type',
-        ],
-      },
-    )(node);
+    const detachRoving = roving.attach();
+
+    const detachMutationObserver = useMutationObserver(() => {
+      roving.sync();
+      warnAboutAccessibleName();
+    }, ROVING_TOOLBAR_MUTATION_OPTIONS)(node);
 
     warnAboutAccessibleName();
 
     return () => {
-      cleanupKeyboardListener();
-      cleanupFocusInListener();
+      detachRoving();
       detachMutationObserver?.();
       rootElement = null;
-      restoreDepartedItems([]);
     };
   }
 </script>
