@@ -59,19 +59,19 @@
   --cinder-radius-control: var(--cinder-radius-md);
   /* Default surface corner radius alias. */
   --cinder-radius-surface: var(--cinder-radius-lg);
-  /* Hairline elevation for barely-raised surfaces. Gained a second hairline layer and higher alphas in this refinement pass (light 0.08 -> 0.1 plus a new 0.06 layer; dark 0.06 -> 0.09 plus a new 0.05 layer) for deeper, crisper elevation. Light and dark themes carry distinct explicit values (see the theme modifier documents) alongside this `light-dark()` recipe. */
+  /* Hairline elevation for barely-raised surfaces: two layers, black in both themes (light 0.1 and 0.06; dark 0.35 and 0.25). */
   --cinder-shadow-sm:
-    0 1px 2px light-dark(oklch(0% 0 0 / 0.1), oklch(100% 0 0 / 0.09)),
-    0 1px 1px light-dark(oklch(0% 0 0 / 0.06), oklch(100% 0 0 / 0.05));
+    0 1px 2px light-dark(oklch(0% 0 0 / 0.1), oklch(0% 0 0 / 0.35)),
+    0 1px 1px light-dark(oklch(0% 0 0 / 0.06), oklch(0% 0 0 / 0.25));
   /* Mid elevation for raised surfaces such as popovers. */
   --cinder-shadow-md:
-    0 4px 6px -1px light-dark(oklch(0% 0 0 / 0.12), oklch(100% 0 0 / 0.09)),
-    0 2px 4px -2px light-dark(oklch(0% 0 0 / 0.1), oklch(100% 0 0 / 0.06));
+    0 4px 6px -1px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.4)),
+    0 2px 4px -2px light-dark(oklch(0% 0 0 / 0.1), oklch(0% 0 0 / 0.28));
   /* High elevation for dialogs and drawers. */
   --cinder-shadow-lg:
-    0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(100% 0 0 / 0.11)),
-    0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(100% 0 0 / 0.07));
-  /* Elevation for modal/drawer overlay panels. Dark mode uses a stronger black shadow rather than the light-neutral lift the other tiers use, since overlay panels sit above a dimmed backdrop rather than page content. */
+    0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.45)),
+    0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.32));
+  /* Elevation for modal/drawer overlay panels. Black in both themes; its dark alphas (0.45 and 0.32) set the ceiling the other dark tiers step up to. */
   --cinder-shadow-overlay:
     0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.45)),
     0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.32));
@@ -740,9 +740,9 @@
   --cinder-scrollbar-thumb: color-mix(in oklch, var(--cinder-polarity-ink), transparent 55%);
   --cinder-scrollbar-thumb-hover: color-mix(in oklch, var(--cinder-polarity-ink), transparent 35%);
   --cinder-overlay-backdrop: oklch(8% 0.02 245 / 0.65);
-  --cinder-shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.09), 0 1px 1px oklch(0% 0 0 / 0.05);
-  --cinder-shadow-md: 0 4px 6px -1px oklch(0% 0 0 / 0.09), 0 2px 4px -2px oklch(0% 0 0 / 0.06);
-  --cinder-shadow-lg: 0 10px 15px -3px oklch(0% 0 0 / 0.11), 0 4px 6px -4px oklch(0% 0 0 / 0.07);
+  --cinder-shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.35), 0 1px 1px oklch(0% 0 0 / 0.25);
+  --cinder-shadow-md: 0 4px 6px -1px oklch(0% 0 0 / 0.4), 0 2px 4px -2px oklch(0% 0 0 / 0.28);
+  --cinder-shadow-lg: 0 10px 15px -3px oklch(0% 0 0 / 0.45), 0 4px 6px -4px oklch(0% 0 0 / 0.32);
   --cinder-shadow-overlay:
     0 10px 15px -3px oklch(0% 0 0 / 0.45), 0 4px 6px -4px oklch(0% 0 0 / 0.32);
   --cinder-button-background: var(--cinder-surface-raised);
@@ -843,7 +843,11 @@
   --cinder-checker-tile: oklch(38% 0.02 245);
   --cinder-alert-info: oklch(78% 0.15 245);
   --cinder-code-block-background: var(--cinder-surface-inset);
-  --cinder-kanban-board-scroll-edge: oklch(92% 0.02 245 / 0.12);
+  --cinder-kanban-board-scroll-edge: color-mix(
+    in oklch,
+    var(--cinder-text-default),
+    transparent 88%
+  );
 }
 
 [data-theme='light'] {

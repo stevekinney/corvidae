@@ -212,6 +212,17 @@ function setThemeEntry(
   return entry;
 }
 
+function attachRecipe(entry: Record<string, unknown>, recipe: string): void {
+  const extensions = isPlainObject(entry['$extensions']) ? entry['$extensions'] : {};
+  const own = isPlainObject(extensions['com.lostgradient.cinder'])
+    ? extensions['com.lostgradient.cinder']
+    : {};
+  entry['$extensions'] = {
+    ...extensions,
+    'com.lostgradient.cinder': { ...own, cssRecipe: recipe },
+  };
+}
+
 function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -278,6 +289,16 @@ export function materializeDerivedValues(
           isColorValue(themeEntry['$value']) &&
           themeEntries.get(theme)!.has(token.path)
         ) {
+          // Without a recipe the theme block would pin a literal, and an
+          // override of the token's input inside that scope would derive
+          // nothing; give the entry the base recipe so the block re-derives.
+          if (typeof cinderExtensions(themeEntry)?.['cssRecipe'] !== 'string') {
+            const recipe = recipeFor(token, theme, undefined);
+            if (!isBareVariable(recipe)) {
+              attachRecipe(themeEntry, recipe);
+              changed.add(themePath);
+            }
+          }
           targets.push({ entry: themeEntry, documentPath: themePath });
         }
         if (theme === 'light') {

@@ -2,13 +2,11 @@
 /**
  * Regression test for the `--cinder-shadow-*` token family.
  *
- * The shadow tokens used to be defined with black-only OKLCH alphas
- * (`oklch(0% 0 0 / α)`). In dark mode, painting black-on-dark hides the
- * elevation entirely — cards on dark surfaces lose their lift.
- *
- * The fix wraps each shadow color in `light-dark(light-color, dark-color)`
- * so the dark-mode variant uses a light-neutral OKLCH alpha that is
- * actually visible against the dark surface tokens.
+ * The shadow tokens once carried one black alpha for both themes, and at a
+ * light-mode alpha a black shadow all but vanishes on a dark surface, so
+ * cards lost their lift. Each shadow color is wrapped in
+ * `light-dark(light-color, dark-color)`: both arms are black, and the dark
+ * arm is denser (0.35-0.45) so the elevation still reads.
  *
  * The test opens the basic card example, confirms the document advertises
  * the correct `color-scheme` (the prerequisite for `light-dark()` to

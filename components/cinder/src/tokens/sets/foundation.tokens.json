@@ -377,7 +377,7 @@
   },
   "shadow": {
     "$type": "shadow",
-    "$description": "Elevation shadows. Each color argument is wrapped in `light-dark()` individually so dark mode paints a light-neutral elevation instead of invisible black-on-dark; within any one token the offsets, blur radii, and spread radii are identical across the light and dark arms, only the color/alpha branches differ per theme.",
+    "$description": "Elevation shadows. Each color argument is wrapped in `light-dark()` individually; both arms are black, and the dark arm carries a higher alpha because a shadow has to be denser to read against a dark surface. Within any one token the offsets, blur radii, and spread radii are identical across the light and dark arms, only the alpha differs per theme, and the dark arms match the `[data-theme='dark']` values exactly (`theme-arm-parity.test.ts`).",
     "small": {
       "$value": [
         {
@@ -427,13 +427,13 @@
           }
         }
       ],
-      "$description": "Hairline elevation for barely-raised surfaces. Gained a second hairline layer and higher alphas in this refinement pass (light 0.08 -> 0.1 plus a new 0.06 layer; dark 0.06 -> 0.09 plus a new 0.05 layer) for deeper, crisper elevation. Light and dark themes carry distinct explicit values (see the theme modifier documents) alongside this `light-dark()` recipe.",
+      "$description": "Hairline elevation for barely-raised surfaces: two layers, black in both themes (light 0.1 and 0.06; dark 0.35 and 0.25).",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-shadow-sm",
           "public": true,
           "category": "shadow",
-          "cssRecipe": "0 1px 2px light-dark(oklch(0% 0 0 / 0.1), oklch(100% 0 0 / 0.09)), 0 1px 1px light-dark(oklch(0% 0 0 / 0.06), oklch(100% 0 0 / 0.05))"
+          "cssRecipe": "0 1px 2px light-dark(oklch(0% 0 0 / 0.1), oklch(0% 0 0 / 0.35)), 0 1px 1px light-dark(oklch(0% 0 0 / 0.06), oklch(0% 0 0 / 0.25))"
         }
       }
     },
@@ -492,7 +492,7 @@
           "cssProperty": "--cinder-shadow-md",
           "public": true,
           "category": "shadow",
-          "cssRecipe": "0 4px 6px -1px light-dark(oklch(0% 0 0 / 0.12), oklch(100% 0 0 / 0.09)), 0 2px 4px -2px light-dark(oklch(0% 0 0 / 0.1), oklch(100% 0 0 / 0.06))"
+          "cssRecipe": "0 4px 6px -1px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.4)), 0 2px 4px -2px light-dark(oklch(0% 0 0 / 0.1), oklch(0% 0 0 / 0.28))"
         }
       }
     },
@@ -551,7 +551,7 @@
           "cssProperty": "--cinder-shadow-lg",
           "public": true,
           "category": "shadow",
-          "cssRecipe": "0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(100% 0 0 / 0.11)), 0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(100% 0 0 / 0.07))"
+          "cssRecipe": "0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.45)), 0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.32))"
         }
       }
     },
@@ -604,7 +604,7 @@
           }
         }
       ],
-      "$description": "Elevation for modal/drawer overlay panels. Dark mode uses a stronger black shadow rather than the light-neutral lift the other tiers use, since overlay panels sit above a dimmed backdrop rather than page content.",
+      "$description": "Elevation for modal/drawer overlay panels. Black in both themes; its dark alphas (0.45 and 0.32) set the ceiling the other dark tiers step up to.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-shadow-overlay",

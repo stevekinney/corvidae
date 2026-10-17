@@ -1466,7 +1466,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'shadow',
       component: null,
       description:
-        'Hairline elevation for barely-raised surfaces. Gained a second hairline layer and higher alphas in this refinement pass (light 0.08 -> 0.1 plus a new 0.06 layer; dark 0.06 -> 0.09 plus a new 0.05 layer) for deeper, crisper elevation. Light and dark themes carry distinct explicit values (see the theme modifier documents) alongside this `light-dark()` recipe.',
+        'Hairline elevation for barely-raised surfaces: two layers, black in both themes (light 0.1 and 0.06; dark 0.35 and 0.25).',
       themeAware: true,
       deprecated: false,
       profile: 'shadow',
@@ -1695,7 +1695,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'shadow',
       component: null,
       description:
-        'Elevation for modal/drawer overlay panels. Dark mode uses a stronger black shadow rather than the light-neutral lift the other tiers use, since overlay panels sit above a dimmed backdrop rather than page content.',
+        'Elevation for modal/drawer overlay panels. Black in both themes; its dark alphas (0.45 and 0.32) set the ceiling the other dark tiers step up to.',
       themeAware: true,
       deprecated: false,
       profile: 'shadow',
@@ -17653,12 +17653,11 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       profile: 'color',
       palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
-        edit: 'supported',
+        edit: 'recipe',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'mixed',
-        reason:
-          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
       },
       variants: [
         {
@@ -17728,7 +17727,12 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 path: 'kanban-board.board.scroll-edge',
               },
             },
-            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-text-default', path: 'text.default' }],
+            },
           },
         },
       ],

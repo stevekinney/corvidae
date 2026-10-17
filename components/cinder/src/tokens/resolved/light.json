@@ -364,7 +364,7 @@
         "spread": { "value": 0, "unit": "px" }
       }
     ],
-    "$description": "Hairline elevation for barely-raised surfaces. Gained a second hairline layer and higher alphas in this refinement pass (light 0.08 -> 0.1 plus a new 0.06 layer; dark 0.06 -> 0.09 plus a new 0.05 layer) for deeper, crisper elevation. Light and dark themes carry distinct explicit values (see the theme modifier documents) alongside this `light-dark()` recipe.",
+    "$description": "Hairline elevation for barely-raised surfaces: two layers, black in both themes (light 0.1 and 0.06; dark 0.35 and 0.25).",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-shadow-sm",
@@ -445,7 +445,7 @@
         "spread": { "value": -4, "unit": "px" }
       }
     ],
-    "$description": "Elevation for modal/drawer overlay panels. Dark mode uses a stronger black shadow rather than the light-neutral lift the other tiers use, since overlay panels sit above a dimmed backdrop rather than page content.",
+    "$description": "Elevation for modal/drawer overlay panels. Black in both themes; its dark alphas (0.45 and 0.32) set the ceiling the other dark tiers step up to.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-shadow-overlay",
@@ -1461,14 +1461,15 @@
   },
   "border.inverse": {
     "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0 },
-    "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only.",
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "transparent",
         "cssProperty": "--cinder-border-inverse",
         "public": true,
         "category": "color"
       }
     },
+    "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only.",
     "$type": "color"
   },
   "text.muted": {

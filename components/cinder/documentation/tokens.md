@@ -83,10 +83,10 @@ Shadow tokens wrap each color argument in `light-dark()` so dark mode paints a l
 | `--cinder-radius-md` | `0.5rem` | Default control corner radius. |
 | `--cinder-radius-lg` | `0.75rem` | Surface-level corner radius for cards, dialogs, and other large panels (12px). |
 | `--cinder-radius-full` | `9999px` | Fully rounded corner radius for pills and circular controls. |
-| `--cinder-shadow-sm` | `0 1px 2px light-dark(oklch(0% 0 0 / 0.1), oklch(100% 0 0 / 0.09)), 0 1px 1px light-dark(oklch(0% 0 0 / 0.06), oklch(100% 0 0 / 0.05))` | Hairline elevation for barely-raised surfaces. Gained a second hairline layer and higher alphas in this refinement pass (light 0.08 -> 0.1 plus a new 0.06 layer; dark 0.06 -> 0.09 plus a new 0.05 layer) for deeper, crisper elevation. Light and dark themes carry distinct explicit values (see the theme modifier documents) alongside this `light-dark()` recipe. |
-| `--cinder-shadow-md` | `0 4px 6px -1px light-dark(oklch(0% 0 0 / 0.12), oklch(100% 0 0 / 0.09)), 0 2px 4px -2px light-dark(oklch(0% 0 0 / 0.1), oklch(100% 0 0 / 0.06))` | Mid elevation for raised surfaces such as popovers. |
-| `--cinder-shadow-lg` | `0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(100% 0 0 / 0.11)), 0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(100% 0 0 / 0.07))` | High elevation for dialogs and drawers. |
-| `--cinder-shadow-overlay` | `0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.45)), 0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.32))` | Elevation for modal/drawer overlay panels. Dark mode uses a stronger black shadow rather than the light-neutral lift the other tiers use, since overlay panels sit above a dimmed backdrop rather than page content. |
+| `--cinder-shadow-sm` | `0 1px 2px light-dark(oklch(0% 0 0 / 0.1), oklch(0% 0 0 / 0.35)), 0 1px 1px light-dark(oklch(0% 0 0 / 0.06), oklch(0% 0 0 / 0.25))` | Hairline elevation for barely-raised surfaces: two layers, black in both themes (light 0.1 and 0.06; dark 0.35 and 0.25). |
+| `--cinder-shadow-md` | `0 4px 6px -1px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.4)), 0 2px 4px -2px light-dark(oklch(0% 0 0 / 0.1), oklch(0% 0 0 / 0.28))` | Mid elevation for raised surfaces such as popovers. |
+| `--cinder-shadow-lg` | `0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.45)), 0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.32))` | High elevation for dialogs and drawers. |
+| `--cinder-shadow-overlay` | `0 10px 15px -3px light-dark(oklch(0% 0 0 / 0.14), oklch(0% 0 0 / 0.45)), 0 4px 6px -4px light-dark(oklch(0% 0 0 / 0.12), oklch(0% 0 0 / 0.32))` | Elevation for modal/drawer overlay panels. Black in both themes; its dark alphas (0.45 and 0.32) set the ceiling the other dark tiers step up to. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

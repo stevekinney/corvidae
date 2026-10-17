@@ -350,21 +350,21 @@
   "shadow.small": {
     "$value": [
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.09 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.35 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 1, "unit": "px" },
         "blur": { "value": 2, "unit": "px" },
         "spread": { "value": 0, "unit": "px" }
       },
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.05 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.25 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 1, "unit": "px" },
         "blur": { "value": 1, "unit": "px" },
         "spread": { "value": 0, "unit": "px" }
       }
     ],
-    "$description": "Hairline elevation for barely-raised surfaces. Gained a second hairline layer and higher alphas in this refinement pass (light 0.08 -> 0.1 plus a new 0.06 layer; dark 0.06 -> 0.09 plus a new 0.05 layer) for deeper, crisper elevation. Light and dark themes carry distinct explicit values (see the theme modifier documents) alongside this `light-dark()` recipe.",
+    "$description": "Hairline elevation for barely-raised surfaces: two layers, black in both themes (light 0.1 and 0.06; dark 0.35 and 0.25).",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-shadow-sm",
@@ -377,14 +377,14 @@
   "shadow.medium": {
     "$value": [
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.09 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.4 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 4, "unit": "px" },
         "blur": { "value": 6, "unit": "px" },
         "spread": { "value": -1, "unit": "px" }
       },
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.06 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.28 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 2, "unit": "px" },
         "blur": { "value": 4, "unit": "px" },
@@ -404,14 +404,14 @@
   "shadow.large": {
     "$value": [
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.11 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.45 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 10, "unit": "px" },
         "blur": { "value": 15, "unit": "px" },
         "spread": { "value": -3, "unit": "px" }
       },
       {
-        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.07 },
+        "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.32 },
         "offsetX": { "value": 0, "unit": "px" },
         "offsetY": { "value": 4, "unit": "px" },
         "blur": { "value": 6, "unit": "px" },
@@ -445,7 +445,7 @@
         "spread": { "value": -4, "unit": "px" }
       }
     ],
-    "$description": "Elevation for modal/drawer overlay panels. Dark mode uses a stronger black shadow rather than the light-neutral lift the other tiers use, since overlay panels sit above a dimmed backdrop rather than page content.",
+    "$description": "Elevation for modal/drawer overlay panels. Black in both themes; its dark alphas (0.45 and 0.32) set the ceiling the other dark tiers step up to.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-shadow-overlay",
@@ -3108,28 +3108,30 @@
   },
   "toggle.track.off-resting": {
     "$value": { "colorSpace": "oklch", "components": [0.45, 0.02, 245] },
-    "$description": "Toggle track color in the off, resting state. Light arm preserves the `border.muted` look; dark arm raises lightness for >=3:1 shape contrast against the surface.",
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "oklch(45% 0.02 245)",
         "cssProperty": "--cinder-toggle-track-off-resting",
         "public": true,
         "category": "color",
         "component": "toggle"
       }
     },
+    "$description": "Toggle track color in the off, resting state. Light arm preserves the `border.muted` look; dark arm raises lightness for >=3:1 shape contrast against the surface.",
     "$type": "color"
   },
   "toggle.track.off-hover-resting": {
     "$value": { "colorSpace": "oklch", "components": [0.52, 0.02, 245] },
-    "$description": "Toggle track color in the off state on hover. Steps up from `off-resting` to be distinguishable.",
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "oklch(52% 0.02 245)",
         "cssProperty": "--cinder-toggle-track-off-hover-resting",
         "public": true,
         "category": "color",
         "component": "toggle"
       }
     },
+    "$description": "Toggle track color in the off state on hover. Steps up from `off-resting` to be distinguishable.",
     "$type": "color"
   },
   "accordion-item.trigger.gap": {
@@ -3665,15 +3667,16 @@
   "kanban-board.board.scroll-edge": {
     "$type": "color",
     "$value": { "colorSpace": "oklch", "components": [0.92, 0.02, 245], "alpha": 0.12 },
-    "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves.",
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)",
         "cssProperty": "--cinder-kanban-board-scroll-edge",
         "public": true,
         "category": "color",
         "component": "kanban-board"
       }
-    }
+    },
+    "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
   },
   "marquee.duration": {
     "$type": "duration",
