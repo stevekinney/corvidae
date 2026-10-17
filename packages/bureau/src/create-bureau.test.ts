@@ -7125,6 +7125,81 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       await bureau.dispose();
     }
   });
+
+  it("authorizes the run live in another process, not this process's finished run (COR-1569)", async () => {
+    // Two Bureaus over one SQLite file, sharing nothing else, as two
+    // processes would. Run A stays live in bureau A; run B, on the same
+    // session, finishes in bureau B. Bureau B hosts no live run, so only a
+    // backend-wide read knows A is still the session's sole live run.
+    const directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-two-'));
+    const path = join(directory, 'bureau.sqlite');
+    const bureauA = await createBureau({
+      agents: {},
+      generate: () => new Promise<never>(() => {}),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+    });
+    const bureauB = await createBureau({
+      agents: {},
+      generate: async () => ({ content: 'B done', toolCalls: [] }),
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'sqlite', path },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    try {
+      const runA = await bureauA.createRun({ message: 'go A', principal: 'alice' });
+      expect(
+        await pollUntil(async () => {
+          const session = await bureauA.getSession(runA.sessionId);
+          return session?.metadata['lastRunStatus'] === 'running';
+        }, 200),
+      ).toBe(true);
+      const runB = await bureauB.createRun({
+        message: 'go B',
+        principal: 'bob',
+        sessionId: runA.sessionId,
+      });
+      await waitForRunSettled(bureauB, runB.id);
+      expect(
+        await pollUntil(async () => {
+          const session = await bureauB.getSession(runA.sessionId);
+          const metadata = session?.metadata ?? {};
+          const authorities = metadata['lastRequestAuthorities'];
+          return (
+            metadata['lastRunStatus'] === 'completed' &&
+            metadata['lastRunId'] === runB.id &&
+            typeof authorities === 'object' &&
+            authorities !== null &&
+            !Array.isArray(authorities) &&
+            !(runB.id in authorities) &&
+            runA.id in authorities
+          );
+        }, 200),
+      ).toBe(true);
+      expect(bureauA.getRun(runA.id)?.status).toBe('running');
+
+      const alice = await bureauB.submitSessionInput(runA.sessionId, {
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      const bob = await bureauB.submitSessionInput(runA.sessionId, {
+        principal: 'bob',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      expect({ alice: alice.outcome, bob }).toEqual({
+        alice: 'admitted',
+        bob: { outcome: 'not-found' },
+      });
+    } finally {
+      await bureauB.dispose();
+      await bureauA.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
