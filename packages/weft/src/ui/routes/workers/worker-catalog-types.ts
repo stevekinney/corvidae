@@ -37,6 +37,11 @@ export type StandardTaskDiagnosticItem = Extract<
 >;
 export type TaskDiagnosticsSummary = TaskDiagnosticsOutput['summary'];
 
+export type TaskLedgerOutput = Awaited<ReturnType<Operations['weft.tasks.get']>>;
+/** One fenced attempt record from `weft.tasks.get`'s `attempts` history. */
+export type TaskAttemptRecord = TaskLedgerOutput['attempts'][number];
+export type TaskAttemptDisposition = TaskAttemptRecord['disposition'];
+
 export type TaskLedgerState =
   'queued' | 'leased' | 'completing' | 'cancelling' | 'terminal' | 'deadLettered';
 
@@ -70,6 +75,8 @@ export type TaskLedgerDetail = Readonly<{
   startedAt?: number;
   lastHeartbeatAt?: number;
   leaseDeadline?: number;
+  attemptDeadline?: number;
+  attempts: readonly TaskAttemptRecord[];
   retryCount?: number;
   requeueCount?: number;
   lastRequeueReason?: string;
@@ -87,10 +94,17 @@ export type TaskLedgerDetail = Readonly<{
   persistenceFailureReason?: string;
 }>;
 
+/**
+ * Heartbeat age at which an in-flight task reads stale. The Diagnostics
+ * query sends it to `weft.tasks.diagnostics` and task detail renders with
+ * it, so a `stale-inflight` row and its detail view cannot disagree.
+ */
+export const TASK_HEARTBEAT_STALE_AFTER_MS = 60_000;
+
 /** `weft.tasks.diagnostics` input fields the generated client types as required (mirroring the server's Zod `.default(...)` values, which the catalog generator does not reflect as optional — plan §9.4 T5.4). */
 export const DEFAULT_TASK_DIAGNOSTICS_INPUT = {
   staleQueuedAfterMs: 60_000,
-  staleHeartbeatAfterMs: 60_000,
+  staleHeartbeatAfterMs: TASK_HEARTBEAT_STALE_AFTER_MS,
   retryStormMinimumAttempts: 3,
   includeExpectedDelayed: true,
   unadoptedAfterMs: 60_000,

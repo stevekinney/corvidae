@@ -1,16 +1,20 @@
 <script lang="ts">
   /**
    * Worker detail (plan §9.4 T5.2): connection info, activities, drain
-   * banner, drain/resume actions.
+   * banner, drain/resume actions, and the server-reported session
+   * (`weft.workers.diagnostics`, COR-124).
    */
   import { Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
 
   import { formatDuration, truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
+  import type { RegistrySnapshotSource } from '../system/registry-view.ts';
   import type { WorkerSummary } from './worker-catalog-types.ts';
+  import WorkerContractVerificationPanel from './worker-contract-verification-panel.svelte';
   import WorkerManifestPanel from './worker-manifest-panel.svelte';
   import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
   import { workerHealthPresentation } from './worker-presentation.ts';
+  import WorkerSessionPanel from './worker-session-panel.svelte';
 
   interface WorkerDetailViewProps {
     readonly worker: WorkerSummary;
@@ -21,6 +25,13 @@
     readonly manifestLoading?: boolean;
     readonly manifestRefreshing?: boolean;
     readonly manifestError?: unknown;
+    /** Reference instant for relative times; defaults to render time. */
+    readonly now?: number;
+    /** Active registry snapshot for contract verification (COR-162). */
+    readonly registry?: RegistrySnapshotSource | undefined;
+    readonly registryLoading?: boolean;
+    readonly registryRefreshing?: boolean;
+    readonly registryError?: unknown;
   }
 
   let {
@@ -32,6 +43,11 @@
     manifestLoading = false,
     manifestRefreshing = false,
     manifestError = null,
+    now = Date.now(),
+    registry = undefined,
+    registryLoading = false,
+    registryRefreshing = false,
+    registryError = null,
   }: WorkerDetailViewProps = $props();
 
   const presentation = $derived(workerHealthPresentation(worker));
@@ -76,6 +92,13 @@
     </div>
   {/if}
 
+  <WorkerSessionPanel
+    diagnostics={manifestDiagnostics}
+    loading={manifestLoading}
+    error={manifestError}
+    {now}
+  />
+
   <div class="weft-worker-detail__grid">
     <div class="weft-workers-panel">
       <div class="weft-workers-panel__header">Connection</div>
@@ -97,5 +120,13 @@
     refreshing={manifestRefreshing}
     error={manifestError}
     capabilities={worker.capabilities}
+  />
+
+  <WorkerContractVerificationPanel
+    diagnostics={manifestDiagnostics}
+    {registry}
+    loading={manifestLoading || registryLoading}
+    refreshing={manifestRefreshing || registryRefreshing}
+    error={manifestError ?? registryError ?? null}
   />
 </div>

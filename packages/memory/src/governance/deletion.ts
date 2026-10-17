@@ -1,4 +1,4 @@
-import type { Embedder } from '@lostgradient/embeddings';
+import type { Embedder } from 'armorer';
 
 import {
   type MemoryRecordReference,

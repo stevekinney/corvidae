@@ -1,0 +1,28 @@
+{
+  "extends": "@lostgradient/typescript/library.json",
+  "include": ["src", "scripts"],
+  "exclude": ["node_modules", "coverage"],
+  "references": [
+    {
+      "path": "../../packages/cryptography/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/memory/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/operative/tsconfig.source.json"
+    },
+    {
+      "path": "../testing/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/weft/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/armorer/tsconfig.source.json"
+    },
+    {
+      "path": "../../packages/conversationalist/tsconfig.source.json"
+    }
+  ]
+}

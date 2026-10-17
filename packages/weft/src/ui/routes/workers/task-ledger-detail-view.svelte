@@ -2,16 +2,37 @@
   import { Alert, Badge, DescriptionList } from '@lostgradient/cinder';
 
   import { formatDuration, formatRelativeTime, truncateId } from '../../lib/format/index.ts';
+  import TaskAttemptHistory from './task-attempt-history.svelte';
+  import TaskLeasePanel from './task-lease-panel.svelte';
+  import ContractFailureNotice from './contract-failure-notice.svelte';
+  import { classifyContractFailure } from './contract-verification.ts';
   import type { TaskLedgerDetail } from './worker-catalog-types.ts';
 
   interface TaskLedgerDetailViewProps {
     readonly task: TaskLedgerDetail;
     readonly now: number;
     readonly refreshing?: boolean;
+    /** Heartbeat age at or past which a running attempt reads as stale. */
+    readonly staleHeartbeatAfterMs?: number | undefined;
   }
 
-  let { task, now, refreshing = false }: TaskLedgerDetailViewProps = $props();
+  let {
+    task,
+    now,
+    refreshing = false,
+    staleHeartbeatAfterMs,
+  }: TaskLedgerDetailViewProps = $props();
 
+  // Dispatches carry the qualified `${workflowType}.${activityName}` routing name
+  // (what the worker registry routes by); a bare name gets the prefix here.
+  const activityLabel = $derived(
+    task.activityName.startsWith(`${task.workflowType}.`)
+      ? task.activityName
+      : `${task.workflowType}.${task.activityName}`,
+  );
+  const contractFailure = $derived(
+    task.error === undefined ? undefined : classifyContractFailure(task.error),
+  );
   const isDelayed = $derived(task.state === 'queued' && (task.availableAt ?? 0) > now);
   const retryAvailable = $derived(
     task.retryPolicy ? task.attempt < task.retryPolicy.maxAttempts : false,
@@ -38,7 +59,7 @@
     { term: 'Attempt', definition: String(task.attempt) },
     { term: 'Workflow', definition: task.workflowId ?? 'No workflow identifier' },
     { term: 'Execution token', definition: task.workflowExecutionToken ?? 'Not supplied' },
-    { term: 'Activity', definition: `${task.workflowType}.${task.activityName}` },
+    { term: 'Activity', definition: activityLabel },
   ]);
   const dispatchItems = $derived([
     { term: 'Queue', definition: task.queue },
@@ -58,12 +79,6 @@
           : formatRelativeTime(task.availableAt, now),
     },
     { term: 'Visibility timeout', definition: formatDuration(task.visibilityTimeoutMilliseconds) },
-    {
-      term: 'Schedule-to-close',
-      definition: task.scheduleToCloseDeadline
-        ? formatRelativeTime(task.scheduleToCloseDeadline, now)
-        : 'No deadline',
-    },
     { term: 'Fair-share key', definition: task.fairShareKey ?? 'None' },
     { term: 'Sticky workflow', definition: task.stickyWorkflowId ?? 'None' },
     {
@@ -77,13 +92,6 @@
     },
   ]);
   const recoveryItems = $derived([
-    {
-      term: 'Lease',
-      definition:
-        task.leaseDeadline === undefined
-          ? 'Not leased'
-          : `Expires ${formatRelativeTime(task.leaseDeadline, now)}`,
-    },
     {
       term: 'Last heartbeat',
       definition: task.lastHeartbeatAt
@@ -114,13 +122,6 @@
     { term: 'Result status', definition: task.resultStatus ?? 'None' },
     { term: 'Result digest', definition: task.resultDigest ?? 'None' },
     { term: 'Error', definition: task.error ?? 'None' },
-    { term: 'Cancellation reason', definition: task.cancellationReason ?? 'None' },
-    {
-      term: 'Cancellation requested',
-      definition: task.cancellationRequestedAt
-        ? formatRelativeTime(task.cancellationRequestedAt, now)
-        : 'Not requested',
-    },
     {
       term: 'Dead-letter reason',
       definition: task.persistenceFailureReason ?? 'Not dead-lettered',
@@ -145,6 +146,10 @@
     >
   {/if}
 
+  {#if contractFailure}
+    <ContractFailureNotice failure={contractFailure} />
+  {/if}
+
   {#if refreshing}
     <p role="status">Refreshing authoritative state. Cached ledger evidence remains visible.</p>
   {/if}
@@ -163,8 +168,14 @@
       <DescriptionList items={recoveryItems} />
     </section>
     <section class="weft-workers-panel">
-      <h3 class="weft-workers-panel__header">Completion and cancellation</h3>
+      <h3 class="weft-workers-panel__header">Completion</h3>
       <DescriptionList items={outcomeItems} />
     </section>
   </div>
+
+  <div class="weft-task-ledger-detail__grid">
+    <TaskLeasePanel {task} {now} {staleHeartbeatAfterMs} />
+  </div>
+
+  <TaskAttemptHistory {task} />
 </article>

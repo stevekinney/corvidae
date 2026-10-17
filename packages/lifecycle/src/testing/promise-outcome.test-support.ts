@@ -9,7 +9,7 @@
  *
  * The mirror publishes packages to separate targets, so this module is copied
  * byte-for-byte into each package that cannot import `@lostgradient/testing`.
- * The canonical copy is `packages/testing/src/helpers/promise-outcome.ts`, and
+ * The canonical copy is `testing/testing/src/helpers/promise-outcome.ts`, and
  * the checker fails if a copy drifts from it.
  */
 

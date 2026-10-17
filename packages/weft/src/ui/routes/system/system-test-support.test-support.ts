@@ -6,7 +6,7 @@
  * `src/lib/live-source/fleet-event-source.test.ts` (T1.4's own convention for
  * this exact need) rather than inventing a different one.
  */
-import { HttpClient } from '@lostgradient/weft';
+import { contractHash, HttpClient, type WorkflowContract } from '@lostgradient/weft';
 
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 
@@ -244,4 +244,21 @@ export function fakeClient(
 /** A real `HttpClient` instance for component tests that call ergonomic methods or `client.operations[...]` — pair with `ScriptedFetch` to script its responses. */
 export function realClient(baseUrl = 'http://weft.test/api'): HttpClient {
   return new HttpClient({ baseUrl });
+}
+
+/**
+ * A registry snapshot fixture with each manifest's `contractHash` recomputed
+ * from its contract, as the server does, so it passes the dashboard's
+ * canonical `parseWorkflowRevisionManifest` check.
+ */
+export async function withContractHashes<T extends { workflows: readonly { contract: object }[] }>(
+  snapshot: T,
+): Promise<T> {
+  const workflows = await Promise.all(
+    snapshot.workflows.map(async (manifest) => ({
+      ...manifest,
+      contractHash: await contractHash(manifest.contract as unknown as WorkflowContract),
+    })),
+  );
+  return { ...snapshot, workflows };
 }

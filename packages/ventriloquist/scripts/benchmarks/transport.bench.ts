@@ -9,7 +9,7 @@
  * The report is written before any target is asserted, so a missed target still leaves
  * `test-results/benchmarks.json` behind, and the run then exits nonzero.
  */
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, test } from 'bun:test';
@@ -230,12 +230,10 @@ const specifications: CellSpecification[] = [
 const cells: BenchmarkCell[] = [];
 for (const specification of specifications) cells.push(await runCell(specification));
 
-const sourceSha = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
+const sourceShaRun = await runWithHangGuard(['git', 'rev-parse', 'HEAD'], {
   cwd: repositoryRoot,
-  timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-})
-  .stdout.toString()
-  .trim();
+});
+const sourceSha = sourceShaRun.stdout.toString().trim();
 
 const report = buildBenchmarkReport(cells, sourceSha);
 mkdirSync(join(packageRoot, 'test-results'), { recursive: true });

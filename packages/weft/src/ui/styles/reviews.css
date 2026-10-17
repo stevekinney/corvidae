@@ -120,13 +120,13 @@
 }
 
 .weft-query-fault[data-tone='warning'] {
-  border-color: var(--cinder-color-warning-border);
-  background: var(--cinder-color-warning-bg);
+  border-color: var(--cinder-status-warning-border);
+  background: var(--cinder-status-warning-background);
 }
 
 .weft-query-fault[data-tone='danger'] {
-  border-color: var(--cinder-color-danger-border);
-  background: var(--cinder-color-danger-bg);
+  border-color: var(--cinder-status-danger-border);
+  background: var(--cinder-status-danger-background);
 }
 
 .weft-query-fault__icon {
@@ -135,11 +135,11 @@
 }
 
 .weft-query-fault[data-tone='warning'] .weft-query-fault__icon {
-  color: var(--cinder-color-warning-fg);
+  color: var(--cinder-status-warning-text);
 }
 
 .weft-query-fault[data-tone='danger'] .weft-query-fault__icon {
-  color: var(--cinder-color-danger-fg);
+  color: var(--cinder-status-danger-text);
 }
 
 .weft-query-fault__message {
@@ -147,7 +147,7 @@
   min-width: 160px;
   margin: 0;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
 }
 
 /* Two-panel layouts stack vertically below 900px (PROJECT-BRIEF binding
@@ -204,8 +204,8 @@
 }
 
 .weft-review-row--selected {
-  border-inline-start-color: var(--cinder-accent);
-  background: color-mix(in oklch, var(--cinder-accent), transparent 92%);
+  border-inline-start-color: var(--cinder-accent-solid);
+  background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
 }
 
 .weft-review-row__top {
@@ -252,7 +252,7 @@
 
 .weft-review-row__countdown--urgent,
 .weft-review-row__countdown--expired {
-  color: var(--cinder-color-danger-fg);
+  color: var(--cinder-status-danger-text);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -371,13 +371,13 @@
 .weft-artifact-text {
   margin: 0;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
   white-space: pre-wrap;
 }
 
 .weft-artifact-markdown {
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-text);
+  color: var(--cinder-text-default);
   overflow-x: auto;
 }
 
@@ -398,7 +398,7 @@
   min-height: 12rem;
   border: 1px solid var(--cinder-border);
   border-radius: var(--cinder-radius-md);
-  background: var(--cinder-bg);
+  background: var(--cinder-surface-canvas);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -476,7 +476,7 @@
 .weft-reviews-card__error {
   margin: 0;
   font-size: var(--cinder-text-sm);
-  color: var(--cinder-color-danger-fg);
+  color: var(--cinder-status-danger-text);
 }
 
 /* Responsive: no page-level horizontal scroll (PROJECT-BRIEF binding

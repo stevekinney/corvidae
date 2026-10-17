@@ -7,5 +7,6 @@ bun = true
 [test]
 preload = ["./scripts/preload.ts"]
 
-# The package test command retains serial execution for the shared DOM harness.
+# The package test command runs files in four isolated workers (`--parallel=4`); more workers than
+# that oversubscribe a ten-core host and fail the scroll-settling tests.
 # Browser tests run through their application-owned Playwright configuration.

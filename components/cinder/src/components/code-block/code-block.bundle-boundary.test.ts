@@ -15,6 +15,7 @@
  * cheapest to read.
  */
 
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { dirname, resolve as resolvePath, sep } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
@@ -91,7 +92,11 @@ describe('CodeBlock — no highlighter of its own', () => {
 // The real server process is the behavior under test (SSR without DOM globals, where `$effect`
 // never runs), so it runs once at module scope, off bun's per-test clock; the test below only
 // asserts on the settled result.
-function renderServerFallback(): { exitCode: number; stderr: string; ssrHtml: string } {
+async function renderServerFallback(): Promise<{
+  exitCode: number | null;
+  stderr: string;
+  ssrHtml: string;
+}> {
   const sourcePath = resolvePath(HERE, 'code-block.svelte');
   const repositoryRoot = resolvePath(HERE, '../../..');
   const malicious = '<img src=x onError=alert(1)>';
@@ -119,19 +124,13 @@ function renderServerFallback(): { exitCode: number; stderr: string; ssrHtml: st
         await rm(file, { force: true });
       }
     `;
-  const result = Bun.spawnSync({
-    timeout: 120_000,
-    cmd: ['bun', '-e', script],
-    cwd: repositoryRoot,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const result = await runWithHangGuard(['bun', '-e', script], { cwd: repositoryRoot });
   const stderr = new TextDecoder().decode(result.stderr);
   const ssrHtml = new TextDecoder().decode(result.stdout);
   return { exitCode: result.exitCode, stderr, ssrHtml };
 }
 
-const { exitCode, stderr, ssrHtml } = renderServerFallback();
+const { exitCode, stderr, ssrHtml } = await renderServerFallback();
 
 describe('CodeBlock — SSR two-phase contract', () => {
   test('server render emits the plain <pre><code> fallback with escaped code, no highlight', () => {

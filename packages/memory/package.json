@@ -9,7 +9,8 @@
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",
     "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json",
-    "typecheck": "tsc --noEmit",
+    "types": "tsc -b tsconfig.source.json",
+    "typecheck": "tsc -b tsconfig.json",
     "test": "bun ../../scripts/bun-test-junit.ts"
   },
   "dependencies": {
@@ -17,7 +18,6 @@
     "@lostgradient/weft": "workspace:*",
     "armorer": "workspace:*",
     "@lostgradient/cryptography": "workspace:*",
-    "@lostgradient/embeddings": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*"
   },
   "devDependencies": {

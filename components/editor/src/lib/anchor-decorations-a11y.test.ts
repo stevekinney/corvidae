@@ -25,7 +25,7 @@ setupHappyDom();
  * announces from `role="mark"` + `aria-description`, or that Tab genuinely
  * cannot reach the span (WCAG-adjacent claims that depend on real ARIA
  * mapping and real focus traversal). That half is verified separately in
- * Chromium via Playwright (packages/testing) against the accessibility tree
+ * Chromium via Playwright (testing/testing) against the accessibility tree
  * and real keyboard input, per this package's harness-skeptic guidance: a
  * DOM assertion here is not evidence of what assistive tech hears.
  */

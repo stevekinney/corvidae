@@ -1,4 +1,5 @@
-import { outcomeOf, rethrow, SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { outcomeOf, rethrow } from '@lostgradient/testing';
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,7 +14,7 @@ const typescriptCompiler = Bun.resolveSync('typescript/bin/tsc', packageRoot);
  * only input and nothing in the real source tree is touched. The scratch directory is removed
  * before this returns.
  */
-function checkNeutral(source: string): { exitCode: number; output: string } {
+async function checkNeutral(source: string): Promise<{ exitCode: number | null; output: string }> {
   const directory = mkdtempSync(join(tmpdir(), 'ventriloquist-neutral-'));
   try {
     mkdirSync(join(directory, 'src/protocol'), { recursive: true });
@@ -26,9 +27,9 @@ function checkNeutral(source: string): { exitCode: number; output: string } {
         exclude: [],
       }),
     );
-    const result = Bun.spawnSync(
+    const result = await runWithHangGuard(
       [process.execPath, typescriptCompiler, '--noEmit', '--pretty', 'false', '-p', directory],
-      { cwd: packageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+      { cwd: packageRoot },
     );
     return {
       exitCode: result.exitCode,
@@ -41,8 +42,10 @@ function checkNeutral(source: string): { exitCode: number; output: string } {
 
 // Each type-check starts a real `tsc` process, so it runs once at module scope, off Bun's
 // five-second per-test clock; its test rethrows whatever the scenario threw.
-const acceptsEcmaScriptOnly = await outcomeOf(() => {
-  const { exitCode, output } = checkNeutral('export const doubled = [1, 2].map((n) => n * 2);\n');
+const acceptsEcmaScriptOnly = await outcomeOf(async () => {
+  const { exitCode, output } = await checkNeutral(
+    'export const doubled = [1, 2].map((n) => n * 2);\n',
+  );
   expect(output).toBe('');
   expect(exitCode).toBe(0);
 });
@@ -71,8 +74,8 @@ const rejectedOutcomes: [string, unknown][] = [];
 for (const [name, source, message] of rejectedReferences) {
   rejectedOutcomes.push([
     name,
-    await outcomeOf(() => {
-      const { exitCode, output } = checkNeutral(source);
+    await outcomeOf(async () => {
+      const { exitCode, output } = await checkNeutral(source);
       expect(exitCode).not.toBe(0);
       expect(output).toContain(message);
     }),
@@ -81,10 +84,10 @@ for (const [name, source, message] of rejectedReferences) {
 
 // Listing the program's files starts a real `tsc` process, so it runs once at module scope, off
 // Bun's five-second per-test clock; the test rethrows whatever the scenario threw.
-const coveredFiles = await outcomeOf(() => {
-  const result = Bun.spawnSync(
+const coveredFiles = await outcomeOf(async () => {
+  const result = await runWithHangGuard(
     [process.execPath, typescriptCompiler, '--listFilesOnly', '-p', 'tsconfig.neutral.json'],
-    { cwd: packageRoot, timeout: SCENARIO_HANG_GUARD_MILLISECONDS },
+    { cwd: packageRoot },
   );
   expect(result.exitCode).toBe(0);
   const files = result.stdout

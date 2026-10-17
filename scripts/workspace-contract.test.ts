@@ -5,19 +5,23 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import ts from 'typescript';
 
+import { runWithHangGuard } from './hang-guard.ts';
+import {
+  directoryGlob,
+  verificationWorkspaceDirectories,
+  workspaceParentDirectories,
+} from './workspace-directories.ts';
 import { sourceExportViolations } from './workspace-exports';
 
 const root = join(import.meta.dir, '..');
 const componentLibraries = ['cinder', 'chat', 'editor', 'terminal'];
+const verificationLibraries = ['testing', 'evaluation'];
 const libraries = [
   'bureau',
   'operative',
   'armorer',
   'conversationalist',
   'memory',
-  'skills',
-  'tool-protocol',
-  'embeddings',
   'cryptography',
   'evaluation',
   'lifecycle',
@@ -53,13 +57,10 @@ const expectedWorkspaceNames = new Set([
   '@lostgradient/markdown',
   '@lostgradient/operative',
   '@lostgradient/cryptography',
-  '@lostgradient/embeddings',
   '@lostgradient/evaluation',
-  '@lostgradient/tool-protocol',
   '@lostgradient/lifecycle',
   '@lostgradient/bureau',
   '@lostgradient/memory',
-  '@lostgradient/skills',
   '@lostgradient/testing',
   '@lostgradient/typescript',
   '@lostgradient/playground',
@@ -95,7 +96,7 @@ async function readManifest(path: string): Promise<Manifest> {
 async function libraryApplicationConfigurations(): Promise<string[]> {
   const paths: string[] = [];
   const configurations = new Bun.Glob(
-    '{packages,components}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}',
+    `${directoryGlob(workspaceParentDirectories.filter((directory) => !['applications', 'internal'].includes(directory)))}/*/**/{vite,svelte}.config.{ts,js,mts,mjs,cts,cjs}`,
   );
   for await (const path of configurations.scan({ cwd: root, onlyFiles: true })) {
     if (!path.split('/').includes('node_modules')) paths.push(path);
@@ -105,7 +106,7 @@ async function libraryApplicationConfigurations(): Promise<string[]> {
 
 async function workspaceManifests(): Promise<Map<string, Manifest>> {
   const manifests = new Map<string, Manifest>();
-  for (const directory of ['applications', 'components', 'packages', 'internal']) {
+  for (const directory of workspaceParentDirectories) {
     for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const path = join(directory, entry.name);
@@ -143,11 +144,8 @@ async function listVersionedFixtureSource() {
         await Bun.write(join(directory, workspace, path), '');
       }
     }
-    const initialized = Bun.spawnSync(['git', 'init', '--quiet'], {
-      timeout: 120_000,
-      cwd: directory,
-    });
-    const listed = Bun.spawnSync(
+    const initialized = await runWithHangGuard(['git', 'init', '--quiet'], { cwd: directory });
+    const listed = await runWithHangGuard(
       [
         'git',
         '-c',
@@ -158,7 +156,7 @@ async function listVersionedFixtureSource() {
         '--others',
         '--exclude-standard',
       ],
-      { timeout: 120_000, cwd: directory },
+      { cwd: directory },
     );
     return { initialized, listed };
   } finally {
@@ -171,39 +169,52 @@ describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
     // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
-    // instead of rejoining the queue at every stage. Its stages find the lock held by their parent
-    // and reuse it rather than queueing behind it.
+    // instead of rejoining the queue at every stage.
     const validationChain = scripts['validate']?.match(
       /^bun scripts\/run-exclusively\.ts '([^']+)'$/,
     );
     const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
-      'bun run lint',
-      'bun run typecheck',
-      'bun run test',
-      // COR-1499: slow correctness tests run serially after the fast phase, then the duration report
-      // (warnings only) reads the fast phase's reports.
+      'bun run lint:root',
+      'bun run lint:styles',
+      'bun run typecheck:root',
+      // Every workspace task in one turbo run, so lint, type-checks, tests, and coverage overlap
+      // under the memory-scaled concurrency instead of waiting on each other stage by stage. The
+      // applications' builds stay out: the playground's static export alone takes about five
+      // minutes, and `bun run build` and the Vercel project's own build still run it.
+      'turbo run lint typecheck test:self test test:browser-fixtures test:coverage',
+      // COR-1499: slow correctness tests run serially after the parallel phase, then the duration
+      // report (warnings only) reads the fast phase's reports.
       'bun run test:slow',
       'bun run report:test-durations',
-      'bun run coverage',
-      'bun run build',
       'bun run format:check',
       'bun run audit',
     ]);
     // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
     // agent sessions stop oversubscribing it and timing out unrelated tests.
-    for (const stage of ['lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
+    for (const stage of ['check', 'lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
       expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
     }
+    expect(scripts['typecheck']).toBe(
+      "bun scripts/run-exclusively.ts 'bun run typecheck:root && turbo run typecheck'",
+    );
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
     expect(scripts['test']).toBe(
-      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures --concurrency=1'",
+      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures'",
+    );
+    // The development loop: only the workspaces a change can affect, judged against the default
+    // branch. The root-owned browser-fixture task runs outside `--affected`, which filters by
+    // package and would skip it for a change confined to `scripts/browser-fixtures`; its key follows
+    // that workspace through `transit`, so it replays from cache when nothing there changed.
+    // `validate` stays the full gate.
+    expect(scripts['check']).toBe(
+      "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures'",
     );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
     expect(scripts['test:self']).toBe(
-      'bun scripts/bun-test-junit.ts --report-name=self ./scripts/*.test.ts ./scripts/terminal/*.test.ts',
+      'bun scripts/bun-test-junit.ts --report-name=self --parallel=4 ./scripts/*.test.ts ./scripts/terminal/*.test.ts',
     );
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
@@ -241,7 +252,7 @@ describe('internal workspace architecture', () => {
 
   test('every package and application has a README', async () => {
     for await (const manifestPath of new Bun.Glob(
-      '{applications,components,packages,internal}/*/package.json',
+      `${directoryGlob(workspaceParentDirectories)}/*/package.json`,
     ).scan(root)) {
       const directory = dirname(manifestPath);
       const readme = Bun.file(join(root, directory, 'README.md'));
@@ -252,7 +263,7 @@ describe('internal workspace architecture', () => {
 
   test('every executable workspace exposes consistent Bun quality scripts', async () => {
     for await (const manifestPath of new Bun.Glob(
-      '{applications,components,packages}/*/package.json',
+      `${directoryGlob(workspaceParentDirectories.filter((directory) => directory !== 'internal'))}/*/package.json`,
     ).scan(root)) {
       const directory = dirname(manifestPath);
       const manifest = await readManifest(directory);
@@ -277,7 +288,24 @@ describe('internal workspace architecture', () => {
         // ratchet sees every workspace (COR-1499). A direct `bun test` would drop one silently.
         expect(scripts['test'], directory).toMatch(/\bbun-test-junit\.ts\b/);
       }
-      expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
+      expect(scripts['typecheck'], directory).toMatch(
+        /\b(?:svelte-check|tsc --noEmit|tsc -b (?:\.\/)?tsconfig\.json)\b/,
+      );
+      // A type-check that reads a dependency's emitted declarations runs in build mode, which
+      // rebuilds them when the dependency's source is newer, so it never checks stale types.
+      const typescriptConfigurationFile = Bun.file(join(root, directory, 'tsconfig.json'));
+      const typescriptConfiguration: { references?: unknown[] } =
+        (await typescriptConfigurationFile.exists())
+          ? await typescriptConfigurationFile.json()
+          : {};
+      if ((typescriptConfiguration.references ?? []).length > 0) {
+        expect(scripts['typecheck'], directory).toMatch(/^tsc -b (?:\.\/)?tsconfig\.json\b/);
+      }
+      // A library that emits declarations for its consumers does so through the `types` task,
+      // which `typecheck` depends on, so Turborepo orders and caches the emit.
+      if (await Bun.file(join(root, directory, 'tsconfig.source.json')).exists()) {
+        expect(scripts['types'], directory).toBe('tsc -b tsconfig.source.json');
+      }
 
       for (const [name, command] of Object.entries(scripts)) {
         expect(command, `${directory}: ${name}`).not.toMatch(/\b(?:deno|node|npm|npx|pnpm|yarn)\b/);
@@ -391,7 +419,12 @@ describe('internal workspace architecture', () => {
 
   for (const library of libraries) {
     test(`${library} exposes source without a build or publication contract`, async () => {
-      const directory = `${componentLibraries.includes(library) ? 'components' : 'packages'}/${library}`;
+      const parent = componentLibraries.includes(library)
+        ? 'components'
+        : verificationLibraries.includes(library)
+          ? 'testing'
+          : 'packages';
+      const directory = `${parent}/${library}`;
       const manifest = await readManifest(directory);
       expect(manifest.name).toBe(publicWorkspaceName(library));
       expect(manifest.private).toBe(true);
@@ -417,6 +450,53 @@ describe('internal workspace architecture', () => {
       expect(manifest.types).toBeUndefined();
     });
   }
+
+  test('the root workspaces field lists exactly the shared workspace directories', async () => {
+    const manifest = (await readManifest('.')) as Manifest & { workspaces?: string[] };
+    expect(manifest.workspaces).toEqual([
+      ...workspaceParentDirectories.map((directory) => `${directory}/*`),
+      'scripts/browser-fixtures',
+    ]);
+  });
+
+  test('libraries and components name verification workspaces only as development dependencies', async () => {
+    // Everything under `testing/` exists to check other code. A runtime or peer edge from a library
+    // or component would carry verification tooling into whatever depends on that workspace, so
+    // those may name it only in devDependencies. Applications are endpoints nothing depends on: the
+    // playground's dev server and static exporter run Testing's Svelte plugin and fixture loaders,
+    // and its own manifest test requires that runtime edge to stay in `dependencies`.
+    const applicationNames = new Set<string>();
+    for (const entry of await readdir(join(root, 'applications'), { withFileTypes: true })) {
+      const path = join('applications', entry.name);
+      if (entry.isDirectory() && (await Bun.file(join(root, path, 'package.json')).exists())) {
+        const manifest = await readManifest(path);
+        applicationNames.add(manifest.name);
+      }
+    }
+    const verificationNames = new Set<string>();
+    for (const directory of verificationWorkspaceDirectories) {
+      for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const path = join(directory, entry.name);
+        if (await Bun.file(join(root, path, 'package.json')).exists()) {
+          const manifest = await readManifest(path);
+          verificationNames.add(manifest.name);
+        }
+      }
+    }
+    expect(verificationNames.size).toBeGreaterThan(0);
+    const offending: string[] = [];
+    const manifests = await workspaceManifests();
+    for (const manifest of manifests.values()) {
+      if (applicationNames.has(manifest.name)) continue;
+      for (const field of ['dependencies', 'peerDependencies'] as const) {
+        for (const name of Object.keys(manifest[field] ?? {})) {
+          if (verificationNames.has(name)) offending.push(`${manifest.name} ${field} -> ${name}`);
+        }
+      }
+    }
+    expect(offending).toEqual([]);
+  });
 
   test('every internal edge resolves and uses workspace:*', async () => {
     // The discriminator between an internal edge and an external dependency can no longer be a

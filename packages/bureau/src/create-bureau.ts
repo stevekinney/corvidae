@@ -93,7 +93,7 @@ import {
   SkillFailedEvent,
   SkillLoadedEvent,
   SkillRejectedEvent,
-} from '@lostgradient/skills';
+} from './skills';
 import {
   type ConditionalTextValueStore,
   decode,
@@ -1518,7 +1518,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // the only surface it has. Fresh instances again, for the WHATWG
   // already-being-dispatched reason above.
   // COR-767 — skill lifecycle, forwarded the same way and for the same reason
-  // as the schedule families: the `@lostgradient/skills` tools dispatch onto the
+  // as the schedule families: the `@lostgradient/bureau/skills` tools dispatch onto the
   // composition's target, and this bureau's emitter is the surface consumers
   // actually subscribe to. Fresh instances again, for the WHATWG
   // already-being-dispatched constraint documented above.
@@ -2367,6 +2367,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           'CONFLICT',
         );
       }
+      // Another process ended the run first: one that adopted it after this
+      // process lost it, or ended its own view of it at the same moment. The
+      // log has settled the run, so this process's later boundary for it
+      // has nothing to record, and logging it would make the log unfoldable.
+      if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) === 'ended') return;
       if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) !== 'promoted') {
         throw new BureauError(
           `Run "${event.runId}" cannot log "${event.type}" in session "${sessionId}": the steering log has no live promotion of it.`,

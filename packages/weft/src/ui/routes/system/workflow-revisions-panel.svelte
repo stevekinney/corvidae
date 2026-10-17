@@ -410,9 +410,9 @@
     gap: 10px;
     padding: 10px 12px;
     border-radius: var(--cinder-radius-md);
-    background: var(--cinder-color-warning-bg);
-    border: 1px solid var(--cinder-color-warning-border);
-    color: var(--cinder-color-warning-fg);
+    background: var(--cinder-status-warning-background);
+    border: 1px solid var(--cinder-status-warning-border);
+    color: var(--cinder-status-warning-text);
     font-size: var(--cinder-text-sm);
   }
 

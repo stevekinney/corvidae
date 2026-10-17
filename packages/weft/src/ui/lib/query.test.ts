@@ -84,6 +84,10 @@ describe('queryKeys — plan §4 list, verbatim', () => {
     expect(queryKeys.registry()).toEqual(['registry']);
   });
 
+  test('registrySnapshot is a distinct entry under the registry prefix', () => {
+    expect(queryKeys.registrySnapshot()).toEqual(['registry', 'snapshot']);
+  });
+
   test('retention', () => {
     expect(queryKeys.retention()).toEqual(['retention']);
   });

@@ -1,3 +1,4 @@
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,8 +23,8 @@ afterAll(async () => {
   await rm(repository, { recursive: true, force: true });
 });
 
-function git(...arguments_: string[]): string {
-  const result = Bun.spawnSync(['git', ...arguments_], { timeout: 120_000, cwd: repository });
+async function git(...arguments_: string[]): Promise<string> {
+  const result = await runWithHangGuard(['git', ...arguments_], { cwd: repository });
   if (result.exitCode !== 0)
     throw new Error(`git ${arguments_.join(' ')}: ${result.stderr.toString()}`);
   return result.stdout.toString().trim();
@@ -87,54 +88,60 @@ async function writeFiles(files: Record<string, string>): Promise<void> {
 }
 
 async function commitBase(): Promise<string> {
-  git('init', '--quiet');
-  git('config', 'user.email', 'test@example.invalid');
-  git('config', 'user.name', 'test');
+  await git('init', '--quiet');
+  await git('config', 'user.email', 'test@example.invalid');
+  await git('config', 'user.name', 'test');
   await writeFiles(FIXTURE_FILES);
-  git('add', '--all');
-  git('commit', '--quiet', '-m', 'base');
-  return git('rev-parse', 'HEAD');
+  await git('add', '--all');
+  await git('commit', '--quiet', '-m', 'base');
+  return await git('rev-parse', 'HEAD');
 }
 
 async function commitWriting(files: Record<string, string>): Promise<string> {
-  git('checkout', '--quiet', '--detach', base);
+  await git('checkout', '--quiet', '--detach', base);
   await writeFiles(files);
-  git('add', '--all');
-  git('commit', '--quiet', '--allow-empty', '-m', `write ${Object.keys(files).join(', ')}`);
-  return git('rev-parse', 'HEAD');
+  await git('add', '--all');
+  await git('commit', '--quiet', '--allow-empty', '-m', `write ${Object.keys(files).join(', ')}`);
+  return await git('rev-parse', 'HEAD');
 }
 
 async function commitRenaming(from: string, to: string): Promise<string> {
-  git('checkout', '--quiet', '--detach', base);
+  await git('checkout', '--quiet', '--detach', base);
   await mkdir(dirname(join(repository, to)), { recursive: true });
-  git('mv', from, to);
-  git('commit', '--quiet', '-m', `move ${from} to ${to}`);
-  return git('rev-parse', 'HEAD');
+  await git('mv', from, to);
+  await git('commit', '--quiet', '-m', `move ${from} to ${to}`);
+  return await git('rev-parse', 'HEAD');
 }
 
 /** Exit code of the wrapper, run from the application directory as Vercel runs it. */
-function wrapperExit(environment: Record<string, string | undefined>, path?: string): number {
+async function wrapperExit(
+  environment: Record<string, string | undefined>,
+  path?: string,
+): Promise<number | null> {
   const merged: Record<string, string> = {};
   for (const [key, value] of Object.entries({ ...process.env, ...environment })) {
     if (value !== undefined) merged[key] = value;
   }
   if (path !== undefined) merged['PATH'] = path;
-  const result = Bun.spawnSync(['/bin/sh', wrapperPath], {
-    timeout: 120_000,
+  const result = await runWithHangGuard(['/bin/sh', wrapperPath], {
     cwd: join(repository, 'applications/playground'),
     env: merged,
   });
   return result.exitCode;
 }
 
-function productionExit(previous: string | undefined, current: string, path?: string): number {
+async function productionExit(
+  previous: string | undefined,
+  current: string,
+  path?: string,
+): Promise<number | null> {
   return wrapperExit(
     { VERCEL_ENV: 'production', VERCEL_GIT_PREVIOUS_SHA: previous, VERCEL_GIT_COMMIT_SHA: current },
     path,
   );
 }
 
-function previewExit(current: string, commitMessage: string): number {
+function previewExit(current: string, commitMessage: string): Promise<number | null> {
   return wrapperExit({
     VERCEL_ENV: 'preview',
     VERCEL_GIT_PREVIOUS_SHA: base,
@@ -171,39 +178,39 @@ const touchedPathCases = [
   ['scripts/outside-the-closure.ts', 0],
   ['turbo.json', 0],
 ] as const;
-const touchedPathExits = new Map<string, number>();
+const touchedPathExits = new Map<string, number | null>();
 for (const [path] of touchedPathCases) {
   touchedPathExits.set(
     path,
-    productionExit(base, await commitWriting({ [path]: `changed ${path}\n` })),
+    await productionExit(base, await commitWriting({ [path]: `changed ${path}\n` })),
   );
 }
 
-const rootManifestExit = productionExit(
+const rootManifestExit = await productionExit(
   base,
   await commitWriting({ 'package.json': json({ ...ROOT_MANIFEST, private: true }) }),
 );
-const unparsableRootManifestExit = productionExit(
+const unparsableRootManifestExit = await productionExit(
   base,
   await commitWriting({ 'package.json': '{ not json' }),
 );
 // Git's rename detection would list only the destination of a file moved out of the closure.
-const renamedOutOfClosureExit = productionExit(
+const renamedOutOfClosureExit = await productionExit(
   base,
   await commitRenaming('packages/direct/src/index.ts', 'packages/unrelated/src/moved.ts'),
 );
-const exitWithoutPreviousDeployment = productionExit(undefined, base);
-const exitWithAbsentPreviousDeployment = productionExit(absentCommit, base);
-const exitWithAbsentCurrentCommit = productionExit(base, absentCommit);
+const exitWithoutPreviousDeployment = await productionExit(undefined, base);
+const exitWithAbsentPreviousDeployment = await productionExit(absentCommit, base);
+const exitWithAbsentCurrentCommit = await productionExit(base, absentCommit);
 
 const pageChange = await commitWriting({ 'applications/playground/src/page.ts': 'changed\n' });
 const unrelatedChange = await commitWriting({ 'scripts/outside-the-closure.ts': 'changed\n' });
-const previewWithoutOptInExit = previewExit(pageChange, 'Change a page');
-const previewSubjectOptInExit = previewExit(
+const previewWithoutOptInExit = await previewExit(pageChange, 'Change a page');
+const previewSubjectOptInExit = await previewExit(
   unrelatedChange,
   `Check the new layout ${PREVIEW_OPT_IN}\n\nDetails.`,
 );
-const previewBodyOnlyOptInExit = previewExit(
+const previewBodyOnlyOptInExit = await previewExit(
   pageChange,
   `Describe previews\n\nThey build only with ${PREVIEW_OPT_IN}.`,
 );
@@ -211,7 +218,7 @@ const previewBodyOnlyOptInExit = previewExit(
 // A bare build image: the system directories, which hold no Bun.
 const systemPath = '/usr/bin:/bin';
 const bunInSystemPath = Bun.which('bun', { PATH: systemPath });
-const missingBunExit = productionExit(base, unrelatedChange, systemPath);
+const missingBunExit = await productionExit(base, unrelatedChange, systemPath);
 
 const stubBin = await mkdtemp(join(tmpdir(), 'ignore-build-stub-bin-'));
 afterAll(async () => {
@@ -219,7 +226,7 @@ afterAll(async () => {
 });
 await writeFile(join(stubBin, 'bun'), '#!/bin/sh\nexit 3\n');
 await chmod(join(stubBin, 'bun'), 0o755);
-const failingScriptExit = productionExit(base, unrelatedChange, `${stubBin}:${systemPath}`);
+const failingScriptExit = await productionExit(base, unrelatedChange, `${stubBin}:${systemPath}`);
 
 describe('dependencyClosure', () => {
   test('reaches every workspace the playground depends on, through development dependencies too', () => {
@@ -242,11 +249,12 @@ describe('dependencyClosure', () => {
       'components/cinder',
       'components/editor',
       'internal/typescript',
+      'packages/armorer',
       'packages/conversationalist',
+      'packages/cryptography',
       'packages/lifecycle',
       'packages/markdown',
-      'packages/testing',
-      'packages/tool-protocol',
+      'testing/testing',
     ]);
   });
 });

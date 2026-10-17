@@ -82,7 +82,7 @@ function pollUntil(condition: () => boolean, clock: FakeClock): Promise<void> {
  * race anyway. So this file is a mechanism/contract check (the fixed code
  * produces the right DOM), not proof the bug reproduces or that the fix
  * closes it — that proof is real-browser-only, in
- * packages/testing/tests/markdown-editor-placeholder.playwright.ts, verified
+ * scripts/browser-fixtures/tests/markdown-editor-placeholder.playwright.ts, verified
  * red without the fix and green with it against this playground's actual
  * Vite/Chromium module graph.
  */

@@ -14,7 +14,7 @@
     "packages/bureau :: src/create-bureau.test.ts :: createBureau :: evicts the oldest boot frames at overflow so the newest history survives (COR-1421)",
     "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a recurring schedule into a fixed session and accumulates conversation across fires",
     "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a stateless interval schedule and runs the agent with a fresh session per fire",
-    "packages/evaluation :: scripts/memory-lifecycle.test.ts :: memory-lifecycle run :: runs the stochastic lane with a fixed, recorded seed",
+    "testing/evaluation :: scripts/memory-lifecycle.test.ts :: memory-lifecycle run :: runs the stochastic lane with a fixed, recorded seed",
     "packages/operative :: src/durable/run-workflow-checkpoint-depth.test.ts :: durable agentRun checkpoint nesting :: keeps persisted run state at constant depth across more than 100 steps",
     "packages/weft :: scripts/build-dashboard.test.ts :: buildDashboard :: writes index.html and hashed JavaScript and CSS into the default dashboard directory (COR-1450)",
     "packages/weft :: src/server/index.test.ts :: concurrent scanner deduplication :: does not double-process an orphaned operationId visible only to reconcileOrphanedRecords",

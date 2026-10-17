@@ -65,12 +65,23 @@ export const queryKeys = {
   reviews: {
     list: (filter: ReviewListFilter) => ['reviews', 'list', filter] as const,
   },
+  /** Raw `weft.system.registry` response (and projections of it) for consumers that read it unvalidated. */
   registry: () => ['registry'] as const,
+  /**
+   * The `parseRegistrySnapshot`-validated snapshot behind contract verification
+   * (Worker detail, System → Registry). Its own entry, so a raw response cached
+   * under `registry()` never reaches the verification panels unvalidated
+   * (COR-162). It sits under the `registry` prefix, so invalidating
+   * `registry()` refreshes it too.
+   */
+  registrySnapshot: () => ['registry', 'snapshot'] as const,
   /** `weft.realms.diagnostics` (COR-243) — host-wide, no query params. */
   realms: () => ['realms'] as const,
   retention: () => ['retention'] as const,
   metrics: () => ['metrics'] as const,
   principal: () => ['principal'] as const,
+  /** `weft.system.lease` (COR-124), read only by the System route's Health & lease tab. */
+  systemLease: () => ['system', 'lease'] as const,
   /** The five `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
   catalog: {
     revisions: (name: string) => ['catalog', 'revisions', name] as const,

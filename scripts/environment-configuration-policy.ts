@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import ts from 'typescript';
+import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 
 export type EnvironmentBoundaryKind = 'runtime' | 'script';
 
@@ -19,8 +20,8 @@ export const environmentBoundaries = [
       'applications/playground/src/environment-configuration.ts',
       'applications/terminal-example/src/server/environment-configuration.ts',
       'packages/operative/src/environment-configuration.ts',
-      'packages/skills/src/environment-configuration.ts',
-      'packages/testing/src/environment-configuration.ts',
+      'packages/bureau/src/skills/environment-configuration.ts',
+      'testing/testing/src/environment-configuration.ts',
       'packages/weft/src/runtime/environment-configuration.ts',
       'packages/weft/src/storage/environment-configuration.ts',
     ]),
@@ -486,7 +487,7 @@ export async function scanEnvironmentConfigurationPolicy(
 
 async function collectSourceFiles(directory: string): Promise<string[]> {
   const entries = await Array.fromAsync(
-    new Bun.Glob('{applications,components,packages,internal,scripts}/**/*').scan({
+    new Bun.Glob(`${directoryGlob([...workspaceParentDirectories, 'scripts'])}/**/*`).scan({
       cwd: directory,
       absolute: true,
       onlyFiles: true,

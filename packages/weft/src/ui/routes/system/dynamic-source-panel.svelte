@@ -453,14 +453,14 @@
   }
 
   .weft-dynamic-source__outcome--ok {
-    background: var(--cinder-color-success-bg);
-    border: 1px solid var(--cinder-color-success-border);
-    color: var(--cinder-color-success-fg);
+    background: var(--cinder-status-success-background);
+    border: 1px solid var(--cinder-status-success-border);
+    color: var(--cinder-status-success-text);
   }
 
   .weft-dynamic-source__outcome--bad {
-    background: var(--cinder-color-danger-bg);
-    border: 1px solid var(--cinder-color-danger-border);
-    color: var(--cinder-color-danger-fg);
+    background: var(--cinder-status-danger-background);
+    border: 1px solid var(--cinder-status-danger-border);
+    color: var(--cinder-status-danger-text);
   }
 </style>

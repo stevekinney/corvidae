@@ -2217,7 +2217,7 @@ describe('/page/:name server-rendering surfaces', () => {
     expect(response.status).toBe(200);
     const html = await response.text();
 
-    // packages/testing/src/fixtures/component-page.ts waits for `#app > *` and
+    // testing/testing/src/fixtures/component-page.ts waits for `#app > *` and
     // asserts single-instance `example-mount-*` counts on a bare surface.
     expect(html).toContain('<div id="app"></div>');
     expect(html).not.toContain('data-component-page');

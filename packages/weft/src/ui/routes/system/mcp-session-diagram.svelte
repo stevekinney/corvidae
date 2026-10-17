@@ -114,27 +114,27 @@
   }
 
   .weft-mcp-diagram__arrow-line--accent {
-    stroke: var(--cinder-accent);
+    stroke: var(--cinder-accent-solid);
   }
 
   .weft-mcp-diagram__arrow-line--success {
-    stroke: var(--cinder-success);
+    stroke: var(--cinder-status-success-solid);
   }
 
   .weft-mcp-diagram__arrow-line--danger {
-    stroke: var(--cinder-danger);
+    stroke: var(--cinder-status-danger-solid);
   }
 
   .weft-mcp-diagram__arrowhead--accent {
-    fill: var(--cinder-accent);
+    fill: var(--cinder-accent-solid);
   }
 
   .weft-mcp-diagram__arrowhead--success {
-    fill: var(--cinder-success);
+    fill: var(--cinder-status-success-solid);
   }
 
   .weft-mcp-diagram__arrowhead--danger {
-    fill: var(--cinder-danger);
+    fill: var(--cinder-status-danger-solid);
   }
 
   .weft-mcp-diagram__arrow-label {
@@ -147,22 +147,22 @@
   }
 
   .weft-mcp-diagram__arrow-label--success {
-    fill: var(--cinder-color-success-fg);
+    fill: var(--cinder-status-success-text);
   }
 
   .weft-mcp-diagram__arrow-label--danger {
-    fill: var(--cinder-color-danger-fg);
+    fill: var(--cinder-status-danger-text);
   }
 
   .weft-mcp-diagram__dot--accent {
-    fill: var(--cinder-accent);
+    fill: var(--cinder-accent-solid);
   }
 
   .weft-mcp-diagram__dot--success {
-    fill: var(--cinder-success);
+    fill: var(--cinder-status-success-solid);
   }
 
   .weft-mcp-diagram__dot--danger {
-    fill: var(--cinder-danger);
+    fill: var(--cinder-status-danger-solid);
   }
 </style>

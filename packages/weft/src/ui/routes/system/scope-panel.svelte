@@ -72,7 +72,7 @@
   }
 
   :global(.weft-scope-panel__icon--success) {
-    color: var(--cinder-color-success-fg);
+    color: var(--cinder-status-success-text);
   }
 
   :global(.weft-scope-panel__icon--disabled) {

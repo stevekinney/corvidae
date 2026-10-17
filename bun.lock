@@ -228,9 +228,7 @@
       "name": "armorer",
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
-        "@lostgradient/embeddings": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
-        "@lostgradient/tool-protocol": "workspace:*",
         "@modelcontextprotocol/client": "catalog:",
         "@modelcontextprotocol/core": "catalog:",
         "@modelcontextprotocol/server": "catalog:",
@@ -253,16 +251,18 @@
         "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
-        "@lostgradient/skills": "workspace:*",
-        "@lostgradient/tool-protocol": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
         "conversationalist": "workspace:*",
+        "gray-matter": "catalog:",
+        "js-yaml": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "@types/js-yaml": "catalog:",
         "oxlint": "catalog:",
         "typescript": "catalog:",
       },
@@ -271,7 +271,7 @@
       "name": "conversationalist",
       "dependencies": {
         "@lostgradient/lifecycle": "workspace:*",
-        "@lostgradient/tool-protocol": "workspace:*",
+        "armorer": "workspace:*",
         "js-yaml": "catalog:",
         "zod": "catalog:",
       },
@@ -289,34 +289,6 @@
     "packages/cryptography": {
       "name": "@lostgradient/cryptography",
       "devDependencies": {
-        "@lostgradient/typescript": "workspace:*",
-        "@types/bun": "catalog:",
-        "oxlint": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/embeddings": {
-      "name": "@lostgradient/embeddings",
-      "devDependencies": {
-        "@lostgradient/typescript": "workspace:*",
-        "@types/bun": "catalog:",
-        "oxlint": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/evaluation": {
-      "name": "@lostgradient/evaluation",
-      "dependencies": {
-        "@lostgradient/cryptography": "workspace:*",
-        "@lostgradient/memory": "workspace:*",
-        "@lostgradient/operative": "workspace:*",
-        "@lostgradient/weft": "workspace:*",
-        "armorer": "workspace:*",
-        "conversationalist": "workspace:*",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
@@ -372,7 +344,6 @@
       "name": "@lostgradient/memory",
       "dependencies": {
         "@lostgradient/cryptography": "workspace:*",
-        "@lostgradient/embeddings": "workspace:*",
         "@lostgradient/lifecycle": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "armorer": "workspace:*",
@@ -391,10 +362,8 @@
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
         "@lostgradient/cryptography": "workspace:*",
-        "@lostgradient/embeddings": "workspace:*",
         "@lostgradient/environmentalist": "catalog:",
         "@lostgradient/lifecycle": "workspace:*",
-        "@lostgradient/tool-protocol": "workspace:*",
         "@lostgradient/weft": "workspace:*",
         "@opentelemetry/api": "catalog:",
         "armorer": "workspace:*",
@@ -403,61 +372,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@lostgradient/typescript": "workspace:*",
-        "@types/bun": "catalog:",
-        "oxlint": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/skills": {
-      "name": "@lostgradient/skills",
-      "dependencies": {
-        "@lostgradient/cryptography": "workspace:*",
-        "@lostgradient/lifecycle": "workspace:*",
-        "@lostgradient/tool-protocol": "workspace:*",
-        "@lostgradient/weft": "workspace:*",
-        "armorer": "workspace:*",
-        "gray-matter": "catalog:",
-        "js-yaml": "catalog:",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@lostgradient/typescript": "workspace:*",
-        "@types/bun": "catalog:",
-        "@types/js-yaml": "catalog:",
-        "oxlint": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/testing": {
-      "name": "@lostgradient/testing",
-      "dependencies": {
-        "@axe-core/playwright": "catalog:",
-        "@lostgradient/environmentalist": "catalog:",
-        "@playwright/test": "catalog:",
-        "@testing-library/svelte": "catalog:",
-        "happy-dom": "catalog:",
-        "postcss-value-parser": "catalog:",
-        "svelte": "catalog:",
-        "typescript": "catalog:",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@lostgradient/typescript": "workspace:*",
-        "@types/bun": "catalog:",
-        "@types/node": "catalog:",
-        "@types/pngjs": "catalog:",
-        "oxlint": "catalog:",
-        "pixelmatch": "catalog:",
-        "pngjs": "catalog:",
-      },
-    },
-    "packages/tool-protocol": {
-      "name": "@lostgradient/tool-protocol",
-      "dependencies": {
-        "@lostgradient/lifecycle": "workspace:*",
-      },
-      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
         "oxlint": "catalog:",
@@ -488,6 +403,7 @@
         "@lostgradient/environmentalist": "catalog:",
         "@msgpack/msgpack": "catalog:",
         "@neondatabase/serverless": "catalog:",
+        "@noble/hashes": "catalog:",
         "@valibot/to-json-schema": "catalog:",
         "better-sqlite3": "catalog:",
         "lmdb": "catalog:",
@@ -532,6 +448,48 @@
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "conversationalist": "workspace:*",
+      },
+    },
+    "testing/evaluation": {
+      "name": "@lostgradient/evaluation",
+      "dependencies": {
+        "@lostgradient/cryptography": "workspace:*",
+        "@lostgradient/memory": "workspace:*",
+        "@lostgradient/operative": "workspace:*",
+        "@lostgradient/weft": "workspace:*",
+        "armorer": "workspace:*",
+        "conversationalist": "workspace:*",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/testing": "workspace:*",
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "oxlint": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "testing/testing": {
+      "name": "@lostgradient/testing",
+      "dependencies": {
+        "@axe-core/playwright": "catalog:",
+        "@lostgradient/environmentalist": "catalog:",
+        "@playwright/test": "catalog:",
+        "@testing-library/svelte": "catalog:",
+        "happy-dom": "catalog:",
+        "postcss-value-parser": "catalog:",
+        "svelte": "catalog:",
+        "typescript": "catalog:",
+        "zod": "catalog:",
+      },
+      "devDependencies": {
+        "@lostgradient/typescript": "workspace:*",
+        "@types/bun": "catalog:",
+        "@types/node": "catalog:",
+        "@types/pngjs": "catalog:",
+        "oxlint": "catalog:",
+        "pixelmatch": "catalog:",
+        "pngjs": "catalog:",
       },
     },
   },
@@ -798,11 +756,9 @@
 
     "@lostgradient/editor": ["@lostgradient/editor@workspace:components/editor"],
 
-    "@lostgradient/embeddings": ["@lostgradient/embeddings@workspace:packages/embeddings"],
-
     "@lostgradient/environmentalist": ["@lostgradient/environmentalist@0.1.0", "", { "dependencies": { "change-case": "^5.4.4", "dotenv": "^17.2.0", "jiti": "^2.4.2", "toml": "^5.0.0", "yaml": "^2.8.0" }, "optionalDependencies": { "ts-morph": "^28.0.0" }, "peerDependencies": { "react": ">=18", "svelte": ">=5", "zod": "^4" }, "optionalPeers": ["react", "svelte"], "bin": { "environmentalist": "dist/cli.js" } }, "sha512-9uV5b6kX5p3ahctWj4NyqXArpybIYLfdjFfeI8VWz0QN6OT73sWCLejRjokKJMtIxCS+SpM965lpNCJhaGL41g=="],
 
-    "@lostgradient/evaluation": ["@lostgradient/evaluation@workspace:packages/evaluation"],
+    "@lostgradient/evaluation": ["@lostgradient/evaluation@workspace:testing/evaluation"],
 
     "@lostgradient/lifecycle": ["@lostgradient/lifecycle@workspace:packages/lifecycle"],
 
@@ -814,15 +770,11 @@
 
     "@lostgradient/playground": ["@lostgradient/playground@workspace:applications/playground"],
 
-    "@lostgradient/skills": ["@lostgradient/skills@workspace:packages/skills"],
-
     "@lostgradient/terminal": ["@lostgradient/terminal@workspace:components/terminal"],
 
     "@lostgradient/terminal-example": ["@lostgradient/terminal-example@workspace:applications/terminal-example"],
 
-    "@lostgradient/testing": ["@lostgradient/testing@workspace:packages/testing"],
-
-    "@lostgradient/tool-protocol": ["@lostgradient/tool-protocol@workspace:packages/tool-protocol"],
+    "@lostgradient/testing": ["@lostgradient/testing@workspace:testing/testing"],
 
     "@lostgradient/typescript": ["@lostgradient/typescript@workspace:internal/typescript"],
 

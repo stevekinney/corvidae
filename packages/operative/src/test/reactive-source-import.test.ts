@@ -1,15 +1,17 @@
 import { expect, test } from 'bun:test';
 import { resolve } from 'node:path';
 
+import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+
 // A plain Bun process without the test runner is the behavior under test, so it runs once here at
 // module scope to stay off the per-test clock.
-const child = Bun.spawn(
+const child = spawnWithHangGuard(
   [
     process.execPath,
     '--eval',
     "const api = await import('@lostgradient/operative'); if (typeof api.runReactiveSourceConformanceSuite !== 'function') throw new Error('Missing conformance API');",
   ],
-  { timeout: 120_000, cwd: resolve(import.meta.dir, '../..'), stdout: 'pipe', stderr: 'pipe' },
+  { cwd: resolve(import.meta.dir, '../..'), stdout: 'pipe', stderr: 'pipe' },
 );
 const [status, errors] = await Promise.all([child.exited, new Response(child.stderr).text()]);
 

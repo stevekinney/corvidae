@@ -1,4 +1,5 @@
 import { describe, expect, it, mock, spyOn } from 'bun:test';
+import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
 import {
   advanceTimersByTime,
   flushMicrotasks,
@@ -16,11 +17,7 @@ import type {
 } from '../storage/interface.ts';
 import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import {
-  outcomeOf,
-  rethrow,
-  SCENARIO_HANG_GUARD_MILLISECONDS,
-} from '../testing/module-scope-scenario.test-support.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { ActivityRegistry } from './activity-registry.ts';
 import { AtomicStateConflictEvent } from './atomic-state.ts';
@@ -370,8 +367,7 @@ const scenario1 = await outcomeOf(async () => {
     process.exit(0);
   `;
 
-  const process = Bun.spawn(['bun', '-e', script], {
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  const process = spawnWithHangGuard(['bun', '-e', script], {
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -456,8 +452,7 @@ const scenario2 = await outcomeOf(async () => {
     }
   `;
 
-  const process = Bun.spawn(['bun', '-e', script], {
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  const process = spawnWithHangGuard(['bun', '-e', script], {
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -560,8 +555,7 @@ const scenario3 = await outcomeOf(async () => {
     }
   `;
 
-  const process = Bun.spawn(['bun', '-e', script], {
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
+  const process = spawnWithHangGuard(['bun', '-e', script], {
     stdout: 'pipe',
     stderr: 'pipe',
   });

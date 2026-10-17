@@ -91,7 +91,7 @@ test('registers runtime and script boundaries separately', () => {
     'script',
   );
   // Weft's byte-identical copy of `@lostgradient/testing`'s module, for the Svelte compile plugin
-  // the UI's test preload and browser host import (scripts/check-svelte-plugin-copies.ts).
+  // the UI's test preload and browser host import (scripts/check-test-support-copies.ts).
   expect(boundaryKind('packages/weft/scripts/lib/environment-configuration.ts')).toBe('script');
   expect(boundaryKind('scripts/environment-configuration.ts')).toBe('script');
   expect(

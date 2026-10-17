@@ -1,4 +1,4 @@
-import { SCENARIO_HANG_GUARD_MILLISECONDS } from '@lostgradient/testing';
+import { runWithHangGuard } from '@lostgradient/testing/hang-guard';
 import addFormats from 'ajv-formats';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, test } from 'bun:test';
@@ -133,13 +133,10 @@ async function buildCell(id: (typeof EXPECTED_CELL_IDS)[number]): Promise<Eviden
 
 // Reading the commit starts a real `git` process, so it happens once at module scope, off the
 // per-test clock, and the report builders below stay in process.
-const sourceSha = ((): string => {
-  const result = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], {
-    cwd: repositoryRoot,
-    timeout: SCENARIO_HANG_GUARD_MILLISECONDS,
-  });
-  return result.stdout.toString().trim();
-})();
+const sourceShaRun = await runWithHangGuard(['git', 'rev-parse', 'HEAD'], {
+  cwd: repositoryRoot,
+});
+const sourceSha = sourceShaRun.stdout.toString().trim();
 
 async function buildReport(): Promise<EvidenceReport> {
   const cells: EvidenceCell[] = [];

@@ -40,6 +40,7 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { workspaceParentDirectories } from './workspace-directories.ts';
 
 export const BUDGET_MILLISECONDS = 2000;
 export const STALE_FLOOR_MILLISECONDS = BUDGET_MILLISECONDS / 2;
@@ -49,7 +50,7 @@ const RUNNER_NAME = 'run-tests.ts';
 
 const root = join(import.meta.dir, '..');
 const ALLOWLIST_PATH = join(root, 'scripts', 'test-duration-allowlist.json');
-const WORKSPACE_DIRECTORIES = ['applications', 'components', 'packages', 'internal'];
+const WORKSPACE_DIRECTORIES = [...workspaceParentDirectories];
 const SKIPPED_DIRECTORIES = new Set([
   'node_modules',
   'build',
@@ -212,7 +213,9 @@ export function laneProblems(
     problems.push(`${workspace}: has ${SLOW_LANE_SUFFIX} files but defines no test:slow script`);
   }
   const coverage = scripts['test:coverage'] ?? '';
-  if (coverage.includes('bun test') && !ignoresSlowFiles(coverage)) {
+  const runsBunTest =
+    coverage.includes('bun test') || WRAPPER_NAMES.some((name) => coverage.includes(name));
+  if (runsBunTest && !ignoresSlowFiles(coverage)) {
     problems.push(
       `${workspace}: test:coverage runs ${SLOW_LANE_SUFFIX} files under Bun's default timeout; ignore them there too with --path-ignore-patterns`,
     );

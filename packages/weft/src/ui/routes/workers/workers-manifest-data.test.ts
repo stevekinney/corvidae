@@ -20,6 +20,7 @@ function diagnostic(workerId: string): unknown {
         startedAt: 1,
         lastHeartbeatAt: 1,
         heartbeatAgeMs: 1,
+        sessionGeneration: 1,
       },
       deploymentVersion: {
         deploymentName: 'payments',

@@ -9,7 +9,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { createQueryClient } from '../../lib/query.ts';
 import RegistryTab from './registry-tab.svelte';
 import SystemRouteTestHarness from './system-route-test-harness.test-harness.svelte';
-import { realClient, ScriptedFetch } from './system-test-support.test-support.ts';
+import {
+  realClient,
+  ScriptedFetch,
+  withContractHashes,
+} from './system-test-support.test-support.ts';
 
 let scripted: ScriptedFetch | undefined;
 
@@ -105,7 +109,7 @@ describe('RegistryTab', () => {
       },
       { status: 200 },
     );
-    scripted.enqueueJsonRpcResult(registrySnapshot([]));
+    scripted.enqueueJsonRpcResult(await withContractHashes(registrySnapshot([])));
     const { findByText, getByRole } = await renderRegistryTab();
     expect(await findByText('Not authorized')).not.toBeNull();
 
@@ -115,14 +119,14 @@ describe('RegistryTab', () => {
 
   test('renders the 3-step onboarding empty state when nothing is registered', async () => {
     scripted = new ScriptedFetch();
-    scripted.enqueueJsonRpcResult(registrySnapshot([]));
+    scripted.enqueueJsonRpcResult(await withContractHashes(registrySnapshot([])));
     const { findByText } = await renderRegistryTab();
     expect(await findByText('Install the SDK', { exact: false })).not.toBeNull();
   });
 
   test('adds accepted worker-manifest and admission diagnostics to the registry surface', async () => {
     scripted = new ScriptedFetch();
-    scripted.enqueueJsonRpcResult(registrySnapshot([]));
+    scripted.enqueueJsonRpcResult(await withContractHashes(registrySnapshot([])));
     const { findByText } = await renderRegistryTab({
       workers: [{ id: 'worker-a' }],
       diagnostics: {
@@ -135,6 +139,7 @@ describe('RegistryTab', () => {
             startedAt: 1,
             lastHeartbeatAt: 1,
             heartbeatAgeMs: 1,
+            sessionGeneration: 1,
           },
           deploymentVersion: {
             deploymentName: 'payments',
@@ -160,7 +165,7 @@ describe('RegistryTab', () => {
 
   test('lists workflow definitions and activities, then drills into a definition detail', async () => {
     scripted = new ScriptedFetch();
-    scripted.enqueueJsonRpcResult(
+    const snapshot = await withContractHashes(
       registrySnapshot(
         [
           manifestFixture('order-processing', {
@@ -207,6 +212,7 @@ describe('RegistryTab', () => {
         },
       ),
     );
+    scripted.enqueueJsonRpcResult(snapshot);
 
     const { findByText, findAllByText, findByTitle, getByRole } = await renderRegistryTab();
 
@@ -243,7 +249,7 @@ describe('RegistryTab', () => {
     // the element's `title` (hover-full convention, plan §10.8) even
     // though the visible text is truncated; manifest version verbatim.
     expect(await findByTitle('order-processing-rev')).not.toBeNull();
-    expect(await findByTitle('order-processing-hash')).not.toBeNull();
+    expect(await findByTitle(snapshot.workflows[0]!.contractHash)).not.toBeNull();
     expect(await findByText('manifest v1')).not.toBeNull();
     expect(await findByText('workflow v1.0.0')).not.toBeNull();
 

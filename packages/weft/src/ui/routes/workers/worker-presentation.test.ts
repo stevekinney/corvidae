@@ -182,9 +182,9 @@ describe('presentationStatusDotStatus', () => {
 
 describe('heartbeatSeverityCssVariable', () => {
   test('returns a distinct Cinder status-tone variable per severity', () => {
-    expect(heartbeatSeverityCssVariable('fresh')).toBe('var(--cinder-color-success-fg)');
-    expect(heartbeatSeverityCssVariable('elevated')).toBe('var(--cinder-color-warning-fg)');
-    expect(heartbeatSeverityCssVariable('stale')).toBe('var(--cinder-color-danger-fg)');
+    expect(heartbeatSeverityCssVariable('fresh')).toBe('var(--cinder-status-success-text)');
+    expect(heartbeatSeverityCssVariable('elevated')).toBe('var(--cinder-status-warning-text)');
+    expect(heartbeatSeverityCssVariable('stale')).toBe('var(--cinder-status-danger-text)');
   });
 });
 

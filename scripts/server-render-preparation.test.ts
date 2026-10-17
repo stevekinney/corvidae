@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
+import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
 // Tooling tests under `scripts/` quote render calls inside string literals.
@@ -71,7 +72,7 @@ function unpreparedServerRenders(source: string): string[] {
 
 async function testFiles(): Promise<string[]> {
   const entries = await Array.fromAsync(
-    new Bun.Glob('{applications,components,packages}/**/*.test.ts').scan({
+    new Bun.Glob(`${directoryGlob(workspaceParentDirectories)}/**/*.test.ts`).scan({
       cwd: root,
       absolute: true,
       onlyFiles: true,

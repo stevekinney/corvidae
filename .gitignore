@@ -12,6 +12,8 @@ node_modules/
 .turbo/
 .cache/
 *.tsbuildinfo
+# Declarations a library emits for its consumers' type-checks (`types` task).
+.types/
 .dccache
 
 # Application and test output
@@ -40,7 +42,7 @@ production-gate-results/
 coverage/
 playwright-report/
 test-results/
-/packages/testing/screenshots/
+/testing/testing/screenshots/
 .playwright/
 test-output/
 *.lcov

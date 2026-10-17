@@ -1,4 +1,4 @@
-import type { ToolCallInput } from '@lostgradient/tool-protocol';
+import type { ToolCallInput } from 'armorer/protocol';
 import { toAnthropicMessages } from 'conversationalist';
 
 import { createAnthropicSdkClient, isAnthropicStreamingClient } from './anthropic-sdk.ts';
