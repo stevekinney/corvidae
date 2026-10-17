@@ -65,6 +65,25 @@ describe('Outbox construction', () => {
     outbox.dispose();
   });
 
+  it('exposes its adapter and default attempt timeout', () => {
+    const adapter = { send: async () => ({ status: 'acknowledged' as const }) };
+    const storage = new MemoryStorage();
+    const configured = new Outbox({
+      storage,
+      namespace: 'n',
+      ownerId: 'o',
+      adapter,
+      attemptTimeoutMs: 45_000,
+    });
+    expect(configured.adapter).toBe(adapter);
+    expect(configured.attemptTimeoutMs).toBe(45_000);
+    configured.dispose();
+    const bare = new Outbox({ storage, namespace: 'n', ownerId: 'p' });
+    expect(bare.adapter).toBeUndefined();
+    expect(bare.attemptTimeoutMs).toBe(300_000);
+    bare.dispose();
+  });
+
   it.each([
     ['namespace', { namespace: '' }],
     ['ownerId', { ownerId: '' }],
