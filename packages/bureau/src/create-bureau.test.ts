@@ -17066,6 +17066,27 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       await rm(`${databasePath}-shm`, { force: true });
     }
 
+    /**
+     * Appends an unrelated marker through a second handle and returns its
+     * sequence, which sorts after every event already in the feed.
+     */
+    async function appendFloorMarker(databasePath: string): Promise<number> {
+      const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+      const adminFeed = createFleetEventFeed(adminStorage);
+      try {
+        const marker = await adminFeed.append({
+          kind: 'review.approved',
+          workflowId: 'run:cor-204-floor-marker',
+          emittedAtMs: 0,
+          payload: {},
+        });
+        return marker.sequence;
+      } finally {
+        adminFeed.dispose();
+        adminStorage[Symbol.dispose]();
+      }
+    }
+
     /** Moves the retention floor past `sequence` through a second handle. */
     async function retainThrough(databasePath: string, sequence: number): Promise<void> {
       const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
@@ -17096,6 +17117,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           durableBackgroundTasks: 'manual' as const,
           stopWhen: stopWhen.noToolCalls(),
         };
+        const runtimeA = createManualRuntimeServices();
         const bureauA = await createBureau({
           ...sharedOptions,
           generate: async () => {
@@ -17103,7 +17125,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             await releaseGenerate.promise;
             return { content: 'Done.', toolCalls: [] };
           },
-          runtime: createManualRuntimeServices(),
+          runtime: runtimeA,
         });
         const bureauB = await createBureau({
           ...sharedOptions,
@@ -17128,22 +17150,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
           // A still-running run has no durable event of its own, so an
           // unrelated marker supplies a sequence for the floor to pass.
-          const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
-          const adminFeed = createFleetEventFeed(adminStorage);
-          let markerSequence: number;
-          try {
-            const marker = await adminFeed.append({
-              kind: 'review.approved',
-              workflowId: 'run:cor-204-floor-marker',
-              emittedAtMs: 0,
-              payload: {},
-            });
-            markerSequence = marker.sequence;
-          } finally {
-            adminFeed.dispose();
-            adminStorage[Symbol.dispose]();
-          }
-          await retainThrough(databasePath, markerSequence);
+          await retainThrough(databasePath, await appendFloorMarker(databasePath));
 
           await bureauB.runDurableMaintenance();
 
@@ -17155,13 +17162,13 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
             expect.objectContaining({ heldByAnyProcess: true }),
           );
 
+          // Terminal settlement releases the claim. The run's terminal
+          // events land above the earlier floor, so a fresh marker, appended
+          // once A's writes have settled, moves the floor past them too.
           releaseGenerate.resolve();
           await waitForRunCompletion(bureauA, run.id);
-          const page = await bureauA.eventHistory({ kind: 'run', id: run.id });
-          if ('outcome' in page) throw new Error('expected a page for the run');
-          const lastEvent = page.events.at(-1);
-          if (!lastEvent) throw new Error('expected a terminal durable event');
-          await retainThrough(databasePath, lastEvent.sequence);
+          await runtimeA.deferred.drain();
+          await retainThrough(databasePath, await appendFloorMarker(databasePath));
 
           await bureauB.runDurableMaintenance();
 
