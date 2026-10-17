@@ -92,7 +92,8 @@ export type ScenarioRegistrar = {
  *
  * Two guards keep a warm-up from silently doing nothing: `warmScenarios` throws when it has no
  * body to warm, and `scenario` throws when it is declared after `warmScenarios` ran, which is
- * what a `scenario` inside a plain `describe` does.
+ * what a `scenario` inside a plain `describe` does. `group` also throws when called inside
+ * another group, and when the `test` this returns (Bun's `test`, guarded) is used inside one.
  */
 export function warmedTests(
   hooks: { before?: () => void; after?: () => void } = {},
@@ -101,7 +102,30 @@ export function warmedTests(
   const bodies: Scenario[] = [];
   let collecting: { name: string; body: Scenario }[] | null = null;
   let warmed = false;
+  const refuseInsideGroup = (what: string): void => {
+    if (collecting === null) return;
+    throw new Error(
+      `${what} was called inside group(), where it would register at file level, outside the group. Declare it with scenario().`,
+    );
+  };
+  // Bun's own `test`, except that using it while a group is collecting throws. A file that
+  // declares a group takes `test` from here so a stray plain test cannot slip out of the group.
+  const guardedTest = new Proxy(bunTest, {
+    apply(_target, _this, args: [string, Scenario]) {
+      refuseInsideGroup('test()');
+      return registrar.test(...args);
+    },
+    get(target, property, receiver) {
+      const value: unknown = Reflect.get(target, property, receiver);
+      if (typeof value !== 'function') return value;
+      return (...args: unknown[]) => {
+        refuseInsideGroup(`test.${String(property)}()`);
+        return (value as (...rest: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
   return {
+    test: guardedTest,
     scenario(name: string, body: Scenario): void {
       if (warmed) {
         throw new Error(
@@ -116,6 +140,11 @@ export function warmedTests(
       registrar.test(name, body);
     },
     group(name: string, define: () => void): void {
+      if (collecting !== null) {
+        throw new Error(
+          `group("${name}") was called inside another group(). Groups do not nest: the outer group's remaining scenarios would register at file level.`,
+        );
+      }
       const own: { name: string; body: Scenario }[] = [];
       collecting = own;
       try {

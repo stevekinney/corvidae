@@ -75,4 +75,30 @@ describe('warmedTests', () => {
     await warmScenarios();
     expect(warmed).toEqual(['runs']);
   });
+
+  test('a group declared inside another group throws', () => {
+    const { registrar } = recordingRegistrar();
+    const { group, scenario } = warmedTests({}, registrar);
+    expect(() =>
+      group('outer', () => {
+        scenario('before', async () => {});
+        group('inner', () => {});
+      }),
+    ).toThrow('Groups do not nest');
+    // The failed outer group leaves the helper usable.
+    expect(() => group('next', () => {})).not.toThrow();
+  });
+
+  test('a plain test or test.each inside a group throws, and outside one it registers', () => {
+    const { registered, registrar } = recordingRegistrar();
+    const { group, test: guarded } = warmedTests({}, registrar);
+    expect(() => group('g', () => guarded('stray', async () => {}))).toThrow(
+      'test() was called inside group()',
+    );
+    expect(() => group('g', () => guarded.each([1])('stray %s', async () => {}))).toThrow(
+      'test.each() was called inside group()',
+    );
+    guarded('plain', async () => {});
+    expect(registered).toEqual(['test:plain']);
+  });
 });
