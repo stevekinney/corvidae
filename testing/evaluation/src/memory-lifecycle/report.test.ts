@@ -18,6 +18,11 @@ import {
   runMemoryLifecycleSuite,
 } from './suite-run';
 
+// The first caller of the shared run pays for it (a whole deterministic suite run), which a
+// loaded host stretches past Bun's five-second per-test clock. Resolve it at module scope, which
+// has no per-test timeout, so no test pays for it.
+await suiteRun();
+
 async function report(run?: MemoryLifecycleSuiteRun): Promise<MemoryLifecycleReport> {
   const resolved = run ?? (await suiteRun());
   return buildMemoryLifecycleReport(resolved, await decideMemoryLifecycleRelease(resolved));

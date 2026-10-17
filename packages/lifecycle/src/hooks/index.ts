@@ -5,6 +5,7 @@ export type {
   HookMap,
   HookObservationContext,
   HookObservationCorrelation,
+  HookObserverOptions,
   HookPlanDescription,
   HookPlanEntryDescription,
   HookPlanObservation,

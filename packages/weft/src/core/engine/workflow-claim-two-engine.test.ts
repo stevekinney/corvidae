@@ -422,6 +422,82 @@ describe('Engine.lostWorkflowClaim', () => {
     expect(secondEngine.lostWorkflowClaim(secondEngine.getHandle(workflowId))).toBe(false);
   });
 
+  it('never settles a pending result with the outcome of a start-new replacement another engine ran under the same id', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'pending-result-then-replaced-elsewhere';
+    await seedParkedWorkflow(storage, workflowId);
+    const { clock, first, second } = await createLapsingEngines(storage);
+    await using firstEngine = first.engine;
+    await using secondEngine = second.engine;
+
+    // Engine A holds run X and is waiting on its result.
+    const [originalOnFirst] = await firstEngine.recoverAll();
+    expect(originalOnFirst?.id).toBe(workflowId);
+    const originalOutcome = originalOnFirst!.result();
+    void originalOutcome.catch(() => {});
+
+    // Engine B reclaims and completes X, then replaces it with X' under the same id before A's
+    // waiter has polled. The purge happens on B, so nothing on A clears A's waiter or its handle.
+    await takeOverAndComplete(clock, second, workflowId);
+    const replacementOnSecond = await secondEngine.start('claim-race-recovery', null, {
+      id: workflowId,
+      onTerminalConflict: 'start-new',
+    });
+    const replacementOutcome = replacementOnSecond.result();
+    await secondEngine.signal(workflowId, 'go');
+    expect(await replacementOutcome).toBe('ran');
+
+    // A's waiter polls only now. X' is the record under the id, and X' is not the run A awaited.
+    await firstEngine.runMaintenance();
+    expect(await rejectionOf(originalOutcome)).toMatchObject({
+      message: expect.stringContaining('was replaced by a newer run'),
+    });
+    // X's outcome was committed by another engine, so A must not publish it again.
+    expect(firstEngine.lostWorkflowClaim(originalOnFirst!)).toBe(true);
+    expect(secondEngine.lostWorkflowClaim(replacementOnSecond)).toBe(false);
+  });
+
+  it('does not let a later run of the id that this engine completes settle the waiter of the run it replaced', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'pending-result-then-replaced-and-reclaimed';
+    await seedParkedWorkflow(storage, workflowId);
+    const { clock, first, second } = await createLapsingEngines(storage);
+    await using firstEngine = first.engine;
+    await using secondEngine = second.engine;
+
+    const [originalOnFirst] = await firstEngine.recoverAll();
+    const originalOutcome = originalOnFirst!.result();
+    void originalOutcome.catch(() => {});
+
+    // Engine B finishes X and starts X', then its claim lapses and engine A reclaims X' and completes
+    // it. Engine A's waiter for X is still registered when its own terminal path runs for X'.
+    await takeOverAndComplete(clock, second, workflowId);
+    await secondEngine.start('claim-race-recovery', null, {
+      id: workflowId,
+      onTerminalConflict: 'start-new',
+    });
+    clock.now += lapseMs;
+    expect(await first.registry.takeover(workflowId)).toMatchObject({ status: 'acquired' });
+    // Engine A no longer holds X's checkpoint in memory, as after a restart, so recovery adopts X'.
+    getInternals(firstEngine).checkpoints.delete(workflowId);
+    await firstEngine.recoverAll();
+    await firstEngine.signal(workflowId, 'go');
+    await waitForCondition(
+      async () => {
+        const state = await loadWorkflowState(getInternals(firstEngine), workflowId);
+        return state?.status === 'completed';
+      },
+      { label: 'the replacement run completed on the first engine' },
+    );
+
+    await firstEngine.runMaintenance();
+    expect(await rejectionOf(originalOutcome)).toMatchObject({
+      message: expect.stringContaining('was replaced by a newer run'),
+    });
+    // Engine A committed X', so settling X's waiter with it would read as A's own outcome.
+    expect(firstEngine.lostWorkflowClaim(originalOnFirst!)).toBe(true);
+  });
+
   it('keeps reporting a lost claim through a same-engine suspend and resume', async () => {
     const storage = new MemoryStorage();
     const workflowId = 'suspended-resumed-then-lost';

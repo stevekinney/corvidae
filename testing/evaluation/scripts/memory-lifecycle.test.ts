@@ -55,8 +55,10 @@ async function exitCodeOf(result: Promise<CommandResult>): Promise<number> {
 }
 
 // Each lane runs hundreds of in-process trials (the stochastic lane about three seconds of CPU),
-// which a loaded host stretches past Bun's five-second per-test clock. Both lanes run here, once,
-// at module scope, each in its own artifacts directory; their tests rethrow the outcome.
+// which a loaded host stretches past Bun's five-second per-test clock. Every scenario that runs a
+// lane, replays a scenario from it, or recomputes the baseline record runs here, once, at module
+// scope, each in its own directory; its test rethrows the outcome. The replay tests read the
+// artifacts the deterministic lane already wrote instead of running it again.
 const laneDirectory = await mkdtemp(join(tmpdir(), 'memory-lifecycle-lanes-'));
 afterAll(() => rm(laneDirectory, { recursive: true, force: true }));
 
@@ -106,6 +108,45 @@ const stochasticLane = await outcomeOf(async () => {
   }
 });
 
+const suiteFromFile = await outcomeOf(async () => {
+  const suitePath = join(laneDirectory, 'suite.json');
+  await writeFile(suitePath, JSON.stringify(committedSuite));
+  const exitCode = await exitCodeOf(
+    command([
+      'run',
+      '--lane',
+      'deterministic',
+      '--artifacts-dir',
+      join(laneDirectory, 'from-file'),
+      '--suite',
+      suitePath,
+    ]),
+  );
+  expect(exitCode).toBe(0);
+});
+
+const baselineRecord = await outcomeOf(async () => {
+  const current = await command(['baseline']);
+  expect(current.exitCode).toBe(0);
+  expect(current.document).toMatchObject({ result: 'current', differences: [] });
+
+  const copy = join(laneDirectory, 'baseline.json');
+  await copyFile(BEST_SIMPLER_BASELINE_PATH, copy);
+  const stale = JSON.parse(await readFile(copy, 'utf8')) as Record<string, unknown>;
+  await writeFile(copy, JSON.stringify({ ...stale, latencyMilliseconds: 5 }));
+  const outdated = await command(['baseline'], { baselinePath: copy });
+  expect(outdated.exitCode).toBe(1);
+  expect(outdated.document).toMatchObject({
+    result: 'stale',
+    differences: [{ path: 'latencyMilliseconds', stored: 5, recomputed: 0 }],
+  });
+  expect(outdated.stderr).toContain('is stale; regenerate it with --write');
+
+  const written = await command(['baseline', '--write'], { baselinePath: copy });
+  expect(written.exitCode).toBe(0);
+  expect(await readFile(copy, 'utf8')).toBe(await readFile(BEST_SIMPLER_BASELINE_PATH, 'utf8'));
+});
+
 describe('memory-lifecycle run', () => {
   test('runs the deterministic lane, writes every artifact and the Markdown report, and exits with the decision', () =>
     rethrow(deterministicLane));
@@ -113,9 +154,8 @@ describe('memory-lifecycle run', () => {
   test('runs the stochastic lane with a fixed, recorded seed', () => rethrow(stochasticLane));
 
   test('runs a suite from a file, and refuses one that is missing, not JSON, or invalid', async () => {
+    rethrow(suiteFromFile);
     const suitePath = join(directory, 'suite.json');
-    await writeFile(suitePath, JSON.stringify(committedSuite));
-    expect(await exitCodeOf(runLane('deterministic', '--suite', suitePath))).toBe(0);
 
     const missing = await runLane('deterministic', '--suite', join(directory, 'absent.json'));
     expect(missing.exitCode).toBe(64);
@@ -151,9 +191,8 @@ describe('memory-lifecycle run', () => {
 
 describe('memory-lifecycle replay', () => {
   test('replays one failure from its artifact without a model', async () => {
-    await runLane('deterministic');
     const artifact = join(
-      directory,
+      laneDirectory,
       'deterministic',
       'deterministic.flat-hybrid.shared-agent-phone.1.json',
     );
@@ -174,8 +213,11 @@ describe('memory-lifecycle replay', () => {
   });
 
   test('exits 4 on a mismatch, 3 when unresolvable, 65 on a corrupt artifact, and 64 on a usage error', async () => {
-    await runLane('deterministic');
-    const path = join(directory, 'deterministic', 'deterministic.lifecycle.forgotten-phone.1.json');
+    const path = join(
+      laneDirectory,
+      'deterministic',
+      'deterministic.lifecycle.forgotten-phone.1.json',
+    );
     const artifact = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
     const forged = join(directory, 'forged.json');
 
@@ -213,57 +255,37 @@ describe('memory-lifecycle replay', () => {
 
 describe('memory-lifecycle baseline', () => {
   test('confirms the committed record is current, reports a stale one, and writes a fresh one', async () => {
-    const current = await command(['baseline']);
-    expect(current.exitCode).toBe(0);
-    expect(current.document).toMatchObject({ result: 'current', differences: [] });
-
-    const copy = join(directory, 'baseline.json');
-    await copyFile(BEST_SIMPLER_BASELINE_PATH, copy);
-    const stale = JSON.parse(await readFile(copy, 'utf8')) as Record<string, unknown>;
-    await writeFile(copy, JSON.stringify({ ...stale, latencyMilliseconds: 5 }));
-    const outdated = await command(['baseline'], { baselinePath: copy });
-    expect(outdated.exitCode).toBe(1);
-    expect(outdated.document).toMatchObject({
-      result: 'stale',
-      differences: [{ path: 'latencyMilliseconds', stored: 5, recomputed: 0 }],
-    });
-    expect(outdated.stderr).toContain('is stale; regenerate it with --write');
-
-    const written = await command(['baseline', '--write'], { baselinePath: copy });
-    expect(written.exitCode).toBe(0);
-    expect(await readFile(copy, 'utf8')).toBe(await readFile(BEST_SIMPLER_BASELINE_PATH, 'utf8'));
+    rethrow(baselineRecord);
     expect(await exitCodeOf(command(['baseline', 'extra']))).toBe(64);
   });
 });
 
-// The real process is the behavior under test (package script wiring and exit code), so it runs
-// once here at module scope to stay off the per-test clock.
-const spawnedDirectory = await mkdtemp(join(tmpdir(), 'memory-lifecycle-command-spawn-'));
-const spawnedRun = await (async () => {
-  try {
-    const child = spawnWithHangGuard(
-      [
-        process.execPath,
-        'run',
-        '--cwd',
-        PACKAGE_DIRECTORY,
-        'memory-lifecycle',
-        'run',
-        '--artifacts-dir',
-        join(spawnedDirectory, 'spawned'),
-      ],
-      { stdout: 'pipe', stderr: 'pipe' },
-    );
-    const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
-    return { stdout, exitCode };
-  } finally {
-    await rm(spawnedDirectory, { recursive: true, force: true });
-  }
+// The real process is the behavior under test: that the package script is wired to the entry point
+// and that `process.exitCode` reaches the shell. A usage error proves both at the cost of one
+// `bun` boot, with no suite load and no run. The release decision and every other exit code are
+// asserted in process above, so nothing here repeats a lane. The spawn runs once at module scope
+// to stay off the per-test clock.
+const spawnedUsageError = await (async () => {
+  const child = spawnWithHangGuard(
+    [process.execPath, 'run', '--cwd', PACKAGE_DIRECTORY, 'memory-lifecycle', 'publish'],
+    { stdout: 'pipe', stderr: 'pipe' },
+  );
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { stdout, stderr, exitCode };
 })();
 
 describe('the memory-lifecycle script', () => {
-  test('runs as a package script and exits with the release decision', () => {
-    expect(spawnedRun.exitCode).toBe(0);
-    expect(JSON.parse(spawnedRun.stdout)).toMatchObject({ release: { decision: 'pass' } });
+  test('runs as a package script and exits 64 on a usage error', () => {
+    expect(spawnedUsageError.exitCode).toBe(64);
+    expect(JSON.parse(spawnedUsageError.stdout)).toMatchObject({
+      kind: 'memory-lifecycle-usage-error',
+    });
+    expect(spawnedUsageError.stderr).toContain(
+      'Usage: bun run --cwd testing/evaluation memory-lifecycle',
+    );
   });
 });

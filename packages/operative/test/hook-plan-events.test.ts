@@ -1,4 +1,4 @@
-import { HookRegistry } from '@lostgradient/lifecycle';
+import { createManualRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
@@ -198,6 +198,52 @@ describe('COR-766: hook-plan events', () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.error).toBe(failure);
     expect(typeof events[0]?.durationMilliseconds).toBe('number');
+  });
+
+  it("measures a hook's duration on the run's runtime clock, not the registry's", async () => {
+    // The registry carries no clock, so it defaults to the real `Date.now`, as
+    // every plan merged at dispatch does. Each handler moves only the manual
+    // runtime's clock, so the recorded durations are exact if and only if the
+    // run measures them there (AB-321's byte-identical traces depend on it).
+    const runtime = createManualRuntimeServices();
+    const hooks = new HookRegistry<OperativeHookMap>({ onError: () => 'continue' });
+    hooks.on(
+      'prepareStep',
+      async () => {
+        await runtime.advance(250);
+        return undefined;
+      },
+      { id: 'slow' },
+    );
+    hooks.on(
+      'onStep',
+      async () => {
+        await runtime.advance(75);
+        throw new Error('hook exploded');
+      },
+      { id: 'thrower' },
+    );
+
+    const invoked: HookPlanInvokedEvent[] = [];
+    const failed: HookPlanFailedEvent[] = [];
+    const activeRun = createActiveRun({
+      generate: async () => ({ content: 'done', toolCalls: [] }),
+      toolbox: createTestToolbox([]),
+      conversation: new Conversation(),
+      stopWhen: noToolCalls(),
+      hooks,
+      runtime,
+    });
+    activeRun.addEventListener(HookPlanInvokedEvent.type, (event) => invoked.push(event));
+    activeRun.addEventListener(HookPlanFailedEvent.type, (event) => failed.push(event));
+    await activeRun.result;
+
+    expect(invoked.map((event) => [event.hookId, event.durationMilliseconds])).toEqual([
+      ['slow', 250],
+    ]);
+    expect(failed.map((event) => [event.hookId, event.durationMilliseconds])).toEqual([
+      ['thrower', 75],
+    ]);
   });
 
   it('reports an entry unregistered while the run holds the plan', async () => {

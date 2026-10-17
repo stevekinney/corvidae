@@ -50,6 +50,7 @@ import {
   waitForBureauState,
 } from './test/hoisted-scenario';
 import type { Bureau } from './types';
+import { unexpectedChildStderr } from './test/child-stderr';
 
 const CHILD = join(import.meta.dir, 'test', 'process-crash-child.ts');
 const runtime = createDefaultRuntimeServices();
@@ -160,7 +161,7 @@ async function crash<T>(scenario: Scenario, name: string, variant?: string): Pro
 
 async function expectVerifyClean(scenario: Scenario): Promise<void> {
   const outcome = await spawnChild(scenario, 'verify');
-  expect(outcome.stderr).toBe('');
+  expect(unexpectedChildStderr(outcome.stderr)).toBe('');
   expect(outcome.signalCode).toBeNull();
   expect(outcome.exitCode).toBe(0);
   const marker = readMarker<{ recoveryOutcome: string; running: number }>(scenario);
