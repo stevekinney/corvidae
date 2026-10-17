@@ -130,7 +130,7 @@ With `actions` given:
 
 - `onCommentSubmit` and `onExpand` are never called, and Enter and Space no longer expand the popover.
 - Focus moves to the first action once the popover is positioned and open. If a pointer is still down, as in a drag-select, the move waits for the pointer to be released so the selection is not cut short. Open the popover once the selection gesture has finished where you can (for example on `pointerup` or `selectionchange` after a drag); keyboard selection with Shift and the arrow keys has no such release, so the move takes focus as soon as the popover is positioned.
-- The actions are one Tab stop. Left and Right arrows move focus between them, and Home and End jump to the first and last, as in `Toolbar`.
+- The actions are one Tab stop. Left and Right arrows move focus between them, and Home and End jump to the first and last. This is the same implementation `Toolbar` uses, so editable controls keep Home and End and let Left and Right move focus only at the matching caret boundary, and disabling or enabling an action re-computes the Tab stop.
 - On close, focus returns to the element that had it before the popover opened. After a mouse selection that is usually the page body, so name a specific element yourself in `onClose` if focus should land somewhere else.
 - Escape and a pointer press outside call `onClose`, exactly as without `actions`.
 - Selection tracking stays with the caller, as in the other examples.

@@ -215,16 +215,18 @@ describe('SelectionPopover actions keyboard model', () => {
     const quote = screen.getByRole('button', { name: 'Quote' });
     const share = screen.getByRole('button', { name: 'Share' });
 
-    expect(quote.getAttribute('tabindex')).toBe('0');
-    expect(share.getAttribute('tabindex')).toBe('-1');
+    await waitFor(() => {
+      expect(share.tabIndex).toBe(-1);
+    });
+    expect(quote.tabIndex).toBe(0);
     await waitFor(() => {
       expect(document.activeElement === quote).toBe(true);
     });
 
     await fireEvent.keyDown(quote, { key: 'ArrowRight' });
     expect(document.activeElement === share).toBe(true);
-    expect(share.getAttribute('tabindex')).toBe('0');
-    expect(quote.getAttribute('tabindex')).toBe('-1');
+    expect(share.tabIndex).toBe(0);
+    expect(quote.tabIndex).toBe(-1);
 
     await fireEvent.keyDown(share, { key: 'ArrowRight' });
     expect(document.activeElement === quote).toBe(true);
@@ -237,7 +239,157 @@ describe('SelectionPopover actions keyboard model', () => {
 
     await fireEvent.keyDown(quote, { key: 'ArrowLeft' });
     expect(document.activeElement === share).toBe(true);
-    expect(toolbar.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    const tabStops = Array.from(toolbar.querySelectorAll('button')).filter(
+      (button) => button.tabIndex === 0,
+    );
+    expect(tabStops).toHaveLength(1);
+  });
+});
+
+describe('SelectionPopover actions opening without a pointer gesture', () => {
+  test('moves focus to the first action when open goes false to true with no pointer events', async () => {
+    const { rerender } = render(SelectionPopover, {
+      props: {
+        id: 'selection-quote',
+        open: false,
+        position: null,
+        actions: quoteActions(() => {}),
+      },
+    });
+
+    await rerender({ open: true, position: basePosition });
+
+    await waitFor(() => {
+      expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(true);
+    });
+  });
+
+  test('a later pointerup does not pull focus back once it has moved', async () => {
+    await openWithActions();
+    await waitFor(() => {
+      expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(true);
+    });
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+
+    window.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerdown', { bubbles: true }));
+    window.dispatchEvent(new (globalThis.PointerEvent ?? Event)('pointerup', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(document.activeElement === outside).toBe(true);
+  });
+
+  test('retries the opening focus when the actions render a control after open', async () => {
+    let container: Element | undefined;
+    const lateActions = createRawSnippet<[{ close: () => void }]>(() => ({
+      render: () => `<span></span>`,
+      setup: (element) => {
+        container = element;
+      },
+    }));
+    await openWithActions({ actions: lateActions });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(document.activeElement === document.body).toBe(true);
+
+    const late = document.createElement('button');
+    late.textContent = 'Late';
+    container?.append(late);
+
+    await waitFor(() => {
+      expect(document.activeElement === late).toBe(true);
+    });
+  });
+});
+
+describe('SelectionPopover actions focusability changes', () => {
+  async function openWithButtons() {
+    const { toolbar } = await openWithActions({ actions: quoteActions(() => {}) });
+    const buttons = Array.from(toolbar.querySelectorAll('button'));
+    await waitFor(() => {
+      expect(buttons.filter((button) => button.tabIndex === 0)).toHaveLength(1);
+    });
+    return { toolbar, buttons };
+  }
+
+  function tabStopCount(buttons: HTMLButtonElement[]): number {
+    return buttons.filter((button) => button.tabIndex === 0 && !button.disabled).length;
+  }
+
+  test('disabling the active action moves the Tab stop to an enabled one', async () => {
+    const { buttons } = await openWithButtons();
+    const [quote, share] = buttons as [HTMLButtonElement, HTMLButtonElement];
+    expect(quote.tabIndex).toBe(0);
+
+    quote.disabled = true;
+
+    await waitFor(() => {
+      expect(share.tabIndex).toBe(0);
+    });
+    expect(tabStopCount(buttons)).toBe(1);
+  });
+
+  test('enabling a disabled action keeps exactly one Tab stop', async () => {
+    const { buttons } = await openWithButtons();
+    const [quote, share] = buttons as [HTMLButtonElement, HTMLButtonElement];
+    quote.disabled = true;
+    await waitFor(() => {
+      expect(share.tabIndex).toBe(0);
+    });
+
+    quote.disabled = false;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(tabStopCount(buttons)).toBe(1);
+  });
+});
+
+describe('SelectionPopover editable actions', () => {
+  function editableActions() {
+    return createRawSnippet<[{ close: () => void }]>(() => ({
+      render: () =>
+        `<span><button type="button" data-testid="before">Before</button><input data-testid="editor" value="abc" /><button type="button" data-testid="after">After</button></span>`,
+    }));
+  }
+
+  async function openEditable() {
+    const { toolbar } = await openWithActions({ actions: editableActions() });
+    const before = toolbar.querySelector<HTMLButtonElement>('[data-testid="before"]')!;
+    const editor = toolbar.querySelector<HTMLInputElement>('[data-testid="editor"]')!;
+    const after = toolbar.querySelector<HTMLButtonElement>('[data-testid="after"]')!;
+    await waitFor(() => {
+      expect(before.tabIndex === 0 && editor.tabIndex === -1).toBe(true);
+    });
+    editor.focus();
+    return { editor, before, after };
+  }
+
+  test('Home and End stay with the editor', async () => {
+    const { editor } = await openEditable();
+
+    const home = await fireEvent.keyDown(editor, { key: 'Home' });
+    const end = await fireEvent.keyDown(editor, { key: 'End' });
+
+    expect(home && end).toBe(true);
+    expect(document.activeElement === editor).toBe(true);
+  });
+
+  test('Left and Right rove only when the caret is at the matching boundary', async () => {
+    const { editor, before, after } = await openEditable();
+
+    editor.setSelectionRange(1, 1);
+    await fireEvent.keyDown(editor, { key: 'ArrowRight' });
+    await fireEvent.keyDown(editor, { key: 'ArrowLeft' });
+    expect(document.activeElement === editor).toBe(true);
+
+    editor.setSelectionRange(3, 3);
+    await fireEvent.keyDown(editor, { key: 'ArrowRight' });
+    expect(document.activeElement === after).toBe(true);
+
+    editor.focus();
+    editor.setSelectionRange(0, 0);
+    await fireEvent.keyDown(editor, { key: 'ArrowLeft' });
+    expect(document.activeElement === before).toBe(true);
   });
 });
 

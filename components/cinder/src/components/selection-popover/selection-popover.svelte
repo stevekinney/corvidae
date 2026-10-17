@@ -21,23 +21,22 @@
 <script lang="ts">
   import type { Placement, VirtualElement } from '@floating-ui/dom';
   import type { SelectionPopoverProps } from './selection-popover.types.ts';
-  import { onDestroy, tick } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
 
   import { createAnchoredOverlay } from '../../_internal/anchored-overlay.svelte.ts';
   import { createAnchoredOverlayExitState } from '../../_internal/anchored-overlay-exit.svelte.ts';
   import { pushEscapeHandler } from '../../_internal/overlay.ts';
   import { createClickOutside } from '../../utilities/attachments.ts';
   import { classNames } from '../../utilities/class-names.ts';
-  import { handleRovingKeydown } from '../../utilities/roving-tabindex.ts';
+  import {
+    createRovingToolbar,
+    ROVING_TOOLBAR_MUTATION_OPTIONS,
+    type RovingToolbarController,
+  } from '../../utilities/roving-toolbar.ts';
   import { useMutationObserver } from '../../utilities/use-mutation-observer.svelte.ts';
   import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
   import { createPortalAttachment } from '../portal/index.ts';
   import { createVirtualKeyboardDismissal } from './virtual-keyboard-dismissal.svelte.ts';
-
-  // Controls that become roving toolbar items when the caller supplies `actions`. Matches by element
-  // type rather than `tabindex`, because the roving logic itself rewrites `tabindex` on these.
-  const ACTION_ITEM_SELECTOR =
-    'button:not([disabled]), a[href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([disabled])';
 
   let {
     id,
@@ -65,10 +64,14 @@
   // Set on each closed -> open transition when `actions` is given; cleared once focus has
   // moved to the first action. That waits for positioning (the panel is hidden until then) and for
   // any pointer gesture to finish, so the move never interrupts a drag-select.
-  let pendingActionsFocus = false;
+  // `$state`, not a plain flag: `focusFirstAction` runs in an effect, and an effect that checks a
+  // non-reactive flag before reading any signal never subscribes to `open` or `positionReady`, so a
+  // popover that mounts closed would never move focus when it opens.
+  let pendingActionsFocus = $state(false);
   let actionsFocusTimer: ReturnType<typeof setTimeout> | undefined;
-  let customActionsElement = $state<HTMLDivElement | null>(null);
-  let activeAction: HTMLElement | null = null;
+  // The roving toolbar over the caller's actions is shared with `Toolbar`; see
+  // utilities/roving-toolbar.ts. It exists only while the actions container is mounted.
+  let rovingActions: RovingToolbarController | null = null;
   let isRestoringFocus = false;
   // A count, not a boolean: a multi-pointer gesture (two-finger touch, pen +
   // touch, etc.) can have more than one pointer down at once. Releasing one
@@ -344,12 +347,10 @@
   });
 
   function handleKeydown(event: KeyboardEvent): void {
-    // Caller-supplied actions own Enter and Space: leave the keys untouched so the
-    // native activation of the action buttons is not suppressed. Only roving keys are handled.
-    if (actions) {
-      handleActionsKeydown(event);
-      return;
-    }
+    // Caller-supplied actions own Enter and Space: leave the keys untouched so the native
+    // activation of the action buttons is not suppressed. Roving keys are handled by the roving
+    // toolbar on the actions container.
+    if (actions) return;
     if ((event.key === 'Enter' || event.key === ' ') && !expanded && !event.defaultPrevented) {
       event.preventDefault();
       handleExpand();
@@ -427,72 +428,52 @@
     if (!wasOpen) {
       wasOpen = true;
       closeRequested = false;
-      pendingActionsFocus = true;
+      // Only actions mode moves focus on open; comment mode never arms it.
+      pendingActionsFocus = untrack(() => actions !== undefined);
       rememberFocus();
     }
   });
 
-  function getActionItems(): HTMLElement[] {
-    return customActionsElement
-      ? Array.from(customActionsElement.querySelectorAll<HTMLElement>(ACTION_ITEM_SELECTOR))
-      : [];
-  }
-
-  // One Tab stop: the active action keeps `tabindex="0"`, every other action gets `-1`, and the
-  // arrow keys rove between them (the WAI-ARIA toolbar pattern, as in `Toolbar`).
-  function syncActionTabStops(): void {
-    const items = getActionItems();
-    if (items.length === 0) return;
-    const active = activeAction && items.includes(activeAction) ? activeAction : items[0]!;
-    activeAction = active;
-    for (const item of items) item.setAttribute('tabindex', item === active ? '0' : '-1');
-  }
-
-  const observeActions = useMutationObserver(() => syncActionTabStops(), {
-    subtree: true,
-    childList: true,
-  });
-
-  $effect(() => {
-    if (customActionsElement) syncActionTabStops();
-  });
-
-  function handleActionsFocusIn(event: FocusEvent): void {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    const item = getActionItems().find((candidate) => candidate === target);
-    if (!item) return;
-    activeAction = item;
-    syncActionTabStops();
-  }
-
-  function handleActionsKeydown(event: KeyboardEvent): void {
-    if (event.defaultPrevented) return;
-    const items = getActionItems();
-    const target = event.target;
-    const currentIndex = items.findIndex(
-      (item) => item === target || (target instanceof Node && item.contains(target)),
-    );
-    if (currentIndex === -1) return;
-    const nextIndex = handleRovingKeydown(event, currentIndex, items.length, { vertical: false });
-    if (nextIndex === null) return;
-    event.preventDefault();
-    items[nextIndex]?.focus({ preventScroll: true });
+  // One Tab stop over the caller's actions, with arrow-key roving and Toolbar's handling of
+  // editable controls. Attached to the container the actions snippet renders into. Re-syncs on any
+  // change that can alter which actions are focusable, then retries the opening focus, which may
+  // have been waiting for a control to exist.
+  function rovingActionsSetup(node: HTMLDivElement) {
+    const roving = createRovingToolbar({ root: node });
+    rovingActions = roving;
+    roving.sync();
+    const detachRoving = roving.attach();
+    const detachObserver = useMutationObserver(() => {
+      roving.sync();
+      focusFirstAction();
+    }, ROVING_TOOLBAR_MUTATION_OPTIONS)(node);
+    return () => {
+      detachRoving();
+      detachObserver?.();
+      rovingActions = null;
+    };
   }
 
   // Moves focus to the first action once per open session. Waits for positioning so focus never
   // lands in the still-hidden panel (`visibility: hidden` until `data-cinder-position-ready`), and
   // for a pointer that is still down, so a drag-select is not cut short.
   function focusFirstAction(): void {
-    if (!actions || !pendingActionsFocus || pointerIsDown()) return;
-    if (!isPositionedOpen || !anchoredOverlay.positionReady) return;
-    const firstAction = getActionItems()[0];
+    // Reactive gates first, so the calling effect always subscribes to them.
+    if (!isPositionedOpen || !anchoredOverlay.positionReady || !actions) return;
+    if (!pendingActionsFocus || pointerIsDown()) return;
+    // The panel only became visible with `data-cinder-position-ready`, so the tab stops are
+    // (re)computed now: hidden controls are not roving items.
+    rovingActions?.sync();
+    const firstAction = rovingActions?.firstEnabledItem();
     if (!firstAction) return;
     pendingActionsFocus = false;
     firstAction.focus({ preventScroll: true });
   }
 
   $effect(() => {
+    // The panel turns visible with `data-cinder-position-ready`; until then its controls count as
+    // hidden, so re-derive the tab stops once it is ready, then move focus if that is pending.
+    if (isPositionedOpen && anchoredOverlay.positionReady) rovingActions?.sync();
     focusFirstAction();
   });
 </script>
@@ -527,12 +508,7 @@
   inert={exitState.isClosing ? true : undefined}
 >
   {#if actions}
-    <div
-      bind:this={customActionsElement}
-      class="cinder-selection-popover__custom-actions"
-      onfocusin={handleActionsFocusIn}
-      {@attach observeActions}
-    >
+    <div class="cinder-selection-popover__custom-actions" {@attach rovingActionsSetup}>
       {@render actions({ close: closePopover })}
     </div>
   {:else if expanded}
