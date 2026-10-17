@@ -19,6 +19,7 @@ export const environmentBoundaries = [
     paths: new Set([
       'applications/playground/src/environment-configuration.ts',
       'applications/terminal-example/src/server/environment-configuration.ts',
+      'packages/bungalow/src/environment-configuration.ts',
       'packages/operative/src/environment-configuration.ts',
       'packages/bureau/src/skills/environment-configuration.ts',
       'testing/testing/src/environment-configuration.ts',
