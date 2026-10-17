@@ -69,7 +69,6 @@
   // the user scrolls to the end of the list. LoadMore captures its root once, when
   // it is created, so it is only created after the element exists.
   let listElement = $state<HTMLElement | null>(null);
-  const showLoadMore = $derived(onLoadMore !== undefined && hasMore);
   // Left out rather than passed as `undefined`, so LoadMore keeps its own defaults.
   const loadMoreOptions = $derived({
     ...(buttonLabel === undefined ? {} : { buttonLabel }),
@@ -116,7 +115,7 @@
   {...rest}
   class={classNames('cinder-chat-conversation-list', className)}
   aria-label={resolvedAriaLabel}
-  data-cinder-conversation-list-scrolls={showLoadMore ? '' : undefined}
+  data-cinder-conversation-list-scrolls={onLoadMore === undefined ? undefined : ''}
 >
   {#if sortedConversations.length === 0}
     <p class="cinder-chat-conversation-list__empty" role="status">{emptyText}</p>

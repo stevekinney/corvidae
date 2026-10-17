@@ -169,6 +169,21 @@ describe('ChatConversationList load more', () => {
     expect(observer?.options?.root).toBe(nav);
   });
 
+  test('stays a scroll container after the last page, once hasMore is false', async () => {
+    const { container, rerender } = render(ChatConversationList, {
+      props: { conversations: rows, hasMore: true, onLoadMore: async () => {} },
+    });
+    await tick();
+    const nav = container.querySelector('nav')!;
+    expect(nav.hasAttribute('data-cinder-conversation-list-scrolls')).toBe(true);
+
+    await rerender({ conversations: rows, hasMore: false, onLoadMore: async () => {} });
+    await tick();
+
+    expect(container.querySelector('.cinder-load-more')).toBeNull();
+    expect(nav.hasAttribute('data-cinder-conversation-list-scrolls')).toBe(true);
+  });
+
   test('renders nothing without hasMore or without onLoadMore', async () => {
     const withoutHasMore = render(ChatConversationList, {
       props: { conversations: rows, onLoadMore: async () => {} },

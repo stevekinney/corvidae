@@ -50,15 +50,41 @@
       agent: { id: 'atlas', name: 'Atlas' },
       activity: 'idle',
     },
+    // Enough older sessions that the list overflows its bounded height, so the
+    // load-more control sits past the fold until the user scrolls to the end.
+    ...Array.from({ length: 8 }, (_, index): ConversationSummary => {
+      const minute = String(index).padStart(2, '0');
+      return {
+        id: `archive-${index}`,
+        title: `Archived session ${index + 1}`,
+        status: 'active',
+        messageCount: 3,
+        unreadCount: 0,
+        createdAt: `2026-05-30T04:${minute}:00.000Z`,
+        updatedAt: `2026-05-30T04:${minute}:00.000Z`,
+        lastMessageId: `archive-${index}-last`,
+        lastMessageRole: 'assistant',
+        lastMessageText: 'Closed without follow-up.',
+        lastMessageAt: `2026-05-30T04:${minute}:00.000Z`,
+        participantNames: [],
+        agent: { id: 'atlas', name: 'Atlas' },
+      };
+    }),
   ];
+
+  // Counted on the wrapper, so a browser test can see when the list asks for more.
+  let loadMoreCalls = $state(0);
 </script>
 
-<div style="max-block-size: 20rem;">
+<div data-load-more-calls={loadMoreCalls}>
   <ChatConversationList
     {conversations}
     activeConversationId="launch"
     onSelectConversation={() => {}}
     hasMore
-    onLoadMore={async () => {}}
+    onLoadMore={async () => {
+      loadMoreCalls += 1;
+    }}
+    style="max-block-size: 16rem;"
   />
 </div>

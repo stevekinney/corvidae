@@ -4,9 +4,11 @@
     display: block;
   }
 
-  /* With a load-more control the list is the scroll container LoadMore observes,
-     so the host bounds its height and the list scrolls inside it. The inline
-     padding keeps a row's focus ring from being clipped at the scrollport edge. */
+  /* With a load-more handler the list is the scroll container LoadMore observes,
+     so the host bounds its height and the list scrolls inside it. It stays one
+     after the last page, when the control itself is gone, so the rows do not
+     stop scrolling. The inline padding keeps a row's focus ring from being
+     clipped at the scrollport edge. */
   .cinder-chat-conversation-list[data-cinder-conversation-list-scrolls] {
     overflow-y: auto;
     padding-inline: var(--cinder-ring-width);
