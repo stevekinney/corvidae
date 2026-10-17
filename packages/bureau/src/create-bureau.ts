@@ -12562,6 +12562,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   const bureau: Bureau<D> = {
     id: bureauId,
+    hasExplicitId: options.id !== undefined,
     eventFeed,
     runEventFeeds,
     store,

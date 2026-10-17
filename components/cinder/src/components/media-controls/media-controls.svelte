@@ -9,8 +9,7 @@
    * @useWhen Embedding play/pause/replay controls for audio or video content.
    * @useWhen Rendering media controls inside a toolbar or standalone on a card.
    * @avoidWhen You need waveform visualization or Web Audio integration — wire that separately.
-   * @avoidWhen You need a full media player UI with seek scrubbing — use a dedicated player component.
-   * @related button, toolbar, progress, tooltip
+   * @related button, toolbar, progress, tooltip, video-player, audio-player
    */
   export type { MediaControlsLayout, MediaControlsProps } from './media-controls.types.ts';
 </script>
@@ -32,6 +31,7 @@
     onPlay,
     onPause,
     onReplay,
+    onSeek,
     class: customClassName,
     ...rest
   }: MediaControlsProps = $props();
@@ -65,6 +65,12 @@
     if (isDisabled) return;
     announcement = 'Replaying';
     onReplay?.();
+  }
+
+  function handleSeek(event: Event & { currentTarget: HTMLInputElement }) {
+    if (isDisabled) return;
+    const next = event.currentTarget.valueAsNumber;
+    if (Number.isFinite(next)) onSeek?.(Math.max(0, Math.min(1, next)));
   }
 
   function handlePrimaryAction() {
@@ -216,7 +222,20 @@
     {/if}
   </button>
 
-  {#if hasProgress}
+  {#if hasProgress && onSeek}
+    <input
+      type="range"
+      class="cinder-media-controls__seek"
+      aria-label={progressLabel}
+      aria-valuetext="{progressPercent}%"
+      aria-disabled={isDisabled ? 'true' : undefined}
+      min="0"
+      max="1"
+      step="0.01"
+      value={clampedProgress}
+      oninput={handleSeek}
+    />
+  {:else if hasProgress}
     <div
       class="cinder-media-controls__progress"
       role="progressbar"

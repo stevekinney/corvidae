@@ -65,6 +65,11 @@ const schema = {
         reason: 'function-or-snippet',
         description: 'Called when the replay action is triggered.',
       },
+      {
+        name: 'onSeek',
+        reason: 'function-or-snippet',
+        description: 'Called with the requested position (0 to 1) when the seek slider changes.',
+      },
     ],
   },
 } satisfies ComponentSchema;

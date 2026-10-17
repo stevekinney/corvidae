@@ -20,7 +20,7 @@ describe('@lostgradient/cinder root API', () => {
   });
 
   it('exposes component metadata from the same package entrypoint', () => {
-    expect(manifest.components).toHaveLength(201);
+    expect(manifest.components).toHaveLength(203);
     expect(buttonSchema.type).toBe('object');
     expect(buttonVariables).toContain('--cinder-button-background');
     expect(buttonConstraints.component).toBe('button');

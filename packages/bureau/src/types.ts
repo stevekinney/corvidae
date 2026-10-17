@@ -1193,6 +1193,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /** This bureau's identity — {@link BureauOptions.id}, or a generated one. */
   readonly id: string;
   /**
+   * Whether {@link BureauOptions.id} was supplied. `false` means {@link Bureau.id}
+   * is a generated identifier that changes on every restart, which
+   * `createBureauHandler` refuses to serve over persistent storage because it
+   * would orphan whatever that storage holds.
+   */
+  readonly hasExplicitId: boolean;
+  /**
    * This bureau's own events, as a replay-plus-live feed.
    *
    * The same events `addEventListener`/`subscribe` deliver, but recorded with

@@ -18,7 +18,8 @@
     "./worker": "./src/worker/index.ts",
     "./worker/authoring": "./src/worker/authoring.ts",
     "./worker/generated-authoring": "./src/worker/generated-authoring.ts",
-    "./ui": "./src/ui/index.ts"
+    "./ui": "./src/ui/index.ts",
+    "./a2a": "./src/a2a/index.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json --report-unused-disable-directives-severity=error --ignore-pattern='src/ui/**' --ignore-pattern='scripts/ui-browser/**' --ignore-pattern='scripts/ui-coverage/**' && oxlint -c ../../.oxlintrc.json --deny-warnings --type-aware --tsconfig ./tsconfig.ui.json src/ui scripts/ui-browser scripts/ui-coverage && bun scripts/check-lint-disables.ts && bun scripts/check-implementation-file-sizes.ts && bun scripts/check-import-cycles.ts && bun scripts/check-internal-imports.ts && bun scripts/check-engine-internals-field-access.ts && bun scripts/check-revision-keyed-lookups.ts && bun scripts/check-definition-vocabulary.ts && bun scripts/check-catalog-completeness.ts && bun scripts/check-type-ergonomics.ts",
@@ -52,7 +53,16 @@
     "zod": "catalog:",
     "@lostgradient/environmentalist": "catalog:"
   },
+  "peerDependencies": {
+    "@a2a-js/sdk": "1.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@a2a-js/sdk": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@a2a-js/sdk": "catalog:",
     "@axe-core/playwright": "catalog:",
     "@lostgradient/cinder": "workspace:*",
     "@lostgradient/markdown": "workspace:*",
