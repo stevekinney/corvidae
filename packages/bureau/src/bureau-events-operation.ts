@@ -14,6 +14,7 @@ import {
   createReplayAwareClosableIterable,
   decodeCursor,
   defineOperation,
+  type OperationFault,
   type ReplayLiveSubscribeOptions,
 } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -125,9 +126,9 @@ export const bureauEventsSubscriptionOperation = defineOperation<
       if (bureauFeed === undefined) {
         // An unknown bureau is a caller error: it may have been disposed
         // between listing it and subscribing.
-        // Thrown as a plain fault, which the catalog pipeline passes through intact.
-        const notFound = {
-          code: 'NotFound' as const,
+        // A typed fault, which the catalog pipeline passes through intact.
+        const notFound: OperationFault = {
+          code: 'NotFound',
           message: `Unknown bureau "${input.bureauId}"`,
           data: { resource: 'bureau', identifier: input.bureauId },
         };

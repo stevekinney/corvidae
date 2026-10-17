@@ -222,6 +222,9 @@ export function buildSseMessages(
           additionalProperties: false,
           properties: {
             emittedAtMs: { type: 'number' },
+            // Present, and always `true`, on the one ping a subscription sends
+            // after the replay of already-recorded events has been delivered.
+            replayComplete: { const: true, type: 'boolean' },
           },
           required: ['emittedAtMs'],
           type: 'object',
@@ -232,7 +235,8 @@ export function buildSseMessages(
             event: 'ping',
           },
         },
-        'x-weft-sse-frame': 'event: ping\\ndata: {"emittedAtMs":<timestamp>}\\n\\n',
+        'x-weft-sse-frame':
+          'event: ping\\ndata: {"emittedAtMs":<timestamp>[,"replayComplete":true]}\\n\\n',
       },
       [eventNames.errorEvent]: {
         name: eventNames.errorEvent,

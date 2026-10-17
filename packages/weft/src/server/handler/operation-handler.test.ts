@@ -410,6 +410,52 @@ describe('createOperationHandler publicPaths', () => {
     expect(await statusOf(handler, new Request('http://localhost/openapi.json'))).toBe(401);
   });
 
+  it('documents no credentials in OpenAPI only for the paths it leaves public', async () => {
+    const openApi = async (publicPaths: string[]) => {
+      const handler = createOperationHandler({
+        operations: [echoOperation],
+        host: {},
+        authenticate: async () => readerContext(),
+        publicPaths,
+      });
+      const response = await handler(
+        new Request('http://localhost/openapi.json', {
+          headers: { Authorization: 'Bearer x' },
+        }),
+      );
+      return (await response.json()) as {
+        security: unknown[];
+        paths: Record<string, { get: { security?: unknown[] } }>;
+      };
+    };
+
+    const none = await openApi([]);
+    const one = await openApi(['/v1/health']);
+
+    expect(none.security.length).toBeGreaterThan(0);
+    for (const entry of Object.values(none.paths)) expect(entry.get.security).toBeUndefined();
+    expect(one.paths['/v1/health']?.get.security).toEqual([]);
+    expect(one.paths['/openapi.json']?.get.security).toBeUndefined();
+  });
+
+  it('refuses a typo, and accepts a registered subscription route', () => {
+    const host = createTestHost();
+    const build = (publicPaths: string[]) => () =>
+      createOperationHandler({
+        operations: [eventsOperation, scopedEchoOperation],
+        host,
+        publicPaths,
+      });
+
+    expect(build(['/v1/helth'])).toThrow(/is not a route the handler serves/);
+    expect(build(['/v1/health/extra'])).toThrow(/is not a route the handler serves/);
+    expect(build(['/v1/subscriptions'])).toThrow(/is not a route the handler serves/);
+    expect(build(['/v1/subscriptions/probe.missing'])).toThrow(/registered subscription/);
+    expect(build(['/v1/subscriptions/probe.scoped'])).toThrow(/registered subscription/);
+    expect(build(['/v1/subscriptions/probe.events'])).not.toThrow();
+    expect(build(['/jsonrpc'])).not.toThrow();
+  });
+
   it('refuses an entry the handler does not serve, and accepts one beside a mount’s own', () => {
     const build =
       (publicPaths: string[], mountPrefix = '/a2a') =>
@@ -421,7 +467,7 @@ describe('createOperationHandler publicPaths', () => {
           mounts: [{ pathPrefix: mountPrefix, fetch: async () => new Response('mounted') }],
         });
 
-    expect(build(['/nothing-here'])).toThrow(/is not a path the handler serves/);
+    expect(build(['/nothing-here'])).toThrow(/is not a route the handler serves/);
     expect(build(['health'])).toThrow(/absolute path/);
     expect(
       createOperationHandler.bind(null, {

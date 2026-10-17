@@ -14,6 +14,7 @@ import {
   createReplayAwareClosableIterable,
   decodeCursor,
   defineOperation,
+  type OperationFault,
   type ReplayLiveSubscribeOptions,
 } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -163,9 +164,9 @@ export const runEventsSubscriptionOperation = defineOperation<
     if (runFeed === undefined) {
       // An unknown run is a caller error, not a transport failure: the run may
       // have completed and been reaped between listing it and subscribing.
-      // Thrown as a plain fault, which the catalog pipeline passes through intact.
-      const notFound = {
-        code: 'NotFound' as const,
+      // A typed fault, which the catalog pipeline passes through intact.
+      const notFound: OperationFault = {
+        code: 'NotFound',
         message: `Unknown run "${input.runId}"`,
         data: { resource: 'run', identifier: input.runId },
       };

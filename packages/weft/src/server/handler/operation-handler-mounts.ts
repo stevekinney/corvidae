@@ -1,4 +1,8 @@
-import type { DispatchResult, executeSubscription } from '../operation-catalog.ts';
+import type {
+  DispatchResult,
+  executeSubscription,
+  OperationRegistry,
+} from '../operation-catalog.ts';
 import type { Principal } from '../principal.ts';
 import { GENERIC_SUBSCRIPTION_ROUTE_PREFIX } from '../route-model.ts';
 
@@ -99,23 +103,41 @@ export const DEFAULT_OPERATION_HANDLER_PUBLIC_PATHS: ReadonlyArray<string> = [
 /**
  * Validate the handler's own `publicPaths` once, at construction, with the
  * rules a mount's `publicPaths` follow: an entry is an absolute path that
- * belongs to a route the handler serves (anything else is inert and almost
- * certainly a typo). A mount can never claim such a path, because a mount
+ * names a route the handler serves exactly, a fixed route or
+ * `/v1/subscriptions/<name>` for a registered subscription (anything else is
+ * inert and almost certainly a typo). A mount can never claim such a path, because a mount
  * prefix or public path that equals or lies beneath a catalog route is refused
  * at construction, so an unauthenticated path always has exactly one owner.
  */
-export function resolveHandlerPublicPaths(paths: ReadonlyArray<string>): ReadonlySet<string> {
+export function resolveHandlerPublicPaths(
+  paths: ReadonlyArray<string>,
+  registry: OperationRegistry,
+): ReadonlySet<string> {
   const resolved = new Set<string>();
   for (const path of paths) {
     const normalized = assertMountPath(path, 'publicPaths entry');
-    if (!OPERATION_HANDLER_CATALOG_ROUTE_PATHS.some((route) => isAtOrUnder(normalized, route))) {
+    if (!servesExactly(normalized, registry)) {
       throw new Error(
-        `createOperationHandler: publicPaths entry "${normalized}" is not a path the handler serves`,
+        `createOperationHandler: publicPaths entry "${normalized}" is not a route the handler serves. ` +
+          `Use one of ${FIXED_ROUTE_PATHS.join(', ')}, or ${GENERIC_SUBSCRIPTION_ROUTE_PREFIX}/<name> ` +
+          'for a registered subscription operation',
       );
     }
     resolved.add(normalized);
   }
   return resolved;
+}
+
+const FIXED_ROUTE_PATHS = OPERATION_HANDLER_CATALOG_ROUTE_PATHS.filter(
+  (route) => route !== GENERIC_SUBSCRIPTION_ROUTE_PREFIX,
+);
+
+/** A fixed route, or the subscription route for an operation that is registered. */
+function servesExactly(path: string, registry: OperationRegistry): boolean {
+  if (FIXED_ROUTE_PATHS.includes(path)) return true;
+  const subscriptionPrefix = `${GENERIC_SUBSCRIPTION_ROUTE_PREFIX}/`;
+  if (!path.startsWith(subscriptionPrefix)) return false;
+  return registry.get(path.slice(subscriptionPrefix.length))?.kind === 'subscription';
 }
 
 type NormalizedMount = {

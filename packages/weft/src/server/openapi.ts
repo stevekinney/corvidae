@@ -69,6 +69,13 @@ export type OpenApiOptions = {
    * would answer with a 404.
    */
   directRoutes?: ReadonlyArray<(typeof DIRECT_HTTP_ROUTES)[number]['handler']>;
+  /**
+   * The paths the server answers without authentication. A direct route is
+   * documented as needing no credentials only when its path is listed here;
+   * the rest inherit the document-level security. Defaults to every direct
+   * route defined as public, which is what `serve()` does.
+   */
+  publicPaths?: ReadonlySet<string>;
 };
 
 // ---------------------------------------------------------------------------
@@ -373,14 +380,20 @@ function buildDirectRouteResponses(route: DirectHttpRouteDefinition): Record<str
   return responses;
 }
 
-function buildDirectRouteSecurity(route: DirectHttpRouteDefinition): [] | undefined {
-  return route.access === 'public' ? [] : undefined;
+function buildDirectRouteSecurity(
+  route: DirectHttpRouteDefinition,
+  publicPaths: ReadonlySet<string> | undefined,
+): [] | undefined {
+  const isPublic =
+    publicPaths === undefined ? route.access === 'public' : publicPaths.has(route.path);
+  return isPublic ? [] : undefined;
 }
 
 function emitDirectRoutes(
   paths: Record<string, Record<string, unknown>>,
   tagSet: Set<string>,
   served: ReadonlyArray<string> | undefined,
+  publicPaths: ReadonlySet<string> | undefined,
 ): void {
   for (const route of DIRECT_HTTP_ROUTES) {
     if (served !== undefined && !served.includes(route.handler)) continue;
@@ -394,7 +407,7 @@ function emitDirectRoutes(
       tags: route.tags,
       responses: buildDirectRouteResponses(route),
     };
-    const security = buildDirectRouteSecurity(route);
+    const security = buildDirectRouteSecurity(route, publicPaths);
     if (security !== undefined) entry['security'] = security;
     if (parameters.length > 0) entry['parameters'] = parameters;
 
@@ -443,7 +456,7 @@ function buildOpenApiPaths(
   emitBindings(paths, tagSet, options?.restBindings, registry, schemaHelper);
   // Direct routes are reserved infrastructure endpoints, so they are emitted
   // after bindings and overwrite any conflicting user binding documentation.
-  emitDirectRoutes(paths, tagSet, options?.directRoutes);
+  emitDirectRoutes(paths, tagSet, options?.directRoutes, options?.publicPaths);
 
   const tags = [...tagSet].toSorted().map((name) => ({ name }));
   return { paths, tags };

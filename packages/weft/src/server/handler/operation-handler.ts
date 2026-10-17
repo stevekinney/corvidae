@@ -77,7 +77,8 @@ export type OperationHandlerOptions<Host> = {
    * of them. This is the only place the handler's own public paths are
    * decided: `createOperationHandlerAuthenticator` has none of its own, and a
    * mount's `publicPaths` cover its paths. An entry must be a path the handler
-   * serves (a mount cannot claim one, so the two never overlap).
+   * serves exactly: a fixed route, or `/v1/subscriptions/<name>` for a
+   * registered subscription (a mount cannot claim one, so the two never overlap).
    */
   readonly publicPaths?: ReadonlyArray<string>;
   readonly discoveryInfo?: DiscoveryInfo;
@@ -200,6 +201,7 @@ export function createOperationHandler<Host>(
   const mounts = resolveMounts(options.mounts ?? []);
   const publicPaths = resolveHandlerPublicPaths(
     options.publicPaths ?? DEFAULT_OPERATION_HANDLER_PUBLIC_PATHS,
+    registry,
   );
   const corsPolicy =
     options.cors === undefined
@@ -210,6 +212,7 @@ export function createOperationHandler<Host>(
     registry,
     discoveryInfo: options.discoveryInfo,
     authenticates: authenticate !== undefined,
+    publicPaths,
   });
 
   const handle = async (request: Request): Promise<Response> => {

@@ -29,6 +29,8 @@ export function createOperationHandlerDocuments(options: {
   readonly registry: OperationRegistry;
   readonly discoveryInfo: DiscoveryInfo | undefined;
   readonly authenticates: boolean;
+  /** The resolved public paths; the OpenAPI document marks only these as needing no credentials. */
+  readonly publicPaths: ReadonlySet<string>;
 }): OperationHandlerDocuments {
   const { registry, discoveryInfo } = options;
   const info = discoveryInfo === undefined ? {} : { discoveryInfo };
@@ -43,6 +45,7 @@ export function createOperationHandlerDocuments(options: {
         registry,
         restBindings: [],
         directRoutes: ['healthCheck', 'openApiDocument', 'openRpcDocument', 'asyncApiDocument'],
+        publicPaths: options.publicPaths,
         ...(supportedSchemes === undefined ? {} : { supportedSchemes }),
         ...info,
       }),
