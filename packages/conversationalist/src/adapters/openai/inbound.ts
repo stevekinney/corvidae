@@ -6,7 +6,7 @@ import type {
   MessageInput,
   ToolResult,
 } from '../../types';
-import { isCanonicalToolResultPayload, parseJSONValue } from '../shared';
+import { parseJSONValue, parseToolResultText } from '../shared';
 import type { OpenAIContentPart, OpenAIMessage, OpenAITextContentPart } from './types';
 
 function toConversationContent(
@@ -44,25 +44,7 @@ function parseToolArguments(value: string): JSONValue {
 function parseToolResult(callId: string, content: string | OpenAITextContentPart[]): ToolResult {
   const serialized =
     typeof content === 'string' ? content : content.map((part) => part.text).join('\n\n');
-  const parsed = parseJSONValue(serialized);
-
-  if (parsed !== undefined && isCanonicalToolResultPayload(parsed)) {
-    return {
-      callId,
-      outcome: parsed.outcome,
-      content: parsed.content,
-      ...(parsed.error ? { error: parsed.error } : {}),
-      ...(parsed.action ? { action: parsed.action } : {}),
-      ...(typeof parsed.inputDigest === 'string' ? { inputDigest: parsed.inputDigest } : {}),
-      ...(typeof parsed.outputDigest === 'string' ? { outputDigest: parsed.outputDigest } : {}),
-    };
-  }
-
-  return {
-    callId,
-    outcome: 'success',
-    content: parsed ?? serialized,
-  };
+  return parseToolResultText(callId, serialized);
 }
 
 function toMessageInputs(messages: ReadonlyArray<OpenAIMessage>): MessageInput[] {

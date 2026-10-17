@@ -851,6 +851,25 @@ const updated = appendGeminiMessages(history, payload);
 
 **Key exports:** `toGeminiMessages`, `fromGeminiMessages`, `appendGeminiMessages`, `geminiConversationAdapter`. Type exports: `GeminiConversation`, `GeminiContent`, `GeminiPart`, `GeminiTextPart`, `GeminiInlineDataPart`, `GeminiFileDataPart`, `GeminiFunctionCallPart`, `GeminiFunctionResponsePart`.
 
+### AG-UI message mapping
+
+Maps Conversationalist history to and from the `messages` of an [AG-UI](https://docs.ag-ui.com) 1.0 `MESSAGES_SNAPSHOT` event, using the types and schemas of the pinned `@ag-ui/core` package. Event streaming is not included.
+
+```ts
+import { agUiConversationAdapter, fromAGUIMessages, toAGUIMessages } from 'conversationalist';
+
+const messages = toAGUIMessages(history); // validated against the @ag-ui/core message schema
+const imported = fromAGUIMessages(messages);
+```
+
+`system`, `developer`, `user`, and `assistant` messages keep their roles and their ids. A `thinking` part becomes a `reasoning` message placed before its assistant message (id `<assistant id>:reasoning:<n>`, signature as `encryptedValue`), and returns as a `thinking` part of the assistant message that follows; reasoning is therefore hoisted ahead of text. A `tool-call` message becomes an assistant message with one entry in `toolCalls`, and a `tool-result` becomes a `tool` message. Hidden, streaming, and `snapshot` messages are skipped on export, and `activity` messages are skipped on import.
+
+Imported messages keep the AG-UI `id`, and a message that splits into several rows derives the extra ids from its own: an assistant message with text and `toolCalls` is a text row `<id>` plus a `tool-call` row `<id>:call:<toolCall.id>` per call, and one with only `toolCalls` gives its first call the id `<id>`. Export reads that derivation back, so `toAGUIMessages(fromAGUIMessages(x))` reproduces the ids of `x`, and an assistant message with text and calls comes back as one message. Conversation plugins do not run over imported messages, because `appendMessages` treats an input that carries an `id` as already built. `mergeAGUIMessages` adds the rows of a snapshot whose ids (and, for a tool call, whose call id) a conversation does not hold yet and never changes a row it has, which is how a whole-thread `MESSAGES_SNAPSHOT` meets a conversation that already shows part of it.
+
+A tool result travels as the text of its content, with `error` set for a failure and the exact `ToolResult` in the message metadata under `conversationalist:toolResult` whenever the text would not recover it, so a success whose content is a string that looks like JSON stays a string and a success object shaped like a failure stays a success. A tool message from any other backend is read as a success whose content is its text (never parsed as JSON), or its parts as JSON when it carries media, and as a failure when `error` is set. Citations on user text travel in the text part's `metadata`, and on assistant, system, and developer text (which AG-UI holds as a plain string) in message metadata under `conversationalist:textParts`, which keeps the text parts and their boundaries. Content with no AG-UI representation (`redacted_thinking`, provider server-tool and container blocks, non-text system or assistant content) throws an `AGUIMappingError` whose `kind` names it, and an inbound message that fails the `@ag-ui/core` schema throws one with `kind: 'message'`. An assistant message's text parts join with a blank line, and token usage, goal completion, and cache boundaries are not exported.
+
+**Key exports:** `toAGUIMessages`, `fromAGUIMessages`, `appendAGUIMessages`, `mergeAGUIMessages`, `fromAGUIToolMessage`, `agUiConversationAdapter`, `AGUIMappingError`. Type exports: `AGUIMessage`, `AGUIUserMessage`, `AGUIAssistantMessage`, `AGUISystemMessage`, `AGUIDeveloperMessage`, `AGUIToolMessage`, `AGUIReasoningMessage`, `AGUIToolCall`, `AGUIContentPart`.
+
 ### A2A content mapping
 
 Pure content-shape mapping between Conversationalist messages and [A2A](https://a2a-protocol.org/) 1.0.1 `Message`, `Artifact`, and `Part` values. The A2A types are hand-written from `specification/a2a.proto` at tag `v1.0.1` and follow its proto3 JSON form. Transport and the A2A task lifecycle are not included.

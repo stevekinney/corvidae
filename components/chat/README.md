@@ -95,3 +95,20 @@ The Mermaid snippet has type `Snippet<[content: string, type: 'mermaid']>`. `Art
 ```
 
 This is a deliberate difference from `@lostgradient/editor`'s `DiffViewer`, whose `toolbar` override is total replacement with no `renderDefault`—the [Editor README](../editor/README.md#diffviewer-toolbar-override) explains why. Message-part and row rendering carry built-in behavior (streaming state, tool-call presentation, artifact resolution) that most wrappers want to keep and only augment. That is what `renderDefault` is for.
+
+## AG-UI transport
+
+`createChatSessionController` can be driven by an [AG-UI](https://docs.ag-ui.com) 1.0 event stream without changing the native chat wire. `createAGUIChatTransport` returns a chat session transport that maps each event onto the version 3 wire, and `mapAGUIEventsToChatStream` is the same mapping over any iterable of events.
+
+```ts
+const controller = createChatSessionController({
+  executionOwner: 'server',
+  getConversation,
+  setConversation,
+  transport: createAGUIChatTransport((request) => runAgent(request.conversation, request.signal)),
+});
+```
+
+Every event is validated against the pinned `@ag-ui/core` schema, and an invalid or out-of-order one fails the run with an `AGUIChatTransportError`. `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, `STEP_*`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `REASONING_*`, and `MESSAGES_SNAPSHOT` are mapped. The types in `AG_UI_UNSUPPORTED_EVENT_TYPES` (state, activity, raw, custom, and subagent events) are validated and then ignored, as is any event that carries a `subagentRunId`.
+
+The client's rows are authoritative. The terminal `run.completed` frame carries the history the run was asked from, grown by each `MESSAGES_SNAPSHOT` and then by the messages the run produced, merged by message id: a snapshot or a streamed message adds the rows the client lacks and never deletes or rewrites one it has, and a mid-run snapshot does not discard what the run had already produced. Messages land in the order they started, and the AG-UI message ids become the row ids, so a streamed assistant row keeps its wire `messageId`. That merge is row for row when the backend echoes the ids of the run input, as AG-UI backends do. A snapshot that shares no message with a thread the client already holds is not a copy of it: its earlier history is not merged a second time, but the messages after its last user message (all of it, when it holds none) are this turn's output and are kept. A message still streaming is left out of a snapshot because its whole row is written when it ends. A tool call is filed under the assistant message it names as its parent, so it gets the row id a snapshot of the same thread gives it. Messages that overlap are written to the wire one at a time, in the order they started, because a version 3 stream has one open step at a time. Text from another role (the user's own message echoed back, a system or developer message) is not added to history, and a `RUN_FINISHED` interrupt outcome completes the run without surfacing its interrupt details, which the resume flow will map to elicitation. A `RUN_ERROR` keeps the backend's code as `backendCode`. Use `executionOwner: 'server'`: the AG-UI backend runs the whole turn.

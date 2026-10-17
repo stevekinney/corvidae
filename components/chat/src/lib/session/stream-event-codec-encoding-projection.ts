@@ -337,7 +337,7 @@ export function projectChatSerializedRunError(
   //
   // Every field is read once up front, so an accessor cannot answer the
   // guards with one value and the returned frame with another.
-  const { name, message, kind, code, retryable } = error;
+  const { name, message, kind, code, retryable, backendCode } = error;
   if (typeof name !== 'string' || typeof message !== 'string')
     throw new Error('Invalid chat stream event: run error name and message must be strings');
   if (!isChatAgentRunErrorKind(kind))
@@ -348,7 +348,16 @@ export function projectChatSerializedRunError(
   // wrong. Coercing here would invent a claim the host never made.
   if (retryable !== undefined && typeof retryable !== 'boolean')
     throw new Error('Invalid chat stream event: run error retryable must be a boolean');
-  return { name, message, kind, code, ...(retryable === undefined ? {} : { retryable }) };
+  if (backendCode !== undefined && typeof backendCode !== 'string')
+    throw new Error('Invalid chat stream event: run error backendCode must be a string');
+  return {
+    name,
+    message,
+    kind,
+    code,
+    ...(retryable === undefined ? {} : { retryable }),
+    ...(backendCode === undefined ? {} : { backendCode }),
+  };
 }
 
 /**

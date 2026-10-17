@@ -72,11 +72,26 @@ function decodeStreamTextOrToolEvent(
 function decodeTextDelta(parsed: Record<string, unknown>, required: WireEnvelope): ChatStreamEvent {
   if (typeof parsed['content'] !== 'string' || typeof parsed['accumulated'] !== 'string')
     throw new Error('Invalid chat stream event');
+  const { content, accumulated } = parsed;
+  // `messageId` exists only from wire version 3, where it is required. A
+  // version 1 or 2 frame decodes without one, exactly as it always has.
+  if (required.wireVersion !== 3) {
+    return {
+      type: 'stream:text-delta',
+      content,
+      accumulated,
+      wireVersion: required.wireVersion,
+      sequence: required.sequence,
+    };
+  }
+  if (typeof parsed['messageId'] !== 'string') throw new Error('Invalid chat stream event');
   return {
     type: 'stream:text-delta',
-    content: parsed['content'],
-    accumulated: parsed['accumulated'],
-    ...required,
+    content,
+    accumulated,
+    messageId: parsed['messageId'],
+    wireVersion: required.wireVersion,
+    sequence: required.sequence,
   };
 }
 function decodeToolCallStart(

@@ -108,6 +108,42 @@ describe('run.* terminal frames (CIN-507)', () => {
     expect('retryable' in decoded.error).toBe(false);
   });
 
+  test('round-trips the code a backend gave a failure, and keeps it optional', () => {
+    const error = {
+      name: 'AGUIRunError',
+      message: 'The model refused.',
+      kind: 'generate' as const,
+      code: 'UNKNOWN' as const,
+    };
+    for (const extra of [{ backendCode: 'RATE_LIMITED' }, {}]) {
+      const event = {
+        type: 'run.error' as const,
+        error: { ...error, ...extra },
+        wireVersion: 3 as const,
+        sequence: 9,
+      };
+      const decoded = decodeChatStreamEvent(encodeChatStreamEvent(event));
+      expect(decoded).toEqual(event);
+      if (decoded.type !== 'run.error') throw new Error('unreachable');
+      expect('backendCode' in decoded.error).toBe('backendCode' in extra);
+    }
+  });
+
+  test('refuses a backend code that is not a string at both boundaries', () => {
+    const error = {
+      name: 'AGUIRunError',
+      message: 'x',
+      kind: 'generate' as const,
+      code: 'UNKNOWN' as const,
+      backendCode: 7,
+    };
+    const frame = { type: 'run.error', error, wireVersion: 3, sequence: 9 };
+    expect(() => encodeChatStreamEvent(hostileEvent(frame))).toThrow(
+      /backendCode must be a string/,
+    );
+    expect(() => decodeChatStreamEvent(hostileEvent(frame))).toThrow('Invalid chat stream event');
+  });
+
   test('refuses a non-boolean retryability at both boundaries', () => {
     const error = {
       name: 'AgentRunError',
