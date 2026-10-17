@@ -62,18 +62,11 @@ export type OpenApiOptions = {
    * either header-oriented convention.
    */
   supportedSchemes?: ReadonlySet<OpenApiSecuritySchemeName>;
-  /**
-   * The direct routes (health, metrics, discovery documents) the server
-   * serves, named by handler. Defaults to all of them. A handler that serves
-   * fewer passes only those, so the document lists no route the server
-   * would answer with a 404.
-   */
+  /** The direct routes the server serves, by handler. Defaults to all of them. */
   directRoutes?: ReadonlyArray<(typeof DIRECT_HTTP_ROUTES)[number]['handler']>;
   /**
-   * The paths the server answers without authentication. A direct route is
-   * documented as needing no credentials only when its path is listed here;
-   * the rest inherit the document-level security. Defaults to every direct
-   * route defined as public, which is what `serve()` does.
+   * Paths answered without authentication; other direct routes inherit the
+   * document-level security. Defaults to the routes defined as public.
    */
   publicPaths?: ReadonlySet<string>;
 };
@@ -384,9 +377,7 @@ function buildDirectRouteSecurity(
   route: DirectHttpRouteDefinition,
   publicPaths: ReadonlySet<string> | undefined,
 ): [] | undefined {
-  const isPublic =
-    publicPaths === undefined ? route.access === 'public' : publicPaths.has(route.path);
-  return isPublic ? [] : undefined;
+  return (publicPaths?.has(route.path) ?? route.access === 'public') ? [] : undefined;
 }
 
 function emitDirectRoutes(
