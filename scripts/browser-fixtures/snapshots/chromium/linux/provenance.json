@@ -1,12 +1,10 @@
 {
   "schemaVersion": 2,
-  "componentScope": [
-    "chat-conversation-list"
-  ],
-  "renderedSourceSha": "fbd26e6634cd4a62baca826169f7741e70209556",
+  "componentScope": "all",
+  "renderedSourceSha": "b27af48e34201a5677f050cefb2aad54106ce6fc",
   "playwrightVersion": "1.63.0",
   "osCodename": "jammy",
   "architecture": "arm64",
   "dockerImageTag": "corvidae-browser-fixtures:1.63.0-jammy-arm64",
-  "suiteExitCode": 1
+  "suiteExitCode": 0
 }
