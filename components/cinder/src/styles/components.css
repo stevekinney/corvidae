@@ -21,6 +21,7 @@
 @import '../components/approval-card/approval-card.css';
 @import '../components/area-chart/area-chart.css';
 @import '../components/aspect-ratio/aspect-ratio.css';
+@import '../components/audio-player/audio-player.css';
 @import '../components/autocomplete/autocomplete.css';
 @import '../components/avatar-group/avatar-group.css';
 @import '../components/avatar/avatar.css';
@@ -191,6 +192,7 @@
 @import '../components/tooltip/tooltip.css';
 @import '../components/transfer-list/transfer-list.css';
 @import '../components/tree/tree.css';
+@import '../components/video-player/video-player.css';
 @import '../components/virtual-list/virtual-list.css';
 @import '../components/waveform/waveform.css';
 @import '../components/zoom-pan-viewer/zoom-pan-viewer.css';

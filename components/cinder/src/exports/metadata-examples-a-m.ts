@@ -8,6 +8,7 @@ import alertExamples from '../components/alert/alert.examples.json' with { type:
 import approvalCardExamples from '../components/approval-card/approval-card.examples.json' with { type: 'json' };
 import areaChartExamples from '../components/area-chart/area-chart.examples.json' with { type: 'json' };
 import aspectRatioExamples from '../components/aspect-ratio/aspect-ratio.examples.json' with { type: 'json' };
+import audioPlayerExamples from '../components/audio-player/audio-player.examples.json' with { type: 'json' };
 import autocompleteExamples from '../components/autocomplete/autocomplete.examples.json' with { type: 'json' };
 import avatarGroupExamples from '../components/avatar-group/avatar-group.examples.json' with { type: 'json' };
 import avatarExamples from '../components/avatar/avatar.examples.json' with { type: 'json' };
@@ -107,6 +108,7 @@ export {
   approvalCardExamples,
   areaChartExamples,
   aspectRatioExamples,
+  audioPlayerExamples,
   autocompleteExamples,
   avatarExamples,
   avatarGroupExamples,

@@ -33,7 +33,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
 
 Everything else in the workspace is a library: `operative` runs one agent loop, `armorer` executes tools, `memory` recalls facts, `skills` catalogs procedures. `bureau` is where those libraries become a fleet—a runtime that can create runs, resume them across a crash, hold live sessions, run scheduled and durable schedules, and route requests to more than one named agent.
 
-Applications own HTTP and browser integration. `createBureau()` has no HTTP dependency and can be called directly from a Bun process.
+Applications own HTTP and browser integration. `createBureau()` has no HTTP dependency and can be called directly from a Bun process. `createBureauHandler(bureau, options)` returns a `(request: Request) => Promise<Response>` that serves the Bureau's event feeds and review queue; the application still binds the port, for example with `Bun.serve({ fetch: handler })`.
 
 ## What It Does
 

@@ -49,6 +49,7 @@ Accessible playback controls for play, pause, and replay actions with optional p
 | `onPause` | `(opaque)` | no | — | Called when the pause action is triggered. Not expressible in JSON Schema; see the component types for the signature. |
 | `onPlay` | `(opaque)` | no | — | Called when the play action is triggered. Not expressible in JSON Schema; see the component types for the signature. |
 | `onReplay` | `(opaque)` | no | — | Called when the replay action is triggered. Not expressible in JSON Schema; see the component types for the signature. |
+| `onSeek` | `(opaque)` | no | — | Called with the requested position (0 to 1) when the seek slider changes. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 
