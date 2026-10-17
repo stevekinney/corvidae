@@ -17430,7 +17430,9 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         if (!session) return undefined;
         const owners = session.metadata['lastRunOwningPrincipals'];
         if (typeof owners !== 'object' || owners === null || Array.isArray(owners)) return session;
-        const { [runId]: _removed, ...remaining } = owners;
+        const remaining = Object.fromEntries(
+          Object.entries(owners).filter(([ownedRunId]) => ownedRunId !== runId),
+        );
         return {
           ...session,
           metadata: { ...session.metadata, lastRunOwningPrincipals: remaining },
@@ -17737,7 +17739,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
                 },
               },
             },
-          ) as unknown as Toolbox,
+          ),
           storage: { type: 'sqlite', path: databasePath },
           runtime,
           durableBackgroundTasks: 'manual',
