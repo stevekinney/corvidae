@@ -240,6 +240,8 @@
     (message.metadata as Record<string, unknown>)?.['_deliveryStatus'] as string | undefined,
   );
   const isFailed = $derived(deliveryStatus === 'failed');
+  // Sent but not yet acknowledged by the transport (a follow-up during a run).
+  const isPending = $derived(deliveryStatus === 'sending');
 
   const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, {
     hour: 'numeric',
@@ -360,6 +362,7 @@
   data-role={message.role}
   data-hidden={message.hidden || undefined}
   data-failed={isFailed || undefined}
+  data-pending={isPending || undefined}
   data-search-match={searchMatch || undefined}
   data-tool-pair={isToolCall && toolPair ? '' : undefined}
   data-cinder-rollback-discarded={rollbackDiscarded || undefined}
@@ -450,6 +453,12 @@
       <!-- Images render through the grouped default path (the attachment grid
            lays out by total count); they do not flow through `messagePart`. -->
       <ChatMessagePartsRenderer parts={imageParts} {messageId} />
+    {/if}
+
+    {#if isPending}
+      <div class="chat-message-pending-actions">
+        <span class="chat-message-pending-label" role="status">Sending…</span>
+      </div>
     {/if}
 
     {#if isFailed && onRetry}
@@ -876,6 +885,18 @@
   .chat-message-wrapper[data-failed] .chat-message {
     border: 1px solid var(--cinder-status-danger-border);
     background: var(--cinder-status-danger-background);
+  }
+
+  /* Pending (sent, not yet acknowledged): the label carries the state, not opacity. */
+  .chat-message-pending-actions {
+    display: flex;
+    align-items: center;
+    margin-top: var(--cinder-space-1);
+  }
+
+  .chat-message-pending-label {
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    color: var(--cinder-text-muted);
   }
 
   .chat-message-failed-actions {

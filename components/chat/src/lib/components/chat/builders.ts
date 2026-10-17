@@ -57,13 +57,13 @@ export type { MessageUpdate } from 'conversationalist';
 
 const DELIVERY_STATUS_METADATA_KEY = '_deliveryStatus';
 
-/** Mark a message as failed so Chat renders its retry affordance. */
-export function markMessageDeliveryFailed(
+function markMessageDeliveryStatus(
   history: ConversationHistory,
   messageId: string,
+  status: 'failed' | 'sending',
 ): ConversationHistory {
   const message = history.messages[messageId];
-  if (!message || message.metadata?.[DELIVERY_STATUS_METADATA_KEY] === 'failed') return history;
+  if (!message || message.metadata?.[DELIVERY_STATUS_METADATA_KEY] === status) return history;
 
   return {
     ...history,
@@ -71,14 +71,35 @@ export function markMessageDeliveryFailed(
       ...history.messages,
       [messageId]: {
         ...message,
-        metadata: { ...message.metadata, [DELIVERY_STATUS_METADATA_KEY]: 'failed' },
+        metadata: { ...message.metadata, [DELIVERY_STATUS_METADATA_KEY]: status },
       },
     },
     updatedAt: new Date().toISOString(),
   };
 }
 
-/** Clear a message's failed-delivery marker after a successful retry. */
+/** Mark a message as failed so Chat renders its retry affordance. */
+export function markMessageDeliveryFailed(
+  history: ConversationHistory,
+  messageId: string,
+): ConversationHistory {
+  return markMessageDeliveryStatus(history, messageId, 'failed');
+}
+
+/**
+ * Mark a message as sent but not yet acknowledged, so Chat renders it with a
+ * pending state. Clear it with {@link clearMessageDeliveryStatus} once the
+ * transport acknowledges the message, or replace it with
+ * {@link markMessageDeliveryFailed} when the transport rejects it.
+ */
+export function markMessageDeliveryPending(
+  history: ConversationHistory,
+  messageId: string,
+): ConversationHistory {
+  return markMessageDeliveryStatus(history, messageId, 'sending');
+}
+
+/** Clear a message's pending or failed delivery marker after the transport acknowledges it. */
 export function clearMessageDeliveryStatus(
   history: ConversationHistory,
   messageId: string,

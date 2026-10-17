@@ -108,6 +108,64 @@ describe('ChatInput', () => {
     expect(restoredSendTrigger.hasAttribute('data-stop')).toBe(false);
   });
 
+  test('allowFollowUp keeps Send and attachments live and shows Stop beside Send while sending', async () => {
+    let submitCount = 0;
+    let stopCount = 0;
+    const { container } = render(ChatInput, {
+      id: 'follow-up-composer',
+      sending: true,
+      allowFollowUp: true,
+      onsubmit: () => {
+        submitCount += 1;
+      },
+      onstop: () => {
+        stopCount += 1;
+      },
+    });
+    const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+    const send = container.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!;
+    const stop = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Stop generating"]',
+    )!;
+
+    expect(composer.disabled).toBe(false);
+    expect(send.type).toBe('submit');
+    expect(send.hasAttribute('data-stop')).toBe(false);
+    expect(stop.type).toBe('button');
+    expect(stop.hasAttribute('data-stop')).toBe(true);
+    expect(
+      container.querySelector<HTMLButtonElement>('button[aria-label="Attach file"]')?.disabled,
+    ).toBe(false);
+
+    await fireEvent.input(composer, { target: { value: 'follow up' } });
+    await fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(submitCount).toBe(1);
+
+    await fireEvent.click(stop);
+    expect(stopCount).toBe(1);
+    expect(submitCount).toBe(1);
+  });
+
+  test('without allowFollowUp a sending composer cannot submit', async () => {
+    let submitCount = 0;
+    const { container } = render(ChatInput, {
+      id: 'no-follow-up-composer',
+      sending: true,
+      onsubmit: () => {
+        submitCount += 1;
+      },
+    });
+    const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+
+    await fireEvent.input(composer, { target: { value: 'too early' } });
+    await fireEvent.keyDown(composer, { key: 'Enter' });
+
+    expect(submitCount).toBe(0);
+    expect(
+      container.querySelector<HTMLButtonElement>('button[aria-label="Attach file"]')?.disabled,
+    ).toBe(true);
+  });
+
   test('hides the programmatic file picker from the accessibility tree', () => {
     const { container } = render(ChatInput, { id: 'attachment-a11y' });
     const picker = container.querySelector<HTMLInputElement>('input[type="file"]');

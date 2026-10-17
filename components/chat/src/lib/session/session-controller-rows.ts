@@ -82,3 +82,29 @@ export function mergeRunHistory(
   );
   return { ...current, ids, messages };
 }
+
+/**
+ * Puts follow-ups back after a run rolls the transcript back to its last
+ * committed snapshot.
+ *
+ * A failed run restores the history it captured earlier, which predates any
+ * follow-up the user sent while it was working. Those rows were never the run's
+ * to discard — the transport may already have them — so they are carried over
+ * from what is on screen, in their current order and with their delivery state.
+ */
+export function restoreFollowUps(
+  rolledBack: ConversationHistory,
+  current: ConversationHistory,
+  followUps: ReadonlyMap<string, unknown>,
+): ConversationHistory {
+  const missing = current.ids.filter(
+    (id) => followUps.has(id) && rolledBack.messages[id] === undefined,
+  );
+  if (missing.length === 0) return rolledBack;
+  const messages = { ...rolledBack.messages };
+  for (const id of missing) {
+    const message = current.messages[id];
+    if (message !== undefined) messages[id] = message;
+  }
+  return { ...rolledBack, ids: [...rolledBack.ids, ...missing], messages };
+}

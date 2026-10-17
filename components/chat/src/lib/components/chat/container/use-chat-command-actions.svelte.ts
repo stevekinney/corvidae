@@ -29,6 +29,7 @@ type CommandActionsOptions = {
   getOnEdit: () => CommandCallback<[{ messageId: string; content: string }]> | undefined;
   getOnApprovalResolve: () => ApprovalResolveCallback | undefined;
   getOnStop: () => CommandCallback<[{ messageId: string }]> | undefined;
+  getStreaming: () => boolean;
   invalidateHistory: () => void;
   afterSubmit: (editing: boolean) => void;
   getConversationIdentity: () => string;
@@ -206,14 +207,43 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     }
   });
 
+  /** Whether a tool approval is waiting on the user, which parks the run without ending it. */
+  function hasPendingApproval(): boolean {
+    return options.getMessages().some((candidate) => {
+      const result = candidate.toolResult;
+      return (
+        candidate.role === 'tool-result' &&
+        result?.outcome === 'action_required' &&
+        result.action?.type === 'approval' &&
+        !isTerminalApprovalState(approvalStates.get(result.callId))
+      );
+    });
+  }
+
   function handleSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
     options.invalidateHistory();
     const editing = editingMessageIds.size > 0;
-    void dispatchCommand(
-      'sendMessage',
-      (adapter) => Promise.resolve(adapter.sendMessage(message, attachments)),
-      () => options.getOnSubmit()?.({ message, attachments }),
-    );
+    const runInput = options.getAdapter()?.sendRunInput;
+    if (runInput && (options.getStreaming() || hasPendingApproval())) {
+      // The run is still working (or waiting on an approval): hand the message
+      // to it as input instead of starting another turn.
+      void dispatchCommand(
+        'sendRunInput',
+        (adapter) =>
+          adapter.sendRunInput
+            ? Promise.resolve(
+                adapter.sendRunInput(options.getConversationIdentity(), message, attachments),
+              )
+            : undefined,
+        undefined,
+      );
+    } else {
+      void dispatchCommand(
+        'sendMessage',
+        (adapter) => Promise.resolve(adapter.sendMessage(message, attachments)),
+        () => options.getOnSubmit()?.({ message, attachments }),
+      );
+    }
     options.afterSubmit(editing);
   }
 

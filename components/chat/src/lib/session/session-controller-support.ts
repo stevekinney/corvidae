@@ -161,6 +161,17 @@ export type ChatSessionControllerOptions = {
   transport: ChatSessionTransport;
   getConversation: () => ConversationHistory;
   setConversation: (conversation: ConversationHistory) => void;
+  /**
+   * Delivers a follow-up to the run in flight, with the same arguments as
+   * `ChatAdapter.sendMessage` plus the session's conversation id. Providing it
+   * makes the controller's adapter expose `sendRunInput`: a message submitted
+   * while a run is active, or while a tool approval is pending, is appended to
+   * the transcript as pending and handed here instead of being refused. The
+   * promise resolving is the acknowledgement; rejecting marks the message
+   * failed and leaves the run untouched. Omit it and a second turn during a run
+   * throws, as before.
+   */
+  sendRunInput?: ChatAdapter['sendRunInput'];
   executionOwner?: ChatExecutionOwner;
   maxContinuationTurns?: number;
   hooks?: ChatSessionHooks;

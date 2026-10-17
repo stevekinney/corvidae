@@ -7,6 +7,8 @@ import {
   appendMessages,
   appendUserMessage,
   clearMessageDeliveryStatus,
+  markMessageDeliveryFailed,
+  markMessageDeliveryPending,
   replaceToolResult,
   rewindBeforeMessage,
 } from '../components/chat/builders.ts';
@@ -82,6 +84,13 @@ export function createChatSessionController(
   const toolOwners = new Map<string, string>();
   const messageAttachments = new Map<string, ChatAttachment[]>();
   const pendingApprovals = new Set<string>();
+  // Rows handed to `sendRunInput`, with the input each was sent as, so a retry
+  // resends exactly that and a run's rollback knows which rows were never part
+  // of the run.
+  const followUps = new Map<string, MessageInput>();
+  // Follow-ups are delivered one at a time, so they reach the transport in the
+  // order they were sent even when an acknowledgement is slow.
+  let runInputQueue: Promise<void> = Promise.resolve();
   const resolvedApprovalOwners = new Set<string>();
   const subscribers = new Set<ChatPushHandlers>();
   const emit = (callback: (handlers: ChatPushHandlers) => void): void => {
@@ -150,6 +159,7 @@ export function createChatSessionController(
     lifecycle,
     toolOwners,
     pendingApprovals,
+    followUps,
     update,
     emit,
     notifyStreaming,
@@ -208,12 +218,99 @@ export function createChatSessionController(
     return 'resolved';
   };
 
+  const sendMessage = async (
+    message: MessageInput,
+    attachments: ChatAttachment[],
+  ): Promise<void> => {
+    assertNoPendingApprovals();
+    await send(message, attachments);
+  };
+  /** Whether a run is working, or is parked on a tool approval, so input has somewhere to go. */
+  const hasRunInProgress = (): boolean => {
+    if (lifecycle.running) return true;
+    rebuildApprovalState(
+      options.getConversation(),
+      toolOwners,
+      pendingApprovals,
+      lifecycle.activeUserMessageId,
+    );
+    return pendingApprovals.size > 0;
+  };
+  const deliverRunInput = (
+    conversationId: string,
+    messageId: string,
+    message: MessageInput,
+    attachments: ChatAttachment[],
+  ): Promise<void> => {
+    const stillTargetsRow = (): boolean =>
+      !lifecycle.disposed &&
+      options.getConversation().id === conversationId &&
+      options.getConversation().messages[messageId] !== undefined;
+    const previous = runInputQueue;
+    const delivery = (async (): Promise<void> => {
+      await previous;
+      if (!stillTargetsRow()) return;
+      await options.sendRunInput?.(conversationId, message, attachments);
+      if (stillTargetsRow())
+        update(clearMessageDeliveryStatus(options.getConversation(), messageId));
+    })();
+    // The queue keeps moving after a rejection; the caller still sees it.
+    runInputQueue = delivery.catch(() => undefined);
+    return delivery.catch((error: unknown) => {
+      if (stillTargetsRow())
+        update(markMessageDeliveryFailed(options.getConversation(), messageId));
+      reportError(error);
+      throw error;
+    });
+  };
+  const sendRunInput = async (
+    conversationId: string,
+    message: MessageInput,
+    attachments: ChatAttachment[],
+  ): Promise<void> => {
+    assertNotDisposed();
+    if (conversationId !== options.getConversation().id)
+      throw new Error('Run input targets a different conversation');
+    // Nothing is running: this is an ordinary turn, and the composer only
+    // routed it here because its view of the run was a moment out of date.
+    if (!hasRunInProgress()) return sendMessage(message, attachments);
+    // No `startSubmission`: that would retire the very run the input is for.
+    const next = appendMessages(options.getConversation(), message);
+    const messageId = next.ids.at(-1);
+    if (!messageId) return;
+    messageAttachments.set(messageId, [...attachments]);
+    followUps.set(messageId, message);
+    update(markMessageDeliveryPending(next, messageId));
+    await deliverRunInput(conversationId, messageId, message, attachments);
+  };
+  const retryFollowUp = async (messageId: string): Promise<boolean> => {
+    const message = options.getConversation().messages[messageId];
+    const input = followUps.get(messageId);
+    if (
+      input === undefined ||
+      !options.sendRunInput ||
+      message?.metadata['_deliveryStatus'] !== 'failed' ||
+      !hasRunInProgress()
+    )
+      return false;
+    const conversationId = options.getConversation().id;
+    update(markMessageDeliveryPending(options.getConversation(), messageId));
+    await deliverRunInput(
+      conversationId,
+      messageId,
+      input,
+      messageAttachments.get(messageId) ?? [],
+    );
+    return true;
+  };
+
   const adapter: ChatAdapter = {
-    sendMessage: async (message, attachments) => {
-      assertNoPendingApprovals();
-      await send(message, attachments);
-    },
+    sendMessage,
+    ...(options.sendRunInput ? { sendRunInput } : {}),
     retryMessage: async (messageId) => {
+      assertNotDisposed();
+      if (await retryFollowUp(messageId)) return;
+      followUps.delete(messageId);
       assertActive();
       startSubmission(lifecycle);
       const history = options.getConversation();
@@ -337,6 +434,7 @@ export function createChatSessionController(
       invalidate();
       lifecycle.disposed = true;
       messageAttachments.clear();
+      followUps.clear();
     },
   };
 }

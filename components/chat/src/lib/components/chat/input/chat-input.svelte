@@ -30,6 +30,12 @@
     disabled?: boolean;
     /** Whether a submission is in progress */
     sending?: boolean;
+    /**
+     * Keep the composer usable while `sending` is `true`, so a follow-up can be
+     * submitted during a run. Send stays available and, when `onstop` is
+     * provided, Stop is shown beside it instead of replacing it. Default `false`.
+     */
+    allowFollowUp?: boolean;
     /** Error message to display */
     error?: string;
     /** Additional CSS class */
@@ -136,6 +142,7 @@
     composerAriaAutocomplete,
     disabled = false,
     sending = false,
+    allowFollowUp = false,
     error,
     class: className,
     action,
@@ -175,14 +182,19 @@
 
   const resolvedComposerLabel = $derived(composerLabel.trim() || 'Message');
 
-  // Derived: show stop button when sending and onstop is provided
-  const showStopButton = $derived(sending && onstop !== undefined);
+  // Derived: show stop button when sending and onstop is provided. In follow-up
+  // mode Stop sits beside Send rather than taking its place.
+  const showStopButton = $derived(sending && onstop !== undefined && !allowFollowUp);
+  const showSideStopButton = $derived(sending && onstop !== undefined && allowFollowUp);
+  const showSendingSpinner = $derived(sending && !allowFollowUp);
+  const sendBlocked = $derived(sending && !allowFollowUp);
 
   // Refs
   let formElement = $state<HTMLFormElement | null>(null);
   let editorElement = $state<HTMLTextAreaElement | null>(null);
   let fileInputRef = $state<HTMLInputElement | null>(null);
   let sendButtonRef = $state<HTMLButtonElement | null>(null);
+  let stopButtonRef = $state<HTMLButtonElement | null>(null);
 
   // Internal state
   let attachments = $state<ChatAttachment[]>([]);
@@ -216,7 +228,7 @@
   const canSubmit = $derived(
     (!isWhitespaceOnly || hasReadyAttachments || hasReadyPromotedPaste) &&
       !disabled &&
-      !sending &&
+      !sendBlocked &&
       !hasPendingAttachments,
   );
   const sendTooltipText = $derived.by(() => {
@@ -872,7 +884,7 @@
           variant="ghost"
           size="sm"
           onclick={() => fileInputRef?.click()}
-          disabled={disabled || sending}
+          disabled={disabled || sendBlocked}
           aria-label="Attach file"
         >
           <Paperclip class="cinder-icon-sm" />
@@ -883,6 +895,9 @@
       <span id={shortcutDescriptionId} class="cinder-sr-only">
         {#if showStopButton}
           Response is streaming. Use the stop button to stop generation.
+        {:else if showSideStopButton}
+          Response is streaming. Press Enter to send a follow-up, or use the stop button to stop
+          generation.
         {:else if submitOn === 'modifier-enter'}
           Press Command+Enter or Control+Enter to send. Press Enter for a newline.
         {:else if submitOn === 'enter-if-single-line' && value.includes('\n')}
@@ -901,6 +916,26 @@
         {@render actions()}
       {/if}
 
+      {#if showSideStopButton}
+        <button
+          bind:this={stopButtonRef}
+          type="button"
+          class="chat-input-send"
+          data-stop=""
+          onclick={() => onstop?.()}
+          aria-label="Stop generating"
+          aria-describedby={shortcutDescriptionId}
+        >
+          <Square class="cinder-icon-sm" />
+        </button>
+        <Tooltip
+          text="Stop generating"
+          class="chat-input-tooltip"
+          placement="top"
+          triggerRef={stopButtonRef}
+        />
+      {/if}
+
       <!-- Send/Stop trigger stays mounted so Tooltip does not tear down while focus leaves it. -->
       <button
         bind:this={sendButtonRef}
@@ -911,14 +946,14 @@
         onclick={handleSendButtonClick}
         aria-label={showStopButton
           ? 'Stop generating'
-          : sending
+          : showSendingSpinner
             ? 'Sending message'
             : 'Send message'}
         aria-describedby={shortcutDescriptionId}
       >
         {#if showStopButton}
           <Square class="cinder-icon-sm" />
-        {:else if sending}
+        {:else if showSendingSpinner}
           <svg
             class="chat-input-spinner"
             xmlns="http://www.w3.org/2000/svg"

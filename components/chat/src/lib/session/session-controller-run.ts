@@ -5,7 +5,7 @@ import {
 } from 'conversationalist';
 import type { ChatPushHandlers } from '../components/chat/adapter/chat-adapter.ts';
 import { markMessageDeliveryFailed } from '../components/chat/builders.ts';
-import type { ConversationHistory } from '../components/chat/conversation-model.ts';
+import type { ConversationHistory, MessageInput } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
 import { consumeSessionEvents } from './session-controller-events.ts';
 import {
@@ -15,7 +15,7 @@ import {
   type SessionRunRequest,
   type SessionRunState,
 } from './session-controller-history.ts';
-import { mergeRunHistory } from './session-controller-rows.ts';
+import { mergeRunHistory, restoreFollowUps } from './session-controller-rows.ts';
 import {
   decodeTransportResult,
   notifyObserver,
@@ -33,6 +33,8 @@ type SessionRunnerDependencies = {
   lifecycle: SessionRunState;
   toolOwners: Map<string, string>;
   pendingApprovals: Set<string>;
+  /** Rows the user sent as run input, which a rollback must not discard. */
+  followUps: ReadonlyMap<string, MessageInput>;
   update: (conversation: ConversationHistory) => void;
   emit: (callback: (handlers: ChatPushHandlers) => void) => void;
   notifyStreaming: (value: boolean) => void;
@@ -78,6 +80,7 @@ export function createSessionRunner({
   lifecycle,
   toolOwners,
   pendingApprovals,
+  followUps,
   update,
   emit,
   notifyStreaming,
@@ -129,6 +132,7 @@ export function createSessionRunner({
           lifecycle,
           toolOwners,
           pendingApprovals,
+          followUps,
           elicitations,
           before,
           messageId,
@@ -184,6 +188,7 @@ type TurnDependencies = Pick<
   lifecycle: SessionRunState;
   toolOwners: Map<string, string>;
   pendingApprovals: Set<string>;
+  followUps: ReadonlyMap<string, MessageInput>;
   elicitations: Map<string, ChatElicitationActivity>;
   before: ConversationHistory;
   messageId: string;
@@ -203,6 +208,7 @@ async function executeTurn({
   lifecycle,
   toolOwners,
   pendingApprovals,
+  followUps,
   elicitations,
   before,
   messageId,
@@ -347,9 +353,13 @@ async function executeTurn({
     // retry affordance for a turn nobody is looking at any more.
     if (!isCurrent()) return false;
     update(
-      markMessageDeliveryFailed(
-        cancelStreamingMessage(turnState.committed, turnState.currentAssistantMessageId),
-        userMessageId,
+      restoreFollowUps(
+        markMessageDeliveryFailed(
+          cancelStreamingMessage(turnState.committed, turnState.currentAssistantMessageId),
+          userMessageId,
+        ),
+        options.getConversation(),
+        followUps,
       ),
     );
     reportError(error);

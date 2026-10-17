@@ -118,6 +118,32 @@ async sendMessage(message, attachments) {
 
 The helpers immutably set or clear the transient `_deliveryStatus` metadata used by Chat's failed-message label and Retry button. Apply the same pair around `retryMessage` and `editMessage` resends; the successful attempt clears the marker.
 
+### Follow-ups during a run
+
+By default the composer is disabled while `streaming` is `true`, and the session controller refuses a second turn while a run is working or a tool approval is pending. A host that can deliver input to a run in flight opts in by providing `sendRunInput` on the adapter (or on `createChatSessionController`, which then exposes it on `controller.adapter`):
+
+```ts
+const session = createChatSessionController({
+  getConversation: () => conversation,
+  setConversation: (next) => (conversation = next),
+  transport,
+  async sendRunInput(conversationId, message, attachments) {
+    await yourBackend.sendRunInput(conversationId, message, attachments);
+  },
+});
+```
+
+`sendRunInput` takes the same message and attachments as `sendMessage`, preceded by the session's conversation id. With it present:
+
+- The textarea stays enabled during a run, Send and Stop sit side by side, and Enter submits a follow-up.
+- The follow-up appears in the transcript at once with a pending "Sending…" state. The promise resolving is the acknowledgement and clears it.
+- Follow-ups are handed over one at a time, in the order they were sent, so a slow acknowledgement cannot be overtaken by the next message.
+- A follow-up is accepted while an approval is pending and does not resolve it.
+- A rejection marks that message failed with the usual Retry button and leaves the run alone. Retry resends it as run input while the run is still active.
+- If the run has already ended by the time the message is submitted, it is sent as an ordinary turn.
+
+Server-side delivery of the input to the run's next step is the host's concern. A controller without `sendRunInput` behaves exactly as before. The "Follow-ups during a run" example shows the whole flow.
+
 ### Edit and resend
 
 `ChatAdapter.editMessage` hands you the edited message's ID and new content; the superseded branch (the old reply, any tool calls after it) should be discarded before the edited content is re-sent. `rewindBeforeMessage` performs exactly that cut — it drops the named message and everything after it in the transcript, keeps tool-call/tool-result pairs atomic, and renumbers positions — so an edit flow never assembles `ids`/`messages`/`updatedAt` by hand:
@@ -414,7 +440,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `moreHistoryAvailable` | `boolean` | no | — | Whether the explicit "Load earlier messages" trigger is shown when a load handler exists. Default `true`. |
 | `newMessageIndicatorVisible` | `boolean` | no | — | Whether the "new messages" indicator is currently visible above the composer. Bindable; cleared automatically when the viewport reaches the bottom. Default `false`. |
 | `scrollFadeVisible` | `boolean` | no | — | Show a scroll-driven edge fade on the top and bottom of the message timeline as it overflows. Opt-in and presentation-only — never the sole signal that more messages exist; the jump-to-latest button and unread count remain the authoritative affordances. Only visible when `surfaceMode` is `'default'`: with `surfaceMode="transparent"` the timeline paints no background of its own, so there is no color the fade could correctly fade toward, and it stays inert rather than painting an incorrect opaque band. Default `false`. |
-| `streaming` | `boolean` | no | — | Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown. Default `false`. |
+| `streaming` | `boolean` | no | — | Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown, unless the `adapter` provides `sendRunInput`: then the composer stays enabled, Send and Stop sit side by side, and a submission goes to `adapter.sendRunInput` as a follow-up to the running turn. Default `false`. |
 | `streamingStatus` | `string` | no | — | Optional status label displayed in the typing indicator while `streaming` is `true` and no streaming content has arrived yet (e.g. `"Thinking…"` or `"Analyzing file…"`). When omitted, three animated dots are shown. |
 | `surfaceMode` | `"default"` \| `"transparent"` | no | — | Controls the background of the chat surface. Use `'transparent'` to inherit the host element's background when embedding chat inside a card or panel. Default `'default'`. |
 | `unreadCount` | `number` | no | — | Number of messages received while the viewport was scrolled away from the bottom. Bindable; resets to `0` when the user scrolls to the bottom. Default `0`. |

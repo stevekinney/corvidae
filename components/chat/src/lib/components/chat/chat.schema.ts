@@ -61,7 +61,7 @@ const schema = {
     streaming: {
       type: 'boolean',
       description:
-        'Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown. Default `false`.',
+        'Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown, unless the `adapter` provides `sendRunInput`: then the composer stays enabled, Send and Stop sit side by side, and a submission goes to `adapter.sendRunInput` as a follow-up to the running turn. Default `false`.',
     },
     streamingStatus: {
       type: 'string',
