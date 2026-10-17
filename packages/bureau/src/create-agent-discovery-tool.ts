@@ -1,9 +1,10 @@
 /**
  * The typed agent discovery tool (AB-22) — moved here from operative,
  * rebuilt against `BureauAgentCatalog<D>` instead of the deleted
- * `AgentRegistry`. Exposes metadata only: `RunnableAgent` carries no
- * description/capabilities/tags, so there is nothing beyond an agent's name
- * for this tool to search or return.
+ * `AgentRegistry`. Exposes descriptive metadata only: each agent's name, plus
+ * the optional `description` and `skillDescriptors` (COR-1301) its definition
+ * carries. It reads fields already on the catalog's `RunnableAgent` objects
+ * and never resolves a lazy agent.
  */
 
 import { createTool } from 'armorer';
@@ -12,31 +13,62 @@ import { z } from 'zod';
 import type { AgentDefinitions, BureauAgentCatalog } from './agent-catalog';
 
 /**
- * Creates a tool that lets an orchestrating agent discover the names of
- * agents registered on this bureau's catalog. `text`, when supplied,
- * case-insensitively substring-matches against agent names — the
- * predecessor `AgentRegistry.query({text})`'s case-insensitive semantics,
- * the one part of that search still meaningful once name is the only
- * searchable field.
+ * Creates a tool that lets an orchestrating agent discover the agents
+ * registered on this bureau's catalog. `text`, when supplied,
+ * case-insensitively substring-matches against an agent's name, its
+ * `description`, and each of its `skillDescriptors`' name, description, and
+ * tags. Each match is returned as `{ name, description, skillDescriptors }`;
+ * the last two are omitted for an agent that declares none.
  */
 export function createAgentDiscoveryTool<D extends AgentDefinitions>(
   catalog: BureauAgentCatalog<D>,
 ) {
   return createTool({
     name: 'discover-agents',
-    description: 'Discover available agents on this bureau by searching their names.',
+    description:
+      'Discover available agents on this bureau by searching their names, descriptions, and skills.',
     input: z.object({
       text: z
         .string()
         .optional()
-        .describe('Search text to match (case-insensitively) against agent names.'),
+        .describe(
+          "Search text to match (case-insensitively) against agent names and descriptions, and each skill's name, description, and tags.",
+        ),
     }),
     execute: ({ text }) => {
       const lowerText = text?.toLowerCase();
-      const names = catalog
-        .names()
-        .filter((name) => !lowerText || name.toLowerCase().includes(lowerText));
-      return Promise.resolve(JSON.stringify(names.map((name) => ({ name }))));
+      const matches = catalog.entries().filter(({ name, agent }) => {
+        if (!lowerText) {
+          return true;
+        }
+        // Defensive reads: a hand-written or untyped agent can hold a
+        // malformed descriptor, which must not fail discovery for the
+        // whole catalog.
+        const skills = Array.isArray(agent.skillDescriptors) ? agent.skillDescriptors : [];
+        const searchable = [
+          name,
+          agent.description,
+          ...skills.flatMap((skill) => [
+            skill?.name,
+            skill?.description,
+            ...(Array.isArray(skill?.tags) ? skill.tags : []),
+          ]),
+        ];
+        return searchable.some(
+          (value) => typeof value === 'string' && value.toLowerCase().includes(lowerText),
+        );
+      });
+      return Promise.resolve(
+        JSON.stringify(
+          matches.map(({ name, agent }) => ({
+            name,
+            ...(agent.description === undefined ? {} : { description: agent.description }),
+            ...(agent.skillDescriptors === undefined
+              ? {}
+              : { skillDescriptors: agent.skillDescriptors }),
+          })),
+        ),
+      );
     },
   });
 }

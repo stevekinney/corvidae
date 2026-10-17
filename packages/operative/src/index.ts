@@ -76,6 +76,7 @@ export {
   withActiveSkillToolPolicy,
 } from './agent-policy';
 export type { AgentSkills, AgentSkillsRun, GuardrailsDeclaration } from './agent-policy';
+export * from './agent-skill-descriptor';
 export * from './cost-budget-monitor';
 export * from './cost-estimation';
 export * from './create-agent';

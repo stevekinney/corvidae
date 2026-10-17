@@ -5,12 +5,12 @@ import type { AgentDefinitions, AgentNames, BureauAgentCatalog } from './agent-c
 
 /**
  * Metadata-only view of a catalog entry handed to a `RoutingStrategy` — just
- * the name. `RunnableAgent` carries no description/capabilities/tags to
- * route on (those died with `AgentRegistry`), and reading a lazy agent's own
- * `.name` would give the `'(lazy)'` placeholder rather than its catalog key,
- * so descriptors are built from catalog keys, never from the agent objects
- * themselves — this is also why routing never has to load a lazy agent to
- * decide whether to select it.
+ * the name. Descriptors are built from catalog keys, never from the agent
+ * objects themselves: reading a lazy agent's own `.name` would give the
+ * `'(lazy)'` placeholder rather than its catalog key, and routing from keys
+ * means a lazy agent never has to load to decide whether to select it. An
+ * agent's optional `description` and `skillDescriptors` stay on the catalog
+ * entry, where `createAgentDiscoveryTool` searches them.
  */
 export interface AgentDescriptor<D extends AgentDefinitions = AgentDefinitions> {
   readonly name: AgentNames<D>;
