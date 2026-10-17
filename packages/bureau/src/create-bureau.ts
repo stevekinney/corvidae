@@ -2134,6 +2134,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /** A run abandoned to another owner: stop keeping its leases alive, but keep its claims. */
+  function abandonSessionInputGate(runId: string): void {
+    const held = sessionInputGates.get(runId);
+    sessionInputGates.delete(runId);
+    void Promise.resolve(held?.gate.dispose?.()).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not stop the leases of abandoned run "${runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
+  }
+
   /** Whether the bureau is shutting down, when nothing may be started and nothing is a failure. */
   function isSessionInputClosed(): boolean {
     return runAdmissionClosed || maintenanceAdmissionClosed;
@@ -4353,6 +4367,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runAttribution.set(runId, {
         agentName,
         ...(request.principal !== undefined ? { principal: request.principal } : {}),
+        ...(continuation ? { continuation: true } : {}),
       });
       const runRuntime = await runtime.createRunRuntime({
         ...request,
@@ -4713,6 +4728,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           runId,
           now: runtimeServices.clock.nowISO(),
         });
+        // The run never started, so nothing else will dispose its gate.
+        sessionInputGates.delete(runId);
         await markStartFailed(error);
         throw error;
       }
@@ -4758,6 +4775,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             runId,
             sessionId,
             agentName,
+            continuation,
           },
           runtimeServices.clock.now,
         ),
@@ -4958,6 +4976,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           if (store.getRun(runId)?.status === 'running') {
             settledLocalRunIds.add(runId);
             releaseSessionSteeringPoll(sessionId, runId);
+            // COR-1476 — abandoned to whoever owns it: this process stops keeping
+            // its leases alive, but the claims stay, since the owner may yet
+            // replay the steps that hold them.
+            abandonSessionInputGate(runId);
           }
         }),
       );
@@ -4986,7 +5008,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         await activeRun.durablyStarted;
       }
 
-      created = serializeRunState(store.getRun(runId)!, sessionId);
+      created = serializeRunState(
+        store.getRun(runId)!,
+        sessionId,
+        continuation ? { continuation: true } : undefined,
+      );
     } catch (error) {
       // Reached either because the run never got as far as `store.register`
       // (no terminal event to settle through — the original reason this
@@ -5411,6 +5437,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           if (store.getRun(runId)?.status === 'running') {
             settledLocalRunIds.add(runId);
             releaseSessionSteeringPoll(sessionId, runId);
+            abandonSessionInputGate(runId);
           }
         }),
     );
@@ -9167,13 +9194,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * COR-435/COR-1476: on a durably-configured bureau an authorized request to
    * a non-terminal session is admitted to the session's mailbox (`admitted`,
    * `replayed`, `conflict`, or `backlog-exhausted`), and an admitted input is
-   * always answered: by the live run before its next step generates, by one
-   * more step of that run when it arrived during its last step, or by a
-   * continuation run the session starts (see `session-input-continuation.ts`).
-   * Once and in admission order within a run, keyed by the mailbox command; its
-   * receipt then reads `promoted`. `steer` and `queue` share that one FIFO
-   * path. A bureau with no durable mailbox, or a session id too long to address
-   * one, answers `unsupported-capability`.
+   * answered unless the user stops the run: by the live run before its next
+   * step generates, by one more step of that run when it arrived during its
+   * last step, or by a continuation run the session starts (see
+   * `session-input-continuation.ts`). Its user turn is appended at most once,
+   * in admission order within a run, keyed by the mailbox command, and promoted
+   * only after the step that answers it succeeds. `steer` and `queue` share
+   * that one FIFO path. A bureau with no durable mailbox, or a session id too
+   * long to address one, answers `unsupported-capability`.
    */
   /**
    * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern

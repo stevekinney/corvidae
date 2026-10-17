@@ -175,6 +175,11 @@ describe('a continuation run answers input left after a run ends (COR-1476)', ()
         new Set(['sent after the last drain', 'and a second thing']),
       );
 
+      // The continuation is marked on the run summary; the first run is not.
+      const summaries = bureau.listRuns();
+      expect(summaries.filter((summary) => summary.continuation === true)).toHaveLength(1);
+      expect(summaries.find((summary) => summary.id === first.id)?.continuation).toBeUndefined();
+
       // The session is live again, so a retry reads the receipt: promoted.
       const replay = await bureau.submitSessionInput(
         first.sessionId,

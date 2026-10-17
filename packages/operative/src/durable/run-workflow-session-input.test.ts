@@ -1078,6 +1078,72 @@ describe('session input delivery store and gate (COR-1476)', () => {
     expect(leased?.commandId).toBe(first[0]!.commandId);
   });
 
+  it('tolerates a failure to retire a promoted command, and leaves it for the next boundary', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const real = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const kv = kvOver(storage);
+    await admit(real, 'input-a', 'first');
+    const [claimed] = await gateOver(real, store, 'run-1', {
+      timers: manualTimers().timers,
+    }).claimPending();
+    const key = sessionInputDeliveriesKey(SESSION_ID);
+    await kv.set(
+      key,
+      JSON.stringify(
+        planSessionInputPromotion(parseSessionInputDeliveries(await kv.get(key)), 'run-1', [
+          {
+            id: claimed!.id,
+            commandId: claimed!.commandId,
+            sessionId: SESSION_ID,
+            deliveredAt: new Date(now).toISOString(),
+            conversationMessageId: 'message-a',
+            providerTurn: 0,
+          },
+        ]),
+      ),
+    );
+    now += 33_000;
+    await real.runMaintenance();
+    now += 1_000;
+
+    // Retiring the promoted command fails once.
+    const errors: unknown[] = [];
+    let failures = 1;
+    const flaky = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'acknowledge') {
+          return async (...args: Parameters<Mailbox['acknowledge']>) => {
+            if (failures > 0) {
+              failures -= 1;
+              throw new Error('storage unavailable');
+            }
+            return target.acknowledge(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const gate = createMailboxSessionInputGate({
+      mailbox: flaky,
+      decode,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, 'run-2', ids, alwaysLive) },
+      now: () => now,
+      onError: (error) => errors.push(error),
+    });
+    expect(await gate.claimPending()).toEqual([]);
+    expect(errors).toHaveLength(1);
+
+    // The command is still open and leased; once the lease lapses the next boundary retires it.
+    now += 33_000;
+    await real.runMaintenance();
+    now += 1_000;
+    expect(await gate.claimPending()).toEqual([]);
+    expect(await openCount(real)).toBe(0);
+  });
+
   it('writes records only for the deliverable prefix', async () => {
     const storage = new MemoryStorage();
     const mailbox = newMailbox(storage);

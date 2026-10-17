@@ -4,6 +4,7 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   createSessionInputContinuation,
+  forEachOpenReceipt,
   OPEN_SESSION_INPUT_STATES,
 } from './session-input-continuation';
 import {
@@ -35,6 +36,8 @@ function fixture() {
   const mailbox = createSessionInputMailbox(storage, SESSION_ID, 100);
   const started: string[] = [];
   let live: string[] = [];
+  let closed = false;
+  let startHook: ((runId: string) => Promise<void>) | undefined;
   let skip = 0;
   let hold:
     | { reached: ReturnType<typeof deferred<void>>; proceed: ReturnType<typeof deferred<void>> }
@@ -75,7 +78,8 @@ function fixture() {
     incarnationOf: () => Promise.resolve('incarnation-1'),
     liveRunIds: () => Promise.resolve(live),
     mailboxOf: () => seamMailbox,
-    startContinuation: (_sessionId, runId) => {
+    startContinuation: async (_sessionId, runId) => {
+      if (startHook !== undefined) await startHook(runId);
       started.push(runId);
       // The continuation is live as soon as it starts.
       live = [runId];
@@ -83,7 +87,7 @@ function fixture() {
     },
     newRunId: () => `continuation-${(runCounter += 1)}`,
     isRunLive: (_sessionId, _incarnation, runId) => Promise.resolve(live.includes(runId)),
-    isClosed: () => false,
+    isClosed: () => closed,
     diagnose: () => {},
   });
 
@@ -111,6 +115,21 @@ function fixture() {
     admitOnly,
     setLive: (runIds: string[]) => {
       live = runIds;
+    },
+    setClosed: (value: boolean) => {
+      closed = value;
+    },
+    /** Runs before a continuation start, and may throw to make it fail. */
+    onStart: (hook: (runId: string) => Promise<void>) => {
+      startHook = hook;
+    },
+    storage,
+    continuationRecord: async () => {
+      const [key] = await kv.list('session-input-continuation:v1:');
+      const raw = key === undefined ? null : await kv.get(key);
+      return raw === null
+        ? undefined
+        : (JSON.parse(raw) as { runId: string; startedAtMs: number; failures: number });
     },
     /** Holds the Nth (default first) empty read after it returns. */
     holdNextEmptyRead: (empty = 1) => {
@@ -219,5 +238,94 @@ describe('admission versus a run ending (COR-1476)', () => {
 
     expect(await f.markers()).toHaveLength(1);
     expect(f.started).toEqual([]);
+  });
+
+  it('records a failed start only against the record it wrote, never over a newer one', async () => {
+    const f = fixture();
+    await f.admit('input-x');
+    f.onStart(async () => {
+      // Another reconcile has already replaced the continuation record.
+      const [key] = await f.kv.list('session-input-continuation:v1:');
+      await f.kv.set(
+        key!,
+        JSON.stringify({ runId: 'newer-run', startedAtMs: Date.now(), failures: 0 }),
+      );
+      throw new Error('could not start');
+    });
+
+    await f.continuation.reconcile(SESSION_ID);
+
+    const record = await f.continuationRecord();
+    expect(record?.runId).toBe('newer-run');
+  });
+
+  it('keeps and counts failures: a continuation that consumed nothing is a failure, an aborted one is not', async () => {
+    const f = fixture();
+    await f.admit('input-x');
+    await f.continuation.reconcile(SESSION_ID);
+    expect(f.started).toEqual(['continuation-1']);
+
+    // It completed without promoting anything, with its input still open.
+    await f.continuation.settleEnded(SESSION_ID, { runId: 'continuation-1', outcome: 'completed' });
+    const afterCompleted = await f.continuationRecord();
+    expect(afterCompleted?.failures).toBe(1);
+
+    // The next one is aborted: not its failure, the count is carried.
+    f.setLive([]);
+    await f.continuation.reconcile(SESSION_ID);
+    expect(f.started).toEqual(['continuation-1', 'continuation-2']);
+    await f.continuation.settleEnded(SESSION_ID, { runId: 'continuation-2', outcome: 'aborted' });
+    const afterAborted = await f.continuationRecord();
+    expect(afterAborted?.failures).toBe(1);
+  });
+
+  it('lets a quick restart through once the ended continuation is settled, without waiting out the start window', async () => {
+    const f = fixture();
+    await f.admit('input-x');
+    await f.continuation.reconcile(SESSION_ID);
+    f.setLive([]);
+
+    // Still recorded as starting, so a second reconcile leaves it be.
+    await f.continuation.reconcile(SESSION_ID);
+    expect(f.started).toHaveLength(1);
+
+    await f.continuation.settleEnded(SESSION_ID, { runId: 'continuation-1', outcome: 'aborted' });
+    await f.continuation.reconcile(SESSION_ID);
+    expect(f.started).toHaveLength(2);
+  });
+
+  it('starts nothing and counts no failure while the bureau is shutting down', async () => {
+    const f = fixture();
+    await f.admit('input-x');
+    f.setClosed(true);
+
+    await f.continuation.reconcile(SESSION_ID);
+    await f.continuation.sweep();
+
+    expect(f.started).toEqual([]);
+    expect(await f.continuationRecord()).toBeUndefined();
+  });
+
+  it('cancels a backlog deeper than one batch in full', async () => {
+    const f = fixture();
+    const deep = createSessionInputMailbox(f.storage, 'deep-session', 1000);
+    for (let index = 0; index < 250; index += 1) {
+      await deep.admit({
+        caller: 'alice',
+        target: 'deep-session',
+        kind: 'session-input:steer',
+        payload: { form: 'inline', value: { payload: `input ${index}` } },
+        idempotencyKey: `input-${index}`,
+      });
+    }
+
+    await forEachOpenReceipt(deep, async (commandId) => {
+      await deep.requestCancellation({ commandId, reason: 'the run was stopped' });
+    });
+
+    const open = await deep.list({ states: OPEN_SESSION_INPUT_STATES, limit: 1000 });
+    expect(open).toHaveLength(0);
+    const cancelled = await deep.list({ states: ['cancelled'], limit: 1000 });
+    expect(cancelled).toHaveLength(250);
   });
 });
