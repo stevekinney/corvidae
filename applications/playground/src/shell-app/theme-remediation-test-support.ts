@@ -2,10 +2,11 @@
  * Test-only fixtures for the remediation suites (COR-487): a content-keyed memoizing
  * evaluator (so a proposal, its Apply-time recomputation and the report all reuse one
  * runtime evaluation of the same source), the shipped and failing envelopes, and a helper
- * that finds one finding in a report.
+ * that finds one finding in a report. COR-1571: the suites that use it keep every test body
+ * under the 2 s fast-lane budget by warming the states their bodies reach at module scope.
  */
 
-import { test as bunTest } from 'bun:test';
+import { test as bunTest, describe, mock } from 'bun:test';
 
 import { cinderThemeBase } from './theme-builder-base.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
@@ -33,21 +34,80 @@ export const memoEvaluator: ThemeEvaluator = {
   },
 };
 
+// Snapshot of the real exports, taken before the memo is installed: `mock.module` also rewrites
+// the live bindings of an already imported namespace, so spreading the namespace inside the
+// factory would recurse into the module being replaced.
+const actualRemediation = { ...(await import('./theme-remediation.ts')) };
+
+/**
+ * Remember the foreground search by its whole input (COR-1571). `searchForeground` is the
+ * deterministic, pure, 0.6 s core of every proposal, recomputation at Apply, and restore
+ * regression check; the content-keyed evaluator already makes everything around it replay, so
+ * without this each body repeats the same search for a source it has already searched. The
+ * first call for an input still runs the real search, so a suite that warms its states at
+ * module scope pays that once, outside any test budget. Returns a function that puts the real
+ * module back, for the suite's `afterAll`: `mock.module` outlives a file, and
+ * `theme-remediation.test.ts` asserts the search's determinism and must see the real one.
+ */
+export function rememberForegroundSearch(): () => void {
+  const searched = new Map<string, ReturnType<typeof actualRemediation.searchForeground>>();
+  void mock.module('./theme-remediation.ts', () => ({
+    ...actualRemediation,
+    searchForeground(input: Parameters<typeof actualRemediation.searchForeground>[0]) {
+      const key = JSON.stringify(input);
+      let known = searched.get(key);
+      if (known === undefined) {
+        known = actualRemediation.searchForeground(input);
+        searched.set(key, known);
+      }
+      return known;
+    },
+  }));
+  return () => {
+    void mock.module('./theme-remediation.ts', () => actualRemediation);
+  };
+}
+
 type Scenario = () => Promise<unknown>;
 
 /**
- * Tests whose bodies run the token runtime on states no earlier test visited (COR-1427): each
- * is registered through `scenario`, and `warmScenarios` runs every body once at module scope,
- * outside Bun's 5 s per-test budget, so the content-keyed evaluator already holds every state
- * the real run visits and the body replays from memory. A failure while warming is left for
- * the registered test to report. `before` and `after` stand in for the file's per-test hooks.
+ * Tests whose bodies run the token runtime, or the remediation search, on states no earlier test
+ * visited (COR-1427, COR-1571): each is registered through `scenario` inside a `group`, and
+ * `warmScenarios` runs every body once at module scope, outside Bun's 5 s per-test budget, so the
+ * content-keyed evaluator and the foreground-search memo already hold every state the real run
+ * visits and the body replays from memory. A failure while warming is left for the registered
+ * test to report. `before` and `after` stand in for the file's per-test hooks.
+ *
+ * `group` stands in for `describe`: Bun 1.4.2 defers a `describe` callback until the file has
+ * finished loading, so a `scenario` declared inside one is not known when `warmScenarios` runs at
+ * module scope. `group` runs its callback immediately to collect the scenarios, then registers
+ * them under a real `describe` of the same name. A `scenario` outside any `group` registers
+ * directly. Groups do not nest.
  */
 export function warmedTests(hooks: { before?: () => void; after?: () => void } = {}) {
   const bodies: Scenario[] = [];
+  let collecting: { name: string; body: Scenario }[] | null = null;
   return {
     scenario(name: string, body: Scenario): void {
+      if (collecting !== null) {
+        collecting.push({ name, body });
+        return;
+      }
       bodies.push(body);
       bunTest(name, body);
+    },
+    group(name: string, define: () => void): void {
+      const own: { name: string; body: Scenario }[] = [];
+      collecting = own;
+      try {
+        define();
+      } finally {
+        collecting = null;
+      }
+      for (const { body } of own) bodies.push(body);
+      describe(name, () => {
+        for (const entry of own) bunTest(entry.name, entry.body);
+      });
     },
     async warmScenarios(): Promise<void> {
       for (const body of bodies) {
