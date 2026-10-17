@@ -4,6 +4,7 @@ import {
   decodeChatStreamEvent,
   decodeChatStreamEvents,
   encodeChatStreamEvent,
+  guardChatStreamEvents,
   isSupportedWireVersion,
   SUPPORTED_WIRE_VERSIONS,
   type ChatStreamEvent,
@@ -219,6 +220,151 @@ describe('wire version 3', () => {
       for (const frame of decoded) {
         if (frame.type === 'stream:text-delta' && stepMessageId?.type === 'assistant.step.started')
           expect(frame.messageId).toBe(stepMessageId.messageId);
+      }
+    });
+  });
+
+  describe('stream opening and identity', () => {
+    const open: ChatStreamEvent = {
+      type: 'run.started',
+      runId: 'run-1',
+      wireVersion: 3,
+      sequence: 0,
+    };
+    const step = (sequence: number): ChatStreamEvent => ({
+      type: 'assistant.step.started',
+      step: 0,
+      messageId: 'message-1',
+      wireVersion: 3,
+      sequence,
+    });
+    const delta = (messageId: string, sequence: number): ChatStreamEvent => ({
+      type: 'stream:text-delta',
+      content: 'hi',
+      accumulated: 'hi',
+      messageId,
+      wireVersion: 3,
+      sequence,
+    });
+    const closed = (sequence: number): ChatStreamEvent => ({
+      type: 'run.aborted',
+      wireVersion: 3,
+      sequence,
+    });
+    const ndjson = (frames: ChatStreamEvent[]) =>
+      frames.map((f) => encodeChatStreamEvent(f)).join('');
+    const typed = async function* (frames: ChatStreamEvent[]): AsyncGenerator<ChatStreamEvent> {
+      yield* frames;
+    };
+
+    test('a version 3 stream must open with run.started, as bytes and as typed events', async () => {
+      const frames: ChatStreamEvent[] = [step(0), closed(1)];
+      await expectRejected(
+        Array.fromAsync(decodeChatStreamEvents(ndjson(frames))),
+        'must open with run.started',
+      );
+      await expectRejected(
+        Array.fromAsync(guardChatStreamEvents(typed(frames))),
+        'must open with run.started',
+      );
+    });
+
+    test('a stream that opens with run.started is accepted', async () => {
+      const frames: ChatStreamEvent[] = [open, step(1), delta('message-1', 2), closed(3)];
+      expect(await Array.fromAsync(decodeChatStreamEvents(ndjson(frames)))).toEqual(frames);
+      expect(await Array.fromAsync(guardChatStreamEvents(typed(frames)))).toEqual(frames);
+    });
+
+    test('versions 1 and 2 are not required to open with run.started', async () => {
+      const text: ChatStreamEvent = { type: 'text', text: 'hi', wireVersion: 2, sequence: 0 };
+      const end: ChatStreamEvent = { type: 'run.aborted', wireVersion: 2, sequence: 1 };
+      expect(await Array.fromAsync(decodeChatStreamEvents(ndjson([text, end])))).toEqual([
+        text,
+        end,
+      ]);
+    });
+
+    test('a delta for a message other than the open step is rejected', async () => {
+      const frames: ChatStreamEvent[] = [open, step(1), delta('other', 2), closed(3)];
+      await expectRejected(
+        Array.fromAsync(decodeChatStreamEvents(ndjson(frames))),
+        'does not match the open assistant step',
+      );
+      await expectRejected(
+        Array.fromAsync(guardChatStreamEvents(typed(frames))),
+        'does not match the open assistant step',
+      );
+    });
+
+    test('a delta outside any step is rejected, before one opens and after it completes', async () => {
+      const completed: ChatStreamEvent = {
+        type: 'assistant.step.completed',
+        step: 0,
+        messageId: 'message-1',
+        wireVersion: 3,
+        sequence: 3,
+      };
+      for (const frames of [
+        [open, delta('message-1', 1), closed(2)],
+        [open, step(1), delta('message-1', 2), completed, delta('message-1', 4), closed(5)],
+      ])
+        await expectRejected(
+          Array.fromAsync(decodeChatStreamEvents(ndjson(frames))),
+          'does not match the open assistant step',
+        );
+    });
+
+    test('completing a different message leaves the step open', async () => {
+      const wrongCompletion: ChatStreamEvent = {
+        type: 'assistant.step.completed',
+        step: 0,
+        messageId: 'other',
+        wireVersion: 3,
+        sequence: 2,
+      };
+      const frames: ChatStreamEvent[] = [
+        open,
+        step(1),
+        wrongCompletion,
+        delta('message-1', 3),
+        closed(4),
+      ];
+      expect(await Array.fromAsync(decodeChatStreamEvents(ndjson(frames)))).toEqual(frames);
+    });
+  });
+
+  describe('run.started thread and parent identity', () => {
+    test('round-trips with either, both, or neither', () => {
+      for (const extra of [
+        {},
+        { threadId: 'thread-1' },
+        { parentRunId: 'run-0' },
+        { threadId: 'thread-1', parentRunId: 'run-0' },
+      ]) {
+        const event: ChatStreamEvent = {
+          type: 'run.started',
+          runId: 'run-1',
+          ...extra,
+          wireVersion: 3,
+          sequence: 0,
+        };
+        expect(decodeChatStreamEvent(encodeChatStreamEvent(event))).toEqual(event);
+      }
+    });
+
+    test('rejects a threadId or parentRunId that is not a string, when decoding and encoding', () => {
+      for (const field of ['threadId', 'parentRunId']) {
+        const frame = {
+          type: 'run.started',
+          runId: 'run-1',
+          [field]: 7,
+          wireVersion: 3,
+          sequence: 0,
+        };
+        expect(() => decodeChatStreamEvent(frame)).toThrow('Invalid chat stream event');
+        expect(() => encodeChatStreamEvent(hostileEvent(frame))).toThrow(
+          'Invalid chat stream event',
+        );
       }
     });
   });

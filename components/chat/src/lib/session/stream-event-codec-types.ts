@@ -320,11 +320,20 @@ export type ChatStreamEvent =
   | ({ type: 'run.error'; error: ChatSerializedRunError } & WireEnvelope)
   | ({ type: 'run.tripwire'; error: ChatSerializedRunError } & WireEnvelope)
   | ({ type: 'run.aborted'; reason?: string } & WireEnvelope)
-  // The start of a run (wire version 3). NON-terminal, unlike every other
-  // `run.*` frame: it opens the stream rather than closing it, so the
-  // terminal-frame bookkeeping must not count it. `runId` is the host's
-  // identifier for the run and is what AG-UI calls `runId` on `RUN_STARTED`.
-  | ({ type: 'run.started'; runId: string } & WireEnvelopeFromV3)
+  // The start of a run (wire version 3), and the first frame of every version
+  // 3 stream. NON-terminal, unlike every other `run.*` frame: it opens the
+  // stream rather than closing it, so the terminal-frame bookkeeping must not
+  // count it. `runId` is the host's identifier for the run. `threadId` and
+  // `parentRunId` are what AG-UI carries on `RUN_STARTED` alongside it: the
+  // conversation the run belongs to, and the run it branched from. Both are
+  // optional, so a host that has neither says nothing, and a later need for
+  // either does not take a new wire version.
+  | ({
+      type: 'run.started';
+      runId: string;
+      threadId?: string;
+      parentRunId?: string;
+    } & WireEnvelopeFromV3)
   // Assistant step boundaries (wire version 2).
   //
   // `messageId` is the HOST'S identifier for the row this step's text

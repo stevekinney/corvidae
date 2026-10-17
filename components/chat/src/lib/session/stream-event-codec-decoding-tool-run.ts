@@ -144,8 +144,19 @@ function decodeStartedRun(
   required: WireEnvelope,
 ): ChatStreamEvent {
   const envelope = requireEnvelopeFromV3(required);
-  if (typeof parsed['runId'] !== 'string') throw new Error('Invalid chat stream event');
-  return { type: 'run.started', runId: parsed['runId'], ...envelope };
+  const { runId, threadId, parentRunId } = parsed;
+  if (typeof runId !== 'string') throw new Error('Invalid chat stream event');
+  if (threadId !== undefined && typeof threadId !== 'string')
+    throw new Error('Invalid chat stream event');
+  if (parentRunId !== undefined && typeof parentRunId !== 'string')
+    throw new Error('Invalid chat stream event');
+  return {
+    type: 'run.started',
+    runId,
+    ...(threadId === undefined ? {} : { threadId }),
+    ...(parentRunId === undefined ? {} : { parentRunId }),
+    ...envelope,
+  };
 }
 function decodeCompletedRun(
   parsed: Record<string, unknown>,

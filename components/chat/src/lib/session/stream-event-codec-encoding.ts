@@ -357,7 +357,17 @@ function projectRunEvent(
   if (event.type === 'run.started') {
     if (envelope.wireVersion !== 3)
       throw new Error('Invalid chat stream event: run.started requires wire version 3');
-    return { type: event.type, runId: requireString(event.runId, 'runId'), ...envelope };
+    return {
+      type: event.type,
+      runId: requireString(event.runId, 'runId'),
+      ...(event.threadId === undefined
+        ? {}
+        : { threadId: requireString(event.threadId, 'threadId') }),
+      ...(event.parentRunId === undefined
+        ? {}
+        : { parentRunId: requireString(event.parentRunId, 'parentRunId') }),
+      ...envelope,
+    };
   }
   if (event.type === 'run.completed') return projectCompletedRun(event, envelope);
   if (event.type === 'run.error' || event.type === 'run.tripwire')
