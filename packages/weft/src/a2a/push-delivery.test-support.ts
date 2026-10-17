@@ -7,7 +7,7 @@
 
 import { afterEach } from 'bun:test';
 
-import { type StreamResponse, TaskState } from '@a2a-js/sdk';
+import { type StreamResponse, type TaskPushNotificationConfig, TaskState } from '@a2a-js/sdk';
 import { ServerCallContext, STATE_HEADERS_KEY } from '@a2a-js/sdk/server';
 
 import { createMailboxClock, type MailboxClock } from '../core/mailbox.test-support.ts';
@@ -165,7 +165,7 @@ export async function createConfiguration(
     readonly token?: string;
     readonly context?: ServerCallContext;
   } = {},
-) {
+): Promise<TaskPushNotificationConfig> {
   return fixture.pushStore.create(
     options.taskId ?? 'task-1',
     options.context ?? callContext({ user: 'alice' }),
