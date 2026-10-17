@@ -302,7 +302,7 @@
       "cssProperty": "--cinder-control-background",
       "category": "color",
       "public": true,
-      "themeAware": false,
+      "themeAware": true,
       "deprecated": false,
       "description": "Control fill."
     },
@@ -311,7 +311,7 @@
       "cssProperty": "--cinder-control-background-disabled",
       "category": "color",
       "public": true,
-      "themeAware": false,
+      "themeAware": true,
       "deprecated": false,
       "description": "Disabled control fill: a flat neutral that reads as inert while staying inside the frame (a control never drops to `surface.inset`)."
     },
@@ -320,7 +320,7 @@
       "cssProperty": "--cinder-control-border",
       "category": "color",
       "public": true,
-      "themeAware": false,
+      "themeAware": true,
       "deprecated": false,
       "description": "Resting control edge; clears 3:1 against every surface."
     },
@@ -329,7 +329,7 @@
       "cssProperty": "--cinder-control-border-hover",
       "category": "color",
       "public": true,
-      "themeAware": false,
+      "themeAware": true,
       "deprecated": false,
       "description": "Hovered control edge."
     },
@@ -338,7 +338,7 @@
       "cssProperty": "--cinder-control-border-disabled",
       "category": "color",
       "public": true,
-      "themeAware": false,
+      "themeAware": true,
       "deprecated": false,
       "description": "Disabled control edge: the structural tier, since a disabled control is not an interactive boundary."
     },
@@ -347,7 +347,7 @@
       "cssProperty": "--cinder-control-border-invalid",
       "category": "color",
       "public": true,
-      "themeAware": false,
+      "themeAware": true,
       "deprecated": false,
       "description": "Invalid control edge. The danger fill rather than `status.danger.border`, because on an invalid control this edge IS the control boundary and has to keep clearing 3:1; the decorative status border would not."
     },

@@ -225,6 +225,19 @@ function setThemeEntry(
   return entry;
 }
 
+/** Deletes the token at `keys`, and any group that leaves empty. */
+function removeEntry(document: Record<string, unknown>, keys: readonly string[]): void {
+  const parents: Array<Record<string, unknown>> = [document];
+  for (const key of keys.slice(0, -1))
+    parents.push(parents.at(-1)![key] as Record<string, unknown>);
+  delete parents.at(-1)![keys.at(-1)!];
+  for (let depth = keys.length - 1; depth > 0; depth -= 1) {
+    const group = parents[depth]!;
+    if (Object.keys(group).some((key) => !key.startsWith('$'))) break;
+    delete parents[depth - 1]![keys[depth - 1]!];
+  }
+}
+
 function attachRecipe(entry: Record<string, unknown>, recipe: string): void {
   const extensions = isPlainObject(entry['$extensions']) ? entry['$extensions'] : {};
   const own = isPlainObject(extensions['com.lostgradient.cinder'])
@@ -256,9 +269,19 @@ export function materializeDerivedValues(
   const { derived, pathByProperty } = collectDerivedTokens(resolver, documents);
 
   const themeEntries = new Map<Theme, Set<string>>();
+  const derivedPaths = new Set(derived.map((token) => token.path));
   for (const theme of THEMES) {
     const themePath = themeDocumentPath(resolver, theme);
     const themeDocument = documents.get(themePath)!;
+    // A theme entry that carries a recipe is one this step wrote (theme recipes are never
+    // authored by hand). When its base token stops being derived -- its recipe removed or made
+    // constant -- the entry would otherwise linger and silently override the new base value.
+    for (const { keys, token } of [...tokens(themeDocument as Record<string, unknown>)]) {
+      if (typeof cinderExtensions(token)?.['cssRecipe'] !== 'string') continue;
+      if (derivedPaths.has(dottedPath(keys))) continue;
+      removeEntry(themeDocument as Record<string, unknown>, keys);
+      changed.add(themePath);
+    }
     const needed = tokensNeedingThemeEntries(derived, themeDocument, pathByProperty, theme);
     themeEntries.set(theme, needed);
     for (const token of derived) {
@@ -357,10 +380,15 @@ export function rewriteSourceText(
   materialized: TokenDocument,
 ): string {
   const target = JSON.parse(protectIntegerKeys(originalText)) as Record<string, unknown>;
+  const protect = (keys: readonly string[]) =>
+    keys.map((key) => (/^\d+$/.test(key) ? `#int#${key}` : key));
+  for (const { keys } of tokens(original as Record<string, unknown>)) {
+    if (tokenAt(materialized, keys) === undefined) removeEntry(target, protect(keys));
+  }
   for (const { keys, token } of tokens(materialized)) {
     if (sameValue(tokenAt(original, keys), token)) continue;
     let node = target;
-    const protectedKeys = keys.map((key) => (/^\d+$/.test(key) ? `#int#${key}` : key));
+    const protectedKeys = protect(keys);
     for (const key of protectedKeys.slice(0, -1)) {
       if (!isPlainObject(node[key])) node[key] = {};
       node = node[key] as Record<string, unknown>;

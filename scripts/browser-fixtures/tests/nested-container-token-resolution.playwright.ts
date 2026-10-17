@@ -144,3 +144,46 @@ test('a base override inside a [data-theme] scope re-derives its dependents', as
   expect(resolved.inkBorder).not.toBe(resolved.plainBorder);
   expect(resolved.inkControl).toBe('oklch(0.5 0.2 30 / 0.48)');
 });
+
+/**
+ * An alias is substituted where it is declared, so one declared only at `:root` freezes to the
+ * root's theme. The generator redeclares every alias whose target a theme block declares, so a
+ * light island on a dark page gets the light control frame, not the page's dark one.
+ */
+test('aliases re-resolve inside a [data-theme] island on a differently themed page', async ({
+  page,
+}) => {
+  await page.goto(tokenFixtureRoute);
+
+  const resolved = await page.evaluate(() => {
+    const root = document.documentElement;
+    const previous = root.dataset['theme'];
+    root.dataset['theme'] = 'dark';
+    const read = (host: HTMLElement, property: string) => {
+      const probe = document.createElement('div');
+      probe.style.color = `var(${property})`;
+      host.append(probe);
+      const value = getComputedStyle(probe).color;
+      probe.remove();
+      return value;
+    };
+    const island = document.createElement('div');
+    island.dataset['theme'] = 'light';
+    document.body.append(island);
+    const result = {
+      islandFrame: read(island, '--cinder-control-background'),
+      islandSurface: read(island, '--cinder-surface-raised'),
+      islandEdge: read(island, '--cinder-control-border'),
+      islandControlTier: read(island, '--cinder-border-control'),
+      pageFrame: read(document.body, '--cinder-control-background'),
+    };
+    island.remove();
+    if (previous === undefined) delete root.dataset['theme'];
+    else root.dataset['theme'] = previous;
+    return result;
+  });
+
+  expect(resolved.islandFrame).toBe(resolved.islandSurface);
+  expect(resolved.islandEdge).toBe(resolved.islandControlTier);
+  expect(resolved.islandFrame).not.toBe(resolved.pageFrame);
+});

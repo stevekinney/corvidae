@@ -377,6 +377,22 @@ describe('the border-ink editor previews every tier it drives', () => {
     expect(alphaStepsOf(summaryEnvelope, 'surface.raised')).toEqual([]);
   });
 
+  test("each step is drawn over its own role's backdrop", () => {
+    mounted = mount(ThemeColorSummary, {
+      target,
+      props: {
+        row: catalogueRowByPath('accent.solid')!,
+        envelope: summaryEnvelope,
+        context: { colorMode: 'light', motion: 'default' },
+        color: readDtcgColor({ colorSpace: 'oklch', components: [0.5, 0.22, 270] })!,
+        onFollow: () => {},
+      },
+    });
+    flushSync();
+    const sample = target.querySelector('[data-testid="alpha-step-accent.border"] .steps__sample');
+    expect(sample?.getAttribute('aria-label')).toBe('accent.border over accent.background');
+  });
+
   test('the summary draws each tier from the color being edited', async () => {
     const inkRow = catalogueRowByPath('border.ink')!;
     const render = (components: number[]) => {

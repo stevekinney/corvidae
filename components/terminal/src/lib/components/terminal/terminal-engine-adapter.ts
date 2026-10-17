@@ -228,7 +228,7 @@ export function createRendererEngine(
   // Whether the current selection is one `selectMatch` made, so clearing never takes a reader's.
   let ownsSelection = false;
   // The match that selection is of, so a resize that clears it can put it back.
-  let selectedMatch: { match: SearchMatch; maximumBytes: number } | undefined;
+  let selectedMatch: { match: SearchMatch; maximumBytes: number; selected: string } | undefined;
 
   function notifyChange(): void {
     for (const listener of changeListeners) listener();
@@ -239,11 +239,19 @@ export function createRendererEngine(
     // select it again (reflowed to the new width), or the highlight vanishes whenever the panel
     // around the terminal changes height. An empty selection means nothing of the reader's is
     // replaced.
-    // The engine clears its selection after this event fires, so the check waits a microtask.
+    // Only the search's own selection comes back: if the reader has selected something else
+    // since, the match is no longer the selection, and ownership goes with it. The engine clears
+    // its selection after this event fires, so that is checked now and restored a microtask later.
+    if (!ownsSelection || selectedMatch === undefined) return notifyChange();
+    if (terminal.getSelection() !== selectedMatch.selected) {
+      ownsSelection = false;
+      selectedMatch = undefined;
+      return notifyChange();
+    }
+    const restore = selectedMatch;
     queueMicrotask(() => {
-      if (disposed || !ownsSelection || selectedMatch === undefined) return;
-      if (terminal.getSelection() !== '') return;
-      selectMatchCells(selectedMatch.match, selectedMatch.maximumBytes);
+      if (disposed || selectedMatch !== restore || terminal.getSelection() !== '') return;
+      selectMatchCells(restore.match, restore.maximumBytes);
     });
     notifyChange();
   });
@@ -274,7 +282,7 @@ export function createRendererEngine(
       terminal.select(cells.column, cells.row, cells.length);
       if (terminal.getSelection() === selected) {
         ownsSelection = true;
-        selectedMatch = { match, maximumBytes };
+        selectedMatch = { match, maximumBytes, selected };
         revealRow(cells.row);
         return true;
       }

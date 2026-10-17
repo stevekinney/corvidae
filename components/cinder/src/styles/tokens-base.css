@@ -873,6 +873,12 @@
     var(--cinder-text-default),
     transparent 88%
   );
+  --cinder-control-background: var(--cinder-surface-raised);
+  --cinder-control-background-disabled: var(--cinder-fill-disabled);
+  --cinder-control-border: var(--cinder-border-control);
+  --cinder-control-border-hover: var(--cinder-border-control-hover);
+  --cinder-control-border-disabled: var(--cinder-border);
+  --cinder-control-border-invalid: var(--cinder-status-danger-solid);
 }
 
 [data-theme='light'] {
@@ -1025,6 +1031,12 @@
     var(--cinder-text-default),
     transparent 88%
   );
+  --cinder-control-background: var(--cinder-surface-raised);
+  --cinder-control-background-disabled: var(--cinder-fill-disabled);
+  --cinder-control-border: var(--cinder-border-control);
+  --cinder-control-border-hover: var(--cinder-border-control-hover);
+  --cinder-control-border-disabled: var(--cinder-border);
+  --cinder-control-border-invalid: var(--cinder-status-danger-solid);
   --cinder-severity-critical: light-dark(oklch(38% 0.18 25), oklch(95% 0.04 25));
   --cinder-severity-critical-background: light-dark(oklch(93% 0.045 25), oklch(24% 0.11 25));
   --cinder-terminal-ansi-black: light-dark(oklch(25% 0 0), oklch(82% 0 0));

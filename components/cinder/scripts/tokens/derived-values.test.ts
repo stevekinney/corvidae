@@ -123,6 +123,35 @@ describe('derived value materialization', () => {
     );
   });
 
+  test('a token that stops being derived loses the theme entries this step generated', async () => {
+    const { resolver, sourceDocumentsByPath } = await loadCorpus();
+    const edited = new Map(sourceDocumentsByPath);
+    const semantic = structuredClone(edited.get('sets/semantic.tokens.json')!) as Record<
+      string,
+      any
+    >;
+    // A constant now: the recipe is gone, so the tier no longer reads the ink.
+    delete semantic['border']['muted']['$extensions']['com.lostgradient.cinder']['cssRecipe'];
+    edited.set('sets/semantic.tokens.json', semantic);
+
+    const materialized = materializeDerivedValues(resolver, edited);
+    for (const theme of ['light', 'dark']) {
+      const border = (materialized.get(`themes/${theme}.tokens.json`) as Record<string, any>)[
+        'border'
+      ];
+      expect(border['muted'], `${theme} keeps no stale border.muted override`).toBeUndefined();
+      expect(border['strong'], `${theme} keeps the tiers that are still derived`).toBeDefined();
+    }
+  });
+
+  test('rewriting a source document removes tokens the materialized document dropped', () => {
+    const text =
+      '{\n  "border": {\n    "muted": { "$value": 1 },\n    "strong": { "$value": 2 }\n  },\n  "only": { "gone": { "$value": 3 } }\n}';
+    const original = JSON.parse(text);
+    const changed = { border: { strong: { $value: 2 } } };
+    expect(JSON.parse(rewriteSourceText(text, original, changed))).toEqual(changed);
+  });
+
   test('rewriting a source document keeps integer-like keys in place', () => {
     const text =
       '{\n  "series": {\n    "$type": "color",\n    "1": { "$value": 1 },\n    "x": { "$value": 2 }\n  }\n}';

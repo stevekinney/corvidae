@@ -10,7 +10,7 @@
   import { wcagContrast } from 'culori';
   import { untrack } from 'svelte';
 
-  import type { CatalogueRow } from './theme-builder-catalogue.ts';
+  import { catalogueRowByPath, type CatalogueRow } from './theme-builder-catalogue.ts';
   import { alphaStepsOf, colorsByMode, effectiveBackground } from './theme-color-editing.ts';
   import {
     authoredText,
@@ -46,15 +46,21 @@
   // drawn live from the color being edited so a change previews every tier it drives.
   const steps = $derived(
     alphaStepsOf(envelope, row.path).map((step) => {
+      // Each step is measured over the surface ITS role is paired with (`accent.border` over
+      // `accent.background`), which need not be the edited color's own backdrop.
+      const stepRow = catalogueRowByPath(step.path);
+      const backdrop =
+        stepRow === undefined ? background : effectiveBackground(stepRow, envelope, context);
       const painted = withAlpha(color, step.alpha * colorAlpha(color));
-      const composited = background === null ? null : compositeOver(painted, background.color);
+      const composited = backdrop === null ? null : compositeOver(painted, backdrop.color);
       return {
         ...step,
+        backdrop,
         composited,
         ratio:
-          composited === null || background === null
+          composited === null || backdrop === null
             ? null
-            : wcagContrast(composited, authoredText(background.color)),
+            : wcagContrast(composited, authoredText(backdrop.color)),
       };
     }),
   );
@@ -151,10 +157,10 @@
             <span
               class="steps__sample"
               role="img"
-              aria-label={`${step.path} over ${background?.path ?? 'the page surface'}`}
-              style:background={background === null
+              aria-label={`${step.path} over ${step.backdrop?.path ?? 'the page surface'}`}
+              style:background={step.backdrop === null
                 ? 'transparent'
-                : authoredText(background.color)}
+                : authoredText(step.backdrop.color)}
             >
               <span
                 class="steps__edge"

@@ -1780,7 +1780,8 @@
         "cssRecipe": "color-mix(in oklch, var(--cinder-accent-solid), transparent 60%)",
         "cssProperty": "--cinder-accent-border",
         "public": true,
-        "category": "color"
+        "category": "color",
+        "contrastPairs": ["accent.background"]
       }
     },
     "$description": "Soft accent-tinted border, the accent color mixed 60% toward transparent."

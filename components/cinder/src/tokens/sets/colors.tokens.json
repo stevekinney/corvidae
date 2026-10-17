@@ -460,6 +460,7 @@
           "cssProperty": "--cinder-accent-border",
           "public": true,
           "category": "color",
+          "contrastPairs": ["accent.background"],
           "cssRecipe": "color-mix(in oklch, var(--cinder-accent-solid), transparent 60%)"
         }
       }
