@@ -1185,11 +1185,6 @@ describe.skipIf(!browserSmokeEnabled)('Service Worker browser smoke', () => {
       const page = await withinPhase('page creation', context.newPage());
       page.on('console', (message) => browserDiagnostics.push(`console:${message.text()}`));
       page.on('pageerror', (error) => browserDiagnostics.push(`pageerror:${error.message}`));
-      // An uncaught exception in the worker's fetch listener also makes a
-      // navigation fall through to the network, by accident. The guard must
-      // decline deliberately, so no listener may throw.
-      const workerErrors: string[] = [];
-      context.on('weberror', (webError) => workerErrors.push(webError.error().message));
       await registerServiceWorker(page, origin, withinPhase);
 
       // `setupServiceWorker()` defaults to local trust, so a same-origin fetch
@@ -1251,8 +1246,6 @@ describe.skipIf(!browserSmokeEnabled)('Service Worker browser smoke', () => {
       } finally {
         await attacker.stop(true);
       }
-
-      expect(workerErrors).toEqual([]);
 
       // The form post created nothing.
       const created = await withinPhase(

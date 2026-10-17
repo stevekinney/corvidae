@@ -69,8 +69,10 @@ const UNAUTHENTICATED_LOCAL_AUTH_CONTEXT: AuthContext = Object.freeze({
  * `serve()` with no `auth` attaches it for you, and `setupServiceWorker()`
  * defaults to it. Use it as the recipe for any other single-user host, for
  * example `createOperationHandler({ authenticate: async () =>
- * unauthenticatedLocalAuthContext() })`. It identifies nobody and refuses
- * nothing, so never attach it to requests from callers you do not trust.
+ * unauthenticatedLocalAuthContext() })`. It identifies nobody and refuses no
+ * built-in operation, so never attach it to requests from callers you do not
+ * trust. It holds no package scope, so an operation that needs one registered
+ * through `additionalScopes` still needs a credential that holds it.
  *
  * @example
  * ```ts

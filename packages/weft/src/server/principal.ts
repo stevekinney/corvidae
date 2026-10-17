@@ -251,8 +251,10 @@ export function principalFromStdioLocal(): AuthenticatedPrincipal {
 /**
  * Build the principal a `serve()` with no authentication gives every request.
  * The server identifies no caller, so every caller is the one local user and
- * holds every built-in scope (`AUTHORIZATION_SCOPES`); it holds no package
- * scope, as with `stdio-local`. The same instance is returned every time, so
+ * holds every built-in scope (`AUTHORIZATION_SCOPES`), so every built-in
+ * operation is reachable. It holds no package scope, as with `stdio-local`, so
+ * an operation that needs a scope registered through `additionalScopes` still
+ * needs a credential holding it. The same instance is returned every time, so
  * two requests compare as the same owner.
  *
  * @example

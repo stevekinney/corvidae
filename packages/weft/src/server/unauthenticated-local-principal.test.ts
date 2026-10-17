@@ -163,16 +163,20 @@ describe('serve() with no authentication', () => {
     });
   });
 
-  it("warns that every operation is accessible, and names the local principal, under 'warn'", () => {
+  it("warns that every built-in operation is accessible, and names the local principal, under 'warn'", () => {
     const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
     try {
       engine = createEngine();
       server = serve({ engine, port: 0, publicOrigin: 'http://localhost' });
 
       expect(warningSpy).toHaveBeenCalledWith(NO_AUTHENTICATION_WARNING);
-      expect(NO_AUTHENTICATION_WARNING).toContain('every operation is accessible to any caller');
+      expect(NO_AUTHENTICATION_WARNING).toContain(
+        'every built-in operation is accessible to any caller',
+      );
       expect(NO_AUTHENTICATION_WARNING).toContain('unauthenticated-local');
       expect(NO_AUTHENTICATION_WARNING).not.toContain('non-public');
+      // A package scope is granted only to a credential that holds it.
+      expect(NO_AUTHENTICATION_WARNING).toContain('package scope');
     } finally {
       warningSpy.mockRestore();
     }
@@ -427,7 +431,7 @@ describe('MCP sessions on a serve() with static API keys', () => {
   const KEY_A = 'static-key-a-for-mcp';
   const KEY_B = 'static-key-b-for-mcp';
 
-  it('requires the continuation token, because every static key is the same api-key-caller', async () => {
+  it('binds the session to the key that created it: key A continues without a token, key B is refused', async () => {
     const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
     try {
       engine = createEngine();
@@ -480,6 +484,8 @@ describe('MCP sessions on a serve() with static API keys', () => {
       });
 
     // Key B holds only the session id: refused, on continuation and on DELETE.
+    // Every static key is the same `api-key-caller`, so the principal alone
+    // cannot tell A from B; the digest of the key the session was bound to can.
     const hijacked = await continuation(KEY_B);
     const terminated = await fetch(`${server.url}/mcp`, {
       method: 'DELETE',
@@ -492,8 +498,12 @@ describe('MCP sessions on a serve() with static API keys', () => {
     expect(hijacked.status).toBe(403);
     expect(terminated.status).toBe(403);
 
-    // Key A, holding the token, is admitted.
-    const admitted = await continuation(KEY_A, token);
-    expect(admitted.status).toBe(200);
+    // Key A is admitted with no custom token, as a standard MCP client sends it.
+    const admittedByKey = await continuation(KEY_A);
+    expect(admittedByKey.status).toBe(200);
+
+    // The token still admits, whichever key presents it.
+    const admittedByToken = await continuation(KEY_B, token);
+    expect(admittedByToken.status).toBe(200);
   });
 });

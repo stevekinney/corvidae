@@ -7,7 +7,9 @@ import { workflow } from '../core/types/workflow-function.ts';
 import { serve, type WeftServer } from '../server/index.ts';
 import {
   anonymousPrincipal,
+  principalFromApiKey,
   principalFromJwtClaims,
+  principalFromMutualTls,
   principalFromStdioLocal,
   principalFromUnauthenticatedLocal,
   type Principal,
@@ -1841,3 +1843,294 @@ function makeBrokenSchema(label: string): DefinitionSchema {
     },
   };
 }
+
+describe('MCP sessions bound to a shared static-key subject', () => {
+  // Every static API key is admitted as the one `api-key-caller` principal, so
+  // the principal alone cannot tell key A from key B. The session is bound to the
+  // digest of the key that created it instead, and a standard MCP client, which
+  // sends the key on every request and no `Mcp-Session-Token`, keeps working.
+  const staticKeyPrincipal = principalFromApiKey({
+    subject: 'api-key-caller',
+    scopes: ['workflows:read'],
+  });
+
+  afterEach(() => {
+    for (const engine of enginesToDispose.splice(0)) {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  function request(
+    method: 'POST' | 'GET' | 'DELETE',
+    key: string | null,
+    sessionId: string | null,
+    token?: string,
+  ): Request {
+    const headers = new Headers({
+      accept: method === 'GET' ? 'text/event-stream' : 'application/json, text/event-stream',
+      'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION,
+    });
+    if (method === 'POST') headers.set('content-type', 'application/json');
+    if (key !== null) headers.set('X-API-Key', key);
+    if (sessionId !== null) headers.set('Mcp-Session-Id', sessionId);
+    if (token !== undefined) headers.set('Mcp-Session-Token', token);
+    return new Request('http://localhost/mcp', {
+      method,
+      headers,
+      ...(method === 'POST'
+        ? { body: JSON.stringify({ jsonrpc: '2.0', id: 'list', method: 'tools/list', params: {} }) }
+        : {}),
+      ...(method === 'GET' ? { signal: AbortSignal.abort() } : {}),
+    });
+  }
+
+  async function open(
+    principal: Principal,
+    key: string,
+    sessionManager: McpSessionManager,
+    engine: Engine,
+  ): Promise<{ sessionId: string; token: string }> {
+    const initialized = await handleMcpHttpRequest({
+      request: jsonRequest(
+        {
+          jsonrpc: '2.0',
+          id: 'init',
+          method: 'initialize',
+          params: { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {} },
+        },
+        undefined,
+        { 'X-API-Key': key },
+      ),
+      engine,
+      sessionManager,
+      authRequired: true,
+      principal,
+    });
+    expect(initialized.status).toBe(200);
+    return {
+      sessionId: initialized.headers.get('Mcp-Session-Id') ?? '',
+      token: initialized.headers.get('Mcp-Session-Token') ?? '',
+    };
+  }
+
+  function send(
+    engine: Engine,
+    sessionManager: McpSessionManager,
+    principal: Principal,
+    httpRequest: Request,
+  ): Promise<Response> | Response {
+    return handleMcpHttpRequest({
+      request: httpRequest,
+      engine,
+      sessionManager,
+      authRequired: true,
+      principal,
+    });
+  }
+
+  it('admits the key that created the session with no token, on POST, GET, and DELETE', async () => {
+    const engine = createEngine();
+    const sessionManager = createMcpSessionManager(engine);
+    try {
+      const { sessionId } = await open(staticKeyPrincipal, 'key-a', sessionManager, engine);
+      const posted = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('POST', 'key-a', sessionId),
+      );
+      const got = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('GET', 'key-a', sessionId),
+      );
+      expect(posted.status).toBe(200);
+      expect(got.status).toBe(200);
+      const deleted = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('DELETE', 'key-a', sessionId),
+      );
+      expect(deleted.status).toBe(204);
+    } finally {
+      await sessionManager[Symbol.asyncDispose]();
+    }
+  });
+
+  it('refuses a different static key that holds only the session id, on POST, GET, and DELETE', async () => {
+    const engine = createEngine();
+    const sessionManager = createMcpSessionManager(engine);
+    try {
+      const { sessionId } = await open(staticKeyPrincipal, 'key-a', sessionManager, engine);
+      const posted = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('POST', 'key-b', sessionId),
+      );
+      const got = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('GET', 'key-b', sessionId),
+      );
+      const deleted = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('DELETE', 'key-b', sessionId),
+      );
+      expect(posted.status).toBe(403);
+      expect(got.status).toBe(403);
+      expect(deleted.status).toBe(403);
+      expect(sessionManager.get(sessionId)).toBeDefined();
+    } finally {
+      await sessionManager[Symbol.asyncDispose]();
+    }
+  });
+
+  it('refuses a request that presents no key at all, and a key that is only a prefix of the bound one', async () => {
+    const engine = createEngine();
+    const sessionManager = createMcpSessionManager(engine);
+    try {
+      const { sessionId } = await open(staticKeyPrincipal, 'key-abc', sessionManager, engine);
+      const noKey = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('POST', null, sessionId),
+      );
+      const prefix = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('POST', 'key-ab', sessionId),
+      );
+      expect(noKey.status).toBe(403);
+      expect(prefix.status).toBe(403);
+    } finally {
+      await sessionManager[Symbol.asyncDispose]();
+    }
+  });
+
+  it('admits another key that presents the session token', async () => {
+    const engine = createEngine();
+    const sessionManager = createMcpSessionManager(engine);
+    try {
+      const { sessionId, token } = await open(staticKeyPrincipal, 'key-a', sessionManager, engine);
+      const withToken = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        request('POST', 'key-b', sessionId, token),
+      );
+      expect(withToken.status).toBe(200);
+    } finally {
+      await sessionManager[Symbol.asyncDispose]();
+    }
+  });
+
+  it('reads a bearer API key the way the authenticator does', async () => {
+    const engine = createEngine();
+    const sessionManager = createMcpSessionManager(engine);
+    try {
+      const initialized = await handleMcpHttpRequest({
+        request: jsonRequest(
+          {
+            jsonrpc: '2.0',
+            id: 'init',
+            method: 'initialize',
+            params: { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {} },
+          },
+          undefined,
+          { Authorization: 'Bearer key-a' },
+        ),
+        engine,
+        sessionManager,
+        authRequired: true,
+        principal: staticKeyPrincipal,
+      });
+      const sessionId = initialized.headers.get('Mcp-Session-Id') ?? '';
+      const headers = {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION,
+        'Mcp-Session-Id': sessionId,
+      };
+      const body = JSON.stringify({ jsonrpc: '2.0', id: 'list', method: 'tools/list', params: {} });
+      const sameKey = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { ...headers, Authorization: 'Bearer key-a' },
+          body,
+        }),
+      );
+      const otherKey = await send(
+        engine,
+        sessionManager,
+        staticKeyPrincipal,
+        new Request('http://localhost/mcp', {
+          method: 'POST',
+          headers: { ...headers, Authorization: 'Bearer key-b' },
+          body,
+        }),
+      );
+      expect(sameKey.status).toBe(200);
+      expect(otherKey.status).toBe(403);
+    } finally {
+      await sessionManager[Symbol.asyncDispose]();
+    }
+  });
+
+  it('keeps requiring the token for an mTLS caller, whose certificate is not visible on the request', async () => {
+    const engine = createEngine();
+    const sessionManager = createMcpSessionManager(engine);
+    const mutualTls = principalFromMutualTls({
+      subject: 'mtls-caller',
+      scopes: ['workflows:read'],
+    });
+    try {
+      // Even a request that also carries an API key header is not bound by it.
+      const { sessionId, token } = await open(mutualTls, 'key-a', sessionManager, engine);
+      const byKey = await send(
+        engine,
+        sessionManager,
+        mutualTls,
+        request('POST', 'key-a', sessionId),
+      );
+      const byToken = await send(
+        engine,
+        sessionManager,
+        mutualTls,
+        request('POST', null, sessionId, token),
+      );
+      expect(byKey.status).toBe(403);
+      expect(byToken.status).toBe(200);
+    } finally {
+      await sessionManager[Symbol.asyncDispose]();
+    }
+  });
+
+  it('never keeps the key itself: the session exposes no field holding it', async () => {
+    const engine = createEngine();
+    const sessionManager = createMcpSessionManager(engine);
+    try {
+      const { sessionId } = await open(
+        staticKeyPrincipal,
+        'key-secret-value',
+        sessionManager,
+        engine,
+      );
+      const session = sessionManager.get(sessionId);
+      expect(JSON.stringify(session)).not.toContain('key-secret-value');
+      expect(Object.values(session ?? {}).join(' ')).not.toContain('key-secret-value');
+    } finally {
+      await sessionManager[Symbol.asyncDispose]();
+    }
+  });
+});

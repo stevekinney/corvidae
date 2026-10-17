@@ -415,7 +415,7 @@ describe('serve', () => {
         expect.stringContaining('server started with NO authentication'),
       );
       expect(warningSpy).toHaveBeenCalledWith(
-        expect.stringContaining('every operation is accessible to any caller'),
+        expect.stringContaining('every built-in operation is accessible to any caller'),
       );
     } finally {
       warningSpy.mockRestore();

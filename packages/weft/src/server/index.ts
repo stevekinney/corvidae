@@ -311,7 +311,10 @@ export interface ServeOptions {
    *
    * With `'warn'` or `'allow'`, the server identifies nobody: every request
    * runs as the `unauthenticated-local` principal, which holds every built-in
-   * scope, so every operation is reachable by any caller that can reach the port.
+   * scope, so every built-in operation is reachable by any caller that can reach
+   * the port. An operation registered through `operations` that needs a package
+   * scope (`additionalScopes`) is not: the local principal holds no package scope,
+   * so it needs a credential that does.
    */
   unauthenticatedAccess?: UnauthenticatedAccessPolicy;
   /**

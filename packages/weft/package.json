@@ -68,6 +68,7 @@
     "@lostgradient/markdown": "workspace:*",
     "@lostgradient/typescript": "workspace:*",
     "@lucide/svelte": "catalog:",
+    "@modelcontextprotocol/client": "catalog:",
     "@playwright/test": "catalog:",
     "@shikijs/langs": "catalog:",
     "@shikijs/themes": "catalog:",

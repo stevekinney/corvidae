@@ -20,13 +20,20 @@
   } from '@lostgradient/weft';
 
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
+  import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 
   interface CommandPaletteLauncherProps {
     open: boolean;
     client: HttpClient;
+    /** Whether the principal holds `schedules:read`; without it schedules are not searched. Open when omitted. */
+    scheduleReadGate?: ScopeGate | undefined;
   }
 
-  let { open = $bindable(false), client }: CommandPaletteLauncherProps = $props();
+  let {
+    open = $bindable(false),
+    client,
+    scheduleReadGate = { disabled: false, title: undefined },
+  }: CommandPaletteLauncherProps = $props();
 
   let query = $state('');
 
@@ -78,11 +85,15 @@
             () => [] as WorkflowSummary[],
           )
         : Promise.resolve([] as WorkflowSummary[]),
-      client.listSchedules({ limit: 100 }).then(
-        (result) =>
-          result.items.filter((schedule) => containsQuery(currentQuery, schedule.id)).slice(0, 5),
-        () => [] as ScheduleSummary[],
-      ),
+      scheduleReadGate.disabled
+        ? Promise.resolve([] as ScheduleSummary[])
+        : client.listSchedules({ limit: 100 }).then(
+            (result) =>
+              result.items
+                .filter((schedule) => containsQuery(currentQuery, schedule.id))
+                .slice(0, 5),
+            () => [] as ScheduleSummary[],
+          ),
       client.operations['weft.workers.list']({}).then(
         (result) =>
           result.items.filter((worker) => containsQuery(currentQuery, worker.id)).slice(0, 5),

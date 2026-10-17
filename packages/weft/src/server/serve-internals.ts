@@ -108,7 +108,7 @@ const AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE = 'WEFT_SERVER_AUTHENTICATION
  * `tests/auth-warning-filter.test.ts`) and not part of the public API surface.
  */
 export const NO_AUTHENTICATION_WARNING =
-  '[weft] WARNING: server started with NO authentication; every operation is accessible to any caller, and every request runs as the "unauthenticated-local" principal holding every scope. Configure serve({ auth }) to lock down, or set unauthenticatedAccess: "reject" in production to fail closed.';
+  '[weft] WARNING: server started with NO authentication; every built-in operation is accessible to any caller, and every request runs as the "unauthenticated-local" principal holding every built-in scope (an operation that needs a package scope registered through additionalScopes still needs a credential holding it). Configure serve({ auth }) to lock down, or set unauthenticatedAccess: "reject" in production to fail closed.';
 export const MCP_ORIGIN_CONFIGURATION_WARNING =
   '[weft] WARNING: MCP HTTP transport is enabled without publicOrigin or trustedHosts. Cross-origin /mcp requests are rejected, and discovery routes that emit absolute URLs return 503. Configure serve({ publicOrigin: "https://api.example.com" }) or serve({ trustedHosts: ["api.example.com"] }) before exposing the server through a browser or reverse proxy.';
 const NO_AUTHENTICATION_REJECT_ERROR =
