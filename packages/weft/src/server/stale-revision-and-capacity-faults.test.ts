@@ -19,6 +19,7 @@ import {
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
   shapeOperationFaultAsJson,
+  staleRevisionFault,
   type OperationFault,
 } from './operation-fault.ts';
 import { defineOperation } from './operation-registry.ts';
@@ -183,6 +184,52 @@ describe('Retry-After', () => {
     expect(await faultToHttpResponse(zero).json()).toEqual({
       error: zero.message,
       data: { currentRevision: 0 },
+    });
+  });
+
+  describe('non-finite revision tokens', () => {
+    // `NaN` and `Infinity` serialize as `null`, which would break the schema's
+    // required `currentRevision`. A fault carrying one is a programming error.
+    const NON_FINITE = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+
+    for (const field of ['currentRevision', 'expectedRevision'] as const) {
+      for (const value of NON_FINITE) {
+        it(`${field} = ${String(value)} is refused by the factory`, () => {
+          expect(() => staleRevisionFault('stale', { currentRevision: 5, [field]: value })).toThrow(
+            TypeError,
+          );
+        });
+
+        it(`${field} = ${String(value)} is refused on REST and on JSON-RPC, never sent as null`, () => {
+          const fault = {
+            code: 'StaleRevision',
+            message: 'stale',
+            data: { currentRevision: 5, [field]: value },
+          } as AddedFault;
+          expect(() => faultToHttpResponse(fault)).toThrow(TypeError);
+          expect(() => shapeOperationFaultAsJson(fault)).toThrow(TypeError);
+          expect(() => faultToJsonRpcError(fault)).toThrow(TypeError);
+        });
+      }
+    }
+
+    it('accepts finite numbers and string tokens through the factory', () => {
+      expect(staleRevisionFault('stale', { currentRevision: 0 }).data).toEqual({
+        currentRevision: 0,
+      });
+      expect(
+        staleRevisionFault('stale', { currentRevision: 'r9', expectedRevision: -3 }).data,
+      ).toEqual({ currentRevision: 'r9', expectedRevision: -3 });
+    });
+
+    it('applies one finite-number check to every numeric field of fault data', () => {
+      const payloadTooLarge: OperationFault = {
+        code: 'PayloadTooLarge',
+        message: 'too large',
+        data: { maxBytes: Number.NaN },
+      };
+      expect(() => faultToHttpResponse(payloadTooLarge)).toThrow(TypeError);
+      expect(() => faultToJsonRpcError(payloadTooLarge)).toThrow(TypeError);
     });
   });
 

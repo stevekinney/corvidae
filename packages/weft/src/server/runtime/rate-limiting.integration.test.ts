@@ -69,6 +69,36 @@ describe('serve() with rate limiting', () => {
     expect(body.error).toBe('Too Many Requests');
   });
 
+  it('answers a throttle in the RateLimited shape: data.retryAfterSeconds matches Retry-After', async () => {
+    engine = createEngine();
+    server = serve({
+      engine,
+      port: 0,
+      auth: { apiKeys: [TEST_API_KEY], defaultApiKeyScopes: ['workflows:read'] },
+      rateLimit: { maxRequests: 1, windowMs: 60_000 },
+    });
+
+    const allowed = await fetch(`${server.url}/v1/workflows`, {
+      headers: { 'X-API-Key': TEST_API_KEY },
+    });
+    await allowed.body?.cancel();
+    const throttled = await fetch(`${server.url}/v1/workflows`, {
+      headers: { 'X-API-Key': TEST_API_KEY },
+    });
+
+    expect(throttled.status).toBe(429);
+    expect(throttled.headers.get('Content-Type')).toBe('application/json');
+    expect(throttled.headers.get('X-RateLimit-Remaining')).toBe('0');
+    const retryAfterHeader = Number(throttled.headers.get('Retry-After'));
+    const body = (await throttled.json()) as {
+      error: string;
+      data?: { retryAfterSeconds?: number };
+    };
+    expect(body.error).toBe('Too Many Requests');
+    expect(body.data?.retryAfterSeconds).toBeGreaterThan(0);
+    expect(Math.ceil(body.data?.retryAfterSeconds ?? Number.NaN)).toBe(retryAfterHeader);
+  });
+
   it('exempts public paths (health) from rate limiting when auth is configured', async () => {
     engine = createEngine();
     server = serve({

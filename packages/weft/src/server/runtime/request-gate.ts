@@ -18,6 +18,7 @@
 import type { AuthContext, AuthResult } from '../authentication.ts';
 import { DEFAULT_PUBLIC_PATHS, normalizeRequestPathname } from '../authentication/types.ts';
 import { unauthenticatedLocalAuthContext } from '../handler/auth-context-principal.ts';
+import { shapeRestFaultAsJson } from '../operation-fault.ts';
 import type { ServerContext } from './context.ts';
 
 const DEFAULT_PUBLIC_PATH_SET = new Set(DEFAULT_PUBLIC_PATHS);
@@ -79,7 +80,7 @@ export async function authenticateRequest(
     const publicBypass = DEFAULT_PUBLIC_PATH_SET.has(normalizeRequestPathname(request));
     // The server identifies nobody, so every request is the one local user.
     // `weft.system.principal` and the audit actor report it, and it holds
-    // every built-in scope so every operation stays reachable.
+    // every built-in scope so every built-in operation stays reachable.
     return {
       authContext: unauthenticatedLocalAuthContext(),
       response: null,
@@ -170,15 +171,18 @@ function enforceRateLimit(
   if (decision.allowed) {
     return null;
   }
-  return new Response(JSON.stringify({ error: 'Too Many Requests' }), {
-    status: 429,
-    headers: {
-      'Content-Type': 'application/json',
-      'Retry-After': String(decision.retryAfterSeconds),
-      'X-RateLimit-Limit': String(decision.limit),
-      'X-RateLimit-Remaining': String(decision.remaining),
-    },
+  // Project the throttle through the `RateLimited` fault, so the middleware
+  // answers in the same shape as an operation that raises it: status 429, a
+  // `Retry-After` header, and `data.retryAfterSeconds` in the body. The limiter
+  // knows when the budget resets, so the delay is exact.
+  const response = shapeRestFaultAsJson({
+    code: 'RateLimited',
+    message: 'Too Many Requests',
+    data: { retryAfterSeconds: decision.retryAfterSeconds },
   });
+  response.headers.set('X-RateLimit-Limit', String(decision.limit));
+  response.headers.set('X-RateLimit-Remaining', String(decision.remaining));
+  return response;
 }
 
 /**

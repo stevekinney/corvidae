@@ -25,6 +25,7 @@
  */
 
 import {
+  assertFiniteFaultData,
   FAULT_CODE_TO_HTTP_STATUS,
   FAULT_CODE_TO_JSON_RPC_CODE,
   usableRetryAfterSeconds,
@@ -38,6 +39,7 @@ export type JsonRpcError = {
 };
 
 export function faultToJsonRpcError(fault: OperationFault): JsonRpcError {
+  assertFiniteFaultData(fault);
   const code = FAULT_CODE_TO_JSON_RPC_CODE[fault.code];
   const httpStatus = FAULT_CODE_TO_HTTP_STATUS[fault.code];
   // Envelope keys are written LAST so a future payload field accidentally

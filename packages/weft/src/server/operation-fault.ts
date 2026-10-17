@@ -321,6 +321,7 @@ export function shapeRestFaultAsJson(
   fault: OperationFault,
   options: RestFaultResponseOptions = {},
 ): Response {
+  assertFiniteFaultData(fault);
   const body = shapeRestFaultBody(fault, options.message);
   const status =
     fault.code === 'EngineFailure'
@@ -344,6 +345,42 @@ function retryAfterHeaderValue(fault: OperationFault): string | undefined {
   if (fault.code !== 'RateLimited' && fault.code !== 'Unavailable') return undefined;
   const seconds = usableRetryAfterSeconds(fault.data.retryAfterSeconds);
   return seconds === undefined ? undefined : String(Math.ceil(seconds));
+}
+
+/**
+ * Refuse a fault whose `data` carries a number that JSON cannot represent.
+ * `NaN` and `Infinity` serialize as `null`, so a `StaleRevision` with a
+ * non-finite `currentRevision`, for one, would put a `null` on the wire where
+ * the schema requires a revision. That is a programming error in whoever built
+ * the fault, so it throws rather than producing a body that violates the
+ * contract. The one exception is `retryAfterSeconds`, a hint a client can do
+ * without: {@link usableRetryAfterSeconds} drops it from every projection.
+ *
+ * Called by the fault factories, and again by both wire projections as the
+ * boundary check, so a fault written as an object literal is covered too.
+ */
+export function assertFiniteFaultData(fault: OperationFault): void {
+  for (const [field, value] of Object.entries(fault.data)) {
+    if (field === 'retryAfterSeconds') continue;
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+      throw new TypeError(
+        `The ${fault.code} fault's data.${field} must be a finite number, got ${String(value)}`,
+      );
+    }
+  }
+}
+
+/**
+ * Build a `StaleRevision` fault. Throws a `TypeError` when `currentRevision` or
+ * `expectedRevision` is a non-finite number ({@link assertFiniteFaultData}).
+ */
+export function staleRevisionFault(
+  message: string,
+  data: Extract<OperationFault, { code: 'StaleRevision' }>['data'],
+): Extract<OperationFault, { code: 'StaleRevision' }> {
+  const fault = { code: 'StaleRevision', message, data } as const;
+  assertFiniteFaultData(fault);
+  return fault;
 }
 
 /**
