@@ -3228,7 +3228,7 @@
           "reason": "You need waveform visualization or Web Audio integration — wire that separately."
         }
       ],
-      "related": ["button", "toolbar", "progress", "tooltip"],
+      "related": ["button", "toolbar", "progress", "tooltip", "video-player", "audio-player"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
