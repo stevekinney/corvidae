@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { RequestMalformedError, toJsonRpcError } from '@a2a-js/sdk/errors';
 
 import { MemoryStorage } from '../storage/memory.ts';
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   a2aStoreBackends,
   callContext,
@@ -335,14 +336,16 @@ for (const backend of a2aStoreBackends) {
       expect(headKey).toBe('a2a:push-head:agent::user%3Aalice:task-1');
       expect(configKey).toBe('a2a:push:agent::user%3Aalice:task-1:hook');
       await overwriteRecord(storage, configKey ?? '', { recordVersion: 7 });
-      await expect(store.get('task-1', 'hook', ALICE)).rejects.toBeInstanceOf(
+      expect(await rejectionOf(store.get('task-1', 'hook', ALICE))).toBeInstanceOf(
         A2AStoreRecordVersionError,
       );
-      await expect(store.load('task-1', ALICE)).rejects.toBeInstanceOf(A2AStoreRecordVersionError);
+      expect(await rejectionOf(store.load('task-1', ALICE))).toBeInstanceOf(
+        A2AStoreRecordVersionError,
+      );
       await overwriteRecord(storage, headKey ?? '', { sequence: 1 });
-      await expect(
-        store.create('task-1', ALICE, pushConfigFixture('task-1')),
-      ).rejects.toMatchObject({ key: headKey, recordVersion: undefined });
+      expect(
+        await rejectionOf(store.create('task-1', ALICE, pushConfigFixture('task-1'))),
+      ).toMatchObject({ key: headKey, recordVersion: undefined });
     });
 
     it('stores one configuration when two creates of the same webhook race', async () => {

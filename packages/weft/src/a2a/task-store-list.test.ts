@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { type ListTasksRequest, TaskState } from '@a2a-js/sdk';
 import { RequestMalformedError, toJsonRpcError } from '@a2a-js/sdk/errors';
 
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   a2aStoreBackends,
   artifactFixture,
@@ -202,19 +203,21 @@ for (const backend of a2aStoreBackends) {
       );
       const reuse = (request: Partial<ListTasksRequest>, context = ALICE) =>
         store.list(listRequest({ pageSize: 1, pageToken: nextPageToken, ...request }), context);
-      await expect(
-        reuse({ contextId: 'one' }, callContext({ user: 'bob' })),
-      ).rejects.toBeInstanceOf(A2AStorePageTokenError);
-      await expect(
-        reuse({ contextId: 'one' }, callContext({ user: 'alice', tenant: 'acme' })),
-      ).rejects.toBeInstanceOf(A2AStorePageTokenError);
-      await expect(reuse({ contextId: 'two' })).rejects.toBeInstanceOf(A2AStorePageTokenError);
-      await expect(
-        reuse({ contextId: 'one', status: TaskState.TASK_STATE_WORKING }),
-      ).rejects.toBeInstanceOf(A2AStorePageTokenError);
-      await expect(
-        reuse({ contextId: 'one', statusTimestampAfter: minute(0) }),
-      ).rejects.toBeInstanceOf(A2AStorePageTokenError);
+      expect(
+        await rejectionOf(reuse({ contextId: 'one' }, callContext({ user: 'bob' }))),
+      ).toBeInstanceOf(A2AStorePageTokenError);
+      expect(
+        await rejectionOf(
+          reuse({ contextId: 'one' }, callContext({ user: 'alice', tenant: 'acme' })),
+        ),
+      ).toBeInstanceOf(A2AStorePageTokenError);
+      expect(await rejectionOf(reuse({ contextId: 'two' }))).toBeInstanceOf(A2AStorePageTokenError);
+      expect(
+        await rejectionOf(reuse({ contextId: 'one', status: TaskState.TASK_STATE_WORKING })),
+      ).toBeInstanceOf(A2AStorePageTokenError);
+      expect(
+        await rejectionOf(reuse({ contextId: 'one', statusTimestampAfter: minute(0) })),
+      ).toBeInstanceOf(A2AStorePageTokenError);
       const { tasks } = await reuse({ contextId: 'one' });
       expect(tasks.map((task) => task.id)).toEqual(['b']);
     });

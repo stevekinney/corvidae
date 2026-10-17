@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { toJsonRpcError } from '@a2a-js/sdk/errors';
 
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   a2aStoreBackends,
   callContext,
@@ -92,18 +93,25 @@ for (const backend of a2aStoreBackends) {
       const { nextPageToken: pageToken } = first;
       const second = await store.list({ taskId: 'task-1', pageSize: 2, pageToken }, ALICE);
       expect(second.configs.map((config) => config.id)).toEqual(['c']);
-      await expect(
-        store.list({ taskId: 'task-1', pageToken }, callContext({ user: 'bob' })),
-      ).rejects.toBeInstanceOf(A2AStorePageTokenError);
-      await expect(
-        store.list({ taskId: 'task-1', pageToken }, callContext({ user: 'alice', tenant: 'acme' })),
-      ).rejects.toBeInstanceOf(A2AStorePageTokenError);
-      await expect(store.list({ taskId: 'task-2', pageToken }, ALICE)).rejects.toBeInstanceOf(
+      expect(
+        await rejectionOf(
+          store.list({ taskId: 'task-1', pageToken }, callContext({ user: 'bob' })),
+        ),
+      ).toBeInstanceOf(A2AStorePageTokenError);
+      expect(
+        await rejectionOf(
+          store.list(
+            { taskId: 'task-1', pageToken },
+            callContext({ user: 'alice', tenant: 'acme' }),
+          ),
+        ),
+      ).toBeInstanceOf(A2AStorePageTokenError);
+      expect(await rejectionOf(store.list({ taskId: 'task-2', pageToken }, ALICE))).toBeInstanceOf(
         A2AStorePageTokenError,
       );
-      await expect(
-        store.list({ taskId: 'task-1', pageToken: 'not-a-token' }, ALICE),
-      ).rejects.toBeInstanceOf(A2AStorePageTokenError);
+      expect(
+        await rejectionOf(store.list({ taskId: 'task-1', pageToken: 'not-a-token' }, ALICE)),
+      ).toBeInstanceOf(A2AStorePageTokenError);
     });
 
     it('returns an empty nextPageToken on the last page', async () => {

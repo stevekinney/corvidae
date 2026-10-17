@@ -4,6 +4,7 @@ import { TaskState } from '@a2a-js/sdk';
 import { toJsonRpcError } from '@a2a-js/sdk/errors';
 
 import { MemoryStorage } from '../storage/memory.ts';
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   a2aStoreBackends,
   callContext,
@@ -125,13 +126,15 @@ for (const backend of a2aStoreBackends) {
       const failure = await store.load('task-1', ALICE).catch((error: unknown) => error);
       expect(failure).toBeInstanceOf(A2AStoreRecordVersionError);
       expect(failure).toMatchObject({ key, recordVersion: 2 });
-      await expect(store.list(listAll(), ALICE)).rejects.toBeInstanceOf(A2AStoreRecordVersionError);
+      expect(await rejectionOf(store.list(listAll(), ALICE))).toBeInstanceOf(
+        A2AStoreRecordVersionError,
+      );
       // A save never downgrades a record this release cannot read.
-      await expect(store.save(taskFixture('task-1'), ALICE)).rejects.toBeInstanceOf(
+      expect(await rejectionOf(store.save(taskFixture('task-1'), ALICE))).toBeInstanceOf(
         A2AStoreRecordVersionError,
       );
       await overwriteRecord(storage, key ?? '', ['not', 'a', 'record']);
-      await expect(store.load('task-1', ALICE)).rejects.toMatchObject({
+      expect(await rejectionOf(store.load('task-1', ALICE))).toMatchObject({
         recordVersion: undefined,
       });
     });
