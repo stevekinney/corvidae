@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -501,7 +501,7 @@ describe('check-prop-conventions component-name directory scan', () => {
     // `<name>.types.ts` siblings, so a bare directory (`incomplete-widget`,
     // no files yet) and a support directory (`_internal`, `icons`) must not
     // produce a false-positive component name.
-    const root = mkdtempSync(join(import.meta.dir, '..', 'src', 'components', '.tmp-dirscan-'));
+    const root = mkdtempSync(join(tmpdir(), 'cinder-dirscan-'));
     try {
       const seedComponent = (parent: string, name: string) => {
         const directory = join(parent, name);
@@ -557,7 +557,7 @@ describe('check-prop-conventions component-name directory scan', () => {
   test('derives namespace-only singular names from underscore-prefixed directories with matching svelte/types files', () => {
     // Hermetic: builds its own temporary tree rather than asserting on which
     // real internal directories exist.
-    const root = mkdtempSync(join(import.meta.dir, '..', 'src', 'components', '.tmp-namespace-'));
+    const root = mkdtempSync(join(tmpdir(), 'cinder-namespace-'));
     try {
       const seed = (dirName: string, fileBaseName: string, extensions: readonly string[]) => {
         const directory = join(root, dirName);
@@ -654,13 +654,24 @@ describe('check-prop-conventions — configurable directories (COR-500)', () => 
   // component file. `scan()` is the CLI-facing entry point
   // `check:prop-conventions` calls with multiple directories, so these
   // exercise it directly rather than the lower-level per-directory helpers.
+  //
+  // The checker polices declarations under a `/src/` path segment, so each root is a
+  // `<temporary>/src/components` tree inside the system temporary directory, never this package's
+  // own `src/`: a killed run's `finally` never executes, and a leftover there fails `format:check`
+  // and lint. `removeWorkspaceRoot` deletes the whole temporary parent.
   function makeWorkspaceRoot(prefix: string): string {
-    const root = mkdtempSync(join(import.meta.dir, '..', 'src', 'components', prefix));
+    const base = mkdtempSync(join(tmpdir(), prefix));
+    const root = join(base, 'src', 'components');
+    mkdirSync(root, { recursive: true });
     writeFileSync(
       join(root, 'tsconfig.json'),
       JSON.stringify({ compilerOptions: { strict: true, skipLibCheck: true } }),
     );
     return root;
+  }
+
+  function removeWorkspaceRoot(root: string): void {
+    rmSync(resolve(root, '..', '..'), { recursive: true, force: true });
   }
 
   function writeComponentFile(root: string, name: string, source: string): string {
@@ -672,8 +683,8 @@ describe('check-prop-conventions — configurable directories (COR-500)', () => 
   }
 
   test('discovers violations across every directory it is given, each resolved against its own tsconfig', async () => {
-    const rootA = makeWorkspaceRoot('.tmp-multi-a-');
-    const rootB = makeWorkspaceRoot('.tmp-multi-b-');
+    const rootA = makeWorkspaceRoot('cinder-propcheck-multi-a-');
+    const rootB = makeWorkspaceRoot('cinder-propcheck-multi-b-');
     try {
       writeComponentFile(
         rootA,
@@ -695,13 +706,13 @@ describe('check-prop-conventions — configurable directories (COR-500)', () => 
       expect(violationA?.filePath).toContain('widget-a.types.ts');
       expect(violationB?.filePath).toContain('widget-b.types.ts');
     } finally {
-      rmSync(rootA, { recursive: true, force: true });
-      rmSync(rootB, { recursive: true, force: true });
+      removeWorkspaceRoot(rootA);
+      removeWorkspaceRoot(rootB);
     }
   });
 
   test('still resolves a one-level-inherited violation (a non-exported helper type merged via intersection) through a scanned directory', async () => {
-    const root = makeWorkspaceRoot('.tmp-multi-inherit-');
+    const root = makeWorkspaceRoot('cinder-propcheck-multi-inherit-');
     try {
       writeComponentFile(
         root,
@@ -716,13 +727,13 @@ describe('check-prop-conventions — configurable directories (COR-500)', () => 
       expect(violations).toHaveLength(1);
       expect(violations[0]?.propName).toBe('onactivate');
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeWorkspaceRoot(root);
     }
   });
 
   test('accepts an Event-first lowercase handler (native passthrough) across multiple scanned directories', async () => {
-    const rootA = makeWorkspaceRoot('.tmp-multi-event-a-');
-    const rootB = makeWorkspaceRoot('.tmp-multi-event-b-');
+    const rootA = makeWorkspaceRoot('cinder-propcheck-multi-event-a-');
+    const rootB = makeWorkspaceRoot('cinder-propcheck-multi-event-b-');
     try {
       writeComponentFile(
         rootA,
@@ -737,8 +748,8 @@ describe('check-prop-conventions — configurable directories (COR-500)', () => 
 
       expect(await scan([rootA, rootB])).toEqual([]);
     } finally {
-      rmSync(rootA, { recursive: true, force: true });
-      rmSync(rootB, { recursive: true, force: true });
+      removeWorkspaceRoot(rootA);
+      removeWorkspaceRoot(rootB);
     }
   });
 
@@ -759,5 +770,31 @@ describe('check-prop-conventions — configurable directories (COR-500)', () => 
     const resolved = componentsDirsFromArgv(['bun', 'check-prop-conventions.ts']);
     expect(resolved).toHaveLength(1);
     expect(resolved[0]).toContain(join('src', 'components'));
+  });
+});
+
+describe('cinder script tests keep temporary fixtures out of the source tree', () => {
+  // An interrupted run (a killed coverage job) never reaches a test's `finally`, so a fixture
+  // created beside the source stays behind as untracked files that `format:check` and lint then
+  // reject. Fixtures belong under `os.tmpdir()`.
+  const anchoredInPackage =
+    /mkdtemp(?:Sync)?\(\s*(?:join|resolve)\(\s*(?:import\.meta\.dir(?:name)?|__dirname)\b/;
+
+  test('no script test creates its temporary directory relative to its own location', () => {
+    const offenders = readdirSync(import.meta.dir)
+      .filter((name) => name.endsWith('.test.ts'))
+      .filter((name) => anchoredInPackage.test(readFileSync(join(import.meta.dir, name), 'utf8')));
+    expect(offenders).toEqual([]);
+  });
+
+  test('the guard recognises the pattern it forbids', () => {
+    // Built from pieces so this file, which the guard also scans, holds no matching text itself.
+    const call = 'mkdtemp';
+    const forbidden = [
+      `${call}Sync(join(import.meta.dir, '..', 'src'`,
+      `${call}(resolve(__dirname,`,
+    ];
+    for (const sample of forbidden) expect(anchoredInPackage.test(sample)).toBe(true);
+    expect(anchoredInPackage.test("mkdtempSync(join(tmpdir(), 'x-'))")).toBe(false);
   });
 });
