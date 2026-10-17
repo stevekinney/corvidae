@@ -32,6 +32,7 @@ import { dropQueuedInlineWorkflowStart } from '../inline-launch-queue.ts';
 import type { EngineInternals } from '../internals.ts';
 import { EMPTY_STORAGE_VALUE } from '../lifecycle.ts';
 import { recordResultCommitter } from '../result-committer.ts';
+import { resultWaiterForRun } from '../result-waiter-run.ts';
 import {
   createTeardownTimerId,
   createTerminalCleanupTimerId,
@@ -240,7 +241,11 @@ export async function terminateWorkflow(
       callbacks.swallowPromiseRejection,
     );
 
-    const resolver = isSuperseded() ? undefined : internals.resultResolvers.get(workflowId);
+    // Cancel is an external transition: the run it ended is the one it wrote, which may not be the
+    // run this engine holds in memory, so the waiter is matched against the durable run.
+    const resolver = isSuperseded()
+      ? undefined
+      : resultWaiterForRun(internals, workflowId, previousState.workflowExecutionToken);
     const terminalError = buildTerminalError(workflowId, status, elapsed, reason);
     await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
     const superseded = isSuperseded();
@@ -339,6 +344,7 @@ function notifyCompletionWaiters(
   callbacks: TerminationCallbacks,
   superseded: boolean,
   cancelDeadline: () => void,
+  executionToken: string | undefined,
 ): void {
   // Cancel deadline timer - fire-and-forget since the workflow is already
   // terminal and a stale timer firing will see the terminal state and no-op.
@@ -354,7 +360,9 @@ function notifyCompletionWaiters(
   // superseded run's own waiter was already settled with that run's terminal
   // outcome and removed by the start-new purge (COR-1386), so this path has
   // nothing to settle and must leave the replacement's map entry alone.
-  const resolver = superseded ? undefined : internals.resultResolvers.get(workflowId);
+  const resolver = superseded
+    ? undefined
+    : resultWaiterForRun(internals, workflowId, executionToken);
   try {
     if (!superseded) cleanupTerminalWorkflowImmediately(internals, workflowId, callbacks);
 
@@ -510,6 +518,7 @@ export async function completeWorkflow(
         [`deadline:${workflowId}`],
         callbacks.swallowPromiseRejection,
       ),
+    executionToken,
   );
 }
 
@@ -609,7 +618,9 @@ export async function failWorkflow(
   // Keep engine-managed terminal attributes queryable after the cleanup above.
   await writeRetainedTerminalSearchAttributes(workflowId, retainedAttributes, fenced);
 
-  const resolver = isSuperseded() ? undefined : internals.resultResolvers.get(workflowId);
+  const resolver = isSuperseded()
+    ? undefined
+    : resultWaiterForRun(internals, workflowId, executionToken);
   await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
   const superseded = isSuperseded();
   try {
