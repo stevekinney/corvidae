@@ -25,6 +25,8 @@
     width,
     height,
     ratio,
+    fit,
+    size,
     loading = 'lazy',
     decoding = 'async',
     placeholder,
@@ -89,6 +91,8 @@
   data-cinder-loaded={loaded ? '' : undefined}
   data-cinder-errored={errored ? '' : undefined}
   data-cinder-fallback={showFallback ? '' : undefined}
+  data-cinder-fit={fit}
+  data-cinder-size={size}
   role={fallbackRole}
   aria-label={fallbackLabel}
   aria-hidden={fallbackHidden}

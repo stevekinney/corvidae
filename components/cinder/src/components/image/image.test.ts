@@ -338,6 +338,32 @@ describe('Image', () => {
   });
 });
 
+describe('Image fit and size', () => {
+  const fits = ['contain', 'cover', 'fill', 'none', 'scale-down'] as const;
+  const sizes = ['icon', 'avatar', 'small', 'medium', 'large', 'header'] as const;
+
+  test('leaves the wrapper without fit or size markers by default', () => {
+    const { container } = render(Image, { src: '/a.jpg', alt: 'A' });
+    const wrapper = container.querySelector('.cinder-image');
+    expect(wrapper?.hasAttribute('data-cinder-fit')).toBe(false);
+    expect(wrapper?.hasAttribute('data-cinder-size')).toBe(false);
+  });
+
+  for (const fit of fits) {
+    test(`marks fit="${fit}" on the wrapper`, () => {
+      const { container } = render(Image, { src: '/a.jpg', alt: 'A', fit });
+      expect(container.querySelector('.cinder-image')?.getAttribute('data-cinder-fit')).toBe(fit);
+    });
+  }
+
+  for (const size of sizes) {
+    test(`marks size="${size}" on the wrapper`, () => {
+      const { container } = render(Image, { src: '/a.jpg', alt: 'A', size });
+      expect(container.querySelector('.cinder-image')?.getAttribute('data-cinder-size')).toBe(size);
+    });
+  }
+});
+
 // Unlike the dialog overlays, Image renders its wrapper and <img> on the
 // server — only the load/error STATE is client-only. `loaded`/`errored` derive
 // from `loadedSource`/`erroredSource`, which start null, and the cached-image
