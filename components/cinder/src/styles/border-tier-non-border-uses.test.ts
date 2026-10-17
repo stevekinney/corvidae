@@ -188,13 +188,20 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
     },
   ],
   'components/chat/src/lib/components/chat/message/entry-frame.svelte': [
-    { declaration: 'background: var(--cinder-border-control);', category: 'area', audit: 'entry-frame' },
+    {
+      declaration: 'background: var(--cinder-border-control);',
+      category: 'area',
+      audit: 'entry-frame',
+    },
   ],
   'components/chat/src/lib/components/chat/message/parts/reasoning-part.svelte': [
     { declaration: '--cinder-chat-reasoning-border: var(--cinder-border);', category: 'alias' },
   ],
   'components/chat/src/lib/components/chat/message/parts/suggestion-part.svelte': [
-    { declaration: '--cinder-chat-suggestion-border: var(--cinder-border-strong);', category: 'alias' },
+    {
+      declaration: '--cinder-chat-suggestion-border: var(--cinder-border-strong);',
+      category: 'alias',
+    },
   ],
   'components/chat/src/lib/components/chat/artifact/artifact-panel.svelte': [
     { declaration: 'box-shadow: inset 0 -1px 0 var(--cinder-border-muted);', category: 'hairline' },
