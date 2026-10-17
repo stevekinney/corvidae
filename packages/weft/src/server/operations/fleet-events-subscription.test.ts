@@ -50,7 +50,7 @@ async function invokeFleetSubscription(
   return fleetEventsSubscriptionOperation.invoke({
     input,
     principal: anonymousPrincipal(),
-    engine: { fleetFeed },
+    host: { fleetFeed },
     transport: 'jsonRpcWebSocket',
   });
 }
@@ -113,7 +113,7 @@ describe('weft.events.subscribe operation', () => {
         fleetEventsSubscriptionOperation.invoke({
           input: { fromCursor: 'not-a-cursor' },
           principal: anonymousPrincipal(),
-          engine: { fleetFeed },
+          host: { fleetFeed },
           transport: 'jsonRpcWebSocket',
         }),
       ),
@@ -143,7 +143,7 @@ describe('weft.events.subscribe operation', () => {
     const subscription = await fleetEventsSubscriptionOperation.invoke({
       input: { workflowId: 'wf-match' },
       principal: anonymousPrincipal(),
-      engine: { fleetFeed },
+      host: { fleetFeed },
       transport: 'jsonRpcWebSocket',
     });
 
@@ -250,7 +250,7 @@ describe('weft.events.subscribe operation', () => {
     const subscription = await fleetEventsSubscriptionOperation.invoke({
       input: { workflowId: 'wf-match' },
       principal: anonymousPrincipal(),
-      engine: { fleetFeed },
+      host: { fleetFeed },
       transport: 'jsonRpcWebSocket',
     });
 
@@ -269,7 +269,7 @@ describe('weft.events.subscribe operation', () => {
     const subscription = await fleetEventsSubscriptionOperation.invoke({
       input: { workflowId: 'wf-match' },
       principal: anonymousPrincipal(),
-      engine: { fleetFeed },
+      host: { fleetFeed },
       transport: 'jsonRpcWebSocket',
     });
 

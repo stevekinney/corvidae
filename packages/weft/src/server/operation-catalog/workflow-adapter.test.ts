@@ -57,7 +57,7 @@ describe('catalogWorkflow — execution', () => {
       { orderId: 'ord_1', amount: 42 },
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'http-rest',
         registry,
       },
@@ -87,7 +87,7 @@ describe('catalogWorkflow — execution', () => {
       { orderId: 'ord_2', amount: 19 },
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcHttp',
         registry,
       },
@@ -115,7 +115,7 @@ describe('catalogWorkflow — execution', () => {
       { orderId: 'ord_3' },
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcHttp',
         registry,
       },
@@ -152,7 +152,7 @@ describe('catalogWorkflow — execution', () => {
       { orderId: 'ord_4', amount: 25 },
       {
         principal: principalFromApiKey({ subject: 'test-key', scopes: [] }),
-        engine,
+        host: engine,
         transport: 'jsonRpcHttp',
         registry,
       },
@@ -182,7 +182,7 @@ describe('catalogWorkflow — execution', () => {
       { arbitrary: true, count: 2 },
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcHttp',
         registry,
       },

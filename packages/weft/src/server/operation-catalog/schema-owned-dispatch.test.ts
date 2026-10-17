@@ -7,7 +7,7 @@ import { createOperationRegistry } from './registry.ts';
 
 const context = {
   principal: anonymousPrincipal(),
-  engine: {},
+  host: {},
   transport: 'jsonRpcHttp' as const,
   registry: createOperationRegistry([]),
 };

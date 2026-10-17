@@ -19,7 +19,7 @@ describe('snapshotTestOperation', () => {
       await operation.invoke({
         input: {},
         principal: anonymousPrincipal(),
-        engine: undefined,
+        host: undefined,
         transport: 'http-rest',
       }),
     ).toBeNull();

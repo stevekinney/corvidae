@@ -216,7 +216,7 @@ export function createGetTaskDiagnosticsOperation(options: GetTaskDiagnosticsOpt
     discoverable: true,
     transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-    invoke: async ({ input, engine }): Promise<GetTaskDiagnosticsOutput> => {
+    invoke: async ({ input, host: engine }): Promise<GetTaskDiagnosticsOutput> => {
       const currentTime = options.now?.() ?? Date.now();
       // 'get' is only ever used for the optional execution-identity filters'
       // bounded per-operation attempt lookup — see `matchesTaskRecordFilter`.

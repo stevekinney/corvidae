@@ -51,7 +51,7 @@ export const bulkMutateWorkflowTagsOperation = defineOperation({
   access: bulkOperatorAccessPolicy,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }): Promise<BulkMutateWorkflowTagsOutput> => {
+  invoke: async ({ input, host: engine, principal }): Promise<BulkMutateWorkflowTagsOutput> => {
     assertOperationEngineMethods(engine, ['tagAll', 'untagAll']);
     const e = engine;
 

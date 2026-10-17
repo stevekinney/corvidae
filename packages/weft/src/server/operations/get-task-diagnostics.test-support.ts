@@ -229,7 +229,7 @@ export async function runDiagnostics({
 
   return executeOperation('weft.tasks.diagnostics', input, {
     principal: principalFromApiKey({ subject: 'operator', scopes }),
-    engine,
+    host: engine,
     transport: 'jsonRpcStdio',
     registry: operationRegistry,
   });

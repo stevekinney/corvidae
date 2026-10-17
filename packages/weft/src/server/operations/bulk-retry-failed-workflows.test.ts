@@ -156,7 +156,7 @@ describe('weft.workflows.bulk.retryfailed', () => {
         dryRun: true,
         requestId: 'json-rpc-retry-request',
       }),
-      { registry, engine, principal: bulkAdminPrincipal() },
+      { registry, host: engine, principal: bulkAdminPrincipal() },
     );
 
     expect(previewResponse.status).toBe(200);
@@ -184,7 +184,7 @@ describe('weft.workflows.bulk.retryfailed', () => {
         },
         2,
       ),
-      { registry, engine, principal: bulkAdminPrincipal() },
+      { registry, host: engine, principal: bulkAdminPrincipal() },
     );
 
     expect(confirmedResponse.status).toBe(200);

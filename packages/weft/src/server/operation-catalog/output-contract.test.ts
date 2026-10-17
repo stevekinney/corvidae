@@ -13,7 +13,7 @@ import type { StreamOperationInvocation, SubscriptionOperationInvocation } from 
 
 const context = {
   principal: anonymousPrincipal(),
-  engine: {},
+  host: {},
   transport: 'http-rest' as const,
 };
 

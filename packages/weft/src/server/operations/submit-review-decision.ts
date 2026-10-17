@@ -162,7 +162,7 @@ export const submitReviewDecisionOperation = defineOperation({
   producibleFaults: ['NotFound'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<SubmitReviewDecisionOutput> => {
+  invoke: async ({ input, host: engine }): Promise<SubmitReviewDecisionOutput> => {
     assertOperationEngineMethods(engine, ['submitReview']);
     const e = engine;
 

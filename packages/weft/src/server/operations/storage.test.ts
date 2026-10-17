@@ -41,7 +41,7 @@ describe('storage REST operations', () => {
 
       const result = await storageGetOperation.invoke({
         input: { key: 'bytes' },
-        engine,
+        host: engine,
         principal: principalFromApiKey({ subject: 'admin', scopes: ['storage:admin'] }),
         transport: 'http-rest',
       });
@@ -70,7 +70,7 @@ describe('storage REST operations', () => {
       await rejectionOf(
         storageGetOperation.invoke({
           input: { key: 'workflow-key' },
-          engine,
+          host: engine,
           principal: anonymousPrincipal(),
           transport: 'http-rest',
         }),
@@ -81,7 +81,7 @@ describe('storage REST operations', () => {
       await rejectionOf(
         storageGetOperation.invoke({
           input: { key: 'workflow-key' },
-          engine,
+          host: engine,
           principal: principalFromApiKey({ subject: 'unscoped', scopes: ['storage:read'] }),
           transport: 'http-rest',
         }),
@@ -91,7 +91,7 @@ describe('storage REST operations', () => {
     expect(
       await storageGetOperation.invoke({
         input: { key: 'workflow-key' },
-        engine,
+        host: engine,
         principal: principalFromApiKey({ subject: 'admin', scopes: ['storage:admin'] }),
         transport: 'http-rest',
       }),

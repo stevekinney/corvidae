@@ -66,7 +66,7 @@ export const fleetEventsSubscriptionOperation = defineOperation({
   discoverable: true,
   transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, transport }) => {
+  invoke: async ({ input, host: engine, transport }) => {
     const startingCursor = input.fromCursor ?? INITIAL_SUBSCRIPTION_CURSOR;
     if (decodeCursor(startingCursor) === null) {
       raiseFault(fleetEventsSubscriptionOperation, invalidParamsFault('Invalid cursor'));

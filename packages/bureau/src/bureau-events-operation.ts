@@ -12,7 +12,9 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   createReplayAwareClosableIterable,
+  decodeCursor,
   defineOperation,
+  type OperationFault,
   type ReplayLiveSubscribeOptions,
 } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -32,7 +34,14 @@ const bureauEventsSubscriptionInput = z.object({
   bureauId: z.string().min(1),
   /** One kind, or several. Omitting it delivers every published kind. */
   kinds: z.union([bureauEventKindSchema, z.array(bureauEventKindSchema).min(1)]).optional(),
-  fromCursor: z.string().min(1).optional(),
+  // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
+  // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
+  // route) instead of an error thrown later from inside the feed.
+  fromCursor: z
+    .string()
+    .min(1)
+    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
+    .optional(),
 });
 
 const bureauEventsSubscriptionEnvelope = z.object({
@@ -79,13 +88,18 @@ export function createBureauEventRegistry(): BureauEventRegistry & {
   };
 }
 
-/** The shape a host passes as the operation's `engine` value. */
-export type BureauEventsOperationEngine = {
-  bureauFeeds: BureauEventRegistry;
-  runtime?: Pick<RuntimeServices, 'identifiers'>;
+/** The shape a host passes as the operation's `host` value. */
+export type BureauEventsOperationHost = {
+  readonly bureauFeeds: BureauEventRegistry;
+  readonly runtime?: Pick<RuntimeServices, 'identifiers'>;
 };
 
-export const bureauEventsSubscriptionOperation = defineOperation({
+export const bureauEventsSubscriptionOperation = defineOperation<
+  typeof bureauEventsSubscriptionInput,
+  typeof bureauEventsSubscriptionEnvelope,
+  typeof bureauEventEnvelopeSchema,
+  BureauEventsOperationHost
+>({
   name: 'bureau.events',
   mcpExposable: false,
   kind: 'subscription',
@@ -100,16 +114,25 @@ export const bureauEventsSubscriptionOperation = defineOperation({
   eventSchema: bureauEventEnvelopeSchema,
   access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['events:read'] } },
   discoverable: true,
-  transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  // WebSocket for a session that holds a socket, and HTTP for a fetch handler
+  // that cannot accept one: `GET /v1/subscriptions/bureau.events` streams the
+  // feed as Server-Sent Events and resumes through `Last-Event-ID`.
+  transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: ({ input, engine }) => {
+  invoke: ({ input, host }) => {
     try {
-      const registry = (engine as BureauEventsOperationEngine).bureauFeeds;
-      const runtime =
-        (engine as BureauEventsOperationEngine).runtime ?? createDefaultRuntimeServices();
-      const bureauFeed = registry.get(input.bureauId);
+      const runtime = host.runtime ?? createDefaultRuntimeServices();
+      const bureauFeed = host.bureauFeeds.get(input.bureauId);
       if (bureauFeed === undefined) {
-        throw new Error(`Unknown bureau "${input.bureauId}"`);
+        // An unknown bureau is a caller error: it may have been disposed
+        // between listing it and subscribing.
+        // A typed fault, which the catalog pipeline passes through intact.
+        const notFound: OperationFault = {
+          code: 'NotFound',
+          message: `Unknown bureau "${input.bureauId}"`,
+          data: { resource: 'bureau', identifier: input.bureauId },
+        };
+        throw notFound;
       }
 
       // Only the session's own signal: the feed binds its own lifetime into

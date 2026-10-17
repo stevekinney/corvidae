@@ -190,7 +190,7 @@ export const getTaskResultDeliveriesOperation = defineOperation({
   discoverable: true,
   transports: taskDeliveryTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetTaskResultDeliveriesOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetTaskResultDeliveriesOutput> => {
     const storage = requireOperationStorage(engine, ['get', 'scan']);
     await readLedgerRecord(getTaskResultDeliveriesOperation, storage, input.operationId);
     const history = decodeTaskResultDeliveryHistory(
@@ -236,7 +236,7 @@ export const getTaskDeadLetterOperation = defineOperation({
   discoverable: true,
   transports: taskDeliveryTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetTaskDeadLetterOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetTaskDeadLetterOutput> => {
     const storage = requireOperationStorage(engine, ['get']);
     const record = await readLedgerRecord(getTaskDeadLetterOperation, storage, input.operationId);
     if (record.state !== 'deadLettered') {

@@ -79,7 +79,7 @@ describe('weft.realms.diagnostics — REST GET /v1/realms/diagnostics', () => {
     expect(
       await throwingRejectionOf(
         getRealmDiagnosticsOperation.invoke({
-          engine: {},
+          host: {},
           principal: { method: 'unauthenticated' },
           transport: 'jsonRpcStdio',
           input: {},

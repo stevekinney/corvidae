@@ -112,7 +112,7 @@ describe('defineOperation builder input', () => {
       await operation.invoke({
         input: { value: 'ok' },
         principal: anonymousPrincipal(),
-        engine: {},
+        host: {},
         transport: 'http-rest',
       }),
     ).toEqual({ length: 2 });
@@ -348,7 +348,7 @@ describe('Operation-catalog acceptance coverage', () => {
       }),
       {
         principal: anonymousPrincipal(),
-        engine: {},
+        host: {},
         transport: 'jsonRpcHttp',
         registry,
       },
@@ -377,7 +377,7 @@ describe('Operation-catalog acceptance coverage', () => {
       }),
       {
         principal: anonymousPrincipal(),
-        engine: {},
+        host: {},
         transport: 'jsonRpcHttp',
         registry,
       },

@@ -32,9 +32,18 @@ import { type Principal } from './principal.ts';
 
 export type DispatchJsonRpcContext = {
   readonly principal: Principal;
-  readonly engine: unknown;
+  /** See `OperationContext.host`. */
+  readonly host: unknown;
   readonly transport: Extract<TransportKind, 'jsonRpcHttp' | 'jsonRpcWebSocket' | 'jsonRpcStdio'>;
   readonly registry: OperationRegistry;
+  /**
+   * Produces the document `rpc.discover` answers with. Omitted, the
+   * dispatcher generates Weft's own (HTTP and WebSocket methods, with the MCP
+   * tools a duck-typed host can list). A handler that serves a narrower
+   * surface supplies the same document it serves at `/openrpc.json`, so the
+   * two never disagree.
+   */
+  readonly discoverDocument?: () => Record<string, unknown>;
 };
 
 /**
@@ -151,8 +160,11 @@ async function dispatchOne(
   context: DispatchJsonRpcContext,
 ): Promise<JsonRpcResponse> {
   const id: JsonRpcId = request.id ?? null;
+  if (request.method === DISCOVER_METHOD_NAME && context.discoverDocument !== undefined) {
+    return { jsonrpc: JSON_RPC_VERSION, result: context.discoverDocument(), id };
+  }
   if (request.method === DISCOVER_METHOD_NAME) {
-    const mcpToolProvider = asMcpToolProvider(context.engine);
+    const mcpToolProvider = asMcpToolProvider(context.host);
     const document = generateOpenRpcDocument({
       registry: context.registry,
       transports: ['http', 'websocket'],
@@ -162,7 +174,7 @@ async function dispatchOne(
   }
   const result = await executeOperation(request.method, request.params ?? {}, {
     principal: context.principal,
-    engine: context.engine,
+    host: context.host,
     transport: context.transport,
     registry: context.registry,
   });

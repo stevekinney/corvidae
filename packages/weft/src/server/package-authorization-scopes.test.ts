@@ -90,7 +90,7 @@ describe('additionalScopes — retention', () => {
         executeOperation(
           'bureau.tasks.list',
           {},
-          { principal, engine, transport: 'jsonRpcHttp', registry },
+          { principal, host: engine, transport: 'jsonRpcHttp', registry },
         );
 
       const holder = await jwtPrincipal({ sub: 'u', scope: TASKS_READ }, [TASKS_READ]);

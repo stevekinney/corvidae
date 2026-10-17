@@ -53,7 +53,7 @@ export const aggregateWorkflowsOperation = defineOperation({
   producibleFaults: ['Unprocessable'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<AggregateWorkflowsOutput> => {
+  invoke: async ({ input, host: engine }): Promise<AggregateWorkflowsOutput> => {
     assertOperationEngineMethods(engine, ['aggregate']);
     const engineHandle = engine;
     const { groupBy, limit, ...filterFields } = input;

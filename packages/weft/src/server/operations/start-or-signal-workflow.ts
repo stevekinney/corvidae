@@ -209,7 +209,7 @@ export const startOrSignalWorkflowOperation = defineOperation({
   producibleFaults: ['Conflict'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<StartOrSignalWorkflowOutput> => {
+  invoke: async ({ input, host: engine }): Promise<StartOrSignalWorkflowOutput> => {
     const typedEngine = runtimeWorkflowEngine(engine);
     const { type, signal, options } = validateStartOrSignalWorkflowInput(input, (validType) => {
       return typedEngine.getWorkflowDefinition(validType)?.searchAttributes;

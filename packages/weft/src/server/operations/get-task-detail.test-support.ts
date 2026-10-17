@@ -288,7 +288,7 @@ export function runGetTaskDetail(
     { operationId },
     {
       principal: principalFromApiKey({ subject: 'operator', scopes }),
-      engine,
+      host: engine,
       transport: 'jsonRpcStdio',
       registry: operationRegistry,
     },

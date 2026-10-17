@@ -55,7 +55,7 @@ export const installWorkflowRevisionOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<InstallWorkflowRevisionOutput> => {
+  invoke: async ({ input, host: engine }): Promise<InstallWorkflowRevisionOutput> => {
     assertOperationWorkflowMethods(engine, ['install']);
     const e = engine;
     const manifest = await validateManifestField(input.manifest);

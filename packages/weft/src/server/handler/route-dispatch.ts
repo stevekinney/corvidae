@@ -323,7 +323,7 @@ export async function dispatchViaExecuteOperation(
 
   const result = await executeOperation(binding.operationName, extracted.input, {
     principal,
-    engine,
+    host: engine,
     transport: 'http-rest',
     registry,
     ...(pipelineTrace !== undefined ? { pipelineTrace } : {}),

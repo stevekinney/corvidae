@@ -42,7 +42,7 @@ export function inProcessCatalogTransport(
   return async (operationName, input) => {
     const result = await executeOperation(operationName, input, {
       principal,
-      engine,
+      host: engine,
       transport: restOperationNames.has(operationName) ? 'http-rest' : 'jsonRpcHttp',
       registry,
     });

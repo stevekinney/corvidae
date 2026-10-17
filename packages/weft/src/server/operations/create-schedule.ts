@@ -141,7 +141,7 @@ export const createScheduleOperation = defineOperation({
   producibleFaults: ['NotFound', 'Conflict'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<CreateScheduleOutput> => {
+  invoke: async ({ input, host: engine }): Promise<CreateScheduleOutput> => {
     assertOperationEngineMethods(engine, ['schedule']);
     const typedEngine = engine;
 

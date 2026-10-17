@@ -76,7 +76,7 @@ export const fleetEventsSseOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: false, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }) => {
+  invoke: async ({ input, host: engine }) => {
     return createFleetEventsIterable(input, fleetEventStreamOperationContext(engine));
   },
 });

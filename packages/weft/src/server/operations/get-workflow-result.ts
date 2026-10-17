@@ -25,7 +25,7 @@ export const getWorkflowResultOperation = defineOperation({
   producibleFaults: ['NotFound', 'Unprocessable', 'Timeout'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetWorkflowResultOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetWorkflowResultOutput> => {
     assertOperationEngineMethods(engine, ['get', 'getHandle']);
     const e = engine;
     const state = await e.get(input.workflowId);

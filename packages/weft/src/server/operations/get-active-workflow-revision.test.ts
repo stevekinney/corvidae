@@ -108,7 +108,7 @@ describe('weft.workflows.active.get', () => {
     const result = await executeOperation(
       'weft.workflows.active.get',
       { name: 'checkout' },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
 
     expect(result.ok).toBe(true);
@@ -126,7 +126,7 @@ describe('weft.workflows.active.get', () => {
     const result = await executeOperation(
       'weft.workflows.active.get',
       { name: 'checkout' },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
 
     expect(result.ok).toBe(true);

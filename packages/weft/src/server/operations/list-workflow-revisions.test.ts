@@ -129,7 +129,7 @@ describe('weft.workflows.revisions.list', () => {
     const result = await executeOperation(
       'weft.workflows.revisions.list',
       { name: 'checkout' },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
 
     expect(result.ok).toBe(true);

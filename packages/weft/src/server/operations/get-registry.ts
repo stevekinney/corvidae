@@ -76,7 +76,7 @@ export const getRegistryOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine }): Promise<GetRegistryOutput> => {
+  invoke: async ({ host: engine }): Promise<GetRegistryOutput> => {
     try {
       if (!(engine instanceof Engine)) {
         throw new TypeError('Registry snapshot requires a concrete Engine instance.');

@@ -72,6 +72,13 @@ export type OpenRpcOptions = {
    * handling.
    */
   readonly mcpTools?: ReadonlyArray<Pick<McpToolDefinition, 'name' | 'title'>>;
+  /**
+   * Whether the document carries the MCP discovery metadata (`x-weft-mcp`),
+   * which points at Weft's `/.well-known/mcp.json` and `tools/list`. Defaults
+   * to `true`. A server that does not serve MCP sets `false`, and the
+   * document lists no MCP route.
+   */
+  readonly includeMcpMetadata?: boolean;
 };
 
 type ContentDescriptor = {
@@ -127,7 +134,7 @@ export function generateOpenRpcDocument(options: OpenRpcOptions): Record<string,
       registryProvidesDiscover = true;
     }
     const method = buildMethod(operation);
-    if (operation.mcpExposable) {
+    if (operation.mcpExposable && options.includeMcpMetadata !== false) {
       const metadata = buildMethodMcpMetadata(operation, options.mcpTools);
       method['x-weft-mcp'] = metadata;
       mcpTools.push({ toolName: metadata.toolName });
@@ -145,7 +152,9 @@ export function generateOpenRpcDocument(options: OpenRpcOptions): Record<string,
     components: {
       errors: buildOpenRpcComponentsErrors(),
     },
-    'x-weft-mcp': buildDocumentMcpMetadata(mcpTools),
+    ...(options.includeMcpMetadata === false
+      ? {}
+      : { 'x-weft-mcp': buildDocumentMcpMetadata(mcpTools) }),
   };
   applyOpenRpcServer(document, options.serverUrl);
   return document;

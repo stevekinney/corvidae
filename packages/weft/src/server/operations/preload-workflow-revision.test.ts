@@ -120,7 +120,7 @@ describe('weft.workflows.revisions.preload', () => {
         {},
         {
           principal,
-          engine: engine!,
+          host: engine!,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
         },
@@ -214,7 +214,7 @@ describe('weft.workflows.revisions.preload', () => {
     const result = await executeOperation(
       'weft.workflows.revisions.preload',
       { name: 'lazy-checkout', revision },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
 
     expect(result.ok).toBe(false);
@@ -382,7 +382,7 @@ describe('weft.workflows.revisions.preload', () => {
     const result = await executeOperation(
       'weft.workflows.revisions.preload',
       { name: 'lazy-checkout', revision },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
 
     expect(result.ok).toBe(true);

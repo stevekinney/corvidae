@@ -94,7 +94,7 @@ export const workflowEventsSubscriptionOperation = defineOperation({
   discoverable: true,
   transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }) => {
+  invoke: async ({ input, host: engine }) => {
     // The WebSocket subscription session is the only caller and passes
     // `{ feed }` as the engine value for this catalog operation.
     const feed = (engine as { feed: WorkflowEventFeed }).feed;
