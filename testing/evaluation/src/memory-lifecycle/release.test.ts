@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 
-import { throwingRejectionOf } from '@lostgradient/testing';
+import { outcomeOf, rethrow, throwingRejectionOf } from '@lostgradient/testing';
 
 import { parseEvaluationRunRecord } from '../evaluation-run';
 import { ACTION_CRITERION, SAFETY_CRITERIA } from './memory-evaluator';
@@ -15,6 +15,11 @@ import {
   memoryLifecycleGate,
 } from './release';
 import { runMemoryLifecycleSuite } from './suite-run';
+
+// The first caller of the shared run pays for it (a whole deterministic suite run), which a
+// loaded host stretches past Bun's five-second per-test clock. Resolve it at module scope, which
+// has no per-test timeout, so no test pays for it.
+await suiteRun();
 
 describe('memoryLifecycleGate', () => {
   test('holds the safety criteria without regression and requires a predeclared improvement', () => {
@@ -107,23 +112,31 @@ describe('decideMemoryLifecycleRelease', () => {
   });
 });
 
-describe('bestSimplerBaselineRecord', () => {
-  test('is exactly the committed record the gate compares with', async () => {
-    const committed = parseEvaluationRunRecord(
-      JSON.parse(await readFile(BEST_SIMPLER_BASELINE_PATH, 'utf8')),
-    );
-    const record = await bestSimplerBaselineRecord();
-    expect(record).toEqual(committed);
-    expect(record.id).toBe('memory-lifecycle.deterministic.raw-log-search');
-  });
+// Recomputing the best simpler baseline runs the suite's simpler baselines, which a loaded host
+// stretches past Bun's five-second per-test clock. Both scenarios run at module scope, where Bun
+// applies no per-test timeout, and their tests rethrow the outcome.
+const committedBaselineRecord = await outcomeOf(async () => {
+  const committed = parseEvaluationRunRecord(
+    JSON.parse(await readFile(BEST_SIMPLER_BASELINE_PATH, 'utf8')),
+  );
+  const record = await bestSimplerBaselineRecord();
+  expect(record).toEqual(committed);
+  expect(record.id).toBe('memory-lifecycle.deterministic.raw-log-search');
+});
 
-  test('comes from a run of the simpler baselines alone', async () => {
-    const run = await runMemoryLifecycleSuite({
-      lane: 'deterministic',
-      baselines: ['no-memory', 'raw-log-search', 'flat-hybrid'],
-      monotonic: () => 0,
-      recordedAt: '2026-09-28T00:00:00.000Z',
-    });
-    expect(bestSimplerBaseline(run.baselines)!.record).toEqual(await bestSimplerBaselineRecord());
+const simplerBaselinesAlone = await outcomeOf(async () => {
+  const run = await runMemoryLifecycleSuite({
+    lane: 'deterministic',
+    baselines: ['no-memory', 'raw-log-search', 'flat-hybrid'],
+    monotonic: () => 0,
+    recordedAt: '2026-09-28T00:00:00.000Z',
   });
+  expect(bestSimplerBaseline(run.baselines)!.record).toEqual(await bestSimplerBaselineRecord());
+});
+
+describe('bestSimplerBaselineRecord', () => {
+  test('is exactly the committed record the gate compares with', () =>
+    rethrow(committedBaselineRecord));
+
+  test('comes from a run of the simpler baselines alone', () => rethrow(simplerBaselinesAlone));
 });
