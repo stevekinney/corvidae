@@ -116,6 +116,28 @@ export type ChatAdapter = {
   describeToolCall?: (toolCall: ToolCall, result?: ToolResult) => ToolCallPresentation | undefined;
   /** Send a composed message with its attachments. */
   sendMessage: (message: MessageInput, attachments: ChatAttachment[]) => Promise<void>;
+  /**
+   * Deliver a follow-up to the run that is already working on `conversationId`,
+   * instead of starting a new turn. Takes the same message and attachments as
+   * {@link ChatAdapter.sendMessage}.
+   *
+   * Providing it is the opt-in for follow-ups during an active run: Chat keeps
+   * the composer enabled while `streaming` is `true` (and while a tool approval
+   * is pending), shows Send beside Stop, and routes a submission here rather
+   * than to `sendMessage`. The returned promise resolving is the
+   * acknowledgement: the message shows as pending in the transcript until then,
+   * and a rejection marks it failed with a retry action without touching the
+   * run. Omit it and the composer stays disabled during a run, as before.
+   *
+   * This hook has three arguments and no row id. The session controller's
+   * host-facing `sendRunInput` is a distinct type that also receives the id of
+   * the transcript row it appended.
+   */
+  sendRunInput?: (
+    conversationId: string,
+    message: MessageInput,
+    attachments: ChatAttachment[],
+  ) => Promise<void>;
   /** Retry a previously-failed message by id. */
   retryMessage?: (messageId: string) => Promise<void>;
   /** Commit an edit to a user message. */
@@ -187,6 +209,7 @@ export type ChatAdapter = {
  */
 export type ChatCommand =
   | 'sendMessage'
+  | 'sendRunInput'
   | 'retryMessage'
   | 'editMessage'
   | 'stopGenerating'

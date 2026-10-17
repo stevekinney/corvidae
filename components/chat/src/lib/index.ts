@@ -18,6 +18,7 @@ export {
   mapAGUIEventsToChatStream,
   type AGUIChatTransportErrorKind,
 } from './session/ag-ui-transport.ts';
+export { assertRunInputAccepted } from './session/session-controller-run-input-receipt.ts';
 export {
   ChatRunFailureError,
   type ChatElicitationActivity,
@@ -28,6 +29,8 @@ export {
   type ChatSessionControllerOptions,
   type ChatSessionHooks,
   type ChatSessionRequest,
+  type ChatSessionRunInput,
+  type ChatSessionRunInputOptions,
   type ChatSessionTransport,
   type ChatSessionTransportResult,
   type ChatToolActivity,

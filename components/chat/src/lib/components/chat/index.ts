@@ -58,6 +58,7 @@ export {
   createConversation,
   createConversationHistory,
   markMessageDeliveryFailed,
+  markMessageDeliveryPending,
   prependMessages,
   removeMessage,
   replaceToolResult,
