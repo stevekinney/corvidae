@@ -596,6 +596,27 @@ describe('Toolbar', () => {
     expect(growth).toBeGreaterThanOrEqual(addedCandidates);
     expect(growth).toBeLessThan(addedCandidates * 2);
   });
+
+  test('keeps the roving Tab stop when the accessible name changes', async () => {
+    const children = rawSnippet(
+      '<button type="button">One</button><button type="button">Two</button><button type="button">Three</button>',
+    );
+    const { container, rerender } = render(Toolbar, {
+      props: { 'aria-label': 'Before', children },
+    });
+    await flushEffects();
+    const buttons = Array.from(container.querySelectorAll('button'));
+    buttons[0]!.focus();
+    await fireEvent.keyDown(buttons[0]!, { key: 'End' });
+    await flushEffects();
+    expect(buttons.map((button) => button.tabIndex)).toEqual([-1, -1, 0]);
+
+    // The attachment re-runs when the name changes; the user's place must survive it.
+    await rerender({ 'aria-label': 'After', children });
+    await flushEffects();
+
+    expect(buttons.map((button) => button.tabIndex)).toEqual([-1, -1, 0]);
+  });
 });
 
 describe('Toolbar responsive CSS', () => {

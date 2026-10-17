@@ -2,12 +2,14 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { setupHappyDom } from '@lostgradient/testing';
-import { createRawSnippet } from 'svelte';
+import { createRawSnippet, flushSync } from 'svelte';
 
 setupHappyDom();
 
 const { cleanup, fireEvent, render, screen, waitFor } = await import('@testing-library/svelte');
 const { default: SelectionPopover } = await import('./selection-popover.svelte');
+const { default: SelectionPopoverOpenFixture } =
+  await import('../../test/fixtures/selection-popover-open-fixture.svelte');
 const { resetEscapeStack } = await import('../../_internal/overlay.ts');
 
 afterEach(() => {
@@ -248,16 +250,10 @@ describe('SelectionPopover actions keyboard model', () => {
 
 describe('SelectionPopover actions opening without a pointer gesture', () => {
   test('moves focus to the first action when open goes false to true with no pointer events', async () => {
-    const { rerender } = render(SelectionPopover, {
-      props: {
-        id: 'selection-quote',
-        open: false,
-        position: null,
-        actions: quoteActions(() => {}),
-      },
-    });
+    const { component } = render(SelectionPopoverOpenFixture);
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    await rerender({ open: true, position: basePosition });
+    flushSync(() => (component as unknown as { show(): void }).show());
 
     await waitFor(() => {
       expect(document.activeElement === screen.getByRole('button', { name: 'Quote' })).toBe(true);

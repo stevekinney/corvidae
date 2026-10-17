@@ -83,6 +83,10 @@
     );
   }
 
+  // The attachment re-runs when the accessible name changes; carry the Tab stop across re-runs so
+  // the user's place in the toolbar survives (the previous controller restores tabindex on cleanup).
+  let lastActiveItem: HTMLElement | null = null;
+
   function toolbarSetup(node: HTMLDivElement) {
     rootElement = node;
 
@@ -99,7 +103,7 @@
         consumerOnFocusIn?.(event as FocusEvent & { currentTarget: EventTarget & HTMLDivElement }),
     });
 
-    roving.sync();
+    roving.sync(lastActiveItem);
 
     const detachRoving = roving.attach();
 
@@ -111,6 +115,7 @@
     warnAboutAccessibleName();
 
     return () => {
+      lastActiveItem = roving.activeItem();
       detachRoving();
       detachMutationObserver?.();
       rootElement = null;

@@ -26,6 +26,8 @@ export type RovingToolbarController = {
   sync: (preferredItem?: HTMLElement | null) => void;
   /** The first enabled item, or null when there is none. */
   firstEnabledItem: () => HTMLElement | null;
+  /** The item that currently holds the Tab stop, or null. Pass it to a later controller's `sync` to keep the user's place. */
+  activeItem: () => HTMLElement | null;
   /** Wire keydown (capture) and focusin on the root; returns a cleanup that also restores tabindex. */
   attach: () => () => void;
 };
@@ -360,6 +362,7 @@ export function createRovingToolbar(options: RovingToolbarOptions): RovingToolba
   return {
     sync,
     firstEnabledItem: () => toolbarItems.find((item) => !isDisabledToolbarItem(item)) ?? null,
+    activeItem: () => activeItem,
     attach: () => {
       root.addEventListener('keydown', handleKeyDown, { capture: true });
       root.addEventListener('focusin', handleFocusIn);
