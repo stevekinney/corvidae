@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect } from 'bun:test';
 import { flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -41,7 +41,7 @@ let target: HTMLElement;
 
 // The tests that edit and reset many tokens evaluate a new state per commit. They are warmed
 // at module scope (the end of this file), so Bun's 5 s budget never covers a cold evaluation.
-const { scenario, warmScenarios } = warmedTests({
+const { group, scenario, test, warmScenarios } = warmedTests({
   before() {
     target = document.createElement('div');
     document.body.append(target);
@@ -301,7 +301,7 @@ describe('environment-dependent fonts', () => {
   });
 });
 
-describe('the mounted editors', () => {
+group('the mounted editors', () => {
   scenario(
     'a dimension editor labels every control with the token and context and edits with units',
     async () => {
@@ -330,31 +330,33 @@ describe('the mounted editors', () => {
     },
   );
 
-  test('invalid or partial input stays visible, is flagged, and never moves the committed preview', async () => {
-    const { controller, workbench } = await open('space.2');
-    for (const partial of ['-', '1.2.3', 'abc', '-4']) {
-      await typeInto(input('-amount'), partial);
-      expect(input('-amount').value).toBe(partial);
-      expect(input('-amount').getAttribute('aria-invalid')).toBe('true');
-      const described = input('-amount').getAttribute('aria-describedby') ?? '';
-      expect(described.length).toBeGreaterThan(0);
-    }
-    await click('Apply');
-    expect(entries(controller)).toBe(0);
-    expect(css(controller, 'space.2')).toBe('0.5rem');
-    expect(target.querySelector('[data-testid="preview-value"]')?.textContent).toBe('0.5rem');
-    expect(workbench.previewIsLastValid).toBe(true);
-    expect(controller.draft!.inputBuffer['space.2@source']?.text).toContain('-4');
-  });
+  scenario(
+    'invalid or partial input stays visible, is flagged, and never moves the committed preview',
+    async () => {
+      const { controller, workbench } = await open('space.2');
+      for (const partial of ['-', '1.2.3', 'abc', '-4']) {
+        await typeInto(input('-amount'), partial);
+        expect(input('-amount').value).toBe(partial);
+        expect(input('-amount').getAttribute('aria-invalid')).toBe('true');
+        const described = input('-amount').getAttribute('aria-describedby') ?? '';
+        expect(described.length).toBeGreaterThan(0);
+      }
+      await click('Apply');
+      expect(entries(controller)).toBe(0);
+      expect(css(controller, 'space.2')).toBe('0.5rem');
+      expect(target.querySelector('[data-testid="preview-value"]')?.textContent).toBe('0.5rem');
+      expect(workbench.previewIsLastValid).toBe(true);
+      expect(controller.draft!.inputBuffer['space.2@source']?.text).toContain('-4');
+    },
+  );
 
-  test.each([
+  for (const [path, suffix, text, expected] of [
     ['motion.fast', '-amount', '90', '90ms'],
     ['opacity.disabled', '-amount', '0.3', '0.3'],
     ['font.bold', '-amount', '650', '650'],
     ['ease.standard', '-y1', '0.1', 'cubic-bezier(0.2, 0.1, 0, 1)'],
-  ] as const)(
-    '%s commits as one undoable, redoable transaction',
-    async (path, suffix, text, expected) => {
+  ] as const) {
+    scenario(`${path} commits as one undoable, redoable transaction`, async () => {
       const { controller } = await open(path);
       const before = css(controller, path);
       await typeInto(input(suffix), text);
@@ -366,42 +368,50 @@ describe('the mounted editors', () => {
       expect(shared(controller)).toEqual({});
       await controller.redo();
       expect(css(controller, path)).toBe(expected);
+    });
+  }
+
+  scenario(
+    'a cubic-bezier curve draws the last-valid value, and x outside 0 to 1 is refused',
+    async () => {
+      const { controller } = await open('ease.standard');
+      const before = target.querySelector('[data-testid="bezier-curve"] path')!.getAttribute('d');
+      await typeInto(input('-x1'), '2');
+      expect(input('-x1').getAttribute('aria-invalid')).toBe('true');
+      expect(target.querySelector('[data-testid="bezier-curve"] path')!.getAttribute('d')).toBe(
+        before,
+      );
+      await click('Apply');
+      expect(entries(controller)).toBe(0);
     },
   );
 
-  test('a cubic-bezier curve draws the last-valid value, and x outside 0 to 1 is refused', async () => {
-    const { controller } = await open('ease.standard');
-    const before = target.querySelector('[data-testid="bezier-curve"] path')!.getAttribute('d');
-    await typeInto(input('-x1'), '2');
-    expect(input('-x1').getAttribute('aria-invalid')).toBe('true');
-    expect(target.querySelector('[data-testid="bezier-curve"] path')!.getAttribute('d')).toBe(
-      before,
-    );
-    await click('Apply');
-    expect(entries(controller)).toBe(0);
-  });
+  scenario(
+    'the font stack reorders, adds and removes with buttons and keeps the order it was given',
+    async () => {
+      const { controller } = await open('font.mono');
+      const names = () =>
+        [...target.querySelectorAll<HTMLInputElement>('input[id*="-family-"]')].map((i) => i.value);
+      const first = names() as [string, string];
+      target
+        .querySelector<HTMLButtonElement>(`button[aria-label="Move ${first[0]} down"]`)!
+        .click();
+      await settle();
+      expect(names().slice(0, 2)).toEqual([first[1], first[0]]);
+      expect(document.activeElement?.id ?? '').toContain('-down-1');
+      await typeInto(input('-add'), 'Fira Code');
+      await click('Add family');
+      expect(names().at(-1)).toBe('Fira Code');
+      await click('Apply');
+      const node = (shared(controller) as { font: { mono: { $value: string[] } } }).font.mono;
+      expect(node.$value.slice(0, 2)).toEqual([first[1], first[0]]);
+      expect(node.$value.at(-1)).toBe('Fira Code');
+      expect(Array.isArray(node.$value)).toBe(true);
+      expect(entries(controller)).toBe(1);
+    },
+  );
 
-  test('the font stack reorders, adds and removes with buttons and keeps the order it was given', async () => {
-    const { controller } = await open('font.mono');
-    const names = () =>
-      [...target.querySelectorAll<HTMLInputElement>('input[id*="-family-"]')].map((i) => i.value);
-    const first = names() as [string, string];
-    target.querySelector<HTMLButtonElement>(`button[aria-label="Move ${first[0]} down"]`)!.click();
-    await settle();
-    expect(names().slice(0, 2)).toEqual([first[1], first[0]]);
-    expect(document.activeElement?.id ?? '').toContain('-down-1');
-    await typeInto(input('-add'), 'Fira Code');
-    await click('Add family');
-    expect(names().at(-1)).toBe('Fira Code');
-    await click('Apply');
-    const node = (shared(controller) as { font: { mono: { $value: string[] } } }).font.mono;
-    expect(node.$value.slice(0, 2)).toEqual([first[1], first[0]]);
-    expect(node.$value.at(-1)).toBe('Fira Code');
-    expect(Array.isArray(node.$value)).toBe(true);
-    expect(entries(controller)).toBe(1);
-  });
-
-  test('a color-mode-independent edit updates both light and dark', async () => {
+  scenario('a color-mode-independent edit updates both light and dark', async () => {
     const { controller } = await open('motion.fast');
     await typeInto(input('-amount'), '77');
     await click('Apply');
