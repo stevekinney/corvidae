@@ -17190,7 +17190,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
      * prunable on the three existing signals, so the claim alone decides.
      */
     async function withPrunableRun(
-      durableOwnership: Parameters<typeof createBureau>[0]['durableOwnership'],
+      durableOwnership: NonNullable<Parameters<typeof createBureau>[0]['durableOwnership']>,
       body: (context: {
         bureau: Bureau;
         run: { id: string; sessionId: string };
