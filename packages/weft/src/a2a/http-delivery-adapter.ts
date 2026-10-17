@@ -305,7 +305,7 @@ export function createHttpDeliveryAdapterWithRuntime(
         redirect: 'manual',
         signal,
       });
-      await response.body?.cancel().catch(() => undefined);
+      await response.body?.cancel();
       return classifyResponse(response, runtime.now());
     } catch (error) {
       return classifyFetchError(error, timeout.signal.aborted, request.signal.aborted);
