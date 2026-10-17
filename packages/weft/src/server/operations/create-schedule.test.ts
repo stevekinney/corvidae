@@ -202,7 +202,7 @@ describe('weft.schedules.create', () => {
           },
         }),
       }),
-      { registry, engine, principal: anonymousPrincipal() },
+      { registry, host: engine, principal: anonymousPrincipal() },
     );
 
     expect(response.status).toBe(200);
@@ -437,7 +437,7 @@ describe('weft.schedules.create DynamicWorkflowSourceUnavailableError wire mappi
             params: { type: 'echo', cronExpression: '0 * * * *', revisionPolicy: 'pinned' },
           }),
         }),
-        { registry, engine, principal: anonymousPrincipal() },
+        { registry, host: engine, principal: anonymousPrincipal() },
       );
       const text = await response.text();
 

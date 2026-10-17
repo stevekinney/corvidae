@@ -140,7 +140,7 @@ describe('weft.tasks.get — projection', () => {
       { operationId: 'op-queued' },
       {
         principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([getTaskDetailOperation]),
       },

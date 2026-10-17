@@ -18,14 +18,14 @@ import type {
   UnaryOperationDefinition,
 } from './types.ts';
 
-type DispatchableOperation = {
+type DispatchableOperation<Host> = {
   readonly rawInput: unknown;
-  readonly context: DispatchContext;
+  readonly context: DispatchContext<Host>;
 };
 
-export async function dispatchUnary<Input, InvokeOutput, SchemaOutput>(
-  operation: UnaryOperationDefinition<Input, InvokeOutput, SchemaOutput>,
-  { rawInput, context }: DispatchableOperation,
+export async function dispatchUnary<Input, InvokeOutput, SchemaOutput, Host>(
+  operation: UnaryOperationDefinition<Input, InvokeOutput, SchemaOutput, Host>,
+  { rawInput, context }: DispatchableOperation<Host>,
 ): Promise<DispatchResult<InvokeOutput>> {
   const prepared = await prepareTypedInput(operation, rawInput, context);
   if (!prepared.ok) return prepared;
@@ -38,9 +38,23 @@ export async function dispatchUnary<Input, InvokeOutput, SchemaOutput>(
   }
 }
 
-export async function dispatchStream<Input, InvokeOutput, SchemaOutput, InvokeElement, Element>(
-  operation: StreamOperationDefinition<Input, InvokeOutput, SchemaOutput, InvokeElement, Element>,
-  { rawInput, context }: DispatchableOperation,
+export async function dispatchStream<
+  Input,
+  InvokeOutput,
+  SchemaOutput,
+  InvokeElement,
+  Element,
+  Host,
+>(
+  operation: StreamOperationDefinition<
+    Input,
+    InvokeOutput,
+    SchemaOutput,
+    InvokeElement,
+    Element,
+    Host
+  >,
+  { rawInput, context }: DispatchableOperation<Host>,
 ): Promise<DispatchResult<InvokeOutput | StreamOperationInvocation<InvokeElement>>> {
   const prepared = await prepareTypedInput(operation, rawInput, context);
   if (!prepared.ok) return prepared;
@@ -59,15 +73,17 @@ export async function dispatchSubscription<
   SchemaOutput,
   InvokeElement,
   Element,
+  Host,
 >(
   operation: SubscriptionOperationDefinition<
     Input,
     InvokeOutput,
     SchemaOutput,
     InvokeElement,
-    Element
+    Element,
+    Host
   >,
-  { rawInput, context }: DispatchableOperation,
+  { rawInput, context }: DispatchableOperation<Host>,
 ): Promise<DispatchResult<SubscriptionOperationInvocation<InvokeElement, InvokeOutput>>> {
   const prepared = await prepareTypedInput(operation, rawInput, context);
   if (!prepared.ok) return prepared;
@@ -80,10 +96,10 @@ export async function dispatchSubscription<
   }
 }
 
-async function prepareTypedInput<Input, SchemaOutput>(
-  operation: OperationMetadata<Input, SchemaOutput>,
+async function prepareTypedInput<Input, SchemaOutput, Host>(
+  operation: OperationMetadata<Input, SchemaOutput, Host>,
   rawInput: unknown,
-  context: DispatchContext,
+  context: DispatchContext<Host>,
 ): Promise<DispatchResult<{ input: Input }>> {
   const transportFailure = checkTransport(operation, context);
   if (transportFailure !== null) return transportFailure;
@@ -107,11 +123,14 @@ async function prepareTypedInput<Input, SchemaOutput>(
   return { ok: true, value: { input: parseOutcome.input } };
 }
 
-function operationContext<Input>(input: Input, context: DispatchContext): OperationContext<Input> {
+function operationContext<Input, Host>(
+  input: Input,
+  context: DispatchContext<Host>,
+): OperationContext<Input, Host> {
   return {
     input,
     principal: context.principal,
-    engine: context.engine,
+    host: context.host,
     transport: context.transport,
   };
 }

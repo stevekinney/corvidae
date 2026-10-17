@@ -545,7 +545,7 @@ const CURRENT_MAIN_COVERAGE_ALLOWANCE_OVERRIDES = buildAllowanceLayer(
       {
         reason:
           'The remaining dispatch lines guard a catalog operation without a JSON-RPC binding, which registration validation excludes.',
-        lines: new Set([188, 189]),
+        lines: new Set([200, 201]),
         requireUncoveredLines: true,
       },
     ],
@@ -1052,7 +1052,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Exhaustive default for an unknown DispatchJsonRpcResult kind is unreachable through the dispatch pipeline, which only ever produces one of the declared result kinds.',
-        lines: new Set([136, 137, 138]),
+        lines: new Set([142, 143, 144]),
         requireUncoveredLines: true,
       },
     ],

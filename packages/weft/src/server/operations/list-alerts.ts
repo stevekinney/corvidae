@@ -48,7 +48,7 @@ export const listAlertsOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine }): Promise<ListAlertsOutput> => {
+  invoke: async ({ host: engine }): Promise<ListAlertsOutput> => {
     assertOperationEngineMethods(engine, ['getActiveAlerts']);
     const activeAlerts = engine.getActiveAlerts();
     return {

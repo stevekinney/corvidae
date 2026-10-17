@@ -65,7 +65,7 @@ describe('weft.system.lease', () => {
       {},
       {
         principal: principalFromJwtClaims({ sub: 'operator', scope: 'system:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([getSystemLeaseOperation]),
       },
@@ -92,7 +92,7 @@ describe('weft.system.lease', () => {
       {},
       {
         principal: principalFromJwtClaims({ sub: 'operator', scope: 'system:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcHttp',
         registry: createOperationRegistry([getSystemLeaseOperation]),
       },
@@ -118,7 +118,7 @@ describe('weft.system.lease', () => {
       {},
       {
         principal: { method: 'unauthenticated' },
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry,
       },
@@ -128,7 +128,7 @@ describe('weft.system.lease', () => {
       {},
       {
         principal: principalFromJwtClaims({ sub: 'viewer', scope: 'workflows:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry,
       },

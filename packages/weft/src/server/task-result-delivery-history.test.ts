@@ -130,7 +130,7 @@ async function invoke(
 ) {
   return executeOperation(name, input, {
     principal: principalFromApiKey({ subject: 'operator', scopes }),
-    engine,
+    host: engine,
     transport: 'jsonRpcStdio',
     registry: createOperationRegistry([
       getTaskResultDeliveriesOperation,
@@ -444,7 +444,7 @@ describe('delivery history retention', () => {
       { operationId: 'op-dead' },
       {
         principal: principalFromApiKey({ subject: 'operator', scopes: ['system:admin'] }),
-        engine,
+        host: engine,
         transport: 'http-rest',
         registry: createOperationRegistry([clearTaskDeadLetterOperation]),
       },

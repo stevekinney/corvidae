@@ -65,7 +65,7 @@ export function createSingleWorkflowTagMutationOperation(
     producibleFaults: ['Unprocessable', 'NotFound'],
     transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-    invoke: async ({ input, engine }): Promise<SingleWorkflowTagMutationOutput> => {
+    invoke: async ({ input, host: engine }): Promise<SingleWorkflowTagMutationOutput> => {
       let tags: string[];
       try {
         tags = coerceStartWorkflowTags(input.tags, 'Field "tags"');

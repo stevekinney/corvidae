@@ -156,7 +156,7 @@ export function createJsonRpcWebSocketSession(
         },
         {
           principal,
-          engine: { feed },
+          host: { feed },
           // Subscribe is a session primitive, but the transport identity still
           // needs to reflect the adapter reusing this implementation so
           // availability checks enforce stdio-only and websocket-only policies.
@@ -174,7 +174,7 @@ export function createJsonRpcWebSocketSession(
     await startSubscription(request, () =>
       executeSubscription(FLEET_EVENTS_OPERATION_NAME, params ?? {}, {
         principal,
-        engine: { fleetFeed },
+        host: { fleetFeed },
         transport,
         registry,
       }),
@@ -351,7 +351,7 @@ export function createJsonRpcWebSocketSession(
     // request / notification elision / success / error mapping.
     const result = await dispatchJsonRpc(validation.parsed, {
       registry,
-      engine,
+      host: engine,
       principal,
       transport,
     });

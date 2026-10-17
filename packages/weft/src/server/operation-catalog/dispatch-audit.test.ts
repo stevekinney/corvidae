@@ -51,7 +51,7 @@ describe('operation dispatch audit — pipeline trace sweep', () => {
         { value: 'ok' },
         {
           principal: anonymousPrincipal(),
-          engine: {},
+          host: {},
           transport,
           registry,
           pipelineTrace: (marker) => markers.push(marker),
@@ -81,7 +81,7 @@ describe('operation dispatch audit — negative fixture', () => {
 
     await skipParsingHandler(operation, {
       principal: anonymousPrincipal(),
-      engine: {},
+      host: {},
       transport: 'jsonRpcWebSocket',
       registry,
       pipelineTrace: (marker) => markers.push(marker),
@@ -165,7 +165,7 @@ describe('operation dispatch audit — long-lived kind guards', () => {
       { value: 'ok' },
       {
         principal: anonymousPrincipal(),
-        engine: {},
+        host: {},
         transport: 'jsonRpcWebSocket',
         registry,
         pipelineTrace: (marker) => markers.push(marker),
@@ -184,7 +184,7 @@ describe('operation dispatch audit — long-lived kind guards', () => {
       { value: 'ok' },
       {
         principal: anonymousPrincipal(),
-        engine: {},
+        host: {},
         transport: 'jsonRpcWebSocket',
         registry,
         pipelineTrace: (marker) => markers.push(marker),
@@ -232,7 +232,7 @@ describe('operation dispatch audit — executeSubscription envelope typing', () 
       {},
       {
         principal: anonymousPrincipal(),
-        engine: {},
+        host: {},
         transport: 'jsonRpcWebSocket',
         registry,
       },
@@ -279,7 +279,7 @@ async function skipParsingHandler(
   await operation.invoke({
     input: { value: 'direct' },
     principal: context.principal,
-    engine: context.engine,
+    host: context.host,
     transport: context.transport,
   });
   trace('invoked');

@@ -114,7 +114,7 @@ export const getCatalogDiagnosticsOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine, input }): Promise<GetCatalogDiagnosticsOutput> => {
+  invoke: async ({ host: engine, input }): Promise<GetCatalogDiagnosticsOutput> => {
     if (!(engine instanceof Engine)) {
       throw new TypeError('Catalog diagnostics requires a concrete Engine instance.');
     }

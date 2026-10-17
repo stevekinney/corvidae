@@ -59,7 +59,7 @@ describe('weft.alerts.list', () => {
       {},
       {
         principal: authContext().authContext.principal,
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([listAlertsOperation]),
       },
@@ -110,7 +110,7 @@ describe('weft.alerts.list', () => {
 
     const response = await handleJsonRpcHttpRequest(jsonRpcRequest(), {
       registry: createOperationRegistry([listAlertsOperation]),
-      engine,
+      host: engine,
       principal: authContext().authContext.principal,
     });
 

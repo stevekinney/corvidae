@@ -34,7 +34,7 @@ describe('single-workflow control operation helpers', () => {
 
     const result = operation.invoke({
       input: { workflowId: 'missing-workflow' },
-      engine: {},
+      host: {},
       principal: anonymousPrincipal(),
       transport: 'http-rest',
     });
@@ -71,7 +71,7 @@ describe('single-workflow control operation helpers', () => {
 
     const result = operation.invoke({
       input: { workflowId: 'completed-workflow' },
-      engine: {},
+      host: {},
       principal: anonymousPrincipal(),
       transport: 'http-rest',
     });

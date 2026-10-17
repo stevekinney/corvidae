@@ -19,7 +19,7 @@ import { compareStrings, isPlainObject, normalizeJsonObject } from './json-schem
 import { canonicalJson } from './openapi-canonical-json.ts';
 import type { ErasedOperation, OperationRegistry } from './operation-catalog.ts';
 import { createLiveRestBindings, type UnknownRestBinding } from './rest-bindings.ts';
-import { toOpenApiPath } from './route-model.ts';
+import { GENERIC_SUBSCRIPTION_ROUTE_PREFIX, toOpenApiPath } from './route-model.ts';
 
 export type AsyncApiOptions = {
   registry: OperationRegistry;
@@ -29,6 +29,15 @@ export type AsyncApiOptions = {
   version?: string;
   discoveryInfo?: DiscoveryInfo;
   serverUrl?: string;
+  /**
+   * How subscription operations are served. `'websocket'` (the default) is
+   * Weft's server: each subscription gets the JSON-RPC WebSocket channel.
+   * `'http-route'` is the engine-independent handler: only subscriptions that
+   * declare `transports.http` are listed, each as a Server-Sent Events channel
+   * at `/v1/subscriptions/<operation name>`, and stream operations (which that
+   * handler has no route for) are left out.
+   */
+  subscriptionTransport?: 'websocket' | 'http-route';
 };
 
 const JSON_RPC_ERROR_SCHEMA: Record<string, unknown> = {
@@ -56,12 +65,14 @@ export function generateAsyncApiDocument(options: AsyncApiOptions): Record<strin
   const messageAliases = new Map<string, string>();
   const messageNamesByCanonical = new Map<string, string>();
 
+  const httpRoute = options.subscriptionTransport === 'http-route';
   const asyncOperations = options.registry
     .list()
     .filter(isAsyncApiOperation)
+    .filter((operation) => !httpRoute || isServedOverSubscriptionRoute(operation))
     .toSorted((left, right) => compareStrings(left.name, right.name));
 
-  const restBindings = options.restBindings ?? createLiveRestBindings();
+  const restBindings = httpRoute ? [] : (options.restBindings ?? createLiveRestBindings());
   const sseAddressByOperationName = new Map<string, string>();
   for (const binding of restBindings) {
     if (binding.transportKind === 'sse') {
@@ -72,14 +83,11 @@ export function generateAsyncApiDocument(options: AsyncApiOptions): Record<strin
   for (const operation of asyncOperations) {
     const channelName = channelNameForOperation(operation);
     const operationName = operationNameForOperation(operation);
-    const channel =
-      operation.kind === 'subscription'
-        ? buildWebSocketChannel(operation)
-        : buildSseChannel(operation, sseAddressByOperationName.get(operation.name));
-    const operationMessages =
-      operation.kind === 'subscription'
-        ? buildWebSocketMessages(operation, definitionSchemaToJsonSchema)
-        : buildSseMessages(operation, definitionSchemaToJsonSchema);
+    const { channel, messageKind, operationMessages } = describeAsyncOperation(
+      operation,
+      httpRoute,
+      sseAddressByOperationName,
+    );
 
     for (const [messageName, message] of Object.entries(operationMessages).toSorted(
       ([left], [right]) => compareStrings(left, right),
@@ -95,7 +103,7 @@ export function generateAsyncApiDocument(options: AsyncApiOptions): Record<strin
     }
 
     channels[channelName] = channel;
-    operations[operationName] = buildOperationEntry(operation, channelName, operation.kind);
+    operations[operationName] = buildOperationEntry(operation, channelName, messageKind);
   }
 
   const document: Record<string, unknown> = {
@@ -146,6 +154,53 @@ function isAsyncApiOperation(operation: ErasedOperation): operation is ErasedOpe
   return (
     isDiscoverable(operation) && (operation.kind === 'subscription' || operation.kind === 'stream')
   );
+}
+
+type AsyncOperationDescription = {
+  readonly channel: Record<string, unknown>;
+  /** Which message family the operation entry references. */
+  readonly messageKind: 'subscription' | 'stream';
+  readonly operationMessages: Record<string, Record<string, unknown>>;
+};
+
+/**
+ * Over the subscription route a subscription is an SSE stream like any other,
+ * so it takes the SSE channel, messages, and operation entry. Otherwise a
+ * subscription is a JSON-RPC WebSocket channel and a stream is an SSE channel
+ * at its REST binding.
+ */
+function describeAsyncOperation(
+  operation: ErasedOperation & { readonly kind: 'subscription' | 'stream' },
+  httpRoute: boolean,
+  sseAddressByOperationName: ReadonlyMap<string, string>,
+): AsyncOperationDescription {
+  if (httpRoute) {
+    return {
+      channel: buildSseChannel(
+        operation,
+        `${GENERIC_SUBSCRIPTION_ROUTE_PREFIX}/${operation.name}`,
+        (path) => path,
+      ),
+      messageKind: 'stream',
+      operationMessages: buildSseMessages(operation, definitionSchemaToJsonSchema),
+    };
+  }
+  if (operation.kind === 'subscription') {
+    return {
+      channel: buildWebSocketChannel(operation),
+      messageKind: 'subscription',
+      operationMessages: buildWebSocketMessages(operation, definitionSchemaToJsonSchema),
+    };
+  }
+  return {
+    channel: buildSseChannel(operation, sseAddressByOperationName.get(operation.name)),
+    messageKind: 'stream',
+    operationMessages: buildSseMessages(operation, definitionSchemaToJsonSchema),
+  };
+}
+
+function isServedOverSubscriptionRoute(operation: ErasedOperation): boolean {
+  return operation.kind === 'subscription' && operation.transports.http;
 }
 
 function channelNameForOperation(operation: ErasedOperation): string {

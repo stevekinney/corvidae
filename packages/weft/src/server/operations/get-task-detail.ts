@@ -429,7 +429,7 @@ export const getTaskDetailOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetTaskDetailOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetTaskDetailOutput> => {
     const storage = requireOperationStorage(engine, ['get', 'scan']);
     const raw = await storage.get(taskLedgerKey(input.operationId));
     if (raw === null) {

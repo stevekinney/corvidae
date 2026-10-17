@@ -32,7 +32,7 @@ export async function handleJsonRpcHttpRequestSafely(args: {
   try {
     return await handleJsonRpcHttpRequest(args.request, {
       registry: args.registry,
-      engine: args.engine,
+      host: args.engine,
       principal: authContextToPrincipal(args.authContext),
       ...(args.maxBodyBytes !== undefined ? { maxBodyBytes: args.maxBodyBytes } : {}),
     });

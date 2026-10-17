@@ -31,7 +31,7 @@ export const getWorkflowTimelineOperation = defineOperation({
   // timeline entries directly. Accept-header negotiation between
   // json and msgpack is REST-specific and lives in the binding's
   // `shapeSuccess`, not on the operation output type.
-  invoke: async ({ input, engine }): Promise<GetWorkflowTimelineOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetWorkflowTimelineOutput> => {
     assertOperationEngineMethods(engine, ['get', 'getTimeline']);
     const e = engine;
     const state = await e.get(input.workflowId);

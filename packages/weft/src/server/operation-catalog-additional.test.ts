@@ -33,7 +33,7 @@ import type { OperationFault } from './operation-fault.ts';
 import { anonymousPrincipal } from './principal.ts';
 
 // A trivial fake engine — these tests never need real workflow state.
-const fakeEngine = {} as Parameters<typeof executeOperation>[2]['engine'];
+const fakeEngine = {} as Parameters<typeof executeOperation>[2]['host'];
 
 function registryFor(operation: ErasedOperation): OperationRegistry {
   return {
@@ -64,7 +64,7 @@ describe('executeOperation — additional coverage', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },
@@ -93,7 +93,7 @@ describe('executeOperation — additional coverage', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },
@@ -259,7 +259,7 @@ describe('executeOperation — additional coverage', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry: registryFor(
           makeOp({
@@ -288,7 +288,7 @@ describe('executeOperation — additional coverage', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry: registryFor(
           makeOp({
@@ -317,7 +317,7 @@ describe('executeOperation — additional coverage', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry: registryFor(
           makeOp({

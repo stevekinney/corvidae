@@ -24,7 +24,7 @@ import { makeOperation as makeOp } from './json-rpc-operation.test-support.ts';
 import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { anonymousPrincipal, principalFromApiKey } from './principal.ts';
 
-const fakeEngine: Parameters<typeof executeOperation>[2]['engine'] = {};
+const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 
 describe('executeOperation — security regressions', () => {
   it('rejects __proto__ in passthrough mode (prevents prototype pollution)', async () => {
@@ -51,7 +51,7 @@ describe('executeOperation — security regressions', () => {
     const malicious = JSON.parse('{"id":"x","__proto__":{"polluted":true}}');
     const result = await executeOperation('weft.test.protopollution', malicious, {
       principal: anonymousPrincipal(),
-      engine: fakeEngine,
+      host: fakeEngine,
       transport: 'http-rest',
       registry,
     });
@@ -81,7 +81,7 @@ describe('executeOperation — security regressions', () => {
       { id: 'boom' },
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },
@@ -105,7 +105,7 @@ describe('executeOperation — security regressions', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },
@@ -134,7 +134,7 @@ describe('executeOperation — security regressions', () => {
       {},
       {
         principal: principalFromApiKey({ subject: 'k', scopes: [] }),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },

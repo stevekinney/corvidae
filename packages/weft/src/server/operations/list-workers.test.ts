@@ -342,7 +342,7 @@ describe('worker drain operations', () => {
       { workerId: 'worker-1' },
       {
         principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([createDrainWorkerOperation({ workerRegistry })]),
       },
@@ -377,12 +377,12 @@ describe('worker drain operations', () => {
     const workerResult = await executeOperation(
       'weft.workers.resume',
       { workerId: 'worker-1', reason: 'unused' },
-      { principal, engine, transport: 'jsonRpcStdio', registry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry },
     );
     const deploymentResult = await executeOperation(
       'weft.worker.deployments.resume',
       { deploymentName: 'payments', reason: 'unused' },
-      { principal, engine, transport: 'jsonRpcStdio', registry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry },
     );
 
     expect(workerResult.ok).toBe(false);
@@ -469,7 +469,7 @@ describe('worker drain operations', () => {
       { workerId: 'missing-worker' },
       {
         principal,
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([createDrainWorkerOperation()]),
       },
@@ -483,7 +483,7 @@ describe('worker drain operations', () => {
       { workerId: 'missing-worker' },
       {
         principal,
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([
           createDrainWorkerOperation({ workerRegistry: new WorkerRegistry() }),
@@ -612,7 +612,7 @@ describe('weft.workers.list — operation behavior', () => {
         {},
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createOperationRegistry([operation]),
         },
@@ -636,7 +636,7 @@ describe('weft.workers.list — operation behavior', () => {
         {},
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createOperationRegistry([listWorkersOperation]),
         },

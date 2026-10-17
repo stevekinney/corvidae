@@ -48,7 +48,7 @@ describe('weft.system.principal', () => {
       {},
       {
         principal: apiKeyAuthContext().authContext.principal,
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([getPrincipalOperation]),
       },
@@ -71,7 +71,7 @@ describe('weft.system.principal', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([getPrincipalOperation]),
       },
@@ -96,7 +96,7 @@ describe('weft.system.principal', () => {
         // A JWT without a `sub` claim is the legitimate subjectless
         // construction path (`principalFromApiKey` requires a subject).
         principal: principalFromJwtClaims({ scope: 'system:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: createOperationRegistry([getPrincipalOperation]),
       },
@@ -149,7 +149,7 @@ describe('weft.system.principal', () => {
 
     const response = await handleJsonRpcHttpRequest(jsonRpcRequest(), {
       registry: createOperationRegistry([getPrincipalOperation]),
-      engine,
+      host: engine,
       principal: apiKeyAuthContext().authContext.principal,
     });
 

@@ -57,7 +57,7 @@ export function createSingleWorkflowControlOperation<
     producibleFaults: configuration.producibleFaults,
     transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-    invoke: async ({ input, engine }): Promise<z.input<OutputSchema>> => {
+    invoke: async ({ input, host: engine }): Promise<z.input<OutputSchema>> => {
       try {
         assertOperationEngineMethods(engine, configuration.requiredEngineMethods);
         return await configuration.invoke({ engine, input });

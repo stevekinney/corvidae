@@ -21,7 +21,7 @@ function runClear(engine: Engine, operationId: string, scopes: ReadonlyArray<Aut
     { operationId },
     {
       principal: principalFromApiKey({ subject: 'operator', scopes }),
-      engine,
+      host: engine,
       transport: 'http-rest',
       registry: operationRegistry,
     },

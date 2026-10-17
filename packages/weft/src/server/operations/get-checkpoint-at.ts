@@ -33,7 +33,7 @@ export const getCheckpointAtOperation = defineOperation({
   // json and msgpack happens in the REST binding's `shapeSuccess`,
   // not in the operation output, so JSON-RPC clients receive a
   // clean canonical envelope.
-  invoke: async ({ input, engine }): Promise<GetCheckpointAtOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetCheckpointAtOutput> => {
     assertOperationEngineMethods(engine, ['getCheckpointAt']);
     const e = engine;
     const state = await e.getCheckpointAt(input.workflowId, input.step);

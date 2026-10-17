@@ -24,7 +24,7 @@ const fakeEngine = {} as unknown;
 function baseContext() {
   return {
     principal: anonymousPrincipal(),
-    engine: fakeEngine,
+    host: fakeEngine,
     transport: 'jsonRpcHttp' as const,
   };
 }

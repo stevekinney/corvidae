@@ -43,7 +43,7 @@ export const bulkDeleteWorkflowsOperation = defineOperation({
   producibleFaults: ['Unprocessable'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }): Promise<BulkDeleteWorkflowsOutput> => {
+  invoke: async ({ input, host: engine, principal }): Promise<BulkDeleteWorkflowsOutput> => {
     assertOperationEngineMethods(engine, ['deleteAll']);
     const e = engine;
 
