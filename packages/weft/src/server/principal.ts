@@ -272,16 +272,25 @@ const ANONYMOUS: UnauthenticatedPrincipal = { method: 'unauthenticated' };
 
 /**
  * Whether a principal was rebuilt from a credential the caller presented on
- * this request (`jwt`, `api-key`, or `mtls`). Only such a principal separates
- * one caller from another by itself.
+ * this request and names that caller distinctly (`jwt`, `api-key`, or `mtls`
+ * with a subject of its own). Only such a principal separates one caller from
+ * another by itself.
  *
  * `stdio-local` and `unauthenticated-local` are minted by the host and shared
- * by every caller it serves, and an anonymous principal is a shared singleton,
- * so none of them is credential-backed: a session bound to one needs a
+ * by every caller it serves, an anonymous principal is a shared singleton, and
+ * the shared fallback subjects ({@link SHARED_API_KEY_SUBJECT},
+ * {@link SHARED_MUTUAL_TLS_SUBJECT}) are common to every static key or mTLS
+ * caller, so none of them is credential-backed: a session bound to one needs a
  * per-session secret of its own to be isolated from other callers.
  */
 export function isCredentialBacked(principal: Principal): boolean {
-  return CREDENTIAL_BACKED_METHODS.has(principal.method);
+  if (!CREDENTIAL_BACKED_METHODS.has(principal.method)) return false;
+  if (!isAuthenticated(principal)) return false;
+  // Every static API key, and every mTLS caller admitted without a distinct
+  // identity, maps to one shared fallback subject, so two such callers present
+  // the same principal. Presenting a credential does not separate them.
+  // A credential with no subject names nobody, so it separates nobody either.
+  return principal.subject !== undefined && !SHARED_FALLBACK_SUBJECTS.has(principal.subject);
 }
 
 /**
@@ -292,6 +301,17 @@ const CREDENTIAL_BACKED_METHODS: ReadonlySet<Principal['method']> = new Set([
   'jwt',
   'api-key',
   'mtls',
+]);
+
+/** The subject every statically configured API key is admitted under. */
+export const SHARED_API_KEY_SUBJECT = 'api-key-caller';
+
+/** The subject an mTLS caller is admitted under when it carries no identity of its own. */
+export const SHARED_MUTUAL_TLS_SUBJECT = 'mtls-caller';
+
+const SHARED_FALLBACK_SUBJECTS: ReadonlySet<string> = new Set([
+  SHARED_API_KEY_SUBJECT,
+  SHARED_MUTUAL_TLS_SUBJECT,
 ]);
 
 /** Type guard separating authenticated from unauthenticated principals. */

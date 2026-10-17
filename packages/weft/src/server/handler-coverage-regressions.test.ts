@@ -40,7 +40,10 @@ function apiKeyAuth() {
   return {
     authContext: {
       method: 'api-key' as const,
-      principal: principalFromApiKey({ subject: 'test', scopes: ['workflows:read'] }),
+      principal: principalFromApiKey({
+        subject: 'test',
+        scopes: ['workflows:read', 'schedules:read'],
+      }),
     },
   };
 }

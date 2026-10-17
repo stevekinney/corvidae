@@ -1169,4 +1169,101 @@ describe.skipIf(!browserSmokeEnabled)('Service Worker browser smoke', () => {
     },
     { timeout: SMOKE_TEST_TIMEOUT_MS },
   );
+  it(
+    'never answers a cross-origin navigation or form post, so local trust cannot be driven from another site',
+    async () => {
+      // Declared before the budget so a phase timeout can report whatever the
+      // page and worker had logged by then; the listeners below append to it.
+      const browserDiagnostics: string[] = [];
+      const withinPhase = beginPhaseBudget(browserDiagnostics);
+      const serviceWorkerSource = await withinPhase(
+        'bundle build',
+        buildSetupServiceWorkerBundle(`weft-browser-smoke-${crypto.randomUUID()}`),
+      );
+      const { origin } = createSmokeServer(serviceWorkerSource);
+      const context = await createIsolatedContext(withinPhase);
+      const page = await withinPhase('page creation', context.newPage());
+      page.on('console', (message) => browserDiagnostics.push(`console:${message.text()}`));
+      page.on('pageerror', (error) => browserDiagnostics.push(`pageerror:${error.message}`));
+      // An uncaught exception in the worker's fetch listener also makes a
+      // navigation fall through to the network, by accident. The guard must
+      // decline deliberately, so no listener may throw.
+      const workerErrors: string[] = [];
+      context.on('weberror', (webError) => workerErrors.push(webError.error().message));
+      await registerServiceWorker(page, origin, withinPhase);
+
+      // `setupServiceWorker()` defaults to local trust, so a same-origin fetch
+      // is answered by the worker as the local user.
+      const sameOrigin = await withinPhase(
+        'same-origin principal fetch',
+        page.evaluate(async () => {
+          const response = await fetch('/weft/v1/principal');
+          return { status: response.status, body: await response.json() };
+        }),
+      );
+      expect(sameOrigin.status).toBe(200);
+      expect(sameOrigin.body).toMatchObject({ method: 'unauthenticated-local' });
+
+      // A page on another origin ("localhost" vs the app's "127.0.0.1").
+      const attacker = Bun.serve({
+        hostname: 'localhost',
+        port: 0,
+        fetch(request) {
+          const url = new URL(request.url);
+          const htmlHeaders = { 'Content-Type': 'text/html' };
+          if (url.pathname === '/get') {
+            return new Response(
+              `<!doctype html><script>location.href=${JSON.stringify(`${origin}/weft/v1/principal`)}</script>`,
+              { headers: htmlHeaders },
+            );
+          }
+          if (url.pathname === '/post') {
+            const fieldName = '{"type":"sleep-then-finish","id":"csrf-target","x":"';
+            return new Response(
+              `<!doctype html><form id=f method=POST enctype="text/plain" action=${JSON.stringify(`${origin}/weft/v1/workflows`)}><input type=hidden name='${fieldName}' value='"}'></form><script>document.getElementById('f').submit()</script>`,
+              { headers: htmlHeaders },
+            );
+          }
+          return new Response('no', { status: 404 });
+        },
+      });
+      try {
+        const attackerOrigin = `http://localhost:${attacker.port}`;
+
+        const navigationPage = await withinPhase('navigation page', context.newPage());
+        await withinPhase('attacker GET page', navigationPage.goto(`${attackerOrigin}/get`));
+        await withinPhase(
+          'GET navigation settles on the app origin',
+          navigationPage.waitForURL((url) => url.href.startsWith(origin)),
+        );
+        // The navigation fell through to the network (the smoke server answers
+        // unknown paths with "not found"); the worker never produced the JSON
+        // principal for it.
+        expect(await navigationPage.locator('body').innerText()).toBe('not found');
+
+        const formPage = await withinPhase('form page', context.newPage());
+        await withinPhase('attacker POST page', formPage.goto(`${attackerOrigin}/post`));
+        await withinPhase(
+          'form post settles on the app origin',
+          formPage.waitForURL((url) => url.href.startsWith(origin)),
+        );
+        expect(await formPage.locator('body').innerText()).toBe('not found');
+      } finally {
+        await attacker.stop(true);
+      }
+
+      expect(workerErrors).toEqual([]);
+
+      // The form post created nothing.
+      const created = await withinPhase(
+        'read the workflow the form post tried to create',
+        page.evaluate(async () => {
+          const response = await fetch('/weft/v1/workflows/csrf-target');
+          return response.status;
+        }),
+      );
+      expect(created).toBe(404);
+    },
+    { timeout: SMOKE_TEST_TIMEOUT_MS },
+  );
 });

@@ -9,9 +9,16 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { Engine } from '../core/engine.ts';
+import type { WorkflowContext } from '../core/types.ts';
+import { workflow } from '../core/types.ts';
+import { MemoryStorage } from '../storage/memory.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from './authorization-scope.ts';
 import { evaluateAccess } from './authorization.ts';
-import { anonymousPrincipal, principalFromApiKey } from './principal.ts';
+import { handleRequestAsLocalUser as handleRequest } from './local-user-request.test-support.ts';
+import { workflowEventsSseOperation } from './operations/workflow-events-sse.ts';
+import { workflowEventsSubscriptionOperation } from './operations/workflow-events-subscription.ts';
+import { anonymousPrincipal, principalFromApiKey, type Principal } from './principal.ts';
 import { createLiveOperationRegistry } from './rest-bindings.ts';
 
 /** The scope table from COR-1466: operation name → the scope it requires. */
@@ -27,7 +34,6 @@ const REQUIRED_SCOPE_BY_OPERATION: Readonly<Record<string, AuthorizationScope>> 
   'weft.workflows.finalizer.get': 'workflows:read',
   'weft.updates.result.get': 'workflows:read',
   'weft.workflows.start': 'workflows:write',
-  'weft.workflows.startorsignal': 'workflows:write',
   'weft.workflows.fork': 'workflows:write',
   'weft.workflows.cancel': 'workflows:write',
   'weft.workflows.suspend': 'workflows:write',
@@ -53,6 +59,8 @@ const REQUIRED_SCOPE_BY_OPERATION: Readonly<Record<string, AuthorizationScope>> 
   'weft.reviews.get': 'reviews:read',
   'weft.reviews.decision.submit': 'reviews:write',
   'weft.retention.get': 'system:read',
+  'weft.schedules.list': 'schedules:read',
+  'weft.schedules.get': 'schedules:read',
 };
 
 /**
@@ -79,14 +87,22 @@ const ALREADY_SCOPED_OPERATIONS: Readonly<Record<string, AuthorizationScope>> = 
 };
 
 /**
- * Operations that need an authenticated caller but no particular scope. A
- * principal that holds no scope, such as an mTLS principal today, reaches these.
+ * Operations that need an authenticated caller and no particular scope. None of
+ * the families this test classifies is in this group today; it stays so a new
+ * authenticated-only operation is a deliberate, reviewed addition.
  */
-const AUTHENTICATED_ONLY_OPERATIONS: readonly string[] = [
+const AUTHENTICATED_ONLY_OPERATIONS: readonly string[] = [];
+
+/**
+ * The two workflow event feeds keep `access: { kind: 'authenticated' }`, but
+ * their `authorize` hooks require a scope that depends on the selector, so they
+ * are not authenticated-only in practice. `workflow-event-feed-authorization.test.ts`
+ * covers each selector on both transports; this bucket pins the static policy
+ * and that the hook refuses a principal with no scopes.
+ */
+const SELECTOR_AUTHORIZED_OPERATIONS: readonly string[] = [
   'weft.workflows.events',
   'weft.workflows.events.sse',
-  'weft.schedules.list',
-  'weft.schedules.get',
 ];
 
 const registry = createLiveOperationRegistry();
@@ -149,6 +165,122 @@ describe('the scope an operation requires', () => {
   }
 });
 
+describe('weft.workflows.startorsignal requires workflows:write and signals:write', () => {
+  const name = 'weft.workflows.startorsignal';
+
+  it('declares an allOf of both scopes', () => {
+    expect(accessOf(name)).toEqual({
+      kind: 'scoped',
+      scopes: { kind: 'allOf', scopes: ['workflows:write', 'signals:write'] },
+    });
+    expect(registry.get(name)?.discoverable).toBe(true);
+  });
+
+  it('is allowed with both scopes', () => {
+    const principal = principalHolding(['workflows:write', 'signals:write']);
+    expect(evaluateAccess(accessOf(name), principal)).toEqual({ allowed: true });
+  });
+
+  it('is forbidden with only workflows:write', () => {
+    const principal = principalHolding(['workflows:write']);
+    expect(evaluateAccess(accessOf(name), principal)).toMatchObject({
+      allowed: false,
+      classification: 'forbidden',
+    });
+  });
+
+  it('is forbidden with only signals:write', () => {
+    const principal = principalHolding(['signals:write']);
+    expect(evaluateAccess(accessOf(name), principal)).toMatchObject({
+      allowed: false,
+      classification: 'forbidden',
+    });
+  });
+
+  it('is forbidden with neither scope', () => {
+    const principal = principalHolding(['workflows:read', 'workflows:admin']);
+    expect(evaluateAccess(accessOf(name), principal)).toMatchObject({
+      allowed: false,
+      classification: 'forbidden',
+    });
+  });
+
+  it('is unauthorized for an anonymous caller', () => {
+    expect(evaluateAccess(accessOf(name), anonymousPrincipal())).toMatchObject({
+      allowed: false,
+      classification: 'unauthorized',
+    });
+  });
+
+  it('delivers no signal to a running workflow when the caller lacks signals:write', async () => {
+    const waiter = workflow({ name: 'start-or-signal-scope-waiter' }).execute(async function* (
+      ctx: WorkflowContext,
+    ) {
+      return yield* ctx.waitForSignal<string>('release');
+    });
+    await using engine = new Engine({ storage: new MemoryStorage() });
+    engine.register(waiter);
+    const handle = await engine.start('start-or-signal-scope-waiter', {}, { id: 'scope-target' });
+
+    const startOrSignal = (scopes: readonly AuthorizationScope[]) =>
+      handleRequest(
+        new Request('http://localhost/v1/workflows/start-or-signal', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            type: 'start-or-signal-scope-waiter',
+            id: handle.id,
+            signalName: 'release',
+            signalId: 'scope-test-signal',
+            signalPayload: 'done',
+          }),
+        }),
+        engine,
+        { authContext: { method: 'api-key', principal: principalHolding(scopes) } },
+      );
+
+    const refused = await startOrSignal(['workflows:write']);
+    expect(refused.status).toBe(403);
+    const stateAfterRefusal = await engine.get(handle.id);
+    const statusAfterRefusal = stateAfterRefusal?.status;
+    expect(statusAfterRefusal === 'pending' || statusAfterRefusal === 'running').toBe(true);
+
+    const admitted = await startOrSignal(['workflows:write', 'signals:write']);
+    expect(admitted.status).toBeLessThan(300);
+    expect(await handle.result()).toBe('done');
+  });
+});
+
+describe('workflow event feeds, whose authorize hook decides by selector', () => {
+  const feeds = [
+    { name: 'weft.workflows.events', operation: workflowEventsSubscriptionOperation },
+    { name: 'weft.workflows.events.sse', operation: workflowEventsSseOperation },
+  ];
+  expect(feeds.map((feed) => feed.name)).toEqual([...SELECTOR_AUTHORIZED_OPERATIONS]);
+
+  for (const { name, operation } of feeds) {
+    it(`${name} keeps the authenticated policy and refuses a principal with no scopes`, async () => {
+      expect(registry.get(name)?.access).toEqual({ kind: 'authenticated' });
+      expect(operation.access).toEqual({ kind: 'authenticated' });
+      const authorize = operation.authorize;
+      if (authorize === undefined) throw new Error(`${name} has no authorize hook`);
+
+      for (const selector of ['events', 'tokens'] as const) {
+        const context = (principal: Principal) =>
+          ({ input: { workflowId: 'wf', selector }, principal, host: {} }) as never;
+        expect(await authorize(context(principalHolding([])))).toMatchObject({
+          allowed: false,
+          classification: 'forbidden',
+        });
+        expect(await authorize(context(anonymousPrincipal()))).toMatchObject({
+          allowed: false,
+          classification: 'unauthorized',
+        });
+      }
+    });
+  }
+});
+
 describe('public operations', () => {
   it('are exactly weft.system.principal, so a new public operation fails the suite', () => {
     const publicOperations = registry
@@ -159,17 +291,21 @@ describe('public operations', () => {
     expect(publicOperations).toEqual(['weft.system.principal']);
   });
 
-  it('leave no workflow, schedule, review, or retention operation outside the scope table', () => {
+  it('leave no workflow, schedule, review, retention, update, or recovery operation outside the scope table', () => {
     const classified = new Set([
       ...Object.keys(REQUIRED_SCOPE_BY_OPERATION),
+      'weft.workflows.startorsignal',
       ...Object.keys(ALREADY_SCOPED_OPERATIONS),
       ...AUTHENTICATED_ONLY_OPERATIONS,
+      ...SELECTOR_AUTHORIZED_OPERATIONS,
       'weft.system.principal',
     ]);
     const unclassified = registry
       .list()
       .map((operation) => operation.name)
-      .filter((name) => /^weft\.(workflows|schedules|reviews|retention)\./.test(name))
+      .filter((name) =>
+        /^weft\.(workflows|schedules|reviews|retention|updates|recover)\./.test(name),
+      )
       .filter((name) => !classified.has(name));
     expect(unclassified).toEqual([]);
   });

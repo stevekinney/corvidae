@@ -412,3 +412,88 @@ describe('MCP sessions on a serve() with no authentication', () => {
     expect(admitted.status).toBe(200);
   });
 });
+
+describe('MCP sessions on a serve() with static API keys', () => {
+  let engine: Engine | undefined;
+  let server: WeftServer | undefined;
+
+  afterEach(async () => {
+    await server?.stop();
+    engine?.[Symbol.dispose]();
+    server = undefined;
+    engine = undefined;
+  });
+
+  const KEY_A = 'static-key-a-for-mcp';
+  const KEY_B = 'static-key-b-for-mcp';
+
+  it('requires the continuation token, because every static key is the same api-key-caller', async () => {
+    const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      engine = createEngine();
+      server = serve({
+        engine,
+        port: 0,
+        hostname: '127.0.0.1',
+        publicOrigin: 'http://localhost',
+        auth: { apiKeys: [KEY_A, KEY_B], defaultApiKeyScopes: ['workflows:read'] },
+      });
+    } finally {
+      warningSpy.mockRestore();
+    }
+
+    const initialize = await fetch(`${server.url}/mcp`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'X-API-Key': KEY_A,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'a', version: '1' },
+        },
+      }),
+    });
+    const sessionId = initialize.headers.get('Mcp-Session-Id') ?? '';
+    const token = initialize.headers.get('Mcp-Session-Token') ?? '';
+    expect(initialize.status).toBe(200);
+    expect(token).not.toBe('');
+
+    const continuation = (key: string, sessionToken?: string): Promise<Response> =>
+      fetch(`${server?.url}/mcp`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+          'Mcp-Session-Id': sessionId,
+          'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION,
+          'X-API-Key': key,
+          ...(sessionToken === undefined ? {} : { 'Mcp-Session-Token': sessionToken }),
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+
+    // Key B holds only the session id: refused, on continuation and on DELETE.
+    const hijacked = await continuation(KEY_B);
+    const terminated = await fetch(`${server.url}/mcp`, {
+      method: 'DELETE',
+      headers: {
+        'Mcp-Session-Id': sessionId,
+        'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION,
+        'X-API-Key': KEY_B,
+      },
+    });
+    expect(hijacked.status).toBe(403);
+    expect(terminated.status).toBe(403);
+
+    // Key A, holding the token, is admitted.
+    const admitted = await continuation(KEY_A, token);
+    expect(admitted.status).toBe(200);
+  });
+});

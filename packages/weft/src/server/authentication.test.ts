@@ -117,6 +117,11 @@ async function generateSigningKeyPair(
 // ---------------------------------------------------------------------------
 
 describe('validateAuthConfig', () => {
+  it('accepts static API keys that hold no scope, which only serve() refuses', () => {
+    expect(() => validateAuthConfig({ apiKeys: ['key-1'] })).not.toThrow();
+    expect(() => validateAuthConfig({ apiKeys: ['key-1'], defaultApiKeyScopes: [] })).not.toThrow();
+  });
+
   it('accepts valid API key configuration', () => {
     expect(() =>
       validateAuthConfig({ apiKeys: ['key-1', 'key-2'], defaultApiKeyScopes: ['workflows:read'] }),

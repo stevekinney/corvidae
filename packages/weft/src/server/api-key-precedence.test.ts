@@ -17,9 +17,9 @@
 
 import { describe, expect, it } from 'bun:test';
 
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createAuthenticator, validateAuthConfig, type AuthConfig } from './authentication.ts';
 import type { AuthorizationScope } from './authorization-scope.ts';
+import { evaluateAccess } from './authorization.ts';
 import { principalFromApiKey } from './principal.ts';
 
 function requestWithKey(key: string): Request {
@@ -53,12 +53,26 @@ describe('API-key admission — resolver absent', () => {
     expect(result.principal.hasScope('workflows:read')).toBe(true);
   });
 
-  it('static apiKeys with no defaultApiKeyScopes are refused, since an unscoped key is refused everywhere', async () => {
+  it('static apiKeys with no defaultApiKeyScopes are accepted: the key is admitted with no scope, which an authenticated-only operation allows', async () => {
+    // Only `serve()` refuses such a key, because Weft's own catalog needs a
+    // scope for everything. A generic authenticator may serve a catalog of
+    // authenticated-only operations, for which an unscoped key is valid.
     const config: AuthConfig = { apiKeys: ['static-key-2'] };
+    const auth = await createAuthenticator(config);
+    const result = await auth(requestWithKey('static-key-2'));
 
-    expect(await throwingRejectionOf(createAuthenticator(config))).toThrow(
-      /defaultApiKeyScopes.*resolveApiKeyPrincipal/s,
-    );
+    expect(result.authenticated).toBe(true);
+    if (!result.authenticated || result.principal === undefined) {
+      throw new Error('expected an admitted principal');
+    }
+    expect(result.principal.scopes.size).toBe(0);
+    expect(evaluateAccess({ kind: 'authenticated' }, result.principal)).toEqual({ allowed: true });
+    expect(
+      evaluateAccess(
+        { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:read'] } },
+        result.principal,
+      ),
+    ).toMatchObject({ allowed: false, classification: 'forbidden' });
   });
 
   it('key not in static list → rejected', async () => {

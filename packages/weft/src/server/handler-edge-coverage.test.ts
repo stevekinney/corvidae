@@ -22,7 +22,7 @@ function apiKeyAuth(): HandlerOptions {
       method: 'api-key' as const,
       principal: principalFromApiKey({
         subject: 'test',
-        scopes: ['workflows:read', 'workflows:admin'],
+        scopes: ['workflows:read', 'workflows:admin', 'schedules:read'],
       }),
     },
   };

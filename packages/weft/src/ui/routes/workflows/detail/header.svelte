@@ -105,6 +105,8 @@
      * owns no principal (the unit tests) renders them enabled.
      */
     readonly actionGate?: ScopeGate | undefined;
+    /** Whether the principal holds `queries:read`, which `weft.workflows.query` requires. */
+    readonly queryGate?: ScopeGate | undefined;
   }
 
   let {
@@ -119,6 +121,7 @@
     activeRevision,
     onRestart,
     actionGate = { disabled: false, title: undefined },
+    queryGate = { disabled: false, title: undefined },
   }: WorkflowDetailHeaderProps = $props();
 
   const presentation = $derived(finalizerStatusPresentation(workflow.status, finalizerStatus));
@@ -374,14 +377,16 @@
         placeholder={'{}'}
         bind:value={queryInputText}
       />
-      <Button
-        variant="primary"
-        size="sm"
-        label={queryPending ? 'Running…' : 'Run'}
-        loading={queryPending}
-        disabled={queryName.trim().length === 0}
-        onclick={() => void runQuery()}
-      />
+      <Tooltip text={queryGate.title ?? ''}>
+        <Button
+          variant="primary"
+          size="sm"
+          label={queryPending ? 'Running…' : 'Run'}
+          loading={queryPending}
+          disabled={queryGate.disabled || queryName.trim().length === 0}
+          onclick={() => void runQuery()}
+        />
+      </Tooltip>
       {#if queryError}
         <p class="weft-send-tab__error">{queryError}</p>
       {/if}

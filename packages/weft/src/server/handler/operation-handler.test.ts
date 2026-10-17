@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import * as weft from '../../index.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
-import { createAuthenticator, signJWT } from '../authentication.ts';
+import { createAuthenticator, signJWT, type AuthContext } from '../authentication.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { ServerContext } from '../runtime/context.ts';
 import { authenticateRequest } from '../runtime/request-gate.ts';
@@ -391,13 +391,22 @@ describe('createOperationHandlerAuthenticator', () => {
     ).toThrow(/additionalScopes/);
   });
 
-  it('refuses static apiKeys that hold no scope, as serve() does', () => {
-    expect(() => createOperationHandlerAuthenticator({ apiKeys: ['k'] })).toThrow(
-      /defaultApiKeyScopes.*resolveApiKeyPrincipal/s,
+  it('accepts static apiKeys that hold no scope, which an authenticated-only catalog admits', async () => {
+    // Only `serve()` refuses an unscoped key; this handler's catalog is the
+    // caller's own and may hold operations that need no scope.
+    const authenticate = createOperationHandlerAuthenticator({
+      apiKeys: ['k'],
+      auditSink: quietAudit,
+    });
+    await authenticate.ready;
+
+    const outcome = await authenticate(
+      new Request('http://localhost/jsonrpc', { headers: { Authorization: 'Bearer k' } }),
     );
-    expect(() =>
-      createOperationHandlerAuthenticator({ apiKeys: ['k'], defaultApiKeyScopes: [] }),
-    ).toThrow(/defaultApiKeyScopes/);
+    expect(outcome).not.toBeInstanceOf(Response);
+    const context = outcome as AuthContext;
+    expect(context.method).toBe('api-key');
+    expect(context.principal?.scopes.size).toBe(0);
   });
 });
 

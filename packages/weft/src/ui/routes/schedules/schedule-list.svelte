@@ -85,9 +85,12 @@
     ...(workflowTypeFilter === 'all' ? {} : { workflowType: workflowTypeFilter }),
   });
 
+  const readGate = $derived(scopeGate(principal, ['schedules:read']));
+  const writeGate = $derived(scopeGate(principal, ['schedules:write']));
   const listQuery = createQuery(() => ({
     queryKey: queryKeys.schedules.list(filter),
     queryFn: () => fetchScheduleList(client, filter),
+    enabled: !readGate.disabled,
   }));
 
   const allItems = $derived(listQuery.data?.items ?? []);
@@ -109,8 +112,6 @@
   const isFiltered = $derived(
     statusFilter !== 'all' || workflowTypeFilter !== 'all' || idPrefix.trim().length > 0,
   );
-
-  const writeGate = $derived(scopeGate(principal, ['schedules:write']));
 
   function invalidateSchedules(): void {
     void queryClient.invalidateQueries({ queryKey: ['schedules'] });
@@ -260,7 +261,9 @@
     <Search aria-hidden="true" size={14} />
   {/snippet}
 
-  {#if listQuery.isPending}
+  {#if readGate.disabled}
+    <EmptyState title="Schedules are locked" description={readGate.title ?? ''} />
+  {:else if listQuery.isPending}
     <div
       class="weft-schedule-list__skeleton"
       role="status"

@@ -535,9 +535,14 @@ describe('serve', () => {
       expect(initializeResponse.status).toBe(200);
       const sessionId = initializeResponse.headers.get('Mcp-Session-Id');
       expect(sessionId).toBeTruthy();
+      // A static API key is the shared `api-key-caller`, so the session needs
+      // its continuation token as well as the credential.
+      const sessionToken = initializeResponse.headers.get('Mcp-Session-Token');
+      expect(sessionToken).toBeTruthy();
 
       const sessionHeaders = {
         ...authorization,
+        'Mcp-Session-Token': sessionToken!,
         accept: 'application/json, text/event-stream',
         'content-type': 'application/json',
         'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION,

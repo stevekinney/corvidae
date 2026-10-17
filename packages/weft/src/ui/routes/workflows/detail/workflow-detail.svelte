@@ -91,6 +91,11 @@
   const queryClient = useQueryClient();
   const principalStore = getPrincipalStore();
   const actionGate = $derived(scopeGate(principalStore, [ACTION_REQUIRED_SCOPE]));
+  // `weft.workflows.{signal,update,query}` and tag writes each require their own scope.
+  const signalGate = $derived(scopeGate(principalStore, ['signals:write']));
+  const updateGate = $derived(scopeGate(principalStore, ['updates:write']));
+  const queryGate = $derived(scopeGate(principalStore, ['queries:read']));
+  const tagGate = $derived(scopeGate(principalStore, ['tags:write']));
   const clock = new TickingClock();
   onDestroy(() => clock.dispose());
 
@@ -294,6 +299,7 @@
       activeRevision={resolvedActiveRevision}
       onRestart={() => (restartOpen = true)}
       {actionGate}
+      {queryGate}
     />
 
     {#if restartOpen}
@@ -315,7 +321,12 @@
 
         <div class="weft-workflow-detail__content">
           <Tabs.Panel value="overview"
-            ><OverviewTab {client} {workflow} activeRevision={resolvedActiveRevision} /></Tabs.Panel
+            ><OverviewTab
+              {client}
+              {workflow}
+              activeRevision={resolvedActiveRevision}
+              {tagGate}
+            /></Tabs.Panel
           >
           <Tabs.Panel value="timeline"
             ><TimelineTab
@@ -335,8 +346,12 @@
               sourceRevision={workflow.revision}
             /></Tabs.Panel
           >
-          <Tabs.Panel value="signals"><SignalsTab {client} {workflow} /></Tabs.Panel>
-          <Tabs.Panel value="updates"><UpdatesTab {client} {workflow} /></Tabs.Panel>
+          <Tabs.Panel value="signals"
+            ><SignalsTab {client} {workflow} sendGate={signalGate} /></Tabs.Panel
+          >
+          <Tabs.Panel value="updates"
+            ><UpdatesTab {client} {workflow} sendGate={updateGate} /></Tabs.Panel
+          >
           <Tabs.Panel value="children"><ChildrenTab {client} {workflow} /></Tabs.Panel>
         </div>
       </Tabs>

@@ -12,8 +12,8 @@
  * error for the earlier-listed field surfaces first. The all-bad test passes
  * every validatable field with an invalid value and asserts the first error wins.
  *
- * The operation has `access: { kind: 'authenticated' }`, so all requests are
- * issued with an api-key principal to pass the authentication gate.
+ * The operation requires `schedules:read`, so all requests are
+ * issued with an api-key principal that holds it.
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';

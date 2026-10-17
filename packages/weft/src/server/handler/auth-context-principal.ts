@@ -5,6 +5,8 @@ import {
   principalFromJwtClaims,
   principalFromMutualTls,
   principalFromUnauthenticatedLocal,
+  SHARED_API_KEY_SUBJECT,
+  SHARED_MUTUAL_TLS_SUBJECT,
   type Principal,
 } from '../principal.ts';
 
@@ -41,9 +43,9 @@ export function authContextToPrincipal(authContext: AuthContext | undefined): Pr
       return principalFromJwtClaims(authContext.claims);
     }
     case 'api-key':
-      return principalFromApiKey({ subject: 'api-key-caller', scopes: [] });
+      return principalFromApiKey({ subject: SHARED_API_KEY_SUBJECT, scopes: [] });
     case 'mtls':
-      return principalFromMutualTls({ subject: 'mtls-caller', scopes: [] });
+      return principalFromMutualTls({ subject: SHARED_MUTUAL_TLS_SUBJECT, scopes: [] });
     case 'unauthenticated-local':
       return principalFromUnauthenticatedLocal();
     case 'public':
