@@ -283,4 +283,38 @@ describe('MediaControls', () => {
     const { container } = render(MediaControls, { loading: true });
     expect(container.querySelector('button')?.hasAttribute('aria-pressed')).toBe(false);
   });
+
+  test('renders a seek slider and reports the requested position when onSeek is provided', async () => {
+    const seeks: number[] = [];
+    const { getByRole, queryByRole } = render(MediaControls, {
+      progress: 0.25,
+      progressLabel: 'Position',
+      onSeek: (position: number) => seeks.push(position),
+    });
+    expect(queryByRole('progressbar')).toBeNull();
+    const slider = requiredInstance(getByRole('slider', { name: 'Position' }), HTMLInputElement);
+    expect(slider.valueAsNumber).toBeCloseTo(0.25);
+    slider.value = '0.75';
+    await fireEvent.input(slider);
+    expect(seeks).toEqual([0.75]);
+  });
+
+  test('keeps the progressbar when onSeek is not provided', () => {
+    const { getByRole, queryByRole } = render(MediaControls, { progress: 0.5 });
+    expect(getByRole('progressbar')).toBeTruthy();
+    expect(queryByRole('slider')).toBeNull();
+  });
+
+  test('does not report seeks while unavailable', async () => {
+    const seeks: number[] = [];
+    const { getByRole } = render(MediaControls, {
+      progress: 0.25,
+      unavailable: true,
+      onSeek: (position: number) => seeks.push(position),
+    });
+    const slider = requiredInstance(getByRole('slider'), HTMLInputElement);
+    slider.value = '0.5';
+    await fireEvent.input(slider);
+    expect(seeks).toEqual([]);
+  });
 });
