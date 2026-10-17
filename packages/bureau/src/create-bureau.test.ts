@@ -17959,6 +17959,102 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       }
     });
 
+    async function recreateSession(bureau: Bureau, sessionId: string): Promise<string> {
+      const sessionStore = bureau.sessionStore;
+      if (!sessionStore) throw new Error('expected a configured session store');
+      await sessionStore.delete(sessionId);
+      await sessionStore.save(
+        createAgentSession({
+          id: sessionId,
+          agentName: 'recreated',
+          conversationHistory: createConversationHistory({ id: sessionId }),
+        }),
+      );
+      const recreated = await sessionStore.load(sessionId);
+      if (!recreated) throw new Error('expected the recreated session');
+      return recreated.incarnation;
+    }
+
+    it("never restores a run's ownership into a session recreated under the same id (writer side)", async () => {
+      const databasePath = databasePathFor('writer-incarnation');
+      const runtime = createManualRuntimeServices();
+      try {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          storage: { type: 'sqlite', path: databasePath },
+          runtime,
+          durableBackgroundTasks: 'manual',
+          stopWhen: stopWhen.noToolCalls(),
+        });
+        try {
+          const run = await bureau.createRun({ message: 'A', principal: 'alice' });
+          await waitForRunCompletion(bureau, run.id);
+          const original = await bureau.getSession(run.sessionId);
+          const recreatedIncarnation = await recreateSession(bureau, run.sessionId);
+          expect(recreatedIncarnation).not.toBe(original?.incarnation);
+
+          await bureau.deleteRun(run.id);
+          await runtime.deferred.drain();
+
+          const recreated = await bureau.getSession(run.sessionId);
+          expect(recreated?.incarnation).toBe(recreatedIncarnation);
+          expect(
+            (ownersOf(recreated) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+        } finally {
+          await bureau.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    });
+
+    it('never restores a pruned ownership entry into a session recreated after the prune (pruner side)', async () => {
+      await withDeletedRunBelowFloor(
+        'pruner-incarnation',
+        1,
+        async ({ bureau, runs, databasePath }) => {
+          const [run] = runs;
+          if (!run) throw new Error('expected one run');
+          const sessionStore = bureau.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          const originalUpdate = sessionStore.update.bind(sessionStore);
+          const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+          const adminFeed = createFleetEventFeed(adminStorage);
+          let recreatedIncarnation: string | undefined;
+          const updateSpy = spyOn(sessionStore, 'update').mockImplementationOnce(
+            async (id, updater, options) => {
+              const result = await originalUpdate(id, updater, options);
+              await adminFeed.append({
+                kind: 'review.approved',
+                workflowId: `run:${run.id}`,
+                emittedAtMs: 0,
+                payload: {},
+              });
+              recreatedIncarnation = await recreateSession(bureau, id);
+              return result;
+            },
+          );
+          try {
+            await bureau.runDurableMaintenance();
+          } finally {
+            updateSpy.mockRestore();
+            adminFeed.dispose();
+            adminStorage[Symbol.dispose]();
+          }
+
+          const recreated = await bureau.getSession(run.sessionId);
+          expect(recreatedIncarnation).toBeDefined();
+          expect(recreated?.incarnation).toBe(recreatedIncarnation);
+          expect(
+            (ownersOf(recreated) as Record<string, unknown> | undefined)?.[run.id],
+          ).toBeUndefined();
+        },
+      );
+    });
+
     it('diagnoses a rejected writer-side restore and still resolves deleteRun', async () => {
       const databasePath = databasePathFor('writer-failure');
       const runtime = createManualRuntimeServices();
