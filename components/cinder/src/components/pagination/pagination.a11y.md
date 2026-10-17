@@ -9,6 +9,7 @@
 - When a step button is at a boundary (previous on page 1, next on the last page) it receives the native `disabled` attribute. Native `disabled` removes the button from the tab order, blocks click and keyboard activation, and is already announced as "dimmed/unavailable" by assistive technologies — so a redundant `aria-disabled="true"` is intentionally not added (the ARIA spec discourages duplicating native semantics with their ARIA equivalents on the same element).
 - Ellipsis spans carry `aria-hidden="true"` — they are purely decorative separators and add no navigational value to the accessibility tree.
 - The optional result count paragraph (`<p class="cinder-pagination__count">`) uses `aria-live="polite"` so assistive technologies announce count changes (e.g., after filtering) without interrupting the user.
+- In callback mode (`onPrevious` or `onNext` given) no page-number buttons render, so the tab order is only the previous and next buttons. When `totalPages` is given, the "Page N of M" label is a paragraph with `aria-live="polite"`, so the new position is announced after the caller updates `currentPage`.
 
 ## Keyboard Interactions
 

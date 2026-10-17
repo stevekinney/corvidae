@@ -56,6 +56,7 @@ import donutChartExamples from '../components/donut-chart/donut-chart.examples.j
 import drawerExamples from '../components/drawer/drawer.examples.json' with { type: 'json' };
 import dropdownExamples from '../components/dropdown/dropdown.examples.json' with { type: 'json' };
 import emptyStateExamples from '../components/empty-state/empty-state.examples.json' with { type: 'json' };
+import errorStateExamples from '../components/error-state/error-state.examples.json' with { type: 'json' };
 import feedBoundaryExamples from '../components/feed-boundary/feed-boundary.examples.json' with { type: 'json' };
 import feedExamples from '../components/feed/feed.examples.json' with { type: 'json' };
 import fileUploadExamples from '../components/file-upload/file-upload.examples.json' with { type: 'json' };
@@ -155,6 +156,7 @@ export {
   drawerExamples,
   dropdownExamples,
   emptyStateExamples,
+  errorStateExamples,
   feedBoundaryExamples,
   feedExamples,
   fileUploadExamples,

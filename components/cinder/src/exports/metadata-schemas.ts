@@ -66,6 +66,7 @@ export { default as dropdownSeparatorSchema } from '../components/dropdown-separ
 export { default as dropdownTriggerSchema } from '../components/dropdown-trigger/dropdown-trigger.schema.ts';
 export { default as dropdownSchema } from '../components/dropdown/dropdown.schema.ts';
 export { default as emptyStateSchema } from '../components/empty-state/empty-state.schema.ts';
+export { default as errorStateSchema } from '../components/error-state/error-state.schema.ts';
 export { default as feedBoundarySchema } from '../components/feed-boundary/feed-boundary.schema.ts';
 export { default as feedEventSchema } from '../components/feed-event/feed-event.schema.ts';
 export { default as feedSchema } from '../components/feed/feed.schema.ts';
