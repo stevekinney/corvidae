@@ -63,7 +63,11 @@ describe('engine inline parking helpers', () => {
     const resolveResumeDisposition = mock(async () => 'resumable' as const);
 
     await resumeParkedInlineWorkflow(
-      { parkedInlineWorkflows, storage: new MemoryStorage() } as never,
+      {
+        parkedInlineWorkflows,
+        resumesAwaitingAdoption: new Map(),
+        storage: new MemoryStorage(),
+      } as never,
       'workflow-not-parked',
       createCallbacks({ getParkedWorkflowResumeDisposition: resolveResumeDisposition }),
     );
@@ -78,7 +82,11 @@ describe('engine inline parking helpers', () => {
     expect(
       await throwingRejectionOf(
         resumeParkedInlineWorkflow(
-          { parkedInlineWorkflows, storage: new MemoryStorage() } as never,
+          {
+            parkedInlineWorkflows,
+            resumesAwaitingAdoption: new Map(),
+            storage: new MemoryStorage(),
+          } as never,
           workflowId,
           createCallbacks({
             getParkedWorkflowResumeDisposition: async () => 'resumable',
@@ -97,7 +105,11 @@ describe('engine inline parking helpers', () => {
     expect(
       await throwingRejectionOf(
         resumeParkedInlineWorkflow(
-          { parkedInlineWorkflows, storage: new MemoryStorage() } as never,
+          {
+            parkedInlineWorkflows,
+            resumesAwaitingAdoption: new Map(),
+            storage: new MemoryStorage(),
+          } as never,
           workflowId,
           createCallbacks({
             getParkedWorkflowResumeDisposition: async () => 'corrupt',

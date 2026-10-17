@@ -50,7 +50,7 @@ async function tickEngine<TWorkflows extends object, TActivities extends object>
 describe('ctx.services — launch path (inline)', () => {
   it('exposes the services object passed at start to the workflow body', async () => {
     const storage = new MemoryStorage();
-    const engine = new Engine({ storage });
+    await using engine = new Engine({ storage });
 
     const greet = (name: string): string => `hello, ${name}`;
 
@@ -66,7 +66,7 @@ describe('ctx.services — launch path (inline)', () => {
 
   it('defaults ctx.services to undefined when none is provided', async () => {
     const storage = new MemoryStorage();
-    const engine = new Engine({ storage });
+    await using engine = new Engine({ storage });
 
     const wf = workflow({ name: 'no-services' }).execute(async function* (ctx: WorkflowContext) {
       return ctx.services === undefined ? 'absent' : 'present';
@@ -79,7 +79,7 @@ describe('ctx.services — launch path (inline)', () => {
 
   it('does not leak one run’s services into another run', async () => {
     const storage = new MemoryStorage();
-    const engine = new Engine({ storage });
+    await using engine = new Engine({ storage });
 
     const wf = workflow({ name: 'leak-check' }).execute(async function* (ctx: WorkflowContext) {
       return (ctx.services as { tag: string } | undefined)?.tag ?? 'none';
