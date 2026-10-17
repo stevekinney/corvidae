@@ -41,11 +41,12 @@ export function isPlainAuthorityRecord(
 function lookupSessionAuthority(
   metadata: Record<string, JSONValue>,
   // AB-67/AB-199 review finding (PR #430 — Codex P2, "Authorize against the
-  // targeted live run"): defaults to `metadata['lastRunId']` — the prior,
-  // single-run behavior every existing caller (`submitSessionInput`) keeps
-  // unchanged — but a caller that already knows which run a command
-  // actually targets (`submitSteeringCommand`, once it resolves an
-  // explicit `runId` or the session's sole live run) passes it explicitly.
+  // targeted live run"): defaults to `metadata['lastRunId']` — the
+  // single-run behavior an untargeted caller (`recordedSessionAuthorityPrincipalId`,
+  // the session-owner reads in `eventHistory`) keeps — but a caller that
+  // already knows which run a command actually targets (both session verbs,
+  // through `resolveSessionPreAdmission`, once they resolve an explicit
+  // `runId` or the session's sole live run) passes it explicitly.
   // Without this, a run B that completes first prunes only its OWN
   // `lastRequestAuthorities[B]` entry (see the terminal-transition cleanup
   // below) while leaving `lastRunId: B` and A's now-uncorrelated entry
@@ -113,11 +114,11 @@ function authorityForRun(
  * authority, never treating it as open the way "genuinely no authority
  * recorded" is treated.
  *
- * Shared by every new Bureau session verb that needs to read a session's
- * recorded authority (AB-194's `submitSessionInput`, AB-199's
- * `submitSteeringCommand`) — neither issue owns or invents this mechanism,
- * both simply read the pre-existing metadata keys `create-bureau.ts` already
- * writes on every run dispatch.
+ * It reads the pre-existing metadata keys `create-bureau.ts` already writes
+ * on every run dispatch, with no target run, so it always resolves against
+ * `lastRunId`. The session verbs (`submitSessionInput`,
+ * `submitSteeringCommand`) do not use it: they authorize against the run a
+ * request targets, through {@link resolveSessionPreAdmission}.
  */
 export function recordedSessionAuthorityPrincipalId(
   metadata: Record<string, JSONValue>,
@@ -173,13 +174,51 @@ export function resolvePersistedRunOwningPrincipal(
 }
 
 /**
- * Whether a session's most recent run is in a terminal (non-`'running'`)
- * state, reading the same `metadata['lastRunStatus']` field
- * {@link requireSessionRunId} and {@link hasRecoverableTransportAuthority}
- * already read. Shared by every new Bureau session verb that needs a
- * terminal-session check (AB-194's `submitSessionInput`, AB-199's
- * `submitSteeringCommand`).
+ * Whether a session has no run in progress: its most recently persisted run
+ * (`metadata['lastRunStatus']`, the field {@link requireSessionRunId} and
+ * {@link hasRecoverableTransportAuthority} also read) is not `'running'`, AND
+ * `liveRunIds`, the session's runs that the caller's live-run registry
+ * still holds as running, is empty. `lastRunStatus` is last-write-wins across
+ * concurrent runs, so the run that went terminal last can overwrite it while
+ * an older run on the same session is still running; the live-run set is
+ * what keeps that session from reading as terminal (COR-301). With the
+ * default empty set this reads `lastRunStatus` alone.
  */
-export function isSessionRunTerminal(metadata: Record<string, JSONValue>): boolean {
-  return metadata['lastRunStatus'] !== 'running';
+export function isSessionRunTerminal(
+  metadata: Record<string, JSONValue>,
+  liveRunIds: readonly string[] = [],
+): boolean {
+  return metadata['lastRunStatus'] !== 'running' && liveRunIds.length === 0;
+}
+
+/**
+ * The pre-admission verdict both session verbs (`submitSessionInput`,
+ * `submitSteeringCommand`) share, in AB-42's fixed order: authorization
+ * first (`'not-found'`), then session lifecycle (`'session-terminal'`), else
+ * `'proceed'` to the verb's own capability and admission checks.
+ *
+ * `liveRunIds` is the session's still-running runs as the caller's live-run
+ * registry reports them (COR-301; the PR #430 review findings "Consult live
+ * runs before declaring the session terminal" and "Authorize against the
+ * targeted live run" that first fixed this for steering). Authorization
+ * targets `explicitRunId` when the request names a run, else the session's
+ * sole live run, else falls back to {@link lookupSessionAuthority}'s
+ * `lastRunId` default, the only choice left when several runs are live and
+ * none is named. Targeting the run matters because a concurrent run's
+ * terminal write prunes only its own `lastRequestAuthorities` entry and
+ * leaves `lastRunId` pointing at itself, which would otherwise fail every
+ * principal closed (or, once the map is empty, authorize whichever principal
+ * dispatched last). The session is terminal only when its last persisted run
+ * is not running and no run is live ({@link isSessionRunTerminal}).
+ */
+export function resolveSessionPreAdmission(
+  metadata: Record<string, JSONValue>,
+  principal: string,
+  liveRunIds: readonly string[],
+  explicitRunId?: string,
+): 'not-found' | 'session-terminal' | 'proceed' {
+  const targetRunId = explicitRunId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
+  if (!isSessionAuthorityAuthorized(metadata, principal, targetRunId)) return 'not-found';
+  if (isSessionRunTerminal(metadata, liveRunIds)) return 'session-terminal';
+  return 'proceed';
 }

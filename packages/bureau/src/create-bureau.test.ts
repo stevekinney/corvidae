@@ -7065,7 +7065,8 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       await waitForRunSettled(bureau, runB.id);
       expect(
         await pollUntil(async () => {
-          const metadata = (await bureau.getSession(runA.sessionId))?.metadata ?? {};
+          const session = await bureau.getSession(runA.sessionId);
+          const metadata = session?.metadata ?? {};
           const authorities = metadata['lastRequestAuthorities'];
           return (
             metadata['lastRunStatus'] === 'completed' &&

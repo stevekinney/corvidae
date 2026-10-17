@@ -5,6 +5,7 @@ import {
   isSessionRunTerminal,
   recordedSessionAuthorityPrincipalId,
   resolvePersistedRunOwningPrincipal,
+  resolveSessionPreAdmission,
 } from './session-authority';
 
 describe('recordedSessionAuthorityPrincipalId / isSessionAuthorityAuthorized (AB-194)', () => {
@@ -300,5 +301,73 @@ describe('isSessionRunTerminal (AB-194)', () => {
     expect(isSessionRunTerminal({ lastRunStatus: 'error' })).toBe(true);
     expect(isSessionRunTerminal({ lastRunStatus: 'aborted' })).toBe(true);
     expect(isSessionRunTerminal({})).toBe(true);
+  });
+});
+
+describe('isSessionRunTerminal with a live-run set (COR-301)', () => {
+  it('is terminal only when the last run is not running and no run is live', () => {
+    expect(isSessionRunTerminal({ lastRunStatus: 'completed' }, [])).toBe(true);
+    expect(isSessionRunTerminal({ lastRunStatus: 'completed' }, ['run-a'])).toBe(false);
+    expect(isSessionRunTerminal({}, ['run-a', 'run-c'])).toBe(false);
+    expect(isSessionRunTerminal({ lastRunStatus: 'running' }, [])).toBe(false);
+  });
+});
+
+describe('resolveSessionPreAdmission (COR-301)', () => {
+  const alice = { principalId: 'alice' };
+  const bob = { principalId: 'bob' };
+  const carol = { principalId: 'carol' };
+
+  it('targets the sole live run, and keeps the lastRunId fallback otherwise', () => {
+    const metadata = {
+      lastRunId: 'run-b',
+      lastRunStatus: 'completed',
+      lastRequestAuthorities: { 'run-a': alice },
+      lastRequestAuthority: bob,
+    };
+    expect(resolveSessionPreAdmission(metadata, 'alice', [])).toBe('not-found');
+    expect(resolveSessionPreAdmission(metadata, 'bob', [])).toBe('not-found');
+    expect(resolveSessionPreAdmission(metadata, 'alice', ['run-a'])).toBe('proceed');
+    expect(resolveSessionPreAdmission(metadata, 'bob', ['run-a'])).toBe('not-found');
+    expect(resolveSessionPreAdmission(metadata, 'mallory', ['run-a'])).toBe('not-found');
+    expect(resolveSessionPreAdmission(metadata, 'alice', ['run-a', 'run-c'])).toBe('not-found');
+    expect(resolveSessionPreAdmission(metadata, 'alice', ['run-a', 'run-c'], 'run-a')).toBe(
+      'proceed',
+    );
+    expect(resolveSessionPreAdmission(metadata, 'bob', ['run-a', 'run-c'], 'run-a')).toBe(
+      'not-found',
+    );
+  });
+
+  it('authorizes an explicit run against its own entry when several runs are live', () => {
+    const metadata = {
+      lastRunId: 'run-a',
+      lastRunStatus: 'completed',
+      lastRequestAuthorities: { 'run-a': alice, 'run-c': carol },
+    };
+    const live = ['run-a', 'run-c'];
+    expect(resolveSessionPreAdmission(metadata, 'alice', live)).toBe('proceed');
+    expect(resolveSessionPreAdmission(metadata, 'carol', live)).toBe('not-found');
+    expect(resolveSessionPreAdmission(metadata, 'carol', live, 'run-c')).toBe('proceed');
+    expect(resolveSessionPreAdmission(metadata, 'alice', live, 'run-c')).toBe('not-found');
+  });
+
+  it('authorizes before it checks the lifecycle', () => {
+    const terminal = {
+      lastRunId: 'run-1',
+      lastRunStatus: 'completed',
+      lastRequestAuthorities: { 'run-1': alice },
+    };
+    expect(resolveSessionPreAdmission(terminal, 'alice', [])).toBe('session-terminal');
+    expect(resolveSessionPreAdmission(terminal, 'mallory', [])).toBe('not-found');
+    expect(resolveSessionPreAdmission({ ...terminal, lastRunStatus: 'running' }, 'alice', [])).toBe(
+      'proceed',
+    );
+  });
+
+  it('decides the lifecycle of an open session from the live-run set', () => {
+    const open = { lastRunId: 'run-b', lastRunStatus: 'completed' };
+    expect(resolveSessionPreAdmission(open, 'anyone', ['run-a'])).toBe('proceed');
+    expect(resolveSessionPreAdmission(open, 'anyone', [])).toBe('session-terminal');
   });
 });
