@@ -24,7 +24,6 @@ Run a Toolbox MCP server as a local process and let the agent SDK spawn it.
 // mcp-server.ts
 import { createToolbox, createTool } from 'armorer';
 import { createMCP } from 'armorer';
-import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
 const toolbox = createToolbox();
@@ -40,10 +39,11 @@ createTool(
   toolbox,
 );
 
-const mcp = createMCP(toolbox, {
+const mcp = await createMCP(toolbox, {
   serverInfo: { name: 'toolbox-tools', version: '0.1.0' },
 });
-await mcp.connect(new StdioServerTransport());
+// Serves 2026-07-28 and 2025-11-25 openings on the process's stdio.
+await mcp.serveStdio();
 ```
 
 ```typescript

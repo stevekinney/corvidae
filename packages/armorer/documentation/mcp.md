@@ -6,68 +6,98 @@ Expose a Toolbox registry as a [Model Context Protocol](https://modelcontextprot
 
 ## Prerequisites
 
-- Install `@modelcontextprotocol/server` as a runtime dependency for the transport you use.
+- `@modelcontextprotocol/server` and `@modelcontextprotocol/client` (2.1 or later) are `armorer` dependencies; nothing else to install.
 - Have a registry created with `createToolbox()` and tools registered into it.
 
-## Quick start (stdio transport)
+## Protocol versions
+
+`createMCP` serves MCP protocol revision **2026-07-28** (`MCP_PROTOCOL_VERSION`) and, through the SDK's stateless legacy lane, **2025-11-25** (`MCP_LEGACY_PROTOCOL_VERSION`) — from one server factory, so both eras see the same tools, resources, and prompts. It returns an endpoint, not a single SDK server instance:
+
+| Member | What it is |
+| --- | --- |
+| `fetch(request)` | The web-standard HTTP entry (`createMcpHandler(factory, { legacy: 'stateless' })`). Serves both eras on one URL. |
+| `handler` | The full SDK handler (`fetch`, `close`, `notify`, `bus`). |
+| `serveStdio(options?)` | Serves stdio through the SDK's `serveStdio`, pinning each connection to the era its opening message selects. |
+| `createServer(ctx?)` | Builds one SDK `McpServer` instance. Connect it to a transport of your own for 2025-era serving (`await mcp.createServer().connect(t)`). |
+| `executionLifecycle` | Inspects and controls the executions this endpoint owns, across every per-request instance. |
+| `shutdown()` | Closes admission, aborts and settles executions (including ones waiting for client input), and returns cleanup evidence. |
+| `close()` | `shutdown()`, then closes the HTTP entry, stdio entries, and instances built with `createServer`. |
+
+The SDK builds a fresh server instance per HTTP request (and per stdio connection), so resource and prompt registrars run many times. They receive the instance and the request context (`{ era }`); keep them free of state.
+
+## Quick start (stdio)
 
 ```typescript
-import { createToolbox, createTool } from 'armorer';
-import { createMCP } from 'armorer';
-import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
+import { createMCP, createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
-const toolbox = createToolbox();
-createTool(
-  {
+const toolbox = createToolbox([
+  createTool({
     name: 'sum',
     description: 'adds two numbers',
     input: z.object({ a: z.number(), b: z.number() }),
     async execute({ a, b }) {
       return a + b;
     },
-  },
-  toolbox,
-);
+  }),
+]);
 
-const mcp = createMCP(toolbox, {
+const mcp = await createMCP(toolbox, {
   serverInfo: { name: 'toolbox-tools', version: '0.1.0' },
 });
 
-await mcp.connect(new StdioServerTransport());
+await mcp.serveStdio();
 ```
 
-## Conversion helpers
+## Streamable HTTP
 
-`armorer` also exposes conversion helpers for MCP tool interoperability:
-
-- `toMcpTools(input, options?)`: convert Toolbox tools to MCP tool definitions with handlers.
-- `fromMcpTools(tools, options?)`: convert MCP tool definitions back into executable Toolbox tools.
-
-## Streamable HTTP transport (Node.js)
-
-Use the Streamable HTTP server transport to expose MCP over HTTP.
+`mcp.fetch` is a web-standard `(Request) => Promise<Response>` handler, so it plugs straight into Bun, Deno, and Workers. On Node frameworks, wrap `mcp.handler` with `toNodeHandler` from `@modelcontextprotocol/node`.
 
 ```typescript
-import { createMCP } from 'armorer';
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
-
-const mcp = createMCP(toolbox, {
+const mcp = await createMCP(toolbox, {
   serverInfo: { name: 'toolbox-tools', version: '0.1.0' },
 });
 
-// Create an HTTP transport and hand requests to it.
-const transport = new WebStandardStreamableHTTPServerTransport();
-
-// In your HTTP handler:
-// const response = await transport.handleRequest(req);
-// res.writeHead(response.status, response.headers);
-// res.end(await response.text());
-
-await mcp.connect(transport);
+Bun.serve({ port: 3000, fetch: (request) => mcp.fetch(request) });
 ```
 
-If you're running in a web-standard environment (Cloudflare Workers, Deno, Bun), use the web-standard transport from the MCP SDK instead.
+Pass `http` to configure the entry (`responseMode`, `maxRequestBodySize`, `onerror`, and so on); `legacy` is always `'stateless'`. Cache hints for `tools/list` and other cacheable results go in the ordinary SDK `cacheHints` server option; the SDK client honors them, so Armorer keeps no tool-list cache of its own.
+
+The stateless 2025 lane has limits that come from the lane, not from Armorer: it never sees the `initialize` handshake, so tools there get no client information or capabilities and no `context.elicit`, and a `notifications/cancelled` lands on a fresh instance that does not own the running call. Serve 2025 clients over stdio (`serveStdio`) when they need elicitation or cancellation.
+
+## What a tool sees
+
+Each call runs under an execution the endpoint owns. The tool receives:
+
+- `context.signal` — aborted when the client cancels (on 2026-07-28, by closing the request's response stream; on a sessionful 2025 connection, by `notifications/cancelled`), on shutdown, or when an unanswered input round expires.
+- `context.executionContext.mcp` — an `MCPRequestExecutionContext`: `era`, `method`, `requestId`, and, where the protocol supplies them, `protocolVersion`, `clientInfo`, `clientCapabilities`, and the W3C `trace` carrier (`traceparent`, `tracestate`, `baggage`) from the request's `_meta`. MCP defines no request deadline, so none is reported.
+- `context.traceContext` — an OpenTelemetry `Context` extracted from that carrier with the globally registered propagator, when the request carried a `traceparent`.
+- `context.elicit` — present when the client declared the `elicitation` capability (see below).
+- `context.progress(...)` — forwarded to the client as MCP progress when the client asked for it (see below).
+
+## Progress
+
+When a request carries a `progressToken` (the SDK client adds one when you pass `onprogress`), each `context.progress({ percent, message })` the tool reports is sent as `notifications/progress`: a percent becomes `{ progress: percent, total: 100 }`. MCP requires progress to increase, so a percent that does not advance is dropped; message-only updates count up until the tool first reports a percent. A request without a token gets no progress notifications.
+
+In the client direction, `fromMcpTools` passes an `onprogress` callback to `callTool` and turns each notification into an Armorer progress event (`percent` from `progress / total`, the raw notification as `checkpoint`). Pass `progress: false` to request none. During a 2026-07-28 `input_required` exchange the SDK client also reports its own "fulfilling input" progress through the same callback, and those updates reach the tool too.
+
+## Elicitation and multi-round input
+
+On a **2025-11-25** connection, `context.elicit(...)` sends a push-style `elicitation/create` to the client and awaits its answer within the same call.
+
+On **2026-07-28** the protocol has no server-to-client request channel: a handler that needs input returns an `input_required` result and the client retries the call with the answer. Armorer keeps tools written the same way for both eras by suspending the execution: when the tool calls `context.elicit(...)`, the endpoint answers the round with `input_required` while the tool keeps waiting, and the retry hands the answer to that same execution. The tool body runs once, so nothing before or after the question is repeated.
+
+- The retry is matched by a `requestState` sealed with HMAC under a per-endpoint key and bound to the tool, the round, and the authenticated client (`authInfo.clientId`) when there is one. A tampered or expired state is rejected by the SDK before the tool runs.
+- Each round is claimed once. A duplicate or stale retry gets an error result and does not touch the execution; a retry that carries no answer re-issues the same round.
+- An unanswered round expires after `inputRounds.ttlMs` (ten minutes by default), which aborts the execution.
+- Because the execution lives in memory, every round of a flow must reach the same process.
+- A tool can wait for one elicitation at a time.
+
+Accepted form answers are validated against the requested schema in both eras before the tool sees them. The schema is converted as JSON Schema 2020-12, so constraints such as `pattern`, `minimum`, `format` and `enum` are enforced, and a schema that cannot be enforced (a remote `$ref`, for example) rejects the answer instead of letting it through.
+
+## MCP tasks
+
+MCP tasks are not implemented. The 2025-11 experimental task API was removed from the SDK in 2.0.0, and the 2026-07-28 Tasks extension (SEP-2663) is not implemented by the SDK at 2.3: its server lists every Tasks conformance scenario as an expected failure, and its client rejects a `tools/call` result of `resultType: 'task'`. No task API is exported. Long-running tools report progress and honor cancellation on a held-open request instead; Armorer's own execution tasks remain the in-process model.
 
 ### Tool metadata mapping
 
@@ -97,7 +127,7 @@ createTool(
 You can override or extend this with `toolConfiguration`:
 
 ```typescript
-const mcp = createMCP(toolbox, {
+const mcp = await createMCP(toolbox, {
   toolConfiguration: (tool) => ({
     title: tool.name.toUpperCase(),
   }),
@@ -124,7 +154,7 @@ By default, tool results are returned as:
 You can customize this with `formatResult`:
 
 ```typescript
-const mcp = createMCP(toolbox, {
+const mcp = await createMCP(toolbox, {
   formatResult: (result) => {
     if (result.outcome === 'error') {
       return {
@@ -140,15 +170,17 @@ const mcp = createMCP(toolbox, {
 });
 ```
 
-Thrown exceptions from tool execution are converted into MCP errors with a text payload. Client aborts are respected via the MCP `signal` that is passed into tool execution.
+A tool that returns MCP content blocks (an array of `text`, `image`, `audio`, `resource`, or `resource_link` blocks, or a `{ content, structuredContent }` object) has them sent as blocks, in order, instead of serialized into text.
+
+Thrown exceptions from tool execution are converted into MCP errors with a text payload.
 
 ### Resources and prompts
 
-Register additional MCP resources and prompts via registrars:
+Register additional MCP resources and prompts via registrars. Each runs once per server instance the SDK builds and receives the request context as a second argument:
 
 ```typescript
-const mcp = createMCP(toolbox, {
-  resources: (server) => {
+const mcp = await createMCP(toolbox, {
+  resources: (server, { era }) => {
     server.registerResource('readme', 'toolbox://readme', { title: 'README' }, async () => ({
       contents: [{ uri: 'toolbox://readme', text: 'hello' }],
     }));
@@ -164,7 +196,7 @@ const mcp = createMCP(toolbox, {
 You can pass a single registrar or an array of registrars:
 
 ```typescript
-const mcp = createMCP(toolbox, {
+const mcp = await createMCP(toolbox, {
   resources: [registerDocs, registerSchemas],
   prompts: [registerAssistantPrompts],
 });
@@ -172,7 +204,16 @@ const mcp = createMCP(toolbox, {
 
 ### Tool updates
 
-When tools are re-registered in the Toolbox registry, the MCP server refreshes the tool definitions and notifies connected clients with `toolListChanged`.
+`createMCP` reads the toolbox's available tools once, when it is created. Create a new endpoint after re-registering tools.
+
+## Conversion helpers
+
+- `toMcpTools(input, options?)` converts Toolbox tools to MCP tool definitions with handlers. A caller that owns its own SDK server passes `clientSession` (capabilities, client information, negotiated version) so 2025-era requests know whether the client can elicit; without it, a 2025-era request keeps exposing `context.elicit`. `executeTool(tool, request)` receives an `MCPToolExecutionRequest`.
+- `fromMcpTools(tools, options?)` converts MCP tool definitions back into executable Toolbox tools. `callTool(request, { signal, onprogress })` performs each call. `fromMcpClientTools(client, options?)` wires that to a connected SDK `Client`, so tool-list caching, `Mcp-Method`/`Mcp-Name` headers, and `input_required` retries stay with the SDK.
+
+Results keep their content blocks in both directions: a remote result with any non-text block reaches the caller as those blocks (as `{ content, structuredContent }` when it also carries structured content), a text-only result with structured content returns the structured value, and plain text is parsed as JSON when it holds JSON.
+
+A remote tool's JSON `inputSchema` is converted strictly (JSON Schema 2020-12, `MCP_JSON_SCHEMA_DIALECT`): local `$ref`/`$defs` resolve, while a remote reference, a missing definition, another `$schema` dialect, or a keyword the validator cannot enforce throws `McpToolSchemaError` instead of falling back to a schema that accepts anything. Outbound schemas are published by the SDK as JSON Schema 2020-12 and every call's arguments are validated against them.
 
 ## OAuth client support
 
@@ -225,6 +266,8 @@ await completeMcpOAuthAuthorization(provider, {
 });
 // Now retry connectMcpClientWithOAuth(...) — it will use the newly saved tokens.
 ```
+
+`connectMcpClientWithOAuth` negotiates with `versionNegotiation: { mode: 'auto' }` by default: it probes for 2026-07-28 with `server/discover` and falls back to the 2025-11-25 `initialize` handshake against a server that does not offer it. Pass `clientOptions.versionNegotiation` to pin (`{ mode: { pin: '2026-07-28' } }`) or to skip the probe (`{ mode: 'legacy' }`). The OAuth flow itself is the SDK's and applies on both eras.
 
 `completeMcpOAuthAuthorization` validates the redirect's `iss` parameter per [RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207) against the issuer recorded during discovery — guarding against authorization-server mix-up attacks — before ever exchanging the authorization code for tokens. This is implemented against the MCP Authorization spec base revision [2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization), plus the RFC 9207 issuer-validation requirement from the [current draft revision](https://modelcontextprotocol.io/specification/draft/basic/authorization#authorization-response-validation).
 
