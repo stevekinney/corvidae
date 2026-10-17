@@ -31,6 +31,8 @@ import {
   PUBLISHED_RUN_EVENT_KINDS,
 } from '@lostgradient/operative';
 
+import { FRAMES_DROPPED_KIND, withFramesDroppedMarker } from './frames-dropped.ts';
+
 /** The mutable half of operative's registry, as this module needs it. */
 export type MutableAgentRunEventRegistry = {
   get(runId: string): AgentRunEventFeed | undefined;
@@ -66,11 +68,27 @@ export function attachRunEventFeed(
   registry: MutableAgentRunEventRegistry,
   options: RunEventFeedAttachmentOptions = {},
 ): () => void {
-  const feed = createAgentRunEventFeed({
+  const now = options.now ?? (() => Date.now());
+  const runFeed = createAgentRunEventFeed({
     runId,
     ...(options.maxEvents === undefined ? {} : { maxEvents: options.maxEvents }),
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+  // A reader that falls behind the live buffer is told so and its stream
+  // continues, rather than the stream silently ending (COR-1477). Positioned at
+  // the last event the reader received, so resuming from the marker skips
+  // nothing, and not a published kind, so a `kinds` filter never hides it.
+  const feed: AgentRunEventFeed = {
+    ...runFeed,
+    feed: withFramesDroppedMarker(runFeed.feed, runFeed.signal, ({ sequence, cursor }) => ({
+      sequence,
+      cursor,
+      runId,
+      kind: FRAMES_DROPPED_KIND,
+      emittedAtMs: now(),
+      payload: {},
+    })),
+  };
   registry.set(runId, feed);
 
   const disposers: Array<() => void> = [];

@@ -494,6 +494,32 @@ describe('run-creation ledger retention', () => {
     }
   });
 
+  it('lists the run id of every stored binding, expired ones included, and fails closed on a claim with no readable run id (COR-1477)', async () => {
+    const { fixture, kv, ledger } = runCreationLedger(async () => ({
+      live: summary({ status: 'completed', steps: 1 }),
+      durableStatus: undefined,
+    }));
+    try {
+      const attempt = await ledger.begin(beginInput());
+      if (attempt.kind !== 'claimed') throw new Error('expected a fresh claim');
+      const created = await attempt.complete(summary());
+      expect(await ledger.boundRunIds()).toEqual(new Set([created.id]));
+
+      // A persisted entry whose claim names no run (`{}`, or a non-string id)
+      // cannot be ruled out as a task's binding.
+      for (const claim of [{}, { runId: 42 }, { runId: '' }, null]) {
+        const listed = await kv.list('');
+        const key = listed.find((candidate) => candidate.includes(':entry:'));
+        if (key === undefined) throw new Error('expected a stored entry');
+        const stored = JSON.parse((await kv.get(key)) ?? '{}');
+        await kv.set(key, JSON.stringify({ ...stored, claim }));
+        expect(await rejectionOf(ledger.boundRunIds())).toBeInstanceOf(Error);
+      }
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
   it('prunes a settled binding nobody observed in one pass', async () => {
     const settledAt = ORIGIN_MS + 1_000;
     const { fixture, kv, runtime, ledger } = runCreationLedger(async () => ({

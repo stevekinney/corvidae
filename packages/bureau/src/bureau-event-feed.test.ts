@@ -134,6 +134,22 @@ describe('the bureau event feed', () => {
   });
 });
 
+describe('the bureau event feed live buffer size', () => {
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5])(
+    'rejects %p, which would stop the overflow check from ever firing',
+    (liveBufferSize) => {
+      expect(() => createBureauEventFeed({ bureauId: 'bureau-1', liveBufferSize })).toThrow(
+        RangeError,
+      );
+    },
+  );
+
+  it('accepts a non-negative integer', () => {
+    const feed = createBureauEventFeed({ bureauId: 'bureau-1', liveBufferSize: 0 });
+    feed.dispose();
+  });
+});
+
 describe('bureau event projection coverage', () => {
   it('keeps the filterable tuple and the projection registry in agreement', () => {
     expect([...publishedBureauEventKinds].toSorted()).toEqual(
