@@ -217,3 +217,32 @@ const agentWithToolsAndToolbox = createAgent({
   toolbox: concreteToolbox,
 });
 void agentWithToolsAndToolbox;
+
+// ---------------------------------------------------------------------------
+// COR-1301 — `description` and `skillDescriptors` are optional on the options
+// and surface readonly on the returned agent, independent of the runtime
+// `skills` seam.
+// ---------------------------------------------------------------------------
+
+const describedOptions: CreateAgentOptions = {
+  generate: mockGenerate,
+  description: 'Looks things up.',
+  skillDescriptors: [{ id: 'lookup', name: 'Lookup', description: 'Looks up.', tags: [] }],
+};
+void describedOptions;
+
+const bareOptions: CreateAgentOptions = { generate: mockGenerate };
+void bareOptions;
+
+const describedAgent = createAgent(describedOptions);
+const descriptionValue: string | undefined = describedAgent.description;
+void descriptionValue;
+// @ts-expect-error — `description` is readonly on the returned agent.
+describedAgent.description = 'changed';
+
+const badSkillOptions: CreateAgentOptions = {
+  generate: mockGenerate,
+  // @ts-expect-error — a skill descriptor requires `tags`.
+  skillDescriptors: [{ id: 'x', name: 'X', description: 'X.' }],
+};
+void badSkillOptions;

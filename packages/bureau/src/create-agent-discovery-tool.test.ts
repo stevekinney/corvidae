@@ -58,7 +58,7 @@ describe('createAgentDiscoveryTool', () => {
     expect(result).toEqual([]);
   });
 
-  it('exposes metadata only — every entry has exactly a name field', async () => {
+  it('exposes metadata only — an agent with no description or skills has exactly a name field', async () => {
     const catalog = createAgentCatalog({ writer: agent('writer') });
     const tool = createAgentDiscoveryTool(catalog);
 
@@ -86,5 +86,62 @@ describe('createAgentDiscoveryTool', () => {
 
     expect(result).toEqual([{ name: 'lazy' }]);
     expect(lazyLoaded).toBe(false);
+  });
+
+  describe('description and skill descriptors (COR-1301)', () => {
+    const skillDescriptors = [
+      {
+        id: 'summarize',
+        name: 'Summarize',
+        description: 'Condense long documents.',
+        tags: ['nlp', 'Digest'],
+        inputModes: ['text/plain'],
+        outputModes: ['text/markdown'],
+      },
+    ] as const;
+
+    function describedCatalog() {
+      return createAgentCatalog({
+        writer: createAgent({
+          generate: createMockGenerate([]),
+          name: 'writer',
+          description: 'Drafts articles.',
+          skillDescriptors,
+        }),
+        plain: agent('plain'),
+      });
+    }
+
+    it('returns the description and skill descriptors for an agent that declares them', async () => {
+      const tool = createAgentDiscoveryTool(describedCatalog());
+
+      const result = parseDiscoveryResult(await tool.execute({}));
+
+      expect(result).toEqual([
+        { name: 'writer', description: 'Drafts articles.', skillDescriptors },
+        { name: 'plain' },
+      ]);
+    });
+
+    it.each([
+      ['description', 'ARTICLES'],
+      ['skill name', 'summarize'],
+      ['skill description', 'long documents'],
+      ['skill tag', 'digest'],
+    ])('matches case-insensitively on the %s', async (_label, text) => {
+      const tool = createAgentDiscoveryTool(describedCatalog());
+
+      const result = parseDiscoveryResult(await tool.execute({ text }));
+
+      expect(result.map((entry) => entry.name)).toEqual(['writer']);
+    });
+
+    it('does not match text that appears in no searchable field', async () => {
+      const tool = createAgentDiscoveryTool(describedCatalog());
+
+      const result = parseDiscoveryResult(await tool.execute({ text: 'text/markdown' }));
+
+      expect(result).toEqual([]);
+    });
   });
 });

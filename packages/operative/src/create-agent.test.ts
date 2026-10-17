@@ -43,3 +43,46 @@ describe('createAgent: AgentRunContext.principal forwarding (AB-241)', () => {
     expect(options.principal).toBeUndefined();
   });
 });
+
+describe('createAgent: descriptive metadata (COR-1301)', () => {
+  const skillDescriptors = [
+    { id: 'summarize', name: 'Summarize', description: 'Condense text.', tags: ['nlp'] },
+  ] as const;
+
+  it('surfaces description and skillDescriptors on the returned agent', () => {
+    const agent = createAgent({
+      generate: mockGenerate(),
+      description: 'Summarizes things.',
+      skillDescriptors,
+    });
+
+    expect(agent.description).toBe('Summarizes things.');
+    expect(agent.skillDescriptors).toBe(skillDescriptors);
+  });
+
+  it('omits both properties when the agent declares neither', () => {
+    const agent = createAgent({ generate: mockGenerate() });
+
+    expect('description' in agent).toBe(false);
+    expect('skillDescriptors' in agent).toBe(false);
+  });
+
+  it('does not leak descriptive metadata into the resolved run options', async () => {
+    const agent = createAgent({
+      generate: mockGenerate(),
+      description: 'Summarizes things.',
+      skillDescriptors,
+    });
+
+    const options = await resolver(agent)('hello');
+
+    expect('description' in options).toBe(false);
+    expect('skillDescriptors' in options).toBe(false);
+  });
+
+  it('leaves the runtime skills seam independent of skillDescriptors', () => {
+    const agent = createAgent({ generate: mockGenerate(), skillDescriptors });
+
+    expect('skills' in agent).toBe(false);
+  });
+});
