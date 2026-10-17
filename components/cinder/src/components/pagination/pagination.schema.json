@@ -12,11 +12,11 @@
     },
     "hasPreviousPage": {
       "type": "boolean",
-      "description": "Whether a previous page is available when totalPages is unknown. Defaults to currentPage > 1."
+      "description": "Whether a previous page is available. When totalPages is unknown, defaults to currentPage > 1.\nIn callback mode (`onPrevious` or `onNext` given) it alone decides, defaulting to false."
     },
     "hasNextPage": {
       "type": "boolean",
-      "description": "Whether a next page is available when totalPages is unknown. Defaults to false.",
+      "description": "Whether a next page is available. When totalPages is unknown, defaults to false. In callback\nmode (`onPrevious` or `onNext` given) it alone decides.",
       "default": false
     },
     "totalCount": {
@@ -29,5 +29,24 @@
     }
   },
   "additionalProperties": false,
-  "required": ["currentPage"]
+  "required": ["currentPage"],
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "countLabel",
+        "reason": "function-or-snippet",
+        "description": "Formats the `totalCount` text in place of the default \"N results\". Receives the raw count,\nso format it with your own locale rules."
+      },
+      {
+        "name": "onNext",
+        "reason": "function-or-snippet",
+        "description": "Called when the user asks for the next page. Giving this or `onPrevious` puts the component\nin callback mode: `currentPage` is never changed by the component, Next is enabled by\n`hasNextPage` alone, and no page-number buttons render. When `totalPages` is given the\ncontrols show \"Page N of M\"."
+      },
+      {
+        "name": "onPrevious",
+        "reason": "function-or-snippet",
+        "description": "Called when the user asks for the previous page. Giving this or `onNext` puts the component\nin callback mode: `currentPage` is never changed by the component, Previous is enabled by\n`hasPreviousPage` alone, and no page-number buttons render. Keep the offset or cursor in the\ncaller."
+      }
+    ]
+  }
 }

@@ -26,16 +26,28 @@
     hasPreviousPage,
     hasNextPage = false,
     totalCount,
+    countLabel,
+    onPrevious,
+    onNext,
     class: customClassName,
     ...rest
   }: PaginationProps = $props();
 
   const mergedClassName = $derived(classNames('cinder-pagination', customClassName));
 
+  // Callback mode: the caller keeps the offset or cursors and is told when the user asks for
+  // the previous or next page. The component never writes `currentPage` and has no page numbers
+  // to jump to, so each direction is governed by its availability flag alone.
+  const callbackMode = $derived(onPrevious !== undefined || onNext !== undefined);
+
   const canGoPrevious = $derived(
-    currentPage > 1 && (totalPages === undefined ? (hasPreviousPage ?? true) : true),
+    callbackMode
+      ? (hasPreviousPage ?? false)
+      : currentPage > 1 && (totalPages === undefined ? (hasPreviousPage ?? true) : true),
   );
-  const canGoNext = $derived(totalPages === undefined ? hasNextPage : currentPage < totalPages);
+  const canGoNext = $derived(
+    callbackMode ? hasNextPage : totalPages === undefined ? hasNextPage : currentPage < totalPages,
+  );
 
   /**
    * Build the list of page items to render.
@@ -104,7 +116,7 @@
 <nav class={mergedClassName} aria-label="Pagination" {...rest}>
   {#if totalCount !== undefined}
     <p class="cinder-pagination__count" aria-live="polite">
-      {formatNumber(totalCount)} results
+      {countLabel ? countLabel(totalCount) : `${formatNumber(totalCount)} results`}
     </p>
   {/if}
 
@@ -115,7 +127,7 @@
       class="cinder-pagination__step"
       aria-label="Go to previous page"
       disabled={!canGoPrevious}
-      onclick={() => goToPage(currentPage - 1)}
+      onclick={() => (callbackMode ? onPrevious?.() : goToPage(currentPage - 1))}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -134,31 +146,39 @@
       </svg>
     </button>
 
-    <!-- Page number buttons -->
-    <ul class="cinder-pagination__pages" role="list">
-      {#each pageItems as item (typeof item === 'string' ? item : `page-${item}`)}
-        {#if typeof item === 'string'}
-          <li class="cinder-pagination__ellipsis-item" aria-hidden="true">
-            <span class="cinder-pagination__ellipsis">&hellip;</span>
-          </li>
-        {:else}
-          <li>
-            <button
-              type="button"
-              class="cinder-pagination__page"
-              aria-label={item === currentPage
-                ? `Page ${item}, current page`
-                : `Go to page ${item}`}
-              aria-current={item === currentPage ? 'page' : undefined}
-              data-cinder-current={item === currentPage ? '' : undefined}
-              onclick={() => goToPage(item)}
-            >
-              {item}
-            </button>
-          </li>
-        {/if}
-      {/each}
-    </ul>
+    {#if callbackMode}
+      {#if totalPages !== undefined}
+        <p class="cinder-pagination__position" aria-live="polite">
+          Page {currentPage} of {totalPages}
+        </p>
+      {/if}
+    {:else}
+      <!-- Page number buttons -->
+      <ul class="cinder-pagination__pages" role="list">
+        {#each pageItems as item (typeof item === 'string' ? item : `page-${item}`)}
+          {#if typeof item === 'string'}
+            <li class="cinder-pagination__ellipsis-item" aria-hidden="true">
+              <span class="cinder-pagination__ellipsis">&hellip;</span>
+            </li>
+          {:else}
+            <li>
+              <button
+                type="button"
+                class="cinder-pagination__page"
+                aria-label={item === currentPage
+                  ? `Page ${item}, current page`
+                  : `Go to page ${item}`}
+                aria-current={item === currentPage ? 'page' : undefined}
+                data-cinder-current={item === currentPage ? '' : undefined}
+                onclick={() => goToPage(item)}
+              >
+                {item}
+              </button>
+            </li>
+          {/if}
+        {/each}
+      </ul>
+    {/if}
 
     <!-- Next -->
     <button
@@ -166,7 +186,7 @@
       class="cinder-pagination__step"
       aria-label="Go to next page"
       disabled={!canGoNext}
-      onclick={() => goToPage(currentPage + 1)}
+      onclick={() => (callbackMode ? onNext?.() : goToPage(currentPage + 1))}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"

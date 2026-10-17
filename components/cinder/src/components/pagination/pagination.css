@@ -36,6 +36,18 @@
   }
 
   /* ----------------------------------------
+ * Position label ("Page N of M", callback mode)
+ * ---------------------------------------- */
+
+  .cinder-pagination__position {
+    margin: 0;
+    padding-inline: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+    white-space: nowrap;
+  }
+
+  /* ----------------------------------------
  * Pages list
  * ---------------------------------------- */
 
