@@ -531,6 +531,34 @@ test('every cacheable package task reaches transit, so its key follows its depen
   expect(uncovered).toEqual([]);
 });
 
+test('a coverage run waits for its own package test', async () => {
+  // Both run the same files, and some tests write fixed fixture paths inside the source tree
+  // (Cinder's components.test.ts), so the two runs of one package must never overlap.
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const tasks: Record<string, { dependsOn?: string[] }> = configuration.tasks;
+  const coverageTasks = Object.keys(tasks).filter((key) => key.endsWith('#test:coverage'));
+  expect(coverageTasks.length).toBeGreaterThan(0);
+  for (const key of coverageTasks) expect(tasks[key]?.dependsOn, key).toContain('test');
+});
+
+test('the root self-tests are keyed on the workspace files they validate', async () => {
+  // `scripts/workspace-contract.test.ts` reads every workspace manifest and TypeScript configuration,
+  // but a root task hashes only root files by default, so without these inputs a manifest-only
+  // change could replay a cached pass instead of re-running the contract.
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const inputs: string[] = configuration.tasks['//#test:self']?.inputs ?? [];
+  const manifest = await Bun.file(join(root, 'package.json')).json();
+  for (const pattern of manifest.workspaces as string[]) {
+    for await (const path of new Bun.Glob(`${pattern}/{package.json,tsconfig*.json}`).scan(root)) {
+      expect(
+        inputs.some((input) => new Bun.Glob(input).match(path)),
+        path,
+      ).toBe(true);
+    }
+  }
+  expect(inputs).toContain('$TURBO_DEFAULT$');
+});
+
 test('the evaluation coverage gate runs in the root coverage graph and caches its report', async () => {
   // Turbo has no generic `test:coverage` task, so a workspace's coverage script
   // runs under `bun run coverage` only when `turbo.json` names it. Dropping this
@@ -540,7 +568,7 @@ test('the evaluation coverage gate runs in the root coverage graph and caches it
   const manifest = await Bun.file(join(root, 'testing/evaluation/package.json')).json();
   expect(manifest.scripts?.['test:coverage']).toContain('--coverage');
   expect(configuration.tasks['@lostgradient/evaluation#test:coverage']).toMatchObject({
-    dependsOn: ['transit'],
+    dependsOn: ['transit', 'test'],
     outputs: expect.arrayContaining(['coverage/**']),
   });
 });

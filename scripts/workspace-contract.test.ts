@@ -203,9 +203,12 @@ describe('internal workspace architecture', () => {
       "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures'",
     );
     // The development loop: only the workspaces a change can affect, judged against the default
-    // branch. `validate` stays the full gate.
+    // branch. The root-owned browser-fixture task runs outside `--affected`, which filters by
+    // package and would skip it for a change confined to `scripts/browser-fixtures`; its key follows
+    // that workspace through `transit`, so it replays from cache when nothing there changed.
+    // `validate` stays the full gate.
     expect(scripts['check']).toBe(
-      "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint typecheck test:self test test:browser-fixtures --affected'",
+      "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures'",
     );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under

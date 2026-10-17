@@ -53,7 +53,14 @@
     },
     "//#test:self": {
       "env": ["CODEX_CI", "NODE_ENV"],
-      "outputs": ["test-output/junit/self.xml"]
+      "outputs": ["test-output/junit/self.xml"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "{applications,components,packages,testing,internal}/*/package.json",
+        "{applications,components,packages,testing,internal}/*/tsconfig*.json",
+        "scripts/browser-fixtures/package.json",
+        "scripts/browser-fixtures/tsconfig*.json"
+      ]
     },
     "//#test:browser-fixtures": {
       "dependsOn": ["@lostgradient/browser-fixtures#transit"],
@@ -117,7 +124,7 @@
     },
     "@lostgradient/weft#test:coverage": {
       "outputs": ["coverage/**"],
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "test"],
       "env": [
         "CODEX_CI",
         "NODE_ENV",
@@ -135,16 +142,16 @@
       ]
     },
     "@lostgradient/evaluation#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "test"],
       "outputs": ["coverage/**"]
     },
     "@lostgradient/chat#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "test"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"]
     },
     "@lostgradient/terminal#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "test"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"]
     },
@@ -184,7 +191,7 @@
       ]
     },
     "@lostgradient/ventriloquist#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "test"],
       "outputs": ["coverage/**", "test-results/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -194,7 +201,7 @@
       ]
     },
     "@lostgradient/cinder#test:coverage": {
-      "dependsOn": ["transit"],
+      "dependsOn": ["transit", "test"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV", "CINDER_SVG_DATA_URI_ROOTS"],
       "inputs": [
