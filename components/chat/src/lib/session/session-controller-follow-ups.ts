@@ -26,8 +26,8 @@ type FollowUp = {
    * `promoted` became an ordinary turn.
    */
   state: 'queued' | 'handed' | 'acknowledged' | 'failed' | 'promoted';
-  resolve: () => void;
-  reject: (error: unknown) => void;
+  /** Settles the promise the sender is waiting on. */
+  settled: PromiseWithResolvers<void>;
 };
 
 type FollowUpQueueDependencies = {
@@ -84,12 +84,12 @@ export function createFollowUpQueue({
   const handOver = async (record: FollowUp): Promise<void> => {
     if (lifecycle.disposed) {
       record.state = 'failed';
-      record.reject(new Error('Chat session is disposed'));
+      record.settled.reject(new Error('Chat session is disposed'));
       return;
     }
     if (record.epoch !== epoch) {
       record.state = 'failed';
-      record.reject(
+      record.settled.reject(
         new Error('This follow-up was not delivered: the session was invalidated first'),
       );
       return;
@@ -102,7 +102,7 @@ export function createFollowUpQueue({
       );
       markFailed(record);
       reportError(error);
-      record.reject(error);
+      record.settled.reject(error);
       return;
     }
     record.state = 'handed';
@@ -113,22 +113,22 @@ export function createFollowUpQueue({
     } catch (error) {
       // After an invalidation nothing the hook says is allowed to land.
       if (isRetired(record)) {
-        record.resolve();
+        record.settled.resolve();
         return;
       }
       markFailed(record);
       reportError(error);
-      record.reject(error);
+      record.settled.reject(error);
       return;
     }
     if (isRetired(record)) {
-      record.resolve();
+      record.settled.resolve();
       return;
     }
     record.state = 'acknowledged';
     if (rowIsVisible(record))
       update(clearMessageDeliveryStatus(options.getConversation(), record.id));
-    record.resolve();
+    record.settled.resolve();
   };
 
   const takeNext = (): FollowUp | undefined => {
@@ -152,15 +152,12 @@ export function createFollowUpQueue({
   const submit = (record: FollowUp): Promise<void> => {
     record.state = 'queued';
     record.epoch = epoch;
-    const settled = new Promise<void>((resolve, reject) => {
-      record.resolve = resolve;
-      record.reject = reject;
-    });
+    record.settled = Promise.withResolvers<void>();
     const stale = order.indexOf(record);
     if (stale !== -1) order.splice(stale, 1);
     order.push(record);
     void pump();
-    return settled;
+    return record.settled.promise;
   };
 
   return {
@@ -183,8 +180,7 @@ export function createFollowUpQueue({
         attachments: [...attachments],
         epoch,
         state: 'queued',
-        resolve: () => undefined,
-        reject: () => undefined,
+        settled: Promise.withResolvers<void>(),
       };
       records.set(id, record);
       return submit(record);
@@ -223,7 +219,7 @@ export function createFollowUpQueue({
       if (outcome === 'stopped') {
         for (const record of waiting) {
           markFailed(record);
-          record.reject(
+          record.settled.reject(
             new Error('This follow-up was not delivered: the run was stopped before it was sent'),
           );
         }
@@ -232,9 +228,9 @@ export function createFollowUpQueue({
       // The next run's own end handles the rest, so they go out in order.
       try {
         await runAsTurn(first.id);
-        first.resolve();
+        first.settled.resolve();
       } catch (error) {
-        first.reject(error);
+        first.settled.reject(error);
       }
     },
     /** Retires every acknowledgement still owed, and drops what is waiting. */
