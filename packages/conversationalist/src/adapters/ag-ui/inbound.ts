@@ -41,7 +41,10 @@ function toAssistantInputs(
 ): IdentifiedInput[] {
   const inputs: IdentifiedInput[] = [];
   const text = message.content ?? '';
-  const hasContentRow = pendingReasoning.length > 0 || text.length > 0;
+  const toolCalls = message.toolCalls ?? [];
+  // A message with nothing to say and no calls is still a message: it keeps its
+  // id as an empty row, so export gives it back.
+  const hasContentRow = pendingReasoning.length > 0 || text.length > 0 || toolCalls.length === 0;
   const parts = readTextParts(message.metadata, text);
 
   if (hasContentRow) {
@@ -57,7 +60,8 @@ function toAssistantInputs(
     });
   }
 
-  (message.toolCalls ?? []).forEach((toolCall, index) => {
+  toolCalls.forEach((toolCall, index) => {
+    const parsed = parseJSONValue(toolCall.function.arguments);
     inputs.push({
       id: index === 0 && !hasContentRow ? message.id : callRowId(message.id, toolCall.id),
       role: 'tool-call',
@@ -65,7 +69,8 @@ function toAssistantInputs(
       toolCall: {
         id: toolCall.id,
         name: toolCall.function.name,
-        arguments: parseJSONValue(toolCall.function.arguments) ?? toolCall.function.arguments,
+        // `null` is valid JSON; only text that does not parse stays as written.
+        arguments: parsed === undefined ? toolCall.function.arguments : parsed,
       },
       ...toMetadata(toolCall.metadata),
     });
@@ -89,6 +94,8 @@ function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): IdentifiedInput[
   };
 
   for (const message of messages) {
+    // A subagent's messages are not this thread's.
+    if (message.subagentRunId !== undefined) continue;
     if (message.role === 'reasoning') {
       pendingReasoning.push({
         type: 'thinking',
@@ -153,7 +160,9 @@ function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): IdentifiedInput[
  * `reasoning` messages become `thinking` parts of the assistant message that
  * follows them, with `encryptedValue` as the signature; a `tool` message
  * becomes a `tool-result`. `activity` messages are skipped: they are UI
- * progress, not conversation content.
+ * progress, not conversation content, and messages that carry a
+ * `subagentRunId` are skipped, because a subagent's messages are not this
+ * thread's.
  *
  * Message ids are kept, and a message that splits into several rows derives
  * their ids from its own, so `toAGUIMessages(fromAGUIMessages(x))` reproduces

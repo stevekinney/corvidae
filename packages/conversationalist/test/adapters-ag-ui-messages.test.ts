@@ -538,6 +538,56 @@ describe('AG-UI adapter: message identity', () => {
     }
   });
 
+  it('keeps tool arguments that are valid JSON null as null, and unparseable text as written', () => {
+    const call = (id: string, args: string) => ({
+      id,
+      type: 'function' as const,
+      function: { name: 'tool', arguments: args },
+    });
+    const conversation = fromAGUIMessages([
+      { id: 'a1', role: 'assistant', toolCalls: [call('c1', 'null'), call('c2', '{broken')] },
+    ]);
+    expect(getOrderedMessages(conversation).map((row) => row.toolCall?.arguments)).toEqual([
+      null,
+      '{broken',
+    ]);
+    expect(toAGUIMessages(conversation)).toMatchObject([
+      { toolCalls: [{ function: { arguments: 'null' } }, { function: { arguments: '{broken' } }] },
+    ]);
+  });
+
+  it('skips messages that carry a subagentRunId, whatever their role', () => {
+    const conversation = fromAGUIMessages([
+      { id: 'u1', role: 'user', content: 'Hello' },
+      { id: 'r1', role: 'reasoning', content: 'subagent thought', subagentRunId: 's1' },
+      { id: 'a1', role: 'assistant', content: 'subagent notes', subagentRunId: 's1' },
+      { id: 't1', role: 'tool', toolCallId: 'c1', content: 'x', subagentRunId: 's1' },
+      { id: 'a2', role: 'assistant', content: 'the reply' },
+    ]);
+    expect(ids(conversation)).toEqual(['u1', 'a2']);
+    expect(
+      ids(
+        mergeAGUIMessages(conversation, [
+          { id: 'a3', role: 'assistant', content: 'subagent', subagentRunId: 's1' },
+        ]),
+      ),
+    ).toEqual(['u1', 'a2']);
+  });
+
+  it('imports an assistant message with nothing in it as an empty row that keeps its id', () => {
+    const messages: AGUIMessage[] = [
+      { id: 'a1', role: 'assistant' },
+      { id: 'a2', role: 'assistant', content: '' },
+    ];
+    const conversation = fromAGUIMessages(messages);
+    expect(ids(conversation)).toEqual(['a1', 'a2']);
+    expect(getOrderedMessages(conversation).map((row) => row.content)).toEqual(['', '']);
+    expect(toAGUIMessages(conversation)).toEqual([
+      { id: 'a1', role: 'assistant' },
+      { id: 'a2', role: 'assistant' },
+    ]);
+  });
+
   it('keeps an assistant message with text and tool calls whole under its own id', () => {
     const messages: AGUIMessage[] = [
       { id: 'a1', role: 'assistant', content: 'Checking.', toolCalls: [call('c1'), call('c2')] },
