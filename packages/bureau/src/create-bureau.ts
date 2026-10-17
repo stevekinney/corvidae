@@ -8520,17 +8520,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!session || !sessionStoreForInput) {
       return { outcome: 'not-found' };
     }
-    // COR-301: the same live-run-aware checks steering makes. A request
-    // carries no run id, so authorization targets the session's sole live
-    // run, and a session with any live run is not terminal even when a
-    // concurrent run's terminal write was the last to set `lastRunStatus`.
-    const preAdmission = resolveSessionPreAdmission(
-      session.metadata,
+    // COR-301/COR-1569: the same live-run-aware checks steering makes,
+    // across every process sharing this backend. A request carries no run
+    // id, so authorization targets the session's sole live run.
+    const preAdmission = await resolveLiveSessionPreAdmission(
+      sessionId,
+      session,
       request.principal,
-      liveSessionRunIds(sessionId),
     );
-    if (preAdmission === 'not-found') return { outcome: 'not-found' };
-    if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
+    if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
+    if (preAdmission.verdict === 'session-terminal') {
+      return { outcome: 'session-terminal', sessionId };
+    }
 
     const sessionMailbox = getSessionInputMailbox(sessionId);
     const storage = runtime.durableStorage;
@@ -8667,68 +8668,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
     let liveRunIds: string[] = [];
     if (!keyAlreadyBound) {
-      try {
-        const steeringKv = durableSteeringStore();
-        if (steeringKv === undefined) {
-          liveRunIds = liveSessionRunIds(sessionId);
-        } else {
-          // Fold the log first: a run promoted elsewhere whose workflow does
-          // not exist yet is known only from its `promoted` entry, and the
-          // terminal decision below must count it.
-          await enqueueSteering(sessionId, () =>
-            catchUpSteering(steeringKv, sessionId, session.incarnation),
-          );
-          liveRunIds = await liveSessionRunIdsEverywhere(
-            sessionId,
-            session.incarnation,
-            request.runId,
-          );
-        }
-      } catch (error) {
-        // Deleted meanwhile by another process: its log was read mid-deletion.
-        const afterFailure = await runtime.sessionStore?.load(sessionId);
-        if (afterFailure?.incarnation !== session.incarnation) return { outcome: 'not-found' };
-        // A request naming its run sees the failure if it is still authorized
-        // against that run on the session as it stands now.
-        if (request.runId !== undefined) {
-          if (
-            !isSessionAuthorityAuthorized(afterFailure.metadata, request.principal, request.runId)
-          ) {
-            return { outcome: 'not-found' };
-          }
-          throw error;
-        }
-        // An unscoped request's authority depends on which run is live, so a
-        // failed query is masked until this caller is shown to be authorized
-        // against the run this process can see.
-        const localTarget = liveSessionRunIdsOfIncarnation(sessionId, session.incarnation);
-        if (
-          !isSessionAuthorityAuthorized(
-            afterFailure.metadata,
-            request.principal,
-            localTarget.length === 1 ? localTarget[0] : undefined,
-          )
-        ) {
-          return { outcome: 'not-found' };
-        }
-        throw error;
-      }
-      // The live runs were read across awaits that the session itself may
-      // have changed under (a new sole run saved with its own authority), so
-      // the caller is checked against the session as it stands after them.
-      const afterLiveness =
-        durableSteeringStore() === undefined
-          ? session
-          : await runtime.sessionStore?.load(sessionId);
-      if (afterLiveness?.incarnation !== session.incarnation) return { outcome: 'not-found' };
-      const preAdmission = resolveSessionPreAdmission(
-        afterLiveness.metadata,
+      const preAdmission = await resolveLiveSessionPreAdmission(
+        sessionId,
+        session,
         request.principal,
-        liveRunIds,
         request.runId,
       );
-      if (preAdmission === 'not-found') return { outcome: 'not-found' };
-      if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
+      if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
+      if (preAdmission.verdict === 'session-terminal') {
+        return { outcome: 'session-terminal', sessionId };
+      }
+      liveRunIds = preAdmission.liveRunIds;
     }
     // A refusal Bureau decides here, before the gate, is logged like the
     // gate's own refusals on a durable session, so a caller-supplied id
@@ -9010,6 +8960,83 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-301/COR-1569 — the pre-admission verdict (AB-42's order:
+   * authorization, then lifecycle) that steering and session input share,
+   * decided against the session's live runs in every process sharing this
+   * backend. A request without `namedRunId` is authorized against the
+   * session's sole live run, wherever it runs, and a session with any live
+   * run is not terminal, whichever run's terminal write set `lastRunStatus`.
+   * Without a durable steering store, this process's runs are all there are.
+   */
+  async function resolveLiveSessionPreAdmission(
+    sessionId: string,
+    session: AgentSession,
+    principal: string,
+    namedRunId?: string,
+  ): Promise<{
+    verdict: 'not-found' | 'session-terminal' | 'proceed';
+    liveRunIds: string[];
+  }> {
+    const notFound = { verdict: 'not-found' as const, liveRunIds: [] as string[] };
+    let liveRunIds: string[] = [];
+    try {
+      const steeringKv = durableSteeringStore();
+      if (steeringKv === undefined) {
+        liveRunIds = liveSessionRunIds(sessionId);
+      } else {
+        // Fold the log first: a run promoted elsewhere whose workflow does
+        // not exist yet is known only from its `promoted` entry, and the
+        // terminal decision below must count it.
+        await enqueueSteering(sessionId, () =>
+          catchUpSteering(steeringKv, sessionId, session.incarnation),
+        );
+        liveRunIds = await liveSessionRunIdsEverywhere(sessionId, session.incarnation, namedRunId);
+      }
+    } catch (error) {
+      // Deleted meanwhile by another process: its log was read mid-deletion.
+      const afterFailure = await runtime.sessionStore?.load(sessionId);
+      if (afterFailure?.incarnation !== session.incarnation) return notFound;
+      // A request naming its run sees the failure if it is still authorized
+      // against that run on the session as it stands now.
+      if (namedRunId !== undefined) {
+        if (!isSessionAuthorityAuthorized(afterFailure.metadata, principal, namedRunId)) {
+          return notFound;
+        }
+        throw error;
+      }
+      // An unscoped request's authority depends on which run is live, so a
+      // failed query is masked until this caller is shown to be authorized
+      // against the run this process can see.
+      const localTarget = liveSessionRunIdsOfIncarnation(sessionId, session.incarnation);
+      if (
+        !isSessionAuthorityAuthorized(
+          afterFailure.metadata,
+          principal,
+          localTarget.length === 1 ? localTarget[0] : undefined,
+        )
+      ) {
+        return notFound;
+      }
+      throw error;
+    }
+    // The live runs were read across awaits that the session itself may
+    // have changed under (a new sole run saved with its own authority), so
+    // the caller is checked against the session as it stands after them.
+    const afterLiveness =
+      durableSteeringStore() === undefined ? session : await runtime.sessionStore?.load(sessionId);
+    if (afterLiveness?.incarnation !== session.incarnation) return notFound;
+    return {
+      verdict: resolveSessionPreAdmission(
+        afterLiveness.metadata,
+        principal,
+        liveRunIds,
+        namedRunId,
+      ),
+      liveRunIds,
+    };
+  }
+
+  /**
    * This process's running runs of one session incarnation: a run of a
    * deleted incarnation still settling here is not the recreated session's.
    */
@@ -9035,8 +9062,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * The session incarnation's live runs, as far as steering admission needs
-   * to know them, in EVERY process sharing this backend: this process's own
+   * The session incarnation's live runs, as far as steering and session
+   * input admission need to know them, in EVERY process sharing this backend: this process's own
    * running runs, plus non-terminal durable `agentRun` workflows tagged
    * with the session incarnation (`steeringSessionRunTag`), whichever
    * process runs them. A deleted incarnation's still-running workflows carry
