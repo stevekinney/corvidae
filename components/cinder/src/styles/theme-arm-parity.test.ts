@@ -17,13 +17,13 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import postcss, { type Rule } from 'postcss';
+import { parse, type Rule } from 'postcss';
 
 const css = await Bun.file(new URL('./tokens-base.css', import.meta.url)).text();
 
 function declarations(selector: string): Map<string, string> {
   const values = new Map<string, string>();
-  postcss.parse(css).walkRules((rule: Rule) => {
+  parse(css).walkRules((rule: Rule) => {
     if (rule.selector !== selector || rule.parent?.type !== 'root') return;
     rule.walkDecls((declaration) => {
       if (declaration.prop.startsWith('--'))

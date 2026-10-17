@@ -17,7 +17,7 @@ import { isCinderComponentSource, isFormControl } from './form-control-selectors
 
 const ruleName = 'cinder/control-frame';
 const messages = stylelint.utils.ruleMessages(ruleName, {
-  raw: (property, value) =>
+  raw: (/** @type {string} */ property, /** @type {string} */ value) =>
     `Control \`${property}: ${value}\` must come from the control frame: use \`--cinder-control-background\`, \`--cinder-control-border\` / \`--cinder-control-border-hover\`, or \`--cinder-control-radius\` (or a state token).`,
 });
 
