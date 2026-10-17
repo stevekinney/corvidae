@@ -264,4 +264,25 @@ describe('createAgentCatalog: generationProfile (AB-64/AB-247/mod-02e)', () => {
     expect(Object.isFrozen(profile)).toBe(true);
     expect(Object.isFrozen(profile?.descriptors)).toBe(true);
   });
+
+  it("surfaces an agent's description and skillDescriptors through get() and entries() with the same object identity (COR-1301)", () => {
+    const skillDescriptors = [
+      { id: 'draft', name: 'Draft', description: 'Drafts articles.', tags: ['writing'] },
+    ];
+    const writer = createAgent({
+      generate: createMockGenerate([]),
+      name: 'writer',
+      description: 'Writes things.',
+      skillDescriptors,
+    });
+    const catalog = createAgentCatalog({ writer });
+
+    expect(catalog.get('writer')).toBe(writer);
+    expect(catalog.get('writer').description).toBe('Writes things.');
+    expect(catalog.get('writer').skillDescriptors).toBe(skillDescriptors);
+    const [entry] = catalog.entries();
+    expect(entry?.agent).toBe(writer);
+    expect(entry?.agent.description).toBe('Writes things.');
+    expect(entry?.agent.skillDescriptors).toBe(skillDescriptors);
+  });
 });
