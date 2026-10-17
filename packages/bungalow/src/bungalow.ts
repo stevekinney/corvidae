@@ -1,14 +1,9 @@
 import {
-  chmodSync,
   closeSync,
-  fchmodSync,
-  fstatSync,
+  constants,
   fsyncSync,
-  mkdirSync,
   mkdtempSync,
-  openSync,
   readdirSync,
-  readFileSync,
   renameSync,
   rmSync,
   unlinkSync,
@@ -17,8 +12,9 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+import { ensureDirectory, openEntry, readEntry, syncDirectory } from './entry-guard.ts';
 import { processEnvironment } from './environment-configuration.ts';
-import { errorCode, sanitizeCause } from './error-code.ts';
+import { sanitizeCause } from './error-code.ts';
 import {
   BungalowError,
   BungalowFilesystemError,
@@ -34,7 +30,6 @@ import {
 import { generateUlid, isUlid } from './ulid.ts';
 import { assertBungalowName, assertDirectoryName, assertSecretKey } from './validation.ts';
 
-const DIRECTORY_MODE = 0o700;
 const SECRET_MODE = 0o600;
 /** `<pid>-<uuid>`, the middle of the name `writePrivateFile` gives a temporary file. */
 const TEMPORARY_SUFFIX =
@@ -94,26 +89,6 @@ function filesystem<Result>(description: string, step: () => Result): Result {
   }
 }
 
-function makeDirectory(path: string): void {
-  mkdirSync(path, { recursive: true, mode: DIRECTORY_MODE });
-}
-
-/** Create the directory if absent, and make it private if it already was not. */
-function ensurePrivateDirectory(path: string, label: string): void {
-  filesystem(`create the ${label}`, () => makeDirectory(path));
-  filesystem(`set the permissions of the ${label}`, () => chmodSync(path, DIRECTORY_MODE));
-}
-
-/** Make the rename durable: a file is only as durable as the directory entry that names it. */
-function syncDirectory(path: string): void {
-  const descriptor = openSync(path, 'r');
-  try {
-    fsyncSync(descriptor);
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
 /** Write every byte, since `writeSync` may write fewer than it was given. */
 function writeFully(descriptor: number, contents: Buffer): void {
   let offset = 0;
@@ -122,12 +97,22 @@ function writeFully(descriptor: number, contents: Buffer): void {
   }
 }
 
-/** Write a file that is 0600 from its first byte, then rename it into place and sync the entry. */
+/**
+ * Write a file that is 0600 from its first byte, then rename it into place and sync the entry.
+ * The rename replaces whatever entry was at `path` (a symbolic link, a FIFO, a stale file) rather
+ * than writing through it, so a write can never land on something that is not Bungalow's.
+ */
 function writePrivateFile(path: string, contents: string): void {
   const temporary = `${path}.${process.pid}-${crypto.randomUUID()}.tmp`;
   let descriptor: number | undefined;
   try {
-    descriptor = openSync(temporary, 'wx', SECRET_MODE);
+    descriptor = openEntry(
+      temporary,
+      'temporary file',
+      'file',
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+      SECRET_MODE,
+    );
     writeFully(descriptor, Buffer.from(contents));
     fsyncSync(descriptor);
     closeSync(descriptor);
@@ -145,28 +130,11 @@ function writePrivateFile(path: string, contents: string): void {
   syncDirectory(dirname(path));
 }
 
-/** Read a secret, first tightening a file that group or others can reach. */
-function readPrivateFile(path: string): string | undefined {
-  let descriptor: number;
-  try {
-    descriptor = openSync(path, 'r');
-  } catch (error) {
-    if (errorCode(error) === 'ENOENT') return undefined;
-    throw error;
-  }
-  try {
-    const status = fstatSync(descriptor);
-    if (!status.isFile()) throw new BungalowStateError('A stored secret is not a regular file.');
-    if ((status.mode & 0o077) !== 0) fchmodSync(descriptor, SECRET_MODE);
-    return readFileSync(descriptor, 'utf8');
-  } finally {
-    closeSync(descriptor);
-  }
-}
-
 /**
  * Remove the temporary files a crash left behind. Only the lock holder may call this, since no one
- * else can then be mid-write, and only files named exactly the way `writePrivateFile` names them for this directory go.
+ * else can then be mid-write, and only files named exactly the way `writePrivateFile` names them
+ * for this directory go. `unlink` removes a name and never follows it, and a symbolic link is not
+ * a file here, so the sweep neither deletes through a link nor descends into one.
  */
 function removeTemporaryFiles(directory: string, ours: RegExp): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -176,12 +144,7 @@ function removeTemporaryFiles(directory: string, ours: RegExp): void {
 
 /** The persisted deployment identifier, generated on the first open. */
 function loadDeploymentId(path: string): string {
-  let stored: string | undefined;
-  try {
-    stored = readFileSync(path, 'utf8').trim();
-  } catch (error) {
-    if (errorCode(error) !== 'ENOENT') throw error;
-  }
+  const stored = readEntry(path, 'deployment-id file')?.trim();
   if (stored === undefined) {
     const created = generateUlid();
     writePrivateFile(path, `${created}\n`);
@@ -211,15 +174,19 @@ export function openAtRoot(
   dependencies: OpenAtRootDependencies = {},
 ): Bungalow {
   const { acquireLock = acquireRootLock, onClose } = dependencies;
-  ensurePrivateDirectory(root, 'root directory');
+  filesystem('prepare the root directory', () =>
+    ensureDirectory(root, 'root directory', { privateMode: true }),
+  );
   const lock = acquireLock(root);
   const secrets = join(root, 'secrets');
   const logs = join(root, 'logs');
   let deploymentId: string;
   try {
-    ensurePrivateDirectory(secrets, 'secrets directory');
-    filesystem('prepare the root directory', () => {
-      makeDirectory(logs);
+    filesystem('prepare the secrets directory', () =>
+      ensureDirectory(secrets, 'secrets directory', { privateMode: true }),
+    );
+    filesystem('prepare the logs directory', () => ensureDirectory(logs, 'logs directory'));
+    filesystem('remove leftover temporary files', () => {
       removeTemporaryFiles(root, ROOT_TEMPORARY_FILE);
       removeTemporaryFiles(secrets, SECRET_TEMPORARY_FILE);
     });
@@ -265,7 +232,7 @@ export function openAtRoot(
       assertOpen();
       assertDirectoryName(directoryName);
       const path = join(root, directoryName);
-      filesystem('create a content directory', () => makeDirectory(path));
+      filesystem('prepare a content directory', () => ensureDirectory(path, 'content directory'));
       return path;
     },
     writeSecret(key, value) {
@@ -276,7 +243,9 @@ export function openAtRoot(
     readSecret(key) {
       assertOpen();
       assertSecretKey(key);
-      return filesystem('read a secret', () => readPrivateFile(join(secrets, key)));
+      return filesystem('read a secret', () =>
+        readEntry(join(secrets, key), 'secret file', SECRET_MODE),
+      );
     },
     close,
     [Symbol.dispose]: close,

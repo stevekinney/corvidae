@@ -1,22 +1,13 @@
 import { dlopen, FFIType, read } from 'bun:ffi';
-import {
-  closeSync,
-  constants,
-  fchmodSync,
-  fstatSync,
-  ftruncateSync,
-  openSync,
-  readFileSync,
-  writeSync,
-} from 'node:fs';
+import { closeSync, constants, fchmodSync, fstatSync, ftruncateSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { errorCode, sanitizeCause } from './error-code.ts';
+import { openEntry, readEntry } from './entry-guard.ts';
+import { sanitizeCause } from './error-code.ts';
 import {
   BungalowError,
   BungalowFilesystemError,
   BungalowLockedError,
-  BungalowStateError,
   BungalowUnsupportedError,
 } from './errors.ts';
 
@@ -118,7 +109,7 @@ function openFlags(): number {
   const platform = process.platform;
   const closeOnExec =
     platform === 'darwin' || platform === 'linux' ? CLOSE_ON_EXEC_FLAG[platform] : 0;
-  return constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW | closeOnExec;
+  return constants.O_RDWR | constants.O_CREAT | closeOnExec;
 }
 
 function wrap(description: string, error: unknown): never {
@@ -130,13 +121,13 @@ function wrap(description: string, error: unknown): never {
 
 /** The process identifier on the first line of the lock file, if it holds one. */
 function readHolder(lockPath: string): number | undefined {
-  let text: string;
+  let text: string | undefined;
   try {
-    text = readFileSync(lockPath, 'utf8');
+    text = readEntry(lockPath, 'lock file', undefined);
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') return undefined;
     return wrap('read the lock file', error);
   }
+  if (text === undefined) return undefined;
   const firstLine = text.split('\n', 1)[0] ?? '';
   if (!/^\d+$/.test(firstLine)) return undefined;
   const holder = Number(firstLine);
@@ -161,22 +152,16 @@ export function acquireRootLock(
   operations: LockOperations = systemLockOperations(),
 ): RootLock {
   const lockPath = join(root, LOCK_FILE);
+  // Opened through the entry guard, so a `lock` that is a symbolic link, a FIFO, or shared with
+  // another path by a hard link is refused before anything is truncated or overwritten.
   let descriptor: number;
   try {
-    descriptor = openSync(lockPath, openFlags(), 0o600);
+    descriptor = openEntry(lockPath, 'lock file', 'file', openFlags(), 0o600);
   } catch (error) {
-    // `O_NOFOLLOW` refuses a `lock` that is a symbolic link, which would otherwise be opened and
-    // then truncated and overwritten at its target.
-    if (errorCode(error) === 'ELOOP') {
-      throw new BungalowStateError('The lock entry is a symbolic link, not a file.');
-    }
     return wrap('open the lock file', error);
   }
 
   try {
-    if (!fstatSync(descriptor).isFile()) {
-      throw new BungalowStateError('The lock entry is not a regular file.');
-    }
     let attempt = operations.tryLock(descriptor);
     // A holder takes the kernel lock before it writes its identifier and clears the file before it
     // releases the lock. A contender can therefore find the file empty because the holder is just
