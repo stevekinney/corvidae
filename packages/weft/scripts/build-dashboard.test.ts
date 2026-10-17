@@ -41,11 +41,28 @@ const metafilePath = join(scratch, 'metafile.json');
 const commandLog: string[] = [];
 let build: Promise<DashboardBuild> | undefined;
 
+/** The build's staging directories beside the dashboard directory. */
+function stagingDirectories(): string[] {
+  return readdirSync(join(DEFAULT_DASHBOARD_DIRECTORY, '..')).filter((name) =>
+    name.startsWith('.dashboard-build-'),
+  );
+}
+
+/**
+ * Staging directories present before this file's build. A build killed partway through (a
+ * cancelled run, say) never reaches its own cleanup, so one can be left over; only directories
+ * this build created count against it.
+ */
+let stagingBeforeBuild: string[] = [];
+
 /** Build once, through the command line entry, for every test that needs the real output. */
 function builtDashboard(): Promise<DashboardBuild> {
-  build ??= runBuildDashboardCommand(['--metafile', metafilePath], (line) => {
-    commandLog.push(line);
-  });
+  if (build === undefined) {
+    stagingBeforeBuild = stagingDirectories();
+    build = runBuildDashboardCommand(['--metafile', metafilePath], (line) => {
+      commandLog.push(line);
+    });
+  }
   return build;
 }
 
@@ -108,12 +125,8 @@ describe('buildDashboard', () => {
         `Wrote the build metafile to ${metafilePath}`,
         `Built Weft's dashboard into ${DEFAULT_DASHBOARD_DIRECTORY} (${result.files.length} files)`,
       ]);
-      // A successful build leaves no staging directory behind.
-      expect(
-        readdirSync(join(DEFAULT_DASHBOARD_DIRECTORY, '..')).filter((name) =>
-          name.startsWith('.dashboard-build-'),
-        ),
-      ).toEqual([]);
+      // A successful build leaves no staging directory of its own behind.
+      expect(stagingDirectories().filter((name) => !stagingBeforeBuild.includes(name))).toEqual([]);
     },
     BUILD_TIMEOUT_MS,
   );
