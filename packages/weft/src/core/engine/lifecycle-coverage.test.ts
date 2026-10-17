@@ -1339,7 +1339,7 @@ describe('engine lifecycle coverage helpers', () => {
 
     const handle = await resumeWorkflowFromStorage(
       {
-        resumesAwaitingAdoption: new Map([[workflowId, inFlight]]),
+        resumesAwaitingAdoption: new Map([[workflowId, new Map([['generation-a', inFlight]])]]),
         registrations: new Map(),
         storage,
         options: { ownershipMode: 'none' },
@@ -1376,7 +1376,7 @@ describe('engine lifecycle coverage helpers', () => {
 
     await resumeWorkflowFromStorage(
       {
-        resumesAwaitingAdoption: new Map([[workflowId, inFlight]]),
+        resumesAwaitingAdoption: new Map([[workflowId, new Map([['generation-a', inFlight]])]]),
         registrations: new Map(),
         storage,
         options: { ownershipMode: 'none' },
@@ -1406,7 +1406,7 @@ describe('engine lifecycle coverage helpers', () => {
       freshClaimTrackers: [],
       deferClaimReleaseOnRejection: false,
     };
-    const resumesAwaitingAdoption = new Map([[workflowId, olderResume]]);
+    const resumesAwaitingAdoption = new Map([[workflowId, new Map([['replaced', olderResume]])]]);
 
     // The replacement resumes on its own, so it reaches its own checkpoint read rather than waiting
     // on the older generation forever.
@@ -1425,7 +1425,66 @@ describe('engine lifecycle coverage helpers', () => {
         ),
       ),
     ).toThrow('Checkpoint not found for workflow "workflow-resume-other-generation"');
-    expect(resumesAwaitingAdoption.get(workflowId)).toBe(olderResume);
+    expect(resumesAwaitingAdoption.get(workflowId)?.get('replaced')).toBe(olderResume);
+  });
+
+  it('resumeWorkflowFromStorage joins resumes of a replacement while an older generation is pending', async () => {
+    const baseStorage = new MemoryStorage();
+    const workflowId = 'workflow-resume-two-replacement-resumes';
+    await baseStorage.put(
+      KEYS.workflow(workflowId),
+      encode(createWorkflowState(workflowId, { workflowExecutionToken: 'replacement' })),
+    );
+    const checkpointReadsReleased = Promise.withResolvers<void>();
+    let checkpointReads = 0;
+    const storage = {
+      get: async (key: string) => {
+        if (key === KEYS.checkpoint(workflowId)) {
+          checkpointReads++;
+          await checkpointReadsReleased.promise;
+        }
+        return baseStorage.get(key);
+      },
+    };
+    const olderResume: ResumeAwaitingAdoption = {
+      workflowExecutionToken: 'replaced',
+      handle: new Promise<never>(() => {}),
+      claimEpoch: null,
+      freshClaimTrackers: [],
+      deferClaimReleaseOnRejection: false,
+    };
+    const internals = {
+      resumesAwaitingAdoption: new Map([[workflowId, new Map([['replaced', olderResume]])]]),
+      registrations: new Map(),
+      storage,
+      options: { ownershipMode: 'none' },
+    } as never;
+
+    const first = resumeWorkflowFromStorage(
+      internals,
+      workflowId,
+      true,
+      createLifecycleCallbacks() as never,
+    );
+    const second = resumeWorkflowFromStorage(
+      internals,
+      workflowId,
+      true,
+      createLifecycleCallbacks() as never,
+    );
+    for (let turn = 0; turn < 10; turn++)
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    checkpointReadsReleased.resolve();
+
+    const missing = 'Checkpoint not found for workflow "workflow-resume-two-replacement-resumes"';
+    const [firstFailure, secondFailure] = await Promise.all([
+      throwingRejectionOf(first),
+      throwingRejectionOf(second),
+    ]);
+    expect(firstFailure).toThrow(missing);
+    expect(secondFailure).toThrow(missing);
+    // The second replacement resume joined the first instead of reading and driving the run again.
+    expect(checkpointReads).toBe(1);
   });
 
   it('resumeWorkflowFromStorage rejects when termination starts during the serialized resume write', async () => {

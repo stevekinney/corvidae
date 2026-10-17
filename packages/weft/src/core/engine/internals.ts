@@ -202,8 +202,10 @@ export interface EngineInternals {
    * engine holds neither a local checkpoint nor an inline execution for the run, so nothing else
    * marks it as being resumed here; a second resume that started in that window would drive the
    * same run alongside the first. `resumeWorkflowFromStorage` joins a resume already listed here.
+   * Keyed by workflow id, then by execution generation, so a replacement run under the same id is
+   * tracked on its own while an older generation's resume is still pending.
    */
-  resumesAwaitingAdoption: Map<string, ResumeAwaitingAdoption>;
+  resumesAwaitingAdoption: Map<string, Map<string | undefined, ResumeAwaitingAdoption>>;
   /**
    * Per-workflow definition references — the actual `WorkflowDefinition`
    * object passed to `engine.register(workflow)`. Used for collision detection

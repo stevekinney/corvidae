@@ -178,8 +178,8 @@ function resumableState(workflowId: string, stateBytes: Uint8Array | null): Work
 
 /**
  * Join a resume of the same generation already in flight, or list this one as the resume later
- * ones join. The oldest resume keeps the entry: one of another generation neither joins it nor
- * replaces it.
+ * resumes of its generation join. Each generation has its own entry, so a resume of a replacement
+ * run never joins an older generation's resume, and later resumes of the replacement join it.
  */
 function joinOrRegisterResume(
   internals: EngineInternals,
@@ -188,15 +188,12 @@ function joinOrRegisterResume(
   options: ResumeFromStorageOptions | undefined,
 ):
   | { join: Promise<WorkflowHandle>; adoption?: never }
-  | { join?: never; adoption?: RegisteredResume } {
-  const inFlight = internals.resumesAwaitingAdoption.get(workflowId);
-  if (inFlight === undefined) {
-    return { adoption: registerResumeAwaitingAdoption(internals, workflowId, state) };
-  }
-  if (inFlight.workflowExecutionToken === state.workflowExecutionToken) {
-    return { join: joinResumeAwaitingAdoption(inFlight, options) };
-  }
-  return {};
+  | { join?: never; adoption: RegisteredResume } {
+  const inFlight = internals.resumesAwaitingAdoption
+    .get(workflowId)
+    ?.get(state.workflowExecutionToken);
+  if (inFlight !== undefined) return { join: joinResumeAwaitingAdoption(inFlight, options) };
+  return { adoption: registerResumeAwaitingAdoption(internals, workflowId, state) };
 }
 
 /** Hand the epoch of a claim this resume freshly acquired to the joiners' trackers. */
@@ -231,9 +228,11 @@ function settleAndForget(
   if (adoption === undefined) return;
   if (handle === undefined) adoption.settle.reject(error);
   else adoption.settle.resolve(handle);
-  if (internals.resumesAwaitingAdoption.get(workflowId) === adoption.entry) {
-    internals.resumesAwaitingAdoption.delete(workflowId);
-  }
+  const generations = internals.resumesAwaitingAdoption.get(workflowId);
+  const token = adoption.entry.workflowExecutionToken;
+  if (generations?.get(token) !== adoption.entry) return;
+  generations.delete(token);
+  if (generations.size === 0) internals.resumesAwaitingAdoption.delete(workflowId);
 }
 
 type RegisteredResume = {
@@ -257,7 +256,12 @@ function registerResumeAwaitingAdoption(
     freshClaimTrackers: [],
     deferClaimReleaseOnRejection: false,
   };
-  internals.resumesAwaitingAdoption.set(workflowId, entry);
+  let generations = internals.resumesAwaitingAdoption.get(workflowId);
+  if (generations === undefined) {
+    generations = new Map();
+    internals.resumesAwaitingAdoption.set(workflowId, generations);
+  }
+  generations.set(state.workflowExecutionToken, entry);
   return { entry, settle };
 }
 
