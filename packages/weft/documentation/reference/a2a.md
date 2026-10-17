@@ -157,6 +157,99 @@ With `mtls.rejectUnauthorized: false` and no `verifyClientCertificate`, Weft's a
 
 API keys and `jwt` together share the single `bearer` scheme. `securityRequirements` lists each scheme as its own alternative.
 
+## Durable stores
+
+`createWeftA2ATaskStore` and `createWeftPushNotificationStore` implement the SDK's `TaskStore` and `PushNotificationStore` over Weft storage. The task store accepts any adapter that reports `conditionalBatch`. The push store also requires `linearizable` read-after-write and `snapshot` scans, because a create decides whether a webhook is new by scanning the task's configurations: memory, SQLite, LMDB, and PostgreSQL qualify, while Turso (`session` reads), `HttpStorage` (`eventual` reads), and IndexedDB (`best-effort` scans) do not. Each factory throws for an adapter that falls short. Pass them to `DefaultRequestHandler` in place of the SDK's in-memory stores:
+
+```ts
+import type { AgentCard } from '@a2a-js/sdk';
+import { DefaultRequestHandler, type AgentExecutor } from '@a2a-js/sdk/server';
+import { LMDBStorage } from '@lostgradient/weft';
+import {
+  createA2AHandler,
+  createWeftA2ATaskStore,
+  createWeftPushNotificationStore,
+  withRedactedPushConfigurations,
+} from '@lostgradient/weft/a2a';
+
+declare const agentCard: AgentCard;
+declare const executor: AgentExecutor;
+declare const pushNotificationSender: ConstructorParameters<typeof DefaultRequestHandler>[5];
+
+const storage = new LMDBStorage('./data/agents');
+const taskStore = createWeftA2ATaskStore({ storage, namespace: 'support-agent' });
+const pushNotificationStore = createWeftPushNotificationStore({
+  storage,
+  namespace: 'support-agent',
+});
+
+const handler = createA2AHandler({
+  requestHandler: withRedactedPushConfigurations(
+    new DefaultRequestHandler(
+      agentCard,
+      taskStore,
+      executor,
+      undefined,
+      pushNotificationStore,
+      pushNotificationSender,
+    ),
+  ),
+  agentCard,
+  publicUrl: 'https://agents.example.com/support',
+});
+
+// Run on a schedule of your choosing.
+await taskStore.prune();
+```
+
+### Scoping
+
+Every record is keyed by the store's `namespace` (one per published agent), the call's `ServerCallContext.tenant` (the empty string when absent), and its owner: the `userName` of an authenticated `user`, or one shared anonymous owner for every unauthenticated call. A task or configuration saved in one scope is invisible to every other: `load` and `get` return `undefined`, and `list` omits it. Keys live under the reserved `a2a:` prefix, with every component percent-encoded.
+
+### Records
+
+Every record is JSON carrying `recordVersion: 1`, and tasks and configurations are serialized with the SDK's own `Task.toJSON` and `TaskPushNotificationConfig.toJSON`, so the stored shape is the A2A wire shape. Reading a record with any other `recordVersion` throws `A2AStoreRecordVersionError` (with the record's `key` and `recordVersion`); a task `save` over such a record throws too, rather than overwrite a newer format with an older one.
+
+Every write is a compare-and-swap. A write that loses one is retried up to five times, then throws `A2AStoreConflictError` (with `attempts: 6`).
+
+### Tasks
+
+`createWeftA2ATaskStore({ storage, namespace, terminalRetentionMs?, now? })` returns the SDK `TaskStore` plus `prune()`.
+
+`list` follows these rules:
+
+- It filters by `contextId` and `status` (the empty string and `TASK_STATE_UNSPECIFIED` mean no filter), and by `statusTimestampAfter`, which keeps tasks whose status timestamp is at or after the given instant (inclusive, as the A2A field's definition says; the SDK's in-memory store is exclusive). A task without a status timestamp never passes that filter.
+- It applies `historyLength` (the last _n_ messages; `0` or less means none; absent means all) and `includeArtifacts` (absent or `false` leaves `artifacts` empty).
+- It sorts by status timestamp, newest first, with tasks lacking one last, and breaks ties by task identifier in ascending order.
+- `pageSize` defaults to 50; anything outside 1–100, including `0`, throws `A2AStorePageSizeError`.
+- `nextPageToken` is an opaque token carrying the last task's status timestamp and identifier, and is `""` on the last page. A page continues strictly after that position, so a task saved or removed between pages never makes another appear twice. A token is bound to the caller and the filter set: one minted for another user, tenant, or filter set, or a malformed one, throws `A2AStorePageTokenError`.
+- `totalSize` counts every matching task, before pagination.
+
+`prune()` removes every terminal task (completed, failed, canceled, or rejected) of the namespace, in every tenant and for every owner, whose last save is older than `terminalRetentionMs` (default `DEFAULT_A2A_TERMINAL_RETENTION_MS`, thirty days) by the store's clock (`now`, default `Date.now`), and resolves with how many it removed. It also removes every push configuration, live or deleted, that a push store over the same storage and namespace holds for a pruned task, because once the task is gone no request reaches them and their credentials must not outlive it. A task saved again while the prune runs is kept, and a configuration created while it runs is removed with its task. Nothing prunes on its own; call it on a schedule.
+
+### Push configurations
+
+`createWeftPushNotificationStore({ storage, namespace, now? })` returns the SDK `PushNotificationStore` (`save`, `load`, `loadWithMetadata`, and `delete`) plus `create`, `get`, and a paginated `list`. Every method returns credentials unredacted, because the sender needs them.
+
+`create` (which `save` calls, writing the stored identifier back into the configuration it was passed, as the SDK expects) is idempotent, because A2A 1.0.1 does not make it so. A create returns the existing configuration instead of storing a second when it:
+
+- names an existing configuration `id` of the same task and caller, with the same webhook URL, `token`, and authentication; or
+- names no `id`, with the same webhook URL, `token`, and authentication as a live configuration of that task and caller.
+
+Authentication scheme names compare case-insensitively (`Bearer` and `bearer` match). A different URL or a rotated `token` stores a second configuration. A create naming an existing `id` with a different URL, `token`, or authentication, or naming a deleted configuration's `id`, throws `A2APushConfigurationConflictError` (`conflict` is `different` or `deleted`).
+
+`delete(taskId, context, configId?)` defaults `configId` to `taskId`, as the SDK's own store does. It replaces the configuration with a tombstone that holds only its identifier and a deletion fence (the task's mutation sequence at deletion), so no stored record keeps its URL, `token`, or credentials. `get` returns `undefined` for a deleted configuration, `load` and `list` omit it, and a deleted configuration never matches either idempotency rule.
+
+`list({ taskId, pageSize?, pageToken? }, context)` orders a task's live configurations by creation time, then identifier. `pageSize` defaults to 50 (absent or `0`, the protobuf default for this required field) and must otherwise be 1–100. The opaque `nextPageToken` is bound to the caller and the task, so a token minted for another caller or task throws `A2AStorePageTokenError`, and it is `""` on the last page. The SDK's `DefaultRequestHandler` lists configurations through `load` and does not page them; `list` is for a request handler that does.
+
+### Redacting reads
+
+`withRedactedPushConfigurations(requestHandler)` wraps an `A2ARequestHandler` so the `GetTaskPushNotificationConfig` and `ListTaskPushNotificationConfigs` responses carry `authentication.credentials` as `REDACTED_PUSH_CREDENTIALS` (`[REDACTED]`). Every other method passes through unchanged, including `CreateTaskPushNotificationConfig`, whose response echoes the configuration the caller just sent.
+
+### Errors
+
+The three errors a caller causes, `A2AStorePageSizeError`, `A2AStorePageTokenError`, and `A2APushConfigurationConflictError`, are the SDK's `RequestMalformedError`, so the JSON-RPC transport answers them as `-32602` (invalid params). Tell them apart by `code`. `A2AStoreRecordVersionError` and `A2AStoreConflictError` are server faults and answer as `-32603`.
+
 ## Not covered
 
-The kit serves the JSON-RPC binding only. Durable task and push-configuration stores, push delivery, a Weft workflow backend for the request handler, the `openIdConnect` scheme, the HTTP+JSON and gRPC bindings, and the authenticated extended card are outside this subpath.
+The kit serves the JSON-RPC binding only. Push delivery, a Weft workflow backend for the request handler, the `openIdConnect` scheme, the HTTP+JSON and gRPC bindings, and the authenticated extended card are outside this subpath.
