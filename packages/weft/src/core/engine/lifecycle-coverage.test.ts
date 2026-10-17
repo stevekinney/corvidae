@@ -14,7 +14,7 @@ import { collectWorkflowPurgeDeleteOperations } from './bulk-operations-purge.ts
 import { createLifecycleCallbacks as createEngineLifecycleCallbacks } from './callback-creators.ts';
 import { WorkflowNotRegisteredError } from './errors.ts';
 import { Engine } from './index.ts';
-import { getInternals, type ResumeAwaitingAdoption } from './internals.ts';
+import { getInternals } from './internals.ts';
 import { WorkflowClaimUnavailableError } from './lease-errors.ts';
 import {
   beginWorkflowExecution,
@@ -46,6 +46,7 @@ import {
   workflowVersionTupleFromState,
 } from './lifecycle.ts';
 import type { FreshResumeClaimTracker } from './lifecycle/resume.ts';
+import type { ResumeAwaitingAdoption } from './resume-awaiting-adoption.ts';
 import { encodeWorkflowClaimHolder } from './workflow-claim-codec.ts';
 
 /**
@@ -1331,6 +1332,7 @@ describe('engine lifecycle coverage helpers', () => {
     const inFlight: ResumeAwaitingAdoption = {
       workflowExecutionToken: 'generation-a',
       handle: Promise.resolve(joinedHandle as never),
+      performs: { eagerRevisionCheck: true, resumedEvent: true },
       claimEpoch: 7,
       freshClaimTrackers: [],
       deferClaimReleaseOnRejection: false,
@@ -1368,6 +1370,7 @@ describe('engine lifecycle coverage helpers', () => {
     const inFlight: ResumeAwaitingAdoption = {
       workflowExecutionToken: 'generation-a',
       handle: Promise.resolve({ id: workflowId } as never),
+      performs: { eagerRevisionCheck: true, resumedEvent: true },
       claimEpoch: null,
       freshClaimTrackers: [],
       deferClaimReleaseOnRejection: false,
@@ -1402,6 +1405,7 @@ describe('engine lifecycle coverage helpers', () => {
       workflowExecutionToken: 'replaced',
       // An older generation's resume still held, for example, in `resolveWorkflowServices`.
       handle: new Promise<never>(() => {}),
+      performs: { eagerRevisionCheck: true, resumedEvent: true },
       claimEpoch: null,
       freshClaimTrackers: [],
       deferClaimReleaseOnRejection: false,
@@ -1428,6 +1432,44 @@ describe('engine lifecycle coverage helpers', () => {
     expect(resumesAwaitingAdoption.get(workflowId)?.get('replaced')).toBe(olderResume);
   });
 
+  it('resumeWorkflowFromStorage never joins an in-flight resume that skips a check the joiner requires', async () => {
+    const storage = new MemoryStorage();
+    const workflowId = 'workflow-resume-stricter-joiner';
+    await storage.put(
+      KEYS.workflow(workflowId),
+      encode(createWorkflowState(workflowId, { workflowExecutionToken: 'generation-a' })),
+    );
+    // A parked run's wake skips the eager revision check that recovery entry points require.
+    const parkedWake: ResumeAwaitingAdoption = {
+      workflowExecutionToken: 'generation-a',
+      handle: new Promise<never>(() => {}),
+      performs: { eagerRevisionCheck: false, resumedEvent: false },
+      claimEpoch: null,
+      freshClaimTrackers: [],
+      deferClaimReleaseOnRejection: false,
+    };
+
+    // The stricter resume runs on its own, so it reaches its own checkpoint read instead of
+    // inheriting the wake's skipped check.
+    expect(
+      await throwingRejectionOf(
+        resumeWorkflowFromStorage(
+          {
+            resumesAwaitingAdoption: new Map([
+              [workflowId, new Map([['generation-a', parkedWake]])],
+            ]),
+            registrations: new Map(),
+            storage,
+            options: { ownershipMode: 'none' },
+          } as never,
+          workflowId,
+          true,
+          createLifecycleCallbacks() as never,
+        ),
+      ),
+    ).toThrow('Checkpoint not found for workflow "workflow-resume-stricter-joiner"');
+  });
+
   it('resumeWorkflowFromStorage joins resumes of a replacement while an older generation is pending', async () => {
     const baseStorage = new MemoryStorage();
     const workflowId = 'workflow-resume-two-replacement-resumes';
@@ -1449,6 +1491,7 @@ describe('engine lifecycle coverage helpers', () => {
     const olderResume: ResumeAwaitingAdoption = {
       workflowExecutionToken: 'replaced',
       handle: new Promise<never>(() => {}),
+      performs: { eagerRevisionCheck: true, resumedEvent: true },
       claimEpoch: null,
       freshClaimTrackers: [],
       deferClaimReleaseOnRejection: false,

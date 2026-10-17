@@ -18,7 +18,8 @@ import { KEYS } from '../../../storage/interface.ts';
 import type { WorkflowState } from '../../types.ts';
 import { abandonExecutionAttempt, isGenerationAbandoned } from '../execution-attempts.ts';
 import type { WorkflowHandle } from '../handles.ts';
-import type { EngineInternals, ResumeAwaitingAdoption } from '../internals.ts';
+import type { EngineInternals } from '../internals.ts';
+import type { ResumeAwaitingAdoption } from '../resume-awaiting-adoption.ts';
 import { decodeWorkflowState } from '../validation.ts';
 import { performResumeAfterClaimAcquired } from './resume-body.ts';
 import type { LifecycleCallbacks, RecoverAllOptions } from './shared.ts';
@@ -113,7 +114,13 @@ export async function resumeWorkflowFromStorage(
   options?: ResumeFromStorageOptions,
 ): Promise<WorkflowHandle> {
   const state = resumableState(workflowId, await internals.storage.get(KEYS.workflow(workflowId)));
-  const decision = joinOrRegisterResume(internals, workflowId, state, options);
+  const decision = joinOrRegisterResume(
+    internals,
+    workflowId,
+    state,
+    dispatchResumedEvent,
+    options,
+  );
   if (decision.join !== undefined) return decision.join;
   const { adoption } = decision;
 
@@ -185,16 +192,49 @@ function joinOrRegisterResume(
   internals: EngineInternals,
   workflowId: string,
   state: WorkflowState,
+  dispatchResumedEvent: boolean,
   options: ResumeFromStorageOptions | undefined,
 ):
   | { join: Promise<WorkflowHandle>; adoption?: never }
-  | { join?: never; adoption: RegisteredResume } {
+  | { join?: never; adoption?: RegisteredResume } {
+  const requires = {
+    eagerRevisionCheck: options?.skipEagerRevisionCheck !== true,
+    resumedEvent: dispatchResumedEvent,
+  };
   const inFlight = internals.resumesAwaitingAdoption
     .get(workflowId)
     ?.get(state.workflowExecutionToken);
-  if (inFlight !== undefined) return { join: joinResumeAwaitingAdoption(inFlight, options) };
-  return { adoption: registerResumeAwaitingAdoption(internals, workflowId, state) };
+  if (inFlight === undefined) {
+    return { adoption: registerResumeAwaitingAdoption(internals, workflowId, state, requires) };
+  }
+  // A joiner never inherits a weaker resume: one that requires something the in-flight resume
+  // skips resumes on its own, as every resume did before joining existed.
+  if (performsEverything(inFlight.performs, requires)) {
+    return { join: joinResumeAwaitingAdoption(inFlight, options) };
+  }
+  return {};
 }
+
+function performsEverything(
+  performs: ResumeAwaitingAdoption['performs'],
+  requires: ResumeAwaitingAdoption['performs'],
+): boolean {
+  return (
+    (performs.eagerRevisionCheck || !requires.eagerRevisionCheck) &&
+    (performs.resumedEvent || !requires.resumedEvent)
+  );
+}
+
+/**
+ * How each resume option behaves when its resume joins one already in flight. Typed over every
+ * option, so a new option cannot be added without deciding whether a joiner carries it over or
+ * requires the in-flight resume to honour it (see {@link joinOrRegisterResume}).
+ */
+export const RESUME_OPTION_JOIN_POLICY = {
+  deferClaimReleaseOnRejection: 'carried over: the joined resume then defers its release too',
+  freshClaimTracker: "carried over: filled with the joined resume's freshly acquired epoch",
+  skipEagerRevisionCheck: 'required: a joiner that checks joins only a resume that checks',
+} as const satisfies Record<keyof ResumeFromStorageOptions, string>;
 
 /** Hand the epoch of a claim this resume freshly acquired to the joiners' trackers. */
 function shareFreshClaimEpoch(
@@ -245,6 +285,7 @@ function registerResumeAwaitingAdoption(
   internals: EngineInternals,
   workflowId: string,
   state: WorkflowState,
+  performs: ResumeAwaitingAdoption['performs'],
 ): RegisteredResume {
   const settle = Promise.withResolvers<WorkflowHandle>();
   // A resume nobody joined must not surface its rejection a second time, unhandled.
@@ -252,6 +293,7 @@ function registerResumeAwaitingAdoption(
   const entry: ResumeAwaitingAdoption = {
     workflowExecutionToken: state.workflowExecutionToken,
     handle: settle.promise,
+    performs,
     claimEpoch: null,
     freshClaimTrackers: [],
     deferClaimReleaseOnRejection: false,
