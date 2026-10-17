@@ -171,6 +171,31 @@ describe('setupServiceWorker', () => {
     }
   });
 
+  it('keeps the registration error when disposing the engine it created fails too', async () => {
+    const dispose = spyOn(Engine.prototype, Symbol.asyncDispose).mockRejectedValue(
+      new Error('dispose exploded'),
+    );
+    try {
+      await withFakeSelf(createFakeServiceWorkerScope(), async () => {
+        expect(
+          await throwingRejectionOf(
+            setupServiceWorker({
+              storage: new MemoryStorage(),
+              register: async () => {
+                throw new Error('register exploded');
+              },
+            }),
+          ),
+        ).toThrow('register exploded');
+      });
+      expect(dispose).toHaveBeenCalledTimes(1);
+      // The background disposal's rejection is absorbed rather than surfacing unhandled.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    } finally {
+      dispose.mockRestore();
+    }
+  });
+
   it('keeps the registration error when register leaves a workflow refresh in flight', async () => {
     const fetchReleased = Promise.withResolvers<void>();
     const source = {
