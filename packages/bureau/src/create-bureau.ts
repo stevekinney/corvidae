@@ -213,8 +213,8 @@ import {
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
-  isSessionRunTerminal,
   resolvePersistedRunOwningPrincipal,
+  resolveSessionPreAdmission,
 } from './session-authority';
 import {
   admitSessionInput,
@@ -8350,16 +8350,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `session` truthy implies `sessionStoreForInput` was truthy above, but
     // TypeScript cannot carry that narrowing across the ternary into later
     // code — this makes it explicit rather than asserting it away.
-    if (
-      !session ||
-      !sessionStoreForInput ||
-      !isSessionAuthorityAuthorized(session.metadata, request.principal)
-    ) {
+    if (!session || !sessionStoreForInput) {
       return { outcome: 'not-found' };
     }
-    if (isSessionRunTerminal(session.metadata)) {
-      return { outcome: 'session-terminal', sessionId };
-    }
+    // COR-301: the same live-run-aware checks steering makes. A request
+    // carries no run id, so authorization targets the session's sole live
+    // run, and a session with any live run is not terminal even when a
+    // concurrent run's terminal write was the last to set `lastRunStatus`.
+    const preAdmission = resolveSessionPreAdmission(
+      session.metadata,
+      request.principal,
+      liveSessionRunIds(sessionId),
+    );
+    if (preAdmission === 'not-found') return { outcome: 'not-found' };
+    if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
 
     const sessionMailbox = getSessionInputMailbox(sessionId);
     const storage = runtime.durableStorage;
@@ -8550,13 +8554,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? session
           : await runtime.sessionStore?.load(sessionId);
       if (afterLiveness?.incarnation !== session.incarnation) return { outcome: 'not-found' };
-      const targetRunId = request.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
-      if (!isSessionAuthorityAuthorized(afterLiveness.metadata, request.principal, targetRunId)) {
-        return { outcome: 'not-found' };
-      }
-      if (isSessionRunTerminal(afterLiveness.metadata) && liveRunIds.length === 0) {
-        return { outcome: 'session-terminal', sessionId };
-      }
+      const preAdmission = resolveSessionPreAdmission(
+        afterLiveness.metadata,
+        request.principal,
+        liveRunIds,
+        request.runId,
+      );
+      if (preAdmission === 'not-found') return { outcome: 'not-found' };
+      if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
     }
     // A refusal Bureau decides here, before the gate, is logged like the
     // gate's own refusals on a durable session, so a caller-supplied id
@@ -9250,13 +9255,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // The run this command binds to may have changed while it waited (its
       // run ended, another became the sole live one), so authority is
       // checked again against the run it will actually be decided for.
-      const boundTarget = command.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
-      if (!isSessionAuthorityAuthorized(stillLive.metadata, principal, boundTarget)) {
-        return { outcome: 'not-found' };
-      }
-      if (isSessionRunTerminal(stillLive.metadata) && liveRunIds.length === 0) {
-        return { outcome: 'session-terminal', sessionId };
-      }
+      const preAdmission = resolveSessionPreAdmission(
+        stillLive.metadata,
+        principal,
+        liveRunIds,
+        command.runId,
+      );
+      if (preAdmission === 'not-found') return { outcome: 'not-found' };
+      if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
       const now = runtimeServices.clock.nowISO();
       const event: Extract<SteeringLogEvent, { type: 'admit' | 'refused' }> =
         decidedRefusal === undefined
@@ -9330,13 +9336,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const targetNow = await runtime.sessionStore?.load(sessionId);
     if (targetNow?.incarnation !== incarnation) return { outcome: 'not-found' };
-    const target = command.runId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
-    if (!isSessionAuthorityAuthorized(targetNow.metadata, command.principal, target)) {
-      return { outcome: 'not-found' };
-    }
-    if (isSessionRunTerminal(targetNow.metadata) && liveRunIds.length === 0) {
-      return { outcome: 'session-terminal', sessionId };
-    }
+    const preAdmission = resolveSessionPreAdmission(
+      targetNow.metadata,
+      command.principal,
+      liveRunIds,
+      command.runId,
+    );
+    if (preAdmission === 'not-found') return { outcome: 'not-found' };
+    if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
     return answer;
   }
 

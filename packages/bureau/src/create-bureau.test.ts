@@ -7018,6 +7018,113 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       await bureau.dispose();
     }
   });
+
+  /**
+   * COR-301 — two concurrent runs on one session, run B dispatched second
+   * and held on a test-controlled gate so its terminal write lands only when
+   * the test releases it. Run A never settles. Resolves once B's terminal
+   * write has pruned its own authority entry while A's entry and liveness
+   * remain, which is the exact shape the singular-field checks misread.
+   */
+  async function createConcurrentRunSession(principalB: string): Promise<{
+    bureau: Bureau;
+    runA: { id: string; sessionId: string };
+    releaseRunB: PromiseWithResolvers<void>;
+  }> {
+    const releaseRunB = Promise.withResolvers<void>();
+    const bureau = await createBureau({
+      agents: {},
+      generate: async (context) => {
+        const isRunB = context.conversation
+          .getMessages()
+          .some((message) => message.content === 'go B');
+        if (!isRunB) return new Promise<never>(() => {});
+        await releaseRunB.promise;
+        return { content: 'B done', toolCalls: [] };
+      },
+      toolbox: createEmptyToolbox(),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    try {
+      const runA = await bureau.createRun({ message: 'go A', principal: 'alice' });
+      const runB = await bureau.createRun({
+        message: 'go B',
+        principal: principalB,
+        sessionId: runA.sessionId,
+      });
+
+      const gated = await bureau.getSession(runA.sessionId);
+      expect(gated?.metadata['lastRunId']).toBe(runB.id);
+      expect(Object.keys(gated?.metadata['lastRequestAuthorities'] ?? {}).toSorted()).toEqual(
+        [runA.id, runB.id].toSorted(),
+      );
+
+      releaseRunB.resolve();
+      await waitForRunSettled(bureau, runB.id);
+      expect(
+        await pollUntil(async () => {
+          const session = await bureau.getSession(runA.sessionId);
+          const metadata = session?.metadata ?? {};
+          const authorities = metadata['lastRequestAuthorities'];
+          return (
+            metadata['lastRunStatus'] === 'completed' &&
+            metadata['lastRunId'] === runB.id &&
+            typeof authorities === 'object' &&
+            authorities !== null &&
+            !Array.isArray(authorities) &&
+            !(runB.id in authorities) &&
+            runA.id in authorities
+          );
+        }),
+      ).toBe(true);
+      expect(bureau.getRun(runA.id)?.status).toBe('running');
+      return { bureau, runA, releaseRunB };
+    } catch (error) {
+      releaseRunB.resolve();
+      await bureau.dispose();
+      throw error;
+    }
+  }
+
+  it('admits the same principal while its other run on the session is still live (COR-301)', async () => {
+    const { bureau, runA, releaseRunB } = await createConcurrentRunSession('alice');
+    try {
+      const outcome = await bureau.submitSessionInput(runA.sessionId, {
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      expect(outcome.outcome).toBe('admitted');
+    } finally {
+      releaseRunB.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it("authorizes the sole live run's principal, not the finished concurrent run's (COR-301)", async () => {
+    const { bureau, runA, releaseRunB } = await createConcurrentRunSession('bob');
+    try {
+      const alice = await bureau.submitSessionInput(runA.sessionId, {
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      const bob = await bureau.submitSessionInput(runA.sessionId, {
+        principal: 'bob',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      expect({ alice: alice.outcome, bob }).toEqual({
+        alice: 'admitted',
+        bob: { outcome: 'not-found' },
+      });
+    } finally {
+      releaseRunB.resolve();
+      await bureau.dispose();
+    }
+  });
 });
 
 describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {

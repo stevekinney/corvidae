@@ -1525,7 +1525,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * unknown `sessionId` returns `{ outcome: 'not-found' }` (indistinguishable
    * by design — the document's authorization-denial rule). An authorized
    * caller naming a session already in a terminal state returns
-   * `{ outcome: 'session-terminal', sessionId }`.
+   * `{ outcome: 'session-terminal', sessionId }`. Both checks consult this
+   * process's live runs (COR-301, `resolveSessionPreAdmission`): a session
+   * with any live run is not terminal, whichever run last wrote
+   * `lastRunStatus`, and authorization targets the session's sole live run,
+   * falling back to `lastRunId` only when several runs are live.
    *
    * Until `ab-42-bureau-b` lands (WFT-84's durable application command
    * mailbox), every other authorized, non-terminal request unconditionally
@@ -1542,9 +1546,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * AB-67/AB-199/AB-200 — admit a steering command as a sixth session verb,
    * for in-memory and durable sessions alike. Reads
-   * authority and terminal status through the same mechanism
-   * `submitSessionInput` uses ({@link isSessionAuthorityAuthorized},
-   * {@link isSessionRunTerminal}): an unauthorized caller or unknown
+   * authority and terminal status through the same pre-admission decision
+   * `submitSessionInput` uses (`resolveSessionPreAdmission`, COR-301), over
+   * the session's live runs: authorization targets the request's `runId`,
+   * else the session's sole live run, else `lastRunId`; and a session with
+   * any live run is not terminal. An unauthorized caller or unknown
    * `sessionId` returns `{ outcome: 'not-found' }`; an authorized caller
    * naming an already-terminal session returns `{ outcome: 'session-terminal',
    * sessionId }`.
