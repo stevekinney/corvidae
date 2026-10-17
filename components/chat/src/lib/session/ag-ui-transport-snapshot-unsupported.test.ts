@@ -193,24 +193,44 @@ describe('AG-UI MESSAGES_SNAPSHOT', () => {
     expect(error).toMatchObject({ kind: 'history', eventIndex: 7 });
   });
 
-  test('ignores a snapshot that shares no row with the thread the client holds', async () => {
+  test("keeps only this turn's output from a snapshot that shares no row with the thread the client holds", async () => {
     const asked = fromAGUIMessages([
       { id: 'u1', role: 'user', content: 'mine' },
       { id: 'a1', role: 'assistant', content: 'mine too' },
     ]);
-    const all = await frames(
-      [
-        runStarted,
-        snapshot([
-          { id: 'x1', role: 'user', content: 'their copy of mine' },
-          { id: 'x2', role: 'assistant', content: 'their copy of mine too' },
-        ]),
-        ...text('a2', 'streamed'),
-        runFinished,
-      ],
+    const events = (messages: unknown[]) => [
+      runStarted,
+      snapshot(messages),
+      ...text('a2', 'streamed'),
+      runFinished,
+    ];
+    // Under the backend's own ids, ending with the question: nothing of this turn yet.
+    const asking = await frames(
+      events([
+        { id: 'x1', role: 'user', content: 'their copy of mine' },
+        { id: 'x2', role: 'assistant', content: 'their copy of mine too' },
+        { id: 'x3', role: 'user', content: 'their copy of the question' },
+      ]),
       asked,
     );
-    expect(completedConversation(all).ids).toEqual(['u1', 'a1', 'a2']);
+    expect(completedConversation(asking).ids).toEqual(['u1', 'a1', 'a2']);
+    // Under the backend's own ids, with its reply: the reply is kept, the history is not.
+    const replied = await frames(
+      events([
+        { id: 'x1', role: 'user', content: 'their copy of mine' },
+        { id: 'x2', role: 'assistant', content: 'their copy of mine too' },
+        { id: 'x3', role: 'user', content: 'their copy of the question' },
+        { id: 'reply-1', role: 'assistant', content: 'the reply' },
+      ]),
+      asked,
+    );
+    expect(completedConversation(replied).ids).toEqual(['u1', 'a1', 'reply-1', 'a2']);
+    // Only what the producer owns: all of it is its output.
+    const owned = await frames(
+      events([{ id: 'reply-1', role: 'assistant', content: 'the reply' }]),
+      asked,
+    );
+    expect(completedConversation(owned).ids).toEqual(['u1', 'a1', 'reply-1', 'a2']);
   });
 
   test('recognizes a thread by the tool call it holds when the message ids differ', async () => {

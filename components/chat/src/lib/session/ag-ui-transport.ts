@@ -112,10 +112,12 @@ const unsupportedTypes: ReadonlySet<EventType> = new Set(AG_UI_UNSUPPORTED_EVENT
  * backend's, kept as the row ids, so a backend that echoes the client's ids
  * (as the AG-UI run input carries them) is merged row for row. A snapshot that
  * shares no message, and no tool call, with a thread the client already holds is
- * not a snapshot of that thread and is ignored, so a backend that renames
- * everything cannot add the whole history a second time; a message still
- * streaming is left out of a snapshot, because its whole row is written when it
- * ends. A tool call is filed under the assistant message it names as its
+ * not a copy of that thread: its earlier history is not merged, so a backend
+ * that renames everything cannot add the whole history a second time, but the
+ * messages after its last user message (all of it, when it holds none because
+ * it snapshots only what it owns) are this turn's output and are kept. A message
+ * still streaming is left out of a snapshot, because its whole row is written
+ * when it ends. A tool call is filed under the assistant message it names as its
  * parent (joining it, or being that message's first call), so it gets the row id
  * a snapshot of the same thread gives it; a call that names no parent is a
  * message of its own, and a snapshot's copy of it is skipped by call id.

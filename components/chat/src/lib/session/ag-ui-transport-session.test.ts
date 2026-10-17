@@ -383,4 +383,109 @@ describe('driving a chat session from an AG-UI stream', () => {
       );
     });
   });
+
+  describe('a backend snapshot under its own ids, with the client holding a thread', () => {
+    const run = (messages: unknown[] | undefined, streamReply: boolean) => [
+      { type: 'RUN_STARTED', threadId: 't', runId: 'r' },
+      ...(messages === undefined ? [] : [{ type: 'MESSAGES_SNAPSHOT', messages }]),
+      ...(streamReply
+        ? [
+            { type: 'TEXT_MESSAGE_START', messageId: 'streamed-1' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'streamed-1', delta: 'the reply' },
+            { type: 'TEXT_MESSAGE_END', messageId: 'streamed-1' },
+          ]
+        : []),
+      { type: 'RUN_FINISHED', threadId: 't', runId: 'r' },
+    ];
+
+    /** A first turn that echoes nothing, then the scenario's second turn. */
+    async function secondTurn(second: (request: ChatSessionRequest) => unknown[]) {
+      let turn = 0;
+      const session = createSession((request) => {
+        turn += 1;
+        return turn === 1
+          ? [
+              { type: 'RUN_STARTED', threadId: 't', runId: 'r1' },
+              { type: 'TEXT_MESSAGE_START', messageId: 'a1' },
+              { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a1', delta: 'answer 1' },
+              { type: 'TEXT_MESSAGE_END', messageId: 'a1' },
+              { type: 'RUN_FINISHED', threadId: 't', runId: 'r1' },
+            ]
+          : second(request);
+      });
+      await session.controller.adapter.sendMessage({ role: 'user', content: 'question 1' }, []);
+      await session.controller.adapter.sendMessage({ role: 'user', content: 'question 2' }, []);
+      expect(session.errors).toEqual([]);
+      return session;
+    }
+
+    test('a snapshot of only what the producer owns keeps its reply', async () => {
+      const session = await secondTurn(() =>
+        run([{ id: 'reply-1', role: 'assistant', content: 'the reply' }], false),
+      );
+      expect(contents(session.conversation)).toEqual([
+        'question 1',
+        'answer 1',
+        'question 2',
+        'the reply',
+      ]);
+      expect(session.conversation.ids[3]).toBe('reply-1');
+    });
+
+    test("a whole thread under the backend's own ids keeps the reply and not the history again", async () => {
+      const session = await secondTurn(() =>
+        run(
+          [
+            { id: 'b-u1', role: 'user', content: 'question 1' },
+            { id: 'b-a1', role: 'assistant', content: 'answer 1' },
+            { id: 'b-u2', role: 'user', content: 'question 2' },
+            { id: 'reply-1', role: 'assistant', content: 'the reply' },
+          ],
+          false,
+        ),
+      );
+      expect(contents(session.conversation)).toEqual([
+        'question 1',
+        'answer 1',
+        'question 2',
+        'the reply',
+      ]);
+    });
+
+    test('the reply is not added twice when the run also streamed it under the same id', async () => {
+      const session = await secondTurn(() =>
+        run(
+          [
+            { id: 'b-u2', role: 'user', content: 'question 2' },
+            { id: 'streamed-1', role: 'assistant', content: 'the reply' },
+          ],
+          true,
+        ),
+      );
+      expect(contents(session.conversation)).toEqual([
+        'question 1',
+        'answer 1',
+        'question 2',
+        'the reply',
+      ]);
+    });
+
+    test('a backend that echoes the client ids is unchanged', async () => {
+      const session = await secondTurn((request) =>
+        run(toAGUIMessages(request.conversation), true),
+      );
+      expect(contents(session.conversation)).toEqual([
+        'question 1',
+        'answer 1',
+        'question 2',
+        'the reply',
+      ]);
+      expect(session.conversation.ids[3]).toBe('streamed-1');
+    });
+
+    test('a backend that sends no snapshot keeps what it streamed', async () => {
+      const session = await secondTurn(() => run(undefined, true));
+      expect(contents(session.conversation)).toHaveLength(4);
+    });
+  });
 });

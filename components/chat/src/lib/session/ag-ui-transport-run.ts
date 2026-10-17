@@ -168,13 +168,18 @@ export function adoptSnapshot(state: MapperState, messages: ReadonlyArray<Snapsh
     (message) => message.subagentRunId === undefined && !streaming.has(message.id),
   );
   // A snapshot that shares nothing with a thread the client already holds is
-  // not a snapshot of this thread, and merging it would add the whole history
-  // a second time under other ids.
-  if (state.base.ids.length > 0 && !sharesAnyRow(state.base, candidates)) return;
+  // not a copy of that thread, and merging all of it would add the history a
+  // second time under other ids. What a producer wrote this turn is still its
+  // reply, so the messages after its last user message are kept (or all of it,
+  // when it holds no user message because it snapshots only what it owns).
+  const kept =
+    state.base.ids.length > 0 && !sharesAnyRow(state.base, candidates)
+      ? thisTurnsOutput(candidates)
+      : candidates;
   try {
     // The client's rows stand: a snapshot adds the rows the client lacks and
     // cannot delete or rewrite one.
-    state.base = mergeAGUIMessages(state.base, candidates);
+    state.base = mergeAGUIMessages(state.base, kept);
   } catch (error) {
     throw new AGUIChatTransportError(
       'history',
@@ -182,6 +187,12 @@ export function adoptSnapshot(state: MapperState, messages: ReadonlyArray<Snapsh
       { cause: error },
     );
   }
+}
+
+/** The messages after the last user message, or all of them when there is none. */
+function thisTurnsOutput(messages: ReadonlyArray<SnapshotMessage>): ReadonlyArray<SnapshotMessage> {
+  const lastUser = messages.findLastIndex((message) => message.role === 'user');
+  return messages.slice(lastUser + 1);
 }
 
 type SnapshotMessage = Extract<
