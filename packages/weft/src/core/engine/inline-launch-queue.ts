@@ -10,6 +10,44 @@ export type InlineLaunchQueueCallbacks = {
   swallowPromiseRejection: (promise: Promise<unknown> | undefined) => Promise<void>;
 };
 
+/**
+ * The engines whose scheduled flush has not run yet, held strongly (COR-1425).
+ *
+ * The scheduled flush is the only thing that drives a queued start's first turn, and the
+ * `MessageChannel` handler that runs it reaches its engine through a `WeakRef`: a port with a
+ * `message` listener stays reachable until it is closed, so a strong reference there would keep
+ * every engine alive until disposal. Nothing else roots an engine while its flush is pending. A
+ * caller awaiting `handle.result()` holds a cycle (its suspended continuation, the handle, the
+ * result waiter, the engine, and the engine's internals reference only one another), so a garbage
+ * collection between the end of the microtask turn that queued the start and the delivery of the
+ * flush message reclaimed all of it. Bun runs JSC's pending collection timer at exactly that
+ * point, before it takes newly posted tasks such as the flush message. The handler then found no
+ * engine, closed the channel, and `result()` never settled.
+ *
+ * An engine is added when its flush is scheduled and removed when the flush starts or the queue
+ * is drained or discarded directly, so it is kept alive for that window and no longer.
+ */
+const enginesAwaitingScheduledInlineFlush = new Set<EngineInternals>();
+
+function markInlineFlushScheduled(internals: EngineInternals): void {
+  internals.queuedInlineWorkflowStartFlushScheduled = true;
+  enginesAwaitingScheduledInlineFlush.add(internals);
+}
+
+/**
+ * Record that no flush is scheduled any more, either because the scheduled flush is starting or
+ * because the queue is being drained or discarded directly, and stop holding the engine for it.
+ */
+export function clearInlineFlushScheduled(internals: EngineInternals): void {
+  internals.queuedInlineWorkflowStartFlushScheduled = false;
+  enginesAwaitingScheduledInlineFlush.delete(internals);
+}
+
+/** Test-only: whether `internals`' engine is being held until its scheduled flush runs. */
+export function isEngineHeldForScheduledInlineFlushForTesting(internals: EngineInternals): boolean {
+  return enginesAwaitingScheduledInlineFlush.has(internals);
+}
+
 async function yieldQueuedShutdownAdvanceOpportunity(): Promise<void> {
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
@@ -53,14 +91,14 @@ export function queueInlineWorkflowExecutionStart(
     return;
   }
 
-  internals.queuedInlineWorkflowStartFlushScheduled = true;
+  markInlineFlushScheduled(internals);
   if (internals.queuedInlineWorkflowStartChannel !== null) {
     internals.queuedInlineWorkflowStartChannel.port2.postMessage(undefined);
     return;
   }
 
   setTimeout(() => {
-    internals.queuedInlineWorkflowStartFlushScheduled = false;
+    clearInlineFlushScheduled(internals);
     void callbacks.swallowPromiseRejection(flushQueuedInlineWorkflowStarts(internals, callbacks));
   }, 0);
 }
@@ -123,7 +161,7 @@ export async function flushQueuedInlineWorkflowStartsDirectly(
   internals: EngineInternals,
   callbacks: InlineLaunchQueueCallbacks,
 ): Promise<void> {
-  internals.queuedInlineWorkflowStartFlushScheduled = false;
+  clearInlineFlushScheduled(internals);
   await flushQueuedInlineWorkflowStarts(internals, callbacks);
 }
 
@@ -179,7 +217,7 @@ export async function drainQueuedInlineWorkflowStarts(
   callbacks: InlineLaunchQueueCallbacks,
   options?: { abortStartedWorkflows?: boolean },
 ): Promise<void> {
-  internals.queuedInlineWorkflowStartFlushScheduled = false;
+  clearInlineFlushScheduled(internals);
   // Drain repeatedly: a started workflow can synchronously enqueue a child
   // inline start (e.g. ctx.startChild), so one pass may leave fresh entries.
   // Bounded by the abort signal and an explicit pass cap so a pathological
@@ -363,7 +401,7 @@ export function dropQueuedInlineWorkflowStart(
 }
 
 export function disposeQueuedInlineWorkflowStarts(internals: EngineInternals): void {
-  internals.queuedInlineWorkflowStartFlushScheduled = false;
+  clearInlineFlushScheduled(internals);
   // Settle any `defer: false` awaiters for starts discarded by a synchronous
   // dispose. The run never became live, but its awaiter must not hang on a
   // torn-down engine. (asyncDispose drains these instead of discarding them.)
