@@ -112,7 +112,7 @@ The kit writes a tagged event's cursor as its SSE `id:` and writes no `id:` for 
 
 ### Stream duration
 
-Every SSE response closes after `maxStreamDurationMs` with a final comment line (`: stream closed after … ms; reconnect to continue`). A long-lived subscription therefore reconnects, and its reconnect goes through `authenticate` again, so a revoked credential stops receiving events within that bound. A client that disconnects stops the request handler's stream.
+Every SSE response closes after `maxStreamDurationMs` with a final comment line (`: stream closed after … ms; reconnect to continue`). A long-lived subscription therefore reconnects, and its reconnect goes through `authenticate` again, so a revoked credential stops receiving events within that bound. When the client disconnects, or the duration runs out, the kit returns the request handler's stream, which stops at its next event.
 
 ## Agent Card
 
