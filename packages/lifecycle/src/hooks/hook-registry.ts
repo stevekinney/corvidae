@@ -313,9 +313,10 @@ export class HookRegistry<M extends HookMap> {
     // not have to remember which tier announced that id, possibly in another
     // process before a recovery.
     const source = entrySource({ options: entry.options ?? {} });
-    const durationFor = this.#startDurations();
+    const stopClocks = this.#startClocks();
     try {
       const result = await Reflect.apply(handler, undefined, args);
+      const durationFor = stopClocks();
       this.#notify(
         {
           kind: 'invoked',
@@ -329,6 +330,7 @@ export class HookRegistry<M extends HookMap> {
       );
       return result;
     } catch (error: unknown) {
+      const durationFor = stopClocks();
       this.#notify(
         {
           kind: 'failed',
@@ -346,23 +348,28 @@ export class HookRegistry<M extends HookMap> {
   }
 
   /**
-   * Starts one invocation's clocks and returns how long it has run for a given
-   * observer. An observer that attached with its own clock is measured on it;
-   * every other observer, including one that attaches while the handler is
-   * still running, gets the registry's clock.
+   * Starts one invocation's clocks. The returned function stops them all at
+   * once and reports how long the invocation ran for a given observer. An
+   * observer that attached with its own clock is measured on it; every other
+   * observer, including one that attaches while the handler is still running,
+   * gets the registry's clock. Every clock stops before any observer is told,
+   * so an observer that advances a shared clock cannot lengthen the duration
+   * the next one receives.
    */
-  #startDurations(): (observer: HookPlanObserver) => number {
+  #startClocks(): () => (observer: HookPlanObserver) => number {
     const registryNow = this.registryOptions.now ?? Date.now;
     const registryStartedAt = registryNow();
     const observerStarts = new Map<HookPlanObserver, { now: () => number; startedAt: number }>();
     for (const [observer, { now }] of this.#observers) {
       if (now !== undefined) observerStarts.set(observer, { now, startedAt: now() });
     }
-    return (observer) => {
-      const started = observerStarts.get(observer);
-      return started === undefined
-        ? registryNow() - registryStartedAt
-        : started.now() - started.startedAt;
+    return () => {
+      const registryDuration = registryNow() - registryStartedAt;
+      const observerDurations = new Map<HookPlanObserver, number>();
+      for (const [observer, { now, startedAt }] of observerStarts) {
+        observerDurations.set(observer, now() - startedAt);
+      }
+      return (observer) => observerDurations.get(observer) ?? registryDuration;
     };
   }
 

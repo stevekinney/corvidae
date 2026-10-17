@@ -260,6 +260,39 @@ describe('plan observation (COR-766)', () => {
     ).toEqual([40, 40]);
   });
 
+  it('stops every clock before the first observer runs, so observers cannot inflate each other', async () => {
+    let runClock = 0;
+    const registry = new HookRegistry<ContextHooks>();
+    registry.on(
+      'prepare',
+      () => {
+        runClock += 5;
+        return undefined;
+      },
+      { id: 'five' },
+    );
+
+    const durations: number[] = [];
+    const record = (observation: HookPlanObservation) => {
+      if (observation.kind === 'invoked') durations.push(observation.durationMilliseconds);
+    };
+    // The first observer advances the clock both observers share, as a
+    // listener stepping a manual runtime would.
+    registry.observe(
+      (observation) => {
+        record(observation);
+        runClock += 10;
+      },
+      undefined,
+      { now: () => runClock },
+    );
+    registry.observe(record, undefined, { now: () => runClock });
+
+    await registry.runFirst('prepare', { step: 0 });
+
+    expect(durations).toEqual([5, 5]);
+  });
+
   it('does not replay registrations that predate the observer', () => {
     const observed: HookPlanObservation[] = [];
     const registry = new HookRegistry<ContextHooks>();
