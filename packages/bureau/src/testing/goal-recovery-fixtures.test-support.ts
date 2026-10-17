@@ -39,6 +39,7 @@ import {
 } from '../goal-state';
 import { createGoalStore, type GoalStore } from '../goal-store';
 import type { BureauGoalRequest } from '../goal-types';
+import { ownerOrLocal } from '../owner-of-record';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX, createRuntimeComposition } from '../runtime-composition';
 import type { Bureau } from '../types';
 import { createDiagnostics, goalRequest } from './goal-fixtures.test-support';
@@ -91,6 +92,8 @@ export async function inspect(path: string) {
       runId: string,
       record: {
         agentName: string;
+        /** The run's recorded owner, as the goal's start wrote it. */
+        principal?: string;
         definitionRevision: number;
         input: string;
         goalAttempt?: { goalRunId: string; attemptIndex: number };
@@ -157,7 +160,8 @@ export function pendingGoal(overrides: Partial<BureauGoalRequest<'worker'>> = {}
     conversationPolicy: request.conversationPolicy ?? { kind: 'continue' },
     retryPolicy: request.retryPolicy,
     bounds: request.bounds,
-    principal: request.principal,
+    // As `bureau.goals.create` stores it: a goal with no principal is owned by anonymous:local.
+    principal: ownerOrLocal(request.principal),
     now: NOW,
   });
 }

@@ -113,6 +113,7 @@ import type {
   BureauChildTerminalStatus,
   ChildTopologyStore,
 } from './child-topology-store';
+import { ownerOrLocal } from './owner-of-record';
 import { principalAllows } from './principal-allows';
 import { reservedWorkflowIdentifierReason } from './reserved-identifiers';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
@@ -1314,7 +1315,8 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
           }
         : { kind: 'process-local' as const },
       parentCancellation: request.parentCancellation ?? 'cascade',
-      principal: parent.principal ?? request.principal,
+      // The child's owner is its parent's; a parent with none is owned by anonymous:local.
+      principal: ownerOrLocal(parent.principal),
       grantId: grant?.id,
       parentGrantId,
     });

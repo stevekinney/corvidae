@@ -181,6 +181,15 @@ export const AUDIT_EVENT_TYPES = [
   'schedule.paused',
   'schedule.resumed',
   'schedule.cancelled',
+  // COR-718 — one entry per schedule fire, written out-of-band by
+  // `create-bureau.ts` when the fire starts, under the fire's run id. The owner
+  // of that run is the schedule's owner; the entry's `principal` is the actor,
+  // `system:scheduler`.
+  'schedule.fired',
+  // COR-718 — one entry per run reattached after a restart, on each start,
+  // under the run's id. The run keeps its owner; the `principal` is the actor,
+  // `system:recovery`.
+  'run.recovered',
 ] as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
@@ -289,6 +298,11 @@ export interface AuditRecord {
    * listeners below also write through the out-of-band path but likewise
    * carry no principal — a schedule pause/resume/cancel, or a session
    * deletion, has no authenticated caller to attribute today.
+   *
+   * The `principal` is the actor (COR-718), never the owner. The owner of the
+   * resource an entry concerns is derived from its `runId`, not stored:
+   * `Bureau.getOwner({ kind: 'audit', runId })`. A service principal
+   * (`system:scheduler`, `system:recovery`, `system:expiry`) appears only here.
    */
   principal?: string;
 }
@@ -884,6 +898,12 @@ export function encodeKey(timestampMs: number, sequence: number, runId: string):
   return `${PREFIX}${ts}:${seq}:${runId}`;
 }
 
+/** The `runId` prefix of a schedule's synthetic audit owner, `schedule:<id>`. */
+export const AUDIT_SCHEDULE_OWNER_PREFIX = 'schedule:';
+
+/** The `runId` prefix of a session's synthetic audit owner, `session:<id>`. */
+export const AUDIT_SESSION_OWNER_PREFIX = 'session:';
+
 /**
  * The synthetic `runId` a session deletion's out-of-band audit record is
  * filed under — there is no run to attribute a session deletion to, so the
@@ -896,7 +916,7 @@ export function encodeKey(timestampMs: number, sequence: number, runId: string):
  * rather than a second, drifting literal.
  */
 export function auditTrailSessionOwnerId(sessionId: string): string {
-  return `session:${sessionId}`;
+  return `${AUDIT_SESSION_OWNER_PREFIX}${sessionId}`;
 }
 
 // ── Audit trail factory ─────────────────────────────────────────────
@@ -1425,7 +1445,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
   // \`schedule:${id}\` })` is how a caller retrieves one schedule's own
   // durable definition history.
   function scheduleOwnerId(scheduleId: string): string {
-    return `schedule:${scheduleId}`;
+    return `${AUDIT_SCHEDULE_OWNER_PREFIX}${scheduleId}`;
   }
   const scheduleCreatedListener = (event: AgentScheduledEvent): void => {
     if (!auditEventSet.has('schedule.created')) return;

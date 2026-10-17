@@ -3114,12 +3114,7 @@ describe('createDurableEventProducer()', () => {
       new ReviewRejectedEvent('approval:run-1:call-3', 'run-1', 'operator-c', 'tool-approval'),
     );
     dispatchReviewExpired(
-      new ReviewExpiredEvent(
-        'approval:run-1:call-4',
-        'run-1',
-        'system:expiry-sweep',
-        'tool-approval',
-      ),
+      new ReviewExpiredEvent('approval:run-1:call-4', 'run-1', 'system:expiry', 'tool-approval'),
     );
     dispatchReviewRevoked(
       new ReviewRevokedEvent(
@@ -3182,7 +3177,7 @@ describe('createDurableEventProducer()', () => {
         payload: {
           reviewId: 'approval:run-1:call-4',
           runId: 'run-1',
-          principal: 'system:expiry-sweep',
+          principal: 'system:expiry',
           kind: 'tool-approval',
         },
         emittedAtMs: undefined,
@@ -3751,12 +3746,7 @@ describe('createDurableEventProducer()', () => {
       new ReviewRejectedEvent('approval:run-1:call-3', 'run-1', 'operator-c', 'tool-approval'),
     );
     dispatchReviewExpired(
-      new ReviewExpiredEvent(
-        'approval:run-1:call-4',
-        'run-1',
-        'system:expiry-sweep',
-        'tool-approval',
-      ),
+      new ReviewExpiredEvent('approval:run-1:call-4', 'run-1', 'system:expiry', 'tool-approval'),
     );
     dispatchReviewRevoked(
       new ReviewRevokedEvent(

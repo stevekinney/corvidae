@@ -42,9 +42,8 @@
  *   ref that is already terminal. This is what writes the conversation
  *   boundary a later fork reads.
  *
- * A goal's sessions carry the goal's principal as their recorded authority, so
- * another principal cannot read or continue a goal's transcript through the
- * session verbs.
+ * A goal's sessions are owned by the goal's principal, so another principal
+ * cannot read or continue a goal's transcript through the session verbs.
  *
  * Limits: a durable goal does not take a caller's existing session as its
  * baseline, so the trunk holds attempt 0 and nothing before it. For
@@ -79,6 +78,8 @@ import {
 } from 'conversationalist';
 
 import { attemptSessionId, goalAttemptRunId, goalSessionId, type GoalState } from './goal-state';
+import { ownerOrLocal } from './owner-of-record';
+import { resolveSessionOwner, SESSION_OWNER_METADATA_KEY } from './session-authority';
 
 /** A session the goal depends on is not in the state its own earlier writes left it in. */
 export class GoalConversationError extends Error {
@@ -130,8 +131,8 @@ const describe = (error: unknown): string =>
  * Why a session found under one of the goal's deterministic ids is not the
  * goal's, or `undefined` when it is. A session id is a function of a
  * caller-chosen goal id, so another caller's session can already hold it. The
- * goal's own writes record its `goalRunId` and its principal's authority in the
- * session, and only the goal's own attempt runs in it.
+ * goal's own writes record its `goalRunId` and its principal as the session's
+ * owner, and only the goal's own attempt runs in it.
  */
 export function foreignSessionReason(record: GoalState, session: AgentSession): string | undefined {
   const refuse = (why: string): string =>
@@ -139,12 +140,9 @@ export function foreignSessionReason(record: GoalState, session: AgentSession): 
   if (session.metadata['goalRunId'] !== record.goalRunId) {
     return refuse('was not created for this goal');
   }
-  const authority = session.metadata['lastRequestAuthority'];
-  const principalId =
-    typeof authority === 'object' && authority !== null && !Array.isArray(authority)
-      ? (authority as Record<string, unknown>)['principalId']
-      : undefined;
-  if (principalId !== record.principal) return refuse('belongs to a different principal');
+  if (resolveSessionOwner(session.metadata) !== ownerOrLocal(record.principal)) {
+    return refuse('belongs to a different principal');
+  }
   // A goal runs one agent, and its session carries that agent's name. A session
   // under the goal's id for any other agent is not the goal's conversation.
   if (session.agentName !== record.objective.agentName) {
@@ -177,12 +175,13 @@ export function foreignSessionReason(record: GoalState, session: AgentSession): 
 
 /**
  * The metadata every session of a goal carries: the goal that created it, which
- * is what lets the goal recognize it again, and the authority that keeps the
- * transcript with the goal's principal.
+ * is what lets the goal recognize it again, the owner that keeps the transcript
+ * with the goal's principal, and the authority its runs execute tools under.
  */
 export function goalSessionMetadata(record: GoalState): Record<string, JSONValue> {
   return {
     goalRunId: record.goalRunId,
+    [SESSION_OWNER_METADATA_KEY]: ownerOrLocal(record.principal),
     ...(record.principal === undefined
       ? {}
       : {

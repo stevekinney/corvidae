@@ -6,7 +6,7 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 
-import { isPlainAuthorityRecord } from './session-authority';
+import { isPlainAuthorityRecord, SESSION_OWNER_METADATA_KEY } from './session-authority';
 import type { DiagnosticSink } from './types';
 
 const BUREAU_AGENT_NAME = 'bureau';
@@ -102,6 +102,11 @@ function mergeMetadata(
   return {
     ...current,
     ...metadata,
+    // The session's owner is written once, by the run that created it. A later
+    // save, from any run, never replaces it.
+    ...(current[SESSION_OWNER_METADATA_KEY] !== undefined
+      ? { [SESSION_OWNER_METADATA_KEY]: current[SESSION_OWNER_METADATA_KEY] }
+      : {}),
     ...(metadata['lastRequestAuthorities'] !== undefined
       ? {
           lastRequestAuthorities: {

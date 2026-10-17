@@ -1384,6 +1384,26 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getRun(id: string): RunDetail | undefined;
 
   /**
+   * The owner of record of a resource (COR-718), or `undefined` when no such
+   * resource exists. The owner is the principal that created the resource,
+   * stored once at creation and unchanged afterward; a service principal such as
+   * `system:scheduler` is only ever the actor on an audit entry, never an owner.
+   * A resource created with no stated principal, and a record persisted before
+   * owners existed, read as `anonymous:local`.
+   *
+   * - `run`: the principal the run was created with (`CreateRunRequest.principal`,
+   *   or its schedule's owner for a schedule fire, or its parent's for a child).
+   * - `session`: the owner of the run that created it.
+   * - `goal`: the goal request's `principal`.
+   * - `schedule`: `DurableScheduleDefinition.principal`.
+   * - `review`: its run's owner.
+   * - `audit`: derived from the entry's `runId`, never stored: a run id gives that
+   *   run's owner, `schedule:<id>` the schedule's, and `session:<id>` the
+   *   session's (unknown once the session is deleted).
+   */
+  getOwner(resource: OwnedResource): Promise<string | undefined>;
+
+  /**
    * Subscribes to live liveness updates for a run (AB-88/AB-214),
    * delegating to the underlying `ActiveRun`'s `subscribeSnapshot`. Delivers
    * the current snapshot synchronously before returning, then a new
@@ -1728,7 +1748,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * its binding's `expiresAt` that is not already resolved, transitions each
    * to `status: 'expired'`, writes one `review.tool-approval.expired` audit
    * entry per review attributed to the synthetic principal
-   * `'system:expiry-sweep'`, and returns the count swept. Calling it twice in
+   * `'system:expiry'`, and returns the count swept. Calling it twice in
    * a row without new expirations returns `0` the second time. `human-wait`
    * reviews are never swept — their expiry is Weft's own wait timeout.
    * `now` defaults to the bureau's own clock.
@@ -2109,6 +2129,11 @@ export interface AbortingRun {
   readonly since: number;
 }
 
+/** A resource whose owner of record {@link Bureau.getOwner} reads. */
+export type OwnedResource =
+  | { readonly kind: 'run' | 'session' | 'goal' | 'schedule' | 'review'; readonly id: string }
+  | { readonly kind: 'audit'; readonly runId: string };
+
 export interface RunSummary {
   id: string;
   sessionId: string;
@@ -2226,11 +2251,15 @@ export interface CreateRunRequest {
    */
   agentName?: string;
   /**
-   * The authenticated principal creating this run (e.g. `api-key:<id>` or
-   * `static-token`), for AB-54 usage analytics attribution. The gateway
-   * overwrites any caller-supplied value with the request's own
-   * `x-auth-principal` header before calling `createRun` — never trust this
-   * field verbatim from an untrusted request body.
+   * The owner of record of this run (COR-718), and of the session it creates:
+   * the authenticated principal that started it (e.g. `api-key:<id>`). It is
+   * stored once, when the run is created, and decides who may later read the run,
+   * its session, and its reviews. Omitted, the run is owned by `anonymous:local`.
+   * A host serving outside callers supplies it from the caller's credential,
+   * never from a request payload: `createBureauHandler` does so itself.
+   *
+   * A different principal starting a run on an existing session is refused as a
+   * session that does not exist (`BureauError` `NOT_FOUND`).
    */
   principal?: string;
   /** Authenticated, request-scoped authority forwarded to Armorer tool execution. */
@@ -2425,4 +2454,11 @@ export interface DurableScheduleDefinition {
   sessionId?: string;
   /** Overlap policy when a prior fire is still running. Defaults to `'skip'`. */
   overlap?: 'skip' | 'allow';
+  /**
+   * The schedule's owner of record (COR-718), written once into the schedule's
+   * `ScheduledAgentRunInput.principal`. Every fire's run is owned by it, and the
+   * scheduler is only ever the actor on the fire's `schedule.fired` audit entry.
+   * Omitted, the schedule is owned by `anonymous:local`.
+   */
+  principal?: string;
 }

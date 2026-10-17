@@ -120,6 +120,8 @@ import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './ag
 import { createAssetService } from './assets/asset-service';
 import type { AssetService } from './assets/types';
 import {
+  AUDIT_SCHEDULE_OWNER_PREFIX,
+  AUDIT_SESSION_OWNER_PREFIX,
   type AuditTrail,
   auditTrailSessionOwnerId,
   type CheckpointRetentionOption,
@@ -190,7 +192,11 @@ import {
   createRunFrameForwarder,
 } from './run-envelope';
 import { attachRunEventFeed, disposeRunEventFeed } from './run-event-feed-attachment.ts';
-import type { BureauToolbox, CatalogAgentRunOptionsResolution } from './runtime-composition';
+import type {
+  BureauToolbox,
+  CatalogAgentRunOptionsResolution,
+  ScheduledFireNotice,
+} from './runtime-composition';
 import {
   createRuntimeComposition,
   createSchedulerServiceRequestContext,
@@ -210,12 +216,15 @@ import {
   serializeUndispatchedCatalogRunDetail,
   serializeUnknownError,
 } from './serialization';
+import { EXPIRY_ACTOR, ownerOrLocal, RECOVERY_ACTOR, SCHEDULER_ACTOR } from './owner-of-record';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
   isSessionHistoryReadAuthorized,
   resolvePersistedRunOwningPrincipal,
+  resolveSessionOwner,
   resolveSessionPreAdmission,
+  SESSION_OWNER_METADATA_KEY,
 } from './session-authority';
 import {
   admitSessionInput,
@@ -268,6 +277,7 @@ import type {
   ConfigurationResponse,
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
+  OwnedResource,
   DiagnosticSink,
   DurableScheduleDefinition,
   EventHistoryDeletedAggregateOutcome,
@@ -1511,11 +1521,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // This hook waits for that function to be bound, which `recoverDurableRuns` does when it starts.
   const recoveredWorkflowHandler =
     Promise.withResolvers<(info: RecoveredWorkflowInfo) => Promise<void>>();
+  // COR-718: a schedule fire can reach the composition before this factory has built the
+  // attribution map and the audit trail that record its owner, so the hook waits for both.
+  const scheduledFireHandler =
+    Promise.withResolvers<(fire: ScheduledFireNotice) => Promise<void>>();
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
     {
       goalWorkflow: goalWorkflowHost.workflow,
       goalAttemptFence: goalAttemptFenceHost.fence,
+      onScheduledFire: async (fire) => {
+        const handler = await scheduledFireHandler.promise;
+        await handler(fire);
+      },
       onRecoveredWorkflow: async (info) => {
         const handler = await recoveredWorkflowHandler.promise;
         await handler(info);
@@ -3785,6 +3803,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
     const runId = runtimeServices.identifiers.next('run');
     const agentName = request.agentName ?? BUREAU_AGENT_NAME;
+    // COR-718 — the owner of record: stored once, here, and unchanged afterward.
+    // A host that states no principal owns the run as `anonymous:local`.
+    const owner = ownerOrLocal(request.principal);
     const requestContext = normalizeRunRequestContext(
       request.requestContext,
       runId,
@@ -3883,6 +3904,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const { session, conversation } = await loadConversation(sessionId);
       const baseConversationHistory = conversation.current;
 
+      // COR-718 — a session belongs to the owner of the run that created it. A
+      // different principal starting a run on it is refused exactly as a session
+      // that does not exist is, so an identifier grants nothing.
+      if (session && !isSessionAuthorityAuthorized(session.metadata, owner)) {
+        throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+      }
+
       if (!session) {
         const prompt = request.systemPrompt ?? runtime.systemPrompt;
         if (prompt) {
@@ -3896,10 +3924,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // (before `store.register`, so it's in place before any listRuns()/getRun()
       // call can observe this run) rather than relying on the tool-bubble-event
       // heuristic, which cannot see a run that never calls a tool.
-      runAttribution.set(runId, {
-        agentName,
-        ...(request.principal !== undefined ? { principal: request.principal } : {}),
-      });
+      runAttribution.set(runId, { agentName, principal: owner });
       const runRuntime = await runtime.createRunRuntime({
         ...request,
         sessionId,
@@ -3999,9 +4024,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // unattributed run writes no entry at all, so a restart leaves it
           // exactly as unresolved as it was live (denied to every
           // principal, per AB-313), never silently open.
-          ...(request.principal !== undefined
-            ? { lastRunOwningPrincipals: { [runId]: request.principal } }
-            : {}),
+          lastRunOwningPrincipals: { [runId]: owner },
+          // COR-718 — the session's owner, written once: `mergeMetadata` keeps the
+          // stored owner when the session already has one.
+          [SESSION_OWNER_METADATA_KEY]: owner,
         },
         // Stamp the session with the dispatched agent (PRRT_kwDORvupsc6MbUsN) so it
         // is not always recorded as the house default 'bureau'.
@@ -4243,7 +4269,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // principal starting this run into `LivenessSnapshot.owner` — AC4
           // reserves an absent owner for a standalone (non-Bureau) run, and a
           // Bureau-started run always has one to give.
-          request.principal !== undefined ? { owner: request.principal } : undefined,
+          { owner },
         );
       } catch (error) {
         // Promoted but never started, so no terminal listener will ever log
@@ -4858,24 +4884,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runToolboxesByRunId.set(runId, recoveredServices.toolbox);
     }
     // AB-359 — rehydrate `runAttribution`'s `principal` from the durably
-    // persisted `lastRunOwningPrincipals` map so a recovered run's REAL
-    // owner can still authorize against `eventHistory` (AB-313) after a
-    // process restart wiped the in-memory map. Reading `sessionMetadata`
-    // here rather than `recoveredRequestContext.authority.principalId`
-    // (which is always populated — see the AB-359 comment at this run's
-    // dispatch site) is what keeps an unattributed run's recovery fail
-    // closed exactly like AB-313 already requires: no persisted entry
-    // means no `runAttribution` entry, identical to a run that was never
-    // dispatched with a principal at all.
-    if (sessionMetadata && typeof sessionMetadata === 'object' && !Array.isArray(sessionMetadata)) {
-      const persistedPrincipal = resolvePersistedRunOwningPrincipal(
-        sessionMetadata as Record<string, JSONValue>,
-        runId,
-      );
-      if (persistedPrincipal !== undefined) {
-        runAttribution.set(runId, { ...runAttribution.get(runId), principal: persistedPrincipal });
-      }
-    }
+    // persisted `lastRunOwningPrincipals` map so a recovered run's REAL owner
+    // can still authorize against `eventHistory` (AB-313) after a process
+    // restart wiped the in-memory map. Reading `sessionMetadata` here rather
+    // than `recoveredRequestContext.authority.principalId` (which is always
+    // populated — see the AB-359 comment at this run's dispatch site) is what
+    // keeps the owner the one `createRun` was given. COR-718: a run whose
+    // record carries no owner (written before owners existed) reads as
+    // `anonymous:local`; it is never left without one.
+    const persistedPrincipal =
+      sessionMetadata && typeof sessionMetadata === 'object' && !Array.isArray(sessionMetadata)
+        ? resolvePersistedRunOwningPrincipal(sessionMetadata as Record<string, JSONValue>, runId)
+        : undefined;
+    const recoveredOwner = ownerOrLocal(persistedPrincipal);
+    runAttribution.set(runId, { ...runAttribution.get(runId), principal: recoveredOwner });
+    // COR-718 — the run keeps its owner; recovery is only the actor. One entry
+    // per reattached run on each start.
+    detachBestEffortPromise(
+      Promise.resolve(
+        auditTrailInstance?.record({
+          runId,
+          type: 'run.recovered',
+          detail: { sessionId },
+          principal: RECOVERY_ACTOR,
+        }),
+      ),
+    );
     restoreResolvedReviewIds(sessionMetadata, runId);
     restorePendingApprovalOverrides(sessionMetadata, runId);
 
@@ -6042,6 +6076,72 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     return summaries;
+  }
+
+  /**
+   * COR-718 — the owner of record of a run: where it already lives
+   * (`runAttribution`, rehydrated from the session's `lastRunOwningPrincipals`
+   * after a restart), or a child run's own record. `undefined` for an id that
+   * names no run this Bureau knows.
+   */
+  async function runOwner(runId: string): Promise<string | undefined> {
+    const attribution = runAttribution.get(runId);
+    if (
+      attribution !== undefined ||
+      store.getRun(runId) !== undefined ||
+      findCatalogRun(runId) !== undefined
+    ) {
+      return ownerOrLocal(attribution?.principal);
+    }
+    const child = await childTopologyStore.get(runId);
+    return child === undefined ? undefined : ownerOrLocal(child.principal);
+  }
+
+  /** COR-718 — the owner a schedule recorded in its `ScheduledAgentRunInput.principal`. */
+  async function scheduleOwner(scheduleId: string): Promise<string | undefined> {
+    if (!runtime.durable) return undefined;
+    const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
+    if (!bytes) return undefined;
+    const state: unknown = decode(bytes);
+    const input =
+      typeof state === 'object' && state !== null
+        ? (state as { input?: unknown }).input
+        : undefined;
+    return ownerOrLocal(isScheduledAgentRunInput(input) ? input.principal : undefined);
+  }
+
+  async function sessionOwner(sessionId: string): Promise<string | undefined> {
+    const session = await runtime.sessionStore?.load(sessionId);
+    return session === undefined ? undefined : resolveSessionOwner(session.metadata);
+  }
+
+  async function getOwner(resource: OwnedResource): Promise<string | undefined> {
+    switch (resource.kind) {
+      case 'run':
+        return runOwner(resource.id);
+      case 'session':
+        return sessionOwner(resource.id);
+      case 'goal': {
+        const goal = await goalsComposition.goals.get(resource.id);
+        return goal === undefined ? undefined : ownerOrLocal(goal.principal);
+      }
+      case 'schedule':
+        return scheduleOwner(resource.id);
+      case 'review': {
+        const review = await getReview(resource.id);
+        return review === undefined ? undefined : runOwner(review.runId);
+      }
+      case 'audit': {
+        const { runId } = resource;
+        if (runId.startsWith(AUDIT_SCHEDULE_OWNER_PREFIX)) {
+          return scheduleOwner(runId.slice(AUDIT_SCHEDULE_OWNER_PREFIX.length));
+        }
+        if (runId.startsWith(AUDIT_SESSION_OWNER_PREFIX)) {
+          return sessionOwner(runId.slice(AUDIT_SESSION_OWNER_PREFIX.length));
+        }
+        return runOwner(runId);
+      }
+    }
   }
 
   function getRun(id: string) {
@@ -10612,7 +10712,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ageMilliseconds: effectiveNow - requestedAt,
             status: 'expired',
           };
-          await recordReviewStatusTransition(review, 'expired', 'system:expiry-sweep');
+          await recordReviewStatusTransition(review, 'expired', EXPIRY_ACTOR);
         }
       }
     }
@@ -10659,6 +10759,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         ...(definition.description !== undefined ? { description: definition.description } : {}),
         ...(definition.sessionId !== undefined ? { session: definition.sessionId } : {}),
         ...(definition.overlap !== undefined ? { overlap: definition.overlap } : {}),
+        principal: ownerOrLocal(definition.principal),
       });
     } catch (error) {
       if (error instanceof InvalidScheduleError) {
@@ -11858,7 +11959,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (childParent) {
       return {
         agentName: childParent.childAgentName,
-        principal: childParent.principal,
+        principal: ownerOrLocal(childParent.principal),
         live: childParent.status === 'running',
       };
     }
@@ -11869,7 +11970,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (runState) {
       return {
         agentName: attribution?.agentName ?? findRunAgentName(runState) ?? BUREAU_AGENT_NAME,
-        principal: attribution?.principal,
+        principal: ownerOrLocal(attribution?.principal),
         live: runState.status === 'running',
       };
     }
@@ -11877,7 +11978,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!state || !isAgentRunWorkflowInput(state.input)) return undefined;
     return {
       agentName: state.input.agentName,
-      principal: attribution?.principal,
+      principal: ownerOrLocal(attribution?.principal),
       live: DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status),
     };
   }
@@ -12033,6 +12134,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     awaitSchedulerTask,
     listRuns,
     getRun,
+    getOwner,
     subscribeRunSnapshot,
     getRunReport,
     abortRun,
@@ -12234,6 +12336,40 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runtimeServices,
     );
   }
+
+  // COR-718: a schedule fire's run is owned by its schedule's owner, and the scheduler is
+  // only the actor on the `schedule.fired` entry. The fire's services are rebuilt on
+  // recovery, so the entry is written only when the trail holds none for this run.
+  scheduledFireHandler.resolve(async (fire) => {
+    runAttribution.set(fire.runId, {
+      ...runAttribution.get(fire.runId),
+      agentName: fire.agentName,
+      principal: fire.owner,
+    });
+    const trail = auditTrailInstance;
+    if (trail === undefined) return;
+    try {
+      const recorded = await trail.query({ runId: fire.runId, type: 'schedule.fired', limit: 1 });
+      if (recorded.length > 0) return;
+      await trail.record({
+        runId: fire.runId,
+        type: 'schedule.fired',
+        detail: {
+          scheduleId: fire.scheduleId ?? null,
+          sessionId: fire.sessionId,
+          agentName: fire.agentName,
+        },
+        principal: SCHEDULER_ACTOR,
+      });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[bureau] Could not record schedule.fired for run "${fire.runId}":`,
+        cause: error,
+      });
+    }
+  });
 
   // Wire the online eval sampler (AB-53) now that the audit trail and webhook
   // notifier exist (a sampled score is recorded to the former; a threshold

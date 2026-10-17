@@ -490,7 +490,7 @@ describe('children.dispatch', () => {
       agentName: 'worker',
       input: 'x',
       childRunId: 'someone-elses-run',
-      principal: 'mallory',
+      principal: 'anonymous:local',
     });
 
     expect(outcome).toEqual({
@@ -823,45 +823,54 @@ describe('children.list / get / wait authorization', () => {
     ).toThrow('BAD_REQUEST');
   });
 
-  it('gives a child of a parent without a principal to the principal that dispatched it', async () => {
+  it('gives a child of a parent without a principal to anonymous:local, whoever dispatches it', async () => {
     // `parent-1` has no principal, like a `createRun` or `bureau.run` run started without one.
     const fixture = createFixture();
-    const alices = await startedChild(fixture, { childRunId: 'child-a', principal: 'alice' });
-    const bobs = await startedChild(fixture, { childRunId: 'child-b', principal: 'bob' });
-    const unowned = await startedChild(fixture, { childRunId: 'child-c' });
+    const strangers = await Promise.all(
+      ['alice', 'bob'].map((principal) =>
+        fixture.topology.children.dispatch({
+          parentRunId: 'parent-1',
+          agentName: 'worker',
+          input: 'x',
+          principal,
+        }),
+      ),
+    );
+    const locals = await startedChild(fixture, {
+      childRunId: 'child-a',
+      principal: 'anonymous:local',
+    });
+    const trusted = await startedChild(fixture, { childRunId: 'child-b' });
     const { get, list, wait, signal, cancel } = fixture.topology.children;
-    const alicesAsBob = { parentRunId: 'parent-1', childRunId: 'child-a', principal: 'bob' };
+    const asBob = { parentRunId: 'parent-1', childRunId: 'child-a', principal: 'bob' };
     const ids = (records: readonly BureauChildRecord[]) => records.map((r) => r.childRunId);
 
-    expect([alices.principal, bobs.principal, unowned.principal]).toEqual([
-      'alice',
-      'bob',
-      undefined,
+    // A stranger finds no parent to dispatch under; the child records the parent's owner.
+    expect(strangers).toEqual([{ outcome: 'not-found' }, { outcome: 'not-found' }]);
+    expect([locals.principal, trusted.principal]).toEqual(['anonymous:local', 'anonymous:local']);
+    expect(fixture.starts.map((start) => start.principal)).toEqual([
+      'anonymous:local',
+      'anonymous:local',
     ]);
-    expect(fixture.starts.map((start) => start.principal)).toEqual(['alice', 'bob', undefined]);
 
-    // Every read and write checks the child record's principal, not the parent's.
-    expect(await get(alicesAsBob)).toBeUndefined();
-    expect(await wait(alicesAsBob)).toEqual({ outcome: 'not-found' });
-    expect(await signal({ ...alicesAsBob, name: 'proceed', payload: { step: 1 } })).toEqual({
+    // Every read and write checks the child record's owner.
+    expect(await get(asBob)).toBeUndefined();
+    expect(await wait(asBob)).toEqual({ outcome: 'not-found' });
+    expect(await signal({ ...asBob, name: 'proceed', payload: { step: 1 } })).toEqual({
       outcome: 'not-found',
     });
-    expect(await cancel(alicesAsBob)).toEqual({ outcome: 'not-found' });
+    expect(await cancel(asBob)).toEqual({ outcome: 'not-found' });
     expect(await statusOf(fixture.store, 'child-a')).toBe('running');
-    expect(ids(await list('parent-1', { principal: 'bob' }))).toEqual(['child-b', 'child-c']);
-    expect(ids(await list('parent-1', { principal: 'alice' }))).toEqual(['child-a', 'child-c']);
+    expect(ids(await list('parent-1', { principal: 'bob' }))).toEqual([]);
 
-    // The dispatching principal, and a trusted call without one, find it.
-    expect(
-      await get({ parentRunId: 'parent-1', childRunId: 'child-a', principal: 'alice' }),
-    ).toEqual(alices);
-    expect(await get({ parentRunId: 'parent-1', childRunId: 'child-a' })).toEqual(alices);
-    expect(ids(await list('parent-1'))).toEqual(['child-a', 'child-b', 'child-c']);
-
-    // A child that no principal owns is visible to every principal.
-    expect(await get({ parentRunId: 'parent-1', childRunId: 'child-c', principal: 'bob' })).toEqual(
-      unowned,
-    );
+    // The owner, and a trusted call without a principal, find it.
+    expect(await get({ ...asBob, principal: 'anonymous:local' })).toEqual(locals);
+    expect(await get({ parentRunId: 'parent-1', childRunId: 'child-a' })).toEqual(locals);
+    expect(ids(await list('parent-1', { principal: 'anonymous:local' }))).toEqual([
+      'child-a',
+      'child-b',
+    ]);
+    expect(ids(await list('parent-1'))).toEqual(['child-a', 'child-b']);
   });
 
   it('gives a child of a parent with a principal to that principal, whoever dispatched it', async () => {

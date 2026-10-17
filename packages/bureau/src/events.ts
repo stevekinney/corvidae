@@ -269,7 +269,7 @@ export class ReviewRejectedEvent extends ReviewLifecycleEvent {
 /**
  * Fired when `Bureau.sweepExpiredReviews` transitions a tool-approval
  * review past its binding's `expiresAt` (AB-224). Always attributed to the
- * synthetic principal `'system:expiry-sweep'`.
+ * synthetic principal `'system:expiry'`.
  */
 export class ReviewExpiredEvent extends ReviewLifecycleEvent {
   static readonly type = 'review.expired' as const;

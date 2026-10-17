@@ -162,6 +162,14 @@ describe('isScheduledAgentRunInput', () => {
     expect(isScheduledAgentRunInput({ agentName: 'a', input: 'hi', sessionId: 5 })).toBe(false);
     expect(isScheduledAgentRunInput({ agentName: 'a', input: 'hi', scheduleId: 5 })).toBe(false);
   });
+
+  it('accepts a string principal and rejects any other type', () => {
+    expect(
+      isScheduledAgentRunInput({ agentName: 'a', input: 'hi', principal: 'api-key:ops' }),
+    ).toBe(true);
+    expect(isScheduledAgentRunInput({ agentName: 'a', input: 'hi', principal: 5 })).toBe(false);
+    expect(isScheduledAgentRunInput({ agentName: 'a', input: 'hi', principal: null })).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -222,6 +230,43 @@ describe('createAgentSchedule', () => {
       overlap: 'skip',
       id: 'daily-digest-sched',
     });
+  });
+
+  it('writes the principal into the scheduled input beside scheduleId, and only when it is given', async () => {
+    const engine = makeSchedulingEngine();
+
+    await createAgentSchedule({
+      engine,
+      agentName: 'researcher',
+      spec: { every: '6h' },
+      input: 'hello',
+      id: 'owned-sched',
+      principal: 'api-key:ops',
+    });
+    await createAgentSchedule({
+      engine,
+      agentName: 'researcher',
+      spec: { every: '6h' },
+      input: 'hello',
+      id: 'unowned-sched',
+    });
+
+    const owned = engine.calls[0]!.input as ScheduledAgentRunInput;
+    expect(owned.scheduleId).toBe('owned-sched');
+    expect(owned.principal).toBe('api-key:ops');
+    expect('principal' in (engine.calls[1]!.input as ScheduledAgentRunInput)).toBe(false);
+  });
+
+  it('threads the principal through AgentScheduler.schedule', async () => {
+    const engine = makeSchedulingEngine();
+
+    await createAgentScheduler({ engine }).schedule('researcher', {
+      spec: { every: '6h' },
+      input: 'hello',
+      principal: 'api-key:ops',
+    });
+
+    expect((engine.calls[0]!.input as ScheduledAgentRunInput).principal).toBe('api-key:ops');
   });
 
   it('trims a padded schedule id before registering', async () => {

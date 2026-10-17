@@ -65,6 +65,13 @@ export interface ScheduledAgentRunInput {
    * the same per-fire session id after a crash.
    */
   scheduleId?: string | undefined;
+  /**
+   * The schedule's owner of record, written once when the schedule is created
+   * and read at every fire: a fire's run is owned by the schedule's owner, not
+   * by the scheduler that started it. Absent on a schedule created without one,
+   * which the Bureau reads as its local anonymous owner.
+   */
+  principal?: string | undefined;
 }
 
 /**
@@ -85,6 +92,8 @@ export function isScheduledAgentRunInput(value: unknown): value is ScheduledAgen
   if (sessionId !== undefined && typeof sessionId !== 'string') return false;
   const scheduleId = candidate['scheduleId'];
   if (scheduleId !== undefined && typeof scheduleId !== 'string') return false;
+  const principal = candidate['principal'];
+  if (principal !== undefined && typeof principal !== 'string') return false;
   return true;
 }
 
@@ -142,6 +151,11 @@ export interface CreateAgentScheduleOptions {
    * exposes only `'skip' | 'allow'` — see {@link AgentScheduleOverlapPolicy}.
    */
   overlap?: AgentScheduleOverlapPolicy | undefined;
+  /**
+   * The schedule's owner of record (maps to `ScheduledAgentRunInput.principal`).
+   * Written into the scheduled input only when given.
+   */
+  principal?: string | undefined;
   /**
    * Optional stable id for this schedule (used by `getSchedule`/`pauseSchedule`
    * etc.). Defaults to an id minted through `options.runtime` (AB-92/AB-253).
@@ -291,6 +305,8 @@ export interface AgentScheduleOptions {
    * `'skip' | 'allow'` — see {@link AgentScheduleOverlapPolicy}.
    */
   overlap?: AgentScheduleOverlapPolicy | undefined;
+  /** The schedule's owner of record; see {@link CreateAgentScheduleOptions.principal}. */
+  principal?: string | undefined;
   /** Optional stable schedule id (defaults to Weft-assigned uuid). */
   id?: string | undefined;
   /**
@@ -475,8 +491,19 @@ function assertCompatibleAgentSchedule(
 export async function createAgentSchedule(
   options: CreateAgentScheduleOptions,
 ): Promise<AgentScheduleHandle> {
-  const { engine, agentName, spec, input, description, session, overlap, id, idempotent, emitter } =
-    options;
+  const {
+    engine,
+    agentName,
+    spec,
+    input,
+    description,
+    session,
+    overlap,
+    id,
+    idempotent,
+    emitter,
+    principal,
+  } = options;
   const workflowType = options.workflowType ?? 'agentRun';
   const runtime = options.runtime ?? createDefaultRuntimeServices();
 
@@ -510,6 +537,7 @@ export async function createAgentSchedule(
     agentName,
     input,
     scheduleId,
+    ...(principal !== undefined ? { principal } : {}),
     ...(session !== undefined ? { sessionId: session.trim() } : {}),
   };
 

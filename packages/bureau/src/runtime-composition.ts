@@ -130,7 +130,13 @@ import {
   type GoalAttemptCostEstimation,
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
+import { ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
+import {
+  isPlainAuthorityRecord,
+  isSessionAuthorityAuthorized,
+  SESSION_OWNER_METADATA_KEY,
+} from './session-authority';
 import type {
   BureauMemoryAuthorityOptions,
   BureauOptions,
@@ -325,7 +331,7 @@ const defaultBureauAgentName = 'bureau';
  * long-lived Bureau. Bureau offers no unbounded opt-out.
  */
 const DEFAULT_SCHEDULER_RETENTION_WINDOW_MS = 3_600_000;
-const schedulerServicePrincipalId = 'service:scheduler';
+const schedulerServicePrincipalId = SCHEDULER_ACTOR;
 const schedulerServiceAuthorizationRevision = 'bureau:scheduler:1';
 const toolExecutionCapability = 'tools:execute';
 
@@ -684,9 +690,24 @@ export function createRunMemoryAuthority(
     projection: 'bureau',
     delegatedBy: [
       { principal: { kind: 'service', id: 'bureau' }, capabilities: deployment },
-      { principal: requestPrincipal(requestContext.authority.principalId), capabilities: granted },
+      {
+        principal: memoryPrincipalFor(requestContext.authority.principalId),
+        capabilities: granted,
+      },
     ],
   });
+}
+
+/**
+ * The memory principal behind a request authority's `principalId`. Memory
+ * classifies a `service:` identity as a service, but Bureau's own service
+ * principals (`system:scheduler`) live in the reserved `system:` namespace, so
+ * they are named here rather than read as users.
+ */
+function memoryPrincipalFor(principalId: string) {
+  return principalId.startsWith('system:')
+    ? ({ kind: 'service', id: principalId } as const)
+    : requestPrincipal(principalId);
 }
 
 function persistedScheduleMarker(input: ScheduledAgentRunInput): string | undefined {
@@ -1257,6 +1278,24 @@ export type RuntimeCompositionDependencies = {
    * late-bound one that waits until its recovery has started.
    */
   onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'];
+  /**
+   * COR-718 — called when a schedule fire's services are built, with the fire's
+   * run, its schedule, and the schedule's owner. `createBureau` records the
+   * fire's owner and its `schedule.fired` audit entry here. A fire is rebuilt on
+   * recovery, so this can run more than once for one fire; the hook is
+   * responsible for recording once.
+   */
+  onScheduledFire?: (fire: ScheduledFireNotice) => void | Promise<void>;
+};
+
+/** What {@link RuntimeCompositionDependencies.onScheduledFire} is told about one fire. */
+export type ScheduledFireNotice = {
+  readonly runId: string;
+  readonly scheduleId: string | undefined;
+  readonly sessionId: string;
+  readonly agentName: string;
+  /** The schedule's owner of record, which also owns this fire's run and, if it creates one, its session. */
+  readonly owner: string;
 };
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
@@ -2966,6 +3005,7 @@ async function buildRuntimeComposition(
     runId: string,
     replaceCurrentFireTranscript: boolean,
     getActiveSkillRecords: () => readonly SkillActivationRecord[],
+    owner: string,
   ): OnStepHook {
     return async (context) => {
       await store.update(sessionId, (existing: AgentSession | undefined) => {
@@ -2990,6 +3030,16 @@ async function buildRuntimeComposition(
           metadata: {
             ...next.metadata,
             lastScheduledFireRunId: runId,
+            // COR-718 — the fire's run is owned by the schedule's owner, recorded
+            // where a restart rehydrates run owners from, and a session this fire
+            // creates takes the same owner. An existing session keeps its own.
+            lastRunOwningPrincipals: {
+              ...(isPlainAuthorityRecord(next.metadata['lastRunOwningPrincipals'])
+                ? next.metadata['lastRunOwningPrincipals']
+                : {}),
+              [runId]: owner,
+            },
+            ...(existing === undefined ? { [SESSION_OWNER_METADATA_KEY]: owner } : {}),
             ...(sessionOwnedByAnotherRunningRun
               ? {}
               : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),
@@ -3549,6 +3599,23 @@ async function buildRuntimeComposition(
     // A match here means this runId already wrote to this session, so its
     // transcript (and any committed active-skills snapshot) belongs to a
     // stale, partial attempt that must be cleaned before replay re-appends.
+    // COR-718 — a fire's run is owned by the schedule's owner, and so is the
+    // session it creates. A fire into a session another principal owns would write
+    // into a conversation its owner never shared, so it is refused.
+    const owner = ownerOrLocal(scheduledInput.principal);
+    if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
+      return {
+        status: 'unavailable',
+        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which another principal owns`,
+      };
+    }
+    await dependencies.onScheduledFire?.({
+      runId,
+      scheduleId: recoveredScheduleId,
+      sessionId,
+      agentName,
+      owner,
+    });
     const isRecoveredFireReplay = existing?.metadata['lastScheduledFireRunId'] === runId;
     let conversation: Conversation;
     if (existing) {
@@ -3615,6 +3682,7 @@ async function buildRuntimeComposition(
               runId,
               isRecoveredFireReplay,
               runRuntime.getActiveSkillRecords,
+              owner,
             ),
           ),
         ),

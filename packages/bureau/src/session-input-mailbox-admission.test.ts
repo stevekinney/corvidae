@@ -4,6 +4,7 @@ import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
+import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
 
 /**
@@ -278,20 +279,11 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
     }
   });
 
-  it('returns a conflict with reason id-owned-by-other-principal when a different principal submits the same id in the same session', async () => {
-    // `submitSessionInput`'s pre-admission authorization check
-    // (`isSessionAuthorityAuthorized`) is single-owner PER RUN: a principal
-    // who never owned any run on this session is rejected as `not-found`
-    // before ever reaching mailbox admission (see the pre-admission
-    // describe block above — that is COR-412's existing, unchanged
-    // contract). So `id-owned-by-other-principal` is reachable only when
-    // the SECOND principal is legitimately authorized too — i.e. a session
-    // that has since been continued by a different principal's run, while
-    // the first principal's earlier session-input record is still open in
-    // the mailbox. This fixture builds exactly that: alice's run submits an
-    // input, then bob continues the SAME session with a second run
-    // (`createRun({ sessionId })`), which makes bob the current run's
-    // authorized principal, and bob then collides with alice's id.
+  it('answers not-found, not an id conflict, to a different principal that submits the same id in the same session', async () => {
+    // A session belongs to the owner of the run that created it (COR-718), so a
+    // different principal can neither continue the session with a run of its own
+    // nor reach its mailbox: `id-owned-by-other-principal` needs two principals
+    // that are both authorized, and no session has two.
     const bureau = await createBureau({
       agents: {},
       generate: createHungGenerate(),
@@ -310,25 +302,19 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
       });
       expect(original.outcome).toBe('admitted');
 
-      await bureau.createRun({ message: 'continue as bob', sessionId, principal: 'bob' });
-      await pollUntil(async () => {
-        const session = await bureau.getSession(sessionId);
-        return session?.metadata['lastRunStatus'] === 'running';
-      });
-
-      const conflicting = await bureau.submitSessionInput(sessionId, {
+      expect(
+        await rejectionOf(
+          bureau.createRun({ message: 'continue as bob', sessionId, principal: 'bob' }),
+        ),
+      ).toMatchObject({ code: 'NOT_FOUND' });
+      const refused = await bureau.submitSessionInput(sessionId, {
         id: 'shared-id',
         principal: 'bob',
         deliveryMode: 'steer',
         payload: 'alice payload',
       });
 
-      expect(conflicting.outcome).toBe('conflict');
-      const { conflict } = conflicting as Extract<
-        SessionInputAdmissionOutcome,
-        { outcome: 'conflict' }
-      >;
-      expect(conflict.reason).toBe('id-owned-by-other-principal');
+      expect(refused).toEqual({ outcome: 'not-found' });
     } finally {
       await bureau.dispose();
     }
