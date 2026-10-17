@@ -399,11 +399,14 @@ export const CONTRACT: Record<string, ComponentContract> = {
   pagination: {
     kind: 'literal',
     props: {
-      currentPage: { optional: false, type_kind: 'TSNumberKeyword', default: B(1) },
+      currentPage: { optional: true, type_kind: 'TSNumberKeyword', default: B(1) },
       totalPages: { optional: true, type_kind: 'TSNumberKeyword', default: NO_DEFAULT },
       hasPreviousPage: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       hasNextPage: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       totalCount: { optional: true, type_kind: 'TSNumberKeyword', default: NO_DEFAULT },
+      countLabel: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      onPrevious: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      onNext: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},

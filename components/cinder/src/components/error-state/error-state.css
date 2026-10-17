@@ -1,0 +1,55 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * ERROR STATE
+ * ======================================== */
+
+  .cinder-error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    inline-size: 100%;
+    padding-block: var(--cinder-space-12);
+    padding-inline: var(--cinder-space-8);
+  }
+
+  .cinder-error-state-alert {
+    max-inline-size: 36rem;
+  }
+
+  .cinder-error-state-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-error-state-title {
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-medium);
+    line-height: var(--cinder-leading-snug);
+    color: var(--cinder-text-default);
+    margin: 0;
+  }
+
+  .cinder-error-state-description {
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+    margin: 0;
+  }
+
+  .cinder-error-state-detail {
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-normal);
+    color: var(--cinder-text-muted);
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-error-state-action {
+    margin-block-start: var(--cinder-space-2);
+  }
+}

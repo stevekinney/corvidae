@@ -85,6 +85,7 @@ export const productOracles: Record<string, ProductOracle> = {
   text: { selector: `[class*="cinder-text"]`, text: 'Heading 1' },
   drawer: { selector: 'button', text: 'Open drawer', behavior: 'drawer' },
   'empty-state': { selector: `[class*="cinder-empty-state"]`, text: 'No results found' },
+  'error-state': { selector: `[class*="cinder-error-state"]`, text: 'Could not load runs' },
   feed: {
     selector: `[class*="cinder-feed"]`,
     attribute: { name: 'aria-label', value: 'Project activity' },

@@ -245,6 +245,7 @@ const SIDEBAR_BASELINE = [
   'drawer',
   'dropdown',
   'empty-state',
+  'error-state',
   'feed',
   'feed-boundary',
   'file-upload',
