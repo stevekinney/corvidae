@@ -102,7 +102,7 @@ async function releaseFreshClaimOnRejectionUnlessDeferred(
  * (see {@link joinResumeAwaitingAdoption}). Its own `onRecoveredWorkflow` hook does not fire for that
  * run, because the run was recovered once, by the resume it joined. The in-flight resume's own
  * promise settles in the same number of turns as it did before joining existed: settlement order
- * on this path is load-bearing (COR-1425; one extra turn flips the WFT-79 F2 race in
+ * on this path is load-bearing (one extra turn flips the WFT-79 F2 race in
  * `handle-result.test.ts`).
  */
 export async function resumeWorkflowFromStorage(

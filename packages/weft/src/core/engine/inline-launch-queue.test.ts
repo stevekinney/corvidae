@@ -7,6 +7,7 @@ import { workflow, type WorkflowContext } from '../types.ts';
 import { CURRENT_CHECKPOINT_SCHEMA_VERSION } from '../types/checkpoint.ts';
 import {
   flushQueuedInlineWorkflowStartsDirectly,
+  isEngineHeldForScheduledInlineFlushForTesting,
   queueInlineWorkflowExecutionStart,
 } from './inline-launch-queue.ts';
 import { getInternals } from './internals.ts';
@@ -50,6 +51,8 @@ describe('inline launch queue', () => {
         swallowPromiseRejection,
       },
     );
+    // COR-1425: the timeout flush is scheduled, so the engine is held until it runs.
+    expect(isEngineHeldForScheduledInlineFlushForTesting(internals)).toBe(true);
 
     await yieldToEventLoop();
     await yieldToEventLoop();
@@ -57,6 +60,7 @@ describe('inline launch queue', () => {
     expect(swallowPromiseRejection.mock.calls.length).toBeGreaterThanOrEqual(1);
     expect(onStarted).toHaveBeenCalledTimes(1);
     expect(internals.queuedInlineWorkflowStartFlushScheduled).toBe(false);
+    expect(isEngineHeldForScheduledInlineFlushForTesting(internals)).toBe(false);
   });
 
   describe("startQueuedInlineWorkflowExecution: ADR 0002 'inline-macrotask-drive' wake kind", () => {
