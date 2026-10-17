@@ -292,6 +292,10 @@ interface RelaunchMarker {
  * never sleeps. Like the racer scenario it boots real processes, so it runs at
  * module scope and its test reports the outcome.
  */
+/** The one line Bureau writes when a reclaimed run reaches recovery before composition finishes. */
+const compositionHoldDiagnostic =
+  /^\[bureau\] Run "[^"\n]+" reached recovery before the bureau finished composing; holding it until composition completes\.\n/m;
+
 async function relaunchScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `corvidae-process-relaunch-${backend}-`));
   const storagePath = join(directory, 'bureau');
@@ -335,7 +339,11 @@ async function relaunchScenario(backend: Backend, scope: ScenarioScope): Promise
       new Response(relaunched.stderr).text(),
     ]);
     runtime.timers.clearTimeout(deadline);
-    expect({ exitCode: relaunched.exitCode, killedAtDeadline, stderr }).toEqual({
+    // COR-1509: on a loaded host the engine can reclaim the run before Bureau finishes composing.
+    // Bureau then holds the run until composition completes and says so once; the marker below
+    // proves the held run still recovers cleanly. Any other output fails the scenario.
+    const unexpectedStderr = stderr.replace(compositionHoldDiagnostic, '');
+    expect({ exitCode: relaunched.exitCode, killedAtDeadline, stderr: unexpectedStderr }).toEqual({
       exitCode: 0,
       killedAtDeadline: false,
       stderr: '',

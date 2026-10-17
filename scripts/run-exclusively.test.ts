@@ -14,6 +14,8 @@ import {
   queueDirectoryFor,
   reclaimAbandoned,
   runExclusively,
+  withPreflight,
+  withTurborepoDefaults,
   type HostLockHolder,
   type OwnerRecord,
 } from './run-exclusively';
@@ -637,4 +639,45 @@ describe('a reservation held across stages', () => {
 
   test('a token that does not match the current holder does not bypass the lock', () =>
     rethrow(staleReservationDoesNotBypassLock));
+});
+
+describe('withTurborepoDefaults', () => {
+  const gibibyte = 1024 ** 3;
+
+  test('shares one Turborepo cache inside the Git common directory', () => {
+    const environment = withTurborepoDefaults({}, '/repository/.git', {
+      totalMemoryBytes: 64 * gibibyte,
+      processors: 10,
+    });
+    expect(environment['TURBO_CACHE_DIR']).toBe('/repository/.git/turbo-cache');
+  });
+
+  test('runs one task per 16 GiB of memory, at least one and at most one per processor', () => {
+    const concurrencyFor = (totalMemoryBytes: number, processors: number) =>
+      withTurborepoDefaults({}, '/repository/.git', { totalMemoryBytes, processors })[
+        'TURBO_CONCURRENCY'
+      ];
+    expect(concurrencyFor(64 * gibibyte, 10)).toBe('4');
+    expect(concurrencyFor(8 * gibibyte, 10)).toBe('1');
+    expect(concurrencyFor(256 * gibibyte, 6)).toBe('6');
+  });
+
+  test("keeps the caller's own cache directory and concurrency", () => {
+    const environment = withTurborepoDefaults(
+      { TURBO_CACHE_DIR: '/elsewhere', TURBO_CONCURRENCY: '1', PATH: '/bin' },
+      '/repository/.git',
+      { totalMemoryBytes: 64 * gibibyte, processors: 10 },
+    );
+    expect(environment).toEqual({
+      TURBO_CACHE_DIR: '/elsewhere',
+      TURBO_CONCURRENCY: '1',
+      PATH: '/bin',
+    });
+  });
+});
+
+describe('withPreflight', () => {
+  test('checks the install against the lockfile before the command runs', () => {
+    expect(withPreflight('turbo run lint')).toBe('bun install --frozen-lockfile && turbo run lint');
+  });
 });

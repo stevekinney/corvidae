@@ -14,6 +14,8 @@ playwright-report/
 test-results/
 .playwright/
 *.tsbuildinfo
+# Declarations a library emits for its consumers' type-checks (`types` task).
+.types/
 # Agent worktrees are separate checkouts with their own formatting state.
 .claude/worktrees/
 # The playground's build scratch directories hold generated entry files.

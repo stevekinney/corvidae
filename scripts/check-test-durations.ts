@@ -213,7 +213,9 @@ export function laneProblems(
     problems.push(`${workspace}: has ${SLOW_LANE_SUFFIX} files but defines no test:slow script`);
   }
   const coverage = scripts['test:coverage'] ?? '';
-  if (coverage.includes('bun test') && !ignoresSlowFiles(coverage)) {
+  const runsBunTest =
+    coverage.includes('bun test') || WRAPPER_NAMES.some((name) => coverage.includes(name));
+  if (runsBunTest && !ignoresSlowFiles(coverage)) {
     problems.push(
       `${workspace}: test:coverage runs ${SLOW_LANE_SUFFIX} files under Bun's default timeout; ignore them there too with --path-ignore-patterns`,
     );

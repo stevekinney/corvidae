@@ -169,39 +169,52 @@ describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
     // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
-    // instead of rejoining the queue at every stage. Its stages find the lock held by their parent
-    // and reuse it rather than queueing behind it.
+    // instead of rejoining the queue at every stage.
     const validationChain = scripts['validate']?.match(
       /^bun scripts\/run-exclusively\.ts '([^']+)'$/,
     );
     const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
-      'bun run lint',
-      'bun run typecheck',
-      'bun run test',
-      // COR-1499: slow correctness tests run serially after the fast phase, then the duration report
-      // (warnings only) reads the fast phase's reports.
+      'bun run lint:root',
+      'bun run lint:styles',
+      'bun run typecheck:root',
+      // Every workspace task in one turbo run, so lint, type-checks, tests, and coverage overlap
+      // under the memory-scaled concurrency instead of waiting on each other stage by stage. The
+      // applications' builds stay out: the playground's static export alone takes about five
+      // minutes, and `bun run build` and the Vercel project's own build still run it.
+      'turbo run lint typecheck test:self test test:browser-fixtures test:coverage',
+      // COR-1499: slow correctness tests run serially after the parallel phase, then the duration
+      // report (warnings only) reads the fast phase's reports.
       'bun run test:slow',
       'bun run report:test-durations',
-      'bun run coverage',
-      'bun run build',
       'bun run format:check',
       'bun run audit',
     ]);
     // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
     // agent sessions stop oversubscribing it and timing out unrelated tests.
-    for (const stage of ['lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
+    for (const stage of ['check', 'lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
       expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
     }
+    expect(scripts['typecheck']).toBe(
+      "bun scripts/run-exclusively.ts 'bun run typecheck:root && turbo run typecheck'",
+    );
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
     expect(scripts['test']).toBe(
-      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures --concurrency=1'",
+      "bun scripts/run-exclusively.ts 'turbo run test:self test test:browser-fixtures'",
+    );
+    // The development loop: only the workspaces a change can affect, judged against the default
+    // branch. The root-owned browser-fixture task runs outside `--affected`, which filters by
+    // package and would skip it for a change confined to `scripts/browser-fixtures`; its key follows
+    // that workspace through `transit`, so it replays from cache when nothing there changed.
+    // `validate` stays the full gate.
+    expect(scripts['check']).toBe(
+      "bun scripts/run-exclusively.ts 'bun run lint:root && turbo run lint typecheck test:self test --affected && turbo run test:browser-fixtures'",
     );
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
     expect(scripts['test:self']).toBe(
-      'bun scripts/bun-test-junit.ts --report-name=self ./scripts/*.test.ts ./scripts/terminal/*.test.ts',
+      'bun scripts/bun-test-junit.ts --report-name=self --parallel=4 ./scripts/*.test.ts ./scripts/terminal/*.test.ts',
     );
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
@@ -275,7 +288,24 @@ describe('internal workspace architecture', () => {
         // ratchet sees every workspace (COR-1499). A direct `bun test` would drop one silently.
         expect(scripts['test'], directory).toMatch(/\bbun-test-junit\.ts\b/);
       }
-      expect(scripts['typecheck'], directory).toMatch(/\b(?:svelte-check|tsc --noEmit)\b/);
+      expect(scripts['typecheck'], directory).toMatch(
+        /\b(?:svelte-check|tsc --noEmit|tsc -b (?:\.\/)?tsconfig\.json)\b/,
+      );
+      // A type-check that reads a dependency's emitted declarations runs in build mode, which
+      // rebuilds them when the dependency's source is newer, so it never checks stale types.
+      const typescriptConfigurationFile = Bun.file(join(root, directory, 'tsconfig.json'));
+      const typescriptConfiguration: { references?: unknown[] } =
+        (await typescriptConfigurationFile.exists())
+          ? await typescriptConfigurationFile.json()
+          : {};
+      if ((typescriptConfiguration.references ?? []).length > 0) {
+        expect(scripts['typecheck'], directory).toMatch(/^tsc -b (?:\.\/)?tsconfig\.json\b/);
+      }
+      // A library that emits declarations for its consumers does so through the `types` task,
+      // which `typecheck` depends on, so Turborepo orders and caches the emit.
+      if (await Bun.file(join(root, directory, 'tsconfig.source.json')).exists()) {
+        expect(scripts['types'], directory).toBe('tsc -b tsconfig.source.json');
+      }
 
       for (const [name, command] of Object.entries(scripts)) {
         expect(command, `${directory}: ${name}`).not.toMatch(/\b(?:deno|node|npm|npx|pnpm|yarn)\b/);

@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "rootDir": ".",
+    "outDir": ".types",
+    "tsBuildInfoFile": ".types/tsconfig.source.tsbuildinfo"
+  },
+  "include": ["src", "scripts", "package.json"],
+  "exclude": [
+    "node_modules",
+    "src/ui/**",
+    "scripts/ui-browser/**",
+    "scripts/ui-coverage/**",
+    "**/*.test.ts",
+    "**/*.bench.ts",
+    "src/cli/__fixtures__/**",
+    "src/client/__fixtures__/**",
+    "**/*.test-d.ts"
+  ]
+}

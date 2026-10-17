@@ -139,6 +139,10 @@ describe('laneProblems for wrapping and coverage', () => {
     expect(laneProblems('w', { ...scripts, 'test:coverage': 'bun test --coverage' }, true)).toEqual(
       [expect.stringContaining('test:coverage')],
     );
+    // A coverage run through the JUnit wrapper is still `bun test` underneath.
+    expect(
+      laneProblems('w', { ...scripts, 'test:coverage': `${wrapped} --coverage` }, true),
+    ).toEqual([expect.stringContaining('test:coverage')]);
     expect(
       laneProblems(
         'w',
