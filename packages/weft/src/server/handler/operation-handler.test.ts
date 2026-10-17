@@ -410,7 +410,7 @@ describe('createOperationHandler publicPaths', () => {
     expect(await statusOf(handler, new Request('http://localhost/openapi.json'))).toBe(401);
   });
 
-  it('refuses an entry the handler does not serve, or that a mount claims', () => {
+  it('refuses an entry the handler does not serve, and accepts one beside a mount’s own', () => {
     const build =
       (publicPaths: string[], mountPrefix = '/a2a') =>
       () =>

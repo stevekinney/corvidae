@@ -98,26 +98,19 @@ export const DEFAULT_OPERATION_HANDLER_PUBLIC_PATHS: ReadonlyArray<string> = [
 
 /**
  * Validate the handler's own `publicPaths` once, at construction, with the
- * rules a mount's `publicPaths` follow: an entry is an absolute path, belongs
- * to a route the handler serves (anything else is inert and almost certainly a
- * typo), and is not claimed by a mount, so an unauthenticated path has exactly
- * one owner.
+ * rules a mount's `publicPaths` follow: an entry is an absolute path that
+ * belongs to a route the handler serves (anything else is inert and almost
+ * certainly a typo). A mount can never claim such a path, because a mount
+ * prefix or public path that equals or lies beneath a catalog route is refused
+ * at construction, so an unauthenticated path always has exactly one owner.
  */
-export function resolveHandlerPublicPaths(
-  paths: ReadonlyArray<string>,
-  mounts: ResolvedMounts,
-): ReadonlySet<string> {
+export function resolveHandlerPublicPaths(paths: ReadonlyArray<string>): ReadonlySet<string> {
   const resolved = new Set<string>();
   for (const path of paths) {
     const normalized = assertMountPath(path, 'publicPaths entry');
     if (!OPERATION_HANDLER_CATALOG_ROUTE_PATHS.some((route) => isAtOrUnder(normalized, route))) {
       throw new Error(
         `createOperationHandler: publicPaths entry "${normalized}" is not a path the handler serves`,
-      );
-    }
-    if (mounts.match(normalized) !== undefined) {
-      throw new Error(
-        `createOperationHandler: publicPaths entry "${normalized}" belongs to a mount; declare it in that mount's publicPaths`,
       );
     }
     resolved.add(normalized);

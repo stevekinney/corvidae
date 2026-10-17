@@ -77,7 +77,7 @@ export type OperationHandlerOptions<Host> = {
    * of them. This is the only place the handler's own public paths are
    * decided: `createOperationHandlerAuthenticator` has none of its own, and a
    * mount's `publicPaths` cover its paths. An entry must be a path the handler
-   * serves and must not belong to a mount.
+   * serves (a mount cannot claim one, so the two never overlap).
    */
   readonly publicPaths?: ReadonlyArray<string>;
   readonly discoveryInfo?: DiscoveryInfo;
@@ -200,7 +200,6 @@ export function createOperationHandler<Host>(
   const mounts = resolveMounts(options.mounts ?? []);
   const publicPaths = resolveHandlerPublicPaths(
     options.publicPaths ?? DEFAULT_OPERATION_HANDLER_PUBLIC_PATHS,
-    mounts,
   );
   const corsPolicy =
     options.cors === undefined
@@ -254,22 +253,17 @@ export function createOperationHandler<Host>(
  * Add the CORS headers to a mutable copy of the response. A `fetch()` result,
  * `Response.redirect()`, or any response a hook hands back may carry immutable
  * headers, and `decorateResponseWithCors` sets them in place. The copy shares
- * the body stream, so nothing is buffered; a response that cannot be copied
- * (`Response.error()`) is returned undecorated, which is also how a browser
- * reads it.
+ * the body stream, so nothing is buffered. A network-error response
+ * (`Response.error()`) has no headers to add and cannot be copied, so it is
+ * returned as it is.
  */
 function decorate(
   policy: Parameters<typeof decorateResponseWithCors>[0],
   request: Request,
   response: Response,
 ): Response {
-  let copy: Response;
-  try {
-    copy = new Response(response.body, response);
-  } catch {
-    return response;
-  }
-  return decorateResponseWithCors(policy, request, copy);
+  if (response.type === 'error') return response;
+  return decorateResponseWithCors(policy, request, new Response(response.body, response));
 }
 
 function mountContext(

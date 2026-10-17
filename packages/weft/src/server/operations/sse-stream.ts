@@ -219,13 +219,13 @@ export function createEventEnvelopeSSEStream<TEnvelope extends ServerSentEventEn
           // the response, and only then let the (possibly stalled) close hook
           // run on its own: a hook that never settles must not hold the
           // connection open.
-          const cleanup = closeResources();
+          const released = closeResources();
           try {
             controller.close();
           } catch {
             // The stream may already have ended.
           }
-          void cleanup;
+          void released;
         }, options.maxDurationMs);
       }
 
