@@ -13,9 +13,9 @@ coveragePathIgnorePatterns = [
   # allowance or written test should ever need to describe.
   "src/cli/__fixtures__/**",
   # Byte-for-byte copies of `@lostgradient/testing`'s Svelte compile plugin and
-  # its environment configuration (`scripts/check-svelte-plugin-copies.ts`
+  # its environment configuration (`scripts/check-test-support-copies.ts`
   # fails on any drift). Their behavior is tested where they are owned, in
-  # `packages/testing/src/svelte-plugin.test.ts` and
+  # `testing/testing/src/svelte-plugin.test.ts` and
   # `environment-configuration.test.ts`. The dashboard build test
   # (`scripts/build-dashboard.test.ts`) loads them in this shard only to
   # compile the UI, which reaches a fraction of their branches.

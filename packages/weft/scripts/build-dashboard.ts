@@ -13,10 +13,9 @@
  * minification. The metafile stays in memory: written into `dashboard/` it would be about 2.3 MB,
  * past the disk budget and into the tarball. Pass `--metafile <path>` to write it elsewhere.
  *
- * The page entry is generated here as in-memory files rather than read from disk, so the script
- * needs nothing outside `src/` and the declared build inputs it imports: it runs unchanged in the
- * Weft mirror, which emits only `src/**` and those inputs (`scripts/mirror/source.ts`). It imports
- * nothing from a private workspace for the same reason.
+ * The page entry is generated here as in-memory files rather than read from disk, so the build
+ * reads nothing outside `src/` and the vendored helpers under `scripts/lib/`, and it imports
+ * nothing from a private workspace.
  *
  * The output directory is replaced only once a build succeeds: Bun writes into a staging
  * directory beside it, which {@link replaceDirectory} swaps into place, so a failed build or a
