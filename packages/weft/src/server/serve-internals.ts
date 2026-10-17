@@ -22,11 +22,7 @@ import {
   validateRateLimitConfig,
   type Authenticator,
 } from './authentication.ts';
-import {
-  createAdditionalScopeSet,
-  filterRecognizedScopes,
-  type AdditionalScopeSet,
-} from './authorization-scope.ts';
+import { createAdditionalScopeSet } from './authorization-scope.ts';
 import { DeadlineTracker } from './deadline-tracker.ts';
 import { createEngineEventFeedBackend } from './engine-event-feed-backend.ts';
 import { createFleetEventFeed } from './fleet-event-feed.ts';
@@ -115,8 +111,6 @@ const NO_AUTHENTICATION_REJECT_ERROR =
   '[weft] Refusing to start server with no authentication. Configure serve({ auth }) or set unauthenticatedAccess: "allow" only for trusted local development.';
 const NO_AUTHENTICATION_ENVIRONMENT_ERROR =
   '[weft] Refusing to start server with no authentication because WEFT_SERVER_AUTHENTICATION_REQUIRED requires authentication. Configure serve({ auth }) or unset WEFT_SERVER_AUTHENTICATION_REQUIRED only for trusted local development.';
-const STATIC_API_KEYS_WITHOUT_SCOPES_ERROR =
-  '[weft] Refusing to start server: auth.apiKeys admit callers with no scopes. Configure auth.defaultApiKeyScopes (the scopes every static API key holds) or auth.resolveApiKeyPrincipal (a per-key principal); every operation requires a scope, so an unscoped key would be refused everywhere.';
 const TRUTHY_AUTHENTICATION_REQUIREMENT_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSY_AUTHENTICATION_REQUIREMENT_VALUES = new Set(['0', 'false', 'no', 'off']);
 
@@ -158,24 +152,6 @@ function authenticationRequiredByEnvironment(rawValue: string | undefined): bool
   throw new Error(
     `[weft] Invalid ${AUTHENTICATION_REQUIRED_ENVIRONMENT_VARIABLE} value "${rawValue}". Use one of: 1, true, yes, on, 0, false, no, off.`,
   );
-}
-
-/**
- * Refuse to start a server whose static API keys would admit callers holding
- * no scope. Every catalog operation requires a scope, so such a key would pass
- * authentication and then be refused everywhere; the misconfiguration is
- * loudest at startup. A `resolveApiKeyPrincipal` resolver is authoritative for
- * the key space and supplies each key's scopes itself.
- */
-function assertStaticApiKeysHaveScopes(
-  auth: NonNullable<ServeOptions['auth']>,
-  additionalScopes: AdditionalScopeSet,
-): void {
-  if (auth.apiKeys === undefined || auth.apiKeys.length === 0) return;
-  if (auth.resolveApiKeyPrincipal !== undefined) return;
-  const grantedScopes = filterRecognizedScopes(auth.defaultApiKeyScopes ?? [], additionalScopes);
-  if (grantedScopes.length > 0) return;
-  throw new Error(STATIC_API_KEYS_WITHOUT_SCOPES_ERROR);
 }
 
 export function assertAuthenticationPosture(
@@ -253,14 +229,11 @@ function createServerAuthenticator(options: ServeOptions): Promise<Authenticator
  * synchronously so misconfigurations fail fast before `Bun.serve()` binds.
  */
 export function resolveNetworkConfig(options: ServeOptions): ResolvedNetworkConfig {
-  if (options.auth) {
-    validateAuthConfig(options.auth);
-  }
   // Fail fast before binding: a malformed or `weft.`-namespaced registration
   // would otherwise surface only as a rejected authenticator promise.
   const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
   if (options.auth) {
-    assertStaticApiKeysHaveScopes(options.auth, additionalScopes);
+    validateAuthConfig(options.auth, { additionalScopes });
   }
   if (options.rateLimit) {
     // Fail fast before binding: a non-positive window or budget is a

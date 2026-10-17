@@ -14,15 +14,10 @@
  * build) and must never be imported by production server code.
  */
 
-import type { AuthContext } from './authentication.ts';
-import { handleRequest, type HandlerOptions } from './handler.ts';
-import { principalFromUnauthenticatedLocal } from './principal.ts';
+import { handleRequest, unauthenticatedLocalAuthContext, type HandlerOptions } from './handler.ts';
 
 /** The context `serve()` attaches to every request when it has no `auth`. */
-export const LOCAL_USER_AUTH_CONTEXT: AuthContext = Object.freeze({
-  method: 'unauthenticated-local',
-  principal: principalFromUnauthenticatedLocal(),
-});
+export const LOCAL_USER_AUTH_CONTEXT = unauthenticatedLocalAuthContext();
 
 /**
  * `handleRequest` as the local user. An `authContext` in `options` still wins,

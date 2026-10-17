@@ -64,7 +64,7 @@
   import { faultTreatment } from '../../../lib/faults.ts';
   import { queryKeys } from '../../../lib/query.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
-  import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
+  import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { fetchActiveWorkflowRevision } from '../../../lib/workflow-revision.ts';
   import { getFleetEventSource } from '../../../app/engine-status.svelte.ts';
   import CheckpointsTab from './checkpoints/checkpoints-tab.svelte';
@@ -81,11 +81,16 @@
   import UpdatesTab from './updates-tab.svelte';
   import './workflow-detail.css';
   import { finalizerQueryKey, getFinalizerStatus } from './workflow-observability.ts';
-  import { statusMayHaveFinalizer, type WorkflowContextualAction } from './workflow-status.ts';
+  import {
+    ACTION_REQUIRED_SCOPE,
+    statusMayHaveFinalizer,
+    type WorkflowContextualAction,
+  } from './workflow-status.ts';
 
   const client: HttpClient = getClient();
   const queryClient = useQueryClient();
   const principalStore = getPrincipalStore();
+  const actionGate = $derived(scopeGate(principalStore, [ACTION_REQUIRED_SCOPE]));
   const clock = new TickingClock();
   onDestroy(() => clock.dispose());
 
@@ -288,6 +293,7 @@
       onRunQuery={runQuery}
       activeRevision={resolvedActiveRevision}
       onRestart={() => (restartOpen = true)}
+      {actionGate}
     />
 
     {#if restartOpen}

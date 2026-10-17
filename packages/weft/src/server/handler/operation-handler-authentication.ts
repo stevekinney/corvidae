@@ -64,7 +64,7 @@ export type OperationHandlerAuthenticatorOptions = {
  *   operations: [],
  *   host: {},
  *   authenticate: createOperationHandlerAuthenticator(
- *     { apiKeys: ['s3cr3t'] },
+ *     { apiKeys: ['s3cr3t'], defaultApiKeyScopes: ['workflows:read'] },
  *     { additionalScopes: ['bureau.tasks:read'] },
  *   ),
  * });
@@ -75,7 +75,8 @@ export function createOperationHandlerAuthenticator(
   config: AuthConfig,
   options: OperationHandlerAuthenticatorOptions = {},
 ): OperationHandlerAuthenticator {
-  validateAuthConfig(config);
+  const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
+  validateAuthConfig(config, { additionalScopes });
   if (config.publicPaths !== undefined) {
     throw new Error(
       'createOperationHandlerAuthenticator: config.publicPaths is not accepted. Public paths ' +
@@ -83,7 +84,6 @@ export function createOperationHandlerAuthenticator(
         '`publicPaths`; the authenticator itself has none.',
     );
   }
-  createAdditionalScopeSet(options.additionalScopes);
   // The authenticator's built-in public paths (`/v1/metrics`, `/.well-known/*`)
   // would admit those requests unauthenticated at a mount that never declared
   // them, so the inner authenticator is given none.

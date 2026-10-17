@@ -33,7 +33,7 @@
 
   let {
     client,
-    scopes = ['reviews:read', 'events:read'],
+    scopes = ['reviews:read', 'reviews:write', 'events:read'],
     pendingQuery,
     completedQuery,
     submitting = false,

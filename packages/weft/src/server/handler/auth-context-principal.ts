@@ -54,3 +54,30 @@ export function authContextToPrincipal(authContext: AuthContext | undefined): Pr
     }
   }
 }
+
+const UNAUTHENTICATED_LOCAL_AUTH_CONTEXT: AuthContext = Object.freeze({
+  method: 'unauthenticated-local',
+  principal: principalFromUnauthenticatedLocal(),
+});
+
+/**
+ * The context a host with exactly one caller attaches to every request: the
+ * `unauthenticated-local` principal, which holds every built-in scope.
+ *
+ * `serve()` with no `auth` attaches it for you, and `setupServiceWorker()`
+ * defaults to it. Use it as the recipe for any other single-user host, for
+ * example `createOperationHandler({ authenticate: async () =>
+ * unauthenticatedLocalAuthContext() })`. It identifies nobody and refuses
+ * nothing, so never attach it to requests from callers you do not trust.
+ *
+ * @example
+ * ```ts
+ * import { authContextToPrincipal, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+ *
+ * const principal = authContextToPrincipal(unauthenticatedLocalAuthContext());
+ * console.log(principal.method); // 'unauthenticated-local'
+ * ```
+ */
+export function unauthenticatedLocalAuthContext(): AuthContext {
+  return UNAUTHENTICATED_LOCAL_AUTH_CONTEXT;
+}

@@ -17,6 +17,7 @@
 
 import { describe, expect, it } from 'bun:test';
 
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createAuthenticator, validateAuthConfig, type AuthConfig } from './authentication.ts';
 import type { AuthorizationScope } from './authorization-scope.ts';
 import { principalFromApiKey } from './principal.ts';
@@ -52,19 +53,19 @@ describe('API-key admission — resolver absent', () => {
     expect(result.principal.hasScope('workflows:read')).toBe(true);
   });
 
-  it('static apiKeys admits with empty scopes when defaultApiKeyScopes omitted', async () => {
+  it('static apiKeys with no defaultApiKeyScopes are refused, since an unscoped key is refused everywhere', async () => {
     const config: AuthConfig = { apiKeys: ['static-key-2'] };
-    const auth = await createAuthenticator(config);
-    const result = await auth(requestWithKey('static-key-2'));
 
-    expect(result.authenticated).toBe(true);
-    if (!result.authenticated) throw new Error('unreachable');
-    if (result.principal === undefined) throw new Error('expected principal');
-    expect(result.principal.scopes.size).toBe(0);
+    expect(await throwingRejectionOf(createAuthenticator(config))).toThrow(
+      /defaultApiKeyScopes.*resolveApiKeyPrincipal/s,
+    );
   });
 
   it('key not in static list → rejected', async () => {
-    const config: AuthConfig = { apiKeys: ['static-key-3'] };
+    const config: AuthConfig = {
+      apiKeys: ['static-key-3'],
+      defaultApiKeyScopes: ['workflows:read'],
+    };
     const auth = await createAuthenticator(config);
     const result = await auth(requestWithKey('wrong-key'));
 

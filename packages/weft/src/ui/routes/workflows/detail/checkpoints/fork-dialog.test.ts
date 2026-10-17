@@ -11,8 +11,9 @@ function allScopesPrincipal(): Principal {
   return { scopes: AUTHORIZATION_SCOPES, unauthenticatedAccess: null };
 }
 
+/** Holds `workflows:write`, which the fork needs, but not the `workflows:read` the revision listing needs. */
 function deniedPrincipal(): Principal {
-  return { scopes: [], unauthenticatedAccess: null };
+  return { scopes: ['workflows:write'], unauthenticatedAccess: null };
 }
 
 function newQueryClient(): QueryClient {
@@ -298,6 +299,33 @@ describe('ForkDialog', () => {
       expect(getByText('Could not load the list of installed revisions.')).not.toBeNull();
     });
     expect(queryByRole('textbox', { name: 'Revision id' })).toBeNull();
+  });
+
+  test('disables Create fork for a principal without workflows:write, which weft.workflows.fork requires', async () => {
+    const forkCalls: unknown[] = [];
+    const client = baseClient({
+      fork: async (_id, options) => {
+        forkCalls.push(options);
+        return { id: 'wf-forked-1' };
+      },
+    });
+
+    const { getByRole } = render(ForkDialogHarness, {
+      props: {
+        client,
+        workflowId: 'wf-1',
+        initialStep: 3,
+        workflowType: 'order-processing',
+        sourceRevision: 'order-processing-rev-current',
+        principal: { scopes: ['workflows:read'], unauthenticatedAccess: null },
+        queryClient: newQueryClient(),
+      },
+    });
+
+    const create = getByRole('button', { name: 'Create fork' });
+    expect(create.hasAttribute('disabled')).toBe(true);
+    await fireEvent.click(create);
+    expect(forkCalls).toEqual([]);
   });
 
   test('submitting with an explicit revision passes {fromStep, revision} to client.fork', async () => {

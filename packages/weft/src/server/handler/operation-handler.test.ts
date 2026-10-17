@@ -248,7 +248,11 @@ describe('createOperationHandlerAuthenticator', () => {
   });
 
   it('rejects with the same 401 serve() returns', async () => {
-    const config = { apiKeys: ['the-right-key'], auditSink: quietAudit };
+    const config = {
+      apiKeys: ['the-right-key'],
+      defaultApiKeyScopes: ['workflows:read' as const],
+      auditSink: quietAudit,
+    };
     const request = new Request('http://localhost/jsonrpc', {
       headers: { Authorization: 'Bearer the-wrong-key' },
     });
@@ -299,6 +303,7 @@ describe('createOperationHandlerAuthenticator', () => {
       host: {},
       authenticate: createOperationHandlerAuthenticator({
         apiKeys: ['right-key'],
+        defaultApiKeyScopes: ['workflows:read'],
         auditSink: quietAudit,
       }),
       mounts: [
@@ -326,6 +331,7 @@ describe('createOperationHandlerAuthenticator', () => {
       host: {},
       authenticate: createOperationHandlerAuthenticator({
         apiKeys: ['right-key'],
+        defaultApiKeyScopes: ['workflows:read'],
         auditSink: quietAudit,
       }),
       mounts: [{ pathPrefix: '/v1/metrics', fetch: async () => new Response('mounted') }],
@@ -336,7 +342,11 @@ describe('createOperationHandlerAuthenticator', () => {
 
   it('refuses config.publicPaths, which would be a second place to decide them', () => {
     expect(() =>
-      createOperationHandlerAuthenticator({ apiKeys: ['k'], publicPaths: ['/v1/health'] }),
+      createOperationHandlerAuthenticator({
+        apiKeys: ['k'],
+        defaultApiKeyScopes: ['workflows:read'],
+        publicPaths: ['/v1/health'],
+      }),
     ).toThrow(/publicPaths is not accepted/);
   });
 
@@ -375,10 +385,19 @@ describe('createOperationHandlerAuthenticator', () => {
     expect(() => createOperationHandlerAuthenticator({})).toThrow(/at least one authentication/);
     expect(() =>
       createOperationHandlerAuthenticator(
-        { apiKeys: ['k'] },
+        { apiKeys: ['k'], defaultApiKeyScopes: ['workflows:read'] },
         { additionalScopes: ['weft.system:read'] },
       ),
     ).toThrow(/additionalScopes/);
+  });
+
+  it('refuses static apiKeys that hold no scope, as serve() does', () => {
+    expect(() => createOperationHandlerAuthenticator({ apiKeys: ['k'] })).toThrow(
+      /defaultApiKeyScopes.*resolveApiKeyPrincipal/s,
+    );
+    expect(() =>
+      createOperationHandlerAuthenticator({ apiKeys: ['k'], defaultApiKeyScopes: [] }),
+    ).toThrow(/defaultApiKeyScopes/);
   });
 });
 

@@ -17,7 +17,7 @@
 
 import type { AuthContext, AuthResult } from '../authentication.ts';
 import { DEFAULT_PUBLIC_PATHS, normalizeRequestPathname } from '../authentication/types.ts';
-import { principalFromUnauthenticatedLocal } from '../principal.ts';
+import { unauthenticatedLocalAuthContext } from '../handler/auth-context-principal.ts';
 import type { ServerContext } from './context.ts';
 
 const DEFAULT_PUBLIC_PATH_SET = new Set(DEFAULT_PUBLIC_PATHS);
@@ -81,10 +81,7 @@ export async function authenticateRequest(
     // `weft.system.principal` and the audit actor report it, and it holds
     // every built-in scope so every operation stays reachable.
     return {
-      authContext: {
-        method: 'unauthenticated-local',
-        principal: principalFromUnauthenticatedLocal(),
-      },
+      authContext: unauthenticatedLocalAuthContext(),
       response: null,
       publicBypass,
     };

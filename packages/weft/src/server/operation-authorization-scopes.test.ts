@@ -55,6 +55,40 @@ const REQUIRED_SCOPE_BY_OPERATION: Readonly<Record<string, AuthorizationScope>> 
   'weft.retention.get': 'system:read',
 };
 
+/**
+ * Operations in the same families that already required a scope, so they are
+ * not part of the COR-1466 table. Listed so the completeness test below sees
+ * every `weft.workflows.*`, `weft.schedules.*`, `weft.reviews.*`, and
+ * `weft.retention.*` operation and fails when a new one is added unclassified.
+ */
+const ALREADY_SCOPED_OPERATIONS: Readonly<Record<string, AuthorizationScope>> = {
+  'weft.workflows.bulk.cancel': 'workflows:admin',
+  'weft.workflows.bulk.signal': 'workflows:admin',
+  'weft.workflows.bulk.retryfailed': 'workflows:admin',
+  'weft.workflows.bulk.delete': 'workflows:admin',
+  'weft.workflows.bulk.tags': 'workflows:admin',
+  'weft.workflows.activities.pending.list': 'workflows:read',
+  'weft.workflows.revisions.install': 'workflows:admin',
+  'weft.workflows.revisions.activate': 'workflows:admin',
+  'weft.workflows.revisions.preload': 'workflows:admin',
+  'weft.workflows.revisions.get': 'workflows:read',
+  'weft.workflows.revisions.list': 'workflows:read',
+  'weft.workflows.active.get': 'workflows:read',
+  'weft.reviews.list': 'reviews:read',
+  'weft.workflows.replay': 'workflows:read',
+};
+
+/**
+ * Operations that need an authenticated caller but no particular scope. A
+ * principal that holds no scope, such as an mTLS principal today, reaches these.
+ */
+const AUTHENTICATED_ONLY_OPERATIONS: readonly string[] = [
+  'weft.workflows.events',
+  'weft.workflows.events.sse',
+  'weft.schedules.list',
+  'weft.schedules.get',
+];
+
 const registry = createLiveOperationRegistry();
 
 function accessOf(operationName: string) {
@@ -68,7 +102,8 @@ function principalHolding(scopes: readonly AuthorizationScope[]) {
 }
 
 describe('the scope an operation requires', () => {
-  for (const [operationName, scope] of Object.entries(REQUIRED_SCOPE_BY_OPERATION)) {
+  const everyScopedOperation = { ...REQUIRED_SCOPE_BY_OPERATION, ...ALREADY_SCOPED_OPERATIONS };
+  for (const [operationName, scope] of Object.entries(everyScopedOperation)) {
     describe(`${operationName} requires ${scope}`, () => {
       it('declares the scope', () => {
         expect(accessOf(operationName)).toEqual({
@@ -96,9 +131,20 @@ describe('the scope an operation requires', () => {
         });
       });
 
-      it('is discoverable although it is no longer public', () => {
-        expect(registry.get(operationName)?.discoverable).toBe(true);
-      });
+      if (operationName in REQUIRED_SCOPE_BY_OPERATION) {
+        it('is discoverable although it is no longer public', () => {
+          expect(registry.get(operationName)?.discoverable).toBe(true);
+        });
+      }
+    });
+  }
+
+  for (const operationName of AUTHENTICATED_ONLY_OPERATIONS) {
+    it(`${operationName} needs an authenticated caller and no particular scope`, () => {
+      const access = accessOf(operationName);
+      expect(access).toEqual({ kind: 'authenticated' });
+      expect(evaluateAccess(access, principalHolding([]))).toEqual({ allowed: true });
+      expect(evaluateAccess(access, anonymousPrincipal())).toMatchObject({ allowed: false });
     });
   }
 });
@@ -111,6 +157,21 @@ describe('public operations', () => {
       .map((operation) => operation.name)
       .toSorted();
     expect(publicOperations).toEqual(['weft.system.principal']);
+  });
+
+  it('leave no workflow, schedule, review, or retention operation outside the scope table', () => {
+    const classified = new Set([
+      ...Object.keys(REQUIRED_SCOPE_BY_OPERATION),
+      ...Object.keys(ALREADY_SCOPED_OPERATIONS),
+      ...AUTHENTICATED_ONLY_OPERATIONS,
+      'weft.system.principal',
+    ]);
+    const unclassified = registry
+      .list()
+      .map((operation) => operation.name)
+      .filter((name) => /^weft\.(workflows|schedules|reviews|retention)\./.test(name))
+      .filter((name) => !classified.has(name));
+    expect(unclassified).toEqual([]);
   });
 
   it('leave every operation in the scope table registered', () => {

@@ -13,7 +13,7 @@
 
 import { Engine, type RegistryAgnosticEngine } from '../core/engine.ts';
 import type { HandlerOptions } from '../server/handler.ts';
-import { handleRequest } from '../server/handler.ts';
+import { handleRequest, unauthenticatedLocalAuthContext } from '../server/handler.ts';
 import { IndexedDBStorage } from '../storage/indexeddb.ts';
 import type { Storage as WeftStorage } from '../storage/interface.ts';
 import { ServiceWorkerScheduler } from './scheduler.ts';
@@ -36,10 +36,10 @@ const DEFAULT_DATABASE_NAME = 'weft';
  *
  * @example
  * ```ts
- * import type { ServiceWorkerHandlerOptions } from '@lostgradient/weft';
+ * import { unauthenticatedLocalAuthContext, type ServiceWorkerHandlerOptions } from '@lostgradient/weft';
  *
  * const handlerOptions: ServiceWorkerHandlerOptions = {
- *   authContext: { method: 'public' },
+ *   authContext: unauthenticatedLocalAuthContext(),
  * };
  * void handlerOptions;
  * ```
@@ -94,7 +94,13 @@ export interface SetupServiceWorkerOptions {
    * engine's storage when both are provided.
    */
   storage?: WeftStorage;
-  /** Handler options supported by the Service Worker runtime. */
+  /**
+   * Handler options supported by the Service Worker runtime. When no
+   * `authContext` is given, requests run as the `unauthenticated-local`
+   * principal (`unauthenticatedLocalAuthContext()`): a same-origin Service
+   * Worker has one caller, so it holds every scope, as a `serve()` with no
+   * `auth` does. Pass an `authContext` to run requests as any other principal.
+   */
   handlerOptions?: ServiceWorkerHandlerOptions;
   /**
    * Register workflows on the engine before listeners do real work.
@@ -235,7 +241,12 @@ function buildFetchListener(
     if (delegatedRequest === null) return;
     event.respondWith(
       registrationReady
-        .then(() => handleRequest(delegatedRequest, engine, handlerOptions))
+        .then(() =>
+          handleRequest(delegatedRequest, engine, {
+            authContext: unauthenticatedLocalAuthContext(),
+            ...handlerOptions,
+          }),
+        )
         .catch((error: unknown) =>
           buildErrorResponse(error instanceof Error ? error : new Error(String(error))),
         ),

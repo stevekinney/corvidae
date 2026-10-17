@@ -118,7 +118,9 @@ async function generateSigningKeyPair(
 
 describe('validateAuthConfig', () => {
   it('accepts valid API key configuration', () => {
-    expect(() => validateAuthConfig({ apiKeys: ['key-1', 'key-2'] })).not.toThrow();
+    expect(() =>
+      validateAuthConfig({ apiKeys: ['key-1', 'key-2'], defaultApiKeyScopes: ['workflows:read'] }),
+    ).not.toThrow();
   });
 
   it('accepts valid JWT HMAC configuration', () => {
@@ -336,7 +338,10 @@ describe('JWT verification', () => {
 
 describe('createAuthenticator — API keys', () => {
   it('accepts a valid API key via Authorization Bearer header', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -351,7 +356,10 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('accepts a valid API key via X-API-Key header', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -366,7 +374,10 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('prefers X-API-Key header over Authorization Bearer', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY, 'other-key'] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY, 'other-key'],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -379,7 +390,10 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('rejects an invalid API key', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(
       makeRequest('http://localhost/v1/workflows', {
@@ -391,7 +405,10 @@ describe('createAuthenticator — API keys', () => {
   });
 
   it('rejects a request with no credentials', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(makeRequest('http://localhost/v1/workflows'));
 
@@ -519,6 +536,7 @@ describe('createAuthenticator — combined methods', () => {
   it('accepts an API key when both API key and JWT are configured', async () => {
     const config: AuthConfig = {
       apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
       jwt: { secret: TEST_SECRET },
     };
     const authenticate = await createAuthenticator(config);
@@ -538,6 +556,7 @@ describe('createAuthenticator — combined methods', () => {
   it('falls back to JWT when API key does not match', async () => {
     const config: AuthConfig = {
       apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
       jwt: { secret: TEST_SECRET },
     };
     const authenticate = await createAuthenticator(config);
@@ -558,6 +577,7 @@ describe('createAuthenticator — combined methods', () => {
   it('rejects when all methods fail', async () => {
     const config: AuthConfig = {
       apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
       jwt: { secret: TEST_SECRET },
     };
     const authenticate = await createAuthenticator(config);
@@ -578,7 +598,10 @@ describe('createAuthenticator — combined methods', () => {
 
 describe('createAuthenticator — public paths', () => {
   it('bypasses authentication for /v1/health by default', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(makeRequest('http://localhost/v1/health'));
 
@@ -589,7 +612,10 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('bypasses authentication for /v1/metrics by default', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(makeRequest('http://localhost/v1/metrics'));
 
@@ -600,7 +626,10 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('bypasses authentication for /openapi.json by default', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(makeRequest('http://localhost/openapi.json'));
 
@@ -611,7 +640,10 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('bypasses authentication for /openrpc.json by default', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(makeRequest('http://localhost/openrpc.json'));
 
@@ -624,6 +656,7 @@ describe('createAuthenticator — public paths', () => {
   it('uses custom public paths when provided', async () => {
     const authenticate = await createAuthenticator({
       apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
       publicPaths: ['/v1/health', '/v1/custom'],
     });
 
@@ -639,7 +672,10 @@ describe('createAuthenticator — public paths', () => {
   });
 
   it('requires authentication for non-public paths', async () => {
-    const authenticate = await createAuthenticator({ apiKeys: [TEST_API_KEY] });
+    const authenticate = await createAuthenticator({
+      apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
+    });
 
     const result = await authenticate(makeRequest('http://localhost/v1/workflows'));
     expect(result.authenticated).toBe(false);
@@ -669,6 +705,7 @@ describe('createAuthenticator — mTLS', () => {
   it('tries API key and JWT before falling through to mTLS', async () => {
     const authenticate = await createAuthenticator({
       apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
       mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
     });
 
@@ -688,6 +725,7 @@ describe('createAuthenticator — mTLS', () => {
   it('rejects invalid API key even when mTLS is also configured', async () => {
     const authenticate = await createAuthenticator({
       apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
       mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
     });
 
@@ -737,6 +775,7 @@ describe('createAuthenticator — mTLS', () => {
     const authenticate = await createAuthenticator(
       {
         apiKeys: [TEST_API_KEY],
+        defaultApiKeyScopes: ['workflows:read'],
         mtls: { ca: 'ca-pem', cert: 'cert-pem', key: 'key-pem' },
       },
       { transportVerifiesClientCertificates: true },
@@ -860,6 +899,7 @@ describe('createAuthenticator — mTLS', () => {
     let verifierCalls = 0;
     const authenticate = await createAuthenticator({
       apiKeys: [TEST_API_KEY],
+      defaultApiKeyScopes: ['workflows:read'],
       mtls: {
         ca: 'ca-pem',
         cert: 'cert-pem',
@@ -895,9 +935,12 @@ describe('createAuthenticator — no admission without positive evidence', () =>
     () => Promise<AuthResult>
   > = {
     'api-key': async () =>
-      (await createAuthenticator({ apiKeys: [TEST_API_KEY] }))(
-        makeRequest('http://localhost/v1/workflows', { 'X-API-Key': 'not-the-key' }),
-      ),
+      (
+        await createAuthenticator({
+          apiKeys: [TEST_API_KEY],
+          defaultApiKeyScopes: ['workflows:read'],
+        })
+      )(makeRequest('http://localhost/v1/workflows', { 'X-API-Key': 'not-the-key' })),
     jwt: async () =>
       (await createAuthenticator({ jwt: { secret: TEST_SECRET } }))(
         makeRequest('http://localhost/v1/workflows', { Authorization: 'Bearer a.b.c' }),

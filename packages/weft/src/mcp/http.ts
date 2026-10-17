@@ -1,6 +1,11 @@
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
 import { WeftError } from '../core/weft-error.ts';
-import { anonymousPrincipal, isAuthenticated, type Principal } from '../server/principal.ts';
+import {
+  anonymousPrincipal,
+  isAuthenticated,
+  isCredentialBacked,
+  type Principal,
+} from '../server/principal.ts';
 import { dispatchMcpMessage } from './dispatcher.ts';
 import {
   accepts,
@@ -342,12 +347,13 @@ function principalFromOptions(options: McpHttpRequestOptions): Principal {
  * Returns `true` when the caller may drive, read, or terminate the session.
  *
  * Two layers: the caller's principal must own the session ({@link isSameSessionOwner}),
- * AND — for sessions whose principal carries no distinguishing secret (anonymous
- * sessions under `authRequired: false`) — the caller must echo the per-session
- * continuation token. Anonymous principals are the shared singleton, so the owner
- * check alone admits any anonymous caller; the token is the per-session secret that
- * actually isolates them. Authenticated callers already re-present their credential
- * each request (it is what rebuilds the principal), so they are isolated without a
+ * AND — for sessions whose principal was not rebuilt from a presented credential
+ * (anonymous sessions, and the host-minted `unauthenticated-local` and
+ * `stdio-local` principals) — the caller must echo the per-session continuation
+ * token. Those principals are shared by every caller, so the owner check alone
+ * admits any of them; the token is the per-session secret that actually isolates
+ * them. Callers holding a credential (`jwt`, `api-key`, `mtls`) re-present it each
+ * request (it is what rebuilds the principal), so they are isolated without a
  * token and are not gated on one — keeping their session binding unchanged.
  */
 function isAuthorizedForSession(
@@ -356,7 +362,7 @@ function isAuthorizedForSession(
   presentedToken: string | null,
 ): boolean {
   if (!isSameSessionOwner(session.principal, caller)) return false;
-  if (isAuthenticated(session.principal)) return true;
+  if (isCredentialBacked(session.principal)) return true;
   return presentedToken !== null && presentedToken === session.token;
 }
 

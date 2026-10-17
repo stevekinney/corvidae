@@ -270,13 +270,62 @@ export function principalFromUnauthenticatedLocal(): AuthenticatedPrincipal {
 
 const ANONYMOUS: UnauthenticatedPrincipal = { method: 'unauthenticated' };
 
+/**
+ * Whether a principal was rebuilt from a credential the caller presented on
+ * this request (`jwt`, `api-key`, or `mtls`). Only such a principal separates
+ * one caller from another by itself.
+ *
+ * `stdio-local` and `unauthenticated-local` are minted by the host and shared
+ * by every caller it serves, and an anonymous principal is a shared singleton,
+ * so none of them is credential-backed: a session bound to one needs a
+ * per-session secret of its own to be isolated from other callers.
+ */
+export function isCredentialBacked(principal: Principal): boolean {
+  return CREDENTIAL_BACKED_METHODS.has(principal.method);
+}
+
+/**
+ * An allowlist, so a principal method added later is treated as host-minted
+ * (and its sessions keep needing a token) until someone decides otherwise.
+ */
+const CREDENTIAL_BACKED_METHODS: ReadonlySet<Principal['method']> = new Set([
+  'jwt',
+  'api-key',
+  'mtls',
+]);
+
 /** Type guard separating authenticated from unauthenticated principals. */
 export function isAuthenticated(principal: Principal): principal is AuthenticatedPrincipal {
   return principal.method !== 'unauthenticated';
 }
 
+/**
+ * A scope set that refuses to change. `Object.freeze` cannot freeze a `Set`'s
+ * contents, and the local principal is one shared instance whose `scopes` are
+ * public, so a caller that widened or emptied the set would change what every
+ * request is allowed to do.
+ */
+class ImmutableScopeSet extends Set<AuthorizationScope> {
+  constructor(scopes: Iterable<AuthorizationScope>) {
+    super();
+    for (const scope of scopes) super.add(scope);
+  }
+
+  override add(): never {
+    throw new TypeError('The scopes of the unauthenticated-local principal are immutable');
+  }
+
+  override delete(): never {
+    throw new TypeError('The scopes of the unauthenticated-local principal are immutable');
+  }
+
+  override clear(): never {
+    throw new TypeError('The scopes of the unauthenticated-local principal are immutable');
+  }
+}
+
 const UNAUTHENTICATED_LOCAL: AuthenticatedPrincipal = (() => {
-  const scopes = new Set<AuthorizationScope>(AUTHORIZATION_SCOPES);
+  const scopes = new ImmutableScopeSet(AUTHORIZATION_SCOPES);
   return Object.freeze({
     method: 'unauthenticated-local' as const,
     scopes,

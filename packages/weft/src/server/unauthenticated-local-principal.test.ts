@@ -11,6 +11,7 @@
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { Engine } from '../core/engine.ts';
+import { MCP_PROTOCOL_VERSION } from '../mcp/protocol.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import type { AuthConfig } from './authentication.ts';
 import { AUTHORIZATION_SCOPES } from './authorization-scope.ts';
@@ -46,6 +47,17 @@ describe('the unauthenticated-local principal', () => {
     expect(principal.subject).toBe('unauthenticated-local');
     expect([...principal.scopes].toSorted()).toEqual(ALL_SCOPES_SORTED);
     for (const scope of AUTHORIZATION_SCOPES) expect(principal.hasScope(scope)).toBe(true);
+  });
+
+  it('has scopes that cannot be widened, narrowed, or cleared by a caller', () => {
+    const { scopes } = principalFromUnauthenticatedLocal();
+    const mutable = scopes as Set<string>;
+
+    expect(() => mutable.add('bureau.tasks:read')).toThrow(TypeError);
+    expect(() => mutable.delete('workflows:read')).toThrow(TypeError);
+    expect(() => mutable.clear()).toThrow(TypeError);
+    expect([...scopes].toSorted()).toEqual(ALL_SCOPES_SORTED);
+    expect(principalFromUnauthenticatedLocal().hasScope('bureau.tasks:read')).toBe(false);
   });
 
   it('is one shared instance, so two requests compare as the same owner', () => {
@@ -123,6 +135,33 @@ describe('serve() with no authentication', () => {
       });
     });
   }
+
+  it('records the unauthenticated-local principal in the audit event of a confirmed bulk operation', async () => {
+    const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      engine = createEngine();
+      server = serve({ engine, port: 0, publicOrigin: 'http://localhost' });
+    } finally {
+      warningSpy.mockRestore();
+    }
+
+    const bulkCancel = async (body: object): Promise<Record<string, unknown>> => {
+      const response = await fetch(`${server?.url}/v1/workflows/bulk/cancel`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ filter: { tags: ['audit-probe'] }, ...body }),
+      });
+      expect(response.status).toBe(200);
+      return (await response.json()) as Record<string, unknown>;
+    };
+
+    const preview = await bulkCancel({ dryRun: true });
+    const committed = await bulkCancel({ confirmationToken: preview['confirmationToken'] });
+
+    expect(committed['auditEvent']).toMatchObject({
+      principal: { method: 'unauthenticated-local', subject: 'unauthenticated-local' },
+    });
+  });
 
   it("warns that every operation is accessible, and names the local principal, under 'warn'", () => {
     const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
@@ -298,5 +337,78 @@ describe('serve() with static API keys', () => {
       auth: { jwt: { secret: 'jwt-only-server-secret-1234567890' } },
     });
     expect(server.port).toBeGreaterThan(0);
+  });
+});
+
+describe('MCP sessions on a serve() with no authentication', () => {
+  let engine: Engine | undefined;
+  let server: WeftServer | undefined;
+
+  afterEach(async () => {
+    await server?.stop();
+    engine?.[Symbol.dispose]();
+    server = undefined;
+    engine = undefined;
+  });
+
+  const mcpHeaders = (sessionId: string, token?: string): Record<string, string> => ({
+    accept: 'application/json, text/event-stream',
+    'content-type': 'application/json',
+    'Mcp-Session-Id': sessionId,
+    'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION,
+    ...(token === undefined ? {} : { 'Mcp-Session-Token': token }),
+  });
+
+  it('requires the continuation token, because every request is the same local user', async () => {
+    const warningSpy = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      engine = createEngine();
+      server = serve({ engine, port: 0, hostname: '127.0.0.1' });
+    } finally {
+      warningSpy.mockRestore();
+    }
+
+    const initialize = await fetch(`${server.url}/mcp`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: { name: 'probe', version: '1' },
+        },
+      }),
+    });
+    const sessionId = initialize.headers.get('Mcp-Session-Id') ?? '';
+    const token = initialize.headers.get('Mcp-Session-Token') ?? '';
+    expect(initialize.status).toBe(200);
+    expect(sessionId).not.toBe('');
+    expect(token).not.toBe('');
+
+    const listTools = (sessionToken?: string): Promise<Response> =>
+      fetch(`${server?.url}/mcp`, {
+        method: 'POST',
+        headers: mcpHeaders(sessionId, sessionToken),
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+
+    // A second caller that knows only the session id cannot continue or end it.
+    const hijacked = await listTools();
+    const terminated = await fetch(`${server.url}/mcp`, {
+      method: 'DELETE',
+      headers: { 'Mcp-Session-Id': sessionId, 'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION },
+    });
+    expect(hijacked.status).toBe(403);
+    expect(terminated.status).toBe(403);
+
+    // The caller that holds the token is admitted.
+    const admitted = await listTools(token);
+    expect(admitted.status).toBe(200);
   });
 });

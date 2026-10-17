@@ -21,19 +21,20 @@
  * scopes, degrade on observed `403`s) is gone: scope gating now starts
  * from the server's authoritative answer.
  *
- * Three outcomes:
- * - **Authenticated** (`method` ≠ `'unauthenticated'`): the granted scopes
+ * Four outcomes:
+ * - **Authenticated** (a credential `method`): the granted scopes
  *   verbatim; no banner.
- * - **Anonymous but served** (`method: 'unauthenticated'`): the server has
- *   no `auth` configured — an auth-configured weft rejects uncredentialed
- *   requests at the transport edge before any operation dispatch, public
- *   ones included. Anonymous principals carry zero scopes, so every
- *   scope-gated surface renders disabled-with-reason (truthful: those
- *   operations genuinely reject anonymous callers), while public-access
- *   operations remain usable. `'warn'` vs `'allow'` are still
- *   wire-indistinguishable (both mean "no auth configured"; the option only
- *   gates server BOOT) — the more visible `'warn'` banner is the safe
- *   default.
+ * - **Local user** (`method: 'unauthenticated-local'`): the server has no
+ *   `auth` configured, so it runs every request as one local principal that
+ *   holds every scope. The scopes arrive verbatim and every scope-gated
+ *   surface is enabled, with the `'warn'` banner saying every operation is
+ *   open. `'warn'` vs `'allow'` are still wire-indistinguishable (the option
+ *   only gates server BOOT), so the more visible `'warn'` is the default.
+ * - **Anonymous** (`method: 'unauthenticated'`): zero scopes, so every
+ *   scope-gated surface renders disabled-with-reason. A server with no
+ *   `auth` no longer answers this way, and an auth-configured weft rejects
+ *   uncredentialed requests at the transport edge before any operation
+ *   dispatch, public ones included.
  * - **`401`**: no principal — the supplied credential was invalid/expired,
  *   or the server requires one (API-key entry must run). The two cases read
  *   identically to callers.

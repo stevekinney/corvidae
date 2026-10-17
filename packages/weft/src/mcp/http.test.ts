@@ -5,7 +5,13 @@ import { Engine } from '../core/engine.ts';
 import { activity, type DefinitionSchema, type WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types/workflow-function.ts';
 import { serve, type WeftServer } from '../server/index.ts';
-import { anonymousPrincipal, principalFromJwtClaims } from '../server/principal.ts';
+import {
+  anonymousPrincipal,
+  principalFromJwtClaims,
+  principalFromStdioLocal,
+  principalFromUnauthenticatedLocal,
+  type Principal,
+} from '../server/principal.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
 import { handleMcpHttpRequest } from './http.ts';
@@ -1483,6 +1489,7 @@ describe('MCP anonymous session continuation token (#525)', () => {
   async function initAnonymous(
     engine: Engine,
     sessionManager: McpSessionManager,
+    principal?: Principal,
   ): Promise<{ sessionId: string; token: string }> {
     const initialized = await handleMcpHttpRequest({
       request: jsonRequest({
@@ -1494,6 +1501,7 @@ describe('MCP anonymous session continuation token (#525)', () => {
       engine,
       sessionManager,
       authRequired: false,
+      ...(principal === undefined ? {} : { principal }),
     });
     expect(initialized.status).toBe(200);
     const sessionId = initialized.headers.get('Mcp-Session-Id');
@@ -1508,6 +1516,7 @@ describe('MCP anonymous session continuation token (#525)', () => {
     sessionManager: McpSessionManager,
     sessionId: string,
     token: string | null,
+    principal?: Principal,
   ): Promise<Response> {
     const headers = new Headers({
       accept: 'application/json, text/event-stream',
@@ -1525,6 +1534,7 @@ describe('MCP anonymous session continuation token (#525)', () => {
       engine,
       sessionManager,
       authRequired: false,
+      ...(principal === undefined ? {} : { principal }),
     });
   }
 
@@ -1533,6 +1543,7 @@ describe('MCP anonymous session continuation token (#525)', () => {
     sessionManager: McpSessionManager,
     sessionId: string,
     token: string | null,
+    principal?: Principal,
   ): Response | Promise<Response> {
     const headers = new Headers({
       accept: 'text/event-stream',
@@ -1549,6 +1560,7 @@ describe('MCP anonymous session continuation token (#525)', () => {
       engine,
       sessionManager,
       authRequired: false,
+      ...(principal === undefined ? {} : { principal }),
     });
   }
 
@@ -1557,6 +1569,7 @@ describe('MCP anonymous session continuation token (#525)', () => {
     sessionManager: McpSessionManager,
     sessionId: string,
     token: string | null,
+    principal?: Principal,
   ): Promise<Response> {
     const headers = new Headers({ 'Mcp-Session-Id': sessionId });
     if (token !== null) headers.set('Mcp-Session-Token', token);
@@ -1565,6 +1578,7 @@ describe('MCP anonymous session continuation token (#525)', () => {
       engine,
       sessionManager,
       authRequired: false,
+      ...(principal === undefined ? {} : { principal }),
     });
   }
 
@@ -1626,6 +1640,67 @@ describe('MCP anonymous session continuation token (#525)', () => {
       const deleted = await deleteWith(engine, sessionManager, sessionId, token);
       expect(deleted.status).toBe(204);
       expect(sessionManager.get(sessionId)).toBeUndefined();
+    } finally {
+      await sessionManager[Symbol.asyncDispose]();
+    }
+  });
+
+  describe('a session bound to the unauthenticated-local principal', () => {
+    // `serve()` with no authentication hands every request the one shared
+    // `unauthenticated-local` principal, so the principal alone cannot tell two
+    // callers apart: the continuation token has to.
+    const local = principalFromUnauthenticatedLocal();
+
+    it('rejects a caller that knows the session id but lacks the token (POST/GET/DELETE)', async () => {
+      const engine = createEngine();
+      const sessionManager = createMcpSessionManager(engine);
+      try {
+        const { sessionId } = await initAnonymous(engine, sessionManager, local);
+
+        const postNoToken = await postWith(engine, sessionManager, sessionId, null, local);
+        const getNoToken = await getWith(engine, sessionManager, sessionId, null, local);
+        const deleteNoToken = await deleteWith(engine, sessionManager, sessionId, null, local);
+        expect(postNoToken.status).toBe(403);
+        expect(getNoToken.status).toBe(403);
+        expect(deleteNoToken.status).toBe(403);
+
+        const postWrong = await postWith(engine, sessionManager, sessionId, 'not-the-token', local);
+        expect(postWrong.status).toBe(403);
+
+        expect(sessionManager.get(sessionId)).toBeDefined();
+      } finally {
+        await sessionManager[Symbol.asyncDispose]();
+      }
+    });
+
+    it('admits the legitimate caller with the token on POST, GET, and DELETE', async () => {
+      const engine = createEngine();
+      const sessionManager = createMcpSessionManager(engine);
+      try {
+        const { sessionId, token } = await initAnonymous(engine, sessionManager, local);
+        const posted = await postWith(engine, sessionManager, sessionId, token, local);
+        const got = await getWith(engine, sessionManager, sessionId, token, local);
+        expect(posted.status).toBe(200);
+        expect(got.status).toBe(200);
+        const deleted = await deleteWith(engine, sessionManager, sessionId, token, local);
+        expect(deleted.status).toBe(204);
+        expect(sessionManager.get(sessionId)).toBeUndefined();
+      } finally {
+        await sessionManager[Symbol.asyncDispose]();
+      }
+    });
+  });
+
+  it('does not treat a stdio-local session as credential-backed, so it also needs the token', async () => {
+    const engine = createEngine();
+    const sessionManager = createMcpSessionManager(engine);
+    const stdioLocal = principalFromStdioLocal();
+    try {
+      const { sessionId, token } = await initAnonymous(engine, sessionManager, stdioLocal);
+      const withoutToken = await postWith(engine, sessionManager, sessionId, null, stdioLocal);
+      const withToken = await postWith(engine, sessionManager, sessionId, token, stdioLocal);
+      expect(withoutToken.status).toBe(403);
+      expect(withToken.status).toBe(200);
     } finally {
       await sessionManager[Symbol.asyncDispose]();
     }

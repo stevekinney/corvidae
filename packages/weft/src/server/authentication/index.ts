@@ -110,6 +110,30 @@ function assertAtLeastOneMethod(config: AuthConfig): void {
   }
 }
 
+/**
+ * Refuse static API keys that would admit callers holding no scope. Every
+ * catalog operation except `weft.system.principal` requires a scope, so such a
+ * key would pass authentication and then be refused everywhere; the
+ * misconfiguration is loudest at startup. A `resolveApiKeyPrincipal` resolver
+ * is authoritative for the key space and supplies each key's scopes itself.
+ * A default scope the authenticator does not recognize grants nothing, so it
+ * does not count.
+ */
+function assertStaticApiKeysHaveScopes(
+  config: AuthConfig,
+  additionalScopes: AdditionalScopeSet | undefined,
+): void {
+  if (config.apiKeys === undefined || config.apiKeys.length === 0) return;
+  if (config.resolveApiKeyPrincipal !== undefined) return;
+  const granted = filterRecognizedScopes(config.defaultApiKeyScopes ?? [], additionalScopes);
+  if (granted.length > 0) return;
+  throw new Error(
+    'AuthConfig.apiKeys admit callers with no scopes. Configure defaultApiKeyScopes ' +
+      '(the scopes every static API key holds) or resolveApiKeyPrincipal (a per-key principal); ' +
+      'every operation requires a scope, so an unscoped key would be refused everywhere.',
+  );
+}
+
 function assertNoConflictingMethods(config: AuthConfig): void {
   if (config.resolveApiKeyPrincipal !== undefined && config.jwt !== undefined) {
     throw new Error(
@@ -255,14 +279,19 @@ export function tlsOptionsVerifyClientCertificates(
  * // Throws if config is invalid (e.g. missing secret for HS256)
  * validateAuthConfig({
  *   apiKeys: ['secret-key-1'],
+ *   defaultApiKeyScopes: ['workflows:read'],
  * });
  * console.log('Config is valid');
  * ```
  */
-export function validateAuthConfig(config: AuthConfig): void {
+export function validateAuthConfig(
+  config: AuthConfig,
+  options: { readonly additionalScopes?: AdditionalScopeSet } = {},
+): void {
   validateJwtConfig(config.jwt);
   assertAtLeastOneMethod(config);
   assertNoConflictingMethods(config);
+  assertStaticApiKeysHaveScopes(config, options.additionalScopes);
 }
 
 /**
@@ -282,6 +311,7 @@ export function validateAuthConfig(config: AuthConfig): void {
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['my-secret-key'],
+ *   defaultApiKeyScopes: ['workflows:read'],
  * });
  * const request = new Request('http://localhost/v1/workflows', {
  *   headers: { 'X-API-Key': 'my-secret-key' },
@@ -294,8 +324,8 @@ export async function createAuthenticator(
   config: AuthConfig,
   options: CreateAuthenticatorOptions = {},
 ): Promise<Authenticator> {
-  validateAuthConfig(config);
   const additionalScopes = createAdditionalScopeSet(options.additionalScopes);
+  validateAuthConfig(config, { additionalScopes });
   const transportVerifiesClientCertificates = options.transportVerifiesClientCertificates === true;
 
   const apiKeyEntries = config.apiKeys?.length

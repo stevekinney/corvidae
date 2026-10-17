@@ -1043,7 +1043,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Exhaustive default for an unknown AuthContext method is unreachable through the authenticator surface, which only ever produces one of the declared AuthMethod values.',
-        lines: new Set([51, 52, 53, 54]),
+        lines: new Set([51, 52, 53]),
         requireUncoveredLines: true,
       },
     ],
@@ -1425,7 +1425,7 @@ const AUDIT_BACKLOG_COVERAGE_ALLOWANCE_TOP_OFFS = buildAllowanceLayer(
       {
         reason:
           'The remaining HTTP lines are socket-close, stream-cancel, and response-write failure exits exercised through transport teardown without stable line attribution.',
-        lines: new Set([115, 116, 117, 118, 119, 120, 121, 122, 204, 205, 230, 423]),
+        lines: new Set([120, 121, 122, 123, 124, 125, 126, 127, 209, 210, 235, 429]),
         requireUncoveredLines: true,
       },
     ],

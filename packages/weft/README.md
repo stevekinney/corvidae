@@ -465,9 +465,9 @@ await using server = serve({
 });
 ```
 
-`serve()` throws before it binds a port when `auth.apiKeys` is non-empty and neither a non-empty `defaultApiKeyScopes` nor a `resolveApiKeyPrincipal` resolver is configured; the error names both options. A client reads its own method, subject, and scopes from `weft.system.principal` (`GET /v1/principal`), the one operation that is public, so it works for every credential state.
+`serve()` throws before it binds a port when `auth.apiKeys` is non-empty and neither a non-empty `defaultApiKeyScopes` nor a `resolveApiKeyPrincipal` resolver is configured; the error names both options. A client reads its own method, subject, and scopes from `weft.system.principal` (`GET /v1/principal`), the one operation that is public, so it needs no scope. On a server configured with `auth` the transport still authenticates first: a request with no valid credential gets a `401` before it reaches any operation, `weft.system.principal` included. The operation is public in the scope sense (any admitted credential may call it), not in the unauthenticated sense.
 
-A `serve()` with no `auth` identifies nobody. With `unauthenticatedAccess` set to `'warn'` (the default) or `'allow'`, every request runs as one local principal, `method: 'unauthenticated-local'` and `subject: 'unauthenticated-local'`, which holds every scope in `AUTHORIZATION_SCOPES`, so every operation is reachable by anyone who can reach the port. Set `unauthenticatedAccess: 'reject'`, or `WEFT_SERVER_AUTHENTICATION_REQUIRED=1`, and the server refuses to start without `auth`. A `handleRequest()` call made without an `authContext` is anonymous and may reach only `weft.system.principal`, and so is a `setupServiceWorker()` fetch listener unless you pass `handlerOptions: { authContext }`.
+A `serve()` with no `auth` identifies nobody. With `unauthenticatedAccess` set to `'warn'` (the default) or `'allow'`, every request runs as one local principal, `method: 'unauthenticated-local'` and `subject: 'unauthenticated-local'`, which holds every scope in `AUTHORIZATION_SCOPES`, so every operation is reachable by anyone who can reach the port. Set `unauthenticatedAccess: 'reject'`, or `WEFT_SERVER_AUTHENTICATION_REQUIRED=1`, and the server refuses to start without `auth`. A `handleRequest()` call made without an `authContext` is anonymous and may reach only `weft.system.principal`, while a `setupServiceWorker()` fetch listener runs as the same local principal unless you pass `handlerOptions: { authContext }`, because a same-origin Service Worker has one caller. A host with one caller of its own can attach the same context with `unauthenticatedLocalAuthContext()`.
 
 The scope each operation requires:
 
@@ -488,7 +488,7 @@ The scope each operation requires:
 | `weft.retention.get` | `system:read` |
 | `weft.system.principal` | none (public) |
 
-Scopes are flat: `workflows:admin` does not imply `workflows:read`. Operations outside this table, such as the registry, storage, worker, and diagnostic operations, declare their own scopes through the same mechanism.
+Mutual TLS currently admits a principal that holds no scopes, so an mTLS caller reaches only `weft.system.principal` and the operations that need an authenticated caller but no particular scope (`weft.schedules.list`, `weft.schedules.get`, and the workflow event feeds). Scopes are flat: `workflows:admin` does not imply `workflows:read`. Operations outside this table, such as the registry, storage, worker, and diagnostic operations, declare their own scopes through the same mechanism.
 
 ### Dashboard and Extra Routes
 

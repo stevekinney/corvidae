@@ -81,7 +81,7 @@ async function buildServiceWorkerBundle(databaseName: string): Promise<string> {
 /// <reference lib="webworker" />
 import { Engine } from ${JSON.stringify(engineModulePath)};
 import { activity, workflow } from ${JSON.stringify(typesModulePath)};
-import { handleRequest } from ${JSON.stringify(handlerModulePath)};
+import { handleRequest, unauthenticatedLocalAuthContext } from ${JSON.stringify(handlerModulePath)};
 import { IndexedDBStorage } from ${JSON.stringify(indexedDatabaseStorageModulePath)};
 import {
   buildDelegatedRequest,
@@ -107,7 +107,8 @@ const scheduler = new ServiceWorkerScheduler({
 });
 const periodicSyncHandler = createPeriodicSyncHandler(scheduler);
 const pathPrefix = normalizePathPrefix('/weft/');
-const fetchHandler = createFetchHandler({ engine, pathPrefix });
+const handlerOptions = { authContext: unauthenticatedLocalAuthContext() };
+const fetchHandler = createFetchHandler({ engine, pathPrefix, handlerOptions });
 let recoveryComplete = false;
 const recoveryReady = engine.recoverAll().then(() => {
   recoveryComplete = true;
@@ -159,7 +160,7 @@ serviceWorker.addEventListener('fetch', (event) => {
     }
     const delegatedRequest = buildDelegatedRequest(event, pathPrefix);
     if (delegatedRequest === null) return;
-    event.respondWith(recoveryReady.then(() => handleRequest(delegatedRequest, engine)));
+    event.respondWith(recoveryReady.then(() => handleRequest(delegatedRequest, engine, handlerOptions)));
   } catch (error) {
     event.respondWith(
       new Response(error instanceof Error ? error.message : String(error), { status: 599 }),
