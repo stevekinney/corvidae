@@ -17,16 +17,18 @@ type StreamGuardState = {
    * Separate from `mode` because the two answer different questions, and
    * only one of them can be asked per-frame. `mode` distinguishes a legacy
    * producer from a versioned one; this distinguishes two versioned
-   * vocabularies, and version 2 is a superset rather than a replacement —
-   * every version 1 member is also a legal version 2 member, so no
+   * vocabularies, and each version is a superset rather than a replacement —
+   * every version 1 member is also a legal version 2 or 3 member, so no
    * individual frame is malformed. A consumer that read the opening frame as
    * version 1 and then meets a version 2 frame has been told two different
    * things about which vocabulary it is reading, and the only place that is
    * visible is here.
    */
-  wireVersion: 1 | 2 | undefined;
+  wireVersion: 1 | 2 | 3 | undefined;
   sawTerminal: boolean;
   lastSequence: number | undefined;
+  /** The message id of the `assistant.step.started` still open, if any. */
+  openStepMessageId: string | undefined;
 };
 
 function isTerminalChatStreamEvent(event: ChatStreamEvent): boolean {
@@ -69,6 +71,7 @@ function noteFrameMode(event: ChatStreamEvent, guard: StreamGuardState): void {
   if (frameMode === 'versioned') {
     noteWireVersion(event, guard);
     noteSequence(event, guard);
+    noteStepIdentity(event, guard);
   }
 }
 
@@ -78,9 +81,30 @@ function noteWireVersion(event: ChatStreamEvent, guard: StreamGuardState): void 
   // with.
   const wireVersion = Object.hasOwn(event, 'wireVersion') ? event.wireVersion : undefined;
   if (wireVersion === undefined) throw new Error('Invalid chat stream event: missing wireVersion');
-  if (guard.wireVersion === undefined) guard.wireVersion = wireVersion;
-  else if (guard.wireVersion !== wireVersion)
+  if (guard.wireVersion === undefined) {
+    // A version 3 stream says which run it is before it says anything else.
+    if (wireVersion === 3 && event.type !== 'run.started')
+      throw new Error('Invalid chat stream event: a version 3 stream must open with run.started');
+    guard.wireVersion = wireVersion;
+  } else if (guard.wireVersion !== wireVersion)
     throw new Error('Invalid chat stream event: wire version changed mid-stream');
+}
+
+/**
+ * A version 3 `stream:text-delta` names the message it extends, and that has
+ * to be the message of the step that is open: a delta for any other message
+ * is text a client would put in the wrong row.
+ */
+function noteStepIdentity(event: ChatStreamEvent, guard: StreamGuardState): void {
+  if (event.type === 'assistant.step.started') guard.openStepMessageId = event.messageId;
+  else if (event.type === 'assistant.step.completed') {
+    if (guard.openStepMessageId === event.messageId) guard.openStepMessageId = undefined;
+  } else if (event.type === 'stream:text-delta' && event.wireVersion === 3) {
+    if (event.messageId !== guard.openStepMessageId)
+      throw new Error(
+        'Invalid chat stream event: stream:text-delta messageId does not match the open assistant step',
+      );
+  }
 }
 
 function noteSequence(event: ChatStreamEvent, guard: StreamGuardState): void {
@@ -139,6 +163,7 @@ export async function* guardChatStreamEvents(
     wireVersion: undefined,
     sawTerminal: false,
     lastSequence: undefined,
+    openStepMessageId: undefined,
   };
   for await (const event of events) {
     // Per-frame validation first: the static type says `ChatStreamEvent`, but
@@ -192,6 +217,7 @@ export async function* decodeChatStreamEvents(
     wireVersion: undefined,
     sawTerminal: false,
     lastSequence: undefined,
+    openStepMessageId: undefined,
   };
   const decodeAndTrack = (line: string): ChatStreamEvent =>
     reportProtocolError(options, () => {

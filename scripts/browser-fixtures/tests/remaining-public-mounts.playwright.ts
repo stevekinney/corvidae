@@ -105,6 +105,7 @@ const remainingSlugs = [
   'description-list',
   'diff-statistics',
   'divider',
+  'text',
   'drawer',
   'empty-state',
   'feed',

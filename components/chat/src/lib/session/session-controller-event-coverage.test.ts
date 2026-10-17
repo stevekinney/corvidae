@@ -156,6 +156,7 @@ const frames: { [K in EventType]: Extract<ChatStreamEvent, { type: K }> } = {
     sequence: 0,
   },
   'run.aborted': { type: 'run.aborted', reason: 'user', wireVersion: 2, sequence: 0 },
+  'run.started': { type: 'run.started', runId: 'run-1', wireVersion: 3, sequence: 0 },
   'assistant.step.started': {
     type: 'assistant.step.started',
     step: 0,
@@ -191,6 +192,7 @@ type IfEquals<T, U, Y = true, N = false> =
 function assertTypesEqual<_T extends true>(): void {}
 
 const reducedTypes = [
+  'run.started',
   'text',
   'stream:text-delta',
   'tool_call',
@@ -231,6 +233,11 @@ const toolFrame = { toolCallId: 'call-1', toolName: 'lookup' } as const;
 
 /** What a run that carried one frame of the type must have done, observed before the closer. */
 const observations: { [K in Reduced]: (harness: FrameHarness) => void } = {
+  'run.started': (harness) => {
+    // The run's identity is bookkeeping, not a row: the transcript is exactly
+    // the user's message and the open assistant placeholder.
+    expect(rolesOf(harness.snapshot ?? harness.conversation)).toEqual(['user', 'assistant']);
+  },
   text: (harness) => {
     expect(harness.snapshot?.messages[harness.snapshot.ids.at(-1) ?? '']?.content).toBe('hello');
   },

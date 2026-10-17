@@ -180,6 +180,7 @@
 @import '../components/tag-input/tag-input.css';
 @import '../components/terminal-frame/terminal-frame.css';
 @import '../components/terminal-output/terminal-output.css';
+@import '../components/text/text.css';
 @import '../components/textarea/textarea.css';
 @import '../components/time-field/time-field.css';
 @import '../components/timeline/timeline.css';

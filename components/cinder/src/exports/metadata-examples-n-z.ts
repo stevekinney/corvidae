@@ -60,6 +60,7 @@ import tabsExamples from '../components/tabs/tabs.examples.json' with { type: 'j
 import tagInputExamples from '../components/tag-input/tag-input.examples.json' with { type: 'json' };
 import terminalFrameExamples from '../components/terminal-frame/terminal-frame.examples.json' with { type: 'json' };
 import terminalOutputExamples from '../components/terminal-output/terminal-output.examples.json' with { type: 'json' };
+import textExamples from '../components/text/text.examples.json' with { type: 'json' };
 import textareaExamples from '../components/textarea/textarea.examples.json' with { type: 'json' };
 import timeFieldExamples from '../components/time-field/time-field.examples.json' with { type: 'json' };
 import timelineExamples from '../components/timeline/timeline.examples.json' with { type: 'json' };
@@ -134,6 +135,7 @@ export {
   tagInputExamples,
   terminalFrameExamples,
   terminalOutputExamples,
+  textExamples,
   textareaExamples,
   timeFieldExamples,
   timelineExamples,
