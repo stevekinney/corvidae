@@ -37,16 +37,21 @@
 
   // Callback mode: the caller keeps the offset or cursors and is told when the user asks for
   // the previous or next page. The component never writes `currentPage` and has no page numbers
-  // to jump to, so each direction is governed by its availability flag alone.
+  // to jump to, so each direction is enabled only when its callback exists and its availability
+  // flag is set; a direction with no callback would otherwise be a button that does nothing.
   const callbackMode = $derived(onPrevious !== undefined || onNext !== undefined);
 
   const canGoPrevious = $derived(
     callbackMode
-      ? (hasPreviousPage ?? false)
+      ? onPrevious !== undefined && (hasPreviousPage ?? false)
       : currentPage > 1 && (totalPages === undefined ? (hasPreviousPage ?? true) : true),
   );
   const canGoNext = $derived(
-    callbackMode ? hasNextPage : totalPages === undefined ? hasNextPage : currentPage < totalPages,
+    callbackMode
+      ? onNext !== undefined && hasNextPage
+      : totalPages === undefined
+        ? hasNextPage
+        : currentPage < totalPages,
   );
 
   /**

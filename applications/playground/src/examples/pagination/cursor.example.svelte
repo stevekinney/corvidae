@@ -32,7 +32,6 @@
 </script>
 
 <Pagination
-  currentPage={1}
   hasPreviousPage={current.previousCursor !== undefined}
   hasNextPage={current.nextCursor !== undefined}
   onPrevious={goPrevious}

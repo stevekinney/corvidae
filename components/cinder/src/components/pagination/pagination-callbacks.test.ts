@@ -94,7 +94,32 @@ describe('Pagination callback mode', () => {
     expect(nextCalls).toBe(1);
   });
 
-  test('Previous is enabled by hasPreviousPage alone, even on page 1', () => {
+  test('a direction without its callback stays disabled even when its flag is true', () => {
+    const onlyNext = render(Pagination, {
+      props: { currentPage: 2, hasPreviousPage: true, hasNextPage: true, onNext: () => {} },
+    });
+    expect(stepButtons(onlyNext.container).previous.disabled).toBe(true);
+    expect(stepButtons(onlyNext.container).next.disabled).toBe(false);
+    cleanup();
+
+    const onlyPrevious = render(Pagination, {
+      props: { currentPage: 2, hasPreviousPage: true, hasNextPage: true, onPrevious: () => {} },
+    });
+    expect(stepButtons(onlyPrevious.container).previous.disabled).toBe(false);
+    expect(stepButtons(onlyPrevious.container).next.disabled).toBe(true);
+  });
+
+  test('currentPage is optional in callback mode', () => {
+    const { container } = render(Pagination, {
+      props: { totalPages: 4, hasNextPage: true, onNext: () => {} },
+    });
+
+    expect(container.querySelector('.cinder-pagination__position')?.textContent?.trim()).toBe(
+      'Page 1 of 4',
+    );
+  });
+
+  test('Previous is enabled by hasPreviousPage and onPrevious, even on page 1', () => {
     const { container } = render(Pagination, {
       props: { currentPage: 1, hasPreviousPage: true, onPrevious: () => {} },
     });
