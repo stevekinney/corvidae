@@ -41,7 +41,7 @@ let target: HTMLElement;
 
 // The tests that edit and reset many tokens evaluate a new state per commit. They are warmed
 // at module scope (the end of this file), so Bun's 5 s budget never covers a cold evaluation.
-const { scenario, warmScenarios } = warmedTests({
+const { group, scenario, warmScenarios } = warmedTests({
   before() {
     target = document.createElement('div');
     document.body.append(target);
@@ -301,7 +301,7 @@ describe('environment-dependent fonts', () => {
   });
 });
 
-describe('the mounted editors', () => {
+group('the mounted editors', () => {
   scenario(
     'a dimension editor labels every control with the token and context and edits with units',
     async () => {

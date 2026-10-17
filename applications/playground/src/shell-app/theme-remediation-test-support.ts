@@ -70,6 +70,12 @@ export function rememberForegroundSearch(): () => void {
 
 type Scenario = () => Promise<unknown>;
 
+/** The registration functions `warmedTests` calls; a test of the helper itself passes fakes. */
+export type ScenarioRegistrar = {
+  describe(name: string, define: () => void): void;
+  test(name: string, body: Scenario): void;
+};
+
 /**
  * Tests whose bodies run the token runtime, or the remediation search, on states no earlier test
  * visited (COR-1427, COR-1571): each is registered through `scenario` inside a `group`, and
@@ -83,18 +89,31 @@ type Scenario = () => Promise<unknown>;
  * module scope. `group` runs its callback immediately to collect the scenarios, then registers
  * them under a real `describe` of the same name. A `scenario` outside any `group` registers
  * directly. Groups do not nest.
+ *
+ * Two guards keep a warm-up from silently doing nothing: `warmScenarios` throws when it has no
+ * body to warm, and `scenario` throws when it is declared after `warmScenarios` ran, which is
+ * what a `scenario` inside a plain `describe` does.
  */
-export function warmedTests(hooks: { before?: () => void; after?: () => void } = {}) {
+export function warmedTests(
+  hooks: { before?: () => void; after?: () => void } = {},
+  registrar: ScenarioRegistrar = { describe, test: bunTest },
+) {
   const bodies: Scenario[] = [];
   let collecting: { name: string; body: Scenario }[] | null = null;
+  let warmed = false;
   return {
     scenario(name: string, body: Scenario): void {
+      if (warmed) {
+        throw new Error(
+          `The scenario "${name}" was declared after warmScenarios() ran, so it was never warmed. Declare it inside group(), not describe().`,
+        );
+      }
       if (collecting !== null) {
         collecting.push({ name, body });
         return;
       }
       bodies.push(body);
-      bunTest(name, body);
+      registrar.test(name, body);
     },
     group(name: string, define: () => void): void {
       const own: { name: string; body: Scenario }[] = [];
@@ -105,11 +124,17 @@ export function warmedTests(hooks: { before?: () => void; after?: () => void } =
         collecting = null;
       }
       for (const { body } of own) bodies.push(body);
-      describe(name, () => {
-        for (const entry of own) bunTest(entry.name, entry.body);
+      registrar.describe(name, () => {
+        for (const entry of own) registrar.test(entry.name, entry.body);
       });
     },
     async warmScenarios(): Promise<void> {
+      if (bodies.length === 0) {
+        throw new Error(
+          'warmScenarios() found no scenarios to warm. Declare them with scenario() inside group(); a scenario inside describe() is not collected before module scope ends.',
+        );
+      }
+      warmed = true;
       for (const body of bodies) {
         hooks.before?.();
         try {
