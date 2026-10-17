@@ -5,6 +5,13 @@
  * @module a2a
  */
 
+export {
+  createEgressPolicy,
+  type EgressDecision,
+  type EgressHostResolver,
+  type EgressPolicy,
+  type EgressPolicyOptions,
+} from '../runtime/egress-policy.ts';
 export type { A2AAgentCardInput, A2ASigningOptions } from './agent-card-route.ts';
 export {
   createA2AHandler,
@@ -12,6 +19,28 @@ export {
   type A2AHandler,
   type A2AHandlerOptions,
 } from './handler.ts';
+export {
+  A2A_NOTIFICATION_TOKEN_HEADER,
+  A2A_PUSH_CONTENT_TYPE,
+  DEFAULT_HTTP_DELIVERY_TIMEOUT_MS,
+  createHttpDeliveryAdapter,
+  type HttpDeliveryAdapter,
+  type HttpDeliveryAdapterOptions,
+  type HttpDeliveryCredential,
+} from './http-delivery-adapter.ts';
+export {
+  DEFAULT_PUSH_DELIVERY_INTERVAL_MS,
+  startPushDelivery,
+  type StartPushDeliveryOptions,
+} from './push-delivery.ts';
+export {
+  A2A_PUSH_DELIVERY_KIND,
+  A2A_PUSH_MAX_ATTEMPTS,
+  createOutboxPushNotificationSender,
+  pushNotificationResolvers,
+  type OutboxPushNotificationSender,
+  type OutboxPushNotificationSenderOptions,
+} from './push-notification-sender.ts';
 export {
   createWeftPushNotificationStore,
   type WeftPushNotificationListRequest,

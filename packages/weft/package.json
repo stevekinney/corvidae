@@ -84,6 +84,7 @@
     "playwright": "catalog:",
     "prettier": "catalog:",
     "prettier-plugin-svelte": "catalog:",
+    "standardwebhooks": "catalog:",
     "svelte": "catalog:",
     "svelte-check": "catalog:",
     "typescript": "catalog:"
