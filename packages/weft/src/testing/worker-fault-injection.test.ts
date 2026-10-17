@@ -13,7 +13,7 @@ const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
   // Close the worker before stopping the server, the order every other suite
   // using this harness tears down in.
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
 const SHUTDOWN = { type: 'shutdown' } as const;
