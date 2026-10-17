@@ -16,10 +16,14 @@ import type { ChatStreamEvent } from './stream-event-codec.ts';
  * inside the open span, and a span may hold several; each becomes a reasoning
  * message of its own in the terminal conversation.
  */
-export function* startSpan(state: MapperState, spanId: string): Generator<ChatStreamEvent> {
+export function* startSpan(
+  state: MapperState,
+  spanId: string,
+  implicit = false,
+): Generator<ChatStreamEvent> {
   if (state.spans.has(spanId)) throw protocolError(`Reasoning ${spanId} started twice.`);
   const block = newBlock(state, spanId, 'thinking', '');
-  state.spans.set(spanId, { block });
+  state.spans.set(spanId, { block, implicit });
   yield { type: 'stream:block-start', block: { ...block }, ...wire(state) };
 }
 
@@ -89,7 +93,10 @@ export function* messageChunk(
   if (messageId === undefined)
     throw protocolError('The first REASONING_MESSAGE_CHUNK must carry a messageId.');
   if (state.reasoningLane !== messageId) {
-    closeReasoningLane(state);
+    yield* closeReasoningLane(state);
+    // A chunk is shorthand for a whole message, and a message with no span open
+    // around it gets one of its own, which ends with the chunk run.
+    if (state.spans.size === 0) yield* startSpan(state, messageId, true);
     startMessage(state, messageId);
     state.reasoningLane = messageId;
   }
@@ -97,11 +104,16 @@ export function* messageChunk(
     yield* messageDelta(state, messageId, event.delta);
 }
 
-export function closeReasoningLane(state: MapperState): void {
+export function* closeReasoningLane(state: MapperState): Generator<ChatStreamEvent> {
   const messageId = state.reasoningLane;
   if (messageId === undefined) return;
   state.reasoningLane = undefined;
   endMessage(state, messageId);
+  const span = state.reasoningMessages.get(messageId)?.span;
+  if (span?.implicit !== true) return;
+  for (const [spanId, candidate] of state.spans) {
+    if (candidate === span) yield* endSpan(state, spanId);
+  }
 }
 
 /**

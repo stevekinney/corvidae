@@ -1,4 +1,9 @@
-import { EventType, type Event as AGUIEvent, type ToolMessage } from '@ag-ui/core';
+import {
+  EventType,
+  type Event as AGUIEvent,
+  type ToolCall as AGUIToolCall,
+  type ToolMessage,
+} from '@ag-ui/core';
 import { fromAGUIToolMessage } from 'conversationalist';
 import { isJSONValue } from '../components/chat/builders.ts';
 import type { JSONValue } from '../components/chat/conversation-model.ts';
@@ -8,6 +13,10 @@ import {
   reserveSlot,
   wire,
   type MapperState,
+  type OpenCall,
+  type OpenText,
+  type Slot,
+  type WireText,
 } from './ag-ui-transport-state.ts';
 import type { ChatStreamEvent } from './stream-event-codec.ts';
 
@@ -30,17 +39,73 @@ export function* startText(
   messageId: string,
   role: string,
 ): Generator<ChatStreamEvent> {
-  if (state.openText.has(messageId) || state.foreignText.has(messageId))
+  if (state.startedText.has(messageId))
     throw protocolError(`Text message ${messageId} started twice.`);
+  state.startedText.add(messageId);
   if (role !== 'assistant') {
     state.foreignText.add(messageId);
     return;
   }
   const assistantText = { text: '' };
   state.assistantTexts.push(assistantText);
-  const open = { step: state.step++, text: '', slot: reserveSlot(state), assistantText };
-  state.openText.set(messageId, open);
-  yield { type: 'assistant.step.started', step: open.step, messageId, ...wire(state) };
+  const queued: WireText = {
+    messageId,
+    step: state.step++,
+    deltas: [],
+    emitted: false,
+    ended: false,
+  };
+  state.wireQueue.push(queued);
+  state.openText.set(messageId, {
+    text: '',
+    slot: reserveSlot(state),
+    assistantText,
+    wire: queued,
+    calls: [],
+  });
+  yield* drainWire(state);
+}
+
+/**
+ * Writes what the wire is ready for: the head of the queue opens its step and
+ * releases the deltas it held, and closes it if it has already ended, and then
+ * the next message gets its turn.
+ */
+function* drainWire(state: MapperState): Generator<ChatStreamEvent> {
+  for (let head = state.wireQueue[0]; head !== undefined; head = state.wireQueue[0]) {
+    if (!head.emitted) {
+      head.emitted = true;
+      yield {
+        type: 'assistant.step.started',
+        step: head.step,
+        messageId: head.messageId,
+        ...wire(state),
+      };
+      let accumulated = '';
+      for (const delta of head.deltas) {
+        accumulated += delta;
+        yield textDeltaFrame(state, head.messageId, delta, accumulated);
+      }
+      head.deltas = [];
+    }
+    if (!head.ended) return;
+    yield {
+      type: 'assistant.step.completed',
+      step: head.step,
+      messageId: head.messageId,
+      ...wire(state),
+    };
+    state.wireQueue.shift();
+  }
+}
+
+function textDeltaFrame(
+  state: MapperState,
+  messageId: string,
+  content: string,
+  accumulated: string,
+): ChatStreamEvent {
+  return { type: 'stream:text-delta', content, accumulated, messageId, ...wire(state) };
 }
 
 export function* textDelta(
@@ -55,13 +120,8 @@ export function* textDelta(
   }
   open.text += delta;
   open.assistantText.text = open.text;
-  yield {
-    type: 'stream:text-delta',
-    content: delta,
-    accumulated: open.text,
-    messageId,
-    ...wire(state),
-  };
+  if (open.wire.emitted) yield textDeltaFrame(state, messageId, delta, open.text);
+  else open.wire.deltas.push(delta);
 }
 
 export function* endText(state: MapperState, messageId: string): Generator<ChatStreamEvent> {
@@ -71,9 +131,41 @@ export function* endText(state: MapperState, messageId: string): Generator<ChatS
     throw protocolError(`Text message ${messageId} ended without starting.`);
   }
   state.openText.delete(messageId);
-  if (open.text.length > 0)
-    open.slot.message = { id: messageId, role: 'assistant', content: open.text };
-  yield { type: 'assistant.step.completed', step: open.step, messageId, ...wire(state) };
+  open.wire.ended = true;
+  writeAssistantMessage(state, messageId, open);
+  yield* drainWire(state);
+}
+
+/**
+ * Fills the slot reserved for an assistant message with what it said and the
+ * calls that were made on it. If a call already filed a message under this id
+ * (it ended before the message even started), the text joins that message.
+ */
+function writeAssistantMessage(state: MapperState, messageId: string, open: OpenText): void {
+  const content = open.text.length > 0 ? { content: open.text } : {};
+  const earlier = findAssistantSlot(state, messageId);
+  if (earlier?.message?.role === 'assistant') {
+    const toolCalls = [...(earlier.message.toolCalls ?? []), ...open.calls];
+    earlier.message = {
+      ...earlier.message,
+      ...content,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    };
+    return;
+  }
+  if (open.text.length === 0 && open.calls.length === 0) return;
+  open.slot.message = {
+    id: messageId,
+    role: 'assistant',
+    ...content,
+    ...(open.calls.length > 0 ? { toolCalls: open.calls } : {}),
+  };
+}
+
+function findAssistantSlot(state: MapperState, messageId: string): Slot | undefined {
+  return state.slots.find(
+    (slot) => slot.message?.role === 'assistant' && slot.message.id === messageId,
+  );
 }
 
 export function* textChunk(
@@ -142,23 +234,12 @@ export function* endCall(state: MapperState, toolCallId: string): Generator<Chat
   state.openCalls.delete(toolCallId);
   state.settledCalls.add(toolCallId);
   const args = parseArguments(call.args);
-  const entry = {
+  const entry: AGUIToolCall = {
     id: toolCallId,
-    type: 'function' as const,
+    type: 'function',
     function: { name: call.name, arguments: call.args === '' ? '{}' : call.args },
   };
-  // A call belongs to the assistant message that made it when that message has
-  // already ended, so the two come back as one message under one id. Otherwise
-  // the call is a message of its own, under an id that cannot be the parent's:
-  // a message with no text gives its first call its own id.
-  const parent = state.slots.find(
-    (slot) => slot.message?.role === 'assistant' && slot.message.id === call.parentMessageId,
-  );
-  if (parent?.message?.role === 'assistant') {
-    parent.message = { ...parent.message, toolCalls: [...(parent.message.toolCalls ?? []), entry] };
-  } else {
-    call.slot.message = { id: `${toolCallId}:message`, role: 'assistant', toolCalls: [entry] };
-  }
+  fileCall(state, call, entry);
   yield {
     type: 'stream:tool-call-complete',
     toolName: call.name,
@@ -167,6 +248,33 @@ export function* endCall(state: MapperState, toolCallId: string): Generator<Chat
     ...wire(state),
   };
   yield { type: 'tool_call', id: toolCallId, name: call.name, arguments: args, ...wire(state) };
+}
+
+/**
+ * Files a finished call under the assistant message that made it, so the call
+ * gets the row id a snapshot of the same thread gives it. A call names its
+ * parent message; the message may still be streaming (the call joins it when it
+ * ends), may have ended (the call joins it now), or may never have said a word
+ * (the call is then that message, under the parent's id, and later calls naming
+ * the same parent join it). A call that names no parent is a message of its own.
+ */
+function fileCall(state: MapperState, call: OpenCall, entry: AGUIToolCall): void {
+  const parentId = call.parentMessageId;
+  if (parentId === undefined) {
+    call.slot.message = { id: `${entry.id}:message`, role: 'assistant', toolCalls: [entry] };
+    return;
+  }
+  const streaming = state.openText.get(parentId);
+  if (streaming !== undefined) {
+    streaming.calls.push(entry);
+    return;
+  }
+  const held = findAssistantSlot(state, parentId);
+  if (held?.message?.role === 'assistant') {
+    held.message = { ...held.message, toolCalls: [...(held.message.toolCalls ?? []), entry] };
+    return;
+  }
+  call.slot.message = { id: parentId, role: 'assistant', toolCalls: [entry] };
 }
 
 export function* callChunk(

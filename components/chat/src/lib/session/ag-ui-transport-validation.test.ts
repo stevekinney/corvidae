@@ -69,6 +69,12 @@ describe('AG-UI event order', () => {
     ],
     ['a text message started twice', [runStarted, text, text], 2, /m1 started twice/],
     [
+      'a text message id used again after the message ended',
+      [runStarted, text, { type: 'TEXT_MESSAGE_END', messageId: 'm1' }, text],
+      3,
+      /m1 started twice/,
+    ],
+    [
       'text content for an unopened message',
       [runStarted, { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm1', delta: 'x' }],
       1,
@@ -191,12 +197,6 @@ describe('AG-UI event order', () => {
       [runStarted, span, { type: 'REASONING_MESSAGE_CHUNK', delta: 'x' }],
       2,
       /must carry a messageId/,
-    ],
-    [
-      'a first reasoning chunk outside any span',
-      [runStarted, { type: 'REASONING_MESSAGE_CHUNK', messageId: 'm1', delta: 'x' }],
-      1,
-      /outside a REASONING_START span/,
     ],
     [
       'a reasoning span ended before it started',

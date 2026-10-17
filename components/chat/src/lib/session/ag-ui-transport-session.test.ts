@@ -1,3 +1,4 @@
+import type { Message as AGUIMessage } from '@ag-ui/core';
 import { describe, expect, test } from 'bun:test';
 import { toAGUIMessages } from 'conversationalist';
 import { createConversationHistory } from '../components/chat/builders.ts';
@@ -233,5 +234,153 @@ describe('driving a chat session from an AG-UI stream', () => {
     const rows = session.conversation.ids.map((id) => session.conversation.messages[id]);
     expect(rows[1]?.content).toBe('partial');
     expect(rows.every((row) => row?.metadata['_streaming'] !== true)).toBe(true);
+  });
+
+  describe('tool call identity across a backend snapshot of the same thread', () => {
+    const textMessage = (id: string, text: string) => [
+      { type: 'TEXT_MESSAGE_START', messageId: id },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: id, delta: text },
+      { type: 'TEXT_MESSAGE_END', messageId: id },
+    ];
+    const toolCall = (parentMessageId?: string) => [
+      {
+        type: 'TOOL_CALL_START',
+        toolCallId: 'c1',
+        toolCallName: 'lookup',
+        ...(parentMessageId === undefined ? {} : { parentMessageId }),
+      },
+      { type: 'TOOL_CALL_ARGS', toolCallId: 'c1', delta: '{"q":1}' },
+      { type: 'TOOL_CALL_END', toolCallId: 'c1' },
+      { type: 'TOOL_CALL_RESULT', messageId: 'c1-result', toolCallId: 'c1', content: 'found' },
+    ];
+
+    /**
+     * Turn 1 streams `first`; turn 2 opens with the thread as the backend
+     * stores it: the client's own messages as the run input carried them, and
+     * the backend's assistant message holding the call.
+     */
+    async function twoTurns(first: unknown[], backendAssistant: AGUIMessage) {
+      let turn = 0;
+      const session = createSession((request) => {
+        turn += 1;
+        if (turn === 1)
+          return [
+            { type: 'RUN_STARTED', threadId: 't', runId: 'r1' },
+            ...first,
+            ...textMessage('a1', 'answer 1'),
+            { type: 'RUN_FINISHED', threadId: 't', runId: 'r1' },
+          ];
+        const [question1] = toAGUIMessages(request.conversation);
+        const client = toAGUIMessages(request.conversation);
+        return [
+          { type: 'RUN_STARTED', threadId: 't', runId: 'r2' },
+          {
+            type: 'MESSAGES_SNAPSHOT',
+            messages: [
+              question1,
+              backendAssistant,
+              { id: 'c1-result', role: 'tool', toolCallId: 'c1', content: 'found' },
+              { id: 'a1', role: 'assistant', content: 'answer 1' },
+              client.at(-1),
+            ],
+          },
+          ...textMessage('a2', 'answer 2'),
+          { type: 'RUN_FINISHED', threadId: 't', runId: 'r2' },
+        ];
+      });
+      await session.controller.adapter.sendMessage({ role: 'user', content: 'question 1' }, []);
+      const afterFirst = [...session.conversation.ids];
+      await session.controller.adapter.sendMessage({ role: 'user', content: 'question 2' }, []);
+      return { session, afterFirst };
+    }
+
+    const call = {
+      id: 'c1',
+      type: 'function' as const,
+      function: { name: 'lookup', arguments: '{"q":1}' },
+    };
+    const toolRows = (conversation: ConversationHistory) =>
+      conversation.ids.filter((id) => conversation.messages[id]?.toolCall !== undefined);
+
+    async function expectMerged(
+      first: unknown[],
+      backendAssistant: AGUIMessage,
+      expectedAfterFirst: string[],
+    ) {
+      const { session, afterFirst } = await twoTurns(first, backendAssistant);
+      expect(session.errors).toEqual([]);
+      expect(afterFirst.slice(1)).toEqual(expectedAfterFirst);
+      expect(toolRows(session.conversation)).toHaveLength(1);
+      expect(rolesOf(session.conversation)).toEqual([
+        'user',
+        ...expectedAfterFirst.map((id) => session.conversation.messages[id]?.role ?? 'missing'),
+        'user',
+        'assistant',
+      ]);
+      expect(contents(session.conversation).at(-1)).toBe('answer 2');
+      expect(session.conversation.ids).toHaveLength(afterFirst.length + 2);
+    }
+
+    test('a call that names no parent', async () => {
+      await expectMerged(toolCall(), { id: 'm1', role: 'assistant', toolCalls: [call] }, [
+        'c1:message',
+        'c1-result',
+        'a1',
+      ]);
+    });
+
+    test('a call whose parent streamed text first', async () => {
+      await expectMerged(
+        [...textMessage('m1', 'Let me look.'), ...toolCall('m1')],
+        { id: 'm1', role: 'assistant', content: 'Let me look.', toolCalls: [call] },
+        ['m1', 'm1:call:c1', 'c1-result', 'a1'],
+      );
+    });
+
+    test('a call whose parent never streamed text', async () => {
+      await expectMerged(toolCall('m1'), { id: 'm1', role: 'assistant', toolCalls: [call] }, [
+        'm1',
+        'c1-result',
+        'a1',
+      ]);
+    });
+
+    test('a call that follows reasoning and names a parent that never streamed text', async () => {
+      await expectMerged(
+        [
+          { type: 'REASONING_START', messageId: 'span-1' },
+          { type: 'REASONING_MESSAGE_START', messageId: 'r1', role: 'reasoning' },
+          { type: 'REASONING_MESSAGE_CONTENT', messageId: 'r1', delta: 'hmm' },
+          { type: 'REASONING_MESSAGE_END', messageId: 'r1' },
+          { type: 'REASONING_END', messageId: 'span-1' },
+          ...toolCall('m1'),
+        ],
+        { id: 'm1', role: 'assistant', toolCalls: [call] },
+        ['m1', 'm1:call:c1', 'c1-result', 'a1'],
+      );
+    });
+
+    test('a call that ends before its parent message does', async () => {
+      await expectMerged(
+        [
+          { type: 'TEXT_MESSAGE_START', messageId: 'm1' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm1', delta: 'Let me ' },
+          ...toolCall('m1').slice(0, 3),
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm1', delta: 'look.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'm1' },
+          toolCall('m1')[3],
+        ],
+        { id: 'm1', role: 'assistant', content: 'Let me look.', toolCalls: [call] },
+        ['m1', 'm1:call:c1', 'c1-result', 'a1'],
+      );
+    });
+
+    test('a call that ends before its parent message has started', async () => {
+      await expectMerged(
+        [...toolCall('m1'), ...textMessage('m1', 'Looked.')],
+        { id: 'm1', role: 'assistant', content: 'Looked.', toolCalls: [call] },
+        ['m1', 'm1:call:c1', 'c1-result', 'a1'],
+      );
+    });
   });
 });

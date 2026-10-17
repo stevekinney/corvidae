@@ -13,6 +13,7 @@ export * from './components/chat/index.ts';
 export {
   AGUIChatTransportError,
   AG_UI_UNSUPPORTED_EVENT_TYPES,
+  UNSTARTED_RUN_ID,
   createAGUIChatTransport,
   mapAGUIEventsToChatStream,
   type AGUIChatTransportErrorKind,

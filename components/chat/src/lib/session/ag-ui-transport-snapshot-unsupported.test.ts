@@ -44,7 +44,7 @@ describe('AG-UI MESSAGES_SNAPSHOT', () => {
     expect(withSnapshot.map((frame) => frame['type'])).toEqual(['run.started', 'run.completed']);
   });
 
-  test('keeps what the run produced after it, and drops what it replaced', async () => {
+  test('keeps what the run produced before it and after it', async () => {
     const all = await frames([
       runStarted,
       ...text('before', 'subsumed by the snapshot'),
@@ -54,6 +54,7 @@ describe('AG-UI MESSAGES_SNAPSHOT', () => {
     ]);
     expect(transcript(completedConversation(all))).toEqual([
       ['user', 'Hello'],
+      ['assistant', 'subsumed by the snapshot'],
       ['assistant', 'streamed after the snapshot'],
     ]);
   });
@@ -66,7 +67,10 @@ describe('AG-UI MESSAGES_SNAPSHOT', () => {
         { id: 'u1', role: 'user', content: 'rewritten' },
         { id: 'u2', role: 'user', content: 'second' },
       ]),
-      snapshot([{ id: 'u3', role: 'user', content: 'third' }]),
+      snapshot([
+        { id: 'u2', role: 'user', content: 'second' },
+        { id: 'u3', role: 'user', content: 'third' },
+      ]),
       runFinished,
     ]);
     expect(transcript(completedConversation(all))).toEqual([
@@ -173,21 +177,97 @@ describe('AG-UI MESSAGES_SNAPSHOT', () => {
     expect(error).toMatchObject({ name: 'AGUIChatTransportError', kind: 'history', eventIndex: 1 });
   });
 
-  test('fails with a typed error when the run cannot be assembled onto the snapshot', async () => {
+  test('fails with a typed error when the run cannot be assembled into one conversation', async () => {
+    const call = (id: string) => [
+      { type: 'TOOL_CALL_START', toolCallId: id, toolCallName: 'x' },
+      { type: 'TOOL_CALL_END', toolCallId: id },
+    ];
     const error = await failure([
       runStarted,
-      snapshot([
-        {
-          id: 'a1',
-          role: 'assistant',
-          toolCalls: [{ id: 'call-1', type: 'function', function: { name: 'x', arguments: '{}' } }],
-        },
-      ]),
-      { type: 'TOOL_CALL_START', toolCallId: 'call-1', toolCallName: 'x' },
-      { type: 'TOOL_CALL_END', toolCallId: 'call-1' },
+      ...call('c1'),
+      ...call('c2'),
+      { type: 'TOOL_CALL_RESULT', messageId: 't1', toolCallId: 'c1', content: 'one' },
+      { type: 'TOOL_CALL_RESULT', messageId: 't1', toolCallId: 'c2', content: 'two' },
       runFinished,
     ]);
-    expect(error).toMatchObject({ kind: 'history', eventIndex: 4 });
+    expect(error).toMatchObject({ kind: 'history', eventIndex: 7 });
+  });
+
+  test('ignores a snapshot that shares no row with the thread the client holds', async () => {
+    const asked = fromAGUIMessages([
+      { id: 'u1', role: 'user', content: 'mine' },
+      { id: 'a1', role: 'assistant', content: 'mine too' },
+    ]);
+    const all = await frames(
+      [
+        runStarted,
+        snapshot([
+          { id: 'x1', role: 'user', content: 'their copy of mine' },
+          { id: 'x2', role: 'assistant', content: 'their copy of mine too' },
+        ]),
+        ...text('a2', 'streamed'),
+        runFinished,
+      ],
+      asked,
+    );
+    expect(completedConversation(all).ids).toEqual(['u1', 'a1', 'a2']);
+  });
+
+  test('recognizes a thread by the tool call it holds when the message ids differ', async () => {
+    const call = { id: 'c1', type: 'function' as const, function: { name: 'x', arguments: '{}' } };
+    const asked = fromAGUIMessages([{ id: 'c1:message', role: 'assistant', toolCalls: [call] }]);
+    const all = await frames(
+      [
+        runStarted,
+        snapshot([
+          { id: 'm1', role: 'assistant', toolCalls: [call] },
+          { id: 'a1', role: 'assistant', content: 'new' },
+        ]),
+        runFinished,
+      ],
+      asked,
+    );
+    expect(completedConversation(all).ids).toEqual(['c1:message', 'a1']);
+  });
+
+  test('does not install a snapshot copy of a message that is still streaming', async () => {
+    const all = await frames([
+      runStarted,
+      { type: 'TEXT_MESSAGE_START', messageId: 'a1' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a1', delta: 'whole ' },
+      snapshot([
+        { id: 'u1', role: 'user', content: 'Hello' },
+        { id: 'a1', role: 'assistant', content: 'whole' },
+      ]),
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a1', delta: 'message' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'a1' },
+      runFinished,
+    ]);
+    expect(transcript(completedConversation(all))).toEqual([
+      ['user', 'Hello'],
+      ['assistant', 'whole message'],
+    ]);
+  });
+
+  test('does not install a snapshot copy of a reasoning message that is still streaming', async () => {
+    const all = await frames([
+      runStarted,
+      { type: 'REASONING_START', messageId: 'span-1' },
+      { type: 'REASONING_MESSAGE_START', messageId: 'r1', role: 'reasoning' },
+      { type: 'REASONING_MESSAGE_CONTENT', messageId: 'r1', delta: 'whole ' },
+      snapshot([
+        { id: 'u1', role: 'user', content: 'Hello' },
+        { id: 'r1', role: 'reasoning', content: 'whole' },
+      ]),
+      { type: 'REASONING_MESSAGE_CONTENT', messageId: 'r1', delta: 'thought' },
+      { type: 'REASONING_MESSAGE_END', messageId: 'r1' },
+      { type: 'REASONING_END', messageId: 'span-1' },
+      runFinished,
+    ]);
+    expect(transcript(completedConversation(all))).toEqual([
+      ['user', 'Hello'],
+      ['assistant', [{ type: 'thinking', thinking: 'whole thought', signature: '' }]],
+    ]);
   });
 });
 

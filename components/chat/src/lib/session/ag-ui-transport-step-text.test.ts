@@ -184,4 +184,57 @@ describe('AG-UI TEXT_MESSAGE_* events', () => {
     ]);
     expect(completedConversation(all).ids).toEqual(['c1:message', 'a']);
   });
+
+  test('serializes overlapping messages on the wire: one step open at a time, in start order', async () => {
+    const all = await bodies([
+      runStarted,
+      { type: 'TEXT_MESSAGE_START', messageId: 'a' },
+      { type: 'TEXT_MESSAGE_START', messageId: 'b' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'b', delta: 'bee' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'ay' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'b', delta: 'z' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'b' },
+      { type: 'TEXT_MESSAGE_START', messageId: 'c' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'a' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'c', delta: 'sea' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'c' },
+      runFinished,
+    ]);
+    expect(all.slice(0, -1)).toEqual([
+      started,
+      { type: 'assistant.step.started', step: 0, messageId: 'a' },
+      { type: 'stream:text-delta', content: 'ay', accumulated: 'ay', messageId: 'a' },
+      { type: 'assistant.step.completed', step: 0, messageId: 'a' },
+      { type: 'assistant.step.started', step: 1, messageId: 'b' },
+      { type: 'stream:text-delta', content: 'bee', accumulated: 'bee', messageId: 'b' },
+      { type: 'stream:text-delta', content: 'z', accumulated: 'beez', messageId: 'b' },
+      { type: 'assistant.step.completed', step: 1, messageId: 'b' },
+      { type: 'assistant.step.started', step: 2, messageId: 'c' },
+      { type: 'stream:text-delta', content: 'sea', accumulated: 'sea', messageId: 'c' },
+      { type: 'assistant.step.completed', step: 2, messageId: 'c' },
+    ]);
+  });
+
+  test('releases a held message as soon as the one before it ends, even before it has ended itself', async () => {
+    const all = await bodies([
+      runStarted,
+      { type: 'TEXT_MESSAGE_START', messageId: 'a' },
+      { type: 'TEXT_MESSAGE_START', messageId: 'b' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'b', delta: 'held' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'a' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'b', delta: ' then live' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'b' },
+      runFinished,
+    ]);
+    expect(all.map((frame) => frame['type'])).toEqual([
+      'run.started',
+      'assistant.step.started',
+      'assistant.step.completed',
+      'assistant.step.started',
+      'stream:text-delta',
+      'stream:text-delta',
+      'assistant.step.completed',
+      'run.completed',
+    ]);
+  });
 });

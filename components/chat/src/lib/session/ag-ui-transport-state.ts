@@ -1,4 +1,4 @@
-import type { Message as AGUIMessage } from '@ag-ui/core';
+import type { Message as AGUIMessage, ToolCall as AGUIToolCall } from '@ag-ui/core';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 import { AGUIChatTransportError } from './ag-ui-transport-error.ts';
 import type { ChatStreamBlock } from './stream-event-codec.ts';
@@ -20,14 +20,35 @@ export const UNSTARTED_RUN_ID = 'ag-ui:unstarted';
  */
 export type Slot = { message: AGUIMessage | undefined };
 
-export type OpenText = { step: number; text: string; slot: Slot; assistantText: { text: string } };
+/**
+ * One assistant message's turn on the wire. A version 3 stream has one open
+ * assistant step at a time, and AG-UI lets messages overlap, so the projection
+ * is serialized: a message that starts while another is open waits in the
+ * queue, with the deltas it receives, until the ones before it have ended.
+ */
+export type WireText = {
+  messageId: string;
+  step: number;
+  deltas: string[];
+  emitted: boolean;
+  ended: boolean;
+};
+
+export type OpenText = {
+  text: string;
+  slot: Slot;
+  assistantText: { text: string };
+  wire: WireText;
+  /** Calls that named this message as their parent and ended before it did. */
+  calls: AGUIToolCall[];
+};
 export type OpenCall = {
   name: string;
   args: string;
   slot: Slot;
   parentMessageId: string | undefined;
 };
-export type ReasoningSpan = { block: ChatStreamBlock };
+export type ReasoningSpan = { block: ChatStreamBlock; implicit: boolean };
 export type ReasoningMessage = { span: ReasoningSpan; slot: Slot; content: string; open: boolean };
 
 /** Everything the mapping remembers about one run, and nothing about any other. */
@@ -45,6 +66,10 @@ export type MapperState = {
   step: number;
   blockIndex: number;
   openText: Map<string, OpenText>;
+  /** Assistant messages not yet finished on the wire, in the order they started. */
+  wireQueue: WireText[];
+  /** Every text message id the run has started, ended or not: an id names one message. */
+  startedText: Set<string>;
   /** Text messages from a role the session already owns (user, developer, system). */
   foreignText: Set<string>;
   /** The message a `TEXT_MESSAGE_CHUNK` run is extending, with the role it opened with. */
@@ -74,6 +99,8 @@ export function createMapperState(base: ConversationHistory): MapperState {
     step: 0,
     blockIndex: 0,
     openText: new Map(),
+    wireQueue: [],
+    startedText: new Set(),
     foreignText: new Set(),
     textLane: undefined,
     openCalls: new Map(),

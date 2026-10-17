@@ -36,6 +36,7 @@ export {
   AGUIChatTransportError,
   type AGUIChatTransportErrorKind,
 } from './ag-ui-transport-error.ts';
+export { UNSTARTED_RUN_ID } from './ag-ui-transport-state.ts';
 
 /**
  * The AG-UI 1.0 event types this transport reads and deliberately does not
@@ -70,11 +71,15 @@ const unsupportedTypes: ReadonlySet<EventType> = new Set(AG_UI_UNSUPPORTED_EVENT
  *
  * - `RUN_STARTED` becomes `run.started`, keeping its thread and parent run. A
  *   `RUN_ERROR` that arrives first is preceded by a `run.started` with run id
- *   `ag-ui:unstarted`, because a version 3 stream opens that way; its message
- *   is the backend's, its `code` is the error's name (and its code, when the
- *   wire has one by that name).
+ *   `ag-ui:unstarted` (and the error's thread, if it names one), because a
+ *   version 3 stream opens that way. `RUN_ERROR` becomes `run.error` with the
+ *   backend's message and its code as `backendCode`; the wire `code` is the
+ *   same string only on an exact match with a code the wire has, else `UNKNOWN`.
  * - An assistant `TEXT_MESSAGE_*` run becomes an `assistant.step.*` pair around
- *   `stream:text-delta` frames addressed by `messageId`. Text from any other
+ *   `stream:text-delta` frames addressed by `messageId`. A version 3 stream has
+ *   one open step at a time, so messages that overlap are written one after
+ *   another in the order they started: a later message's step and deltas wait
+ *   until the earlier one ends. Text from any other
  *   role (the user's own echoed message, a system or developer message) is the
  *   session's own and is not added to history.
  * - `TOOL_CALL_START`, `TOOL_CALL_ARGS` and `TOOL_CALL_END` become
@@ -83,7 +88,8 @@ const unsupportedTypes: ReadonlySet<EventType> = new Set(AG_UI_UNSUPPORTED_EVENT
  * - `STEP_*` become `metadata` blocks. `REASONING_START` and `REASONING_END`
  *   name a span, which is one `thinking` block; `REASONING_MESSAGE_*` events
  *   name messages inside it, keyed by their own ids, and
- *   `REASONING_ENCRYPTED_VALUE` names a message. The session observes blocks
+ *   `REASONING_ENCRYPTED_VALUE` names a message. A `REASONING_MESSAGE_CHUNK`
+ *   with no span open gets an implicit span that lasts as long as the chunk run. The session observes blocks
  *   and does not render them.
  * - Events that carry a `subagentRunId` belong to a subagent, not to this
  *   thread, and are skipped (as are such messages in a snapshot).
@@ -104,8 +110,15 @@ const unsupportedTypes: ReadonlySet<EventType> = new Set(AG_UI_UNSUPPORTED_EVENT
  * rows the client lacks and can never delete or rewrite one it has. Messages
  * land in the order they started, however they end. Message ids are the
  * backend's, kept as the row ids, so a backend that echoes the client's ids
- * (as the AG-UI run input carries them) is merged row for row, while one that
- * names its own copy of a row the client minted will add a second copy.
+ * (as the AG-UI run input carries them) is merged row for row. A snapshot that
+ * shares no message, and no tool call, with a thread the client already holds is
+ * not a snapshot of that thread and is ignored, so a backend that renames
+ * everything cannot add the whole history a second time; a message still
+ * streaming is left out of a snapshot, because its whole row is written when it
+ * ends. A tool call is filed under the assistant message it names as its
+ * parent (joining it, or being that message's first call), so it gets the row id
+ * a snapshot of the same thread gives it; a call that names no parent is a
+ * message of its own, and a snapshot's copy of it is skipped by call id.
  */
 export async function* mapAGUIEventsToChatStream(
   events: AsyncIterable<unknown> | Iterable<unknown>,
@@ -192,7 +205,7 @@ function assertCanAccept(state: MapperState, event: AGUIEvent): void {
 function* closeLanes(state: MapperState): Generator<ChatStreamEvent> {
   yield* closeTextLane(state);
   yield* closeCallLane(state);
-  closeReasoningLane(state);
+  yield* closeReasoningLane(state);
 }
 
 function* reduceEvent(state: MapperState, event: AGUIEvent): Generator<ChatStreamEvent> {
@@ -200,7 +213,7 @@ function* reduceEvent(state: MapperState, event: AGUIEvent): Generator<ChatStrea
   // event ends it.
   if (event.type !== EventType.TEXT_MESSAGE_CHUNK) yield* closeTextLane(state);
   if (event.type !== EventType.TOOL_CALL_CHUNK) yield* closeCallLane(state);
-  if (event.type !== EventType.REASONING_MESSAGE_CHUNK) closeReasoningLane(state);
+  if (event.type !== EventType.REASONING_MESSAGE_CHUNK) yield* closeReasoningLane(state);
   switch (event.type) {
     case EventType.RUN_STARTED:
       yield* startRun(state, event);

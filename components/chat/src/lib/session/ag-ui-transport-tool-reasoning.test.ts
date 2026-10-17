@@ -267,6 +267,43 @@ describe('AG-UI REASONING_* events', () => {
     expect(deltas).toEqual(['a', 'b', 'c']);
   });
 
+  test('REASONING_MESSAGE_CHUNK without REASONING_START opens a span of its own for the chunk run', async () => {
+    const all = await bodies([
+      runStarted,
+      { type: 'REASONING_MESSAGE_CHUNK', messageId: 'msg-1', delta: 'a' },
+      { type: 'REASONING_MESSAGE_CHUNK', delta: 'b' },
+      { type: 'REASONING_MESSAGE_CHUNK', messageId: 'msg-2', delta: 'c' },
+      { type: 'CUSTOM', name: 'n', value: 1 },
+      runFinished,
+    ]);
+    const kinds = all.map((frame) => frame['type']);
+    expect(kinds).toEqual([
+      'run.started',
+      'stream:block-start',
+      'stream:block-delta',
+      'stream:block-delta',
+      'stream:block-complete',
+      'stream:block-start',
+      'stream:block-delta',
+      'stream:block-complete',
+      'run.completed',
+    ]);
+    expect(all[4]).toMatchObject({ block: { id: 'msg-1', content: 'ab', complete: true } });
+    expect(all[7]).toMatchObject({ block: { id: 'msg-2', content: 'c', complete: true } });
+  });
+
+  test('REASONING_MESSAGE_CHUNK inside an explicit span leaves the span to its own end', async () => {
+    const all = await bodies([
+      runStarted,
+      span,
+      { type: 'REASONING_MESSAGE_CHUNK', messageId: 'msg-1', delta: 'a' },
+      { type: 'TEXT_MESSAGE_CHUNK', messageId: 'm1', delta: 'x' },
+      spanEnd,
+      runFinished,
+    ]);
+    expect(all.filter((frame) => frame['type'] === 'stream:block-complete')).toHaveLength(1);
+  });
+
   test('become one reasoning message each, ahead of the assistant message that follows', async () => {
     const all = await frames([
       runStarted,

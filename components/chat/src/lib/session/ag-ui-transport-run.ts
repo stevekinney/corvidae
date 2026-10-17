@@ -67,25 +67,32 @@ export function* failRun(
   state: MapperState,
   event: Extract<AGUIEvent, { type: EventType.RUN_ERROR }>,
 ): Generator<ChatStreamEvent> {
+  const threadId = readString(event, 'threadId');
   // An error may be the backend's first word: a run that never started, refused
   // at the door. A version 3 stream still opens with `run.started`.
   if (state.runId === undefined) {
     state.runId = UNSTARTED_RUN_ID;
-    yield { type: 'run.started', runId: UNSTARTED_RUN_ID, ...wire(state) };
+    state.threadId = threadId;
+    yield {
+      type: 'run.started',
+      runId: UNSTARTED_RUN_ID,
+      ...(threadId === undefined ? {} : { threadId }),
+      ...wire(state),
+    };
   }
-  const threadId = readString(event, 'threadId');
   if (threadId !== undefined && state.threadId !== undefined && threadId !== state.threadId)
     throw protocolError(`RUN_ERROR named thread ${threadId}, not ${state.threadId}.`);
   state.finished = true;
   yield {
     type: 'run.error',
     error: {
-      // The backend's own code travels as the error's name and, when it is one
-      // the wire knows, as its code; the message stays the backend's message.
-      name: event.code ?? 'AGUIRunError',
+      name: 'AGUIRunError',
       message: event.message,
       kind: 'generate',
+      // The wire's code is a closed set, so the backend's code only becomes it
+      // on an exact match; it always travels as itself too.
       code: isChatAgentRunErrorCode(event.code) ? event.code : 'UNKNOWN',
+      ...(event.code === undefined ? {} : { backendCode: event.code }),
     },
     ...wire(state),
   };
@@ -149,20 +156,25 @@ function sumUsage(usages: ReadonlyArray<AGUITokenUsage>): TokenUsage {
   };
 }
 
-export function adoptSnapshot(
-  state: MapperState,
-  messages: ReadonlyArray<
-    Extract<AGUIEvent, { type: EventType.MESSAGES_SNAPSHOT }>['messages'][number]
-  >,
-): void {
+export function adoptSnapshot(state: MapperState, messages: ReadonlyArray<SnapshotMessage>): void {
+  // A subagent's messages are not the thread's, and a message still streaming
+  // is not finished: its closed slot will write it whole, where a snapshot of
+  // it now would install a partial row that the whole one is then skipped for.
+  const streaming = new Set([
+    ...state.openText.keys(),
+    ...[...state.reasoningMessages].filter(([, message]) => message.open).map(([id]) => id),
+  ]);
+  const candidates = messages.filter(
+    (message) => message.subagentRunId === undefined && !streaming.has(message.id),
+  );
+  // A snapshot that shares nothing with a thread the client already holds is
+  // not a snapshot of this thread, and merging it would add the whole history
+  // a second time under other ids.
+  if (state.base.ids.length > 0 && !sharesAnyRow(state.base, candidates)) return;
   try {
     // The client's rows stand: a snapshot adds the rows the client lacks and
-    // cannot delete or rewrite one. A subagent's own messages are not the
-    // thread's.
-    state.base = mergeAGUIMessages(
-      state.base,
-      messages.filter((message) => message.subagentRunId === undefined),
-    );
+    // cannot delete or rewrite one.
+    state.base = mergeAGUIMessages(state.base, candidates);
   } catch (error) {
     throw new AGUIChatTransportError(
       'history',
@@ -170,15 +182,25 @@ export function adoptSnapshot(
       { cause: error },
     );
   }
-  // The snapshot is authoritative about everything before it, including what
-  // this run had already produced. A message still being streamed keeps its
-  // place, because it has not been written yet.
-  const open = new Set<unknown>([
-    ...[...state.openText.values()].map((entry) => entry.slot),
-    ...[...state.openCalls.values()].map((entry) => entry.slot),
-    ...[...state.reasoningMessages.values()]
-      .filter((entry) => entry.open)
-      .map((entry) => entry.slot),
-  ]);
-  state.slots = state.slots.filter((slot) => open.has(slot));
+}
+
+type SnapshotMessage = Extract<
+  AGUIEvent,
+  { type: EventType.MESSAGES_SNAPSHOT }
+>['messages'][number];
+
+/** Whether any message is one the conversation already holds, by id or by tool call. */
+function sharesAnyRow(
+  base: ConversationHistory,
+  messages: ReadonlyArray<SnapshotMessage>,
+): boolean {
+  const calls = new Set(
+    Object.values(base.messages).flatMap((row) => (row.toolCall ? [row.toolCall.id] : [])),
+  );
+  return messages.some(
+    (message) =>
+      base.messages[message.id] !== undefined ||
+      (message.role === 'assistant' &&
+        (message.toolCalls ?? []).some((call) => calls.has(call.id))),
+  );
 }

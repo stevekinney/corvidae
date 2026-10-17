@@ -11,6 +11,7 @@ import {
   runStarted,
   transcript,
 } from './ag-ui-transport-test-support.ts';
+import { UNSTARTED_RUN_ID } from './ag-ui-transport.ts';
 import { decodeChatStreamEvents, encodeChatStreamEvent } from './stream-event-codec.ts';
 
 describe('AG-UI RUN_* events', () => {
@@ -68,7 +69,7 @@ describe('AG-UI RUN_* events', () => {
     ]);
   });
 
-  test('RUN_ERROR becomes run.error: the backend message, its code as the name', async () => {
+  test('RUN_ERROR becomes run.error: the backend message, its code kept as the backend code', async () => {
     expect(
       await bodies([
         runStarted,
@@ -79,36 +80,53 @@ describe('AG-UI RUN_* events', () => {
       {
         type: 'run.error',
         error: {
-          name: 'REFUSED',
+          name: 'AGUIRunError',
           message: 'The model refused.',
           kind: 'generate',
           code: 'UNKNOWN',
+          backendCode: 'REFUSED',
         },
       },
     ]);
   });
 
-  test('RUN_ERROR keeps a code the wire knows as the wire code, and names the error plainly without one', async () => {
+  test('RUN_ERROR maps its code to the wire code only on an exact match', async () => {
     const known = await bodies([
       runStarted,
       { type: 'RUN_ERROR', message: 'Over.', code: 'BUDGET_EXCEEDED' },
     ]);
     expect(known[1]).toMatchObject({
-      error: { name: 'BUDGET_EXCEEDED', message: 'Over.', code: 'BUDGET_EXCEEDED' },
+      error: { name: 'AGUIRunError', code: 'BUDGET_EXCEEDED', backendCode: 'BUDGET_EXCEEDED' },
     });
+    const near = await bodies([
+      runStarted,
+      { type: 'RUN_ERROR', message: 'x', code: 'budget_exceeded' },
+    ]);
+    expect(near[1]).toMatchObject({ error: { code: 'UNKNOWN', backendCode: 'budget_exceeded' } });
     const bare = await bodies([runStarted, { type: 'RUN_ERROR', message: 'Nope.' }]);
-    expect(bare[1]).toMatchObject({
-      error: { name: 'AGUIRunError', message: 'Nope.', code: 'UNKNOWN' },
+    const error = (bare[1] as { error: object }).error;
+    expect(error).toEqual({
+      name: 'AGUIRunError',
+      message: 'Nope.',
+      kind: 'generate',
+      code: 'UNKNOWN',
     });
   });
 
   test('RUN_ERROR as the first event is accepted, behind the run.started a version 3 stream opens with', async () => {
-    const all = await frames([{ type: 'RUN_ERROR', message: 'auth failed', code: 'UNAUTHORIZED' }]);
+    const all = await frames([
+      { type: 'RUN_ERROR', message: 'auth failed', code: 'UNAUTHORIZED', threadId: 'thread-9' },
+    ]);
     expect(all.map((frame) => frame.type)).toEqual(['run.started', 'run.error']);
-    expect(all[0]).toMatchObject({ runId: 'ag-ui:unstarted' });
-    expect(all[1]).toMatchObject({ error: { message: 'auth failed', name: 'UNAUTHORIZED' } });
+    expect(all[0]).toMatchObject({ runId: UNSTARTED_RUN_ID, threadId: 'thread-9' });
+    expect(UNSTARTED_RUN_ID).toBe('ag-ui:unstarted');
+    expect(all[1]).toMatchObject({
+      error: { message: 'auth failed', name: 'AGUIRunError', backendCode: 'UNAUTHORIZED' },
+    });
     const ndjson = all.map((frame) => encodeChatStreamEvent(frame)).join('');
     expect(await Array.fromAsync(decodeChatStreamEvents(ndjson))).toEqual(all);
+    const bare = await frames([{ type: 'RUN_ERROR', message: 'auth failed' }]);
+    expect(bare[0]).not.toHaveProperty('threadId');
   });
 
   test('RUN_ERROR names the thread it belongs to, and a different one fails', async () => {

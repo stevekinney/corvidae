@@ -1,7 +1,7 @@
 import { createConversationHistory } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 import { mapAGUIEventsToChatStream } from './ag-ui-transport.ts';
-import type { ChatStreamEvent } from './stream-event-codec.ts';
+import { guardChatStreamEvents, type ChatStreamEvent } from './stream-event-codec.ts';
 
 export const thread = { threadId: 'thread-1', runId: 'run-1' };
 export const runStarted = { type: 'RUN_STARTED', ...thread };
@@ -11,12 +11,18 @@ export function emptyConversation(): ConversationHistory {
   return createConversationHistory({ id: 'ag-ui' });
 }
 
-/** Maps events to frames, as the controller would receive them. */
+/**
+ * Maps events to frames, as the controller would receive them: through the
+ * stream guard, so every test that reads frames also proves they are valid on
+ * the wire (opening, identity, ordering, and terminal rules included).
+ */
 export async function frames(
   events: unknown[],
   conversation: ConversationHistory = emptyConversation(),
 ): Promise<ChatStreamEvent[]> {
-  return Array.fromAsync(mapAGUIEventsToChatStream(events, { conversation }));
+  return Array.fromAsync(
+    guardChatStreamEvents(mapAGUIEventsToChatStream(events, { conversation })),
+  );
 }
 
 /** Runs a stream that must fail, and returns what it failed with. */
