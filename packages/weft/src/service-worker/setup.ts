@@ -375,6 +375,10 @@ export function setupServiceWorker(
     (error: unknown) => {
       const wrapped = error instanceof Error ? error : new Error(String(error));
       setupRegistry.set(scope, { status: 'failed', error: wrapped });
+      // The failed setup never hands its engine to anyone, and the fallback listeners answer
+      // without it, so an engine created here would otherwise keep its cleanup interval alive for
+      // the life of the worker. A caller-supplied engine stays the caller's to dispose.
+      if (options.engine === undefined) engine[Symbol.dispose]();
       throw wrapped;
     },
   );

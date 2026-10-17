@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { Engine } from '../core/engine.ts';
 import { WorkflowResumedEvent } from '../core/events.ts';
@@ -136,6 +136,39 @@ describe('setupServiceWorker', () => {
       ).toThrow(/already initialized/);
       first.engine[Symbol.dispose]();
     });
+  });
+
+  it('disposes the engine it created when registration fails, but not a caller-supplied one', async () => {
+    const dispose = spyOn(Engine.prototype, Symbol.dispose);
+    try {
+      await withFakeSelf(createFakeServiceWorkerScope(), async () => {
+        await throwingRejectionOf(
+          setupServiceWorker({
+            storage: new MemoryStorage(),
+            register: async () => {
+              throw new Error('register exploded');
+            },
+          }),
+        );
+      });
+      expect(dispose).toHaveBeenCalledTimes(1);
+
+      dispose.mockClear();
+      using supplied = new Engine({ storage: new MemoryStorage() });
+      await withFakeSelf(createFakeServiceWorkerScope(), async () => {
+        await throwingRejectionOf(
+          setupServiceWorker({
+            engine: supplied,
+            register: async () => {
+              throw new Error('register exploded');
+            },
+          }),
+        );
+      });
+      expect(dispose).not.toHaveBeenCalled();
+    } finally {
+      dispose.mockRestore();
+    }
   });
 
   it('rethrows registration failures and rejects subsequent calls', async () => {
