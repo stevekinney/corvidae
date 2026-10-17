@@ -10971,8 +10971,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *   when none is recorded (see `resolveEventHistory`).
    * - goal: only a principal `bureau.goals.get` shows the goal to, failing closed
    *   for a goal that cannot be read, so an id cannot be probed.
-   * - session: open unless the session records an authority the principal does
-   *   not hold (a session with no recorded authority is open).
+   * - session: `isSessionHistoryReadAuthorized`, the rule `resolveEventHistory`
+   *   applies (COR-1382): whoever the recorded authority names and every
+   *   principal that owned a run on the session; open with no recorded
+   *   authority, closed on malformed authority metadata.
    * - schedule: no ownership concept exists, so open.
    *
    * Read fresh on every call, because ownership is not stable for a live feed:
@@ -10988,7 +10990,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       case 'session': {
         if (!runtime.sessionStore) return true;
         const session = await runtime.sessionStore.load(owner.id);
-        return !session || isSessionAuthorityAuthorized(session.metadata, principal);
+        return !session || isSessionHistoryReadAuthorized(session.metadata, principal);
       }
       case 'schedule':
         return true;
