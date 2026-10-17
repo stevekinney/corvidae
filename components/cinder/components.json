@@ -2084,6 +2084,36 @@
       }
     },
     {
+      "name": "ErrorState",
+      "id": "error-state",
+      "import": "@lostgradient/cinder",
+      "exportName": "ErrorState",
+      "category": "feedback",
+      "status": "stable",
+      "purpose": "Centered error placeholder with a title, description, optional detail, and optional retry button for a region whose data failed to load.",
+      "tags": ["feedback", "error"],
+      "useWhen": [
+        "Replacing a primary content region after its query or request failed, so the failure never looks like an empty result.",
+        "Offering the user a retry for a region that can be reloaded."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Communicating that a region has no data — use empty-state instead."
+        },
+        {
+          "reason": "Reporting the result of a just-completed action — use alert or toast-region."
+        }
+      ],
+      "related": ["alert", "empty-state", "banner"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/error-state/error-state.schema.json",
+        "variables": "src/components/error-state/error-state.variables.json",
+        "examples": "src/components/error-state/error-state.examples.json"
+      }
+    },
+    {
       "name": "Feed",
       "id": "feed",
       "import": "@lostgradient/cinder",

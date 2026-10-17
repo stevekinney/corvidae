@@ -128,6 +128,7 @@ export const appFixtureDeclarations = {
   text: ['assertion'],
   drawer: ['assertion'],
   'empty-state': ['assertion'],
+  'error-state': ['assertion'],
   feed: ['assertion'],
   'feed-boundary': ['assertion'],
   'file-upload': ['assertion'],

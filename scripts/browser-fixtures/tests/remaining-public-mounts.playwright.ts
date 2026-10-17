@@ -108,6 +108,7 @@ const remainingSlugs = [
   'text',
   'drawer',
   'empty-state',
+  'error-state',
   'feed',
   'feed-boundary',
   'file-upload',

@@ -65,6 +65,7 @@ export { default as dropdownSeparatorVariables } from '../components/dropdown-se
 export { default as dropdownTriggerVariables } from '../components/dropdown-trigger/dropdown-trigger.variables.ts';
 export { default as dropdownVariables } from '../components/dropdown/dropdown.variables.ts';
 export { default as emptyStateVariables } from '../components/empty-state/empty-state.variables.ts';
+export { default as errorStateVariables } from '../components/error-state/error-state.variables.ts';
 export { default as feedBoundaryVariables } from '../components/feed-boundary/feed-boundary.variables.ts';
 export { default as feedEventVariables } from '../components/feed-event/feed-event.variables.ts';
 export { default as feedVariables } from '../components/feed/feed.variables.ts';

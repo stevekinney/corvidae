@@ -67,6 +67,7 @@
 @import '../components/drawer/drawer.css';
 @import '../components/dropdown/dropdown.css';
 @import '../components/empty-state/empty-state.css';
+@import '../components/error-state/error-state.css';
 @import '../components/feed-boundary/feed-boundary.css';
 @import '../components/feed-event/feed-event.css';
 @import '../components/feed/feed.css';
