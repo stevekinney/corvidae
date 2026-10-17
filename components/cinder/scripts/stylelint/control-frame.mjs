@@ -62,7 +62,7 @@ const NEUTRAL_KEYWORD =
  * is large enough that the field radius reads as a sharp corner.
  */
 const FRAME_BYPASS =
-  /^--cinder-(?:surface(?:-inset|-canvas)?|border(?:-muted|-strong|-faint|-control(?:-hover)?)?|radius-(?:xs|sm|md|control|surface))$/;
+  /^--cinder-(?:surface(?:-inset|-canvas|-raised)?|border(?:-muted|-strong|-faint|-control(?:-hover)?)?|radius-(?:xs|sm|md|control|surface))$/;
 /** A status fill as an edge: an invalid control uses `--cinder-control-border-invalid`. */
 const STATUS_FILL = /^--cinder-status-[a-z]+-solid(?:-[a-z]+)?$/;
 /** A checkbox or radio box is not a text field; its radius is its own. */
@@ -78,7 +78,13 @@ function violation(value, isEdge) {
   const names = variableNames(trimmed);
   if (names.some((name) => FRAME_BYPASS.test(name))) return true;
   if (isEdge && names.some((name) => STATUS_FILL.test(name))) return true;
-  if (names.some((name) => ALLOWED_VARIABLE.test(name))) return false;
+  // Every public token a control reads must be the frame or a state color; an unrecognized one
+  // is a way around the frame (a control painting `--cinder-surface-raised` directly would not
+  // follow an override of `--cinder-control-background`). Private `--_cinder-*` hooks resolve
+  // to their own declarations, which this rule checks where they are written.
+  const publicNames = names.filter((name) => name.startsWith('--cinder-'));
+  if (publicNames.some((name) => !ALLOWED_VARIABLE.test(name))) return true;
+  if (publicNames.length > 0) return false;
   // Strip widths, styles, and keywords; anything left is a literal color or length.
   const remainder = trimmed
     .replace(/var\([^)]*\)/g, '')

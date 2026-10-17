@@ -114,8 +114,15 @@ describe('InlineConfirm', () => {
     expect(css).toContain(
       'color-mix( in oklab, var(--cinder-status-danger-background) 45%, var(--cinder-surface-raised) )',
     );
-    expect(css).toMatch(/\.cinder-inline-confirm:first-child \{ border-block-start: 0; \}/);
-    expect(css).toMatch(/\.cinder-inline-confirm:last-child \{ border-block-end: 0; \}/);
+    // Only a flush strip gives its start or end edge to the container: a standalone strip has no
+    // container edge to defer to, so it keeps both of its own.
+    expect(css).toMatch(
+      /\.cinder-inline-confirm\[data-cinder-flush\]:first-child \{ border-block-start: 0; \}/,
+    );
+    expect(css).toMatch(
+      /\.cinder-inline-confirm\[data-cinder-flush\]:last-child \{ border-block-end: 0; \}/,
+    );
+    expect(css).not.toMatch(/\.cinder-inline-confirm:(?:first|last)-child/);
   });
 
   test.each([

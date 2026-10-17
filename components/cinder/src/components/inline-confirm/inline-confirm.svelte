@@ -25,6 +25,7 @@
     confirmLabel,
     cancelLabel = 'Cancel',
     destructive = false,
+    flush = false,
     open = $bindable(false),
     onConfirm,
     onCancel,
@@ -103,6 +104,7 @@
     bind:this={root}
     class={classNames('cinder-inline-confirm', className)}
     data-cinder-destructive={destructive ? '' : undefined}
+    data-cinder-flush={flush ? '' : undefined}
     role="group"
     aria-label={prompt}
   >

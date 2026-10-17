@@ -973,7 +973,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-lg);
     padding: var(--cinder-space-3);

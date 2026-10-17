@@ -84,7 +84,7 @@
     min-height: var(--cinder-control-height-sm);
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-control-radius);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     color: var(--cinder-text-default);
     padding: var(--cinder-space-1) var(--cinder-space-2);
   }

@@ -270,7 +270,7 @@
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-control-radius);
     resize: vertical;

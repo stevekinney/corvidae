@@ -42,6 +42,11 @@ describe(ruleName, () => {
     ],
     ['the page surface', 'background: var(--cinder-surface)'],
     ['the inset surface', 'background-color: var(--cinder-surface-inset)'],
+    [
+      'the raised surface directly instead of the frame',
+      'background: var(--cinder-surface-raised)',
+    ],
+    ['an unrecognized public token', 'background: var(--cinder-text-default)'],
     ['the small radius', 'border-radius: var(--cinder-radius-sm)'],
     ['the raw medium radius', 'border-radius: var(--cinder-radius-md)'],
     ['a literal color', 'border-color: #ccc'],
@@ -65,6 +70,12 @@ describe(ruleName, () => {
       .cinder-checkbox:checked { background: var(--cinder-accent-solid); }
       @media (forced-colors: active) { .cinder-input { border-color: Mark; } }
       .chat-input { border-radius: var(--cinder-radius-lg); }`),
+    ).toEqual([]);
+  });
+
+  test('defers private hooks to where they are declared', async () => {
+    expect(
+      await findings('.cinder-input { background: var(--_cinder-input-fill, transparent); }'),
     ).toEqual([]);
   });
 

@@ -711,6 +711,32 @@ describe('match selection', () => {
   });
 });
 
+describe('match selection across a resize', () => {
+  test('a resize that clears the selection selects the active match again', async () => {
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes('alpha beta\r\nbeta gamma\r\ndelta')]);
+    const projection = captured.engine.readProjection().text;
+    const start = projection.lastIndexOf('beta');
+    expect(captured.engine.selectMatch({ start, end: start + 4, text: 'beta' }, 100_000)).toBe(
+      true,
+    );
+    captured.engine.resize({ columns: 20, rows: 2 });
+    await Promise.resolve();
+    expect(captured.terminal.getSelection()).toBe('beta');
+  });
+
+  test('a cleared match selection is not brought back by a resize', async () => {
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 6 } });
+    await captured.deliver([bytes('alpha beta')]);
+    const start = captured.engine.readProjection().text.indexOf('beta');
+    captured.engine.selectMatch({ start, end: start + 4, text: 'beta' }, 100_000);
+    captured.engine.clearMatchSelection();
+    captured.engine.resize({ columns: 20, rows: 2 });
+    await Promise.resolve();
+    expect(captured.terminal.getSelection()).toBe('');
+  });
+});
+
 describe('reading position', () => {
   async function fill(captured: CapturedEngine, lines: number, from = 0): Promise<void> {
     const text = Array.from({ length: lines }, (_, index) => `row ${from + index}`).join('\r\n');

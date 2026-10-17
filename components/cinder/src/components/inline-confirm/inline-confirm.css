@@ -23,14 +23,15 @@
     border-block: 1px solid var(--cinder-status-neutral-border);
   }
   /*
-   * Inside a bordered container the strip's own rule would sit on top of the
-   * container's edge and double it; at the start or end of its container it
-   * leaves that edge to the container.
+   * `flush`: the strip sits inside a bordered container, where its own rule at
+   * the container's start or end would sit on the container's edge and double
+   * it, so it leaves that edge to the container. Opt-in, because CSS cannot see
+   * whether a parent draws a border: a standalone strip keeps both edges.
    */
-  .cinder-inline-confirm:first-child {
+  .cinder-inline-confirm[data-cinder-flush]:first-child {
     border-block-start: 0;
   }
-  .cinder-inline-confirm:last-child {
+  .cinder-inline-confirm[data-cinder-flush]:last-child {
     border-block-end: 0;
   }
   .cinder-inline-confirm__prompt {

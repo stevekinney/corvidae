@@ -1139,7 +1139,7 @@
     font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
     line-height: 1.6;
     color: var(--cinder-text-default);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     border: 1px solid var(--cinder-accent-solid);
     border-radius: var(--cinder-control-radius);
     resize: vertical;

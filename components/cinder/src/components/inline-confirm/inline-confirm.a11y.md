@@ -6,7 +6,7 @@
 - Review outcome: Final review complete—approved.
 - Nearest neighbours: ConfirmDialog, Alert, ButtonGroup.
 - Why this component exists: It keeps a short, reversible confirmation beside the action without interrupting the page with a top-layer dialog.
-- Findings and resolutions: It uses document flow and existing Button primitives. It intentionally has no scrim, `aria-modal`, focus trap, body scroll lock, or modal backdrop. The non-destructive strip is a soft neutral; the destructive strip is a soft danger tint, and the tone is carried by the prompt (danger text color plus a decorative `aria-hidden` warning glyph) and the danger confirm button, while prompt and action labels remain visible text. At the start or end of a container the strip drops its own rule so it does not double the container's edge.
+- Findings and resolutions: It uses document flow and existing Button primitives. It intentionally has no scrim, `aria-modal`, focus trap, body scroll lock, or modal backdrop. The non-destructive strip is a soft neutral; the destructive strip is a soft danger tint, and the tone is carried by the prompt (danger text color plus a decorative `aria-hidden` warning glyph) and the danger confirm button, while prompt and action labels remain visible text. With `flush`, at the start or end of a bordered container the strip drops its own rule there so it does not double the container's edge; without it, a standalone strip keeps both edges.
 
 ## Novel interaction accessibility review
 

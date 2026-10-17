@@ -96,7 +96,7 @@
     margin: 0;
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-surface-raised);
+    background: var(--cinder-control-background);
     cursor: pointer;
     display: inline-flex;
     align-items: center;

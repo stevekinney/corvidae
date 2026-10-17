@@ -20,6 +20,11 @@
       "description": "Marks the confirming action as destructive. Defaults to `false`.",
       "default": false
     },
+    "flush": {
+      "type": "boolean",
+      "description": "The strip sits flush inside a bordered container. At the container's start or end it drops\nits own rule there instead of doubling the container's edge. Defaults to `false`.",
+      "default": false
+    },
     "open": {
       "type": "boolean",
       "description": "Whether the confirmation is open. Bindable, and component-owned on\nclose: confirming, clicking Cancel, and pressing Escape all set this\nto `false` before calling `onConfirm`/`onCancel`, so a bound parent\nobserves the confirmation as already closed by the time either\ncallback runs—neither callback can veto or delay that close. Defaults\nto `false`.",

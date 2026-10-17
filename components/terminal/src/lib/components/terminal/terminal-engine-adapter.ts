@@ -26,6 +26,9 @@ export const SCROLLBACK_LINES = 10_000;
  * - `reset`: the engine's full reset, which also returns modes, charsets and the active buffer to
  *   their start state.
  */
+/** A search match: `text` at `[start, end)` of the retained projection. */
+export type SearchMatch = { start: number; end: number; text: string };
+
 export type ClearScope = 'visible' | 'retained' | 'reset';
 
 /** The grid the engine starts with, before the first fit or owner geometry arrives. */
@@ -149,13 +152,15 @@ export type RendererEngine = {
   /** A bounded plain-text projection of the active retained buffer. */
   readProjection(maximumBytes?: number): TerminalProjection;
   /**
-   * Select the retained text a search found, without scrolling the viewport or moving focus. The
-   * match is `text.slice(start, end)` of the projection read within `maximumBytes` now; if the
-   * buffer no longer holds exactly `text` there, or the cells cannot be placed exactly, nothing is
-   * selected and this returns `false`. A trailing line break is not selected, because a selection
-   * cannot end after one; a match of nothing but line breaks cannot be selected.
+   * Select the retained text a search found, without moving focus, scrolling only as far as it
+   * takes to show the match's first row. The match is `text.slice(start, end)` of the projection
+   * read within `maximumBytes` now; if the buffer no longer holds exactly `text` there, or the
+   * cells cannot be placed exactly, nothing is selected and this returns `false`. A trailing line
+   * break is not selected, because a selection cannot end after one; a match of nothing but line
+   * breaks cannot be selected. A resize, which clears the engine's selection, selects the match
+   * again.
    */
-  selectMatch(match: { start: number; end: number; text: string }, maximumBytes: number): boolean;
+  selectMatch(match: SearchMatch, maximumBytes: number): boolean;
   /** Drop the selection {@link RendererEngine.selectMatch} made. A reader's own selection stays. */
   clearMatchSelection(): void;
   /**
@@ -222,12 +227,66 @@ export function createRendererEngine(
   const changeListeners = new Set<() => void>();
   // Whether the current selection is one `selectMatch` made, so clearing never takes a reader's.
   let ownsSelection = false;
+  // The match that selection is of, so a resize that clears it can put it back.
+  let selectedMatch: { match: SearchMatch; maximumBytes: number } | undefined;
 
   function notifyChange(): void {
     for (const listener of changeListeners) listener();
   }
   terminal.onWriteParsed(notifyChange);
-  terminal.onResize(notifyChange);
+  terminal.onResize(() => {
+    // A resize clears the engine's selection. When that selection was the active search match,
+    // select it again (reflowed to the new width), or the highlight vanishes whenever the panel
+    // around the terminal changes height. An empty selection means nothing of the reader's is
+    // replaced.
+    // The engine clears its selection after this event fires, so the check waits a microtask.
+    queueMicrotask(() => {
+      if (disposed || !ownsSelection || selectedMatch === undefined) return;
+      if (terminal.getSelection() !== '') return;
+      selectMatchCells(selectedMatch.match, selectedMatch.maximumBytes);
+    });
+    notifyChange();
+  });
+
+  /**
+   * A match outside the viewport is selected but not painted, so stepping to it would look like
+   * nothing happened. Scroll just far enough to show its first row.
+   */
+  function revealRow(row: number): void {
+    const top = terminal.buffer.active.viewportY;
+    if (row < top) terminal.scrollToLine(row);
+    else if (row >= top + terminal.rows) terminal.scrollToLine(row - terminal.rows + 1);
+  }
+
+  /** Select `match` and scroll it into view; false when its cells no longer hold it. */
+  function selectMatchCells(match: SearchMatch, maximumBytes: number): boolean {
+    const buffer = terminal.buffer.active;
+    const projection = projectBuffer(buffer, maximumBytes);
+    // A selection cannot end after a line feed, so a match that ends with one selects up to the
+    // end of its last line.
+    const selected = match.text.replace(/\n+$/u, '');
+    const end = match.start + selected.length;
+    const cells =
+      selected !== '' && projection.text.slice(match.start, end) === selected
+        ? locateRange(buffer, projection, terminal.cols, { start: match.start, end })
+        : undefined;
+    if (cells !== undefined) {
+      terminal.select(cells.column, cells.row, cells.length);
+      if (terminal.getSelection() === selected) {
+        ownsSelection = true;
+        selectedMatch = { match, maximumBytes };
+        revealRow(cells.row);
+        return true;
+      }
+      // The cells did not hold exactly the match; the selection just made is wrong, so it goes.
+      terminal.clearSelection();
+    } else if (ownsSelection) {
+      terminal.clearSelection();
+    }
+    ownsSelection = false;
+    selectedMatch = undefined;
+    return false;
+  }
 
   /**
    * Drop a unicode prefix still held from earlier output without parsing it, and acknowledge the
@@ -364,43 +423,12 @@ export function createRendererEngine(
       return projectBuffer(terminal.buffer.active, maximumBytes);
     },
     selectMatch(match, maximumBytes) {
-      /**
-       * A match outside the viewport is selected but not painted, so stepping to it would look
-       * like nothing happened. Scroll just far enough to show its first row.
-       */
-      const revealRow = (row: number): void => {
-        const top = terminal.buffer.active.viewportY;
-        if (row < top) terminal.scrollToLine(row);
-        else if (row >= top + terminal.rows) terminal.scrollToLine(row - terminal.rows + 1);
-      };
-      const buffer = terminal.buffer.active;
-      const projection = projectBuffer(buffer, maximumBytes);
-      // A selection cannot end after a line feed, so a match that ends with one selects up to the
-      // end of its last line.
-      const selected = match.text.replace(/\n+$/u, '');
-      const end = match.start + selected.length;
-      const cells =
-        selected !== '' && projection.text.slice(match.start, end) === selected
-          ? locateRange(buffer, projection, terminal.cols, { start: match.start, end })
-          : undefined;
-      if (cells !== undefined) {
-        terminal.select(cells.column, cells.row, cells.length);
-        if (terminal.getSelection() === selected) {
-          ownsSelection = true;
-          revealRow(cells.row);
-          return true;
-        }
-        // The cells did not hold exactly the match; the selection just made is wrong, so it goes.
-        terminal.clearSelection();
-      } else if (ownsSelection) {
-        terminal.clearSelection();
-      }
-      ownsSelection = false;
-      return false;
+      return selectMatchCells(match, maximumBytes);
     },
     clearMatchSelection() {
       if (!ownsSelection) return;
       ownsSelection = false;
+      selectedMatch = undefined;
       terminal.clearSelection();
     },
     clear(scope, done) {
