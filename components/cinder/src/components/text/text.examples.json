@@ -1,0 +1,25 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "text",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "variants",
+      "title": "Typography variants",
+      "description": "Each variant renders its matching element: h1 to h5 headings, and paragraphs for caption and body.",
+      "code": "<script lang=\"ts\">\n  import { Text } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: grid; gap: var(--cinder-space-3);\">\n  <Text variant=\"h1\">Heading 1</Text>\n  <Text variant=\"h2\">Heading 2</Text>\n  <Text variant=\"h3\">Heading 3</Text>\n  <Text variant=\"h4\">Heading 4</Text>\n  <Text variant=\"h5\">Heading 5</Text>\n  <Text>Body text is the default variant.</Text>\n  <Text variant=\"caption\">Caption text for supporting detail.</Text>\n</div>\n"
+    },
+    {
+      "id": "as-element",
+      "title": "Overriding the element",
+      "description": "The as prop swaps the rendered element while keeping the variant style, for example a visually large h2 inside a section.",
+      "code": "<script lang=\"ts\">\n  import { Text } from '@lostgradient/cinder';\n</script>\n\n<article style=\"display: grid; gap: var(--cinder-space-2);\">\n  <Text variant=\"h1\" as=\"h2\">Styled as h1, rendered as h2</Text>\n  <Text variant=\"caption\" as=\"span\">Inline caption</Text>\n</article>\n"
+    },
+    {
+      "id": "inherited-color",
+      "title": "Inherited color",
+      "description": "Text takes its color from the container, so it follows any surface it is placed on.",
+      "code": "<script lang=\"ts\">\n  import { Text } from '@lostgradient/cinder';\n</script>\n\n<div style=\"padding: var(--cinder-space-4); background: var(--cinder-accent-solid); color: var(--cinder-text-inverse);\">\n  <Text variant=\"h3\">Inherits from the container</Text>\n  <Text>The color comes from the surrounding element.</Text>\n</div>\n"
+    }
+  ]
+}

@@ -186,6 +186,7 @@ export { default as tabsSchema } from '../components/tabs/tabs.schema.ts';
 export { default as tagInputSchema } from '../components/tag-input/tag-input.schema.ts';
 export { default as terminalFrameSchema } from '../components/terminal-frame/terminal-frame.schema.ts';
 export { default as terminalOutputSchema } from '../components/terminal-output/terminal-output.schema.ts';
+export { default as textSchema } from '../components/text/text.schema.ts';
 export { default as textareaSchema } from '../components/textarea/textarea.schema.ts';
 export { default as timeFieldSchema } from '../components/time-field/time-field.schema.ts';
 export { default as timelineSchema } from '../components/timeline/timeline.schema.ts';

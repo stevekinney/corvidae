@@ -5669,6 +5669,36 @@
       }
     },
     {
+      "name": "Text",
+      "id": "text",
+      "import": "@lostgradient/cinder",
+      "exportName": "Text",
+      "category": "typography",
+      "status": "stable",
+      "purpose": "Run of text in one of the typography variants h1 to h5, caption, or body that inherits its color from its container.",
+      "tags": ["typography", "text"],
+      "useWhen": [
+        "Rendering a heading, paragraph, or caption in the design system's type scale.",
+        "Overriding the rendered element while keeping a variant's visual style."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Introducing a page section with an eyebrow, description, or actions — use section-heading instead."
+        },
+        {
+          "reason": "Rendering Markdown content — compose the Markdown renderer instead."
+        }
+      ],
+      "related": ["section-heading", "label"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/text/text.schema.json",
+        "variables": "src/components/text/text.variables.json",
+        "examples": "src/components/text/text.examples.json"
+      }
+    },
+    {
       "name": "Textarea",
       "id": "textarea",
       "import": "@lostgradient/cinder",
