@@ -192,11 +192,10 @@ describe('setupServiceWorker', () => {
           throw new Error('register exploded');
         },
       });
-      // The refresh is in flight when the failed setup disposes its engine; release it so the
-      // asynchronous disposal can finish.
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      fetchReleased.resolve();
+      // The refresh never settles on its own (this source ignores its abort signal), and the
+      // registration error still arrives without waiting for the disposal that refresh holds up.
       expect(await throwingRejectionOf(setup)).toThrow('register exploded');
+      fetchReleased.resolve();
     });
   });
 

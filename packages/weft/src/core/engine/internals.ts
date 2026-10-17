@@ -207,7 +207,7 @@ export interface EngineInternals {
    */
   resumesAwaitingAdoption: Map<
     string,
-    Map<string | undefined, import('./resume-awaiting-adoption.ts').ResumeAwaitingAdoption>
+    Map<string | undefined, Array<import('./resume-awaiting-adoption.ts').ResumeAwaitingAdoption>>
   >;
   /**
    * Per-workflow definition references — the actual `WorkflowDefinition`

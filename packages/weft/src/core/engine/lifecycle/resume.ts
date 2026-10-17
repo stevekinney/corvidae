@@ -196,23 +196,19 @@ function joinOrRegisterResume(
   options: ResumeFromStorageOptions | undefined,
 ):
   | { join: Promise<WorkflowHandle>; adoption?: never }
-  | { join?: never; adoption?: RegisteredResume } {
+  | { join?: never; adoption: RegisteredResume } {
   const requires = {
     eagerRevisionCheck: options?.skipEagerRevisionCheck !== true,
     resumedEvent: dispatchResumedEvent,
   };
-  const inFlight = internals.resumesAwaitingAdoption
+  // A joiner never inherits a weaker resume. One that requires something every in-flight resume of
+  // its generation skips resumes on its own, and is listed so stricter resumes after it join it.
+  const compatible = internals.resumesAwaitingAdoption
     .get(workflowId)
-    ?.get(state.workflowExecutionToken);
-  if (inFlight === undefined) {
-    return { adoption: registerResumeAwaitingAdoption(internals, workflowId, state, requires) };
-  }
-  // A joiner never inherits a weaker resume: one that requires something the in-flight resume
-  // skips resumes on its own, as every resume did before joining existed.
-  if (performsEverything(inFlight.performs, requires)) {
-    return { join: joinResumeAwaitingAdoption(inFlight, options) };
-  }
-  return {};
+    ?.get(state.workflowExecutionToken)
+    ?.find((inFlight) => performsEverything(inFlight.performs, requires));
+  if (compatible !== undefined) return { join: joinResumeAwaitingAdoption(compatible, options) };
+  return { adoption: registerResumeAwaitingAdoption(internals, workflowId, state, requires) };
 }
 
 function performsEverything(
@@ -270,8 +266,13 @@ function settleAndForget(
   else adoption.settle.resolve(handle);
   const generations = internals.resumesAwaitingAdoption.get(workflowId);
   const token = adoption.entry.workflowExecutionToken;
-  if (generations?.get(token) !== adoption.entry) return;
-  generations.delete(token);
+  const entries = generations?.get(token);
+  if (generations === undefined || entries === undefined || !entries.includes(adoption.entry)) {
+    return;
+  }
+  const remaining = entries.filter((entry) => entry !== adoption.entry);
+  if (remaining.length > 0) generations.set(token, remaining);
+  else generations.delete(token);
   if (generations.size === 0) internals.resumesAwaitingAdoption.delete(workflowId);
 }
 
@@ -303,7 +304,10 @@ function registerResumeAwaitingAdoption(
     generations = new Map();
     internals.resumesAwaitingAdoption.set(workflowId, generations);
   }
-  generations.set(state.workflowExecutionToken, entry);
+  generations.set(state.workflowExecutionToken, [
+    ...(generations.get(state.workflowExecutionToken) ?? []),
+    entry,
+  ]);
   return { entry, settle };
 }
 
