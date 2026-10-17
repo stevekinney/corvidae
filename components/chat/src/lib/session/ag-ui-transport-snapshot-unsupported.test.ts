@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { fromAGUIMessages } from 'conversationalist';
 import {
   bodies,
   completedConversation,
@@ -57,14 +58,104 @@ describe('AG-UI MESSAGES_SNAPSHOT', () => {
     ]);
   });
 
-  test('the last snapshot wins', async () => {
+  test('each snapshot adds the rows the thread lacks and removes none', async () => {
     const all = await frames([
       runStarted,
       snapshot([{ id: 'u1', role: 'user', content: 'first' }]),
-      snapshot([{ id: 'u2', role: 'user', content: 'second' }]),
+      snapshot([
+        { id: 'u1', role: 'user', content: 'rewritten' },
+        { id: 'u2', role: 'user', content: 'second' },
+      ]),
+      snapshot([{ id: 'u3', role: 'user', content: 'third' }]),
       runFinished,
     ]);
-    expect(transcript(completedConversation(all))).toEqual([['user', 'second']]);
+    expect(transcript(completedConversation(all))).toEqual([
+      ['user', 'first'],
+      ['user', 'second'],
+      ['user', 'third'],
+    ]);
+  });
+
+  test('never changes or removes a row the client already has', async () => {
+    const asked = fromAGUIMessages([
+      { id: 'u1', role: 'user', content: 'mine' },
+      { id: 'a1', role: 'assistant', content: 'mine too' },
+    ]);
+    const all = await frames(
+      [
+        runStarted,
+        snapshot([
+          { id: 'u1', role: 'user', content: 'theirs' },
+          { id: 'u2', role: 'user', content: 'new' },
+        ]),
+        ...text('a2', 'streamed'),
+        runFinished,
+      ],
+      asked,
+    );
+    const rows = completedConversation(all);
+    expect(rows.ids).toEqual(['u1', 'a1', 'u2', 'a2']);
+    expect(transcript(rows)).toEqual([
+      ['user', 'mine'],
+      ['assistant', 'mine too'],
+      ['user', 'new'],
+      ['assistant', 'streamed'],
+    ]);
+  });
+
+  test('a streamed message the snapshot already holds is not added twice', async () => {
+    const all = await frames([
+      runStarted,
+      ...text('a1', 'streamed'),
+      snapshot([{ id: 'a1', role: 'assistant', content: 'in the snapshot' }]),
+      runFinished,
+    ]);
+    expect(transcript(completedConversation(all))).toEqual([['assistant', 'in the snapshot']]);
+  });
+
+  test('a message still streaming when a snapshot arrives is kept', async () => {
+    const all = await frames([
+      runStarted,
+      { type: 'TEXT_MESSAGE_START', messageId: 'a1' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a1', delta: 'before ' },
+      { type: 'TOOL_CALL_START', toolCallId: 'c1', toolCallName: 'tool' },
+      snapshot([{ id: 'u1', role: 'user', content: 'Hello' }]),
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a1', delta: 'and after' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'a1' },
+      { type: 'TOOL_CALL_END', toolCallId: 'c1' },
+      runFinished,
+    ]);
+    expect(completedConversation(all).ids).toEqual(['u1', 'a1', 'c1:message']);
+  });
+
+  test('a reasoning message still streaming when a snapshot arrives is kept', async () => {
+    const all = await frames([
+      runStarted,
+      { type: 'REASONING_START', messageId: 'span-1' },
+      { type: 'REASONING_MESSAGE_START', messageId: 'msg-1', role: 'reasoning' },
+      { type: 'REASONING_MESSAGE_CONTENT', messageId: 'msg-1', delta: 'before ' },
+      snapshot([{ id: 'u1', role: 'user', content: 'Hello' }]),
+      { type: 'REASONING_MESSAGE_CONTENT', messageId: 'msg-1', delta: 'after' },
+      { type: 'REASONING_MESSAGE_END', messageId: 'msg-1' },
+      { type: 'REASONING_END', messageId: 'span-1' },
+      runFinished,
+    ]);
+    expect(transcript(completedConversation(all))).toEqual([
+      ['user', 'Hello'],
+      ['assistant', [{ type: 'thinking', thinking: 'before after', signature: '' }]],
+    ]);
+  });
+
+  test('drops the messages of a subagent from a snapshot', async () => {
+    const all = await frames([
+      runStarted,
+      snapshot([
+        { id: 'u1', role: 'user', content: 'Hello' },
+        { id: 'sub-1', role: 'assistant', content: 'subagent notes', subagentRunId: 's1' },
+      ]),
+      runFinished,
+    ]);
+    expect(transcript(completedConversation(all))).toEqual([['user', 'Hello']]);
   });
 
   test('fails with a typed error when a message has no conversation form', async () => {
@@ -151,4 +242,68 @@ describe('AG-UI events the transport leaves alone', () => {
       expect(shape(withEvent)).toEqual(shape(control));
     });
   }
+});
+
+describe('AG-UI events that belong to a subagent', () => {
+  test('are not attributed to the thread, whatever their type', async () => {
+    const all = await bodies([
+      runStarted,
+      { type: 'SUBAGENT_STARTED', subagentRunId: 's1', name: 'researcher' },
+      { type: 'TEXT_MESSAGE_START', messageId: 'sub', subagentRunId: 's1' },
+      {
+        type: 'TEXT_MESSAGE_CONTENT',
+        messageId: 'sub',
+        delta: 'subagent notes',
+        subagentRunId: 's1',
+      },
+      { type: 'TEXT_MESSAGE_END', messageId: 'sub', subagentRunId: 's1' },
+      { type: 'TOOL_CALL_START', toolCallId: 'sc', toolCallName: 'tool', subagentRunId: 's1' },
+      {
+        type: 'TOOL_CALL_RESULT',
+        messageId: 'st',
+        toolCallId: 'sc',
+        content: 'x',
+        subagentRunId: 's1',
+      },
+      { type: 'SUBAGENT_FINISHED', subagentRunId: 's1' },
+      ...text('m1', 'parent answer'),
+      runFinished,
+    ]);
+    expect(all.map((frame) => frame['type'])).toEqual([
+      'run.started',
+      'assistant.step.started',
+      'stream:text-delta',
+      'assistant.step.completed',
+      'run.completed',
+    ]);
+    expect(all.at(-1)).toMatchObject({ content: 'parent answer' });
+  });
+
+  test('cannot collide with a step of the parent that has the same name', async () => {
+    const all = await bodies([
+      runStarted,
+      { type: 'STEP_STARTED', stepName: 'plan' },
+      { type: 'STEP_STARTED', stepName: 'plan', subagentRunId: 's1' },
+      { type: 'STEP_FINISHED', stepName: 'plan', subagentRunId: 's1' },
+      { type: 'STEP_FINISHED', stepName: 'plan' },
+      runFinished,
+    ]);
+    expect(all.map((frame) => frame['type'])).toEqual([
+      'run.started',
+      'stream:block-start',
+      'stream:block-complete',
+      'run.completed',
+    ]);
+  });
+
+  test('do not end a parent chunk run they are interleaved with', async () => {
+    const all = await bodies([
+      runStarted,
+      { type: 'TEXT_MESSAGE_CHUNK', messageId: 'm1', delta: 'a' },
+      { type: 'CUSTOM', name: 'n', value: 1, subagentRunId: 's1' },
+      { type: 'TEXT_MESSAGE_CHUNK', delta: 'b' },
+      runFinished,
+    ]);
+    expect(all.filter((frame) => frame['type'] === 'stream:text-delta')).toHaveLength(2);
+  });
 });

@@ -16,7 +16,13 @@ import { decodeChatStreamEvents, encodeChatStreamEvent } from './stream-event-co
 describe('AG-UI RUN_* events', () => {
   test('RUN_STARTED becomes run.started carrying the run id', async () => {
     const all = await frames([runStarted, runFinished]);
-    expect(all[0]).toEqual({ type: 'run.started', runId: 'run-1', wireVersion: 3, sequence: 0 });
+    expect(all[0]).toEqual({
+      type: 'run.started',
+      runId: 'run-1',
+      threadId: 'thread-1',
+      wireVersion: 3,
+      sequence: 0,
+    });
   });
 
   test('RUN_FINISHED becomes run.completed carrying the history the run was asked from', async () => {
@@ -57,31 +63,95 @@ describe('AG-UI RUN_* events', () => {
 
   test('a cancelled outcome becomes run.aborted', async () => {
     expect(await bodies([runStarted, { ...runFinished, outcome: { type: 'cancelled' } }])).toEqual([
-      { type: 'run.started', runId: 'run-1' },
+      { type: 'run.started', runId: 'run-1', threadId: 'thread-1' },
       { type: 'run.aborted', reason: 'cancelled' },
     ]);
   });
 
-  test('RUN_ERROR becomes run.error, folding the code into the message', async () => {
+  test('RUN_ERROR becomes run.error: the backend message, its code as the name', async () => {
     expect(
       await bodies([
         runStarted,
         { type: 'RUN_ERROR', message: 'The model refused.', code: 'REFUSED' },
       ]),
     ).toEqual([
-      { type: 'run.started', runId: 'run-1' },
+      { type: 'run.started', runId: 'run-1', threadId: 'thread-1' },
       {
         type: 'run.error',
         error: {
-          name: 'AGUIRunError',
-          message: 'The model refused. (REFUSED)',
+          name: 'REFUSED',
+          message: 'The model refused.',
           kind: 'generate',
           code: 'UNKNOWN',
         },
       },
     ]);
+  });
+
+  test('RUN_ERROR keeps a code the wire knows as the wire code, and names the error plainly without one', async () => {
+    const known = await bodies([
+      runStarted,
+      { type: 'RUN_ERROR', message: 'Over.', code: 'BUDGET_EXCEEDED' },
+    ]);
+    expect(known[1]).toMatchObject({
+      error: { name: 'BUDGET_EXCEEDED', message: 'Over.', code: 'BUDGET_EXCEEDED' },
+    });
     const bare = await bodies([runStarted, { type: 'RUN_ERROR', message: 'Nope.' }]);
-    expect(bare[1]).toMatchObject({ error: { message: 'Nope.' } });
+    expect(bare[1]).toMatchObject({
+      error: { name: 'AGUIRunError', message: 'Nope.', code: 'UNKNOWN' },
+    });
+  });
+
+  test('RUN_ERROR as the first event is accepted, behind the run.started a version 3 stream opens with', async () => {
+    const all = await frames([{ type: 'RUN_ERROR', message: 'auth failed', code: 'UNAUTHORIZED' }]);
+    expect(all.map((frame) => frame.type)).toEqual(['run.started', 'run.error']);
+    expect(all[0]).toMatchObject({ runId: 'ag-ui:unstarted' });
+    expect(all[1]).toMatchObject({ error: { message: 'auth failed', name: 'UNAUTHORIZED' } });
+    const ndjson = all.map((frame) => encodeChatStreamEvent(frame)).join('');
+    expect(await Array.fromAsync(decodeChatStreamEvents(ndjson))).toEqual(all);
+  });
+
+  test('RUN_ERROR names the thread it belongs to, and a different one fails', async () => {
+    const ok = await frames([
+      runStarted,
+      { type: 'RUN_ERROR', message: 'x', threadId: 'thread-1' },
+    ]);
+    expect(ok.at(-1)?.type).toBe('run.error');
+    const error = await failure([
+      runStarted,
+      { type: 'RUN_ERROR', message: 'x', threadId: 'other' },
+    ]);
+    expect(error).toMatchObject({ kind: 'protocol', eventIndex: 1 });
+  });
+
+  test('RUN_STARTED keeps the parent run it branched from', async () => {
+    const all = await frames([{ ...runStarted, parentRunId: 'run-0' }, runFinished]);
+    expect(all[0]).toMatchObject({ runId: 'run-1', threadId: 'thread-1', parentRunId: 'run-0' });
+  });
+
+  test('RUN_FINISHED sums cache usage into the counters it maps to, and omits them when unreported', async () => {
+    const reported = await frames([
+      runStarted,
+      {
+        ...runFinished,
+        usage: [
+          { inputTokens: 10, outputTokens: 2, cachedInputTokens: 6, cacheWriteInputTokens: 1 },
+          { inputTokens: 5, outputTokens: 1, cachedInputTokens: 2 },
+        ],
+      },
+    ]);
+    expect(reported.at(-1)).toMatchObject({
+      usage: { prompt: 15, completion: 3, total: 18, cacheReadTokens: 8, cacheCreationTokens: 1 },
+    });
+    const plain = await frames([runStarted, { ...runFinished, usage: [{ inputTokens: 1 }] }]);
+    const usage = (plain.at(-1) as { usage: object }).usage;
+    expect(Object.keys(usage).sort()).toEqual(['completion', 'prompt', 'total']);
+  });
+
+  test('RUN_FINISHED naming another thread fails', async () => {
+    const error = await failure([runStarted, { ...runFinished, threadId: 'other' }]);
+    expect(error).toMatchObject({ kind: 'protocol', eventIndex: 1 });
+    expect((error as Error).message).toContain('thread other');
   });
 
   test('stamps one wire version and a strictly increasing sequence on every frame', async () => {

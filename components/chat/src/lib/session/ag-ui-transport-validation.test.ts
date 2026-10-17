@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { AGUIChatTransportError } from './ag-ui-transport-error.ts';
-import { failure, runFinished, runStarted } from './ag-ui-transport-test-support.ts';
+import { failure, frames, runFinished, runStarted } from './ag-ui-transport-test-support.ts';
 
 describe('AG-UI event validation', () => {
   const invalid: Array<[string, unknown]> = [
@@ -34,7 +34,12 @@ describe('AG-UI event validation', () => {
 describe('AG-UI event order', () => {
   const text = { type: 'TEXT_MESSAGE_START', messageId: 'm1' };
   const call = { type: 'TOOL_CALL_START', toolCallId: 'c1', toolCallName: 'tool' };
-  const reasoning = { type: 'REASONING_START', messageId: 'r1' };
+  const span = { type: 'REASONING_START', messageId: 'span-1' };
+  const messageStart = (messageId: string) => ({
+    type: 'REASONING_MESSAGE_START',
+    messageId,
+    role: 'reasoning',
+  });
   const cases: Array<[string, unknown[], number, RegExp]> = [
     ['an event before RUN_STARTED', [text], 0, /before RUN_STARTED/],
     ['RUN_STARTED twice', [runStarted, runStarted], 1, /RUN_STARTED arrived twice/],
@@ -123,45 +128,113 @@ describe('AG-UI event order', () => {
       /has not ended/,
     ],
     [
-      'reasoning content before REASONING_START',
-      [runStarted, { type: 'REASONING_MESSAGE_START', messageId: 'r1', role: 'reasoning' }],
+      'a reasoning message outside any span',
+      [runStarted, { type: 'REASONING_MESSAGE_START', messageId: 'm1', role: 'reasoning' }],
       1,
-      /before REASONING_START/,
+      /outside a REASONING_START span/,
     ],
     [
-      'reasoning started twice',
-      [runStarted, reasoning, reasoning],
+      'a reasoning span started twice',
+      [runStarted, span, span],
       2,
-      /Reasoning r1 started twice/,
+      /Reasoning span-1 started twice/,
     ],
     [
       'a reasoning message started twice',
-      [
-        runStarted,
-        reasoning,
-        { type: 'REASONING_MESSAGE_START', messageId: 'r1', role: 'reasoning' },
-        { type: 'REASONING_MESSAGE_START', messageId: 'r1', role: 'reasoning' },
-      ],
+      [runStarted, span, messageStart('m1'), messageStart('m1')],
       3,
-      /message r1 started twice/,
+      /message m1 started twice/,
     ],
     [
-      'reasoning content outside a message',
-      [runStarted, reasoning, { type: 'REASONING_MESSAGE_CONTENT', messageId: 'r1', delta: 'x' }],
+      'reasoning content for a message that never started',
+      [runStarted, span, { type: 'REASONING_MESSAGE_CONTENT', messageId: 'm1', delta: 'x' }],
       2,
-      /outside message r1/,
+      /content arrived outside message m1/,
+    ],
+    [
+      'reasoning content addressed by the span id instead of its message',
+      [
+        runStarted,
+        span,
+        messageStart('m1'),
+        { type: 'REASONING_MESSAGE_CONTENT', messageId: 'span-1', delta: 'x' },
+      ],
+      3,
+      /outside message span-1/,
+    ],
+    [
+      'reasoning content after its message ended',
+      [
+        runStarted,
+        span,
+        messageStart('m1'),
+        { type: 'REASONING_MESSAGE_END', messageId: 'm1' },
+        { type: 'REASONING_MESSAGE_CONTENT', messageId: 'm1', delta: 'x' },
+      ],
+      4,
+      /outside message m1/,
+    ],
+    [
+      'a reasoning message ended before it started',
+      [runStarted, span, { type: 'REASONING_MESSAGE_END', messageId: 'm1' }],
+      2,
+      /end arrived outside message m1/,
+    ],
+    [
+      'a reasoning span that ends with a message still open',
+      [runStarted, span, messageStart('m1'), { type: 'REASONING_END', messageId: 'span-1' }],
+      3,
+      /message m1 was still open/,
     ],
     [
       'a reasoning chunk with no message id to extend',
-      [runStarted, reasoning, { type: 'REASONING_MESSAGE_CHUNK', delta: 'x' }],
+      [runStarted, span, { type: 'REASONING_MESSAGE_CHUNK', delta: 'x' }],
       2,
       /must carry a messageId/,
     ],
     [
-      'reasoning ended before it started',
-      [runStarted, { type: 'REASONING_END', messageId: 'r1' }],
+      'a first reasoning chunk outside any span',
+      [runStarted, { type: 'REASONING_MESSAGE_CHUNK', messageId: 'm1', delta: 'x' }],
       1,
-      /before REASONING_START/,
+      /outside a REASONING_START span/,
+    ],
+    [
+      'a reasoning span ended before it started',
+      [runStarted, { type: 'REASONING_END', messageId: 'span-1' }],
+      1,
+      /ended before REASONING_START/,
+    ],
+    [
+      'RUN_FINISHED with a foreign-role text message still open',
+      [runStarted, { type: 'TEXT_MESSAGE_START', messageId: 'u1', role: 'user' }, runFinished],
+      2,
+      /u1 was still open/,
+    ],
+    [
+      'RUN_FINISHED with a reasoning span still open',
+      [runStarted, span, runFinished],
+      2,
+      /span-1 was still open/,
+    ],
+    [
+      'a text chunk continuation that changes the role',
+      [
+        runStarted,
+        { type: 'TEXT_MESSAGE_CHUNK', messageId: 'm1', role: 'assistant', delta: 'a' },
+        { type: 'TEXT_MESSAGE_CHUNK', messageId: 'm1', role: 'user', delta: 'b' },
+      ],
+      2,
+      /changed its role from assistant to user/,
+    ],
+    [
+      'a tool chunk continuation that changes the tool name',
+      [
+        runStarted,
+        { type: 'TOOL_CALL_CHUNK', toolCallId: 'c1', toolCallName: 'first', delta: '{' },
+        { type: 'TOOL_CALL_CHUNK', toolCallId: 'c1', toolCallName: 'second', delta: '}' },
+      ],
+      2,
+      /changed its toolCallName from first to second/,
     ],
   ];
 
@@ -173,4 +246,55 @@ describe('AG-UI event order', () => {
       expect((error as AGUIChatTransportError).message).toMatch(message);
     });
   }
+});
+
+describe('AG-UI chunk runs and the events between them', () => {
+  const ignored = [
+    { type: 'STATE_SNAPSHOT', snapshot: {} },
+    { type: 'STATE_DELTA', delta: [] },
+    { type: 'CUSTOM', name: 'n', value: 1 },
+    { type: 'RAW', event: {} },
+    { type: 'ACTIVITY_SNAPSHOT', messageId: 'act', activityType: 'PLAN', content: {} },
+    { type: 'ACTIVITY_DELTA', messageId: 'act', activityType: 'PLAN', patch: [] },
+  ];
+
+  for (const event of ignored) {
+    test(`${event.type} ends an open text chunk run, so an id-less chunk after it is rejected`, async () => {
+      const error = await failure([
+        runStarted,
+        { type: 'TEXT_MESSAGE_CHUNK', messageId: 'm1', delta: 'a' },
+        event,
+        { type: 'TEXT_MESSAGE_CHUNK', delta: 'b' },
+      ]);
+      expect(error).toMatchObject({ kind: 'protocol', eventIndex: 3 });
+      expect((error as Error).message).toMatch(/must carry a messageId/);
+    });
+
+    test(`${event.type} ends an open tool chunk run, so an id-less chunk after it is rejected`, async () => {
+      const error = await failure([
+        runStarted,
+        { type: 'TOOL_CALL_CHUNK', toolCallId: 'c1', toolCallName: 'tool', delta: '{' },
+        event,
+        { type: 'TOOL_CALL_CHUNK', delta: '}' },
+      ]);
+      expect(error).toMatchObject({ kind: 'protocol', eventIndex: 3 });
+      expect((error as Error).message).toMatch(/must carry a toolCallId/);
+    });
+  }
+
+  test('the frames that end the run come out at the event that ended it', async () => {
+    const all = await frames([
+      runStarted,
+      { type: 'TEXT_MESSAGE_CHUNK', messageId: 'm1', delta: 'a' },
+      { type: 'CUSTOM', name: 'n', value: 1 },
+      runFinished,
+    ]);
+    expect(all.map((frame) => frame.type)).toEqual([
+      'run.started',
+      'assistant.step.started',
+      'stream:text-delta',
+      'assistant.step.completed',
+      'run.completed',
+    ]);
+  });
 });

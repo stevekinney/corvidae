@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { toAGUIMessages } from 'conversationalist';
 import { createConversationHistory } from '../components/chat/builders.ts';
 import type { ConversationHistory } from '../components/chat/conversation-model.ts';
 import { AGUIChatTransportError } from './ag-ui-transport-error.ts';
@@ -50,7 +51,7 @@ function contents(conversation: ConversationHistory): unknown[] {
 }
 
 describe('driving a chat session from an AG-UI stream', () => {
-  test('completes a transcript from a recorded AG-UI 1.0 run', async () => {
+  test('completes a transcript from a hand-written AG-UI 1.0 run', async () => {
     const results: unknown[] = [];
     const session = createSession(() => weatherRun, {
       onToolResult: (result) => results.push(result),
@@ -122,7 +123,7 @@ describe('driving a chat session from an AG-UI stream', () => {
       .sendMessage({ role: 'user', content: 'Hi' }, [])
       .catch((error: unknown) => error);
     expect(rejection).toBeInstanceOf(ChatRunFailureError);
-    expect(rejection).toMatchObject({ message: 'Backend unavailable (UNAVAILABLE)' });
+    expect(rejection).toMatchObject({ message: 'Backend unavailable' });
     expect(session.errors).toHaveLength(1);
   });
 
@@ -150,5 +151,87 @@ describe('driving a chat session from an AG-UI stream', () => {
     );
     await session.controller.adapter.sendMessage({ role: 'user', content: 'Hi' }, []);
     expect(aborted).toEqual([{ reason: 'cancelled' }]);
+  });
+
+  test('keeps the wire message id of the assistant row after run.completed', async () => {
+    const session = createSession(() => [
+      { type: 'RUN_STARTED', threadId: 't', runId: 'r' },
+      { type: 'TEXT_MESSAGE_START', messageId: 'wire-assistant-1' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'wire-assistant-1', delta: 'Hello.' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'wire-assistant-1' },
+      { type: 'RUN_FINISHED', threadId: 't', runId: 'r' },
+    ]);
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'Hi' }, []);
+    expect(session.errors).toEqual([]);
+    expect(session.conversation.ids).toHaveLength(2);
+    expect(session.conversation.ids[1]).toBe('wire-assistant-1');
+    expect(session.conversation.messages['wire-assistant-1']?.content).toBe('Hello.');
+  });
+
+  test('merges a whole-thread snapshot by id instead of duplicating the rows on screen', async () => {
+    const reply = (id: string, text: string) => [
+      { type: 'TEXT_MESSAGE_START', messageId: id },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: id, delta: text },
+      { type: 'TEXT_MESSAGE_END', messageId: id },
+    ];
+    let turn = 0;
+    const session = createSession((request) => {
+      turn += 1;
+      return turn === 1
+        ? [
+            { type: 'RUN_STARTED', threadId: 't', runId: 'r1' },
+            ...reply('a1', 'answer 1'),
+            { type: 'RUN_FINISHED', threadId: 't', runId: 'r1' },
+          ]
+        : [
+            { type: 'RUN_STARTED', threadId: 't', runId: 'r2' },
+            // The standard backend behaviour: the whole thread, as the run input carried it.
+            { type: 'MESSAGES_SNAPSHOT', messages: toAGUIMessages(request.conversation) },
+            ...reply('a2', 'answer 2'),
+            { type: 'RUN_FINISHED', threadId: 't', runId: 'r2' },
+          ];
+    });
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'question 1' }, []);
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'question 2' }, []);
+
+    expect(session.errors).toEqual([]);
+    expect(rolesOf(session.conversation)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(contents(session.conversation)).toEqual([
+      'question 1',
+      'answer 1',
+      'question 2',
+      'answer 2',
+    ]);
+    expect(session.conversation.ids[1]).toBe('a1');
+    expect(session.conversation.ids[3]).toBe('a2');
+  });
+
+  test('stops mid-stream without reporting an error and settles the row it was streaming', async () => {
+    let reached = (): void => undefined;
+    const streaming = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const session = createSession((request) =>
+      (async function* () {
+        yield { type: 'RUN_STARTED', threadId: 't', runId: 'r' };
+        yield { type: 'TEXT_MESSAGE_START', messageId: 'a1' };
+        yield { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a1', delta: 'partial' };
+        reached();
+        // Nothing more arrives until the session stops asking.
+        await new Promise<void>((resolve) =>
+          request.signal.addEventListener('abort', () => resolve(), { once: true }),
+        );
+      })(),
+    );
+    const sent = session.controller.adapter.sendMessage({ role: 'user', content: 'Hi' }, []);
+    await streaming;
+    await session.controller.stop();
+    await sent;
+
+    expect(session.errors).toEqual([]);
+    expect(rolesOf(session.conversation)).toEqual(['user', 'assistant']);
+    const rows = session.conversation.ids.map((id) => session.conversation.messages[id]);
+    expect(rows[1]?.content).toBe('partial');
+    expect(rows.every((row) => row?.metadata['_streaming'] !== true)).toBe(true);
   });
 });

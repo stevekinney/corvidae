@@ -8,7 +8,7 @@ import {
   transcript,
 } from './ag-ui-transport-test-support.ts';
 
-const started = { type: 'run.started', runId: 'run-1' };
+const started = { type: 'run.started', runId: 'run-1', threadId: 'thread-1' };
 
 describe('AG-UI STEP_* events', () => {
   test('become metadata blocks that open and complete', async () => {
@@ -151,5 +151,37 @@ describe('AG-UI TEXT_MESSAGE_* events', () => {
       { type: 'assistant.step.started', step: 2, messageId: 'm3' },
       { type: 'assistant.step.completed', step: 2, messageId: 'm3' },
     ]);
+  });
+
+  test('keeps messages that overlap in the order they started', async () => {
+    const all = await frames([
+      runStarted,
+      { type: 'TEXT_MESSAGE_START', messageId: 'a' },
+      { type: 'TEXT_MESSAGE_START', messageId: 'b' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'first' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'b', delta: 'second' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'b' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'a' },
+      runFinished,
+    ]);
+    expect(transcript(completedConversation(all))).toEqual([
+      ['assistant', 'first'],
+      ['assistant', 'second'],
+    ]);
+    expect(completedConversation(all).ids).toEqual(['a', 'b']);
+    expect(all.at(-1)).toMatchObject({ content: 'first\n\nsecond' });
+  });
+
+  test('keeps a tool call and the messages around it in the order they started', async () => {
+    const all = await frames([
+      runStarted,
+      { type: 'TOOL_CALL_START', toolCallId: 'c1', toolCallName: 'tool' },
+      { type: 'TEXT_MESSAGE_START', messageId: 'a' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'text' },
+      { type: 'TEXT_MESSAGE_END', messageId: 'a' },
+      { type: 'TOOL_CALL_END', toolCallId: 'c1' },
+      runFinished,
+    ]);
+    expect(completedConversation(all).ids).toEqual(['c1:message', 'a']);
   });
 });
