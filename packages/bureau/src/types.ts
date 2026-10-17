@@ -1942,9 +1942,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * them yet):
    *
    * - `options.principal`, when provided, is checked against the run's
-   *   recorded `principal` (`AgentRun`'s own attribution) or the session's
-   *   recorded request authority (`isSessionAuthorityAuthorized`, AB-42's
-   *   precedent). A caller whose principal does not match an owner with a
+   *   recorded `principal` (`AgentRun`'s own attribution). For a session,
+   *   `isSessionHistoryReadAuthorized` (COR-1382) allows whoever the
+   *   session's recorded request authority names (AB-42's precedent) and
+   *   every principal that owned a run on the session
+   *   (`lastRunOwningPrincipals`), and fails closed on malformed authority
+   *   metadata. A caller whose principal does not match an owner with a
    *   RECORDED principal gets `{ outcome: 'not-found' }` — the same
    *   not-found-shaped denial `submitSessionInput` (AB-194) uses, so an
    *   unauthorized caller cannot distinguish "wrong id" from "exists, not

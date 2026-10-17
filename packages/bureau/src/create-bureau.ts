@@ -213,6 +213,7 @@ import {
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
+  isSessionHistoryReadAuthorized,
   resolvePersistedRunOwningPrincipal,
   resolveSessionPreAdmission,
 } from './session-authority';
@@ -11159,8 +11160,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *   when none is recorded (see `resolveEventHistory`).
    * - goal: only a principal `bureau.goals.get` shows the goal to, failing closed
    *   for a goal that cannot be read, so an id cannot be probed.
-   * - session: open unless the session records an authority the principal does
-   *   not hold (a session with no recorded authority is open).
+   * - session: `isSessionHistoryReadAuthorized`, the rule `resolveEventHistory`
+   *   applies (COR-1382): whoever the recorded authority names and every
+   *   principal that owned a run on the session; open with no recorded
+   *   authority, closed on malformed authority metadata.
    * - schedule: no ownership concept exists, so open.
    *
    * Read fresh on every call, because ownership is not stable for a live feed:
@@ -11176,7 +11179,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       case 'session': {
         if (!runtime.sessionStore) return true;
         const session = await runtime.sessionStore.load(owner.id);
-        return !session || isSessionAuthorityAuthorized(session.metadata, principal);
+        return !session || isSessionHistoryReadAuthorized(session.metadata, principal);
       }
       case 'schedule':
         return true;
@@ -11405,11 +11408,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     //
     // Omitting `principal` entirely always skips authorization (an
     // internal/trusted caller), matching every other owner kind's
-    // convention; a session with no recorded authority is still open,
-    // matching `isSessionAuthorityAuthorized`'s own documented rule.
+    // convention. A session is readable by every principal that owned a run
+    // on it (`lastRunOwningPrincipals`, COR-1382) as well as by whoever the
+    // recorded authority names; a session with no recorded authority is
+    // still open, and malformed authority metadata fails closed, per
+    // `isSessionHistoryReadAuthorized`'s own documented rule.
     if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
       const preSession = await runtime.sessionStore.load(owner.id);
-      if (preSession && !isSessionAuthorityAuthorized(preSession.metadata, principal)) {
+      if (preSession && !isSessionHistoryReadAuthorized(preSession.metadata, principal)) {
         return { outcome: 'not-found' };
       }
     }
@@ -11448,7 +11454,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // branch, since a gap returns before reaching it).
       if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
         const gapSession = await runtime.sessionStore.load(owner.id);
-        if (gapSession && !isSessionAuthorityAuthorized(gapSession.metadata, principal)) {
+        if (gapSession && !isSessionHistoryReadAuthorized(gapSession.metadata, principal)) {
           return { outcome: 'not-found' };
         }
       }
@@ -11508,7 +11514,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (
       liveSession &&
       principal !== undefined &&
-      !isSessionAuthorityAuthorized(liveSession.metadata, principal)
+      !isSessionHistoryReadAuthorized(liveSession.metadata, principal)
     ) {
       return { outcome: 'not-found' };
     }
