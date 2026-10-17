@@ -499,11 +499,11 @@ Mutual TLS currently admits a principal that holds no scopes, so an mTLS caller 
 
 Whether a continuation needs that token depends on how the session's principal was built:
 
-- A caller whose credential names it distinctly (a JWT with a `sub`, or an API key or mTLS identity from `resolveApiKeyPrincipal` or an mTLS verifier that supplies its own subject) re-presents the credential on every request, which is enough. No token is needed.
+- A caller whose credential names it distinctly (a JWT with a `sub`, or an API key whose subject comes from `resolveApiKeyPrincipal`) re-presents the credential on every request, which is enough. No token is needed.
 - A static API key (`auth.apiKeys`) maps every key to one shared subject, so the principal cannot tell key A from key B. The session is bound to the SHA-256 digest of the key that created it, kept in process memory and never logged. A continuation is admitted when it presents the same key (`X-API-Key`, or the bearer token) or the `Mcp-Session-Token`. A different static key holding only the session id gets `403`.
-- Mutual TLS callers without a subject of their own, `unauthenticated-local` (a `serve()` with no `auth`), and anonymous callers share their principal with every caller, and Weft cannot see a client certificate on a `Request`. Their sessions require `Mcp-Session-Token` on every continuation.
+- Mutual TLS callers, `unauthenticated-local` (a `serve()` with no `auth`), and anonymous callers share their principal with every caller of the same kind. `serve()` admits a verified client certificate without deriving a subject from it, so every mTLS caller is the shared `mtls-caller`, and Weft cannot see the certificate on a `Request` to bind a session to it. Their sessions require `Mcp-Session-Token` on every continuation.
 
-A spec-compliant MCP client, such as the official SDK, sends no `Mcp-Session-Token`. Over HTTP it therefore works with a static API key, or with a credential that is not shared, such as a JWT or a per-key principal. Against a server with no `auth`, or an mTLS server that gives callers no distinct identity, use a client that echoes the token, or connect over stdio, which has no shared HTTP session to protect.
+A spec-compliant MCP client, such as the official SDK, sends no `Mcp-Session-Token`. Over HTTP it therefore works with a static API key, or with a credential that is not shared, such as a JWT or a per-key principal. Against a server with no `auth`, or one that authenticates with mTLS, use a client that echoes the token, or connect over stdio, which has no shared HTTP session to protect.
 
 ### Dashboard and Extra Routes
 
