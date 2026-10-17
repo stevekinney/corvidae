@@ -20,6 +20,7 @@ import type { HeadlessPermissionPolicyConfiguration } from 'armorer';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
+import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import type { CreateAgentOptions } from './create-agent';
 import { createAgent } from './create-agent';
 import type { RunOptions } from './types';
@@ -246,3 +247,10 @@ const badSkillOptions: CreateAgentOptions = {
   skillDescriptors: [{ id: 'x', name: 'X', description: 'X.' }],
 };
 void badSkillOptions;
+
+// `skillDescriptors` is present and readonly on the returned StandaloneAgent.
+const descriptorsValue: readonly AgentSkillDescriptor[] | undefined =
+  describedAgent.skillDescriptors;
+void descriptorsValue;
+// @ts-expect-error — `skillDescriptors` is readonly on the returned agent.
+describedAgent.skillDescriptors = [];

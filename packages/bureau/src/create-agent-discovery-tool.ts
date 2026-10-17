@@ -41,16 +41,22 @@ export function createAgentDiscoveryTool<D extends AgentDefinitions>(
         if (!lowerText) {
           return true;
         }
+        // Defensive reads: a hand-written or untyped agent can hold a
+        // malformed descriptor, which must not fail discovery for the
+        // whole catalog.
+        const skills = Array.isArray(agent.skillDescriptors) ? agent.skillDescriptors : [];
         const searchable = [
           name,
           agent.description,
-          ...(agent.skillDescriptors ?? []).flatMap((skill) => [
-            skill.name,
-            skill.description,
-            ...skill.tags,
+          ...skills.flatMap((skill) => [
+            skill?.name,
+            skill?.description,
+            ...(Array.isArray(skill?.tags) ? skill.tags : []),
           ]),
         ];
-        return searchable.some((value) => value?.toLowerCase().includes(lowerText));
+        return searchable.some(
+          (value) => typeof value === 'string' && value.toLowerCase().includes(lowerText),
+        );
       });
       return Promise.resolve(
         JSON.stringify(
