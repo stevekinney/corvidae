@@ -32,10 +32,15 @@
   import { createPortalAttachment } from '../portal/index.ts';
   import { createVirtualKeyboardDismissal } from './virtual-keyboard-dismissal.svelte.ts';
 
+  const FOCUSABLE_SELECTOR =
+    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
   let {
     id,
     position,
     open = false,
+    label = 'Selection actions',
+    actions,
     onCommentSubmit,
     onExpand,
     onCancel,
@@ -53,6 +58,9 @@
   let restoreFocusElement: HTMLElement | null = null;
   let wasOpen = false;
   let closeRequested = false;
+  // Set on each closed -> open transition when `actions` is given; cleared once focus has
+  // moved to the first action, which can only happen after positioning makes the panel visible.
+  let pendingActionsFocus = false;
   let isRestoringFocus = false;
   // A count, not a boolean: a multi-pointer gesture (two-finger touch, pen +
   // touch, etc.) can have more than one pointer down at once. Releasing one
@@ -320,6 +328,9 @@
   });
 
   function handleKeydown(event: KeyboardEvent): void {
+    // Caller-supplied actions own Enter and Space: leave the keys untouched so the
+    // native activation of the action buttons is not suppressed.
+    if (actions) return;
     if ((event.key === 'Enter' || event.key === ' ') && !expanded && !event.defaultPrevented) {
       event.preventDefault();
       handleExpand();
@@ -384,6 +395,7 @@
         // not drive focus a second time.
         restoreFocus();
         restoreFocusElement = null;
+        pendingActionsFocus = false;
       }
       return;
     }
@@ -396,8 +408,20 @@
     if (!wasOpen) {
       wasOpen = true;
       closeRequested = false;
+      pendingActionsFocus = true;
       rememberFocus();
     }
+  });
+
+  // Moves focus to the first action once per open session. Waits for positioning so focus never
+  // lands in the still-hidden panel (`visibility: hidden` until `data-cinder-position-ready`).
+  $effect(() => {
+    if (!actions || !isPositionedOpen || !anchoredOverlay.positionReady || !popoverElement) return;
+    if (!pendingActionsFocus) return;
+    const firstAction = popoverElement.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (!firstAction) return;
+    pendingActionsFocus = false;
+    firstAction.focus({ preventScroll: true });
   });
 </script>
 
@@ -422,7 +446,7 @@
   data-cinder-closing={exitState.isClosing ? '' : undefined}
   style={anchoredOverlay.positionStyle}
   role="toolbar"
-  aria-label="Selection actions"
+  aria-label={label}
   onkeydown={handleKeydown}
   {@attach portalAttachment}
   {@attach dismissOnOutsidePointerdown}
@@ -430,7 +454,11 @@
   aria-hidden={exitState.isClosing ? 'true' : undefined}
   inert={exitState.isClosing ? true : undefined}
 >
-  {#if expanded}
+  {#if actions}
+    <div class="cinder-selection-popover__custom-actions">
+      {@render actions({ close: closePopover })}
+    </div>
+  {:else if expanded}
     <div bind:this={composerFormElement} class="cinder-selection-popover__form">
       <textarea
         bind:this={textareaElement}

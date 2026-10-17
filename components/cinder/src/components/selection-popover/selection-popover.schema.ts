@@ -12,6 +12,11 @@ const schema = {
       type: 'boolean',
       description: 'Whether the popover is visible.',
     },
+    label: {
+      type: 'string',
+      description: 'Accessible name of the toolbar.',
+      default: 'Selection actions',
+    },
     class: {
       type: 'string',
       description: 'Additional class names merged with `.cinder-selection-popover`.',
@@ -21,6 +26,12 @@ const schema = {
   required: ['id'],
   metadata: {
     unsupportedProps: [
+      {
+        name: 'actions',
+        reason: 'function-or-snippet',
+        description:
+          'Caller-supplied actions that replace the built-in comment button and inline composer.\nCalled with `{ close }`; `close` dismisses the popover through the same path as Escape\nand an outside click, so `onClose` fires. When given, `onCommentSubmit` and `onExpand`\nare never called, Enter and Space no longer expand the popover, and focus moves to the\nfirst action when the popover opens.',
+      },
       {
         name: 'onCancel',
         reason: 'function-or-snippet',

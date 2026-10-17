@@ -22,11 +22,13 @@ The trigger should remain reachable by keyboard, and the open layer should provi
 
 When the inline composer is expanded, virtual-keyboard movement is treated as an internal interaction while a control in the expanded composer form owns focus or while a transition latched ownership to the composer before its asynchronous close settles. The collapsed “Add comment” control is not the composer and does not independently preserve movement for a keyboard owned by another field. This keeps keyboard navigation from preserving a stale selection layer while still preserving drafts during genuine composer-focused keyboard pan/resize and its close burst.
 
+When the `actions` snippet is given, the built-in comment button and composer are not rendered, so none of the composer keyboard handling applies. Enter and Space are left to the native activation of the action controls, and focus moves to the first focusable action once the popover is positioned and visible, so it never lands in hidden content. Escape and a pointer press outside call `onClose`, and the `close` function passed to the snippet takes the same path and returns focus to the element that had it before the popover opened.
+
 Keep focus indicators visible. If you wrap or restyle SelectionPopover, verify the focused element remains visually apparent in default and forced-colors modes.
 
 ## Names, roles, and state
 
-Use the public props and documented examples to provide accessible names, descriptions, current state, disabled state, selection state, or value text. Do not rely on color, icon shape, placeholder text, or layout position as the only way to communicate meaning.
+The toolbar's accessible name comes from `label` and defaults to "Selection actions". Set it to describe the actions you render, for example "Quote selection". Use the public props and documented examples to provide accessible names, descriptions, current state, disabled state, selection state, or value text. Do not rely on color, icon shape, placeholder text, or layout position as the only way to communicate meaning.
 
 When SelectionPopover accepts snippets or arbitrary children, the caller owns the semantics inside those children. Prefer native elements first, and add ARIA only when it matches the rendered behavior.
 

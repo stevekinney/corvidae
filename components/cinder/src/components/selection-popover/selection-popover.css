@@ -106,6 +106,18 @@
     box-shadow: var(--cinder-shadow-lg);
   }
 
+  /* Caller-supplied actions get the same raised surface as the inline composer. */
+  .cinder-selection-popover__custom-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    padding: var(--cinder-space-1);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+    box-shadow: var(--cinder-shadow-lg);
+  }
+
   .cinder-selection-popover__textarea {
     width: 100%;
     min-height: 3.75rem;
