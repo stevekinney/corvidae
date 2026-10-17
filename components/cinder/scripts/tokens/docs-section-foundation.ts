@@ -46,7 +46,21 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
     cssProperties: [
       '--cinder-control-height-xs',
       '--cinder-control-height-sm',
+      '--cinder-control-height-md',
       '--cinder-control-height-lg',
+    ],
+  },
+  {
+    slug: 'control-frame',
+    headings: ['## Control frame'],
+    cssProperties: [
+      '--cinder-control-background',
+      '--cinder-control-background-disabled',
+      '--cinder-control-border',
+      '--cinder-control-border-hover',
+      '--cinder-control-border-disabled',
+      '--cinder-control-border-invalid',
+      '--cinder-control-radius',
     ],
   },
   {
@@ -164,10 +178,12 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
     headings: ['## Borders'],
     cssProperties: [
       '--cinder-border-ink',
-      '--cinder-border',
-      '--cinder-border-faint',
       '--cinder-border-muted',
+      '--cinder-border',
       '--cinder-border-strong',
+      '--cinder-border-control',
+      '--cinder-border-control-hover',
+      '--cinder-border-faint',
       '--cinder-toggle-track-off-resting',
       '--cinder-toggle-track-off-hover-resting',
     ],

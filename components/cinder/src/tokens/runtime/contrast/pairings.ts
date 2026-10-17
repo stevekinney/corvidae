@@ -144,12 +144,25 @@ function decorativePairings(): ContrastPairing[] {
     criterion: null,
     advisoryFloor: floor,
   });
+  // The structural tiers separate regions and outline containers; the region
+  // is identified by its surface and content, so WCAG 1.4.11 does not apply
+  // and their floors only keep each one perceptible. `border.muted` is an
+  // interior hairline and takes the faint floor; `border` and `border.strong`
+  // take the decorative one. That the structural tiers stay BELOW the control
+  // tier is asserted separately (check-token-contrast-borders.test.ts).
   const pairings: ContrastPairing[] = [
+    ...onSurfaces('border:muted', '--cinder-border-muted', advisory(FAINT_BORDER), 'Muted border'),
     ...onSurfaces(
-      'border:muted',
-      '--cinder-border-muted',
+      'border:structural',
+      '--cinder-border',
       advisory(DECORATIVE_BORDER),
-      'Muted border',
+      'Structural border',
+    ),
+    ...onSurfaces(
+      'border:strong',
+      '--cinder-border-strong',
+      advisory(DECORATIVE_BORDER),
+      'Strong structural border',
     ),
     ...onSurfaces('border:faint', '--cinder-border-faint', advisory(FAINT_BORDER), 'Faint border'),
     {
@@ -260,7 +273,7 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
   ),
   ...onSurfaces(
     'border:control',
-    '--cinder-border',
+    '--cinder-border-control',
     {
       group: 'control-border',
       classification: 'non-text-indicator',
@@ -270,15 +283,15 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
     'Control border',
   ),
   ...onSurfaces(
-    'border:strong',
-    '--cinder-border-strong',
+    'border:control-hover',
+    '--cinder-border-control-hover',
     {
       group: 'control-border',
       classification: 'non-text-indicator',
       scope: 'wcag',
       criterion: '1.4.11',
     },
-    'Strong control border',
+    'Hovered control border',
   ),
   ...Array.from({ length: CHART_SERIES_COUNT }, (_, index): ContrastPairing[] =>
     (['--cinder-surface-canvas', '--cinder-surface'] as const).map((background) => ({

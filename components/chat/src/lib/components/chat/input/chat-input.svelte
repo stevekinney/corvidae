@@ -974,7 +974,7 @@
     flex-direction: column;
     gap: var(--cinder-space-2);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-lg);
     padding: var(--cinder-space-3);
     transition: border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
@@ -1195,7 +1195,7 @@
   @media (hover: hover) {
     .chat-input-send[data-stop]:hover {
       background: var(--cinder-status-danger-border);
-      border-color: var(--cinder-status-danger-solid);
+      border-color: var(--cinder-status-danger-border);
     }
   }
 

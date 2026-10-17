@@ -83,8 +83,8 @@
     padding-inline-start: var(--cinder-space-3);
     padding-inline-end: var(--cinder-space-8);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     color: var(--cinder-text-default);
     font: inherit;
     font-size: var(--cinder-text-sm);
@@ -98,7 +98,7 @@
 
   @media (hover: hover) {
     .cinder-filter-bar__select:hover:not(:disabled) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -116,8 +116,8 @@
   }
 
   .cinder-filter-bar__select:disabled {
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
   }
@@ -157,8 +157,8 @@
 
   /* Disabled state on the root affects the controls row visually */
   .cinder-filter-bar[data-disabled] .cinder-filter-bar__select {
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
   }

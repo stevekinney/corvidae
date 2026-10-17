@@ -400,7 +400,7 @@ describe('ButtonGroup', () => {
 
     // A seam ::before exists on non-first items with the border color at z-index 1.
     expect(css).toMatch(
-      /\[data-cinder-button-group-item\]:not\(:first-child\)::before\s*\{[\s\S]*?z-index:\s*1;[\s\S]*?background:\s*var\(--cinder-border\);/,
+      /\[data-cinder-button-group-item\]:not\(:first-child\)::before\s*\{[\s\S]*?z-index:\s*1;[\s\S]*?background:\s*var\(--cinder-border-strong\);/,
     );
 
     // The seam is suppressed on hovered, active, AND focused participants (own near-edge seam).

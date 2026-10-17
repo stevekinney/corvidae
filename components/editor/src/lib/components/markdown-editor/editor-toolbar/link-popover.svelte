@@ -329,7 +329,7 @@
     gap: var(--cinder-space-2);
     box-sizing: border-box;
     padding: var(--cinder-space-1-5) var(--cinder-space-3);
-    border-bottom: 1px solid var(--cinder-border);
+    border-bottom: 1px solid var(--cinder-border-muted);
     background: var(--cinder-surface-raised);
   }
 
@@ -413,7 +413,7 @@
     gap: var(--cinder-space-2);
     box-sizing: border-box;
     padding: var(--cinder-space-1-5) var(--cinder-space-3);
-    border-top: 1px solid var(--cinder-border);
+    border-top: 1px solid var(--cinder-border-muted);
     background: var(--cinder-surface-raised);
   }
 

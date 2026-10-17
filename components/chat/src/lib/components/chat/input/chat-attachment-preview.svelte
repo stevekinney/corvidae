@@ -168,7 +168,7 @@
 
   /* Error state */
   .chat-attachment-preview[data-error] {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-status-danger-border);
   }
 
   .chat-attachment-preview[data-error] .chat-attachment-preview-image {

@@ -35,16 +35,16 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.2, 0.02, 255],
-        "alpha": 0.48
+        "alpha": 0.32
       },
-      "$description": "Secondary (default) button border.",
+      "$description": "Secondary (default) button border: `border.strong` in both themes. The label identifies the button, so this edge is structural rather than a 3:1 control boundary.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-button-border",
           "public": true,
           "category": "color",
           "component": "button",
-          "cssRecipe": "light-dark(var(--cinder-border), var(--cinder-border-strong))"
+          "cssRecipe": "var(--cinder-border-strong)"
         }
       }
     },
@@ -426,16 +426,16 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.2, 0.02, 255],
-          "alpha": 0.19
+          "alpha": 0.48
         },
-        "$description": "Toggle track color in the off, resting state. Light arm preserves the `border.muted` look; dark arm raises lightness for >=3:1 shape contrast against the surface.",
+        "$description": "Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 control tier (`border.control`); the dark arm raises lightness for >=3:1 shape contrast against the surface.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-toggle-track-off-resting",
             "public": true,
             "category": "color",
             "component": "toggle",
-            "cssRecipe": "light-dark(var(--cinder-border-muted), oklch(45% 0.02 245))"
+            "cssRecipe": "light-dark(var(--cinder-border-control), oklch(45% 0.02 245))"
           }
         }
       },
@@ -443,16 +443,16 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.2, 0.02, 255],
-          "alpha": 0.48
+          "alpha": 0.58
         },
-        "$description": "Toggle track color in the off state on hover. Steps up from `off-resting` to be distinguishable.",
+        "$description": "Toggle track color in the off state on hover: `border.control.hover` in the light arm, one step heavier than `off-resting`.",
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-toggle-track-off-hover-resting",
             "public": true,
             "category": "color",
             "component": "toggle",
-            "cssRecipe": "light-dark(var(--cinder-border), oklch(52% 0.02 245))"
+            "cssRecipe": "light-dark(var(--cinder-border-control-hover), oklch(52% 0.02 245))"
           }
         }
       }

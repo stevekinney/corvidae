@@ -919,7 +919,7 @@
     gap: var(--cinder-space-2);
     /* The wrapper owns nested toolbar padding; EditorToolbar keeps standalone chrome. */
     padding: var(--cinder-space-2) var(--cinder-space-3);
-    border-bottom: 1px solid var(--cinder-border);
+    border-bottom: 1px solid var(--cinder-border-muted);
     /* Background inherited from .markdown-editor-wrapper per surface nesting rule. */
     flex-wrap: nowrap;
   }
@@ -950,7 +950,7 @@
     display: flex;
     justify-content: flex-end;
     padding: var(--cinder-space-2) var(--cinder-space-3);
-    border-bottom: 1px solid var(--cinder-border);
+    border-bottom: 1px solid var(--cinder-border-muted);
   }
 
   .toolbar-leading,

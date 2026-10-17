@@ -1859,6 +1859,52 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'control.height.md',
+      cssProperty: '--cinder-control-height-md',
+      category: 'size',
+      component: null,
+      description: 'Medium control height; the form-field default (36px).',
+      themeAware: false,
+      deprecated: false,
+      profile: 'height',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/foundation.tokens.json', path: 'control.height.md' },
+            layers: [
+              {
+                document: 'sets/foundation.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.height.md',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'inherited',
+              declaredAt: { document: 'sets/foundation.tokens.json', path: 'control.height' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
       path: 'control.height.lg',
       cssProperty: '--cinder-control-height-lg',
       category: 'size',
@@ -1900,6 +1946,343 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               declaredAt: { document: 'sets/foundation.tokens.json', path: 'control.height' },
             },
             inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'control.background',
+      cssProperty: '--cinder-control-background',
+      category: 'color',
+      component: null,
+      description: 'Control fill.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'control.background' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.background',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'control.background' },
+            },
+            inputs: { aliases: ['surface.raised'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'control.background.disabled',
+      cssProperty: '--cinder-control-background-disabled',
+      category: 'color',
+      component: null,
+      description:
+        'Disabled control fill: a flat neutral that reads as inert while staying inside the frame (a control never drops to `surface.inset`).',
+      themeAware: false,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'control.background.disabled' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.background.disabled',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: {
+                document: 'sets/semantic.tokens.json',
+                path: 'control.background.disabled',
+              },
+            },
+            inputs: { aliases: ['fill.disabled'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'control.border',
+      cssProperty: '--cinder-control-border',
+      category: 'color',
+      component: null,
+      description: 'Resting control edge; clears 3:1 against every surface.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'control.border' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.border',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'control.border' },
+            },
+            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'control.border.hover',
+      cssProperty: '--cinder-control-border-hover',
+      category: 'color',
+      component: null,
+      description: 'Hovered control edge.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'control.border.hover' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.border.hover',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'control.border.hover' },
+            },
+            inputs: { aliases: ['border.control.hover'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'control.border.disabled',
+      cssProperty: '--cinder-control-border-disabled',
+      category: 'color',
+      component: null,
+      description:
+        'Disabled control edge: the structural tier, since a disabled control is not an interactive boundary.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'control.border.disabled' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.border.disabled',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: {
+                document: 'sets/semantic.tokens.json',
+                path: 'control.border.disabled',
+              },
+            },
+            inputs: { aliases: ['border'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'control.border.invalid',
+      cssProperty: '--cinder-control-border-invalid',
+      category: 'color',
+      component: null,
+      description:
+        'Invalid control edge. The danger fill rather than `status.danger.border`, because on an invalid control this edge IS the control boundary and has to keep clearing 3:1; the decorative status border would not.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'control.border.invalid' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.border.invalid',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'control.border.invalid' },
+            },
+            inputs: { aliases: ['status.danger.solid'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'control.radius',
+      cssProperty: '--cinder-control-radius',
+      category: 'radius',
+      component: null,
+      description: 'Control corner radius.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'radius',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'control.radius' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.radius',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'local',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'control.radius' },
+            },
+            inputs: { aliases: ['radius.control'], refs: [], extends: [], recipes: [] },
           },
         },
       ],
@@ -5952,12 +6335,99 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'border',
+      cssProperty: '--cinder-border',
+      category: 'color',
+      component: null,
+      description:
+        'Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 20% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.',
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/light.tokens.json', path: 'border' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'border',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'border',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/light.tokens.json', path: 'border' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'border' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'border',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'border',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'border' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
+          },
+        },
+      ],
+    },
+    {
       path: 'border.ink',
       cssProperty: '--cinder-border-ink',
       category: 'color',
       component: null,
       description:
-        "The single polarity-aware ink every neutral structural border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. `border.muted`, `border.control`, and `border.strong` are alpha steps over it, so each tier tracks the surface underneath it instead of being tuned per surface -- which is what holds each tier's contrast spread across the four legal surface tiers under 15% in both arms, against 29% for the opaque dark values it replaces. Overriding this one token at :root or in a [data-theme] block re-tints all three together; a subtree override does not reach them, because the tiers are declared at :root and descendants inherit the already-resolved values. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on. Two neutral aliases do follow it and become translucent with it: status.neutral.border aliases border.control, and border.inverse's dark arm aliases border.strong.",
+        'The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 10%, `border` 20%, `border.strong` 32%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6031,11 +6501,11 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
     },
     {
       path: 'border.control',
-      cssProperty: '--cinder-border',
+      cssProperty: '--cinder-border-control',
       category: 'color',
       component: null,
       description:
-        "Functional control boundary that clears WCAG 1.4.11's 3:1 floor against every supported surface. It is the border of the secondary Button, whose fill is `surface.raised` -- white in light mode, a raised dark surface in dark mode -- so in both themes it is the only thing making that control read as a control. Composed as a 48% alpha step over `border.ink` rather than authored per arm, so it can no longer drift out of step with the other two tiers.",
+        "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. A 48% alpha step over `border.ink` that clears WCAG 1.4.11's 3:1 floor against every supported surface in both themes.",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6098,6 +6568,93 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 kind: 'modifier',
                 layer: 'theme.dark',
                 path: 'border.control',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'border' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
+          },
+        },
+      ],
+    },
+    {
+      path: 'border.control.hover',
+      cssProperty: '--cinder-border-control-hover',
+      category: 'color',
+      component: null,
+      description:
+        'Hovered control boundary, one step heavier than `border.control`. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface.',
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/light.tokens.json', path: 'border.control.hover' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'border.control.hover',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'border.control.hover',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/light.tokens.json', path: 'border' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'border.control.hover' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'border.control.hover',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'border.control.hover',
                 via: 'declared',
               },
             ],
@@ -6200,7 +6757,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Decorative divider that wants less weight than `border.control`. Clears a separate 1.4:1 floor against its backdrop. Composed as a 19% alpha step over `border.ink`.',
+        'Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 10% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6287,7 +6844,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        "Stronger control boundary. Clears WCAG 1.4.11's 3:1 floor against every supported surface, like `border.control`, with more weight. Composed as a 58% alpha step over `border.ink`.",
+        'Emphasized structural edge and the resting edge of secondary buttons and button-like chips, whose label already identifies them. A 32% alpha step over `border.ink`: heavier than `border`, lighter than `border.control`, and not a control boundary on its own.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -12488,7 +13045,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'local',
               declaredAt: { document: 'themes/light.tokens.json', path: 'status.neutral.border' },
             },
-            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border'], refs: [], extends: [], recipes: [] },
           },
         },
         {
@@ -12516,7 +13073,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'local',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'status.neutral.border' },
             },
-            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border'], refs: [], extends: [], recipes: [] },
           },
         },
       ],
@@ -14115,7 +14672,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-button-border',
       category: 'color',
       component: 'button',
-      description: 'Secondary (default) button border.',
+      description:
+        'Secondary (default) button border: `border.strong` in both themes. The label identifies the button, so this edge is structural rather than a 3:1 control boundary.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -14154,7 +14712,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'local',
               declaredAt: { document: 'themes/light.tokens.json', path: 'button.border' },
             },
-            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border.strong'], refs: [], extends: [], recipes: [] },
           },
         },
         {
@@ -15389,7 +15947,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'toggle',
       description:
-        'Toggle track color in the off, resting state. Light arm preserves the `border.muted` look; dark arm raises lightness for >=3:1 shape contrast against the surface.',
+        "Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 control tier (`border.control`); the dark arm raises lightness for >=3:1 shape contrast against the surface.",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -15428,7 +15986,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/light.tokens.json', path: 'toggle' },
             },
-            inputs: { aliases: ['border.muted'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
           },
         },
         {
@@ -15467,7 +16025,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'toggle',
       description:
-        'Toggle track color in the off state on hover. Steps up from `off-resting` to be distinguishable.',
+        'Toggle track color in the off state on hover: `border.control.hover` in the light arm, one step heavier than `off-resting`.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -15509,7 +16067,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/light.tokens.json', path: 'toggle' },
             },
-            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border.control.hover'], refs: [], extends: [], recipes: [] },
           },
         },
         {

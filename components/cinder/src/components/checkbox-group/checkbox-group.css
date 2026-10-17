@@ -63,7 +63,7 @@
   .cinder-checkbox-group[data-variant='card']
     .cinder-checkbox-group__items
     > .cinder-checkbox-field {
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-md);
     padding: var(--cinder-space-3);
     background: var(--cinder-surface-raised);
@@ -78,7 +78,7 @@
     .cinder-checkbox-group[data-variant='card']
       .cinder-checkbox-group__items
       > .cinder-checkbox-field:hover:not(:has(input:disabled)) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -94,8 +94,8 @@
   .cinder-checkbox-group[data-variant='card']
     .cinder-checkbox-group__items
     > .cinder-checkbox-field:has(input:disabled) {
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
     cursor: not-allowed;
   }
 

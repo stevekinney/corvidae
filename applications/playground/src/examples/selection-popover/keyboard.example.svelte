@@ -126,7 +126,7 @@
       Last submitted
     </h3>
     <article
-      style="padding: 0.5rem 0.75rem; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-sm); background: var(--cinder-surface);"
+      style="padding: 0.5rem 0.75rem; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-sm); background: var(--cinder-surface);"
     >
       {lastSubmitted}
     </article>

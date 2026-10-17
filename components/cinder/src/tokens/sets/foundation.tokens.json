@@ -618,7 +618,7 @@
   "control": {
     "height": {
       "$type": "dimension",
-      "$description": "Shared height tier for any interactive control that needs to align with its siblings in a toolbar, button group, or form row. Adoption is opt-in per component; Buttons use their own tighter height ladder (see `button.height.*`).",
+      "$description": "Shared height ladder for interactive controls. Form fields use `md`; toolbar and inline fields use `sm`, which is also `button.height.sm`, so a small Button, a toolbar SegmentedControl, and a toolbar Chip line up.",
       "xs": {
         "$value": {
           "value": 1.5,
@@ -643,6 +643,21 @@
         "$extensions": {
           "com.lostgradient.cinder": {
             "cssProperty": "--cinder-control-height-sm",
+            "public": true,
+            "category": "size",
+            "cssRecipe": null
+          }
+        }
+      },
+      "md": {
+        "$value": {
+          "value": 2.25,
+          "unit": "rem"
+        },
+        "$description": "Medium control height; the form-field default (36px).",
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssProperty": "--cinder-control-height-md",
             "public": true,
             "category": "size",
             "cssRecipe": null

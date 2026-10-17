@@ -1099,7 +1099,7 @@
   @media (hover: none) or (pointer: coarse) {
     :global(.chat-message-action-button) {
       background: var(--cinder-surface-raised);
-      border-color: var(--cinder-border);
+      border-color: var(--cinder-border-strong);
     }
   }
 
@@ -1141,7 +1141,7 @@
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-accent-solid);
-    border-radius: var(--cinder-radius-md);
+    border-radius: var(--cinder-control-radius);
     resize: vertical;
     outline: none;
   }

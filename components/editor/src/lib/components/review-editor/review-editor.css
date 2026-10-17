@@ -50,7 +50,7 @@
 
   /* For diff/summary views, controls bar has bottom border but no radius on bottom */
   .review-editor-container:not([data-view='editor']) > .review-editor-controls {
-    border-bottom: 1px solid var(--cinder-border);
+    border-bottom: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md) var(--cinder-radius-md) 0 0;
   }
 
@@ -68,7 +68,7 @@
     border-top: none;
     border-inline-start: none;
     border-inline-end: none;
-    border-bottom: 1px solid var(--cinder-border);
+    border-bottom: 1px solid var(--cinder-border-muted);
   }
 
   /* =========================================================================

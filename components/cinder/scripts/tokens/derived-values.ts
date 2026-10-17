@@ -20,8 +20,9 @@
  *   whatever the block declares instead of pinning a literal.
  * - A base recipe written as `light-dark(a, b)` contributes `a` to the light
  *   theme and `b` to the dark theme.
- * - A theme entry that carries its OWN `cssRecipe` keeps it; only its
- *   `$value` is recomputed.
+ * - A theme entry's `cssRecipe` is always written from the base. A per-theme
+ *   difference is expressed as `light-dark()` in the base recipe, never as a
+ *   hand-edited copy in a theme document.
  *
  * `tokens:generate` writes the result back; `tokens:check` fails when the
  * committed documents differ from it. Every document remains plain DTCG: the
@@ -42,10 +43,10 @@ import {
   type Oklch,
 } from './recipe-evaluator.ts';
 
-const THEMES = ['light', 'dark'] as const;
-type Theme = (typeof THEMES)[number];
+export const THEMES = ['light', 'dark'] as const;
+export type Theme = (typeof THEMES)[number];
 
-type DerivedToken = {
+export type DerivedToken = {
   /** Keys from the document root, including a trailing `$root` where present. */
   keys: string[];
   /** Dotted path as resolution reports it (`$root` segments dropped). */
@@ -79,6 +80,23 @@ export function dtcgColorToOklch(value: unknown): Oklch | undefined {
     };
   }
   return undefined;
+}
+
+/** Reads custom properties as resolved in one theme's default-motion context. */
+export function themeLookup(
+  resolver: ResolverDocument,
+  documents: Map<string, TokenDocument>,
+  pathByProperty: ReadonlyMap<string, string>,
+  theme: Theme,
+): (property: string) => Oklch | undefined {
+  // `resolveDocuments` resolves aliases in place, so it gets a copy.
+  const resolved = resolveDocuments(
+    structuredClone(documentsForResolutionOrder(resolver, documents, { theme, motion: 'default' })),
+  );
+  return (property) => {
+    const path = pathByProperty.get(property);
+    return path === undefined ? undefined : dtcgColorToOklch(resolved[path]?.$value);
+  };
 }
 
 function themeDocumentPath(resolver: ResolverDocument, theme: Theme): string {
@@ -119,7 +137,7 @@ const isBareVariable = (recipe: string): boolean => /^var\(\s*--[\w-]+\s*\)$/.te
 const dottedPath = (keys: readonly string[]): string =>
   keys.filter((key) => key !== '$root').join('.');
 
-function collectDerivedTokens(
+export function collectDerivedTokens(
   resolver: ResolverDocument,
   documentsByPath: Map<string, TokenDocument>,
 ): { derived: DerivedToken[]; pathByProperty: Map<string, string> } {
@@ -142,13 +160,8 @@ function collectDerivedTokens(
   return { derived, pathByProperty };
 }
 
-function recipeFor(
-  token: DerivedToken,
-  theme: Theme,
-  themeEntry: Record<string, unknown> | undefined,
-): string {
-  const own = themeEntry ? cinderExtensions(themeEntry)?.['cssRecipe'] : undefined;
-  if (typeof own === 'string') return own;
+/** The recipe a theme uses: the matching `light-dark()` arm, or the whole base recipe. */
+export function recipeFor(token: DerivedToken, theme: Theme): string {
   return lightDarkArms(token.recipe)?.[theme] ?? token.recipe;
 }
 
@@ -174,7 +187,7 @@ function tokensNeedingThemeEntries(
     changed = false;
     for (const token of derived) {
       if (needed.has(token.path)) continue;
-      const recipe = recipeFor(token, theme, undefined);
+      const recipe = recipeFor(token, theme);
       const dependsOnTheme =
         recipe !== token.recipe ||
         recipeInputs(recipe).some((property) => {
@@ -252,11 +265,11 @@ export function materializeDerivedValues(
       if (!needed.has(token.path) || tokenAt(themeDocument, token.keys)) continue;
       // A bare `var()` arm is an alias, which the CSS projection already
       // re-resolves per theme; it needs no materialized literal.
-      if (isBareVariable(recipeFor(token, theme, undefined))) continue;
+      if (isBareVariable(recipeFor(token, theme))) continue;
       setThemeEntry(
         themeDocument,
         token.keys,
-        recipeFor(token, theme, undefined),
+        recipeFor(token, theme),
         tokenAt(documents.get(token.documentPath), token.keys)!['$value'],
       );
       changed.add(themePath);
@@ -270,16 +283,7 @@ export function materializeDerivedValues(
     for (const theme of THEMES) {
       const themePath = themeDocumentPath(resolver, theme);
       const themeDocument = documents.get(themePath)!;
-      // `resolveDocuments` resolves aliases in place, so it gets a copy.
-      const resolved = resolveDocuments(
-        structuredClone(
-          documentsForResolutionOrder(resolver, documents, { theme, motion: 'default' }),
-        ),
-      );
-      const lookup = (property: string): Oklch | undefined => {
-        const path = pathByProperty.get(property);
-        return path === undefined ? undefined : dtcgColorToOklch(resolved[path]?.$value);
-      };
+      const lookup = themeLookup(resolver, documents, pathByProperty, theme);
       for (const token of derived) {
         const themeEntry = tokenAt(themeDocument, token.keys);
         const targets: Array<{ entry: Record<string, unknown>; documentPath: string }> = [];
@@ -289,15 +293,14 @@ export function materializeDerivedValues(
           isColorValue(themeEntry['$value']) &&
           themeEntries.get(theme)!.has(token.path)
         ) {
-          // Without a recipe the theme block would pin a literal, and an
-          // override of the token's input inside that scope would derive
-          // nothing; give the entry the base recipe so the block re-derives.
-          if (typeof cinderExtensions(themeEntry)?.['cssRecipe'] !== 'string') {
-            const recipe = recipeFor(token, theme, undefined);
-            if (!isBareVariable(recipe)) {
-              attachRecipe(themeEntry, recipe);
-              changed.add(themePath);
-            }
+          // The theme entry's recipe is always the base arm. Without one the
+          // theme block would pin a literal, and an override of the token's
+          // input inside that scope would derive nothing; a hand-kept copy
+          // would drift the moment the base recipe changed.
+          const recipe = recipeFor(token, theme);
+          if (cinderExtensions(themeEntry)?.['cssRecipe'] !== recipe && !isBareVariable(recipe)) {
+            attachRecipe(themeEntry, recipe);
+            changed.add(themePath);
           }
           targets.push({ entry: themeEntry, documentPath: themePath });
         }
@@ -308,7 +311,7 @@ export function materializeDerivedValues(
           });
         }
         for (const target of targets) {
-          const evaluated = evaluateRecipe(recipeFor(token, theme, themeEntry), lookup);
+          const evaluated = evaluateRecipe(recipeFor(token, theme), lookup);
           if (!evaluated) continue;
           const value = toDtcgColor(evaluated);
           if (sameValue(target.entry['$value'], value)) continue;

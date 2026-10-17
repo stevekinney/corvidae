@@ -18,7 +18,7 @@
   .cinder-input-host,
   .cinder-input-group {
     --_cinder-input-invalid-border-hover: oklch(
-      from var(--cinder-status-danger-solid) calc(l - 0.06) c h
+      from var(--cinder-control-border-invalid) calc(l - 0.06) c h
     );
   }
 
@@ -59,15 +59,15 @@
   .cinder-input {
     display: block;
     width: 100%;
-    min-height: 2.25rem;
+    min-height: var(--cinder-control-height-md);
     padding: var(--cinder-space-1-5) var(--cinder-space-3);
     font-size: var(--cinder-text-sm);
     font-family: inherit;
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     appearance: none;
 
     transition:
@@ -82,7 +82,7 @@
   /* Sticky-hover suppression on touch. */
   @media (hover: hover) {
     .cinder-input:hover:not(:disabled):not(:focus-visible) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -122,8 +122,8 @@
  * ---------------------------------------- */
 
   .cinder-input:disabled {
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
   }
@@ -179,7 +179,7 @@
  */
   .cinder-input[aria-invalid='true'] {
     --_cinder-input-ring: var(--cinder-status-danger-solid);
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   @media (hover: hover) {
@@ -228,7 +228,7 @@
        `currentcolor` (the initial value). A boxless element paints nothing,
        so these are inert until the swap. Same source order as the group's
        state rules, so disabled wins over invalid here too. */
-    border-color: var(--cinder-border);
+    border-color: var(--cinder-control-border);
   }
   /* The host is hovered whenever the input inside it is (`:hover` matches an
      ancestor of the hovered element even when that ancestor has no box), so
@@ -237,12 +237,12 @@
      beats everything. Sticky-hover suppression on touch, as for the group. */
   @media (hover: hover) {
     .cinder-input-host:hover:not([data-disabled]):not(:focus-within) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
   .cinder-input-host[data-invalid] {
     --_cinder-input-ring: var(--cinder-status-danger-solid);
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
   @media (hover: hover) {
     .cinder-input-host[data-invalid]:hover:not([data-disabled]):not(:focus-within) {
@@ -250,7 +250,7 @@
     }
   }
   .cinder-input-host[data-disabled] {
-    border-color: var(--cinder-border-muted);
+    border-color: var(--cinder-control-border-disabled);
   }
   /* Ring ownership moves from the input to the wrapper when an addon appears.
      The host is boxless and paints nothing, but its computed box-shadow is
@@ -274,8 +274,8 @@
     position: relative;
     inline-size: 100%;
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     transition:
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
@@ -329,7 +329,7 @@
   /* Hover mirrors the standalone input. Sticky-hover suppression on touch. */
   @media (hover: hover) {
     .cinder-input-group:hover:not(.cinder-input-group--disabled):not(:focus-within) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -352,7 +352,7 @@
   /* Invalid state. */
   .cinder-input-group--invalid {
     --_cinder-input-ring: var(--cinder-status-danger-solid);
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
   @media (hover: hover) {
     .cinder-input-group--invalid:hover:not(.cinder-input-group--disabled):not(:focus-within) {
@@ -362,8 +362,8 @@
 
   /* Disabled state. */
   .cinder-input-group--disabled {
-    background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
     cursor: not-allowed;
   }
 

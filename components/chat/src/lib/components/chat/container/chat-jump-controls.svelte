@@ -88,7 +88,7 @@
     /* --cinder-surface-raised does not exist in tokens; use --cinder-surface and
      * lean on the shadow + border for elevation against the inset chat timeline. */
     background: var(--cinder-surface);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-strong);
     border-radius: var(--cinder-radius-full);
     box-shadow: var(--cinder-shadow-md);
     color: var(--cinder-text-default);

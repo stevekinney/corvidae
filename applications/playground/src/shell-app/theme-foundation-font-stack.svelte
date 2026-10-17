@@ -180,7 +180,7 @@
     display: grid;
     gap: 4px;
     padding: 8px;
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
   }
   .stack__actions,

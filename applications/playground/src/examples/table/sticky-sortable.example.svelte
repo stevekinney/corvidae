@@ -35,7 +35,7 @@
 </script>
 
 <div
-  style="max-height: 250px; overflow-y: auto; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-md);"
+  style="max-height: 250px; overflow-y: auto; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md);"
 >
   <Table caption="Contributors" stickyHeader bind:sort>
     <Table.Header>

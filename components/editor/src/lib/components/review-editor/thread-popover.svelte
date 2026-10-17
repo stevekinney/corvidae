@@ -294,7 +294,7 @@
     flex-direction: column;
     gap: var(--cinder-space-2);
     padding: var(--cinder-space-3) var(--cinder-space-4);
-    border-bottom: 1px solid var(--cinder-border);
+    border-bottom: 1px solid var(--cinder-border-muted);
     background: var(--cinder-surface-raised);
   }
 

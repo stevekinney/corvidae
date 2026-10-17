@@ -79,7 +79,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
     color: var(--cinder-accent-text);
@@ -268,7 +268,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-strong);
     border-radius: var(--cinder-radius-sm);
     background: var(--cinder-surface-raised);
     color: var(--cinder-text-default);

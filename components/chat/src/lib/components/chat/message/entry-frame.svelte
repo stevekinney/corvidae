@@ -58,7 +58,7 @@
   .chat-entry-frame-shell :global(.chat-entry-frame) {
     inline-size: 100%;
     overflow: hidden;
-    border: 1px solid var(--_chat-entry-frame-border-color, var(--cinder-border-muted));
+    border: 1px solid var(--_chat-entry-frame-border-color, var(--cinder-border));
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface);
   }
@@ -104,7 +104,7 @@
     inline-size: 0.5rem;
     block-size: 0.5rem;
     border-radius: 50%;
-    background: var(--cinder-border);
+    background: var(--cinder-border-control);
     pointer-events: none;
   }
 

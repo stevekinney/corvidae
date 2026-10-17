@@ -105,7 +105,7 @@
     font-size: var(--cinder-text-base);
     line-height: var(--cinder-leading-normal);
     padding-block: var(--cinder-space-2-5);
-    border-radius: var(--cinder-radius-md);
+    border-radius: var(--cinder-control-radius);
   }
 
   /* No visible ring here (COR-1498, a documented exception in

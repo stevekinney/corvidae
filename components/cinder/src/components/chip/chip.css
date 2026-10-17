@@ -13,7 +13,7 @@
     font-weight: var(--cinder-font-medium);
     line-height: 1.25;
     border-radius: var(--cinder-radius-full);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-strong);
     white-space: nowrap;
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-default);
@@ -134,7 +134,7 @@
     border-color: color-mix(
       in oklch,
       var(--_cinder-chip-brand-color) 35%,
-      var(--cinder-border) 65%
+      var(--cinder-border-strong) 65%
     );
   }
 
@@ -173,7 +173,7 @@
   .cinder-chip[aria-pressed='true'][data-cinder-variant='neutral'] {
     background: var(--cinder-surface-pressed);
     color: var(--cinder-text-default);
-    border-color: var(--cinder-border-strong);
+    border-color: var(--cinder-border-control);
   }
 
   /* Neutral pressed state is a restrained selection shift on the shared chip
@@ -182,31 +182,31 @@
   .cinder-chip[aria-pressed='true'][data-cinder-variant='success'] {
     background: var(--cinder-status-success-solid);
     color: var(--cinder-status-success-contrast);
-    border-color: var(--cinder-status-success-solid);
+    border-color: transparent;
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='warning'] {
     background: var(--cinder-status-warning-solid);
     color: var(--cinder-status-warning-contrast);
-    border-color: var(--cinder-status-warning-solid);
+    border-color: transparent;
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='danger'] {
     background: var(--cinder-status-danger-solid);
     color: var(--cinder-status-danger-contrast);
-    border-color: var(--cinder-status-danger-solid);
+    border-color: transparent;
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='info'] {
     background: var(--cinder-status-info-solid);
     color: var(--cinder-status-info-contrast);
-    border-color: var(--cinder-status-info-solid);
+    border-color: transparent;
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='accent'] {
     background: var(--cinder-accent-solid);
     color: var(--cinder-accent-contrast);
-    border-color: var(--cinder-accent-solid);
+    border-color: transparent;
   }
 
   /* ----------------------------------------

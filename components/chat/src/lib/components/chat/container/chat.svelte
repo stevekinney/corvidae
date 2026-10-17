@@ -2010,7 +2010,7 @@
     padding: 0 var(--cinder-space-2);
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-strong);
     border-radius: var(--cinder-radius-sm);
     cursor: pointer;
     font: inherit;
@@ -2028,7 +2028,7 @@
   @media (hover: hover) {
     .chat-artifact-action:hover {
       background: var(--cinder-surface-hover);
-      border-color: var(--cinder-border);
+      border-color: var(--cinder-border-control);
     }
   }
 

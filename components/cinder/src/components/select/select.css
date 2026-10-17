@@ -42,7 +42,7 @@
   .cinder-select {
     display: block;
     width: 100%;
-    min-height: var(--cinder-control-height, 2.25rem);
+    min-height: var(--cinder-control-height-md);
     padding: var(--cinder-space-1-5) var(--cinder-space-8) var(--cinder-space-1-5)
       var(--cinder-space-3);
 
@@ -52,8 +52,8 @@
 
     background-color: var(--cinder-surface-raised);
 
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
 
     appearance: none;
     cursor: pointer;
@@ -65,7 +65,7 @@
 
   @media (hover: hover) {
     .cinder-select:hover:not(:disabled) {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-control-border-hover);
     }
   }
 
@@ -87,8 +87,8 @@
   }
 
   .cinder-select:disabled {
-    background-color: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    background-color: var(--cinder-control-background-disabled);
+    border-color: var(--cinder-control-border-disabled);
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
   }
@@ -170,12 +170,12 @@
  * ---------------------------------------- */
 
   .cinder-select[aria-invalid='true'] {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   @media (hover: hover) {
     .cinder-select[aria-invalid='true']:hover:not(:disabled) {
-      border-color: oklch(from var(--cinder-status-danger-solid) calc(l - 0.06) c h);
+      border-color: oklch(from var(--cinder-control-border-invalid) calc(l - 0.06) c h);
     }
   }
 

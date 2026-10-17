@@ -154,7 +154,7 @@
     width: 2.5rem;
     height: 0.25rem;
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-border);
+    background: var(--cinder-border-control);
   }
 
   .cinder-drawer__header {

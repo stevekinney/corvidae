@@ -40,7 +40,7 @@
     inline-size: var(--cinder-space-2);
     block-size: var(--cinder-space-2);
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-border-strong);
+    background: var(--cinder-border-control);
   }
 
   /* Connector line — pseudo-element on the <li> itself, anchored at the rail's

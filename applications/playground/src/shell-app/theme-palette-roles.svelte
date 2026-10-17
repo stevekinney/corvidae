@@ -93,7 +93,7 @@
     display: grid;
     gap: 6px;
     padding: 8px;
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     min-width: 0;
   }
@@ -134,7 +134,7 @@
     flex: none;
     width: 1.25rem;
     height: 1.25rem;
-    border: 1px solid var(--cinder-border-strong);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-sm, 4px);
   }
   code {

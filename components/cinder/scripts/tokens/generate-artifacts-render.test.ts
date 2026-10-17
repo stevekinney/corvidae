@@ -209,10 +209,10 @@ describe('CIN-30 review round 5', () => {
   test('a section marker repeated in the document is rejected', async () => {
     // Regenerating both blocks would list every token in the section twice, and
     // `tokens:generate -- --check` would then stabilise on the doubled output.
-    // Uses control-heights (three tokens) so the FIRST block renders cleanly and
+    // Uses control-heights (four tokens) so the FIRST block renders cleanly and
     // the duplicate is what fails -- a larger section would fail on the fixture
     // being incomplete instead, which would not test this at all.
-    const heights = ['xs', 'sm', 'lg'];
+    const heights = ['xs', 'sm', 'md', 'lg'];
     const baseIndex = new Map<string, CorpusEntry>(
       heights.map((size) => [
         `control.height.${size}`,

@@ -39,7 +39,7 @@
    */
   .cinder-parameter-field__rail {
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-border);
+    background: var(--cinder-border-control);
   }
 
   .cinder-parameter-field[data-cinder-overridden] .cinder-parameter-field__rail {

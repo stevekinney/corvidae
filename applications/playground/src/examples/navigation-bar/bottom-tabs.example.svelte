@@ -10,7 +10,7 @@
   let active = $state('home');
 </script>
 
-<div style="max-width: 28rem; border: 1px solid var(--cinder-border-muted);">
+<div style="max-width: 28rem; border: 1px solid var(--cinder-border);">
   <main style="min-height: 10rem; padding: var(--cinder-space-4);">
     <strong>{active}</strong>
   </main>

@@ -638,7 +638,7 @@ describe('SecretValueField', () => {
       expect(css).toContain('cinder-secret-value-field');
       expect(css).toContain('@layer cinder.components');
       const rowBlock = css.match(/\.cinder-secret-value-field__row\s*\{[^}]*\}/)?.[0] ?? '';
-      expect(rowBlock).toContain('border: 1px solid var(--cinder-border)');
+      expect(rowBlock).toContain('border: 1px solid var(--cinder-control-border)');
       expect(rowBlock).not.toContain('var(--cinder-border-muted)');
     });
   });

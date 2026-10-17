@@ -22,7 +22,7 @@
 </script>
 
 <div
-  style="display: flex; flex-direction: column; height: 100dvh; max-height: 36rem; border: 1px solid var(--cinder-border-muted);"
+  style="display: flex; flex-direction: column; height: 100dvh; max-height: 36rem; border: 1px solid var(--cinder-border);"
 >
   <header style="padding: 0.75rem; border-block-end: 1px solid var(--cinder-border-muted);">
     Support thread

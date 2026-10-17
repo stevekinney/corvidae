@@ -165,7 +165,7 @@
     flex: none;
     width: 2.5rem;
     height: 2.5rem;
-    border: 1px solid var(--cinder-border-strong);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-md);
     background-image: conic-gradient(#999 25%, #fff 0 50%, #999 0 75%, #fff 0);
     background-size: 10px 10px;

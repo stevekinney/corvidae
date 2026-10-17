@@ -582,8 +582,8 @@ describe('BarChart', () => {
 
     for (const stylesheet of chartStylesheets) {
       const legendButtonBlock = stylesheet.match(/__legend button\s*\{[^}]*\}/)?.[0] ?? '';
-      expect(legendButtonBlock).toContain('border: 1px solid var(--cinder-border)');
-      expect(legendButtonBlock).not.toContain('var(--cinder-border-muted)');
+      expect(legendButtonBlock).toContain('border: 1px solid var(--cinder-border-control)');
+      expect(legendButtonBlock).not.toContain('var(--cinder-border)');
       expect(legendButtonBlock).toContain(
         'background: var(--_cinder-chart-background, transparent)',
       );

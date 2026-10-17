@@ -16,7 +16,7 @@
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-text-muted);
     background: transparent;
-    border: 1px solid var(--cinder-border);
+    border: 1px solid var(--cinder-border-strong);
     border-radius: var(--cinder-radius-sm);
     cursor: pointer;
     transition:
@@ -31,7 +31,7 @@
     .cinder-copy-button:hover {
       color: var(--cinder-text-default);
       background: var(--cinder-surface-hover);
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-border-control);
     }
   }
 
@@ -52,6 +52,6 @@
 
   .cinder-copy-button[data-cinder-copied] {
     color: var(--cinder-status-success-text);
-    border-color: var(--cinder-status-success-solid);
+    border-color: var(--cinder-status-success-border);
   }
 }

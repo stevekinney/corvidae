@@ -229,7 +229,7 @@
       },
       "border": {
         "$type": "color",
-        "$value": "{border.control}",
+        "$value": "{border}",
         "$description": "Border color on the soft neutral surface.",
         "$extensions": {
           "com.lostgradient.cinder": {

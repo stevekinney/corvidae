@@ -98,3 +98,49 @@ test('a scoped border-ink override retints only where the tiers are redeclared',
   // either half alone would pass on a value that got the other half wrong.
   expect(resolved.inkAndTier).toBe('oklch(0.5 0.3 30 / 0.48)');
 });
+
+/**
+ * Inside a `[data-theme]` scope the derivation chain is live: every derived
+ * token is redeclared in each theme block (the generator materializes those
+ * entries from the base recipe), so overriding a base token on the scoped
+ * element re-derives its dependents right there instead of inheriting the
+ * values `:root` already computed.
+ */
+test('a base override inside a [data-theme] scope re-derives its dependents', async ({ page }) => {
+  await page.goto(tokenFixtureRoute);
+
+  const resolved = await page.evaluate(() => {
+    const read = (host: HTMLElement, property: string) => {
+      const child = document.createElement('div');
+      child.style.color = `var(${property})`;
+      host.append(child);
+      return getComputedStyle(child).color;
+    };
+    const theme = (overrides: Record<string, string>) => {
+      const host = document.createElement('div');
+      host.dataset['theme'] = 'light';
+      for (const [property, value] of Object.entries(overrides)) {
+        host.style.setProperty(property, value);
+      }
+      document.body.append(host);
+      return host;
+    };
+
+    const plain = theme({});
+    const accent = theme({ '--cinder-accent-solid': 'oklch(0.6 0.2 30)' });
+    const ink = theme({ '--cinder-border-ink': 'oklch(0.5 0.2 30)' });
+    return {
+      plainHover: read(plain, '--cinder-accent-solid-hover'),
+      accentHover: read(accent, '--cinder-accent-solid-hover'),
+      plainBorder: read(plain, '--cinder-border'),
+      inkBorder: read(ink, '--cinder-border'),
+      inkControl: read(ink, '--cinder-border-control'),
+    };
+  });
+
+  expect(resolved.accentHover).not.toBe(resolved.plainHover);
+  // calc(l - 0.08) over the override, hue and chroma unchanged.
+  expect(resolved.accentHover).toBe('oklch(0.52 0.2 30)');
+  expect(resolved.inkBorder).not.toBe(resolved.plainBorder);
+  expect(resolved.inkControl).toBe('oklch(0.5 0.2 30 / 0.48)');
+});

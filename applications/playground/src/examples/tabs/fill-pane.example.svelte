@@ -11,7 +11,7 @@
 </script>
 
 <div
-  style="display: flex; flex-direction: column; block-size: 20rem; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-md); padding: var(--cinder-space-3);"
+  style="display: flex; flex-direction: column; block-size: 20rem; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md); padding: var(--cinder-space-3);"
 >
   <Tabs bind:value={active} fill>
     <Tabs.List label="Run inspector">
@@ -22,7 +22,7 @@
 
     <Tabs.Panel value="timeline">
       <div
-        style="block-size: 100%; overflow: auto; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-sm); padding: var(--cinder-space-3);"
+        style="block-size: 100%; overflow: auto; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-sm); padding: var(--cinder-space-3);"
       >
         <p>Queued</p>
         <p>Provisioned runner</p>
@@ -35,7 +35,7 @@
 
     <Tabs.Panel value="logs">
       <div
-        style="block-size: 100%; overflow: auto; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-sm); padding: var(--cinder-space-3);"
+        style="block-size: 100%; overflow: auto; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-sm); padding: var(--cinder-space-3);"
       >
         <p>10:01:22 Starting worker</p>
         <p>10:01:25 Restoring cache</p>
@@ -46,7 +46,7 @@
 
     <Tabs.Panel value="metadata">
       <div
-        style="block-size: 100%; overflow: auto; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-sm); padding: var(--cinder-space-3);"
+        style="block-size: 100%; overflow: auto; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-sm); padding: var(--cinder-space-3);"
       >
         <p>The panel body fills the same bounded pane.</p>
         <p>Scrollable content can stay inside the active panel.</p>

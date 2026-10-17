@@ -97,46 +97,10 @@
         "components": [0.2, 0.02, 255]
       }
     },
-    "control": {
-      "$value": {
-        "colorSpace": "oklch",
-        "components": [0.2, 0.02, 255],
-        "alpha": 0.48
-      },
-      "$extensions": {
-        "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 52%)"
-        }
-      }
-    },
     "faint": {
       "$value": {
         "colorSpace": "oklch",
         "components": [0.92, 0.003, 255]
-      }
-    },
-    "muted": {
-      "$value": {
-        "colorSpace": "oklch",
-        "components": [0.2, 0.02, 255],
-        "alpha": 0.19
-      },
-      "$extensions": {
-        "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 81%)"
-        }
-      }
-    },
-    "strong": {
-      "$value": {
-        "colorSpace": "oklch",
-        "components": [0.2, 0.02, 255],
-        "alpha": 0.58
-      },
-      "$extensions": {
-        "com.lostgradient.cinder": {
-          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 42%)"
-        }
       }
     },
     "inverse": {
@@ -148,6 +112,68 @@
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssRecipe": "transparent"
+        }
+      }
+    },
+    "$root": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.2, 0.02, 255],
+        "alpha": 0.2
+      },
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 80%)"
+        }
+      }
+    },
+    "control": {
+      "$root": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.02, 255],
+          "alpha": 0.48
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 52%)"
+          }
+        }
+      },
+      "hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.02, 255],
+          "alpha": 0.58
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 42%)"
+          }
+        }
+      }
+    },
+    "muted": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.2, 0.02, 255],
+        "alpha": 0.1
+      },
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 90%)"
+        }
+      }
+    },
+    "strong": {
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.2, 0.02, 255],
+        "alpha": 0.32
+      },
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)"
         }
       }
     }
@@ -598,17 +624,17 @@
     },
     "border": {
       "$type": "color",
-      "$value": "{border.control}"
+      "$value": "{border.strong}"
     }
   },
   "toggle": {
     "$type": "color",
     "track": {
       "off-resting": {
-        "$value": "{border.muted}"
+        "$value": "{border.control}"
       },
       "off-hover-resting": {
-        "$value": "{border.control}"
+        "$value": "{border.control.hover}"
       }
     }
   },
@@ -834,7 +860,7 @@
       },
       "border": {
         "$type": "color",
-        "$value": "{border.control}"
+        "$value": "{border}"
       }
     },
     "danger": {

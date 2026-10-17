@@ -10,12 +10,12 @@
 
 <Grid columns={12} gap="var(--cinder-space-4)" aria-label="Profile form layout">
   <Grid.Item span={6}>
-    <div style="padding: 1rem; border: 1px solid var(--cinder-border-muted);">First name</div>
+    <div style="padding: 1rem; border: 1px solid var(--cinder-border);">First name</div>
   </Grid.Item>
   <Grid.Item span={6}>
-    <div style="padding: 1rem; border: 1px solid var(--cinder-border-muted);">Last name</div>
+    <div style="padding: 1rem; border: 1px solid var(--cinder-border);">Last name</div>
   </Grid.Item>
   <Grid.Item span={12}>
-    <div style="padding: 1rem; border: 1px solid var(--cinder-border-muted);">Email address</div>
+    <div style="padding: 1rem; border: 1px solid var(--cinder-border);">Email address</div>
   </Grid.Item>
 </Grid>

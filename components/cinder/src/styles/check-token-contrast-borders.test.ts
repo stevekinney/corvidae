@@ -14,6 +14,8 @@ const {
   accent,
   bg,
   border,
+  borderControl,
+  borderControlHover,
   borderFaint,
   borderInk,
   borderMuted,
@@ -42,14 +44,28 @@ describe('focus ring contrast (WCAG 1.4.11)', () => {
 });
 
 describe('border-on-surface contrast', () => {
-  // Faint borders are decorative hairlines rather than controls, but must stay
-  // distinguishable from the surfaces they divide.
+  // The neutral tiers do two jobs. STRUCTURAL tiers (muted, border, strong)
+  // separate regions and outline containers; the region is identified by its
+  // surface and content, so WCAG 1.4.11 does not apply and they are kept
+  // quiet. CONTROL tiers (control, control.hover) are the only visible
+  // boundary of an input, checkbox, or radio, so they must clear 3:1.
+  //
+  // Faint borders are decorative hairlines and only need to stay distinguishable.
   const FAINT_BORDER = 1.1;
-  // A muted border is decorative, but still has to remain perceptible. The 1.4:1
-  // floor rejects the formerly invisible 1.07:1 dark raised-surface pairing
-  // without pretending a divider has the same semantic job as a control outline.
-  const DECORATIVE_BORDER = 1.4;
+  // Every structural tier must stay perceptible; muted, the interior hairline,
+  // sits at the faint floor, the others at the decorative one.
+  const STRUCTURAL_FLOORS = { 'border.muted': 1.1, border: 1.4, 'border.strong': 1.4 } as const;
   const surfaces = { inset: surfaceInset, bg, surface, raised: surfaceRaised } as const;
+  const structuralTiers = {
+    'border.muted': borderMuted,
+    border,
+    'border.strong': borderStrong,
+  } as const;
+  const controlTiers = {
+    'border.control': borderControl,
+    'border.control.hover': borderControlHover,
+  } as const;
+  const allTiers = { ...structuralTiers, ...controlTiers } as const;
 
   for (const arm of ['light', 'dark'] as const) {
     for (const [surfaceName, surfaceToken] of Object.entries(surfaces)) {
@@ -59,28 +75,34 @@ describe('border-on-surface contrast', () => {
         ).toBeGreaterThanOrEqual(FAINT_BORDER);
       });
 
-      it(`${arm}: muted border is perceptible on ${surfaceName}`, () => {
-        expect(translucentContrastOn(borderMuted[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
-          DECORATIVE_BORDER,
-        );
-      });
+      for (const [tierName, tier] of Object.entries(structuralTiers)) {
+        it(`${arm}: ${tierName} is perceptible on ${surfaceName}`, () => {
+          expect(translucentContrastOn(tier[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
+            STRUCTURAL_FLOORS[tierName as keyof typeof STRUCTURAL_FLOORS],
+          );
+        });
 
-      it(`${arm}: functional border clears WCAG 1.4.11 on ${surfaceName}`, () => {
-        expect(translucentContrastOn(border[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
-          NON_TEXT,
-        );
-      });
+        it(`${arm}: ${tierName} stays below border.control on ${surfaceName}`, () => {
+          // The hierarchy must not invert: a structural edge heavier than a
+          // control edge would make a container read as the interactive thing.
+          expect(translucentContrastOn(tier[arm], surfaceToken[arm])).toBeLessThan(
+            translucentContrastOn(borderControl[arm], surfaceToken[arm]),
+          );
+        });
+      }
 
-      it(`${arm}: strong control border clears WCAG 1.4.11 on ${surfaceName}`, () => {
-        expect(translucentContrastOn(borderStrong[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
-          NON_TEXT,
-        );
-      });
+      for (const [tierName, tier] of Object.entries(controlTiers)) {
+        it(`${arm}: ${tierName} clears WCAG 1.4.11 on ${surfaceName}`, () => {
+          expect(translucentContrastOn(tier[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
+            NON_TEXT,
+          );
+        });
+      }
     }
   }
 
   // -------------------------------------------------------------------------
-  // CIN-245: the three structural tiers are alpha steps over ONE ink.
+  // CIN-245: the tiers are alpha steps over ONE ink.
   //
   // The point of composing them that way is not economy, it is UNIFORMITY: an
   // alpha border tracks the surface underneath it, so one tier reads the same
@@ -89,19 +111,14 @@ describe('border-on-surface contrast', () => {
   // opaque border was 4.80:1 on `inset` and 3.42:1 on `raised`, a 29% spread,
   // and every retune had to re-chase it by eye.
   // -------------------------------------------------------------------------
-  const structuralTiers = {
-    'border.muted': borderMuted,
-    'border.control': border,
-    'border.strong': borderStrong,
-  } as const;
 
   // Deliberately a proportion of the larger ratio rather than an absolute
-  // spread: the tiers sit at very different ratios (1.5:1 vs 4.9:1), so a
+  // spread: the tiers sit at very different ratios (1.2:1 vs 4.9:1), so a
   // fixed delta would be near-free for one and unreachable for another.
   const MAX_SPREAD = 0.15;
 
   for (const arm of ['light', 'dark'] as const) {
-    for (const [tierName, tier] of Object.entries(structuralTiers)) {
+    for (const [tierName, tier] of Object.entries(allTiers)) {
       it(`${arm}: ${tierName} reads within ${MAX_SPREAD * 100}% across every legal surface`, () => {
         const ratios = Object.entries(surfaces).map(
           ([surfaceName, surfaceToken]) =>
@@ -117,24 +134,26 @@ describe('border-on-surface contrast', () => {
       });
     }
 
-    it(`${arm}: the tiers stay ordered on every surface`, () => {
+    it(`${arm}: the five tiers stay ordered on every surface`, () => {
+      const ladder = Object.entries(allTiers);
       for (const [surfaceName, surfaceToken] of Object.entries(surfaces)) {
         const on = (tier: TranslucentColor) => translucentContrastOn(tier, surfaceToken[arm]);
-        expect(on(borderStrong[arm]), `strong > control on ${surfaceName}`).toBeGreaterThan(
-          on(border[arm]),
-        );
-        expect(on(border[arm]), `control > muted on ${surfaceName}`).toBeGreaterThan(
-          on(borderMuted[arm]),
-        );
+        for (let index = 1; index < ladder.length; index += 1) {
+          const [lighterName, lighter] = ladder[index - 1]!;
+          const [heavierName, heavier] = ladder[index]!;
+          expect(
+            on(heavier[arm]),
+            `${heavierName} > ${lighterName} on ${surfaceName}`,
+          ).toBeGreaterThan(on(lighter[arm]));
+        }
       }
     });
 
-    it(`${arm}: every structural tier is the SAME ink, differing only in alpha`, () => {
-      // AC #1 as a tested property rather than an authoring convention: the
-      // corpus repeats the ink's components on each tier (matching how
-      // `accent.border` is authored), so nothing but this stops one tier from
-      // being nudged off the shared ink and quietly becoming a second source.
-      for (const [tierName, tier] of Object.entries(structuralTiers)) {
+    it(`${arm}: every tier is the SAME ink, differing only in alpha`, () => {
+      // A tested property rather than an authoring convention: nothing but this
+      // stops one tier from being nudged off the shared ink and quietly
+      // becoming a second source.
+      for (const [tierName, tier] of Object.entries(allTiers)) {
         expect(
           { l: tier[arm].l, c: tier[arm].c, h: tier[arm].h },
           `${tierName} (${arm}) must resolve to border.ink`,
@@ -146,20 +165,18 @@ describe('border-on-surface contrast', () => {
 
   it('the emitted color-mix percentage agrees with the resolved alpha', () => {
     // The CSS comes from `cssRecipe` and the resolved artifacts come from
-    // `$value`; the generator does not relate them. A recipe that says 52% and
-    // a `$value` that says 0.48 would ship a border the gate above never
-    // measured -- so the two are pinned to each other here.
+    // `$value`. The generator now materializes the second from the first, so
+    // this pins the end result: the border every gate above measured is the
+    // border the stylesheet ships, in every block.
     const tierProperties = {
       '--cinder-border-muted': borderMuted,
       '--cinder-border': border,
       '--cinder-border-strong': borderStrong,
+      '--cinder-border-control': borderControl,
+      '--cinder-border-control-hover': borderControlHover,
     } as const;
     for (const [property, tier] of Object.entries(tierProperties)) {
       const expected = `color-mix(in oklch, var(--cinder-border-ink), transparent ${Math.round((1 - tier.light.alpha) * 100)}%)`;
-      // EVERY block, not just `:root`. The theme blocks redeclare each tier
-      // with their own recipe, and a percentage that drifted there would ship a
-      // border no gate had measured -- the contrast assertions read the
-      // resolved artifacts, which come from `$value`, not from the recipe.
       const declarations = readAllTokenValues(css, property);
       expect(
         declarations.length,

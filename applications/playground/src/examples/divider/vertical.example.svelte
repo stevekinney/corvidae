@@ -8,7 +8,7 @@
 </script>
 
 <div
-  style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-md);"
+  style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md);"
 >
   <span>Bold</span>
   <span>Italic</span>

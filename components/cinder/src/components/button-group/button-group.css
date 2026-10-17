@@ -60,7 +60,7 @@
     content: '';
     position: absolute;
     z-index: 1;
-    background: var(--cinder-border);
+    background: var(--cinder-border-strong);
     pointer-events: none;
   }
 

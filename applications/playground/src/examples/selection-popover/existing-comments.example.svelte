@@ -48,7 +48,7 @@
   const anchorBaseStyle =
     'border-radius: var(--cinder-radius-sm); color: inherit; text-decoration-color: var(--cinder-accent-solid); text-decoration-thickness: 0.1em; text-underline-offset: 0.15em; cursor: pointer;';
   const panelStyle =
-    'flex: 1 1 14rem; max-width: 18rem; padding: var(--cinder-space-3); border: 1px solid var(--cinder-border-muted); border-radius: var(--cinder-radius-md); background: var(--cinder-surface);';
+    'flex: 1 1 14rem; max-width: 18rem; padding: var(--cinder-space-3); border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md); background: var(--cinder-surface);';
   const headingStyle =
     'margin: 0 0 var(--cinder-space-2); font-size: var(--cinder-text-sm); font-weight: var(--cinder-font-medium);';
   const bodyStyle =

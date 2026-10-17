@@ -44,7 +44,7 @@
 
   .cinder-time-field__timezone {
     flex: 0 1 14rem;
-    min-height: 2.25rem;
+    min-height: var(--cinder-control-height-md);
     /* padding-block matches .cinder-input's space-1-5 (input.css) so the
        timezone select and its sibling time Input share the same vertical
        rhythm and read as a matched pair, not two independently-tuned
@@ -72,8 +72,8 @@
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     /* Long IANA identifiers (e.g. 'America/Argentina/ComodRivadavia', 33
        chars) exceed what the fixed 12-14rem box can show. This clips
        predictably rather than leaving the browser's undefined default

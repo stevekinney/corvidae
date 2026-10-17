@@ -271,8 +271,8 @@
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-default);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
-    border-radius: var(--cinder-radius-md);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
     resize: vertical;
     transition: border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
@@ -291,11 +291,11 @@
   .comment-composer-textarea:disabled {
     cursor: not-allowed;
     opacity: 0.5;
-    background: var(--cinder-surface-inset);
+    background: var(--cinder-control-background-disabled);
   }
 
   .comment-composer-textarea[data-has-error='true'] {
-    border-color: var(--cinder-status-danger-solid);
+    border-color: var(--cinder-control-border-invalid);
   }
 
   @media (forced-colors: active) {

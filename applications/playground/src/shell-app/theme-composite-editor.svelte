@@ -364,7 +364,7 @@
     display: grid;
     gap: 12px;
     padding: 12px;
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
   }
   .layer__title {

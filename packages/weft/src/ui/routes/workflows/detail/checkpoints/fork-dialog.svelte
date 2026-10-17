@@ -450,7 +450,7 @@
   .weft-fork-dialog__picker {
     padding: 10px;
     background: var(--cinder-surface);
-    border: 1px solid var(--cinder-border-muted);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
   }
 
