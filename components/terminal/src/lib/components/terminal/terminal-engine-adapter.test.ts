@@ -675,6 +675,42 @@ describe('retained projection', () => {
   });
 });
 
+describe('match selection', () => {
+  test('scrolls a selected match that sits outside the viewport into view', async () => {
+    // Mounted, because selection needs the engine's selection service. A mounted engine scrolls
+    // through a DOM container that has no layout here, so the requested scrolls are what is
+    // observed; the browser fixture's search spec covers the painted result.
+    const captured = mountedEngine({ geometry: { columns: 20, rows: 4 } });
+    const text = Array.from({ length: 30 }, (_, index) => `row ${index}`).join('\r\n');
+    await captured.deliver([bytes(text)]);
+    const scrolledTo: number[] = [];
+    const scrollToLine = captured.terminal.scrollToLine.bind(captured.terminal);
+    captured.terminal.scrollToLine = (line: number) => {
+      scrolledTo.push(line);
+      scrollToLine(line);
+    };
+    const top = captured.terminal.buffer.active.viewportY;
+    const projection = captured.engine.readProjection().text;
+    const select = (needle: string) => {
+      const start =
+        projection.indexOf(`${needle}\n`) >= 0
+          ? projection.indexOf(`${needle}\n`)
+          : projection.lastIndexOf(needle);
+      return captured.engine.selectMatch(
+        { start, end: start + needle.length, text: needle },
+        100_000,
+      );
+    };
+
+    // Above the viewport: scroll so the match is the first visible row.
+    expect(select('row 3')).toBe(true);
+    expect(scrolledTo).toEqual([3]);
+    // On screen: no scroll.
+    expect(select(`row ${top + 1}`)).toBe(true);
+    expect(scrolledTo).toEqual([3]);
+  });
+});
+
 describe('reading position', () => {
   async function fill(captured: CapturedEngine, lines: number, from = 0): Promise<void> {
     const text = Array.from({ length: lines }, (_, index) => `row ${from + index}`).join('\r\n');

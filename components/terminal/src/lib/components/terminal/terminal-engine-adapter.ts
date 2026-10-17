@@ -364,6 +364,15 @@ export function createRendererEngine(
       return projectBuffer(terminal.buffer.active, maximumBytes);
     },
     selectMatch(match, maximumBytes) {
+      /**
+       * A match outside the viewport is selected but not painted, so stepping to it would look
+       * like nothing happened. Scroll just far enough to show its first row.
+       */
+      const revealRow = (row: number): void => {
+        const top = terminal.buffer.active.viewportY;
+        if (row < top) terminal.scrollToLine(row);
+        else if (row >= top + terminal.rows) terminal.scrollToLine(row - terminal.rows + 1);
+      };
       const buffer = terminal.buffer.active;
       const projection = projectBuffer(buffer, maximumBytes);
       // A selection cannot end after a line feed, so a match that ends with one selects up to the
@@ -378,6 +387,7 @@ export function createRendererEngine(
         terminal.select(cells.column, cells.row, cells.length);
         if (terminal.getSelection() === selected) {
           ownsSelection = true;
+          revealRow(cells.row);
           return true;
         }
         // The cells did not hold exactly the match; the selection just made is wrong, so it goes.

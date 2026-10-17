@@ -7,6 +7,7 @@
     Card,
     Input,
     Modal,
+    Textarea,
     Toggle,
   } from '@lostgradient/cinder';
 
@@ -44,6 +45,7 @@
 
   <Card title="Token card">Card content</Card>
   <Input id="token-input" label="Token input" value="Uses border token" />
+  <Textarea id="token-textarea" label="Token textarea" value="Uses the control frame" />
 
   <Accordion bind:expandedIds>
     <AccordionItem id="token-accordion" title="Token accordion">

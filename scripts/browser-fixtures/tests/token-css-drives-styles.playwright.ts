@@ -120,8 +120,9 @@ test.describe('generated token CSS drives visible styles', () => {
     await expect(page.locator('.cinder-accordion').first()).toBeVisible();
 
     /*
-     * Both components are DISCOVERED by responding to `--cinder-border`, not
-     * named up front.
+     * Both components are DISCOVERED by responding to `--cinder-control-border`,
+     * the frame every text-entry control draws its edge with, not named up
+     * front.
      *
      * Naming them went wrong twice. The ticket's suggested pair used a token
      * CIN-33 had renamed away; the pair I chose to replace it (Card and
@@ -149,11 +150,18 @@ test.describe('generated token CSS drives visible styles', () => {
         if (!(element instanceof HTMLElement)) return false;
         const styled = element;
         const before = getComputedStyle(styled).borderTopColor;
-        styled.style.setProperty('--cinder-border', override);
+        styled.style.setProperty('--cinder-control-border', override);
         const after = getComputedStyle(styled).borderTopColor;
-        styled.style.removeProperty('--cinder-border');
+        styled.style.removeProperty('--cinder-control-border');
         return after === override && before !== override;
       };
+
+      // A control transitions its border-color, and a computed style read in
+      // the same task as an override returns the transition's start value.
+      // The check is about which token an element paints from, not motion.
+      const noMotion = document.createElement('style');
+      noMotion.textContent = '[class*="cinder-"] { transition: none !important; }';
+      document.head.append(noMotion);
 
       const responders = Array.from(document.querySelectorAll('[class*="cinder-"]')).filter(
         (element) => componentName(element) !== null && responds(element),
@@ -179,10 +187,11 @@ test.describe('generated token CSS drives visible styles', () => {
       const otherBefore = getComputedStyle(other).borderTopColor;
 
       if (!(subject instanceof HTMLElement)) return { found: false as const };
-      subject.style.setProperty('--cinder-border', override);
+      subject.style.setProperty('--cinder-control-border', override);
       const subjectAfter = getComputedStyle(subject).borderTopColor;
       const otherAfter = getComputedStyle(other).borderTopColor;
-      subject.style.removeProperty('--cinder-border');
+      subject.style.removeProperty('--cinder-control-border');
+      noMotion.remove();
 
       return {
         found: true as const,
@@ -197,7 +206,7 @@ test.describe('generated token CSS drives visible styles', () => {
 
     expect(
       result.found,
-      'this page has no two unrelated components that both paint from --cinder-border',
+      'this page has no two unrelated components that both paint from --cinder-control-border',
     ).toBe(true);
     if (!result.found) return;
 

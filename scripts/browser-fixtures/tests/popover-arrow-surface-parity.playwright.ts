@@ -141,10 +141,14 @@ test.describe('CIN-606: Popover arrow rim composites over the same surface as th
         // pixel.
         const panelMidY = Math.round(panelBox.y + panelBox.height / 2);
         const panelInteriorSample = { x: panelBox.x + panelBox.width - 8, y: panelMidY };
+        // Strictly inside the panel's border box. Outside it the panel's own
+        // box-shadow paints, and the dark elevation shadow is dense enough
+        // that a shadow pixel differs from the interior more than the border
+        // does -- which made the "most different pixel" below a shadow pixel.
         const panelBorderScanBox = {
           x: panelBox.x + panelBox.width - 3,
           y: panelMidY - 3,
-          width: 6,
+          width: 3,
           height: 6,
         };
         const panelInteriorRgb = await readOnePixel(page, panelInteriorSample);

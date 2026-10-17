@@ -319,9 +319,10 @@
     visibility: visible;
   }
 
-  /* Header/footer target at most 40px high on a fine pointer: 6px block
-   * padding (--cinder-space-1-5) on either side of a 28px row (the sm Button
-   * height and the close button below share that same 28px), 6+6+28=40. */
+  /* Header/footer target at most 44px high on a fine pointer: 6px block
+   * padding (--cinder-space-1-5) on either side of one row the height of a
+   * small Button (--cinder-button-height-sm, 32px), which the close button
+   * below shares, 6+6+32=44. */
   .link-popover-header {
     display: flex;
     align-items: center;
@@ -343,8 +344,8 @@
     color: var(--cinder-text-default);
   }
 
-  /* 28px on a fine pointer (matches the sm Button height in the footer, and
-   * keeps the header within its 40px budget); the existing pointer-aware
+  /* The small Button height on a fine pointer (matches the sm Buttons in the
+   * footer, so header and footer share one row height); the existing pointer-aware
    * convention (see number-input's `.cinder-number-input__stepper`) bumps it
    * to the 44px WCAG 2.2 AA touch target on a coarse pointer instead of
    * enlarging every desktop icon. */
@@ -352,8 +353,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: var(--cinder-button-height-sm);
+    height: var(--cinder-button-height-sm);
     flex-shrink: 0;
     color: var(--cinder-text-muted);
     background: transparent;

@@ -148,7 +148,12 @@ test.describe('the output tools', () => {
   test('search finds literal text, steps through matches and closes back to Search', async ({
     terminalPage,
   }) => {
-    const page = await terminalPage.open({ query: { quiet: true } });
+    // At the default 28rem stage the open search panel (field, actions, status, and the match
+    // excerpt that appears on the second match) leaves the output one row tall, and the engine
+    // clears its selection when that resize lands. This spec is about stepping through matches,
+    // so it gives the output room; how far the panel may squeeze the output is a layout question
+    // of its own.
+    const page = await terminalPage.open({ query: { quiet: true, height: '36rem' } });
     await write(page, 'alpha beta\r\nbeta gamma\r\ndelta');
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     const field = page.getByRole('textbox', { name: 'Search terminal output' });

@@ -39,6 +39,7 @@ const ALTERNATE_THEME = `
     --cinder-accent-contrast: oklch(98% 0 0);
     --cinder-surface: oklch(95% 0.03 280);
     --cinder-border: oklch(60% 0.15 300);
+    --cinder-control-border: oklch(55% 0.18 300);
     --cinder-radius-lg: 1.25rem;
     --cinder-status-danger-solid: oklch(55% 0.20 145);
     --cinder-ring-color: oklch(70% 0.25 145);
@@ -122,10 +123,10 @@ test.describe('alternate-theme — documented token overrides reach components',
     expect(themed).not.toBe(stock);
   });
 
-  // (b) --cinder-border reaches a bordered component's border-color.
-  // Input CSS: `border: 1px solid var(--cinder-border)`.
+  // (b) --cinder-control-border reaches a text-entry control's border-color.
+  // Input CSS: `border: 1px solid var(--cinder-control-border)`.
   // A hard-coded border-color on .cinder-input would leave these equal.
-  test('overriding --cinder-border reaches an Input border-color', async ({ page }) => {
+  test('overriding --cinder-control-border reaches an Input border-color', async ({ page }) => {
     await page.goto(themeFixtureRoute, { waitUntil: 'load' });
 
     const inputSelector = '.cinder-input';
@@ -136,7 +137,7 @@ test.describe('alternate-theme — documented token overrides reach components',
     const themed = await computed(page, inputSelector, 'border-top-color');
 
     // Equal means the input hard-codes its border instead of consuming
-    // --cinder-border, a real theming leak.
+    // the control frame, a real theming leak.
     expect(themed).not.toBe(stock);
   });
 
