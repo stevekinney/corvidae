@@ -79,4 +79,16 @@ describe('Text', () => {
     expect(textCss).toContain('color: currentColor;');
     expect(textCss).not.toMatch(/color:\s*var\(--cinder-text-(default|muted|subtle)/);
   });
+
+  test('resets wrapping and tracking on the base so `as` cannot change a variant look', () => {
+    const base = textCss.match(/\.cinder-text \{[^}]*\}/)?.[0] ?? '';
+    expect(base).toContain('letter-spacing: normal;');
+    expect(base).toContain('text-wrap: wrap;');
+    expect(base).toContain('overflow-wrap: break-word;');
+    for (const heading of ['h1', 'h2', 'h3', 'h4', 'h5']) {
+      const rule = textCss.match(new RegExp(`data-cinder-variant='${heading}'\\] \\{[^}]*\\}`))?.[0];
+      expect(rule).toContain('letter-spacing: var(--cinder-tracking-tight);');
+      expect(rule).toContain('text-wrap: balance;');
+    }
+  });
 });

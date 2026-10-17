@@ -1,29 +1,12 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
+import type { NonMetadataHTMLElementTagName } from '../../utilities/html-element-types.ts';
+
 export type TextVariant = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'caption' | 'body';
 
-/**
- * Non-void element tags valid for the `as` prop. Void elements are excluded
- * because this primitive always renders a `children` snippet.
- */
-export type TextElement = Exclude<
-  keyof HTMLElementTagNameMap,
-  | 'area'
-  | 'base'
-  | 'br'
-  | 'col'
-  | 'embed'
-  | 'hr'
-  | 'img'
-  | 'input'
-  | 'link'
-  | 'meta'
-  | 'param'
-  | 'source'
-  | 'track'
-  | 'wbr'
->;
+/** Element tags valid for the `as` prop: visible, non-void content elements. */
+export type TextElement = NonMetadataHTMLElementTagName;
 
 export type TextProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
   /** Typography variant. Headings render `h1` to `h5`; `caption` and `body` render paragraphs. @default 'body' */

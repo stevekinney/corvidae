@@ -13,36 +13,49 @@
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-normal);
     line-height: var(--cinder-leading-normal);
+    letter-spacing: normal;
+    overflow-wrap: break-word;
+    text-wrap: wrap;
   }
 
   .cinder-text[data-cinder-variant='h1'] {
     font-size: var(--cinder-text-3xl);
     font-weight: var(--cinder-font-bold);
     line-height: var(--cinder-leading-tight);
+    letter-spacing: var(--cinder-tracking-tight);
+    text-wrap: balance;
   }
 
   .cinder-text[data-cinder-variant='h2'] {
     font-size: var(--cinder-text-2xl);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-tight);
+    letter-spacing: var(--cinder-tracking-tight);
+    text-wrap: balance;
   }
 
   .cinder-text[data-cinder-variant='h3'] {
     font-size: var(--cinder-text-xl);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
+    letter-spacing: var(--cinder-tracking-tight);
+    text-wrap: balance;
   }
 
   .cinder-text[data-cinder-variant='h4'] {
     font-size: var(--cinder-text-lg);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
+    letter-spacing: var(--cinder-tracking-tight);
+    text-wrap: balance;
   }
 
   .cinder-text[data-cinder-variant='h5'] {
     font-size: var(--cinder-text-md);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
+    letter-spacing: var(--cinder-tracking-tight);
+    text-wrap: balance;
   }
 
   .cinder-text[data-cinder-variant='caption'] {
