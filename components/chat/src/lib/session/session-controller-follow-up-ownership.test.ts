@@ -112,6 +112,36 @@ describe('follow-up rows never own a run', () => {
     expect(isFollowUp(harness.conversation(), 'late word')).toBe(true);
   });
 
+  test('a follow-up accepted before the run fails is sent as an ordinary turn afterwards', async () => {
+    const failure = deferred();
+    const harness = createHarness({
+      turns: [
+        () =>
+          (async function* (): AsyncGenerator<ChatStreamEvent> {
+            yield { type: 'text', text: 'partial' };
+            await failure.promise;
+          })(),
+      ],
+    });
+
+    const run = harness.startRun();
+    await settle();
+    const accepted = harness.controller.adapter.sendRunInput?.(
+      'run-input',
+      { role: 'user', content: 'late word' },
+      [],
+    );
+    await settle();
+    failure.reject(new Error('transport failed'));
+    expect(await throwingRejectionOf(run)).toThrow('transport failed');
+    await accepted;
+    for (let index = 0; index < 5; index += 1) await settle();
+
+    // The failed run never delivered it, so it becomes the next run's opener.
+    expect(harness.turns).toHaveLength(2);
+    expect(isFollowUp(harness.conversation(), 'late word')).toBe(false);
+  });
+
   test('an approval continuation sends the opener and its attachments, not the follow-up', async () => {
     const gate = deferred();
     const opener = [attachment('opener-file')];
@@ -147,8 +177,9 @@ describe('follow-up rows never own a run', () => {
       remember: false,
     });
 
-    // The continuation is the second turn. It sends the opener's attachments.
-    expect(harness.turns.length).toBeGreaterThanOrEqual(2);
+    // The continuation is the second turn. It sends the opener's attachments. The
+    // accepted follow-up, absent from every history, is promoted after it.
+    expect(harness.turns).toHaveLength(3);
     expect(harness.turns[1]!.attachments).toEqual(opener);
   });
 

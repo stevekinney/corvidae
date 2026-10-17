@@ -166,6 +166,35 @@ describe('a follow-up whose run ended without delivering it', () => {
   });
 });
 
+describe('a refusal that arrives after the run ended', () => {
+  test('marks the follow-up failed and leaves nothing waiting on it', async () => {
+    const refusal = deferred();
+    const harness = createHarness({
+      sendRunInput: async () => {
+        await refusal.promise;
+      },
+    });
+    const run = harness.startRun();
+    await settle();
+    const sent = harness.controller.adapter.sendRunInput!(
+      'run-input',
+      { role: 'user', content: 'refused later' },
+      [],
+    );
+    await settle();
+    harness.releaseRun();
+    await run;
+    await settle();
+
+    refusal.reject(new Error('refused'));
+    expect(await throwingRejectionOf(sent)).toThrow('refused');
+    await settle();
+
+    expect(deliveryStatus(harness.conversation(), 'refused later')).toBe('failed');
+    expect(harness.turns).toHaveLength(1);
+  });
+});
+
 describe('browser-owned runs', () => {
   test('do not offer follow-ups, and a second turn during the run is refused as before', async () => {
     const gate = deferred();

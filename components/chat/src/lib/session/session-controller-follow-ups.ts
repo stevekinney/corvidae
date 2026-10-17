@@ -169,6 +169,8 @@ export function createFollowUpQueue({
       markFailed(record);
       reportError(error);
       record.settled.reject(error);
+      // A later follow-up may have been waiting on this one to settle.
+      if (record.runEnd) void promoteNext();
       return;
     }
     if (isRetired(record)) {
