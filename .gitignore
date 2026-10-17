@@ -21,6 +21,9 @@ build/
 dist/
 # Weft's prebuilt dashboard, which `dashboard()` serves by default.
 packages/weft/dashboard/
+# Its build's staging directory, renamed into place on success and removed on failure; an
+# interrupted build can leave one behind.
+packages/weft/.dashboard-build-*/
 artifacts/
 # The playground's build scratch directories; they are deleted when a build ends,
 # but an interrupted build can leave them behind.
