@@ -23,7 +23,8 @@ export class TestReceiver {
   readonly #server: ReturnType<typeof Bun.serve>;
   readonly #script: ScriptedReply[] = [];
   readonly #waiters: Array<{ readonly index: number; readonly resolve: () => void }> = [];
-  readonly #abandonWaiters: Array<() => void> = [];
+  readonly #held: Array<{ readonly received: ReceivedRequest; readonly abandoned: Promise<void> }> =
+    [];
 
   constructor() {
     this.#server = Bun.serve({
@@ -59,17 +60,18 @@ export class TestReceiver {
   /** Resolves with request `index` once the receiver has seen it. */
   async nextRequest(index = this.requests.length): Promise<ReceivedRequest> {
     if (this.requests.length <= index) {
-      await new Promise<void>((resolve) => this.#waiters.push({ index, resolve }));
+      const { promise, resolve } = Promise.withResolvers<void>();
+      this.#waiters.push({ index, resolve });
+      await promise;
     }
     return this.requests[index]!;
   }
 
-  /** Resolves once a held request has been abandoned by its client. */
+  /** Resolves once the most recently held request has been abandoned by its client. */
   async nextAbandoned(): Promise<ReceivedRequest> {
-    if (this.abandoned.length === 0) {
-      await new Promise<void>((resolve) => this.#abandonWaiters.push(resolve));
-    }
-    return this.abandoned.at(-1)!;
+    const held = this.#held.at(-1)!;
+    await held.abandoned;
+    return held.received;
   }
 
   async close(): Promise<void> {
@@ -90,16 +92,18 @@ export class TestReceiver {
     }
     const reply = this.#script.shift() ?? { kind: 'reply', status: 200 };
     if (reply.kind === 'reply') return new Response(null, reply);
-    return new Promise<Response>((resolve) => {
-      request.signal.addEventListener(
-        'abort',
-        () => {
-          this.abandoned.push(received);
-          for (const notify of this.#abandonWaiters.splice(0)) notify();
-          resolve(new Response(null, { status: 499 }));
-        },
-        { once: true },
-      );
-    });
+    const abandoned = Promise.withResolvers<void>();
+    this.#held.push({ received, abandoned: abandoned.promise });
+    const response = Promise.withResolvers<Response>();
+    request.signal.addEventListener(
+      'abort',
+      () => {
+        this.abandoned.push(received);
+        abandoned.resolve();
+        response.resolve(new Response(null, { status: 499 }));
+      },
+      { once: true },
+    );
+    return response.promise;
   }
 }
