@@ -17039,6 +17039,262 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       await rm(`${databasePath}-shm`, { force: true });
     }
   });
+
+  describe('the workflow-lease claim guard (COR-204)', () => {
+    type ClaimHolderStatus = { heldByAnyProcess: boolean; heldByThisProcess: boolean };
+    type ClaimPrototype = {
+      claimHolder: (workflowId: string) => Promise<ClaimHolderStatus | undefined>;
+    };
+
+    /** Weft's `Engine` prototype, reached through a throwaway composition. */
+    async function engineClaimPrototype(): Promise<ClaimPrototype> {
+      const probe = await createRuntimeComposition({
+        generate: createMockGenerate(),
+        toolbox: createEmptyToolbox(),
+        storage: { type: 'memory' },
+        durableExecution: true,
+      });
+      const prototype = Object.getPrototypeOf(probe.durable!.engine) as ClaimPrototype;
+      probe.durable!.engine[Symbol.dispose]?.();
+      probe.disposeStorage?.();
+      return prototype;
+    }
+
+    async function removeDatabase(databasePath: string): Promise<void> {
+      await rm(databasePath, { force: true });
+      await rm(`${databasePath}-wal`, { force: true });
+      await rm(`${databasePath}-shm`, { force: true });
+    }
+
+    /** Moves the retention floor past `sequence` through a second handle. */
+    async function retainThrough(databasePath: string, sequence: number): Promise<void> {
+      const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+      const adminFeed = createFleetEventFeed(adminStorage);
+      try {
+        await adminFeed.retain({ beforeSequence: sequence + 1 });
+      } finally {
+        adminFeed.dispose();
+        adminStorage[Symbol.dispose]();
+      }
+    }
+
+    it("leaves a run's ownership entry alone while another instance holds its live workflow claim, and prunes it once the run settles", async () => {
+      const databasePath = join(
+        tmpdir(),
+        `bureau-run-ownership-prune-claim-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+      );
+      const generateStarted = Promise.withResolvers<void>();
+      const releaseGenerate = Promise.withResolvers<void>();
+      const claimHolderSpy = spyOn(await engineClaimPrototype(), 'claimHolder');
+
+      try {
+        const sharedOptions = {
+          agents: {},
+          toolbox: createEmptyToolbox(),
+          storage: { type: 'sqlite' as const, path: databasePath },
+          durableOwnership: { ownership: 'workflow-lease' as const },
+          durableBackgroundTasks: 'manual' as const,
+          stopWhen: stopWhen.noToolCalls(),
+        };
+        const bureauA = await createBureau({
+          ...sharedOptions,
+          generate: async () => {
+            generateStarted.resolve();
+            await releaseGenerate.promise;
+            return { content: 'Done.', toolCalls: [] };
+          },
+          runtime: createManualRuntimeServices(),
+        });
+        const bureauB = await createBureau({
+          ...sharedOptions,
+          generate: createMockGenerate('Done.'),
+          runtime: createManualRuntimeServices(),
+        });
+
+        try {
+          const run = await bureauA.createRun({ message: 'A', principal: 'alice' });
+          await generateStarted.promise;
+
+          // The state only the claim can discriminate: the run's authority
+          // entry is gone from the shared session store while its workflow
+          // still executes on A, and B holds neither the run nor a write.
+          const sessionStore = bureauA.sessionStore;
+          if (!sessionStore) throw new Error('expected a configured session store');
+          await sessionStore.update(run.sessionId, (session) => {
+            if (!session) return undefined;
+            const { lastRequestAuthorities: _removed, ...metadata } = session.metadata;
+            return { ...session, metadata };
+          });
+
+          // A still-running run has no durable event of its own, so an
+          // unrelated marker supplies a sequence for the floor to pass.
+          const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
+          const adminFeed = createFleetEventFeed(adminStorage);
+          let markerSequence: number;
+          try {
+            const marker = await adminFeed.append({
+              kind: 'review.approved',
+              workflowId: 'run:cor-204-floor-marker',
+              emittedAtMs: 0,
+              payload: {},
+            });
+            markerSequence = marker.sequence;
+          } finally {
+            adminFeed.dispose();
+            adminStorage[Symbol.dispose]();
+          }
+          await retainThrough(databasePath, markerSequence);
+
+          await bureauB.runDurableMaintenance();
+
+          const whileClaimed = await bureauA.getSession(run.sessionId);
+          expect(whileClaimed?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
+          const claimCall = claimHolderSpy.mock.calls.findIndex(([id]) => id === run.id);
+          expect(claimCall).toBeGreaterThanOrEqual(0);
+          expect(await claimHolderSpy.mock.results[claimCall]?.value).toEqual(
+            expect.objectContaining({ heldByAnyProcess: true }),
+          );
+
+          releaseGenerate.resolve();
+          await waitForRunCompletion(bureauA, run.id);
+          const page = await bureauA.eventHistory({ kind: 'run', id: run.id });
+          if ('outcome' in page) throw new Error('expected a page for the run');
+          const lastEvent = page.events.at(-1);
+          if (!lastEvent) throw new Error('expected a terminal durable event');
+          await retainThrough(databasePath, lastEvent.sequence);
+
+          await bureauB.runDurableMaintenance();
+
+          const afterSettled = await bureauA.getSession(run.sessionId);
+          expect(afterSettled?.metadata['lastRunOwningPrincipals']).toBeUndefined();
+        } finally {
+          releaseGenerate.resolve();
+          await bureauA.shutdown();
+          await bureauB.shutdown();
+        }
+      } finally {
+        claimHolderSpy.mockRestore();
+        await removeDatabase(databasePath);
+      }
+    });
+
+    /**
+     * A completed, deleted run whose whole history is below the floor:
+     * prunable on the three existing signals, so the claim alone decides.
+     */
+    async function withPrunableRun(
+      durableOwnership: Parameters<typeof createBureau>[0]['durableOwnership'],
+      body: (context: {
+        bureau: Bureau;
+        run: { id: string; sessionId: string };
+        diagnostics: string[];
+      }) => Promise<void>,
+    ): Promise<void> {
+      const databasePath = join(
+        tmpdir(),
+        `bureau-run-ownership-prune-claim-mode-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+      );
+      const runtime = createManualRuntimeServices();
+      const diagnostics: string[] = [];
+      try {
+        const bureau = await createBureau({
+          agents: {},
+          generate: createMockGenerate('Done.'),
+          toolbox: createEmptyToolbox(),
+          storage: { type: 'sqlite', path: databasePath },
+          runtime,
+          durableOwnership,
+          durableBackgroundTasks: 'manual',
+          stopWhen: stopWhen.noToolCalls(),
+          onDiagnostic: (diagnostic) => {
+            diagnostics.push(diagnostic.message);
+          },
+        });
+        try {
+          const run = await bureau.createRun({ message: 'A', principal: 'alice' });
+          await waitForRunCompletion(bureau, run.id);
+          const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+          if ('outcome' in page) throw new Error('expected a page for the run');
+          const lastEventBeforeDeletion = page.events.at(-1);
+          if (!lastEventBeforeDeletion) throw new Error('expected a durable event');
+          await bureau.deleteRun(run.id);
+          await runtime.deferred.drain();
+          const deleted = await bureau.eventHistory(
+            { kind: 'run', id: run.id },
+            { since: lastEventBeforeDeletion.cursor },
+          );
+          if (!('outcome' in deleted) || deleted.outcome !== 'deleted-aggregate') {
+            throw new Error(`expected a deleted-aggregate outcome, got ${JSON.stringify(deleted)}`);
+          }
+          const lastEvent = deleted.events.at(-1);
+          if (!lastEvent) throw new Error('expected a run.removed durable event');
+          await retainThrough(databasePath, lastEvent.sequence);
+          await body({ bureau, run, diagnostics });
+        } finally {
+          await bureau.shutdown();
+        }
+      } finally {
+        await removeDatabase(databasePath);
+      }
+    }
+
+    for (const [label, status] of [
+      ['no claim record', undefined],
+      ['a stranded claim', { heldByAnyProcess: false, heldByThisProcess: false }],
+    ] as const) {
+      it(`prunes the entry when claimHolder reports ${label}`, async () => {
+        const claimHolderSpy = spyOn(await engineClaimPrototype(), 'claimHolder');
+        claimHolderSpy.mockResolvedValue(status);
+        try {
+          await withPrunableRun({ ownership: 'workflow-lease' }, async ({ bureau, run }) => {
+            await bureau.runDurableMaintenance();
+            expect(claimHolderSpy.mock.calls.some(([id]) => id === run.id)).toBe(true);
+            const session = await bureau.getSession(run.sessionId);
+            expect(session?.metadata['lastRunOwningPrincipals']).toBeUndefined();
+          });
+        } finally {
+          claimHolderSpy.mockRestore();
+        }
+      });
+    }
+
+    it('keeps the entry and diagnoses the pass when claimHolder rejects', async () => {
+      const claimHolderSpy = spyOn(await engineClaimPrototype(), 'claimHolder');
+      claimHolderSpy.mockRejectedValue(new Error('claim storage unavailable'));
+      try {
+        await withPrunableRun(
+          { ownership: 'workflow-lease' },
+          async ({ bureau, run, diagnostics }) => {
+            await bureau.runDurableMaintenance();
+            const session = await bureau.getSession(run.sessionId);
+            expect(session?.metadata['lastRunOwningPrincipals']).toEqual({ [run.id]: 'alice' });
+            expect(
+              diagnostics.some((message) =>
+                message.includes('Manual run-ownership pruning pass failed'),
+              ),
+            ).toBe(true);
+          },
+        );
+      } finally {
+        claimHolderSpy.mockRestore();
+      }
+    });
+
+    it("never reads the claim under ownership: 'none', and prunes exactly as before", async () => {
+      const claimHolderSpy = spyOn(await engineClaimPrototype(), 'claimHolder');
+      try {
+        await withPrunableRun({ ownership: 'none' }, async ({ bureau, run }) => {
+          claimHolderSpy.mockClear();
+          await bureau.runDurableMaintenance();
+          expect(claimHolderSpy).toHaveBeenCalledTimes(0);
+          const session = await bureau.getSession(run.sessionId);
+          expect(session?.metadata['lastRunOwningPrincipals']).toBeUndefined();
+        });
+      } finally {
+        claimHolderSpy.mockRestore();
+      }
+    });
+  });
 });
 
 describe('Bureau durable audit trail retention (AB-388)', () => {
