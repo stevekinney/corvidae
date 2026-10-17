@@ -1460,7 +1460,7 @@
     "$type": "color"
   },
   "border.inverse": {
-    "$value": { "colorSpace": "srgb", "components": [0, 0, 0], "alpha": 0 },
+    "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0 },
     "$description": "Border for surfaces using `surface.inverse` (Tooltip). Transparent in light mode; adds a 1px delineation in dark mode only.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3682,18 +3682,18 @@
     }
   },
   "kanban-board.board.scroll-edge": {
-    "$type": "color",
     "$value": { "colorSpace": "oklch", "components": [0.2, 0.018, 245], "alpha": 0.12 },
-    "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves.",
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)",
         "cssProperty": "--cinder-kanban-board-scroll-edge",
         "public": true,
         "category": "color",
-        "component": "kanban-board",
-        "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)"
+        "component": "kanban-board"
       }
-    }
+    },
+    "$type": "color",
+    "$description": "Horizontal scroll-edge fade gradient color -- `text-default` at 12% opacity, tracking whichever theme arm resolves."
   },
   "marquee.duration": {
     "$type": "duration",

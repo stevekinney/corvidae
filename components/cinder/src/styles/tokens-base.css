@@ -989,6 +989,11 @@
   --cinder-checker-base: #fff;
   --cinder-checker-tile: #ccc;
   --cinder-alert-info: oklch(45% 0.14 245);
+  --cinder-kanban-board-scroll-edge: color-mix(
+    in oklch,
+    var(--cinder-text-default),
+    transparent 88%
+  );
   --cinder-severity-critical: light-dark(oklch(38% 0.18 25), oklch(95% 0.04 25));
   --cinder-severity-critical-background: light-dark(oklch(93% 0.045 25), oklch(24% 0.11 25));
   --cinder-terminal-ansi-black: light-dark(oklch(25% 0 0), oklch(82% 0 0));
@@ -1010,11 +1015,6 @@
   --cinder-code-block-background: light-dark(
     var(--cinder-surface-raised),
     var(--cinder-surface-inset)
-  );
-  --cinder-kanban-board-scroll-edge: color-mix(
-    in oklch,
-    var(--cinder-text-default),
-    transparent 88%
   );
 }
 

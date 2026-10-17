@@ -32,37 +32,73 @@
  */
 
 import { join } from 'node:path';
+import { format } from 'prettier';
 import { validateLoadedTokenDocuments } from '../../src/tokens/runtime/corpus-documents.ts';
 import { normalizedDocumentsByPath } from '../../src/tokens/runtime/resolver-order.ts';
 import type { ResolverDocument, TokenDocument } from '../../src/tokens/runtime/types.ts';
+import { assertPrettierResolvesToRoot } from '../lib/prettier-resolution.ts';
 import { buildTokensBaseCss } from './css-generator.ts';
-import { resolvedDirectory, tokensBaseCssPath } from './generator-configuration.ts';
-import { loadRawTokenDocuments, loadResolverDocument } from './load.ts';
+import { materializeDerivedValues, rewriteSourceText } from './derived-values.ts';
+import {
+  JSON_PLUGINS,
+  PRETTIER_OPTIONS,
+  resolvedDirectory,
+  tokensBaseCssPath,
+} from './generator-configuration.ts';
+import { loadRawTokenDocuments, loadResolverDocument, tokenRoot } from './load.ts';
 import { buildResolvedContexts } from './resolved-contexts.ts';
 
 // Entry point.
 // ---------------------------------------------------------------------------
 
+/**
+ * Loads the corpus with every derived color materialized (see
+ * `derived-values.ts`), so each artifact is generated from the values the
+ * recipes produce rather than from whatever literal was last committed.
+ * `sourceDocumentsByPath` keeps the documents as committed.
+ */
 export async function loadCorpus(): Promise<{
   resolver: ResolverDocument;
   documentsByPath: Map<string, TokenDocument>;
+  sourceDocumentsByPath: Map<string, TokenDocument>;
 }> {
   const resolver = await loadResolverDocument();
   const loaded = await loadRawTokenDocuments();
   const validated = validateLoadedTokenDocuments(resolver, loaded);
-  const documentsByPath = normalizedDocumentsByPath(
+  const sourceDocumentsByPath = normalizedDocumentsByPath(
     new Map(validated.map(({ path, document }) => [path, document])),
   );
-  return { resolver, documentsByPath };
+  const documentsByPath = materializeDerivedValues(resolver, sourceDocumentsByPath);
+  return { resolver, documentsByPath, sourceDocumentsByPath };
+}
+
+/** The source documents whose derived values the generator recomputed, as formatted text. */
+async function buildMaterializedSources(
+  documentsByPath: Map<string, TokenDocument>,
+  sourceDocumentsByPath: Map<string, TokenDocument>,
+): Promise<Map<string, string>> {
+  const outputs = new Map<string, string>();
+  for (const [path, document] of documentsByPath) {
+    const source = sourceDocumentsByPath.get(path)!;
+    if (document === source) continue;
+    const absolutePath = join(tokenRoot, path);
+    const text = rewriteSourceText(await Bun.file(absolutePath).text(), source, document);
+    assertPrettierResolvesToRoot();
+    outputs.set(
+      absolutePath,
+      await format(text, { ...PRETTIER_OPTIONS, parser: 'json', plugins: JSON_PLUGINS }),
+    );
+  }
+  return outputs;
 }
 
 /** Absolute output path -> generated file content, for every file `tokens:generate` produces. */
 export async function buildGeneratedOutputs(): Promise<Map<string, string>> {
-  const { resolver, documentsByPath } = await loadCorpus();
+  const { resolver, documentsByPath, sourceDocumentsByPath } = await loadCorpus();
   const css = await buildTokensBaseCss(resolver, documentsByPath);
   const resolvedContexts = await buildResolvedContexts(resolver, documentsByPath);
 
-  const outputs = new Map<string, string>();
+  const outputs = await buildMaterializedSources(documentsByPath, sourceDocumentsByPath);
   outputs.set(tokensBaseCssPath, css);
   for (const [name, content] of resolvedContexts) {
     outputs.set(join(resolvedDirectory, `${name}.json`), content);

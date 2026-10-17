@@ -17665,7 +17665,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
           contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
           provenance: {
             winner: {
-              document: 'sets/components.tokens.json',
+              document: 'themes/light.tokens.json',
               path: 'kanban-board.board.scroll-edge',
             },
             layers: [
@@ -17673,6 +17673,13 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 document: 'sets/components.tokens.json',
                 kind: 'set',
                 layer: 'sets.foundation',
+                path: 'kanban-board.board.scroll-edge',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
                 path: 'kanban-board.board.scroll-edge',
                 via: 'declared',
               },

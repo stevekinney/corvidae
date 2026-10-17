@@ -141,7 +141,7 @@
     },
     "inverse": {
       "$value": {
-        "colorSpace": "srgb",
+        "colorSpace": "oklch",
         "components": [0, 0, 0],
         "alpha": 0
       }
@@ -1011,6 +1011,22 @@
       "$value": {
         "colorSpace": "oklch",
         "components": [0.45, 0.14, 245]
+      }
+    }
+  },
+  "kanban-board": {
+    "board": {
+      "scroll-edge": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.018, 245],
+          "alpha": 0.12
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 88%)"
+          }
+        }
       }
     }
   }
