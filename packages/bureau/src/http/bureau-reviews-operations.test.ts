@@ -138,6 +138,106 @@ describe('bureau.reviews.list', () => {
   });
 });
 
+const SECRET = 'sentinel-secret-value-1f3a';
+
+function approvalActionReview(
+  operation: Record<string, unknown>,
+  status: ReviewStatus = 'pending',
+): PendingReview {
+  const base = toolApprovalReview();
+  if (base.kind !== 'tool-approval') throw new Error('expected a tool approval');
+  return {
+    ...base,
+    status,
+    approval: {
+      ...base.approval,
+      action: {
+        type: 'approval',
+        message: 'Run the deploy script',
+        risk: 'high',
+        operation,
+        sandbox: { provider: 'docker', name: `box-${SECRET}`, workingDir: '/srv/work' },
+        env: [`DEPLOY_TOKEN=${SECRET}`],
+        snapshotId: 'snapshot-secret-id',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+        editableArgs: true,
+        policyVersion: 'policy-version-secret',
+        idempotencyKey: 'idempotency-key-secret',
+      },
+    },
+  } as PendingReview;
+}
+
+describe('the tool-approval action projection', () => {
+  const internalFields = [
+    SECRET,
+    'DEPLOY_TOKEN',
+    'env',
+    'snapshotId',
+    'snapshot-secret-id',
+    'policyVersion',
+    'policy-version-secret',
+    'idempotencyKey',
+    'idempotency-key-secret',
+    'sandbox',
+    'workingDir',
+    'editableArgs',
+    'argsPreview',
+  ];
+
+  it('keeps env, idempotency key, snapshot id, policy version, and sandbox off list and get', async () => {
+    const review = approvalActionReview({
+      kind: 'command',
+      command: 'deploy --prod',
+      filesTouched: ['a.txt'],
+      argsPreview: { token: SECRET },
+    });
+    const handler = serve(
+      stubHost({
+        listPendingReviews: () => [review],
+        getReview: async () => ({ ...review, status: 'pending' as ReviewStatus }),
+      }),
+    );
+
+    const listed = await call(handler, 'bureau.reviews.list', {});
+    const fetched = await call(handler, 'bureau.reviews.get', { id: review.id });
+
+    for (const body of [listed, fetched]) {
+      const text = JSON.stringify(body);
+      for (const field of internalFields) expect(text).not.toContain(field);
+    }
+    expect(fetched.result?.['approval']).toMatchObject({
+      action: {
+        type: 'approval',
+        message: 'Run the deploy script',
+        risk: 'high',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+        operation: { kind: 'command', command: 'deploy --prod', filesTouched: ['a.txt'] },
+      },
+    });
+  });
+
+  it('exposes what each operation kind does and to what', () => {
+    const project = (operation: Record<string, unknown>) => {
+      const projected = projectReview({ ...approvalActionReview(operation), status: 'pending' });
+      if (projected.kind !== 'tool-approval') throw new Error('expected a tool approval');
+      const { action } = projected.approval;
+      return action.type === 'approval' ? action.operation : undefined;
+    };
+
+    expect(project({ kind: 'file-write', filesTouched: ['b.txt'], argsPreview: 1 })).toEqual({
+      kind: 'file-write',
+      filesTouched: ['b.txt'],
+    });
+    expect(project({ kind: 'patch', diff: '--- a\n+++ b', filesTouched: ['c.txt'] })).toEqual({
+      kind: 'patch',
+      diff: '--- a\n+++ b',
+      filesTouched: ['c.txt'],
+    });
+    expect(project({ kind: 'other' })).toEqual({ kind: 'other' });
+  });
+});
+
 describe('bureau.reviews.get', () => {
   it('returns one review by id, including a resolved one', async () => {
     const body = await call(serve(stubHost()), 'bureau.reviews.get', {

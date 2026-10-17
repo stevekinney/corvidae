@@ -18,7 +18,7 @@ import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { BureauError } from '../create-bureau.ts';
-import type { Bureau, PendingReview, ReviewStatus } from '../types.ts';
+import type { Bureau, PendingReview, PendingToolApprovalReview, ReviewStatus } from '../types.ts';
 
 /** What the reviews operations read from the handler's `host`. */
 export type BureauReviewsOperationHost = {
@@ -48,6 +48,39 @@ const reviewCommonFields = {
   status: reviewStatusSchema,
 };
 
+const operationSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('command'),
+    command: z.string(),
+    filesTouched: z.array(z.string()).optional(),
+  }),
+  z.object({ kind: z.literal('file-write'), filesTouched: z.array(z.string()) }),
+  z.object({
+    kind: z.literal('patch'),
+    diff: z.string(),
+    filesTouched: z.array(z.string()).optional(),
+  }),
+  z.object({ kind: z.literal('other'), filesTouched: z.array(z.string()).optional() }),
+]);
+
+/**
+ * The action a tool call asks to take, as a reviewer sees it. Each member lists
+ * the fields that say what will happen and to what; the action's environment,
+ * sandbox, idempotency key, snapshot id, policy version, and argument preview are
+ * not among them (the arguments are already on the approval itself).
+ */
+const toolActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('input'), message: z.string().optional() }),
+  z.object({
+    type: z.literal('approval'),
+    message: z.string().optional(),
+    risk: z.enum(['low', 'medium', 'high']),
+    operation: operationSchema,
+    /** ISO timestamp after which the approval can no longer be given. */
+    expiresAt: z.string().optional(),
+  }),
+]);
+
 const toolApprovalReviewSchema = z.object({
   ...reviewCommonFields,
   kind: z.literal('tool-approval'),
@@ -56,8 +89,8 @@ const toolApprovalReviewSchema = z.object({
     toolName: z.string(),
     arguments: z.unknown(),
     reason: z.string().optional(),
-    /** What the tool is asking to do: an `approval` with its risk and operation, or an `input`. */
-    action: z.looseObject({ type: z.enum(['approval', 'input']) }),
+    /** What the tool is asking to do, reduced to what a reviewer needs to judge it. */
+    action: toolActionSchema,
     /** Which policy tier paused the call; drives the inbox's danger badge. */
     policyPauseTier: z.enum(['capability', 'registry', 'tool']).optional(),
   }),
@@ -77,6 +110,38 @@ export const bureauReviewSchema = z.discriminatedUnion('kind', [
 ]);
 
 export type BureauReview = z.infer<typeof bureauReviewSchema>;
+
+type ToolAction = PendingToolApprovalReview['approval']['action'];
+
+function projectOperation(
+  operation: Extract<ToolAction, { type: 'approval' }>['operation'],
+): z.input<typeof operationSchema> {
+  const files =
+    operation.filesTouched === undefined ? {} : { filesTouched: operation.filesTouched };
+  switch (operation.kind) {
+    case 'command':
+      return { kind: 'command', command: operation.command, ...files };
+    case 'file-write':
+      return { kind: 'file-write', filesTouched: operation.filesTouched };
+    case 'patch':
+      return { kind: 'patch', diff: operation.diff, ...files };
+    case 'other':
+      return { kind: 'other', ...files };
+  }
+}
+
+/** Build the wire action field by field, so a field added to `ToolAction` stays off the wire. */
+function projectAction(action: ToolAction): z.input<typeof toolActionSchema> {
+  const message = action.message === undefined ? {} : { message: action.message };
+  if (action.type === 'input') return { type: 'input', ...message };
+  return {
+    type: 'approval',
+    ...message,
+    risk: action.risk,
+    operation: projectOperation(action.operation),
+    ...(action.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
+  };
+}
 
 /**
  * Project a review onto its wire shape. The projection is an allowlist, so a
@@ -104,7 +169,7 @@ export function projectReview(
         toolName: review.approval.toolName,
         arguments: review.approval.arguments,
         ...(review.approval.reason === undefined ? {} : { reason: review.approval.reason }),
-        action: review.approval.action,
+        action: projectAction(review.approval.action),
         ...(review.approval.policyPauseTier === undefined
           ? {}
           : { policyPauseTier: review.approval.policyPauseTier }),
