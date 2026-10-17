@@ -7,30 +7,30 @@ import type {
   ConversationHistory as Conversation,
   Message,
   ToolCall as MessageToolCall,
-  ToolResult,
 } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
-import { stringifyToolResult } from '../shared';
 import { toAGUIContent, toAGUIText } from './content';
 import { AGUIMappingError, unsupportedAGUIContent } from './errors';
-
-/** Id suffix joining an assistant message id to the n-th reasoning message before it. */
-const REASONING_ID_SEPARATOR = ':reasoning:';
+import { callRowParent, REASONING_ID_SEPARATOR } from './ids';
+import { toAGUIToolMessage } from './tool-result';
 
 /**
  * Converts a conversation to the AG-UI 1.0 `messages` of a `MESSAGES_SNAPSHOT`
  * event.
  *
- * - `system`, `developer`, and `user` messages map to their AG-UI roles with
- *   the same id; system and developer content is text only.
+ * - Every message keeps its id: `system`, `developer`, `user`, `assistant`,
+ *   and `tool-result` messages map to their AG-UI roles under the same id;
+ *   system and developer content is text only.
  * - An `assistant` message maps to an assistant message. Its `thinking` parts
  *   become `reasoning` messages placed before it, with the signature as the
  *   reasoning message's `encryptedValue`, so reasoning is hoisted ahead of the
  *   text. Text parts join with a blank line. A `redacted_thinking` part throws
  *   an `AGUIMappingError`: AG-UI has no way to carry withheld reasoning.
- * - Consecutive `tool-call` messages collapse into one assistant message with
- *   `toolCalls`; a `tool-result` becomes a `tool` message whose content is the
- *   serialized result, with `error` set to the failure message.
+ * - A `tool-call` message becomes an assistant message with one entry in
+ *   `toolCalls` under its own id, unless its id was derived from an assistant
+ *   message's (see `ids.ts`), in which case it joins that message. A
+ *   `tool-result` becomes a `tool` message whose content is the serialized
+ *   result, with `error` set to the failure message.
  * - Hidden, streaming, and `snapshot` messages are skipped, as in the provider
  *   adapters. Token usage, goal completion, and cache boundaries have no AG-UI
  *   field and are not exported.
@@ -41,35 +41,40 @@ const REASONING_ID_SEPARATOR = ':reasoning:';
 export function toAGUIMessages(conversation: Conversation): AGUIMessage[] {
   assertConversationSafe(conversation);
   const messages: AGUIMessage[] = [];
-  let pendingToolCalls: { id: string; calls: ToolCall[] } | undefined;
-
-  const flushToolCalls = (): void => {
-    if (pendingToolCalls === undefined) return;
-    messages.push({
-      id: pendingToolCalls.id,
-      role: 'assistant',
-      toolCalls: pendingToolCalls.calls,
-    });
-    pendingToolCalls = undefined;
-  };
 
   for (const message of getOrderedMessages(conversation)) {
     if (message.hidden || isStreamingMessage(message)) continue;
 
     if (message.role === 'tool-call') {
-      if (!message.toolCall) continue;
-      const call = toAGUIToolCall(message, message.toolCall);
-      if (pendingToolCalls === undefined) pendingToolCalls = { id: message.id, calls: [call] };
-      else pendingToolCalls.calls.push(call);
+      if (message.toolCall) addToolCall(messages, message, message.toolCall);
       continue;
     }
 
-    flushToolCalls();
     messages.push(...convertMessage(message));
   }
-  flushToolCalls();
 
   return messages.map(validateAGUIMessage);
+}
+
+/**
+ * Writes one `tool-call` row. A row whose id was derived from an assistant
+ * message's joins that message when it is the one just written, which is how
+ * an assistant message with text and calls, or with several calls, comes back
+ * whole; any other row is an assistant message of its own under its own id.
+ */
+function addToolCall(
+  messages: AGUIMessage[],
+  message: Message,
+  toolCall: Readonly<MessageToolCall>,
+): void {
+  const call = toAGUIToolCall(message, toolCall);
+  const parentId = callRowParent(message.id, toolCall.id);
+  const last = messages.at(-1);
+  if (parentId !== undefined && last?.role === 'assistant' && last.id === parentId) {
+    messages[messages.length - 1] = { ...last, toolCalls: [...(last.toolCalls ?? []), call] };
+    return;
+  }
+  messages.push({ id: message.id, role: 'assistant', toolCalls: [call] });
 }
 
 function validateAGUIMessage(message: AGUIMessage): AGUIMessage {
@@ -110,7 +115,9 @@ function convertMessage(message: Message): AGUIMessage[] {
       return convertAssistantMessage(message);
 
     case 'tool-result':
-      return message.toolResult ? [convertToolResult(message, message.toolResult, metadata)] : [];
+      return message.toolResult
+        ? [toAGUIToolMessage(message.id, message.toolResult, metadata.metadata ?? {})]
+        : [];
 
     default:
       return [];
@@ -165,21 +172,6 @@ function toAGUIToolCall(message: Message, toolCall: Readonly<MessageToolCall>): 
           : JSON.stringify(toolCall.arguments),
     },
     ...toAGUIMetadata(message),
-  };
-}
-
-function convertToolResult(
-  message: Message,
-  toolResult: Readonly<ToolResult>,
-  metadata: ReturnType<typeof toAGUIMetadata>,
-): AGUIMessage {
-  return {
-    id: message.id,
-    role: 'tool',
-    toolCallId: toolResult.callId,
-    content: stringifyToolResult(toolResult),
-    ...(toolResult.error ? { error: toolResult.error.message } : {}),
-    ...metadata,
   };
 }
 

@@ -19,6 +19,7 @@ export {
   appendAGUIMessages,
   fromAGUIMessages,
   fromAGUIToolMessage,
+  mergeAGUIMessages,
 } from './adapters/ag-ui/inbound';
 export { toAGUIMessages } from './adapters/ag-ui/outbound';
 export type * from './adapters/ag-ui/types';

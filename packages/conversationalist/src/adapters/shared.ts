@@ -73,21 +73,39 @@ export function parseToolResultText(callId: string, serialized: string): ToolRes
   const parsed = parseJSONValue(serialized);
 
   if (parsed !== undefined && isCanonicalToolResultPayload(parsed)) {
-    return {
-      callId,
-      outcome: parsed.outcome,
-      content: parsed.content,
-      ...(parsed.error ? { error: parsed.error } : {}),
-      ...(parsed.action ? { action: parsed.action } : {}),
-      ...(typeof parsed.inputDigest === 'string' ? { inputDigest: parsed.inputDigest } : {}),
-      ...(typeof parsed.outputDigest === 'string' ? { outputDigest: parsed.outputDigest } : {}),
-    };
+    return fromCanonicalToolResultPayload(callId, parsed);
   }
 
   return {
     callId,
     outcome: 'success',
     content: parsed ?? serialized,
+  };
+}
+
+/**
+ * Builds a tool result from a payload {@link isCanonicalToolResultPayload}
+ * accepted, keeping only the fields a result has.
+ */
+export function fromCanonicalToolResultPayload(
+  callId: string,
+  payload: JSONValue & {
+    outcome: ToolResult['outcome'];
+    content: JSONValue;
+    error?: ToolResult['error'];
+    action?: ToolResult['action'];
+    inputDigest?: string;
+    outputDigest?: string;
+  },
+): ToolResult {
+  return {
+    callId,
+    outcome: payload.outcome,
+    content: payload.content,
+    ...(payload.error ? { error: payload.error } : {}),
+    ...(payload.action ? { action: payload.action } : {}),
+    ...(typeof payload.inputDigest === 'string' ? { inputDigest: payload.inputDigest } : {}),
+    ...(typeof payload.outputDigest === 'string' ? { outputDigest: payload.outputDigest } : {}),
   };
 }
 

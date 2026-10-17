@@ -7,6 +7,7 @@ import {
   appendAGUIMessages,
   fromAGUIMessages,
   fromAGUIToolMessage,
+  mergeAGUIMessages,
 } from '../src/adapters/ag-ui/inbound';
 import { toAGUIMessages } from '../src/adapters/ag-ui/outbound';
 import type { AGUIMessage } from '../src/adapters/ag-ui/types';
@@ -37,6 +38,11 @@ function essentials(conversation: ReturnType<typeof build>) {
     toolCall: message.toolCall,
     toolResult: message.toolResult,
   }));
+}
+
+/** Row ids in order: identity, not just content, is what a round trip must keep. */
+function ids(conversation: ReturnType<typeof build>): string[] {
+  return getOrderedMessages(conversation).map((message) => message.id);
 }
 
 function expectValidSnapshot(messages: AGUIMessage[]): void {
@@ -114,8 +120,7 @@ describe('AG-UI adapter: roles', () => {
       },
     );
     const messages = toAGUIMessages(conversation);
-    expect(messages[1]).toEqual({
-      id: expect.any(String),
+    expect(messages[1]).toMatchObject({
       role: 'tool',
       toolCallId: 'call-1',
       content: '{"temperature":72}',
@@ -147,7 +152,7 @@ describe('AG-UI adapter: roles', () => {
 });
 
 describe('AG-UI adapter: structure', () => {
-  it('groups consecutive tool calls into one assistant message and splits them again', () => {
+  it('writes each tool call under its own message id and reads them back', () => {
     const conversation = build(
       { role: 'user', content: 'Weather in two cities?' },
       { role: 'tool-call', content: '', toolCall: { id: 'a', name: 'weather', arguments: 'NYC' } },
@@ -168,13 +173,16 @@ describe('AG-UI adapter: structure', () => {
     expect(messages.map((message) => message.role)).toEqual([
       'user',
       'assistant',
+      'assistant',
       'tool',
       'tool',
       'assistant',
     ]);
-    expect(messages[1]).toMatchObject({ toolCalls: [{ id: 'a' }, { id: 'b' }] });
+    expect(messages[1]).toMatchObject({ toolCalls: [{ id: 'a' }] });
+    expect(messages[2]).toMatchObject({ toolCalls: [{ id: 'b' }] });
     expectValidSnapshot(messages);
     expect(essentials(roundTrip(conversation))).toEqual(essentials(conversation));
+    expect(ids(roundTrip(conversation))).toEqual(ids(conversation));
   });
 
   it('splits an assistant message that carries both text and tool calls', () => {
@@ -352,33 +360,17 @@ describe('AG-UI adapter: inbound validation', () => {
 });
 
 describe('AG-UI adapter: tool message results', () => {
-  it('reads a bare tool message as a successful result', () => {
+  it('reads a bare tool message as a successful result whose content is its text', () => {
     expect(
       fromAGUIToolMessage({ id: 't1', role: 'tool', toolCallId: 'c1', content: 'sunny' }),
     ).toEqual({ callId: 'c1', outcome: 'success', content: 'sunny' });
   });
 
-  it('joins text parts and keeps the outcome a canonical payload spells out', () => {
+  it('never parses the text of a tool message from elsewhere as JSON', () => {
     const payload = JSON.stringify({ outcome: 'error', content: 'missing' });
     expect(
-      fromAGUIToolMessage({
-        id: 't1',
-        role: 'tool',
-        toolCallId: 'c1',
-        content: [
-          { type: 'text', text: payload.slice(0, 5) },
-          { type: 'image', source: { type: 'url', value: 'https://example.com/a.png' } },
-          { type: 'text', text: payload.slice(5) },
-        ],
-      }),
-    ).toEqual({
-      callId: 'c1',
-      outcome: 'success',
-      content: `${payload.slice(0, 5)}\n\n${payload.slice(5)}`,
-    });
-    expect(
       fromAGUIToolMessage({ id: 't1', role: 'tool', toolCallId: 'c1', content: payload }),
-    ).toMatchObject({ outcome: 'error', content: 'missing' });
+    ).toEqual({ callId: 'c1', outcome: 'success', content: payload });
   });
 
   it('marks a result the message flags with an error as failed', () => {
@@ -390,6 +382,247 @@ describe('AG-UI adapter: tool message results', () => {
         content: 'x',
         error: 'boom',
       }),
-    ).toMatchObject({ outcome: 'error', error: { message: 'boom' } });
+    ).toMatchObject({ outcome: 'error', content: 'x', error: { message: 'boom' } });
+  });
+
+  it('joins text parts, and keeps media parts as their JSON', () => {
+    const text = { type: 'text' as const, text: 'one' };
+    const image = {
+      type: 'image' as const,
+      source: { type: 'url' as const, value: 'https://example.com/a.png' },
+    };
+    expect(
+      fromAGUIToolMessage({
+        id: 't1',
+        role: 'tool',
+        toolCallId: 'c1',
+        content: [text, { type: 'text', text: 'two' }],
+      }),
+    ).toMatchObject({ content: 'one\n\ntwo' });
+    expect(
+      fromAGUIToolMessage({ id: 't1', role: 'tool', toolCallId: 'c1', content: [image] }),
+    ).toEqual({ callId: 'c1', outcome: 'success', content: [image] });
+    expect(
+      fromAGUIToolMessage({ id: 't1', role: 'tool', toolCallId: 'c1', content: [text, image] }),
+    ).toMatchObject({ content: [text, image] });
+  });
+
+  const resultFor = (content: unknown, extra: Record<string, unknown> = {}) =>
+    build(
+      { role: 'tool-call', content: '', toolCall: { id: 'c1', name: 'tool', arguments: {} } },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'c1', outcome: 'success', content, ...extra } as never,
+      },
+    );
+
+  it('round-trips a success whose content is a JSON-looking string as a string', () => {
+    for (const content of ['{"a":1}', '[1,2]', 'null', '42', '{"outcome":"error","content":"x"}']) {
+      const conversation = resultFor(content);
+      expect(essentials(roundTrip(conversation))).toEqual(essentials(conversation));
+    }
+  });
+
+  it('round-trips a success object shaped like a failure as a success', () => {
+    const conversation = resultFor({ outcome: 'error', content: 'looks failed' });
+    const restored = getOrderedMessages(roundTrip(conversation)).at(-1)?.toolResult;
+    expect(restored).toEqual({
+      callId: 'c1',
+      outcome: 'success',
+      content: { outcome: 'error', content: 'looks failed' },
+    });
+  });
+
+  it('round-trips structured, error, and action results exactly', () => {
+    const action = {
+      type: 'approval' as const,
+      message: 'Allow?',
+      risk: 'high' as const,
+      operation: { kind: 'other' as const },
+      policyVersion: 'policy:test',
+      idempotencyKey: 'key-1',
+    };
+    for (const result of [
+      {
+        outcome: 'success',
+        content: { n: 1, list: [1, 2] },
+        inputDigest: 'in',
+        outputDigest: 'out',
+      },
+      {
+        outcome: 'error',
+        content: 'partial',
+        error: {
+          code: 'x',
+          category: 'internal',
+          retryable: true,
+          message: 'broke',
+          details: { a: 1 },
+        },
+      },
+      { outcome: 'action_required', content: null, action },
+    ]) {
+      const conversation = build(
+        { role: 'tool-call', content: '', toolCall: { id: 'c1', name: 'tool', arguments: {} } },
+        { role: 'tool-result', content: '', toolResult: { callId: 'c1', ...result } as never },
+      );
+      expect(essentials(roundTrip(conversation))).toEqual(essentials(conversation));
+    }
+  });
+
+  it('keeps row metadata apart from the embedded result', () => {
+    const conversation = build(
+      { role: 'tool-call', content: '', toolCall: { id: 'c1', name: 'tool', arguments: {} } },
+      {
+        role: 'tool-result',
+        content: '',
+        metadata: { source: 'tool-runner' },
+        toolResult: { callId: 'c1', outcome: 'success', content: { n: 1 } },
+      },
+    );
+    expect(getOrderedMessages(roundTrip(conversation)).at(-1)?.metadata).toEqual({
+      source: 'tool-runner',
+    });
+  });
+
+  it('writes media content as parts and reads it back', () => {
+    const parts = [
+      { type: 'text', text: 'caption' },
+      { type: 'image', source: { type: 'url', value: 'https://example.com/a.png' } },
+    ];
+    const conversation = resultFor(parts);
+    const messages = toAGUIMessages(conversation);
+    expect(messages.at(-1)).toMatchObject({ role: 'tool', content: parts });
+    expectValidSnapshot(messages);
+    expect(essentials(roundTrip(conversation))).toEqual(essentials(conversation));
+  });
+});
+
+describe('AG-UI adapter: message identity', () => {
+  const call = (id: string, name = 'tool') => ({
+    id,
+    type: 'function' as const,
+    function: { name, arguments: '{}' },
+  });
+  const samples: AGUIMessage[][] = [
+    [{ id: 'u1', role: 'user', content: 'Hello' }],
+    [{ id: 's1', role: 'system', content: 'Be brief.' }],
+    [{ id: 'd1', role: 'developer', content: 'Metric.' }],
+    [{ id: 'a1', role: 'assistant', content: 'Hi' }],
+    [{ id: 'a1', role: 'assistant', toolCalls: [call('c1')] }],
+    [{ id: 'a1', role: 'assistant', toolCalls: [call('c1'), call('c2')] }],
+    [{ id: 'a1', role: 'assistant', content: 'Checking.', toolCalls: [call('c1'), call('c2')] }],
+    [
+      { id: 'a1', role: 'assistant', toolCalls: [call('c1')] },
+      { id: 'a2', role: 'assistant', toolCalls: [call('c2')] },
+    ],
+    [
+      { id: 'a1', role: 'assistant', content: 'Checking.', toolCalls: [call('c1')] },
+      { id: 't1', role: 'tool', toolCallId: 'c1', content: 'sunny' },
+      { id: 'a2', role: 'assistant', content: 'Done.' },
+    ],
+    [
+      { id: 'a1:reasoning:0', role: 'reasoning', content: 'hmm', encryptedValue: 'sig' },
+      { id: 'a1', role: 'assistant', content: 'Answer.', toolCalls: [call('c1')] },
+    ],
+    [
+      { id: 'a1:reasoning:0', role: 'reasoning', content: 'hmm', encryptedValue: 'sig' },
+      { id: 'a1', role: 'assistant', toolCalls: [call('c1')] },
+    ],
+  ];
+
+  it('reproduces the ids of an AG-UI history after a round trip through the conversation', () => {
+    for (const messages of samples) {
+      expect(toAGUIMessages(fromAGUIMessages(messages))).toEqual(messages);
+    }
+  });
+
+  it('keeps an assistant message with text and tool calls whole under its own id', () => {
+    const messages: AGUIMessage[] = [
+      { id: 'a1', role: 'assistant', content: 'Checking.', toolCalls: [call('c1'), call('c2')] },
+    ];
+    const conversation = fromAGUIMessages(messages);
+    expect(ids(conversation)).toEqual(['a1', 'a1:call:c1', 'a1:call:c2']);
+    expect(toAGUIMessages(conversation)).toEqual(messages);
+  });
+
+  it('gives the first call of a text-less assistant message the message id', () => {
+    const conversation = fromAGUIMessages([
+      { id: 'a1', role: 'assistant', toolCalls: [call('c1'), call('c2')] },
+    ]);
+    expect(ids(conversation)).toEqual(['a1', 'a1:call:c2']);
+  });
+
+  it('keeps the ids of a conversation after a round trip through AG-UI', () => {
+    const conversation = build(
+      { role: 'system', content: 'Be brief.' },
+      { role: 'user', content: 'Weather?' },
+      { role: 'assistant', content: 'Checking.' },
+      { role: 'tool-call', content: '', toolCall: { id: 'a', name: 'weather', arguments: {} } },
+      {
+        role: 'tool-result',
+        content: '',
+        toolResult: { callId: 'a', outcome: 'success', content: 'sunny' },
+      },
+      { role: 'assistant', content: 'Sunny.' },
+    );
+    expect(ids(roundTrip(conversation))).toEqual(ids(conversation));
+  });
+
+  it('merges messages by id, adding rows and never changing the ones it has', () => {
+    const base = fromAGUIMessages([
+      { id: 'u1', role: 'user', content: 'first' },
+      { id: 'a1', role: 'assistant', content: 'kept' },
+    ]);
+    const merged = mergeAGUIMessages(base, [
+      { id: 'u1', role: 'user', content: 'different' },
+      { id: 'a1', role: 'assistant', content: 'different too' },
+      { id: 'u2', role: 'user', content: 'new' },
+    ]);
+    expect(ids(merged)).toEqual(['u1', 'a1', 'u2']);
+    expect(getOrderedMessages(merged).map((message) => message.content)).toEqual([
+      'first',
+      'kept',
+      'new',
+    ]);
+    expect(mergeAGUIMessages(merged, [{ id: 'u2', role: 'user', content: 'again' }])).toBe(merged);
+  });
+
+  it('rejects an append of a message whose id is already there', () => {
+    const base = fromAGUIMessages([{ id: 'u1', role: 'user', content: 'first' }]);
+    expect(() => appendAGUIMessages(base, [{ id: 'u1', role: 'user', content: 'again' }])).toThrow(
+      ConversationalistError,
+    );
+  });
+});
+
+describe('AG-UI adapter: citations', () => {
+  const citations = [{ type: 'char_location', cited_text: 'x', document_index: 0 }];
+
+  it('carries citations on a user text part through the part metadata, both ways', () => {
+    const conversation = build({
+      role: 'user',
+      content: [{ type: 'text', text: 'Quoted', citations }],
+    });
+    const messages = toAGUIMessages(conversation);
+    expect(messages[0]).toMatchObject({
+      content: [{ type: 'text', text: 'Quoted', metadata: { citations } }],
+    });
+    expectValidSnapshot(messages);
+    expect(essentials(roundTrip(conversation))).toEqual(essentials(conversation));
+  });
+
+  it('rejects cited text where AG-UI holds plain text only', () => {
+    for (const role of ['assistant', 'system', 'developer'] as const) {
+      const conversation = build({ role, content: [{ type: 'text', text: 'Quoted', citations }] });
+      try {
+        toAGUIMessages(conversation);
+        throw new Error('expected toAGUIMessages to throw');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AGUIMappingError);
+        expect((error as AGUIMappingError).kind).toBe('citations');
+      }
+    }
   });
 });

@@ -1,5 +1,6 @@
 import type { ContentPart, PartSource } from '@ag-ui/core';
 import type { DocumentContent, ImageContent, MultiModalContent } from '../../multi-modal';
+import { toJSONValue } from '../shared';
 import { unsupportedAGUIContent } from './errors';
 
 const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/;
@@ -24,6 +25,12 @@ export function toAGUIText(
         `${role} messages carry only text in AG-UI, so ${part.type} content has no representation.`,
       );
     }
+    if (part.citations !== undefined) {
+      throw unsupportedAGUIContent(
+        'citations',
+        `${role} messages are plain text in AG-UI, so cited text has nowhere to keep its citations.`,
+      );
+    }
     texts.push(part.text);
   }
   return texts.join('\n\n');
@@ -42,7 +49,11 @@ export function toAGUIContent(
   return content.map((part): ContentPart => {
     switch (part.type) {
       case 'text':
-        return { type: 'text', text: part.text };
+        return {
+          type: 'text',
+          text: part.text,
+          ...(part.citations !== undefined ? { metadata: { citations: part.citations } } : {}),
+        };
       case 'image':
         return toAGUIImagePart(part);
       case 'document':
@@ -92,14 +103,21 @@ export function fromAGUIContent(
   if (typeof content === 'string') return content;
   const parts = content.map(fromAGUIPart);
   if (parts.length === 0) return '';
-  if (parts.length === 1 && parts[0]?.type === 'text') return parts[0].text;
+  if (parts.length === 1 && parts[0]?.type === 'text' && parts[0].citations === undefined)
+    return parts[0].text;
   return parts;
 }
 
 function fromAGUIPart(part: ContentPart): MultiModalContent {
   switch (part.type) {
-    case 'text':
-      return { type: 'text', text: part.text };
+    case 'text': {
+      const citations = readMetadataValue(part.metadata, 'citations');
+      return {
+        type: 'text',
+        text: part.text,
+        ...(citations !== undefined ? { citations: toJSONValue(citations) } : {}),
+      };
+    }
     case 'image':
       return fromAGUIImagePart(part);
     case 'document':
@@ -143,8 +161,13 @@ function fromAGUIDocumentPart(part: Extract<ContentPart, { type: 'document' }>):
   };
 }
 
-function readMetadataString(metadata: unknown, key: string): string | undefined {
+function readMetadataValue(metadata: unknown, key: string): unknown {
   if (typeof metadata !== 'object' || metadata === null) return undefined;
-  const value: unknown = (metadata as Record<string, unknown>)[key];
+  const entry = Object.entries(metadata).find(([name]) => name === key);
+  return entry?.[1];
+}
+
+function readMetadataString(metadata: unknown, key: string): string | undefined {
+  const value = readMetadataValue(metadata, key);
   return typeof value === 'string' ? value : undefined;
 }

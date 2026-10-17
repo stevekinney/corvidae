@@ -2,10 +2,14 @@ import type { Message as AGUIMessage, AssistantMessage } from '@ag-ui/core';
 import { MessageSchema } from '@ag-ui/core/schemas';
 import { appendMessages, createConversationHistory } from '../../conversation/index';
 import type { ThinkingContent } from '../../multi-modal';
-import type { ConversationHistory as Conversation, MessageInput, ToolResult } from '../../types';
-import { parseJSONValue, parseToolResultText, toJSONValue } from '../shared';
+import type { ConversationHistory as Conversation, MessageInput } from '../../types';
+import { parseJSONValue, toJSONValue } from '../shared';
 import { fromAGUIContent } from './content';
 import { AGUIMappingError } from './errors';
+import { callRowId } from './ids';
+import { fromAGUIToolMessage, withoutEmbeddedResult } from './tool-result';
+
+export { fromAGUIToolMessage };
 
 function assertValidAGUIMessages(messages: ReadonlyArray<AGUIMessage>): void {
   messages.forEach((message, index) => {
@@ -28,42 +32,20 @@ function toMetadata(metadata: Record<string, unknown> | undefined): Pick<Message
   };
 }
 
-/**
- * Converts one AG-UI `tool` message to the tool result it carries; the inverse
- * of how {@link toAGUIMessages} writes a result. Content that spells out a
- * canonical result payload keeps that outcome, and otherwise the result is a
- * success whose content is the text, unless the message's `error` field says
- * the tool failed. A streaming consumer that sees a result before it has a
- * conversation to import reads it with this.
- */
-export function fromAGUIToolMessage(message: Extract<AGUIMessage, { role: 'tool' }>): ToolResult {
-  const serialized =
-    typeof message.content === 'string'
-      ? message.content
-      : message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n\n');
-  const result = parseToolResultText(message.toolCallId, serialized);
-  if (message.error === undefined || result.outcome !== 'success') return result;
-  return {
-    ...result,
-    outcome: 'error',
-    error: {
-      code: 'ag-ui.tool-error',
-      category: 'internal',
-      retryable: false,
-      message: message.error,
-    },
-  };
-}
+/** A message input that carries the id AG-UI gave the message it came from. */
+type IdentifiedInput = MessageInput & { id: string };
 
 function toAssistantInputs(
   message: AssistantMessage,
   pendingReasoning: ThinkingContent[],
-): MessageInput[] {
-  const inputs: MessageInput[] = [];
+): IdentifiedInput[] {
+  const inputs: IdentifiedInput[] = [];
   const text = message.content ?? '';
+  const hasContentRow = pendingReasoning.length > 0 || text.length > 0;
 
-  if (pendingReasoning.length > 0 || text.length > 0) {
+  if (hasContentRow) {
     inputs.push({
+      id: message.id,
       role: 'assistant',
       content:
         pendingReasoning.length > 0
@@ -73,8 +55,9 @@ function toAssistantInputs(
     });
   }
 
-  for (const toolCall of message.toolCalls ?? []) {
+  (message.toolCalls ?? []).forEach((toolCall, index) => {
     inputs.push({
+      id: index === 0 && !hasContentRow ? message.id : callRowId(message.id, toolCall.id),
       role: 'tool-call',
       content: '',
       toolCall: {
@@ -84,19 +67,22 @@ function toAssistantInputs(
       },
       ...toMetadata(toolCall.metadata),
     });
-  }
+  });
 
   return inputs;
 }
 
-function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): MessageInput[] {
+function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): IdentifiedInput[] {
   assertValidAGUIMessages(messages);
-  const inputs: MessageInput[] = [];
+  const inputs: IdentifiedInput[] = [];
   let pendingReasoning: ThinkingContent[] = [];
+  let pendingReasoningId = '';
 
+  // Reasoning with no assistant message after it stands as a row of its own,
+  // under the id of the last reasoning message.
   const flushReasoning = (): void => {
     if (pendingReasoning.length === 0) return;
-    inputs.push({ role: 'assistant', content: pendingReasoning });
+    inputs.push({ id: pendingReasoningId, role: 'assistant', content: pendingReasoning });
     pendingReasoning = [];
   };
 
@@ -107,6 +93,7 @@ function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): MessageInput[] {
         thinking: message.content,
         signature: message.encryptedValue ?? '',
       });
+      pendingReasoningId = message.id;
       continue;
     }
 
@@ -121,6 +108,7 @@ function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): MessageInput[] {
       case 'system':
       case 'developer':
         inputs.push({
+          id: message.id,
           role: message.role,
           content: message.content,
           ...toMetadata(message.metadata),
@@ -128,6 +116,7 @@ function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): MessageInput[] {
         break;
       case 'user':
         inputs.push({
+          id: message.id,
           role: 'user',
           content: fromAGUIContent(message.content),
           ...toMetadata(message.metadata),
@@ -135,10 +124,11 @@ function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): MessageInput[] {
         break;
       case 'tool':
         inputs.push({
+          id: message.id,
           role: 'tool-result',
           content: '',
           toolResult: fromAGUIToolMessage(message),
-          ...toMetadata(message.metadata),
+          ...toMetadata(withoutEmbeddedResult(message.metadata)),
         });
         break;
       default:
@@ -161,19 +151,52 @@ function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): MessageInput[] {
  * `reasoning` messages become `thinking` parts of the assistant message that
  * follows them, with `encryptedValue` as the signature; a `tool` message
  * becomes a `tool-result`. `activity` messages are skipped: they are UI
- * progress, not conversation content. AG-UI message ids are not adopted, so
- * conversation plugins run and local ids are minted.
+ * progress, not conversation content.
+ *
+ * Message ids are kept, and a message that splits into several rows derives
+ * their ids from its own, so `toAGUIMessages(fromAGUIMessages(x))` reproduces
+ * the ids of `x` (reasoning messages excepted, which export names
+ * `<assistant id>:reasoning:<n>`). Ids are what identify a message to the
+ * AG-UI backend and to anything that persisted it, so they are not minted
+ * locally. Because `appendMessages` treats an input that carries an `id` as an
+ * already-built message, conversation plugins do not run over imported
+ * messages (and the adapter takes no environment to configure them with): a
+ * remote history is not new user input for a plugin to shape. Two
+ * messages that end up with the same row id throw a `duplicate-id` error.
  */
 export function fromAGUIMessages(messages: ReadonlyArray<AGUIMessage>): Conversation {
   return appendAGUIMessages(createConversationHistory(), messages);
 }
 
-/** Appends AG-UI messages to an existing conversation; see {@link fromAGUIMessages}. */
+/**
+ * Appends AG-UI messages to an existing conversation; see
+ * {@link fromAGUIMessages}. A message whose id is already in the conversation
+ * throws a `duplicate-id` error; use {@link mergeAGUIMessages} to skip them.
+ */
 export function appendAGUIMessages(
   conversation: Conversation,
   messages: ReadonlyArray<AGUIMessage>,
 ): Conversation {
   const inputs = toMessageInputs(messages);
+  if (inputs.length === 0) return conversation;
+  return appendMessages(conversation, ...inputs);
+}
+
+/**
+ * Merges AG-UI messages into a conversation by id: a message that becomes a row
+ * whose id is already in the conversation is skipped, and the conversation's
+ * own row stands. The conversation is authoritative, so the merge only ever
+ * adds rows and never changes or removes one. This is how a
+ * `MESSAGES_SNAPSHOT` of a whole thread meets a conversation that already
+ * holds part of it. New rows are appended in the order the messages give them.
+ */
+export function mergeAGUIMessages(
+  conversation: Conversation,
+  messages: ReadonlyArray<AGUIMessage>,
+): Conversation {
+  const inputs = toMessageInputs(messages).filter(
+    (input) => conversation.messages[input.id] === undefined,
+  );
   if (inputs.length === 0) return conversation;
   return appendMessages(conversation, ...inputs);
 }
