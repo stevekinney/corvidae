@@ -1043,7 +1043,7 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       {
         reason:
           'Exhaustive default for an unknown AuthContext method is unreachable through the authenticator surface, which only ever produces one of the declared AuthMethod values.',
-        lines: new Set([51, 52, 53]),
+        lines: new Set([53, 54, 55]),
         requireUncoveredLines: true,
       },
     ],
