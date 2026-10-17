@@ -275,7 +275,7 @@ export function createRunWorkflow(
               stepIndex,
               carriedAccumulators,
               runId,
-              { delta: snapshot === lastStepSnapshot },
+              { delta: snapshot === lastStepSnapshot, maximumSteps },
             );
 
             snapshot = conversationAfterStep(snapshot, stepResult);
@@ -308,11 +308,25 @@ export function createRunWorkflow(
             // between commits never advances the cursor past un-persisted state. ===
             // A step that recorded a delta saves the same delta: the transcript
             // the run saved last is that delta's base, the previous step's output.
+            // COR-1476 — inputs this step delivered are promoted in the SAME atomic
+            // write as the transcript holding them, so a cancellation can never
+            // leave the two disagreeing.
+            const promotion =
+              stepResult.sessionInputDeliveries === undefined
+                ? undefined
+                : {
+                    sessionId: stepResult.sessionInputDeliveries[0]!.sessionId,
+                    deliveries: stepResult.sessionInputDeliveries,
+                  };
             yield* ctx.run(
               'saveConversation',
               stepResult.conversationDelta === undefined
-                ? { runId, snapshot }
-                : { runId, delta: stepResult.conversationDelta },
+                ? { runId, snapshot, ...(promotion === undefined ? {} : { promotion }) }
+                : {
+                    runId,
+                    delta: stepResult.conversationDelta,
+                    ...(promotion === undefined ? {} : { promotion }),
+                  },
             );
             if (stepResult.record !== null) {
               yield* ctx.run('recordStep', { runId, record: stepResult.record });
@@ -336,29 +350,19 @@ export function createRunWorkflow(
             };
             yield* ctx.run('saveCursor', { runId, cursor });
 
-            // COR-1476 — the step's result, which already holds the delivered
-            // session inputs as messages, is durable, and so is the transcript
-            // and cursor built from it. Only now is each input marked promoted
-            // and retired from the gate's pending set, so a crash before this
-            // point re-asks the gate (whose delivery record lets only this run
-            // re-append) and a crash after it replays this memo. Settling is
-            // idempotent per command; a failure fails the run rather than risk
-            // the same input reaching the model twice. The memo exists only for
-            // a step that delivered something, so a run that never receives
-            // session input records no extra operation. It runs before the
-            // terminal breaks below so an input delivered on a stopping,
-            // aborting, or failing step is still promoted.
+            // COR-1476 — the step's transcript and its session input promotion
+            // committed in one write above, so nothing durable is left to do for
+            // the inputs but retire their mailbox commands. That is bookkeeping
+            // a later boundary repeats if it is lost, so it never fails the run.
+            // It runs before the terminal breaks below so an input delivered on a
+            // stopping, aborting, or failing step is still retired. The memo exists
+            // only for a step that delivered something, so a run that never
+            // receives session input records no extra operation.
             if (stepResult.sessionInputDeliveries !== undefined) {
               const deliveries = stepResult.sessionInputDeliveries;
-              yield* ctx.memo(`session-input-settle-${stepIndex}`, async () => {
-                const gate = runDepsFrom(ctx.services).options.sessionInput;
-                if (gate === undefined) {
-                  throw new Error(
-                    `Step ${stepIndex} delivered ${deliveries.length} session input(s), but this run has no session input gate to promote them.`,
-                  );
-                }
-                await gate.settle(deliveries);
-                return { settled: deliveries.length };
+              yield* ctx.memo(`session-input-retire-${stepIndex}`, async () => {
+                await runDepsFrom(ctx.services).options.sessionInput?.settle(deliveries);
+                return { retired: deliveries.length };
               });
             }
 

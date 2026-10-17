@@ -1,7 +1,7 @@
 import { activity } from '@lostgradient/weft';
 import type { ConversationSnapshot } from 'conversationalist';
 
-import type { CheckpointStore } from './checkpoint-store';
+import type { CheckpointStore, SessionInputPromotionWrite } from './checkpoint-store';
 import { applyConversationSnapshotDelta, type ConversationSnapshotDelta } from './snapshot-delta';
 import type { RunCursor, StepRecord } from './types';
 
@@ -22,6 +22,8 @@ export interface SaveWholeConversationInput {
   runId: string;
   snapshot: ConversationSnapshot;
   delta?: never;
+  /** COR-1476 — session inputs this transcript holds, promoted in the same write. */
+  promotion?: SessionInputPromotionWrite | undefined;
   /**
    * COR-104 — the steering `getAppliedFloor()` read at the run's first
    * execution. The activity echoes it back as its result, so Weft's positional
@@ -41,6 +43,8 @@ export interface SaveConversationDeltaInput {
   delta: ConversationSnapshotDelta;
   snapshot?: never;
   steeringBoundary?: never;
+  /** COR-1476 — session inputs this transcript holds, promoted in the same write. */
+  promotion?: SessionInputPromotionWrite | undefined;
 }
 
 /** Input for the step-record write activity. */
@@ -85,7 +89,7 @@ export function createStorageActivities(checkpointStore: CheckpointStore) {
       idempotent: true,
       execute: async (input: SaveConversationInput): Promise<number | undefined> => {
         if (input.delta === undefined) {
-          await checkpointStore.saveConversation(input.runId, input.snapshot);
+          await checkpointStore.saveConversation(input.runId, input.snapshot, input.promotion);
           return input.steeringBoundary;
         }
         const saved = await checkpointStore.loadConversation(input.runId, { strict: true });
@@ -99,6 +103,7 @@ export function createStorageActivities(checkpointStore: CheckpointStore) {
         await checkpointStore.saveConversation(
           input.runId,
           applyConversationSnapshotDelta(saved, input.delta),
+          input.promotion,
         );
         return undefined;
       },

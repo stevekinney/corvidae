@@ -26,6 +26,7 @@ import {
   createRecoveredRunEventSurface,
   createRunFinishedFrame,
   createRunStartedFrame,
+  createSessionInputDeliveryStore,
   createStore,
   type DurableEventEnvelope,
   type DurableEventGap,
@@ -222,9 +223,13 @@ import {
   admitSessionInput,
   createSessionInputMailbox,
   type PersistedSessionInput,
+  SESSION_INPUT_DELIVERY_RETENTION_MS,
 } from './session-input-durability';
+import {
+  createSessionInputContinuation,
+  type SessionInputRunOutcome,
+} from './session-input-continuation';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
-import { SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE } from './session-input-promotion';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import {
   normalizeRunRequestContext,
@@ -1904,6 +1909,40 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-1476 — the per-session record of which run is delivering each admitted
+   * input (`session-input-deliveries:v1:{sessionId}`), in the same text-value
+   * store the run's checkpoint is written to, so a step's promotion commits in
+   * the same batch as its transcript. Absent without a durable engine.
+   */
+  const sessionInputDeliveryStore =
+    runtime.durable !== undefined && runtime.kv !== undefined
+      ? createSessionInputDeliveryStore(runtime.kv, {
+          retentionMs: SESSION_INPUT_DELIVERY_RETENTION_MS,
+          nowMs: runtimeServices.clock.now,
+        })
+      : undefined;
+
+  /** The gate of each durable run that has one, disposed when the run ends however it ends. */
+  const sessionInputGates = new Map<
+    string,
+    { readonly gate: SessionInputGate; readonly sessionId: string }
+  >();
+
+  /**
+   * Whether `runId` will still replay or re-run the step that appended its
+   * input: the run is live in some process, or is starting. A run that is not
+   * live has released its claims or will never resume.
+   */
+  async function isSessionRunLive(
+    sessionId: string,
+    incarnation: string,
+    runId: string,
+  ): Promise<boolean> {
+    const live = await liveSessionRunIdsEverywhere(sessionId, incarnation, runId);
+    return live.includes(runId);
+  }
+
+  /**
    * COR-1476 — the gate through which one of this session's durable runs
    * receives input `submitSessionInput` admitted while it is live. `undefined`
    * when the bureau has no durable mailbox, no session store, or the session no
@@ -1915,26 +1954,35 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<SessionInputGate | undefined> {
     const mailbox = tryGetSessionInputMailbox(sessionId);
     const gateSessionStore = runtime.sessionStore;
-    if (mailbox === undefined || gateSessionStore === undefined) return undefined;
+    if (
+      mailbox === undefined ||
+      gateSessionStore === undefined ||
+      sessionInputDeliveryStore === undefined
+    ) {
+      return undefined;
+    }
     const session = await gateSessionStore.load(sessionId);
     if (session === undefined) return undefined;
-    return createSessionInputDeliveryGate({
+    const gate = createSessionInputDeliveryGate({
       sessionId,
       runId,
       incarnation: session.incarnation,
       mailbox,
-      sessionStore: gateSessionStore,
-      nowISO: runtimeServices.clock.nowISO,
+      deliveryStore: sessionInputDeliveryStore,
+      isOwnerLive: (ownerRunId) => isSessionRunLive(sessionId, session.incarnation, ownerRunId),
+      now: runtimeServices.clock.now,
       timers: runtimeServices.timers,
       signal: backgroundShutdownController.signal,
-      onRenewalError: (error) =>
+      onError: (error) =>
         diagnose({
           level: 'error',
           scope: 'session-input',
-          message: `[bureau] Could not renew a session-input lease for run "${runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
+          message: `[bureau] A session-input lease of run "${runId}" in session "${sessionId}" could not be kept or retired: ${serializeUnknownError(error)}`,
           cause: error,
         }),
     });
+    sessionInputGates.set(runId, { gate, sessionId });
+    return gate;
   }
 
   /**
@@ -1948,6 +1996,54 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<void> {
     const gate = await sessionInputGateFor(sessionId, runId);
     if (gate !== undefined) services.options = { ...services.options, sessionInput: gate };
+  }
+
+  /**
+   * The release half of a run's termination: disposes its gate, which returns
+   * each lease it holds to the mailbox, and releases the run's unpromoted claims
+   * so the next run can deliver them. Safe whenever it runs: an unpromoted input
+   * is in no durable transcript. Needs no live bureau beyond its stores, so
+   * shutdown runs it too, and never starts a run.
+   */
+  async function releaseSessionInputs(sessionId: string, runId: string): Promise<void> {
+    const held = sessionInputGates.get(runId);
+    sessionInputGates.delete(runId);
+    try {
+      await held?.gate.dispose?.();
+      await sessionInputDeliveryStore?.release(sessionId, runId);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not release the session input run "${runId}" held in session "${sessionId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
+   * A run has ended, however it ended. Releases what it held, then makes sure a
+   * session that still has open input has a live run to answer it. Called after
+   * the run's terminal session write and its steering `run-ended`, so the
+   * liveness it reads no longer counts the ended run.
+   */
+  async function reconcileSessionInputsAfterRunEnd(
+    sessionId: string,
+    runId: string,
+    outcome: SessionInputRunOutcome,
+  ): Promise<void> {
+    await releaseSessionInputs(sessionId, runId);
+    if (sessionInputContinuation === undefined || maintenanceAdmissionClosed) return;
+    try {
+      await sessionInputContinuation.reconcile(sessionId, { runId, outcome });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not reconcile the pending input of session "${sessionId}" after run "${runId}" ended: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
   }
 
   /**
@@ -1971,6 +2067,69 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       });
     }
   }
+
+  /**
+   * COR-1476 — keeps a session with open input supplied with a live run: starts a
+   * continuation run, with no prompt, when the last run ended with input still
+   * waiting. See `session-input-continuation.ts`. Absent without a durable mailbox.
+   */
+  const sessionInputContinuation =
+    runtime.durable !== undefined &&
+    runtime.kv !== undefined &&
+    sessionInputDeliveryStore !== undefined
+      ? createSessionInputContinuation({
+          kv: runtime.kv,
+          deliveryStore: sessionInputDeliveryStore,
+          nowMs: runtimeServices.clock.now,
+          incarnationOf: async (sessionId) => {
+            const session = await runtime.sessionStore?.load(sessionId);
+            return session?.incarnation;
+          },
+          liveRunIds: async (sessionId, incarnation, excludeRunId) => {
+            const live = await liveSessionRunIdsEverywhere(sessionId, incarnation);
+            return live.filter((runId) => runId !== excludeRunId);
+          },
+          isRunLive: isSessionRunLive,
+          mailboxOf: tryGetSessionInputMailbox,
+          newRunId: () => runtimeServices.identifiers.next('run'),
+          startContinuation: async (sessionId, runId) => {
+            const session = await runtime.sessionStore?.load(sessionId);
+            if (session === undefined) throw new Error(`Session "${sessionId}" no longer exists.`);
+            const lastRunId = session.metadata['lastRunId'];
+            const principal =
+              typeof lastRunId === 'string'
+                ? resolvePersistedRunOwningPrincipal(session.metadata, lastRunId)
+                : undefined;
+            const requestContext =
+              typeof lastRunId === 'string'
+                ? recoveredRequestContextFromMetadata(
+                    session.metadata,
+                    lastRunId,
+                    sessionId,
+                    session.agentName,
+                    runtimeServices.clock.now,
+                  )
+                : undefined;
+            await createRunFromRequest(
+              {
+                message: '',
+                sessionId,
+                agentName: session.agentName,
+                ...(principal === undefined ? {} : { principal }),
+                ...(requestContext === undefined ? {} : { requestContext }),
+              },
+              { continuation: true, runId },
+            );
+          },
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'session-input',
+              message: `[bureau] ${message}${cause === undefined ? '' : ` ${serializeUnknownError(cause)}`}`,
+              ...(cause === undefined ? {} : { cause }),
+            }),
+        })
+      : undefined;
 
   /**
    * Durable steering (see `steering-log.ts` and
@@ -3041,6 +3200,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   });
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
 
+  /**
+   * Persists a run's terminal session state, then reconciles the session's input
+   * (COR-1476): the reconcile reads the session as the run left it.
+   */
+  function persistTerminalSession(
+    saveSessionUpdate: () => Promise<unknown>,
+    context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
+  ): void {
+    void persistSessionUpdate(saveSessionUpdate, context).then(() =>
+      reconcileSessionInputsAfterRunEnd(context.sessionId, context.runId, context.status),
+    );
+  }
+
   // ── AB-391: review-transition audit records ride the session outbox ──
   //
   // A review transition (`resolveReview`'s approve/deny/reject decision, or
@@ -3863,8 +4035,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * run for its owner. Giving catalog runs their own deletion surface remains
    * its own design problem, outside COR-1302 as it was outside AB-241.
    */
-  async function createRunFromRequest(request: CreateRunRequest): Promise<CreatedRunSummary> {
-    validateCreateRunRequest(request);
+  async function createRunFromRequest(
+    request: CreateRunRequest,
+    internal?: {
+      /** A continuation run (COR-1476): it has no prompt, and answers the session's pending input. */
+      readonly continuation?: true;
+      readonly runId?: string;
+    },
+  ): Promise<CreatedRunSummary> {
+    const continuation = internal?.continuation === true;
+    if (!continuation) validateCreateRunRequest(request);
     assertRunAdmissionOpen('run');
 
     if (!runtime.ready) {
@@ -3873,7 +4053,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
 
     const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
-    const runId = runtimeServices.identifiers.next('run');
+    const runId = internal?.runId ?? runtimeServices.identifiers.next('run');
     const agentName = request.agentName ?? BUREAU_AGENT_NAME;
     const requestContext = normalizeRunRequestContext(
       request.requestContext,
@@ -3980,7 +4160,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
       }
 
-      conversation.appendUserMessage(request.message);
+      // A continuation run has no prompt: its first step boundary delivers the
+      // session's pending input as the user turn.
+      if (!continuation) conversation.appendUserMessage(request.message);
 
       // AB-54 usage analytics: resolve agentName/principal deterministically now
       // (before `store.register`, so it's in place before any listRuns()/getRun()
@@ -4018,7 +4200,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ...(durableSteeringStore() === undefined
             ? {}
             : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
-          lastUserMessage: request.message,
+          ...(continuation ? {} : { lastUserMessage: request.message }),
           // Always write these keys (null when absent) so a reused session never
           // inherits a stale cap from a previous run. A conditional spread would leave
           // the old value in place when the request omits the field; null is treated as
@@ -4458,7 +4640,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
         });
 
-        persistSessionUpdate(
+        persistTerminalSession(
           () =>
             saveSession(
               sessionId,
@@ -4517,7 +4699,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
         });
 
-        persistSessionUpdate(
+        persistTerminalSession(
           () =>
             // Persist the conversation carried on the abort event, NOT the
             // launch-time `conversation` closure. On the durable path the workflow
@@ -5100,7 +5282,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
       });
 
-      persistSessionUpdate(
+      persistTerminalSession(
         () =>
           saveSession(
             sessionId,
@@ -5148,7 +5330,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
       });
 
-      persistSessionUpdate(
+      persistTerminalSession(
         // The reattach adapter reconstructs the abort RunResult from the run's
         // final checkpoint and threads it into RunAbortedEvent.conversation, so
         // use that directly instead of re-fetching the checkpoint snapshot.
@@ -5950,7 +6132,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // foreign-input / orphaned-session residue without store.register'ing it.
             orphanCancellations.push({
               runId: handle.id,
-              cancel: durable.engine.cancel(handle.id),
+              cancel: durable.engine.cancel(handle.id).then(async () => {
+                // COR-1476 — a cancelled run owes its session's input the same
+                // reconcile as one that ended on its own.
+                if (ownedSessionId !== undefined) {
+                  await reconcileSessionInputsAfterRunEnd(ownedSessionId, handle.id, 'aborted');
+                }
+                return undefined;
+              }),
             });
           }
           // 'skip' — ownership unknown; leave the run to resume without live visibility.
@@ -5997,6 +6186,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // attempt's run have both been resumed by `recoverAll()` above. Recovery
       // reports what it could not do rather than throwing.
       currentRecoveryPerRunFailures?.push(...(await recoverGoalsAtBoot()));
+    }
+
+    // COR-1476 — recovered runs are reattached and visible as live now, so a
+    // session whose input was left with no run (a process that died between a
+    // run's end and its reconcile) gets its continuation.
+    try {
+      await sessionInputContinuation?.sweep();
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Boot recovery could not sweep the pending session input: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
     }
 
     const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
@@ -6481,6 +6684,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `abortRun` uses — both are the same "run cancellation" outcome from the
     // review lifecycle's perspective.
     if (outcome.status === 'requested') {
+      // Read before anything below can end the run's bookkeeping.
+      const inputSessionId = sessionInputGates.get(runId)?.sessionId;
       await revokePendingApprovalsForRun(runId, {
         status: 'canceled',
         principal: 'system:run-abort',
@@ -6498,6 +6703,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await runTerminalCheckpointCleanup(runId);
       // COR-772 — only a committed cancellation applies the child policy.
       await childTopology.parentCancelled(runId, 'Cancelled via cancelDurableRun');
+      // COR-1476 — no terminal listener runs for a run without a live
+      // `ActiveRun`, so its session's input is reconciled here.
+      if (inputSessionId !== undefined) {
+        await reconcileSessionInputsAfterRunEnd(inputSessionId, runId, 'aborted');
+      }
     }
     return outcome;
   }
@@ -7170,8 +7380,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // own next tick, or a peer's) gets a fresh look at it.
         if (
           entry.kind === 'session.attachment' &&
-          entry.namespace !== REVIEW_AUDIT_OUTBOX_NAMESPACE &&
-          entry.namespace !== SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE
+          entry.namespace !== REVIEW_AUDIT_OUTBOX_NAMESPACE
         ) {
           diagnose({
             level: 'error',
@@ -7815,11 +8024,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * the entry claimed-but-unacknowledged for a later drain to retry,
    * exactly the "leave it pending" behavior a failed write always had.
    *
-   * Only ever called for a `REVIEW_AUDIT_OUTBOX_NAMESPACE` or
-   * `SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE` entry — `drainOutboxPass` stops
-   * the whole pass at (and never claims) any other `session.attachment`
-   * namespace before reaching this function, so there is no "unrecognized
-   * namespace" branch here to duplicate that check.
+   * Only ever called for a `REVIEW_AUDIT_OUTBOX_NAMESPACE` entry —
+   * `drainOutboxPass` stops the whole pass at (and never claims) any other
+   * `session.attachment` namespace before reaching this function, so
+   * there is no "unrecognized namespace" branch here to duplicate that
+   * check.
    */
   async function drainOutboxAttachmentEntry(
     entry: Extract<SessionOutboxEntry, { kind: 'session.attachment' }>,
@@ -7840,14 +8049,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       return 'continue';
     };
-
-    // COR-1476 — `promoteSessionInputs` rides this namespace so its commit is
-    // atomic with the session's own metadata. The promotion is complete in that
-    // commit (the receipt reads `promoted` from session metadata), and retiring
-    // the mailbox command is the delivery gate's job at the next step boundary,
-    // not a replay of this entry, so it is acknowledged here to keep it from
-    // jamming the ordinal-ordered drain behind it.
-    if (entry.namespace === SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE) return acknowledge();
 
     // `REVIEW_AUDIT_OUTBOX_NAMESPACE` IS this bureau's own — this code is
     // the only writer of it, via `reviewAuditOutboxAttachment`, which
@@ -8108,6 +8309,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1476 — the backstop: a session with open input and no live run, one
+      // whose reconcile never ran, gets its continuation here.
+      try {
+        await sessionInputContinuation?.sweep();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual session-input sweep failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       // COR-1477 — before the audit prune, so its clamp reads the advanced floor.
       try {
         await retainEventHistory();
@@ -8320,6 +8533,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic session-outbox drain pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        // COR-1476 — the backstop for a session with open input and no live run.
+        try {
+          await sessionInputContinuation?.sweep();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic session-input sweep failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }
@@ -8756,10 +8980,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *
    * COR-435/COR-1476: on a durably-configured bureau an authorized request to
    * a non-terminal session is admitted to the session's mailbox (`admitted`,
-   * `replayed`, `conflict`, or `backlog-exhausted`). The session's live durable
-   * run appends it to its conversation before its next step generates (or, for
-   * input sent during the last step, in one more step of the same run), once
-   * and in admission order within a run, keyed by the mailbox command; its
+   * `replayed`, `conflict`, or `backlog-exhausted`), and an admitted input is
+   * always answered: by the live run before its next step generates, by one
+   * more step of that run when it arrived during its last step, or by a
+   * continuation run the session starts (see `session-input-continuation.ts`).
+   * Once and in admission order within a run, keyed by the mailbox command; its
    * receipt then reads `promoted`. `steer` and `queue` share that one FIFO
    * path. A bureau with no durable mailbox, or a session id too long to address
    * one, answers `unsupported-capability`.
@@ -8832,7 +9057,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const admission = admitSessionInput({
       storage,
       kv,
-      sessionStore: sessionStoreForInput,
       sessionMailbox,
       sessionId,
       id,
@@ -8842,9 +9066,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       principalBacklogLimit: sessionInputPrincipalBacklogLimit,
       sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
       nowMs: runtimeServices.clock.now(),
-    }).finally(() => {
-      inFlightSessionInputAdmissions.delete(reservationKey);
-    });
+    })
+      .then(async (outcome) => {
+        // COR-1476 — `admitted` promises the input is answered. The session is
+        // listed for the backstop sweep first, then liveness is read again: a run
+        // that ended between the pre-admission check and the admission has already
+        // reconciled without seeing this input, so the reconcile runs here.
+        if (outcome.outcome === 'admitted' && sessionInputContinuation !== undefined) {
+          try {
+            await sessionInputContinuation.noteOpen(sessionId);
+            const live = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
+            if (live.length === 0) await sessionInputContinuation.reconcile(sessionId);
+          } catch (error) {
+            diagnose({
+              level: 'error',
+              scope: 'session-input',
+              message: `[bureau] Could not make sure session "${sessionId}" has a run to answer input "${id}": ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
+        }
+        return outcome;
+      })
+      .finally(() => {
+        inFlightSessionInputAdmissions.delete(reservationKey);
+      });
     inFlightSessionInputAdmissions.set(reservationKey, admission);
     return admission;
   }
@@ -11076,6 +11322,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             message: `[bureau] Error during toolbox shutdown: ${serializeUnknownError(result.reason)}`,
           });
         }
+      }
+
+      // COR-1476 — every run's session input is released: the leases go back to
+      // the mailbox and the unpromoted claims are dropped, so the next boot
+      // delivers them. Shutdown only releases; it never starts a run.
+      for (const [runId, { sessionId }] of sessionInputGates) {
+        await releaseSessionInputs(sessionId, runId);
       }
 
       // AB-363: stop the automatic-profile run-ownership pruning timer, if

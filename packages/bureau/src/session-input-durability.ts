@@ -1,11 +1,11 @@
-import type {
-  SessionInputAdmissionOutcome,
-  SessionInputDeliveryMode,
-  SessionInputPayload,
-  SessionInputPromotion,
-  SessionInputReceipt,
-  SessionInputState,
-  SessionStore,
+import {
+  readSessionInputPromotion,
+  type SessionInputAdmissionOutcome,
+  type SessionInputDeliveryMode,
+  type SessionInputPayload,
+  type SessionInputPromotion,
+  type SessionInputReceipt,
+  type SessionInputState,
 } from '@lostgradient/operative';
 import {
   type ApplicationCommandReceipt,
@@ -14,8 +14,6 @@ import {
   Mailbox,
   type Storage,
 } from '@lostgradient/weft';
-
-import { readSessionInputPromotion } from './session-input-promotion';
 
 /**
  * COR-435 — durable, mailbox-backed `submitSessionInput` admission.
@@ -104,6 +102,22 @@ export const SESSION_INPUT_COMMAND_TIMEOUT_MS = 7 * 86_400_000;
  */
 export const SESSION_INPUT_MAXIMUM_ATTEMPTS = 100;
 
+/**
+ * How long a delivery record outlives its last write: the 7 day command timeout,
+ * plus the day the mailbox retains a terminal record, plus a day's margin. A
+ * record may be deleted only when its command can no longer be claimed by any
+ * run and a replay of its caller's id is answered from the mailbox's retained
+ * record or as a fresh admission with a new command.
+ */
+export const SESSION_INPUT_DELIVERY_RETENTION_MS = 9 * 86_400_000;
+
+/**
+ * The cancellation reason that marks an input no run could be found to answer
+ * (its session can no longer start one). Its receipt reads `rejected`, where any
+ * other cancellation, such as the session's deletion, reads `canceled`.
+ */
+export const SESSION_INPUT_NO_SUCCESSOR_REASON = 'the run ended without a live successor';
+
 /** One session's session-input mailbox — the durable log, FIFO sequencer, and per-session backlog authority. */
 export function createSessionInputMailbox(
   storage: Storage,
@@ -118,6 +132,10 @@ export function createSessionInputMailbox(
     maxBacklog: sessionBacklogLimit,
     commandTimeoutMs: SESSION_INPUT_COMMAND_TIMEOUT_MS,
     maxAttempts: SESSION_INPUT_MAXIMUM_ATTEMPTS,
+    // A released command is due again almost at once: a run that ended hands its
+    // input to the continuation run that starts moments later.
+    retryBackoffMs: 10,
+    maxRetryBackoffMs: 1_000,
     ...(now === undefined ? {} : { now }),
   });
 }
@@ -293,7 +311,9 @@ function receiptState(
     case 'dead-lettered':
       return receipt.failure?.reason === 'deadline-exceeded' ? 'expired' : 'failed';
     case 'cancelled':
-      return 'canceled';
+      return receipt.cancellationReason === SESSION_INPUT_NO_SUCCESSOR_REASON
+        ? 'rejected'
+        : 'canceled';
     case 'rejected':
       return 'failed';
     default:
@@ -331,7 +351,7 @@ async function countOpenCommandsForPrincipal(mailbox: Mailbox, principal: string
  */
 async function reconstructCrossSessionReceipt(
   storage: Storage,
-  sessionStore: Pick<SessionStore, 'load'>,
+  kv: ConditionalTextValueStore,
   originalSessionId: string,
   id: string,
   sessionBacklogLimitForRead: number,
@@ -356,10 +376,7 @@ async function reconstructCrossSessionReceipt(
   // The ORIGINAL session, not the one this admission attempt targets — a
   // session-mismatch conflict's `originalReceipt` must reflect whatever
   // that other record's OWN current state is, promoted or not.
-  const originalSession = await sessionStore.load(originalSessionId);
-  const promotion = originalSession
-    ? readSessionInputPromotion(originalSession.metadata, match.commandId)
-    : undefined;
+  const promotion = await readSessionInputPromotion(kv, originalSessionId, match.commandId);
   return buildReceipt(match, decodeSessionInputKind(match.kind), promotion);
 }
 
@@ -367,7 +384,6 @@ async function reconstructCrossSessionReceipt(
 export interface SessionInputAdmissionAttempt {
   readonly storage: Storage;
   readonly kv: ConditionalTextValueStore;
-  readonly sessionStore: Pick<SessionStore, 'load'>;
   readonly sessionMailbox: Mailbox;
   readonly sessionId: string;
   readonly id: string;
@@ -391,7 +407,6 @@ export async function admitSessionInput(
   const {
     storage,
     kv,
-    sessionStore,
     sessionMailbox,
     sessionId,
     id,
@@ -411,8 +426,7 @@ export async function admitSessionInput(
   // EXISTING record must read this session's CURRENT promotion state, not
   // whatever it was when `submitSessionInput` started.
   async function currentPromotion(commandId: string): Promise<SessionInputPromotion | undefined> {
-    const current = await sessionStore.load(sessionId);
-    return current ? readSessionInputPromotion(current.metadata, commandId) : undefined;
+    return readSessionInputPromotion(kv, sessionId, commandId);
   }
 
   const identity = await claimSessionInputIdentity(kv, principal, id, sessionId, nowMs);
@@ -420,7 +434,7 @@ export async function admitSessionInput(
   if (!identity.matches) {
     const originalReceipt = await reconstructCrossSessionReceipt(
       storage,
-      sessionStore,
+      kv,
       identity.existingSessionId,
       id,
       sessionBacklogLimitForCrossSessionRead,

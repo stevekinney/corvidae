@@ -1,4 +1,8 @@
-import { createAgentSession, createSessionStore, type SessionStore } from '@lostgradient/operative';
+import {
+  createAgentSession,
+  createSessionInputDeliveryStore,
+  createSessionStore,
+} from '@lostgradient/operative';
 import { type ApplicationCommandClaim, resolveStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
@@ -7,12 +11,12 @@ import {
   admitSessionInput,
   createSessionInputMailbox,
   SESSION_INPUT_COMMAND_TIMEOUT_MS,
+  SESSION_INPUT_DELIVERY_RETENTION_MS,
 } from './session-input-durability';
 import {
   createSessionInputDeliveryGate,
   decodeSessionInputCommand,
 } from './session-input-delivery';
-import { readSessionInputPromotion } from './session-input-promotion';
 
 /**
  * COR-1476 — the Bureau half of session-input delivery: what a stored command
@@ -124,7 +128,11 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
 
 async function createFixture() {
   const storage = await resolveStorage({ type: 'memory' });
-  const sessionStore: SessionStore = createSessionStore(textValueStore(storage));
+  const sessionStore = createSessionStore(textValueStore(storage));
+  const deliveryStore = createSessionInputDeliveryStore(textValueStore(storage), {
+    retentionMs: SESSION_INPUT_DELIVERY_RETENTION_MS,
+    nowMs: () => START,
+  });
   const session = createAgentSession({
     id: SESSION_ID,
     agentName: 'agent',
@@ -133,7 +141,7 @@ async function createFixture() {
   await sessionStore.save(session);
   const saved = await sessionStore.load(SESSION_ID);
   if (saved === undefined) throw new Error('fixture session missing');
-  return { storage, sessionStore, incarnation: saved.incarnation };
+  return { storage, sessionStore, deliveryStore, incarnation: saved.incarnation };
 }
 
 describe('session input delivery gate (COR-1476)', () => {
@@ -147,7 +155,6 @@ describe('session input delivery gate (COR-1476)', () => {
     const outcome = await admitSessionInput({
       storage: fixture.storage,
       kv: textValueStore(fixture.storage),
-      sessionStore: fixture.sessionStore,
       sessionMailbox: mailbox,
       sessionId: SESSION_ID,
       id,
@@ -171,8 +178,9 @@ describe('session input delivery gate (COR-1476)', () => {
       runId,
       incarnation: fixture.incarnation,
       mailbox,
-      sessionStore: fixture.sessionStore,
-      nowISO: () => new Date(START).toISOString(),
+      deliveryStore: fixture.deliveryStore,
+      isOwnerLive: () => Promise.resolve(true),
+      now: () => START,
     });
   }
 
@@ -194,14 +202,12 @@ describe('session input delivery gate (COR-1476)', () => {
       delivered.map(({ id, commandId }) => ({
         id,
         commandId,
+        sessionId: SESSION_ID,
+        deliveredAt: new Date(START).toISOString(),
         conversationMessageId: 'message-a',
         providerTurn: 4,
       })),
     );
-    const session = await fixture.sessionStore.load(SESSION_ID);
-    expect(
-      readSessionInputPromotion(session?.metadata ?? {}, delivered[0]!.commandId),
-    ).toBeDefined();
     const capacity = await mailbox.capacity();
     expect(capacity.open).toBe(0);
   });

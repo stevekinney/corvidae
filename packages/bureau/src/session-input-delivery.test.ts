@@ -1,11 +1,12 @@
 import { type GenerateContext, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import type { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
+import { admitSessionInput, createSessionInputMailbox } from './session-input-durability';
 import type { Bureau } from './types';
 
 /**
@@ -257,6 +258,81 @@ describe('createBureau delivers admitted session input at the next step boundary
       });
     } finally {
       hold.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it('still settles an input whose cancellation arrives while the step holding it generates', async () => {
+    const storage = new MemoryStorage();
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const stepOneStarted = deferred();
+    const releaseStepOne = deferred();
+    const prompts: string[][] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: async (context: GenerateContext) => {
+        prompts.push(userTexts(context.conversation));
+        if (context.step === 0) {
+          stepZeroStarted.resolve();
+          await releaseStepZero.promise;
+          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+        }
+        stepOneStarted.resolve();
+        await releaseStepOne.promise;
+        return { content: 'done', toolCalls: [] };
+      },
+      toolbox: createToolbox([nextTool]),
+      storage,
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    try {
+      const run = await bureau.createRun({ message: 'Start', principal: 'alice' });
+      await stepZeroStarted.promise;
+      await bureau.submitSessionInput(run.sessionId, {
+        id: 'input-a',
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: 'cancel me later',
+      });
+      releaseStepZero.resolve();
+      await stepOneStarted.promise;
+
+      // The step already holds the input; the caller cancels it now.
+      const mailbox = createSessionInputMailbox(storage, run.sessionId, 100);
+      const [receipt] = await mailbox.list({ states: ['claimed'], limit: 1 });
+      await mailbox.requestCancellation({
+        commandId: receipt!.commandId,
+        reason: 'changed my mind',
+      });
+      releaseStepOne.resolve();
+      await bureau.waitForDurableRun(run.id);
+
+      // The transcript holds it, so the receipt is promoted even though the
+      // mailbox closed the command as cancelled.
+      expect(prompts[1]).toEqual(['Start', 'cancel me later']);
+      const final = await mailbox.receipt(receipt!.commandId);
+      expect(final?.state).toBe('cancelled');
+      const session = await bureau.getSession(run.sessionId);
+      const replay = await admitSessionInput({
+        storage,
+        kv: textValueStore(storage),
+        sessionMailbox: mailbox,
+        sessionId: run.sessionId,
+        id: 'input-a',
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: { incarnation: session?.incarnation ?? '', payload: 'cancel me later' },
+        principalBacklogLimit: 100,
+        sessionBacklogLimitForCrossSessionRead: 100,
+        nowMs: Date.now(),
+      });
+      expect(replay.outcome).toBe('replayed');
+      if (replay.outcome === 'replayed') expect(replay.receipt.state).toBe('promoted');
+    } finally {
+      releaseStepZero.resolve();
+      releaseStepOne.resolve();
       await bureau.dispose();
     }
   });

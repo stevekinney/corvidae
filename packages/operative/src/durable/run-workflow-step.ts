@@ -110,6 +110,13 @@ export interface RunStepMemoOptions {
    * a continuation message, whose ids and timestamps change on replay.
    */
   readonly delta?: boolean;
+  /**
+   * COR-1476 — the run's step cap. A step that would end the run asks the
+   * session input gate once more only while a step remains for the answer:
+   * input never extends a run past its budget, and what is left waits for the
+   * session's continuation run.
+   */
+  readonly maximumSteps?: number | undefined;
 }
 
 /**
@@ -148,31 +155,28 @@ export function runStepMemo(
       durableOperationKeys: true,
     };
     const sessionInputDeliveries = await deliverSessionInputs(deps, conversation, stepIndex);
+    const canAnswerLateInput =
+      options.maximumSteps === undefined || stepIndex + 1 < options.maximumSteps;
     const runState = createRunState();
     runState.totalUsage = { ...carriedAccumulators.totalUsage };
     runState.cost = carriedAccumulators.cost ? { ...carriedAccumulators.cost } : undefined;
     runState.lastContent = carriedAccumulators.lastContent;
     runState.schemaAttempts = carriedAccumulators.schemaAttempts;
     runState.lastAppliedConfigVersion = carriedAccumulators.lastAppliedConfigVersion;
-    let outcome: Awaited<ReturnType<typeof runStep>>;
-    try {
-      outcome = await runStep(stepDeps, runState, conversation, stepIndex, deps.emitter);
-      // COR-1476 — input admitted while this step generated would otherwise wait
-      // for a boundary that never comes, because the step ends the run. Ask the
-      // gate once more: pending input turns the stop into a continue, as a failed
-      // schema validation does, so the same run answers it, after the reply it
-      // arrived during and in the order admitted.
-      if (outcome.kind === 'stop') {
-        const late = await deliverSessionInputs(deps, conversation, stepIndex);
-        if (late.length > 0) {
-          sessionInputDeliveries.push(...late);
-          const stopped = runState.steps.at(-1);
-          if (stopped !== undefined) stopped.final = false;
-          outcome = { kind: 'continue' };
-        }
+    let outcome = await runStep(stepDeps, runState, conversation, stepIndex, deps.emitter);
+    // COR-1476 — input admitted while this step generated would otherwise wait
+    // for a boundary that never comes, because the step ends the run. Ask the
+    // gate once more: pending input turns the stop into a continue, as a failed
+    // schema validation does, so the same run answers it, after the reply it
+    // arrived during and in the order admitted.
+    if (outcome.kind === 'stop' && canAnswerLateInput) {
+      const late = await deliverSessionInputs(deps, conversation, stepIndex);
+      if (late.length > 0) {
+        sessionInputDeliveries.push(...late);
+        const stopped = runState.steps.at(-1);
+        if (stopped !== undefined) stopped.final = false;
+        outcome = { kind: 'continue' };
       }
-    } finally {
-      deps.options.sessionInput?.stepEnded?.();
     }
     deps.onStepToolbox?.(deps.toolbox);
     const pushed: StepResult | undefined = runState.steps.at(-1);
@@ -264,6 +268,10 @@ async function deliverSessionInputs(
 ): Promise<SessionInputDelivery[]> {
   const gate = deps.options.sessionInput;
   if (gate === undefined) return [];
+  const sessionId = deps.options.sessionId;
+  if (sessionId === undefined) {
+    throw new Error('A run with a session input gate must belong to a session.');
+  }
   const deliveries: SessionInputDelivery[] = [];
   for (const input of await gate.claimPending()) {
     conversation.appendUserMessage(toMessageContent(input.payload), {
@@ -276,6 +284,8 @@ async function deliverSessionInputs(
     deliveries.push({
       id: input.id,
       commandId: input.commandId,
+      sessionId,
+      deliveredAt: (deps.options.runtime ?? createDefaultRuntimeServices()).clock.nowISO(),
       conversationMessageId: message.id,
       providerTurn: stepIndex,
     });

@@ -1,5 +1,6 @@
 import {
   type ApplicationCommandClaim,
+  type ConditionalTextValueStore,
   Engine,
   Mailbox,
   MemoryStorage,
@@ -10,8 +11,7 @@ import {
 } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { Conversation } from 'conversationalist';
-import { createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,31 +19,36 @@ import { z } from 'zod';
 
 import { noToolCalls } from '../conditions/predicates';
 import type { GenerateContext, GenerateFunction } from '../types';
-import { createCheckpointStore } from './checkpoint-store';
+import { type CheckpointStore, createCheckpointStore } from './checkpoint-store';
 import {
   createMailboxSessionInputGate,
   type DecodedSessionInput,
   type MailboxSessionInputGateTimers,
-  type SessionInputDeliveryClaim,
-  type SessionInputDeliveryStore,
 } from './mailbox-session-input-gate';
 import { createRunWorkflow } from './run-workflow';
+import {
+  createSessionInputDeliveryStore,
+  parseSessionInputDeliveries,
+  planSessionInputPromotion,
+  sessionInputDeliveriesKey,
+  type SessionInputDeliveryStore,
+} from './session-input-delivery-store';
 import { createStorageActivities } from './storage-activities';
-import type { DurableRunDeps, SessionInputDelivery, SessionInputGate } from './types';
+import type { DurableRunDeps, SessionInputGate } from './types';
 
 /**
  * COR-1476 — session input admitted while a durable run is live reaches the run
- * at its next step boundary, in admission order, exactly once, across a restart
- * and across concurrent runs.
+ * at its next step boundary, in admission order, exactly once, across a restart,
+ * across concurrent runs, and across a run's termination.
  *
- * The gate under test is the real mailbox-backed one. Bureau supplies the
- * delivery store from its session store; here it is a small durable record in
- * the same backend, which is all the gate needs.
+ * The gate and the delivery store under test are the real ones, over a real
+ * mailbox and the same text-value store the run's checkpoint is written to.
  */
 
 const SESSION_ID = 'session-1';
 const RUN_ID = 'run-session-input-1';
 const DAY_MS = 86_400_000;
+const RETENTION_MS = 9 * DAY_MS;
 
 const nextTool = createTool({
   name: 'next',
@@ -56,13 +61,15 @@ afterEach(async () => {
   await yieldToPortableEventLoop();
 });
 
-function newMailbox(storage: Storage, now?: () => number, commandTimeoutMs?: number): Mailbox {
+function newMailbox(storage: Storage, now?: () => number): Mailbox {
   return new Mailbox({
     storage,
     namespace: 'test.session-input',
     resourceId: SESSION_ID,
+    // Short, as Bureau's session-input mailbox has, so a released command is due again at once.
+    retryBackoffMs: 10,
+    maxRetryBackoffMs: 100,
     ...(now === undefined ? {} : { now }),
-    ...(commandTimeoutMs === undefined ? {} : { commandTimeoutMs }),
   });
 }
 
@@ -76,57 +83,39 @@ function decode(claim: ApplicationCommandClaim): DecodedSessionInput {
   };
 }
 
-interface DeliveryRecord {
-  owner: string;
-  promotion?: { conversationMessageId: string; providerTurn: number };
+function kvOver(storage: Storage): ConditionalTextValueStore {
+  return textValueStore(storage, { disposeUnderlyingStorage: false });
 }
 
-function deliveryStoreOver(storage: Storage): SessionInputDeliveryStore & {
-  read(commandId: string): Promise<DeliveryRecord | undefined>;
-} {
-  const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-  const key = (commandId: string) => `test:delivery:${commandId}`;
-  async function read(commandId: string): Promise<DeliveryRecord | undefined> {
-    const raw = await kv.get(key(commandId));
-    return raw === null ? undefined : (JSON.parse(raw) as DeliveryRecord);
-  }
-  return {
-    read,
-    async claim(owner, commandIds) {
-      const outcomes = new Map<string, SessionInputDeliveryClaim>();
-      for (const commandId of commandIds) {
-        const record = await read(commandId);
-        if (record === undefined) {
-          await kv.conditionalBatch(
-            [{ key: key(commandId), expectedValue: null }],
-            [{ type: 'set', key: key(commandId), value: JSON.stringify({ owner }) }],
-          );
-          outcomes.set(commandId, 'claimed');
-        } else if (record.promotion !== undefined) {
-          outcomes.set(commandId, 'promoted');
-        } else {
-          outcomes.set(commandId, record.owner === owner ? 'owned' : 'foreign');
-        }
-      }
-      return outcomes;
+function deliveryStoreOver(storage: Storage, now: () => number = Date.now) {
+  return createSessionInputDeliveryStore(kvOver(storage), {
+    retentionMs: RETENTION_MS,
+    nowMs: now,
+  });
+}
+
+const alwaysLive = () => Promise.resolve(true);
+
+function gateOver(
+  mailbox: Mailbox,
+  store: SessionInputDeliveryStore,
+  owner = RUN_ID,
+  extra: {
+    timers?: MailboxSessionInputGateTimers;
+    now?: () => number;
+    isOwnerLive?: (runId: string) => Promise<boolean>;
+  } = {},
+): SessionInputGate {
+  return createMailboxSessionInputGate({
+    mailbox,
+    decode,
+    deliveries: {
+      claim: (commandIds) =>
+        store.claim(SESSION_ID, owner, commandIds, extra.isOwnerLive ?? alwaysLive),
     },
-    async promote(deliveries: readonly SessionInputDelivery[]) {
-      for (const delivery of deliveries) {
-        const record = await read(delivery.commandId);
-        if (record?.promotion !== undefined) continue;
-        await kv.set(
-          key(delivery.commandId),
-          JSON.stringify({
-            owner: record?.owner ?? 'unknown',
-            promotion: {
-              conversationMessageId: delivery.conversationMessageId,
-              providerTurn: delivery.providerTurn,
-            },
-          }),
-        );
-      }
-    },
-  };
+    ...(extra.timers === undefined ? {} : { timers: extra.timers }),
+    ...(extra.now === undefined ? {} : { now: extra.now }),
+  });
 }
 
 async function admit(mailbox: Mailbox, id: string, text: string): Promise<string> {
@@ -173,25 +162,31 @@ function makeServices(generate: GenerateFunction, gate?: SessionInputGate): Dura
       toolbox,
       conversation: createConversationHistory(),
       stopWhen: noToolCalls(),
+      sessionId: SESSION_ID,
       ...(gate === undefined ? {} : { sessionInput: gate }),
     },
   };
 }
 
-async function buildEngine(storage: Storage, resolveServices?: () => DurableRunDeps) {
-  const checkpointStore = createCheckpointStore(
-    textValueStore(storage, { disposeUnderlyingStorage: false }),
-  );
+interface EngineOptions {
+  readonly resolveServices?: () => DurableRunDeps;
+  /** Wraps the checkpoint store the workflow and its activities write through. */
+  readonly wrapCheckpoint?: (inner: CheckpointStore) => CheckpointStore;
+}
+
+async function buildEngine(storage: Storage, options: EngineOptions = {}) {
+  const inner = createCheckpointStore(kvOver(storage));
+  const checkpointStore = options.wrapCheckpoint?.(inner) ?? inner;
   const activities = createStorageActivities(checkpointStore);
-  return Engine.create({
+  const engine = await Engine.create({
     storage,
     recover: false,
-    ...(resolveServices === undefined
+    ...(options.resolveServices === undefined
       ? {}
       : {
           resolveWorkflowServices: () => ({
             status: 'available' as const,
-            services: resolveServices(),
+            services: options.resolveServices!(),
           }),
         }),
     workflows: { agentRun: createRunWorkflow(checkpointStore) },
@@ -201,24 +196,39 @@ async function buildEngine(storage: Storage, resolveServices?: () => DurableRunD
       recordStep: activities.recordStep,
     },
   });
+  return { engine, checkpointStore };
 }
 
-type TestEngine = Awaited<ReturnType<typeof buildEngine>>;
+type TestEngine = Awaited<ReturnType<typeof buildEngine>>['engine'];
 
-function startRun(engine: TestEngine, services: DurableRunDeps) {
+function startRun(
+  engine: TestEngine,
+  services: DurableRunDeps,
+  runId = RUN_ID,
+  maximumSteps?: number,
+) {
   return engine.start(
     'agentRun',
-    { runId: RUN_ID, sessionId: SESSION_ID, agentName: '', prompt: 'Start' },
-    { id: RUN_ID, services },
+    {
+      runId,
+      sessionId: SESSION_ID,
+      agentName: '',
+      prompt: 'Start',
+      ...(maximumSteps === undefined ? {} : { maximumSteps }),
+    },
+    { id: runId, services },
   );
 }
 
-function gateOver(storage: Storage, mailbox: Mailbox, owner = RUN_ID): SessionInputGate {
-  return createMailboxSessionInputGate({
-    mailbox,
-    owner,
-    decode,
-    deliveries: deliveryStoreOver(storage),
+/** Holds a checkpoint write that promotes session input, on either side of the commit. */
+function holdingPromotion(hooks: { before?: () => Promise<void>; after?: () => Promise<void> }) {
+  return (inner: CheckpointStore): CheckpointStore => ({
+    ...inner,
+    saveConversation: async (runId, snapshot, promotion) => {
+      if (promotion !== undefined) await hooks.before?.();
+      await inner.saveConversation(runId, snapshot, promotion);
+      if (promotion !== undefined) await hooks.after?.();
+    },
   });
 }
 
@@ -230,6 +240,14 @@ function deferred<T = void>() {
   return { promise, resolve: release };
 }
 
+const never = () => new Promise<void>(() => {});
+
+async function transcriptOf(checkpointStore: CheckpointStore, runId = RUN_ID) {
+  const snapshot = await checkpointStore.loadConversation(runId);
+  if (snapshot === null) throw new Error('no transcript saved');
+  return Conversation.from(snapshot);
+}
+
 describe('session input at the durable step boundary (COR-1476)', () => {
   it('shows input admitted during a step to the model on the next step', async () => {
     const storage = new MemoryStorage();
@@ -238,7 +256,7 @@ describe('session input at the durable step boundary (COR-1476)', () => {
     const releaseStepZero = deferred();
     const prompts: string[][] = [];
 
-    const engine = await buildEngine(storage);
+    const { engine } = await buildEngine(storage);
     try {
       const handle = await startRun(
         engine,
@@ -252,7 +270,7 @@ describe('session input at the durable step boundary (COR-1476)', () => {
             }
             return { content: 'done', toolCalls: [] };
           },
-          gateOver(storage, mailbox),
+          gateOver(mailbox, deliveryStoreOver(storage)),
         ),
       );
       await stepZeroStarted.promise;
@@ -268,38 +286,35 @@ describe('session input at the durable step boundary (COR-1476)', () => {
     }
   });
 
-  it('delivers two inputs in admission order, once each, and promotes them', async () => {
+  it('delivers two inputs in admission order, once each, promoted with the transcript', async () => {
     const storage = new MemoryStorage();
     const mailbox = newMailbox(storage);
-    const deliveries = deliveryStoreOver(storage);
-    const gate = createMailboxSessionInputGate({
-      mailbox,
-      owner: RUN_ID,
-      decode,
-      deliveries,
-    });
+    const store = deliveryStoreOver(storage);
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
     const prompts: string[][] = [];
     const seen: Conversation[] = [];
 
-    const engine = await buildEngine(storage);
+    const { engine } = await buildEngine(storage);
     try {
       const handle = await startRun(
         engine,
-        makeServices(async (context: GenerateContext) => {
-          prompts.push(userTexts(context.conversation));
-          seen.push(context.conversation);
-          if (context.step === 0) {
-            stepZeroStarted.resolve();
-            await releaseStepZero.promise;
-            return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          if (context.step === 1) {
-            return { content: 'still going', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          return { content: 'done', toolCalls: [] };
-        }, gate),
+        makeServices(
+          async (context: GenerateContext) => {
+            prompts.push(userTexts(context.conversation));
+            seen.push(context.conversation);
+            if (context.step === 0) {
+              stepZeroStarted.resolve();
+              await releaseStepZero.promise;
+              return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            if (context.step === 1) {
+              return { content: 'still going', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            return { content: 'done', toolCalls: [] };
+          },
+          gateOver(mailbox, store),
+        ),
       );
       await stepZeroStarted.promise;
       const commandA = await admit(mailbox, 'input-a', 'first');
@@ -314,11 +329,12 @@ describe('session input at the durable step boundary (COR-1476)', () => {
 
       const delivered = sessionInputMessages(seen[2]!);
       expect(delivered.map(({ id }) => id)).toEqual(['input-a', 'input-b']);
-      const commandIds = [commandA, commandB];
+      const records = await store.read(SESSION_ID);
       for (const [index, { messageId }] of delivered.entries()) {
-        const record = await deliveries.read(commandIds[index]!);
-        expect(record?.owner).toBe(RUN_ID);
-        expect(record?.promotion).toEqual({ conversationMessageId: messageId, providerTurn: 1 });
+        const record = records[[commandA, commandB][index]!];
+        expect(record?.runId).toBe(RUN_ID);
+        expect(record?.promotion?.conversationMessageId).toBe(messageId);
+        expect(record?.promotion?.providerTurn).toBe(1);
       }
       expect(await openCount(mailbox)).toBe(0);
     } finally {
@@ -333,7 +349,7 @@ describe('session input at the durable step boundary (COR-1476)', () => {
     const releaseStepZero = deferred();
     const prompts: string[][] = [];
 
-    const engine = await buildEngine(storage);
+    const { engine } = await buildEngine(storage);
     try {
       const handle = await startRun(
         engine,
@@ -347,7 +363,7 @@ describe('session input at the durable step boundary (COR-1476)', () => {
             // No tool calls, so step 0 would end the run.
             return { content: `answer ${context.step}`, toolCalls: [] };
           },
-          gateOver(storage, mailbox),
+          gateOver(mailbox, deliveryStoreOver(storage)),
         ),
       );
       await stepZeroStarted.promise;
@@ -365,11 +381,49 @@ describe('session input at the durable step boundary (COR-1476)', () => {
     }
   });
 
+  it('does not re-ask when a stop is the last step the run may take, and promotes nothing', async () => {
+    const storage = new MemoryStorage();
+    const mailbox = newMailbox(storage);
+    const store = deliveryStoreOver(storage);
+    const stepOneStarted = deferred();
+    const releaseStepOne = deferred();
+
+    const { engine } = await buildEngine(storage);
+    try {
+      const handle = await startRun(
+        engine,
+        makeServices(
+          async (context: GenerateContext) => {
+            if (context.step === 0) {
+              return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            stepOneStarted.resolve();
+            await releaseStepOne.promise;
+            return { content: 'final', toolCalls: [] };
+          },
+          gateOver(mailbox, store),
+        ),
+        RUN_ID,
+        2,
+      );
+      await stepOneStarted.promise;
+      await admit(mailbox, 'input-x', 'too late for this run');
+      releaseStepOne.resolve();
+      const result = (await handle.result()) as { steps: number };
+
+      expect(result.steps).toBe(2);
+      expect(await openCount(mailbox)).toBe(1);
+      expect(await store.read(SESSION_ID)).toEqual({});
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
   it('delivers nothing to a run that has no session input gate', async () => {
     const storage = new MemoryStorage();
     const mailbox = newMailbox(storage);
     await admit(mailbox, 'input-a', 'ignored');
-    const engine = await buildEngine(storage);
+    const { engine } = await buildEngine(storage);
     try {
       const prompts: string[][] = [];
       const handle = await startRun(
@@ -388,108 +442,336 @@ describe('session input at the durable step boundary (COR-1476)', () => {
   });
 });
 
-describe('a crash between a delivering step and its settlement (COR-1476)', () => {
-  /** Runs step 0 to completion, delivers an input at step 1, and "crashes" as step 1 settles. */
-  async function crashWhileSettling(storage: Storage) {
-    const mailbox = newMailbox(storage);
-    const deliveries = deliveryStoreOver(storage);
-    const real = createMailboxSessionInputGate({ mailbox, owner: RUN_ID, decode, deliveries });
-    const settleStarted = deferred();
-    const gate: SessionInputGate = {
-      claimPending: () => real.claimPending(),
-      settle: () => {
-        settleStarted.resolve();
-        return new Promise<void>(() => {});
-      },
-    };
-    const stepZeroStarted = deferred();
-    const releaseStepZero = deferred();
-    const engine = await buildEngine(storage);
-    const handle = await startRun(
-      engine,
-      makeServices(async (context: GenerateContext) => {
-        if (context.step === 0) {
-          stepZeroStarted.resolve();
-          await releaseStepZero.promise;
-          return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-        }
-        return { content: 'step 1', toolCalls: [{ name: 'next', arguments: {} }] };
-      }, gate),
-    );
-    void handle.result().catch(() => {});
-    await stepZeroStarted.promise;
-    const commandId = await admit(mailbox, 'input-a', 'first');
-    releaseStepZero.resolve();
-    await settleStarted.promise;
-    engine[Symbol.dispose]();
-    return { commandId, deliveries };
-  }
-
-  it('does not append the input again on replay, and the promotion lands', async () => {
+describe('two live runs on one session (COR-1476)', () => {
+  it('gives an input to exactly one of them, even when the step outlives the lease', async () => {
     const storage = new MemoryStorage();
-    const { commandId, deliveries } = await crashWhileSettling(storage);
-    const before = await deliveries.read(commandId);
-    expect(before?.promotion).toBeUndefined();
-
-    const prompts: { step: number; texts: string[]; ids: string[] }[] = [];
     const mailbox = newMailbox(storage);
-    const engineB = await buildEngine(storage, () =>
-      makeServices(
-        async (context: GenerateContext) => {
-          prompts.push({
-            step: context.step,
-            texts: userTexts(context.conversation),
-            ids: sessionInputMessages(context.conversation).map(({ id }) => id),
-          });
-          return { content: 'recovered', toolCalls: [] };
-        },
-        createMailboxSessionInputGate({ mailbox, owner: RUN_ID, decode, deliveries }),
-      ),
-    );
+    const store = deliveryStoreOver(storage);
+    const firstStepStarted = deferred();
+    const releaseFirst = deferred();
+    const secondPrompts: string[][] = [];
+    const firstPrompts: string[][] = [];
+
+    const { engine } = await buildEngine(storage);
     try {
-      const handles = await engineB.recoverAll();
-      expect(handles).toHaveLength(1);
-      await handles[0]!.result();
+      const first = await startRun(
+        engine,
+        makeServices(
+          async (context: GenerateContext) => {
+            firstPrompts.push(userTexts(context.conversation));
+            if (context.step === 0) {
+              firstStepStarted.resolve();
+              await releaseFirst.promise;
+              return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            return { content: 'done', toolCalls: [] };
+          },
+          gateOver(mailbox, store, 'run-1'),
+        ),
+        'run-1',
+      );
+      await firstStepStarted.promise;
+      const command = await admit(mailbox, 'input-a', 'only one of you');
 
-      // Step 1 is cached, so only step 2 generates, and it holds the input once.
-      expect(prompts).toEqual([{ step: 2, texts: ['Start', 'first'], ids: ['input-a'] }]);
-      const after = await deliveries.read(commandId);
-      expect(after?.promotion?.providerTurn).toBe(1);
+      // The second run's boundary claims it, and is mid-step with it.
+      const secondStepStarted = deferred();
+      const releaseSecond = deferred();
+      const second = await startRun(
+        engine,
+        makeServices(
+          async (context: GenerateContext) => {
+            secondPrompts.push(userTexts(context.conversation));
+            if (context.step === 0) {
+              secondStepStarted.resolve();
+              await releaseSecond.promise;
+              return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+            }
+            return { content: 'done', toolCalls: [] };
+          },
+          gateOver(mailbox, store, 'run-2'),
+        ),
+        'run-2',
+      );
+      await secondStepStarted.promise;
+      expect(secondPrompts[0]).toEqual(['Start', 'only one of you']);
+
+      // The first run reaches its next boundary while the second still holds it.
+      releaseFirst.resolve();
+      await first.result();
+      releaseSecond.resolve();
+      await second.result();
+
+      expect(firstPrompts.flat()).not.toContain('only one of you');
+      expect(secondPrompts.at(-1)).toEqual(['Start', 'only one of you']);
+      const records = await store.read(SESSION_ID);
+      expect(records[command]?.runId).toBe('run-2');
+      expect(records[command]?.promotion).toBeDefined();
+      expect(await openCount(mailbox)).toBe(0);
     } finally {
-      engineB[Symbol.dispose]();
-    }
-  });
-
-  it('fails the run rather than record a settlement nobody performed when the gate is gone', async () => {
-    const storage = new MemoryStorage();
-    await crashWhileSettling(storage);
-
-    const engineB = await buildEngine(storage, () =>
-      makeServices(async () => ({ content: 'recovered', toolCalls: [] })),
-    );
-    try {
-      const handles = await engineB.recoverAll();
-      expect(handles).toHaveLength(1);
-      let failure: unknown;
-      try {
-        await handles[0]!.result();
-      } catch (error) {
-        failure = error;
-      }
-      expect(String(failure)).toContain('no session input gate');
-    } finally {
-      engineB[Symbol.dispose]();
+      engine[Symbol.dispose]();
     }
   });
 });
 
-describe('session input gate concurrency, ordering, and recovery (COR-1476)', () => {
+describe('a run that ends or crashes mid-delivery (COR-1476)', () => {
+  it('releases an input to the next run when the run is aborted mid-step, which delivers it first', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const mailbox = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage);
+    await admit(mailbox, 'input-a', 'A');
+    await admit(mailbox, 'input-b', 'B');
+    const stepStarted = deferred();
+    const gate = gateOver(mailbox, store, 'run-1', { now: () => now });
+
+    const { engine } = await buildEngine(storage);
+    try {
+      const first = await startRun(
+        engine,
+        makeServices(async () => {
+          stepStarted.resolve();
+          return new Promise<never>(() => {});
+        }, gate),
+        'run-1',
+      );
+      void first.result().catch(() => {});
+      await stepStarted.promise;
+      expect(Object.keys(await store.read(SESSION_ID))).toHaveLength(2);
+
+      // The run ends without consuming either input: its reconcile releases them.
+      await engine.cancel('run-1');
+      await gate.dispose?.();
+      expect(await store.release(SESSION_ID, 'run-1')).toBe(2);
+      expect(await store.read(SESSION_ID)).toEqual({});
+      // Released leases are due again after their short retry backoff.
+      now += 1_000;
+
+      const prompts: string[][] = [];
+      const second = await startRun(
+        engine,
+        makeServices(
+          async (context: GenerateContext) => {
+            prompts.push(userTexts(context.conversation));
+            return { content: 'done', toolCalls: [] };
+          },
+          gateOver(mailbox, store, 'run-3', { now: () => now }),
+        ),
+        'run-3',
+      );
+      await second.result();
+
+      expect(prompts).toEqual([['Start', 'A', 'B']]);
+      const records = Object.values(await store.read(SESSION_ID));
+      expect(records.map((record) => record.runId)).toEqual(['run-3', 'run-3']);
+      expect(records.every((record) => record.promotion !== undefined)).toBe(true);
+      expect(await openCount(mailbox)).toBe(0);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('releases the input when the run ends between the step memo and the checkpoint write', async () => {
+    const storage = new MemoryStorage();
+    const mailbox = newMailbox(storage);
+    const store = deliveryStoreOver(storage);
+    await admit(mailbox, 'input-a', 'A');
+    const writing = deferred();
+    const gate = gateOver(mailbox, store);
+
+    const { engine, checkpointStore } = await buildEngine(storage, {
+      wrapCheckpoint: holdingPromotion({
+        before: () => {
+          writing.resolve();
+          return never();
+        },
+      }),
+    });
+    try {
+      const handle = await startRun(
+        engine,
+        makeServices(async () => ({ content: 'done', toolCalls: [] }), gate),
+      );
+      void handle.result().catch(() => {});
+      await writing.promise;
+      await engine.cancel(RUN_ID);
+
+      // Nothing durable holds the input but the claim, so releasing it is safe.
+      expect(await store.release(SESSION_ID, RUN_ID)).toBe(1);
+      const transcript = await transcriptOf(checkpointStore);
+      expect(sessionInputMessages(transcript)).toEqual([]);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('keeps the input when the run ends after the checkpoint write: transcript and promotion agree', async () => {
+    const storage = new MemoryStorage();
+    const mailbox = newMailbox(storage);
+    const store = deliveryStoreOver(storage);
+    const command = await admit(mailbox, 'input-a', 'A');
+    const written = deferred();
+    const gate = gateOver(mailbox, store);
+
+    const { engine, checkpointStore } = await buildEngine(storage, {
+      wrapCheckpoint: holdingPromotion({
+        after: () => {
+          written.resolve();
+          return never();
+        },
+      }),
+    });
+    try {
+      const handle = await startRun(
+        engine,
+        makeServices(async () => ({ content: 'done', toolCalls: [] }), gate),
+      );
+      void handle.result().catch(() => {});
+      await written.promise;
+      await engine.cancel(RUN_ID);
+
+      expect(await store.release(SESSION_ID, RUN_ID)).toBe(0);
+      const records = await store.read(SESSION_ID);
+      const transcript = await transcriptOf(checkpointStore);
+      const [message] = sessionInputMessages(transcript);
+      expect(message?.id).toBe('input-a');
+      expect(records[command]?.promotion?.conversationMessageId).toBe(message?.messageId);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('a recovered owner whose step never committed appends the input once, not twice', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const mailboxA = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage);
+    await admit(mailboxA, 'input-a', 'A');
+    const stepStarted = deferred();
+
+    const a = await buildEngine(storage);
+    const handleA = await startRun(
+      a.engine,
+      makeServices(
+        async () => {
+          stepStarted.resolve();
+          return new Promise<never>(() => {});
+        },
+        gateOver(mailboxA, store),
+      ),
+    );
+    void handleA.result().catch(() => {});
+    await stepStarted.promise;
+    a.engine[Symbol.dispose]();
+
+    // The lease the dead process held lapses and is released; the recovered
+    // run is the owner.
+    now += 33_000;
+    await newMailbox(storage, () => now).runMaintenance();
+    now += 1_000;
+    const prompts: { texts: string[]; ids: string[] }[] = [];
+    const mailboxB = newMailbox(storage, () => now);
+    const b = await buildEngine(storage, {
+      resolveServices: () =>
+        makeServices(
+          async (context: GenerateContext) => {
+            prompts.push({
+              texts: userTexts(context.conversation),
+              ids: sessionInputMessages(context.conversation).map(({ id }) => id),
+            });
+            return { content: 'recovered', toolCalls: [] };
+          },
+          gateOver(mailboxB, store),
+        ),
+    });
+    try {
+      const handles = await b.engine.recoverAll();
+      expect(handles).toHaveLength(1);
+      await handles[0]!.result();
+      expect(prompts).toEqual([{ texts: ['Start', 'A'], ids: ['input-a'] }]);
+      const records = Object.values(await store.read(SESSION_ID));
+      expect(records.map((record) => record.promotion !== undefined)).toEqual([true]);
+    } finally {
+      b.engine[Symbol.dispose]();
+    }
+  });
+
+  it('a crash after the step memo committed but before the checkpoint write is replayed: the write promotes, nothing is appended again', async () => {
+    const storage = new MemoryStorage();
+    const mailboxA = newMailbox(storage);
+    const store = deliveryStoreOver(storage);
+    const command = await admit(mailboxA, 'input-a', 'A');
+    const writing = deferred();
+    const askedAgain: string[] = [];
+
+    const a = await buildEngine(storage, {
+      wrapCheckpoint: holdingPromotion({
+        before: () => {
+          writing.resolve();
+          return never();
+        },
+      }),
+    });
+    const handleA = await startRun(
+      a.engine,
+      makeServices(
+        async () => ({ content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] }),
+        gateOver(mailboxA, store),
+      ),
+    );
+    void handleA.result().catch(() => {});
+    await writing.promise;
+    a.engine[Symbol.dispose]();
+    const heldRecords = await store.read(SESSION_ID);
+    expect(heldRecords[command]?.promotion).toBeUndefined();
+
+    const mailboxB = newMailbox(storage);
+    const realGate = gateOver(mailboxB, store);
+    const prompts: { step: number; ids: string[] }[] = [];
+    const b = await buildEngine(storage, {
+      resolveServices: () =>
+        makeServices(
+          async (context: GenerateContext) => {
+            prompts.push({
+              step: context.step,
+              ids: sessionInputMessages(context.conversation).map(({ id }) => id),
+            });
+            return { content: 'recovered', toolCalls: [] };
+          },
+          {
+            ...realGate,
+            claimPending: async () => {
+              const claimed = await realGate.claimPending();
+              askedAgain.push(...claimed.map(({ id }) => id));
+              return claimed;
+            },
+          },
+        ),
+    });
+    try {
+      const handles = await b.engine.recoverAll();
+      await handles[0]!.result();
+
+      // Step 0 is cached, so only step 1 generates, and it holds the input once.
+      expect(prompts).toEqual([{ step: 1, ids: ['input-a'] }]);
+      const finalRecords = await store.read(SESSION_ID);
+      const record = finalRecords[command];
+      expect(record?.promotion?.providerTurn).toBe(0);
+      expect(askedAgain).toEqual([]);
+    } finally {
+      b.engine[Symbol.dispose]();
+    }
+  });
+});
+
+describe('session input delivery store and gate (COR-1476)', () => {
   function manualTimers() {
     let callback: (() => void) | undefined;
+    let intervals = 0;
     const timers: MailboxSessionInputGateTimers = {
       setInterval: (tick) => {
         callback = tick;
-        return 1;
+        intervals += 1;
+        return intervals;
       },
       clearInterval: () => {
         callback = undefined;
@@ -511,28 +793,21 @@ describe('session input gate concurrency, ordering, and recovery (COR-1476)', ()
     throw new Error('the condition never became true');
   }
 
-  it('gives an input to one of two runs even when its step outlives the lease', async () => {
+  it('keeps an input with the first run while it renews its lease, and with it after the lease lapses while the owner is live', async () => {
     const storage = new MemoryStorage();
     let now = 1_000_000;
     const mailbox = newMailbox(storage, () => now);
-    const deliveries = deliveryStoreOver(storage);
+    const store = deliveryStoreOver(storage, () => now);
     const { timers, tick } = manualTimers();
-    const runOne = createMailboxSessionInputGate({
-      mailbox,
-      owner: 'run-1',
-      decode,
-      deliveries,
-      timers,
-    });
-    const runTwo = createMailboxSessionInputGate({ mailbox, owner: 'run-2', decode, deliveries });
+    const runOne = gateOver(mailbox, store, 'run-1', { timers });
+    const runTwo = gateOver(mailbox, store, 'run-2');
     await admit(mailbox, 'input-a', 'hello');
 
     const first = await runOne.claimPending();
     expect(first.map(({ id }) => id)).toEqual(['input-a']);
     const initialExpiry = await leaseExpiry(mailbox);
 
-    // Run one's step generates for two minutes. Its lease is renewed on every
-    // tick, so run two never finds the input free.
+    // The step, its checkpoint writes and its cursor save take two minutes.
     for (let elapsed = 0; elapsed < 120_000; elapsed += 10_000) {
       now += 10_000;
       tick();
@@ -540,146 +815,228 @@ describe('session input gate concurrency, ordering, and recovery (COR-1476)', ()
       expect(await runTwo.claimPending()).toEqual([]);
     }
     expect((await leaseExpiry(mailbox)) ?? 0).toBeGreaterThan(initialExpiry ?? 0);
-
     await runOne.settle(
       first.map(({ id, commandId }) => ({
         id,
         commandId,
+        sessionId: SESSION_ID,
+        deliveredAt: new Date(now).toISOString(),
         conversationMessageId: 'message-a',
         providerTurn: 0,
       })),
     );
-    expect(await openCount(mailbox)).toBe(0);
   });
 
-  it('never appends in a second run an input the first run claimed, even if its lease lapses', async () => {
+  it('keeps an input with a live owner after its lease lapses, and releases what it leased', async () => {
     const storage = new MemoryStorage();
     let now = 1_000_000;
     const mailbox = newMailbox(storage, () => now);
-    const deliveries = deliveryStoreOver(storage);
-    // Run one's lease is never renewed: its timers never tick.
+    const store = deliveryStoreOver(storage, () => now);
     const { timers } = manualTimers();
-    const runOne = createMailboxSessionInputGate({
-      mailbox,
-      owner: 'run-1',
-      decode,
-      deliveries,
-      timers,
-    });
-    const runTwo = createMailboxSessionInputGate({ mailbox, owner: 'run-2', decode, deliveries });
+    const runOne = gateOver(mailbox, store, 'run-1', { timers });
+    const runTwo = gateOver(mailbox, store, 'run-2');
     await admit(mailbox, 'input-a', 'hello');
     await admit(mailbox, 'input-b', 'world');
 
-    const first = await runOne.claimPending();
-    expect(first.map(({ id }) => id)).toEqual(['input-a', 'input-b']);
+    const firstClaimed = await runOne.claimPending();
+    expect(firstClaimed.map(({ id }) => id)).toEqual(['input-a', 'input-b']);
 
+    // Run one's lease is never renewed here. It lapses; its owner is still live.
     now += 31_000;
     expect(await runTwo.claimPending()).toEqual([]);
     now += 2_000;
-    // Run two now leases the lapsed input and finds run one's claim on it. It
-    // appends neither input, and releases both so they are not held against run
-    // one, nor does the later one overtake the earlier.
     expect(await runTwo.claimPending()).toEqual([]);
     expect(await openCount(mailbox)).toBe(2);
     expect(await mailbox.list({ states: ['claimed'], limit: 10 })).toEqual([]);
+    expect(Object.values(await store.read(SESSION_ID)).map((record) => record.runId)).toEqual([
+      'run-1',
+      'run-1',
+    ]);
   });
 
-  it('delivers an input again to the run that claimed it when the step that appended it was lost', async () => {
+  it('waits for a crashed owner and takes the input over once the owner is no longer live', async () => {
     const storage = new MemoryStorage();
     let now = 1_000_000;
     const mailbox = newMailbox(storage, () => now);
-    const deliveries = deliveryStoreOver(storage);
-    const before = createMailboxSessionInputGate({
-      mailbox,
-      owner: RUN_ID,
-      decode,
-      deliveries,
-      timers: manualTimers().timers,
-    });
-    await admit(mailbox, 'input-a', 'first');
-    const firstClaim = await before.claimPending();
-    expect(firstClaim.map(({ id }) => id)).toEqual(['input-a']);
+    const store = deliveryStoreOver(storage, () => now);
+    await admit(mailbox, 'input-a', 'hello');
+    const ownerGate = gateOver(mailbox, store, 'run-1', { timers: manualTimers().timers });
+    const [claimed] = await ownerGate.claimPending();
 
-    // The process died before the step was checkpointed. Its replacement is the
-    // same run, so the claim is its own.
-    const after = createMailboxSessionInputGate({ mailbox, owner: RUN_ID, decode, deliveries });
-    expect(await after.claimPending()).toEqual([]);
-    now += 31_000;
-    expect(await after.claimPending()).toEqual([]);
+    let ownerLive = true;
+    const peer = gateOver(mailbox, store, 'run-2', { isOwnerLive: async () => ownerLive });
+    now += 33_000;
+    expect(await peer.claimPending()).toEqual([]);
     now += 2_000;
-    const retried = await after.claimPending();
-    expect(retried.map(({ id }) => id)).toEqual(['input-a']);
+    expect(await peer.claimPending()).toEqual([]);
+
+    // The owner is cancelled by recovery: its record can be taken over.
+    ownerLive = false;
+    now += 2_000;
+    const taken = await peer.claimPending();
+    expect(taken.map(({ id }) => id)).toEqual(['input-a']);
+    const takenRecords = await store.read(SESSION_ID);
+    expect(takenRecords[claimed!.commandId]?.runId).toBe('run-2');
   });
 
-  it('retires a command that was promoted before the crash, whichever gate leased it', async () => {
+  it('writes records only for the deliverable prefix', async () => {
+    const storage = new MemoryStorage();
+    const mailbox = newMailbox(storage);
+    const store = deliveryStoreOver(storage);
+    const commandOne = await admit(mailbox, 'input-1', 'one');
+    const commandTwo = await admit(mailbox, 'input-2', 'two');
+    const commandThree = await admit(mailbox, 'input-3', 'three');
+    // Another live run is already delivering the second command.
+    await store.claim(SESSION_ID, 'run-1', [commandTwo], alwaysLive);
+
+    const delivered = await gateOver(mailbox, store, 'run-2').claimPending();
+
+    expect(delivered.map(({ id }) => id)).toEqual(['input-1']);
+    const records = await store.read(SESSION_ID);
+    expect(records[commandOne]?.runId).toBe('run-2');
+    expect(records[commandTwo]?.runId).toBe('run-1');
+    expect(records[commandThree]).toBeUndefined();
+  });
+
+  it('prunes a record only past retention, and by then the mailbox has dead-lettered its command', async () => {
     const storage = new MemoryStorage();
     let now = 1_000_000;
     const mailbox = newMailbox(storage, () => now);
-    const deliveries = deliveryStoreOver(storage);
+    const store = deliveryStoreOver(storage, () => now);
+    const command = await admit(mailbox, 'input-a', 'hello');
+    await store.claim(SESSION_ID, 'run-1', [command], alwaysLive);
+    const kv = kvOver(storage);
+    const key = sessionInputDeliveriesKey(SESSION_ID);
+    const claimedRaw = await kv.get(key);
+    await kv.set(
+      key,
+      JSON.stringify(
+        planSessionInputPromotion(parseSessionInputDeliveries(claimedRaw), 'run-1', [
+          {
+            id: 'input-a',
+            commandId: command,
+            sessionId: SESSION_ID,
+            deliveredAt: new Date(now).toISOString(),
+            conversationMessageId: 'message-a',
+            providerTurn: 0,
+          },
+        ]),
+      ),
+    );
+
+    // The same moment every record is written, a claim elsewhere prunes.
+    now += RETENTION_MS - 1;
+    await store.claim(SESSION_ID, 'run-1', [], alwaysLive);
+    expect(Object.keys(await store.read(SESSION_ID))).toEqual([command]);
+
+    now += 2;
+    await store.claim(SESSION_ID, 'run-1', ['unrelated'], alwaysLive);
+    expect(Object.keys(await store.read(SESSION_ID))).not.toContain(command);
+
+    // The command it described can no longer be claimed by any run.
+    await mailbox.runMaintenance();
+    expect(await mailbox.claim()).toEqual({ status: 'empty' });
+  });
+
+  it('settles by acknowledging only, and a later boundary retires a promoted but unacknowledged command', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const mailbox = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const kv = kvOver(storage);
     const before = createMailboxSessionInputGate({
       mailbox,
-      owner: RUN_ID,
       decode,
-      deliveries,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, RUN_ID, ids, alwaysLive) },
       timers: manualTimers().timers,
     });
     await admit(mailbox, 'input-a', 'first');
     const [claimed] = await before.claimPending();
-    // Promoted, then the process died before the lease could be acknowledged.
-    await deliveries.promote([
-      {
-        id: claimed!.id,
-        commandId: claimed!.commandId,
-        conversationMessageId: 'message-a',
-        providerTurn: 3,
-      },
-    ]);
+
+    // Promoted with the transcript, then the process died before acknowledging.
+    const key = sessionInputDeliveriesKey(SESSION_ID);
+    await kv.set(
+      key,
+      JSON.stringify(
+        planSessionInputPromotion(parseSessionInputDeliveries(await kv.get(key)), RUN_ID, [
+          {
+            id: claimed!.id,
+            commandId: claimed!.commandId,
+            sessionId: SESSION_ID,
+            deliveredAt: new Date(now).toISOString(),
+            conversationMessageId: 'message-a',
+            providerTurn: 3,
+          },
+        ]),
+      ),
+    );
     expect(await openCount(mailbox)).toBe(1);
 
-    const after = createMailboxSessionInputGate({ mailbox, owner: 'run-2', decode, deliveries });
-    now += 31_000;
+    const after = gateOver(mailbox, store, 'run-2');
+    now += 33_000;
     expect(await after.claimPending()).toEqual([]);
     now += 2_000;
     expect(await after.claimPending()).toEqual([]);
     expect(await openCount(mailbox)).toBe(0);
+
+    // Settling writes nothing durable.
+    const valueBefore = await kv.get(key);
+    await after.settle([]);
+    expect(await kv.get(key)).toBe(valueBefore);
   });
 
-  it('returns nothing while an earlier input is still leased, so a later one never overtakes it', async () => {
+  it('never delivers an input out of order while an earlier one is leased', async () => {
     const storage = new MemoryStorage();
     const mailbox = newMailbox(storage);
-    const gate = gateOver(storage, mailbox);
+    const store = deliveryStoreOver(storage);
+    const owner = gateOver(mailbox, store, 'run-1', { timers: manualTimers().timers });
     await admit(mailbox, 'input-a', 'first');
-
-    const claimedFirst = await gate.claimPending();
+    const claimedFirst = await owner.claimPending();
     expect(claimedFirst.map(({ id }) => id)).toEqual(['input-a']);
+
     await admit(mailbox, 'input-b', 'second');
-    expect(await gate.claimPending()).toEqual([]);
+    expect(await gateOver(mailbox, store, 'run-2').claimPending()).toEqual([]);
+    // The holder itself may ask again, as the final-step ask does.
+    const again = await owner.claimPending();
+    expect(again.map(({ id }) => id)).toEqual(['input-b']);
   });
 
-  it("delivers a caller's reused input id after the mailbox retired the first record", async () => {
+  it("delivers a caller's reused input id as a new input once the mailbox retired the first record", async () => {
     const storage = new MemoryStorage();
     let now = 1_000_000;
     const mailbox = newMailbox(storage, () => now);
-    const deliveries = deliveryStoreOver(storage);
-    const gate = createMailboxSessionInputGate({
-      mailbox,
-      owner: RUN_ID,
-      decode,
-      deliveries,
-      timers: manualTimers().timers,
-    });
+    const store = deliveryStoreOver(storage, () => now);
+    const gate = gateOver(mailbox, store, RUN_ID, { timers: manualTimers().timers });
     const firstCommand = await admit(mailbox, 'input-a', 'first');
     const [first] = await gate.claimPending();
+    const kv = kvOver(storage);
+    const key = sessionInputDeliveriesKey(SESSION_ID);
+    await kv.set(
+      key,
+      JSON.stringify(
+        planSessionInputPromotion(parseSessionInputDeliveries(await kv.get(key)), RUN_ID, [
+          {
+            id: first!.id,
+            commandId: first!.commandId,
+            sessionId: SESSION_ID,
+            deliveredAt: new Date(now).toISOString(),
+            conversationMessageId: 'message-a',
+            providerTurn: 0,
+          },
+        ]),
+      ),
+    );
     await gate.settle([
       {
         id: first!.id,
         commandId: first!.commandId,
+        sessionId: SESSION_ID,
+        deliveredAt: new Date(now).toISOString(),
         conversationMessageId: 'message-a',
         providerTurn: 0,
       },
     ]);
 
-    // A day later the mailbox has retired the record and the id is the caller's again.
     now += 2 * DAY_MS;
     await mailbox.runMaintenance();
     const secondCommand = await admit(mailbox, 'input-a', 'something new');
@@ -694,7 +1051,7 @@ describe('session input gate concurrency, ordering, and recovery (COR-1476)', ()
   it('rejects a malformed input without retry and still delivers the one behind it', async () => {
     const storage = new MemoryStorage();
     const mailbox = newMailbox(storage);
-    const gate = gateOver(storage, mailbox);
+    const gate = gateOver(mailbox, deliveryStoreOver(storage));
     await mailbox.admit({
       caller: 'alice',
       target: SESSION_ID,
@@ -710,22 +1067,42 @@ describe('session input gate concurrency, ordering, and recovery (COR-1476)', ()
     expect(poison?.idempotencyKey).toBe('poison');
   });
 
-  it('stops renewing leases once the step ends and when it is disposed', async () => {
+  it('keeps renewing until the lease is acknowledged or the gate is disposed, then leaves nothing running', async () => {
     const storage = new MemoryStorage();
     const mailbox = newMailbox(storage);
+    const store = deliveryStoreOver(storage);
     const { timers, isRunning } = manualTimers();
-    const gate = createMailboxSessionInputGate({
-      mailbox,
-      owner: RUN_ID,
-      decode,
-      deliveries: deliveryStoreOver(storage),
-      timers,
-    });
+    const gate = gateOver(mailbox, store, RUN_ID, { timers });
     await admit(mailbox, 'input-a', 'first');
-    await gate.claimPending();
+    const claimed = await gate.claimPending();
     expect(isRunning()).toBe(true);
-    gate.stepEnded?.();
+
+    await gate.dispose?.();
     expect(isRunning()).toBe(false);
+    // The lease went back to the mailbox for whoever reaches a boundary next.
+    const [receipt] = await mailbox.list({ limit: 10 });
+    expect(receipt?.state).not.toBe('claimed');
+    expect(claimed).toHaveLength(1);
+  });
+
+  it('acknowledges from cancellation-requested, and never claims a command past its deadline', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const mailbox = newMailbox(storage, () => now);
+    const commandId = await admit(mailbox, 'input-a', 'first');
+    const claimResult = await mailbox.claim();
+    if (claimResult.status !== 'claimed') throw new Error('expected a claim');
+    await mailbox.requestCancellation({ commandId, reason: 'test' });
+    const settled = await mailbox.acknowledge({
+      commandId,
+      attemptToken: claimResult.claim.attemptToken,
+    });
+    expect(settled.status).toBe('settled');
+
+    await admit(mailbox, 'input-b', 'second');
+    now += 8 * DAY_MS;
+    await mailbox.runMaintenance();
+    expect(await mailbox.claim()).toEqual({ status: 'empty' });
   });
 });
 
@@ -752,9 +1129,9 @@ describe.each<StorageKind>(['sqlite', 'lmdb'])(
       const storageA = await resolveStorage(configuration);
       const mailboxA = newMailbox(storageA);
       const stepOneStarted = deferred();
-      const engineA = await buildEngine(storageA);
+      const a = await buildEngine(storageA);
       const handleA = await startRun(
-        engineA,
+        a.engine,
         makeServices(
           async (context: GenerateContext) => {
             if (context.step === 0) {
@@ -763,33 +1140,34 @@ describe.each<StorageKind>(['sqlite', 'lmdb'])(
             stepOneStarted.resolve();
             return new Promise<never>(() => {});
           },
-          gateOver(storageA, mailboxA),
+          gateOver(mailboxA, deliveryStoreOver(storageA)),
         ),
       );
       void handleA.result().catch(() => {});
       await stepOneStarted.promise;
       const commandA = await admit(mailboxA, 'input-a', 'first');
       const commandB = await admit(mailboxA, 'input-b', 'second');
-      engineA[Symbol.dispose]();
+      a.engine[Symbol.dispose]();
       mailboxA.dispose();
       storageA[Symbol.dispose]();
 
       // Engine B: a fresh process on the same backend recovers the run.
       const storageB = await resolveStorage(configuration);
       const mailboxB = newMailbox(storageB);
-      const deliveries = deliveryStoreOver(storageB);
+      const store = deliveryStoreOver(storageB);
       const generatedPrompts: { step: number; conversation: Conversation }[] = [];
-      const engineB = await buildEngine(storageB, () =>
-        makeServices(
-          async (context: GenerateContext) => {
-            generatedPrompts.push({ step: context.step, conversation: context.conversation });
-            return { content: 'recovered', toolCalls: [] };
-          },
-          createMailboxSessionInputGate({ mailbox: mailboxB, owner: RUN_ID, decode, deliveries }),
-        ),
-      );
+      const b = await buildEngine(storageB, {
+        resolveServices: () =>
+          makeServices(
+            async (context: GenerateContext) => {
+              generatedPrompts.push({ step: context.step, conversation: context.conversation });
+              return { content: 'recovered', toolCalls: [] };
+            },
+            gateOver(mailboxB, store),
+          ),
+      });
       try {
-        const handles = await engineB.recoverAll();
+        const handles = await b.engine.recoverAll();
         expect(handles).toHaveLength(1);
         const result = (await handles[0]!.result()) as { steps: number };
 
@@ -800,16 +1178,15 @@ describe.each<StorageKind>(['sqlite', 'lmdb'])(
 
         const delivered = sessionInputMessages(conversation);
         expect(delivered.map(({ id }) => id)).toEqual(['input-a', 'input-b']);
+        const records = await store.read(SESSION_ID);
         for (const [index, { messageId }] of delivered.entries()) {
-          const record = await deliveries.read([commandA, commandB][index]!);
-          expect(record?.promotion).toEqual({
-            conversationMessageId: messageId,
-            providerTurn: 1,
-          });
+          const record = records[[commandA, commandB][index]!];
+          expect(record?.promotion?.conversationMessageId).toBe(messageId);
+          expect(record?.promotion?.providerTurn).toBe(1);
         }
         expect(await openCount(mailboxB)).toBe(0);
       } finally {
-        engineB[Symbol.dispose]();
+        b.engine[Symbol.dispose]();
         mailboxB.dispose();
         storageB[Symbol.dispose]();
       }

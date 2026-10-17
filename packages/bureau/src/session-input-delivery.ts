@@ -3,13 +3,12 @@ import {
   type DecodedSessionInput,
   type MailboxSessionInputGateTimers,
   parseSessionInputPayload,
+  type SessionInputDeliveryStore,
   type SessionInputGate,
-  type SessionStore,
 } from '@lostgradient/operative';
 import type { ApplicationCommandClaim, Mailbox } from '@lostgradient/weft';
 
 import { decodeSessionInputKind, type PersistedSessionInput } from './session-input-durability';
-import { claimSessionInputDeliveries, promoteSessionInputs } from './session-input-promotion';
 
 /** What {@link createSessionInputDeliveryGate} reads and writes for one run. */
 export interface SessionInputDeliveryOptions {
@@ -20,11 +19,13 @@ export interface SessionInputDeliveryOptions {
   readonly incarnation: string;
   /** The session's session-input mailbox, the same instance admission writes to. */
   readonly mailbox: Mailbox;
-  readonly sessionStore: SessionStore;
-  readonly nowISO: () => string;
+  readonly deliveryStore: SessionInputDeliveryStore;
+  /** Whether a run is live: one that will replay or re-run the step that appended its input. */
+  readonly isOwnerLive: (runId: string) => Promise<boolean>;
+  readonly now: () => number;
   readonly timers?: MailboxSessionInputGateTimers | undefined;
-  readonly onRenewalError?: ((error: unknown) => void) | undefined;
-  /** Stops the gate keeping its leases alive once it aborts (the bureau shutting down). */
+  readonly onError?: ((error: unknown) => void) | undefined;
+  /** Disposes the gate when it aborts (the bureau shutting down). */
   readonly signal?: AbortSignal | undefined;
 }
 
@@ -71,12 +72,11 @@ export function decodeSessionInputCommand(
  * session, so input `submitSessionInput` admitted reaches the run at its next
  * step boundary.
  *
- * Operative's mailbox gate owns the claim, lease, and settle protocol. This
+ * Operative's mailbox gate owns the claim, lease, and retire protocol. This
  * supplies the two Bureau-specific halves of it: how an admitted command decodes
  * ({@link decodeSessionInputCommand}), and where delivery is recorded: the
- * session's own metadata, keyed by the mailbox command (see
- * `session-input-promotion.ts`), so the record that decides an input must not be
- * delivered twice is the same one that makes its receipt read `promoted`.
+ * session's delivery store, keyed by the mailbox command, which also holds the
+ * promotion the checkpoint write commits with the transcript.
  *
  * Delivery does not honour a record's `expiresAt` or `supersedes`: neither has a
  * terminal state recorded anywhere yet, so an expired or superseded input is
@@ -85,19 +85,16 @@ export function decodeSessionInputCommand(
 export function createSessionInputDeliveryGate(
   options: SessionInputDeliveryOptions,
 ): SessionInputGate {
-  const { sessionId, runId, incarnation, mailbox, sessionStore, nowISO } = options;
+  const { sessionId, runId, incarnation, mailbox, deliveryStore, isOwnerLive } = options;
   return createMailboxSessionInputGate({
     mailbox,
-    owner: runId,
     decode: (claim) => decodeSessionInputCommand(claim, incarnation),
     deliveries: {
-      claim: (owner, commandIds) =>
-        claimSessionInputDeliveries(sessionStore, sessionId, owner, commandIds, nowISO),
-      promote: (deliveries) =>
-        promoteSessionInputs(sessionStore, sessionId, runId, deliveries, nowISO),
+      claim: (commandIds) => deliveryStore.claim(sessionId, runId, commandIds, isOwnerLive),
     },
+    now: options.now,
     timers: options.timers,
-    onRenewalError: options.onRenewalError,
+    onError: options.onError,
     signal: options.signal,
   });
 }

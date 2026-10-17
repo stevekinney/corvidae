@@ -7,7 +7,7 @@ export { reattachDurableActiveRun } from './active-run-reattach';
 export { resumeDurableRunResult, startDurableRunResult } from './active-run-result-entrypoints';
 export type { StartDurableRunResultOptions } from './active-run-result-entrypoints';
 export { createCheckpointStore } from './checkpoint-store';
-export type { CheckpointStore } from './checkpoint-store';
+export type { CheckpointStore, SessionInputPromotionWrite } from './checkpoint-store';
 export {
   buildSignalContinuationInput,
   buildWakeupContinuationInput,
@@ -77,10 +77,9 @@ export {
 export { createMailboxSessionInputGate } from './mailbox-session-input-gate';
 export type {
   DecodedSessionInput,
+  MailboxSessionInputDeliveries,
   MailboxSessionInputGateOptions,
   MailboxSessionInputGateTimers,
-  SessionInputDeliveryClaim,
-  SessionInputDeliveryStore,
 } from './mailbox-session-input-gate';
 export { readDurableRunResult } from './read-run-result';
 export type { DurableRunReading, ReadDurableRunResultOptions } from './read-run-result';
@@ -102,6 +101,21 @@ export type {
   ScheduledAgentRunInput,
   SchedulingEngine,
 } from './schedule-agent';
+export {
+  createSessionInputDeliveryStore,
+  parseSessionInputDeliveries,
+  planSessionInputPromotion,
+  pruneSessionInputDeliveries,
+  readSessionInputPromotion,
+  sessionInputDeliveriesKey,
+} from './session-input-delivery-store';
+export type {
+  SessionInputDeliveryClaim,
+  SessionInputDeliveryRecord,
+  SessionInputDeliveryRecords,
+  SessionInputDeliveryStore,
+  SessionInputDeliveryStoreOptions,
+} from './session-input-delivery-store';
 export { parseSessionInputPayload } from './session-input-payload';
 export { createStorageActivities } from './storage-activities';
 export {

@@ -12,14 +12,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { stopWhen } from '@lostgradient/operative';
+import { createSessionInputDeliveryStore, stopWhen } from '@lostgradient/operative';
+import { resolveStorage, textValueStore } from '@lostgradient/weft';
 import { HANG_GUARD_MILLISECONDS, spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
-import { SESSION_INPUT_DELIVERIES_METADATA_KEY } from './session-input-promotion';
+import { SESSION_INPUT_DELIVERY_RETENTION_MS } from './session-input-durability';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
@@ -105,24 +106,26 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
       try {
         await recovering.waitForRecovery?.();
         await recovering.waitForDurableRun(runId);
-        const session = await recovering.getSession(sessionId);
-        const records = session?.metadata[SESSION_INPUT_DELIVERIES_METADATA_KEY];
-        const promoted =
-          typeof records === 'object' && records !== null && !Array.isArray(records)
-            ? Object.values(records).filter(
-                (record) =>
-                  typeof record === 'object' &&
-                  record !== null &&
-                  !Array.isArray(record) &&
-                  (record as Record<string, unknown>)['promotion'] !== undefined,
-              )
-            : [];
         // Step 0 was checkpointed by the child, so only step 1 generates again,
         // and it sees each input exactly once, oldest first.
         expect(prompts).toEqual([{ step: 1, texts: ['Start', 'first', 'second'] }]);
-        expect(promoted).toHaveLength(2);
       } finally {
         await recovering.dispose();
+      }
+
+      // Both inputs are promoted, by the transcript write of the step that held them.
+      const storage = await resolveStorage({ type: backend, path: storagePath });
+      try {
+        const records = await createSessionInputDeliveryStore(
+          textValueStore(storage, { disposeUnderlyingStorage: false }),
+          { retentionMs: SESSION_INPUT_DELIVERY_RETENTION_MS, nowMs: Date.now },
+        ).read(sessionId);
+        expect(Object.values(records).map((record) => record.promotion !== undefined)).toEqual([
+          true,
+          true,
+        ]);
+      } finally {
+        storage[Symbol.dispose]();
       }
     } finally {
       remove();
