@@ -1,134 +1,197 @@
-import { linkSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dlopen, FFIType, read } from 'bun:ffi';
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  ftruncateSync,
+  openSync,
+  readFileSync,
+  writeSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
-import { errorCode } from './error-code.ts';
-import { BungalowFilesystemError, BungalowLockedError } from './errors.ts';
+import { errorCode, sanitizeCause } from './error-code.ts';
+import {
+  BungalowError,
+  BungalowFilesystemError,
+  BungalowLockedError,
+  BungalowUnsupportedError,
+} from './errors.ts';
 
 const LOCK_FILE = 'lock';
-const MAXIMUM_RECLAIM_ATTEMPTS = 8;
+const LOCK_EXCLUSIVE = 2;
+const LOCK_NON_BLOCKING = 4;
+/** `EWOULDBLOCK`, which is `EAGAIN`: 35 on macOS, 11 on Linux. */
+const WOULD_BLOCK = { darwin: 35, linux: 11 } as const;
+const HOLDER_READ_ATTEMPTS = 50;
+const HOLDER_READ_INTERVAL_MILLISECONDS = 10;
 
-/** Whether a process with this identifier exists. A process we may not signal still exists. */
-function isProcessAlive(processIdentifier: number): boolean {
+/** What asking the kernel for the lock came to. */
+export type LockAttempt = 'acquired' | 'contended' | { readonly errno: number };
+
+/** The calls the lock makes, behind one seam so a test can describe a host that fails them. */
+export type LockOperations = {
+  tryLock(descriptor: number): LockAttempt;
+};
+
+type NativeLock = LockOperations;
+
+let native: NativeLock | undefined;
+
+/**
+ * `flock(2)` through `bun:ffi`, which Bun's own filesystem API does not expose. The lock belongs to
+ * the open file description, so a second descriptor opened on the same file conflicts with the
+ * first even inside one process, the kernel drops it when the last descriptor closes or the
+ * process dies, and a child process does not inherit it (Bun opens descriptors close-on-exec).
+ */
+function loadNativeLock(): NativeLock {
+  if (native !== undefined) return native;
+  const platform = process.platform;
+  if (platform !== 'darwin' && platform !== 'linux') {
+    throw new BungalowUnsupportedError(
+      `Bungalow needs flock(2) and supports macOS and Linux, not ${platform}.`,
+    );
+  }
+  const flockDefinition = { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 } as const;
+  const errnoDefinition = { args: [], returns: FFIType.ptr } as const;
+  let flock: (descriptor: number, operation: number) => number;
+  let errnoLocation: () => Parameters<typeof read.i32>[0] | null;
   try {
-    process.kill(processIdentifier, 0);
-    return true;
+    if (platform === 'darwin') {
+      const { symbols } = dlopen('libSystem.B.dylib', {
+        flock: flockDefinition,
+        __error: errnoDefinition,
+      });
+      flock = symbols.flock;
+      errnoLocation = symbols['__error'];
+    } else {
+      const { symbols } = dlopen('libc.so.6', {
+        flock: flockDefinition,
+        __errno_location: errnoDefinition,
+      });
+      flock = symbols.flock;
+      errnoLocation = symbols['__errno_location'];
+    }
   } catch (error) {
-    return errorCode(error) !== 'ESRCH';
+    throw new BungalowUnsupportedError('Bungalow could not load the C library for flock(2).', {
+      cause: sanitizeCause(error),
+    });
   }
+  native = {
+    tryLock(descriptor) {
+      if (flock(descriptor, LOCK_EXCLUSIVE | LOCK_NON_BLOCKING) === 0) return 'acquired';
+      const location = errnoLocation();
+      const errno = location === null ? -1 : read.i32(location);
+      return errno === WOULD_BLOCK[platform] ? 'contended' : { errno };
+    },
+  };
+  return native;
 }
 
-function unlinkQuietly(path: string): void {
-  try {
-    unlinkSync(path);
-  } catch {
-    // Already gone, or not ours to remove: either way there is nothing further to do.
-  }
+function wrap(description: string, error: unknown): never {
+  if (error instanceof BungalowError) throw error;
+  throw new BungalowFilesystemError(`Could not ${description}.`, {
+    cause: sanitizeCause(error),
+  });
 }
 
-/** The raw lock file text, or `undefined` when the lock is absent. */
-function readLockText(path: string): string | undefined {
+/** The process identifier on the first line of the lock file, if it holds one. */
+function readHolder(lockPath: string): number | undefined {
+  let text: string;
   try {
-    return readFileSync(path, 'utf8');
+    text = readFileSync(lockPath, 'utf8');
   } catch (error) {
     if (errorCode(error) === 'ENOENT') return undefined;
-    throw error;
+    return wrap('read the lock file', error);
   }
+  const firstLine = text.split('\n', 1)[0] ?? '';
+  if (!/^\d+$/.test(firstLine)) return undefined;
+  const holder = Number(firstLine);
+  return Number.isSafeInteger(holder) && holder > 0 ? holder : undefined;
 }
 
-function parseHolder(text: string): number | undefined {
-  const holder = /^(\d+)\n?$/.exec(text)?.[1];
-  if (holder === undefined) return undefined;
-  const processIdentifier = Number(holder);
-  return Number.isSafeInteger(processIdentifier) && processIdentifier > 0
-    ? processIdentifier
-    : undefined;
+/**
+ * A holder takes the kernel lock and only then writes its identifier, so a contender that loses
+ * can find the file empty or still naming the previous holder. Reading a few times closes most of
+ * that window; the identifier is advisory either way.
+ */
+function readHolderAfterContention(lockPath: string): number | undefined {
+  let holder = readHolder(lockPath);
+  for (let attempt = 1; holder === undefined && attempt < HOLDER_READ_ATTEMPTS; attempt += 1) {
+    Bun.sleepSync(HOLDER_READ_INTERVAL_MILLISECONDS);
+    holder = readHolder(lockPath);
+  }
+  return holder;
 }
 
 export type RootLock = { release(): void };
 
 /**
- * Take the root's single-instance lock. The lock file holds the holder's process identifier.
+ * Take the root's single-instance lock: an exclusive, non-blocking `flock` on `<root>/lock`.
  *
- * The file is created by hard-linking a fully written temporary file, so creation is atomic and a
- * reader never sees a half-written lock. When the file exists and its holder process is gone (or
- * the text is not an identifier, which only corruption produces), the stale lock is renamed away
- * and creation is retried. After the rename the text is read again: if it is no longer the stale
- * text, a live holder won a race between our read and our rename, and that lock is linked back.
- * A process identifier that the operating system has since reused for an unrelated process reads
- * as alive, so a stale lock can outlast its holder; the error names the identifier so the lock can
- * be removed by hand.
+ * The kernel is the arbiter. There is no lock protocol to race: two openers, in one process or
+ * many, cannot both hold it, and a holder that dies without closing loses it at once, so a stale
+ * lock cannot exist and there is nothing to reclaim. The file is never removed. The holder writes
+ * its process identifier as the first line after taking the lock, and a contender reads only that
+ * line, so a later version may add more.
+ *
+ * Whole-file `flock` needs a filesystem that supports it: a local one on macOS or Linux.
  */
-export function acquireRootLock(root: string): RootLock {
+export function acquireRootLock(
+  root: string,
+  operations: LockOperations = loadNativeLock(),
+): RootLock {
   const lockPath = join(root, LOCK_FILE);
-  const ownText = `${process.pid}\n`;
-  const suffix = `${process.pid}-${crypto.randomUUID()}`;
-  const ownTemporary = join(root, `.lock-${suffix}`);
-  const staleTemporary = join(root, `.lock-stale-${suffix}`);
-
+  let descriptor: number;
   try {
-    writeFileSync(ownTemporary, ownText, { flag: 'wx', mode: 0o600 });
+    descriptor = openSync(lockPath, constants.O_RDWR | constants.O_CREAT, 0o600);
   } catch (error) {
-    throw new BungalowFilesystemError('Could not prepare the lock file.', { cause: error });
+    return wrap('open the lock file', error);
   }
 
   try {
-    for (let attempt = 0; attempt < MAXIMUM_RECLAIM_ATTEMPTS; attempt += 1) {
-      try {
-        linkSync(ownTemporary, lockPath);
-        return { release: () => releaseRootLock(lockPath, ownText) };
-      } catch (error) {
-        if (errorCode(error) !== 'EEXIST') {
-          throw new BungalowFilesystemError('Could not create the lock file.', { cause: error });
-        }
-      }
-
-      const observed = readLockText(lockPath);
-      if (observed === undefined) continue;
-      const holder = parseHolder(observed);
-      if (holder !== undefined && isProcessAlive(holder)) {
-        throw new BungalowLockedError(root, holder);
-      }
-
-      try {
-        renameSync(lockPath, staleTemporary);
-      } catch (error) {
-        if (errorCode(error) === 'ENOENT') continue;
-        throw new BungalowFilesystemError('Could not reclaim the stale lock file.', {
-          cause: error,
-        });
-      }
-      const removed = readLockText(staleTemporary);
-      if (removed !== undefined && removed !== observed) {
-        // We displaced a lock that was taken after we read it. Link it back, which is atomic and
-        // fails if another process has since taken the lock, and report its holder.
-        try {
-          linkSync(staleTemporary, lockPath);
-        } catch {
-          // Another process already took the lock; the next attempt reports it.
-        }
-        unlinkQuietly(staleTemporary);
-        const winner = parseHolder(removed);
-        if (winner !== undefined && isProcessAlive(winner)) {
-          throw new BungalowLockedError(root, winner);
-        }
-        continue;
-      }
-      unlinkQuietly(staleTemporary);
+    const attempt = operations.tryLock(descriptor);
+    if (attempt === 'contended') {
+      throw new BungalowLockedError(root, readHolderAfterContention(lockPath));
     }
-    const lastObserved = readLockText(lockPath);
-    const holder = lastObserved === undefined ? undefined : parseHolder(lastObserved);
-    if (holder !== undefined) throw new BungalowLockedError(root, holder);
-    throw new BungalowFilesystemError('Could not acquire the lock file after repeated attempts.');
-  } finally {
-    unlinkQuietly(ownTemporary);
-  }
-}
-
-/** Remove the lock only if it still names this process, so a reclaimed lock is never deleted. */
-function releaseRootLock(lockPath: string, ownText: string): void {
-  try {
-    if (readLockText(lockPath) === ownText) unlinkSync(lockPath);
+    if (attempt !== 'acquired') {
+      throw new BungalowFilesystemError('Could not lock the lock file.', {
+        cause: { errno: attempt.errno },
+      });
+    }
+    try {
+      if ((fstatSync(descriptor).mode & 0o077) !== 0) fchmodSync(descriptor, 0o600);
+      ftruncateSync(descriptor, 0);
+      const text = Buffer.from(`${process.pid}\n`);
+      writeSync(descriptor, text, 0, text.length, 0);
+    } catch (error) {
+      return wrap('record the lock holder', error);
+    }
   } catch (error) {
-    throw new BungalowFilesystemError('Could not release the lock file.', { cause: error });
+    try {
+      closeSync(descriptor);
+    } catch {
+      // The attempt already failed; its error is the one worth reporting.
+    }
+    throw error;
   }
+
+  return {
+    release() {
+      try {
+        // Leave no identifier behind, so a contender never names a holder that has gone. A crash
+        // cannot do this, and the next holder overwrites what the crash left.
+        try {
+          ftruncateSync(descriptor, 0);
+        } catch {
+          // Closing the descriptor is what releases the lock; the truncation is a courtesy.
+        }
+        closeSync(descriptor);
+      } catch (error) {
+        // A repeat of a close that already took effect.
+        if (errorCode(error) !== 'EBADF') wrap('release the lock file', error);
+      }
+    },
+  };
 }

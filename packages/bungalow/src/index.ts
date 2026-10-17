@@ -6,6 +6,7 @@ export {
   BungalowInputError,
   BungalowLockedError,
   BungalowStateError,
+  BungalowUnsupportedError,
 } from './errors.ts';
 export { bungalowHomeVariable, resolveBungalowRoot } from './resolve-root.ts';
 export type { BungalowEnvironment, ResolveBungalowRootOptions } from './resolve-root.ts';

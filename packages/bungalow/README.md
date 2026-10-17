@@ -1,6 +1,6 @@
 # Bungalow
 
-`@lostgradient/bungalow` resolves and prepares a local application's state directory: its database path, configuration path, secrets, logs, and file-based content directories. Interborough keeps its state in `~/.interborough`, or wherever `INTERBOROUGH_HOME` points. Bungalow targets macOS and Linux, and it is a private source package that is not published.
+`@lostgradient/bungalow` resolves and prepares a local application's state directory: its database path, configuration path, secrets, logs, and file-based content directories. Interborough keeps its state in `~/.interborough`, or wherever `INTERBOROUGH_HOME` points. Bungalow targets macOS and Linux only, and it is a private source package that is not published.
 
 Bungalow only hands out paths. It never opens a database, parses configuration, or reads the contents of a content directory. Storage engines belong in Weft.
 
@@ -12,7 +12,11 @@ Declare `"@lostgradient/bungalow": "workspace:*"` in the consuming workspace's d
 
 `resolveBungalowRoot({ name, environment, homeDirectory })` is a pure function. It returns `<NAME>_HOME` when that variable is set and non-empty, where `<NAME>` is the application name uppercased with `-` turned into `_`. Otherwise it returns `<homeDirectory>/.<name>`. Both values must be absolute paths, because a state directory that follows the working directory loses data.
 
-An application name matches `^[a-z][a-z0-9-]*$`. A secret key or content directory name matches `^[a-z0-9][a-z0-9-]*$`. Anything else throws `BungalowInputError`. Error messages never echo a secret key or value.
+An override is normalized, so a trailing slash or a dot segment does not change the root. An application name matches `^[a-z][a-z0-9-]*$`. A secret key or content directory name matches `^[a-z0-9][a-z0-9-]*$`. Anything else throws `BungalowInputError`.
+
+## Errors
+
+Every error extends `BungalowError`. None of them carries a secret value or a secret key: messages name the operation and never an entry, and a `BungalowFilesystemError` keeps only the code, system call, and errno of the underlying failure as its `cause`, never its path, because a path inside `secrets/` ends in the key.
 
 ## Opening a Bungalow
 
@@ -31,15 +35,19 @@ bungalow.readSecret('api-key'); // the value, or undefined when never written
 bungalow.close();
 ```
 
-Opening creates the root (mode `0700`), `secrets/` (mode `0700`), `logs/`, and the `deployment-id` file. It does not create the database or configuration file, and a missing configuration file is valid. Directories that already exist keep the mode they have.
+Opening creates the root (mode `0700`), `secrets/` (mode `0700`), `logs/`, the `lock` file, and the `deployment-id` file. It does not create the database or configuration file, and a missing configuration file is valid. Every open sets the root and `secrets/` to `0700`, tightening a directory that was looser, and once it holds the lock it removes the temporary files a crash left in the root and in `secrets/`. `readSecret` sets a secret file that group or others could reach back to `0600` before it reads it.
+
+A secret is written to a temporary file that is `0600` from its first byte, synced, renamed into place, and the directory entry is synced, so a crash leaves the old value or the new one.
 
 `deploymentId` is a ULID generated on the first open and persisted at `deployment-id`, so every later open of the same root returns it. The generator is a small hand-written one (`src/ulid.ts`), a 48-bit millisecond timestamp followed by 80 random bits from `crypto.getRandomValues`, in Crockford base32, so the package adds no dependency. A `deployment-id` file that does not hold a ULID throws `BungalowStateError` rather than being replaced, because replacing it would change the deployment's identity.
 
 ## The single-instance lock
 
-Holding a handle holds the root's `lock` file, which records the holder's process identifier. A second open of a held root, in this process or another, throws `BungalowLockedError` carrying `holderProcessIdentifier`. A lock whose holder process no longer exists is reclaimed, so a crash never leaves the root unusable. `close()` releases the lock and is idempotent; a closed handle throws `BungalowStateError` on any further use.
+Holding a handle holds an exclusive, non-blocking `flock(2)` on `<root>/lock`, taken through `bun:ffi` (`libSystem.B.dylib` on macOS, `libc.so.6` on Linux). The kernel is the arbiter: a second open of a held root, in this process or another, throws `BungalowLockedError`, and when a holder dies without closing, the kernel drops its lock at once. There is no stale lock to detect or reclaim, no process identifier to check for liveness, and no race between two openers.
 
-The lock file is created by hard-linking a fully written file, so a reader never sees a half-written lock. The operating system can reuse a dead holder's process identifier for an unrelated process; the lock then looks held until you remove the `lock` file named in the error.
+After taking the lock the holder truncates the file and writes its process identifier as the first line. A contender that is refused reads only that first line to name the holder in `BungalowLockedError.holderProcessIdentifier`, so a later version can add lines. The identifier is advisory: it is `undefined` in the instant between a holder taking the lock and writing it. `close()` clears the file, releases the lock by closing the descriptor, and never removes the file. It is idempotent once it has succeeded, and it can be retried after a failure. A closed handle throws `BungalowStateError` on any further use.
+
+The root must be on a local filesystem that supports `flock`. Network filesystems that do not honour it are unsupported, and a host that refuses the lock for any reason other than contention throws `BungalowFilesystemError`. On any platform other than macOS and Linux, opening throws `BungalowUnsupportedError`.
 
 ## Tests
 

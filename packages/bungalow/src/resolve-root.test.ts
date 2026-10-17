@@ -14,6 +14,22 @@ describe('resolveBungalowRoot', () => {
     ).toBe('/srv/interborough');
   });
 
+  test('normalizes the override: a trailing slash and dot segments do not survive', () => {
+    for (const override of [
+      '/srv/interborough/',
+      '/srv/./interborough',
+      '/srv/other/../interborough',
+    ]) {
+      expect(
+        resolveBungalowRoot({
+          name: 'interborough',
+          environment: { INTERBOROUGH_HOME: override },
+          homeDirectory: '/home/steve',
+        }),
+      ).toBe('/srv/interborough');
+    }
+  });
+
   test('turns hyphens into underscores in the variable name', () => {
     expect(bungalowHomeVariable('agent-bureau')).toBe('AGENT_BUREAU_HOME');
     expect(

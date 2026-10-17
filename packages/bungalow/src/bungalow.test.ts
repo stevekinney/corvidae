@@ -1,12 +1,25 @@
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 
-import { openBungalow, openTemporaryBungalow } from './bungalow.ts';
+import { openAtRoot, openBungalow, openTemporaryBungalow } from './bungalow.ts';
 import { processEnvironment } from './environment-configuration.ts';
-import { BungalowInputError, BungalowStateError } from './errors.ts';
+import {
+  BungalowFilesystemError,
+  BungalowInputError,
+  BungalowLockedError,
+  BungalowStateError,
+} from './errors.ts';
 import {
   homeEnvironment,
   TEST_HOME_VARIABLE,
@@ -16,6 +29,12 @@ import {
 import { isUlid } from './ulid.ts';
 
 const temporaryDirectory = useTemporaryDirectories();
+
+// Mode assertions mean nothing under an arbitrary inherited umask, so fix one for this file.
+const originalUmask = process.umask(0o022);
+afterAll(() => {
+  process.umask(originalUmask);
+});
 
 function modeOf(path: string): number {
   return statSync(path).mode & 0o777;
@@ -40,13 +59,6 @@ describe('openBungalow layout', () => {
     expect(existsSync(handle.database)).toBe(false);
     expect(existsSync(handle.configuration)).toBe(false);
     expect(readdirSync(root).toSorted()).toEqual(['deployment-id', 'lock', 'logs', 'secrets']);
-  });
-
-  test('uses the home directory when the override is unset and NODE_ENV is not test', () => {
-    const home = temporaryDirectory();
-    using handle = openBungalow({ name: TEST_NAME, environment: {}, homeDirectory: home });
-    expect(handle.root).toBe(join(home, `.${TEST_NAME}`));
-    expect(modeOf(handle.root)).toBe(0o700);
   });
 
   test('reopens an existing root without altering what is in it', () => {
@@ -172,15 +184,14 @@ describe('close', () => {
   test('is idempotent and releases the lock', () => {
     const root = temporaryDirectory();
     const handle = openIn(root);
-    expect(existsSync(join(root, 'lock'))).toBe(true);
+    expect(() => openIn(root)).toThrow(BungalowLockedError);
     handle.close();
-    expect(existsSync(join(root, 'lock'))).toBe(false);
     expect(() => handle.close()).not.toThrow();
 
     // A later handle holds the lock now; the first handle's repeated close must not release it.
     using second = openIn(root);
     handle.close();
-    expect(readFileSync(join(root, 'lock'), 'utf8')).toBe(`${process.pid}\n`);
+    expect(() => openIn(root)).toThrow(BungalowLockedError);
     expect(second.root).toBe(root);
   });
 
@@ -190,6 +201,49 @@ describe('close', () => {
     expect(() => handle.directory('agents')).toThrow(BungalowStateError);
     expect(() => handle.writeSecret('token', 'value')).toThrow(BungalowStateError);
     expect(() => handle.readSecret('token')).toThrow(BungalowStateError);
+  });
+
+  test('can be retried after the lock fails to release, and releases once it succeeds', () => {
+    let releases = 0;
+    const handle = openAtRoot(TEST_NAME, temporaryDirectory(), {
+      acquireLock: () => ({
+        release: () => {
+          releases += 1;
+          if (releases === 1) throw new BungalowFilesystemError('Could not release the lock file.');
+        },
+      }),
+    });
+    expect(() => handle.close()).toThrow(BungalowFilesystemError);
+    // The root is still in use: the failed release did not end the handle.
+    handle.writeSecret('token', 'still open');
+    expect(handle.readSecret('token')).toBe('still open');
+
+    handle.close();
+    expect(releases).toBe(2);
+    expect(() => handle.readSecret('token')).toThrow(BungalowStateError);
+    handle.close();
+    expect(releases).toBe(2);
+  });
+
+  test('a temporary Bungalow keeps its root until the release has succeeded', () => {
+    const root = temporaryDirectory();
+    let removed = 0;
+    let fail = true;
+    const handle = openAtRoot(TEST_NAME, root, {
+      acquireLock: () => ({
+        release: () => {
+          if (fail) throw new BungalowFilesystemError('Could not release the lock file.');
+        },
+      }),
+      onClose: () => {
+        removed += 1;
+      },
+    });
+    expect(() => handle.close()).toThrow(BungalowFilesystemError);
+    expect(removed).toBe(0);
+    fail = false;
+    handle.close();
+    expect(removed).toBe(1);
   });
 });
 
@@ -213,6 +267,15 @@ describe('NODE_ENV=test guard', () => {
     expect(() => openBungalow({ name: TEST_NAME })).toThrow(BungalowInputError);
   });
 
+  test('cannot be bypassed by passing an environment that says nothing about NODE_ENV', () => {
+    const home = temporaryDirectory();
+    expect(() => openBungalow({ name: TEST_NAME, environment: {} })).toThrow(BungalowInputError);
+    expect(() => openBungalow({ name: TEST_NAME, environment: {}, homeDirectory: home })).toThrow(
+      BungalowInputError,
+    );
+    expect(readdirSync(home)).toEqual([]);
+  });
+
   test('allows an explicit <NAME>_HOME under test', () => {
     const root = temporaryDirectory();
     using handle = openBungalow({
@@ -220,6 +283,53 @@ describe('NODE_ENV=test guard', () => {
       environment: { NODE_ENV: 'test', ...homeEnvironment(root) },
     });
     expect(handle.root).toBe(root);
+  });
+});
+
+describe('a root that already exists', () => {
+  test('is tightened to 0700, along with its secrets directory', () => {
+    const root = temporaryDirectory();
+    mkdirSync(join(root, 'secrets'), { mode: 0o755 });
+    chmodSync(root, 0o755);
+    chmodSync(join(root, 'secrets'), 0o755);
+    using handle = openIn(root);
+    expect(modeOf(root)).toBe(0o700);
+    expect(modeOf(handle.secrets)).toBe(0o700);
+  });
+
+  test('has a secret that group or others can read tightened to 0600 before it is read', () => {
+    const root = temporaryDirectory();
+    openIn(root).close();
+    const path = join(root, 'secrets', 'token');
+    writeFileSync(path, 'loose');
+    chmodSync(path, 0o644);
+    using handle = openIn(root);
+    expect(handle.readSecret('token')).toBe('loose');
+    expect(modeOf(path)).toBe(0o600);
+  });
+
+  test('refuses a stored secret that is not a regular file, without changing its mode', () => {
+    using handle = openIn(temporaryDirectory());
+    const path = join(handle.secrets, 'blocked');
+    mkdirSync(path, { mode: 0o755 });
+    expect(() => handle.readSecret('blocked')).toThrow(BungalowStateError);
+    expect(modeOf(path)).toBe(0o755);
+  });
+
+  test('has the temporary files a crash left behind removed, and only those', () => {
+    const root = temporaryDirectory();
+    openIn(root).close();
+    const uuid = '123e4567-e89b-12d3-a456-426614174000';
+    const leftovers = [
+      join(root, `deployment-id.4242-${uuid}.tmp`),
+      join(root, 'secrets', `token.4242-${uuid}.tmp`),
+    ];
+    const kept = [join(root, 'notes.tmp'), join(root, 'secrets', 'token')];
+    for (const path of [...leftovers, ...kept]) writeFileSync(path, 'x');
+    using handle = openIn(root);
+    expect(handle.root).toBe(root);
+    for (const path of leftovers) expect(existsSync(path), path).toBe(false);
+    for (const path of kept) expect(existsSync(path), path).toBe(true);
   });
 });
 

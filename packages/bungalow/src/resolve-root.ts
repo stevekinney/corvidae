@@ -1,4 +1,4 @@
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 import { BungalowInputError } from './errors.ts';
 import { assertBungalowName } from './validation.ts';
@@ -29,14 +29,14 @@ function requireAbsolute(path: string, description: string): string {
 
 /**
  * Where an application's state lives: `<NAME>_HOME` when that variable is set and non-empty,
- * otherwise `<homeDirectory>/.<name>`. Pure: it creates, reads, and locks nothing. A relative
+ * otherwise `<homeDirectory>/.<name>`, normalized. Pure: it creates, reads, and locks nothing. A relative
  * path is rejected, because a state directory that moves with the working directory loses data.
  */
 export function resolveBungalowRoot(options: ResolveBungalowRootOptions): string {
   const variable = bungalowHomeVariable(options.name);
   const override = options.environment[variable];
   if (override !== undefined && override !== '') {
-    return requireAbsolute(override, variable);
+    return resolve(requireAbsolute(override, variable));
   }
   return join(requireAbsolute(options.homeDirectory, 'The home directory'), `.${options.name}`);
 }

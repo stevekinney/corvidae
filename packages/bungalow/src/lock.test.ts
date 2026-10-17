@@ -1,13 +1,21 @@
-import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, test } from 'bun:test';
 
 import { openBungalow } from './bungalow.ts';
-import { BungalowLockedError } from './errors.ts';
+import { BungalowFilesystemError, BungalowLockedError } from './errors.ts';
 import { homeEnvironment, TEST_NAME, useTemporaryDirectories } from './fixtures.test-support.ts';
+import { startLockChild } from './lock-children.test-support.ts';
+import { acquireRootLock, type LockOperations } from './lock.ts';
 
 const temporaryDirectory = useTemporaryDirectories();
 
@@ -15,109 +23,143 @@ function openIn(root: string) {
   return openBungalow({ name: TEST_NAME, environment: homeEnvironment(root) });
 }
 
-/** A process identifier no operating system hands out, so its holder is certainly dead. */
-const ABSENT_PROCESS = 2_147_483_646;
-
-/**
- * The child-process scenario runs once at module scope, where no per-test clock applies and the
- * hang guard bounds it, rather than inside test bodies (AGENTS.md, COR-1507). A child opens the
- * root and holds its lock; this process then tries the same root, kills the child without letting
- * it close, and reopens the root to prove that a dead holder's lock is reclaimed.
- */
-type ChildScenario = {
-  readonly childProcessIdentifier: number;
-  readonly childDeploymentId: string;
-  readonly whileHeld: unknown;
-  readonly lockFileWhileHeld: string;
-  readonly afterKill:
-    { readonly deploymentId: string; readonly lockFile: string } | { error: unknown };
-};
-
-const scenarioRoot = mkdtempSync(join(tmpdir(), 'bungalow-lock-'));
-afterAll(() => {
-  rmSync(scenarioRoot, { recursive: true, force: true });
-});
-
-async function readReadyLine(stream: ReadableStream<Uint8Array>): Promise<string> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let text = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (value !== undefined) text += decoder.decode(value, { stream: true });
-    const newline = text.indexOf('\n');
-    if (newline !== -1) {
-      reader.releaseLock();
-      return text.slice(0, newline);
-    }
-    if (done)
-      throw new Error(`The lock holder exited before it was ready: ${JSON.stringify(text)}`);
+function thrownBy(action: () => unknown): unknown {
+  try {
+    action();
+  } catch (error) {
+    return error;
   }
+  throw new Error('Expected the action to throw.');
 }
 
-async function runChildScenario(): Promise<ChildScenario> {
-  const child = spawnWithHangGuard(
-    [process.execPath, join(import.meta.dir, 'lock-holder.test-support.ts'), scenarioRoot],
-    { stdout: 'pipe', stderr: 'inherit' },
-  );
-  try {
-    const ready = await readReadyLine(child.stdout);
-    const [marker, childDeploymentId] = ready.split(' ');
-    if (marker !== 'READY' || childDeploymentId === undefined) {
-      throw new Error(`Unexpected lock holder output: ${ready}`);
-    }
+/**
+ * The child-process scenarios run once at module scope, where no per-test clock applies and the
+ * hang guard bounds them, rather than inside test bodies (AGENTS.md, COR-1507). Their results are
+ * recorded here and asserted below.
+ */
+const scenarioRoots: string[] = [];
+afterAll(() => {
+  for (const root of scenarioRoots) rmSync(root, { recursive: true, force: true });
+});
+function scenarioRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), 'bungalow-lock-'));
+  scenarioRoots.push(root);
+  return root;
+}
 
+type HolderScenario = {
+  readonly childProcessIdentifier: number;
+  readonly held: string;
+  readonly whileHeld: unknown;
+  readonly lockFileWhileHeld: string;
+  readonly afterKill: { readonly deploymentId: string } | { readonly error: unknown };
+  readonly lockFileAfterKill: string;
+};
+
+/** A child holds the root; this process is refused, kills the child uncleanly, and reopens. */
+async function runHolderScenario(): Promise<HolderScenario> {
+  const root = scenarioRoot();
+  const child = await startLockChild(root);
+  try {
+    const held = await child.ask('open');
     let whileHeld: unknown;
     try {
-      openIn(scenarioRoot).close();
+      openIn(root).close();
     } catch (error) {
       whileHeld = error;
     }
-    const lockFileWhileHeld = readFileSync(join(scenarioRoot, 'lock'), 'utf8');
+    const lockFileWhileHeld = readFileSync(join(root, 'lock'), 'utf8');
 
-    child.kill('SIGKILL');
-    await child.exited;
+    await child.kill();
 
-    let afterKill: ChildScenario['afterKill'];
+    let afterKill: HolderScenario['afterKill'];
     try {
-      const reclaimed = openIn(scenarioRoot);
-      afterKill = {
-        deploymentId: reclaimed.deploymentId,
-        lockFile: readFileSync(join(scenarioRoot, 'lock'), 'utf8'),
-      };
-      reclaimed.close();
+      const reopened = openIn(root);
+      afterKill = { deploymentId: reopened.deploymentId };
+      reopened.close();
     } catch (error) {
       afterKill = { error };
     }
     return {
-      childProcessIdentifier: child.pid,
-      childDeploymentId,
+      childProcessIdentifier: child.processIdentifier,
+      held,
       whileHeld,
       lockFileWhileHeld,
       afterKill,
+      lockFileAfterKill: readFileSync(join(root, 'lock'), 'utf8'),
     };
   } finally {
-    child.kill('SIGKILL');
-    await child.exited;
+    await child.kill();
   }
 }
 
-const scenario = await runChildScenario();
+const CONTENDERS = 6;
+const ROUNDS = 30;
+
+type Round = {
+  readonly replies: readonly { readonly processIdentifier: number; readonly reply: string }[];
+  readonly closed: readonly string[];
+};
+
+/**
+ * Several child processes try the same root at the same moment, round after round. Exactly one may
+ * hold it in each round; a lock protocol with a race window shows up as two holders.
+ */
+async function runContentionScenario(): Promise<Round[]> {
+  const root = scenarioRoot();
+  const children = await Promise.all(
+    Array.from({ length: CONTENDERS }, () => startLockChild(root)),
+  );
+  try {
+    const rounds: Round[] = [];
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const replies = await Promise.all(
+        children.map(async (child) => ({
+          processIdentifier: child.processIdentifier,
+          reply: await child.ask('open'),
+        })),
+      );
+      const closed = await Promise.all(children.map((child) => child.ask('close')));
+      rounds.push({ replies, closed });
+    }
+    return rounds;
+  } finally {
+    await Promise.all(children.map((child) => child.kill()));
+  }
+}
+
+const holder = await runHolderScenario();
+const contention = await runContentionScenario();
 
 describe('a lock held by another process', () => {
   test('makes a second open throw BungalowLockedError naming the holder', () => {
-    expect(scenario.whileHeld).toBeInstanceOf(BungalowLockedError);
-    const error = scenario.whileHeld as BungalowLockedError;
-    expect(error.holderProcessIdentifier).toBe(scenario.childProcessIdentifier);
-    expect(error.message).toContain(String(scenario.childProcessIdentifier));
-    expect(scenario.lockFileWhileHeld).toBe(`${scenario.childProcessIdentifier}\n`);
+    expect(holder.held).toMatch(/^HELD [0-7][0-9A-HJKMNP-TV-Z]{25}$/);
+    expect(holder.whileHeld).toBeInstanceOf(BungalowLockedError);
+    const error = holder.whileHeld as BungalowLockedError;
+    expect(error.holderProcessIdentifier).toBe(holder.childProcessIdentifier);
+    expect(error.message).toContain(String(holder.childProcessIdentifier));
+    expect(holder.lockFileWhileHeld).toBe(`${holder.childProcessIdentifier}\n`);
   });
 
-  test('is reclaimed once the holder is dead, keeping the persisted identity', () => {
-    if ('error' in scenario.afterKill) throw scenario.afterKill.error;
-    expect(scenario.afterKill.lockFile).toBe(`${process.pid}\n`);
-    expect(scenario.afterKill.deploymentId).toBe(scenario.childDeploymentId);
-    expect(existsSync(join(scenarioRoot, 'lock'))).toBe(false);
+  test('is released when the holder is killed without closing, keeping the persisted identity', () => {
+    if ('error' in holder.afterKill) throw holder.afterKill.error;
+    expect(holder.afterKill.deploymentId).toBe(holder.held.split(' ')[1]!);
+    expect(holder.lockFileAfterKill).toBe('');
+  });
+});
+
+describe('contending processes', () => {
+  test('exactly one of several simultaneous openers holds the root in every round', () => {
+    expect(contention).toHaveLength(ROUNDS);
+    for (const [index, round] of contention.entries()) {
+      const holders = round.replies.filter(({ reply }) => reply.startsWith('HELD '));
+      expect(holders.length, `round ${index}`).toBe(1);
+      for (const { reply } of round.replies) {
+        if (reply.startsWith('HELD ')) continue;
+        expect(reply, `round ${index}`).toBe(`LOCKED ${holders[0]!.processIdentifier}`);
+      }
+      expect(round.closed, `round ${index}`).toEqual(Array(CONTENDERS).fill('CLOSED'));
+    }
   });
 });
 
@@ -125,63 +167,76 @@ describe('a lock held by this process', () => {
   test('makes a second open of the same root throw BungalowLockedError naming this process', () => {
     const root = temporaryDirectory();
     using held = openIn(root);
-    const error = (() => {
-      try {
-        openIn(root);
-      } catch (thrown) {
-        return thrown;
-      }
-      return undefined;
-    })();
+    const error = thrownBy(() => openIn(root));
     expect(error).toBeInstanceOf(BungalowLockedError);
     expect((error as BungalowLockedError).holderProcessIdentifier).toBe(process.pid);
-    // The failed attempt neither released the holder's lock nor left files behind.
+    // The refused attempt did not disturb the holder.
     expect(readFileSync(join(root, 'lock'), 'utf8')).toBe(`${process.pid}\n`);
+    expect(thrownBy(() => openIn(root))).toBeInstanceOf(BungalowLockedError);
     expect(held.root).toBe(root);
-    expect(new Set(requireEntries(root))).toEqual(
-      new Set(['deployment-id', 'lock', 'logs', 'secrets']),
-    );
   });
 
-  test('is released by close, so the root opens again', () => {
+  test('reads only the first line of the lock file, so a later version can add more', () => {
+    const root = temporaryDirectory();
+    using held = openIn(root);
+    appendFileSync(join(root, 'lock'), 'started 2026-10-17\nsome future field\n');
+    const error = thrownBy(() => openIn(root)) as BungalowLockedError;
+    expect(error.holderProcessIdentifier).toBe(process.pid);
+    expect(held.root).toBe(root);
+  });
+
+  test('is released by close, so the root opens again, and the file stays in place', () => {
     const root = temporaryDirectory();
     openIn(root).close();
+    expect(readFileSync(join(root, 'lock'), 'utf8')).toBe('');
+    expect(statSync(join(root, 'lock')).mode & 0o777).toBe(0o600);
     openIn(root).close();
   });
 });
 
-describe('stale locks', () => {
-  test('a lock naming a dead process is reclaimed', () => {
-    const root = temporaryDirectory();
-    mkdirSync(root, { recursive: true });
-    writeFileSync(join(root, 'lock'), `${ABSENT_PROCESS}\n`);
-    using handle = openIn(root);
-    expect(handle.root).toBe(root);
-    expect(readFileSync(join(root, 'lock'), 'utf8')).toBe(`${process.pid}\n`);
-    expect(new Set(requireEntries(root))).toEqual(
-      new Set(['deployment-id', 'lock', 'logs', 'secrets']),
-    );
-  });
-
-  test.each(['', 'garbage', '-5\n', '0\n', '12abc\n', '99999999999999999999\n'])(
-    'a lock that does not hold a process identifier (%p) is reclaimed',
+describe('text left in the lock file by a process that is gone', () => {
+  test.each(['2147483646\n', '', 'garbage', '-5\n', '12abc\n', '99999999999999999999\n'])(
+    'does not hold the root: %p',
     (text) => {
       const root = temporaryDirectory();
       writeFileSync(join(root, 'lock'), text);
       using handle = openIn(root);
       expect(handle.root).toBe(root);
+      expect(readFileSync(join(root, 'lock'), 'utf8')).toBe(`${process.pid}\n`);
     },
   );
 
-  test('a lock naming a live process is respected', () => {
+  test('a live process named in the file does not hold the root either: the kernel does', () => {
     const root = temporaryDirectory();
     writeFileSync(join(root, 'lock'), `${process.ppid}\n`);
-    expect(() => openIn(root)).toThrow(BungalowLockedError);
-    expect(readFileSync(join(root, 'lock'), 'utf8')).toBe(`${process.ppid}\n`);
+    using handle = openIn(root);
+    expect(handle.root).toBe(root);
   });
 });
 
-function requireEntries(root: string): string[] {
-  const entries = new Bun.Glob('*').scanSync({ cwd: root, onlyFiles: false, dot: true });
-  return [...entries];
-}
+describe('acquireRootLock against a host that refuses', () => {
+  const refusing = (attempt: ReturnType<LockOperations['tryLock']>): LockOperations => ({
+    tryLock: () => attempt,
+  });
+
+  test('reports a failure that is not contention as a filesystem error', () => {
+    const root = temporaryDirectory();
+    const error = thrownBy(() => acquireRootLock(root, refusing({ errno: 45 })));
+    expect(error).toBeInstanceOf(BungalowFilesystemError);
+    expect((error as BungalowFilesystemError).cause).toEqual({ errno: 45 });
+  });
+
+  test('names no holder when contention finds no identifier in the file', () => {
+    const root = temporaryDirectory();
+    const error = thrownBy(() => acquireRootLock(root, refusing('contended')));
+    expect(error).toBeInstanceOf(BungalowLockedError);
+    expect((error as BungalowLockedError).holderProcessIdentifier).toBeUndefined();
+  });
+
+  test('reports a lock file that cannot be opened as a filesystem error', () => {
+    const root = temporaryDirectory();
+    writeFileSync(join(root, 'lock'), '');
+    const error = thrownBy(() => acquireRootLock(join(root, 'lock'), refusing('acquired')));
+    expect(error).toBeInstanceOf(BungalowFilesystemError);
+  });
+});
