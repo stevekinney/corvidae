@@ -31,6 +31,16 @@ const schema = {
       description:
         "CSS aspect-ratio applied to the wrapper (e.g. `'16 / 9'`) so layout is\nstable while the image loads.",
     },
+    fit: {
+      enum: ['contain', 'cover', 'fill', 'none', 'scale-down'],
+      description:
+        'How the image fills its box, mapped onto CSS `object-fit`. Omitted, the\nimage covers the box (`cover`).',
+    },
+    size: {
+      enum: ['icon', 'avatar', 'small', 'medium', 'large', 'header'],
+      description:
+        "Token-based dimensions. `icon` and `avatar` are squares; `small`,\n`medium`, and `large` set the width and let `ratio` or the image's own\nproportions set the height; `header` spans the container at a banner\nheight. Omitted, the image keeps its natural, container-driven size.",
+    },
     loading: {
       enum: ['lazy', 'eager'],
       description:
