@@ -9,8 +9,9 @@ import {
   type ChatStreamBlockType,
   type ChatStreamState,
   type OptionalWireEnvelope,
-  type V2WireEnvelope,
   type WireEnvelope,
+  type WireEnvelopeFromV2,
+  type WireEnvelopeFromV3,
 } from './stream-event-codec-types.ts';
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -66,15 +67,26 @@ export function requireWireEnvelope(envelope: OptionalWireEnvelope): WireEnvelop
 }
 
 /**
- * A fully-present version 2 envelope, required on every member wire version 2
- * introduced. Separate from `requireWireEnvelope` because a version 1
- * producer must not be able to emit a version 2 member at all — accepting one
- * would make the version field decorative.
+ * A fully-present envelope of version 2 or later, required on every member
+ * wire version 2 introduced. Separate from `requireWireEnvelope` because a
+ * version 1 producer must not be able to emit a version 2 member at all —
+ * accepting one would make the version field decorative. Version 3 is a
+ * superset of version 2, so its frames carry these members too.
  */
-export function requireV2Envelope(envelope: OptionalWireEnvelope): V2WireEnvelope {
+export function requireEnvelopeFromV2(envelope: OptionalWireEnvelope): WireEnvelopeFromV2 {
   const required = requireWireEnvelope(envelope);
-  if (required.wireVersion !== 2) throw new Error('Invalid chat stream event');
-  return { wireVersion: 2, sequence: required.sequence };
+  if (required.wireVersion === 1) throw new Error('Invalid chat stream event');
+  return { wireVersion: required.wireVersion, sequence: required.sequence };
+}
+
+/**
+ * A fully-present version 3 envelope, required on every member wire version 3
+ * introduced, for the same reason as {@link requireEnvelopeFromV2}.
+ */
+export function requireEnvelopeFromV3(envelope: OptionalWireEnvelope): WireEnvelopeFromV3 {
+  const required = requireWireEnvelope(envelope);
+  if (required.wireVersion !== 3) throw new Error('Invalid chat stream event');
+  return { wireVersion: 3, sequence: required.sequence };
 }
 
 /**
@@ -281,8 +293,8 @@ export function isChatAgentRunErrorCode(value: unknown): value is ChatAgentRunEr
 
 /**
  * Validates and rebuilds a `SerializedAgentRunError`-shaped value into
- * exactly `{ name, message, kind, code }`, plus `retryable` when the producer
- * stated one. Rebuilding — rather than validating and returning the parsed
+ * exactly `{ name, message, kind, code }`, plus `retryable` and `backendCode`
+ * when the producer stated them. Rebuilding — rather than validating and returning the parsed
  * value as-is — is what actually drops an incoming `cause`: nothing here
  * re-attaches it, by construction rather than by convention.
  *
@@ -299,11 +311,14 @@ export function toChatSerializedRunError(value: unknown): ChatSerializedRunError
   if (!isChatAgentRunErrorCode(value['code'])) return undefined;
   const retryable = value['retryable'];
   if (retryable !== undefined && typeof retryable !== 'boolean') return undefined;
+  const backendCode = value['backendCode'];
+  if (backendCode !== undefined && typeof backendCode !== 'string') return undefined;
   return {
     name: value['name'],
     message: value['message'],
     kind: value['kind'],
     code: value['code'],
     ...(retryable === undefined ? {} : { retryable }),
+    ...(backendCode === undefined ? {} : { backendCode }),
   };
 }

@@ -421,6 +421,35 @@
       }
     },
     {
+      "name": "AudioPlayer",
+      "id": "audio-player",
+      "import": "@lostgradient/cinder",
+      "exportName": "AudioPlayer",
+      "category": "action",
+      "status": "alpha",
+      "purpose": "Native audio element with Cinder media controls for play, pause, replay, and seeking.",
+      "tags": ["media", "audio"],
+      "useWhen": [
+        "Playing a single audio track from an https, http, or blob URL with accessible controls."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "You need streaming protocols, caption authoring, or playlists — wire those separately."
+        },
+        {
+          "reason": "You only need playback buttons for media you control elsewhere — use media-controls."
+        }
+      ],
+      "related": ["media-controls", "video-player"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/audio-player/audio-player.schema.json",
+        "variables": "src/components/audio-player/audio-player.variables.json",
+        "examples": "src/components/audio-player/audio-player.examples.json"
+      }
+    },
+    {
       "name": "Autocomplete",
       "id": "autocomplete",
       "import": "@lostgradient/cinder",
@@ -3197,12 +3226,9 @@
       "avoidWhen": [
         {
           "reason": "You need waveform visualization or Web Audio integration — wire that separately."
-        },
-        {
-          "reason": "You need a full media player UI with seek scrubbing — use a dedicated player component."
         }
       ],
-      "related": ["button", "toolbar", "progress", "tooltip"],
+      "related": ["button", "toolbar", "progress", "tooltip", "video-player", "audio-player"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
@@ -5669,6 +5695,36 @@
       }
     },
     {
+      "name": "Text",
+      "id": "text",
+      "import": "@lostgradient/cinder",
+      "exportName": "Text",
+      "category": "typography",
+      "status": "stable",
+      "purpose": "Run of text in one of the typography variants h1 to h5, caption, or body that inherits its color from its container.",
+      "tags": ["typography", "text"],
+      "useWhen": [
+        "Rendering a heading, paragraph, or caption in the design system's type scale.",
+        "Overriding the rendered element while keeping a variant's visual style."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Introducing a page section with an eyebrow, description, or actions — use section-heading instead."
+        },
+        {
+          "reason": "Rendering Markdown content — compose the Markdown renderer instead."
+        }
+      ],
+      "related": ["section-heading", "label"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/text/text.schema.json",
+        "variables": "src/components/text/text.variables.json",
+        "examples": "src/components/text/text.examples.json"
+      }
+    },
+    {
       "name": "Textarea",
       "id": "textarea",
       "import": "@lostgradient/cinder",
@@ -5963,6 +6019,36 @@
       "artifacts": {
         "schema": "src/components/tree-item/tree-item.schema.json",
         "variables": "src/components/tree-item/tree-item.variables.json"
+      }
+    },
+    {
+      "name": "VideoPlayer",
+      "id": "video-player",
+      "import": "@lostgradient/cinder",
+      "exportName": "VideoPlayer",
+      "category": "action",
+      "status": "alpha",
+      "purpose": "Native video element with Cinder media controls for play, pause, replay, and seeking.",
+      "tags": ["media", "video"],
+      "useWhen": [
+        "Playing a single video from an https, http, or blob URL with accessible controls.",
+        "Showing a poster image until the viewer starts playback."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "You need streaming protocols, caption authoring, or playlists — wire those separately."
+        },
+        {
+          "reason": "You only need playback buttons for media you control elsewhere — use media-controls."
+        }
+      ],
+      "related": ["media-controls", "audio-player", "image"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/video-player/video-player.schema.json",
+        "variables": "src/components/video-player/video-player.variables.json",
+        "examples": "src/components/video-player/video-player.examples.json"
       }
     },
     {

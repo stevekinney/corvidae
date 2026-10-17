@@ -92,7 +92,7 @@ describe('assistant.step.* frames', () => {
 
   test('still refuses an unsupported wire version', () => {
     expect(() =>
-      decodeChatStreamEvent({ type: 'text', text: 'hi', wireVersion: 3, sequence: 0 }),
+      decodeChatStreamEvent({ type: 'text', text: 'hi', wireVersion: 4, sequence: 0 }),
     ).toThrow('Invalid chat stream event');
   });
 

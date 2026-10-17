@@ -5,14 +5,14 @@ import { projectPlainJSON } from './stream-event-codec-encoding-projection.ts';
 import type {
   ChatStreamEvent,
   OptionalWireEnvelope,
-  V2WireEnvelope,
   WireEnvelope,
+  WireEnvelopeFromV2,
 } from './stream-event-codec-types.ts';
 import {
   isNonNegativeSafeInteger,
   isRecord,
   readWireEnvelope,
-  requireV2Envelope,
+  requireEnvelopeFromV2,
   requireWireEnvelope,
   toChatToolAction,
 } from './stream-event-codec-validation.ts';
@@ -33,9 +33,9 @@ function decodeVersionedEvent(
   required: WireEnvelope,
 ): ChatStreamEvent {
   if (assistantStepEventTypes.includes(eventType))
-    return decodeAssistantStepEvent(eventType, parsed, requireV2Envelope(required));
+    return decodeAssistantStepEvent(eventType, parsed, requireEnvelopeFromV2(required));
   if (elicitationEventTypes.includes(eventType))
-    return decodeElicitationEvent(eventType, parsed, requireV2Envelope(required));
+    return decodeElicitationEvent(eventType, parsed, requireEnvelopeFromV2(required));
   if (streamEventTypes.includes(eventType)) return decodeStreamEvent(eventType, parsed, required);
   if (toolEventTypes.includes(eventType)) return decodeToolEvent(eventType, parsed, required);
   if (runEventTypes.includes(eventType)) return decodeRunEvent(eventType, parsed, required);
@@ -61,7 +61,7 @@ const toolEventTypes = [
   'tool.error',
   'tool.policy-denied',
 ];
-const runEventTypes = ['run.completed', 'run.error', 'run.tripwire', 'run.aborted'];
+const runEventTypes = ['run.started', 'run.completed', 'run.error', 'run.tripwire', 'run.aborted'];
 const assistantStepEventTypes = ['assistant.step.started', 'assistant.step.completed'];
 const elicitationEventTypes = ['elicitation.requested', 'elicitation.resolved'];
 
@@ -77,7 +77,7 @@ const elicitationEventTypes = ['elicitation.requested', 'elicitation.resolved'];
 function decodeElicitationEvent(
   eventType: string,
   parsed: Record<string, unknown>,
-  envelope: V2WireEnvelope,
+  envelope: WireEnvelopeFromV2,
 ): ChatStreamEvent {
   const requestId = parsed['requestId'];
   const toolCallId = parsed['toolCallId'];
@@ -113,7 +113,7 @@ function decodeElicitationEvent(
 function decodeAssistantStepEvent(
   eventType: string,
   parsed: Record<string, unknown>,
-  envelope: V2WireEnvelope,
+  envelope: WireEnvelopeFromV2,
 ): ChatStreamEvent {
   const step = parsed['step'];
   const messageId = parsed['messageId'];

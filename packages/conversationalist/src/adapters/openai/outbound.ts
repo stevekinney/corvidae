@@ -2,13 +2,9 @@ import { assertConversationSafe } from '../../conversation/validation';
 import type { MultiModalContent } from '../../multi-modal';
 import { renderDocumentReferenceText } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
-import type {
-  ConversationHistory as Conversation,
-  Message,
-  ToolCall,
-  ToolResult,
-} from '../../types';
+import type { ConversationHistory as Conversation, Message, ToolCall } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
+import { stringifyToolResult } from '../shared';
 import type {
   OpenAIContentPart,
   OpenAIMessage,
@@ -164,26 +160,6 @@ function convertMessageByRole(message: Message): OpenAIMessage | null {
     default:
       return null;
   }
-}
-
-/**
- * Converts a tool result to a string for OpenAI.
- */
-function stringifyToolResult(result: ToolResult): string {
-  const payload =
-    result.outcome === 'success'
-      ? result.content
-      : {
-          outcome: result.outcome,
-          content: result.content,
-          ...(result.error ? { error: result.error } : {}),
-          ...(result.action ? { action: result.action } : {}),
-        };
-
-  if (typeof payload === 'string') {
-    return payload;
-  }
-  return JSON.stringify(payload);
 }
 
 /**

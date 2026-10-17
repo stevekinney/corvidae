@@ -60,6 +60,7 @@ import tabsExamples from '../components/tabs/tabs.examples.json' with { type: 'j
 import tagInputExamples from '../components/tag-input/tag-input.examples.json' with { type: 'json' };
 import terminalFrameExamples from '../components/terminal-frame/terminal-frame.examples.json' with { type: 'json' };
 import terminalOutputExamples from '../components/terminal-output/terminal-output.examples.json' with { type: 'json' };
+import textExamples from '../components/text/text.examples.json' with { type: 'json' };
 import textareaExamples from '../components/textarea/textarea.examples.json' with { type: 'json' };
 import timeFieldExamples from '../components/time-field/time-field.examples.json' with { type: 'json' };
 import timelineExamples from '../components/timeline/timeline.examples.json' with { type: 'json' };
@@ -69,6 +70,7 @@ import toolbarExamples from '../components/toolbar/toolbar.examples.json' with {
 import tooltipExamples from '../components/tooltip/tooltip.examples.json' with { type: 'json' };
 import transferListExamples from '../components/transfer-list/transfer-list.examples.json' with { type: 'json' };
 import treeExamples from '../components/tree/tree.examples.json' with { type: 'json' };
+import videoPlayerExamples from '../components/video-player/video-player.examples.json' with { type: 'json' };
 import virtualListExamples from '../components/virtual-list/virtual-list.examples.json' with { type: 'json' };
 import visuallyHiddenExamples from '../components/visually-hidden/visually-hidden.examples.json' with { type: 'json' };
 import waveformExamples from '../components/waveform/waveform.examples.json' with { type: 'json' };
@@ -134,6 +136,7 @@ export {
   tagInputExamples,
   terminalFrameExamples,
   terminalOutputExamples,
+  textExamples,
   textareaExamples,
   timeFieldExamples,
   timelineExamples,
@@ -143,6 +146,7 @@ export {
   tooltipExamples,
   transferListExamples,
   treeExamples,
+  videoPlayerExamples,
   virtualListExamples,
   visuallyHiddenExamples,
   waveformExamples,

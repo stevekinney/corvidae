@@ -62,6 +62,9 @@ export type {
   AspectRatioProps,
 } from './components/aspect-ratio/index.ts';
 
+export { default as AudioPlayer } from './components/audio-player/index.ts';
+export type { AudioPlayerProps } from './components/audio-player/index.ts';
+
 export { default as Avatar } from './components/avatar/index.ts';
 export type { AvatarProps, AvatarShape, AvatarSize } from './components/avatar/index.ts';
 
@@ -968,6 +971,9 @@ export type {
 export { default as Tabs } from './components/tabs/index.ts';
 export type { TabsContext, TabsOrientation, TabsProps } from './components/tabs/index.ts';
 
+export { default as Text } from './components/text/index.ts';
+export type { TextElement, TextProps, TextVariant } from './components/text/index.ts';
+
 export { default as Textarea } from './components/textarea/index.ts';
 export type { TextareaProps, TextareaVariant } from './components/textarea/index.ts';
 
@@ -1043,6 +1049,9 @@ export type {
   VirtualListScrollAlign,
   VirtualListScrollToIndexOptions,
 } from './components/virtual-list/index.ts';
+
+export { default as VideoPlayer } from './components/video-player/index.ts';
+export type { VideoPlayerProps } from './components/video-player/index.ts';
 
 export { default as VisuallyHidden } from './components/visually-hidden/index.ts';
 export type {

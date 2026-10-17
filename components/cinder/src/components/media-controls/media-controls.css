@@ -121,4 +121,22 @@
     background-color: var(--cinder-accent-solid);
     transition: width var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
+
+  /* Seek slider: a native range input so arrow, Home, End, and Page keys work. */
+  .cinder-media-controls__seek {
+    flex: 1;
+    min-width: 4rem;
+    accent-color: var(--cinder-accent-solid);
+    cursor: pointer;
+  }
+
+  .cinder-media-controls__seek[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .cinder-media-controls__seek:focus-visible {
+    outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
+    outline-offset: var(--cinder-ring-offset);
+  }
 }

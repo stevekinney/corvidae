@@ -13,6 +13,16 @@ export {
   toA2AParts,
 } from './adapters/a2a';
 export type * from './adapters/a2a/types';
+export { agUiConversationAdapter } from './adapters/ag-ui';
+export { AGUIMappingError } from './adapters/ag-ui/errors';
+export {
+  appendAGUIMessages,
+  fromAGUIMessages,
+  fromAGUIToolMessage,
+  mergeAGUIMessages,
+} from './adapters/ag-ui/inbound';
+export { toAGUIMessages } from './adapters/ag-ui/outbound';
+export type * from './adapters/ag-ui/types';
 export { anthropicConversationAdapter } from './adapters/anthropic';
 export { appendAnthropicMessages, fromAnthropicMessages } from './adapters/anthropic/inbound';
 export { toAnthropicMessages } from './adapters/anthropic/outbound';

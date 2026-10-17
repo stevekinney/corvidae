@@ -40,6 +40,8 @@ type SessionRunnerDependencies = {
 };
 
 export type TurnState = {
+  /** The host's identifier for this run, once a `run.started` frame (wire version 3) names it. */
+  runId: string | undefined;
   /** Whole-turn text, which decides whether the row is finalized or cancelled. */
   text: string;
   /** Text of the row currently open, which resets at every step boundary. */
@@ -225,6 +227,7 @@ async function executeTurn({
   const turnState: TurnState = {
     text: '',
     currentAssistantText: '',
+    runId: undefined,
     currentAssistantMessageId: messageId,
     currentStep: -1,
     legacyTextSeen: false,

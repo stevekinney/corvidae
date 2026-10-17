@@ -179,7 +179,7 @@ Management operations are Weft catalog operations named under `bureau.*`, served
 | `bureau.tasks.cancel` | Command | Operator cancellation of any task |
 | `bureau.tasks.events` | Subscription | A task's durable history with a resumable cursor, as an allowlisted projection: each event carries only the fields its A2A counterpart carries (status, status message, artifact, cursor, and timestamps), never the raw durable payload, whose run-completion detail keeps step content, tool calls, and tool results |
 | `bureau.contexts.delete` | Command | Delete a context (a Bureau session): fence its incarnation against new tasks and continuations, cancel and await every live task in it (not only the latest), and report the aggregate of their cleanup acknowledgements, the least settled state winning; A2A has no core context deletion |
-| `bureau.reviews.list`, `bureau.reviews.get` | Query | Pending and resolved reviews |
+| `bureau.reviews.list`, `bureau.reviews.get` | Query | `list` returns pending reviews; resolved reviews are reached by id through `get` |
 | `bureau.reviews.resolve` | Command | Approve, deny, or reject a review as the reviewing principal |
 | `bureau.deliveries.list`, `bureau.deliveries.get`, `bureau.deliveries.tail` | Query and subscription | Outbound deliveries and attempts |
 | `bureau.deliveries.retry`, `bureau.deliveries.cancel` | Command | Operator retry and cancellation. A retry of a push delivery is rejected with `Conflict` when its configuration has been deleted (deletion persists a fence on the configuration) or when a later delivery for the same configuration has been enqueued, so a retry never reaches a deleted webhook or reorders a configuration's updates; an accepted retry re-enters the projector's per-configuration queue |
@@ -271,6 +271,8 @@ Which states each operation can produce:
 | `bureau.reviews.resolve` | `applied`, `rejected`, `superseded` |
 | Management delivery commands (`bureau.deliveries.retry`, `bureau.deliveries.cancel`; A2A push-configuration methods return their fixed objects and carry no receipt) | `accepted`, `pending`, `applied`, `failed`, `canceled`, `unknown-outcome` |
 | Schedule and goal commands | `applied`, `rejected`, `cancel-requested`, `canceled`, `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` |
+
+A `bureau.reviews.resolve` whose decision is `reject` and that lands is `applied`: the response's `decision` carries `reject`, and `rejected` stays the receipt of a command refused at admission, which v1 reports as a fault.
 
 ## Retry, concurrency, and ordering
 

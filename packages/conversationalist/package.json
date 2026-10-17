@@ -13,6 +13,7 @@
     "test": "bun ../../scripts/bun-test-junit.ts"
   },
   "dependencies": {
+    "@ag-ui/core": "catalog:",
     "@lostgradient/lifecycle": "workspace:*",
     "armorer": "workspace:*",
     "js-yaml": "catalog:",

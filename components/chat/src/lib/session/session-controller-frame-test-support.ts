@@ -7,6 +7,7 @@ import type {
   ChatToolActivity,
 } from './session-controller-support.ts';
 import { createChatSessionController } from './session-controller.ts';
+import { hostileEvent } from './stream-event-codec-test-helpers.ts';
 import type { ChatStreamEvent } from './stream-event-codec.ts';
 import { decodeChatStreamEvents, encodeChatStreamEvent } from './stream-event-codec.ts';
 
@@ -19,7 +20,7 @@ export type FrameInput = DistributiveOmit<ChatStreamEvent, 'wireVersion' | 'sequ
 export type ThrowingObserver = 'onToolActivity' | 'onElicitation' | 'onRunAborted';
 
 export type FrameHarnessOptions = {
-  /** One entry per transport turn; each is delivered as its own `wireVersion: 2` stream. */
+  /** One entry per transport turn; each is delivered as its own stream, stamped with the version its frames need. */
   turns: FrameInput[][];
   executionOwner?: 'browser' | 'server';
   throwingObserver?: ThrowingObserver;
@@ -35,9 +36,27 @@ export type FrameHarnessOptions = {
 
 const thrown = new Error('observer failure');
 
-/** Wraps frames in the version 2 envelope with strictly increasing sequences. */
+/**
+ * The one version a stream of these frames speaks: 3 when any frame is a
+ * version 3 member (`run.started`, or a `stream:text-delta` naming its
+ * message), otherwise 2. A stream commits to a single version.
+ */
+function streamVersion(frames: FrameInput[]): 2 | 3 {
+  const needsVersion3 = frames.some(
+    (frame) =>
+      frame.type === 'run.started' ||
+      (frame.type === 'stream:text-delta' && frame.messageId !== undefined),
+  );
+  return needsVersion3 ? 3 : 2;
+}
+
+/** Wraps frames in one envelope version with strictly increasing sequences. */
 export function enveloped(frames: FrameInput[]): ChatStreamEvent[] {
-  return frames.map((frame, sequence) => ({ ...frame, wireVersion: 2, sequence }));
+  const wireVersion = streamVersion(frames);
+  // The frame type is a union whose members tie `wireVersion` to their body,
+  // so the stamped version is checked at runtime by the codec rather than by
+  // the compiler, which is what `hostileEvent` exists for.
+  return frames.map((frame, sequence) => hostileEvent({ ...frame, wireVersion, sequence }));
 }
 
 /** Encodes frames to NDJSON and decodes them back through the stream codec. */

@@ -1,0 +1,20 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  .cinder-video-player {
+    display: grid;
+    gap: var(--cinder-space-2);
+    max-inline-size: 100%;
+  }
+
+  .cinder-video-player__media {
+    display: block;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    border-radius: var(--cinder-radius-md);
+    background-color: var(--cinder-surface-raised);
+  }
+
+  .cinder-video-player__controls {
+    inline-size: 100%;
+  }
+}
