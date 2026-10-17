@@ -186,6 +186,7 @@ export { default as tabsVariables } from '../components/tabs/tabs.variables.ts';
 export { default as tagInputVariables } from '../components/tag-input/tag-input.variables.ts';
 export { default as terminalFrameVariables } from '../components/terminal-frame/terminal-frame.variables.ts';
 export { default as terminalOutputVariables } from '../components/terminal-output/terminal-output.variables.ts';
+export { default as textVariables } from '../components/text/text.variables.ts';
 export { default as textareaVariables } from '../components/textarea/textarea.variables.ts';
 export { default as timeFieldVariables } from '../components/time-field/time-field.variables.ts';
 export { default as timelineVariables } from '../components/timeline/timeline.variables.ts';

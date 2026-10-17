@@ -125,6 +125,7 @@ export const appFixtureDeclarations = {
   'description-list': ['assertion'],
   'diff-statistics': ['assertion'],
   divider: ['assertion'],
+  text: ['assertion'],
   drawer: ['assertion'],
   'empty-state': ['assertion'],
   feed: ['assertion'],

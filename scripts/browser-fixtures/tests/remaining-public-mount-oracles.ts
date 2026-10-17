@@ -80,6 +80,7 @@ export const productOracles: Record<string, ProductOracle> = {
     selector: `[class*="cinder-divider"]`,
     attribute: { name: 'data-cinder-orientation', value: 'horizontal' },
   },
+  text: { selector: `[class*="cinder-text"]`, text: 'Heading 1' },
   drawer: { selector: 'button', text: 'Open drawer', behavior: 'drawer' },
   'empty-state': { selector: `[class*="cinder-empty-state"]`, text: 'No results found' },
   feed: {
