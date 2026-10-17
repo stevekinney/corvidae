@@ -19,6 +19,7 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
+import { SESSION_INPUT_DELIVERIES_METADATA_KEY } from './session-input-promotion';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
@@ -105,15 +106,21 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
         await recovering.waitForRecovery?.();
         await recovering.waitForDurableRun(runId);
         const session = await recovering.getSession(sessionId);
-        const promotions = session?.metadata['sessionInputPromotions'];
-        const promotedIds =
-          typeof promotions === 'object' && promotions !== null && !Array.isArray(promotions)
-            ? Object.keys(promotions)
+        const records = session?.metadata[SESSION_INPUT_DELIVERIES_METADATA_KEY];
+        const promoted =
+          typeof records === 'object' && records !== null && !Array.isArray(records)
+            ? Object.values(records).filter(
+                (record) =>
+                  typeof record === 'object' &&
+                  record !== null &&
+                  !Array.isArray(record) &&
+                  (record as Record<string, unknown>)['promotion'] !== undefined,
+              )
             : [];
         // Step 0 was checkpointed by the child, so only step 1 generates again,
         // and it sees each input exactly once, oldest first.
         expect(prompts).toEqual([{ step: 1, texts: ['Start', 'first', 'second'] }]);
-        expect(promotedIds.toSorted()).toEqual(['input-a', 'input-b']);
+        expect(promoted).toHaveLength(2);
       } finally {
         await recovering.dispose();
       }

@@ -4,6 +4,7 @@ import type {
   SessionInputPayload,
   SessionInputPromotion,
   SessionInputReceipt,
+  SessionInputState,
   SessionStore,
 } from '@lostgradient/operative';
 import {
@@ -87,17 +88,37 @@ const SESSION_INPUT_IDENTITY_TTL_MS = 86_400_000;
 /** Bounds the compare-and-swap retry loop against concurrent claimants of the same key. */
 const SESSION_INPUT_IDENTITY_MAX_CAS_ATTEMPTS = 10;
 
+/**
+ * How long an admitted input stays deliverable before the mailbox dead-letters
+ * it and its receipt reads `expired`. Weft's own default is an hour, shorter
+ * than a run may stay parked on a human reviewer or a wakeup, which would lose
+ * input the receipt still called admitted.
+ */
+export const SESSION_INPUT_COMMAND_TIMEOUT_MS = 7 * 86_400_000;
+
+/**
+ * The most times a command may be leased before the mailbox dead-letters it
+ * (Weft's ceiling). Retries here are crashes and lapsed leases, never poison:
+ * a malformed input is rejected without retry when it is read. Weft's default
+ * of 3 would dead-letter a healthy input after a few restarts.
+ */
+export const SESSION_INPUT_MAXIMUM_ATTEMPTS = 100;
+
 /** One session's session-input mailbox — the durable log, FIFO sequencer, and per-session backlog authority. */
 export function createSessionInputMailbox(
   storage: Storage,
   sessionId: string,
   sessionBacklogLimit: number,
+  now?: () => number,
 ): Mailbox {
   return new Mailbox({
     storage,
     namespace: SESSION_INPUT_NAMESPACE,
     resourceId: sessionId,
     maxBacklog: sessionBacklogLimit,
+    commandTimeoutMs: SESSION_INPUT_COMMAND_TIMEOUT_MS,
+    maxAttempts: SESSION_INPUT_MAXIMUM_ATTEMPTS,
+    ...(now === undefined ? {} : { now }),
   });
 }
 
@@ -192,6 +213,12 @@ async function claimSessionInputIdentity(
 
 /** The payload a session input persists as, inside the session mailbox's inline command payload. */
 export interface PersistedSessionInput {
+  /**
+   * The session incarnation the input was admitted to. The mailbox is keyed by
+   * session id alone, so a recreated session would otherwise inherit what a
+   * deleted one left pending; delivery refuses an input from another incarnation.
+   */
+  readonly incarnation: string;
   readonly payload: SessionInputPayload;
   readonly expiresAt?: string | undefined;
   readonly supersedes?: string | undefined;
@@ -215,18 +242,16 @@ export function decodeSessionInputKind(kind: string): SessionInputDeliveryMode {
  * own receipt.
  *
  * `revision` is fixed at `1`: nothing in this slice amends a record in
- * place. `state` defaults to deriving from `deliveryMode` (correct for a
- * BRAND NEW admission — nothing has had a chance to promote it yet), but
- * `promotion`, when supplied, overrides that to `'promoted'`. A
- * session-input's own domain state is tracked separately, in session
- * metadata, by `session-input-promotion.ts` — every caller building a
- * receipt for an EXISTING record (a replay, or a conflict's
- * `originalReceipt`) must pass that record's current promotion (via
- * {@link readSessionInputPromotion}), never assume `deliveryMode` still
- * describes it. Coordinator-ruled correctness fix: a replay of an
- * already-promoted record used to report `accepted`/`queued`, telling a
- * legitimately-retrying caller the input was still waiting for a boundary
- * it had already passed.
+ * place. `state` is derived by `receiptState`: from `deliveryMode` for an
+ * input still waiting, `'promoted'` once its command is promoted (read from
+ * session metadata by the command's identity, via
+ * {@link readSessionInputPromotion}), and an honest terminal state once the
+ * mailbox has closed it some other way. Every caller building a receipt for an
+ * EXISTING record (a replay, or a conflict's `originalReceipt`) must pass that
+ * command's current promotion, never assume `deliveryMode` still describes it:
+ * a replay of an already-promoted record used to report `accepted`/`queued`,
+ * telling a legitimately-retrying caller the input was still waiting for a
+ * boundary it had already passed.
  */
 function buildReceipt(
   receipt: ApplicationCommandReceipt,
@@ -247,9 +272,33 @@ function buildReceipt(
     deliveryMode,
     admissionSequence: receipt.sequence,
     revision: 1,
-    state: promotion !== undefined ? 'promoted' : deliveryMode === 'steer' ? 'accepted' : 'queued',
+    state: receiptState(receipt, deliveryMode, promotion),
     admittedAt: new Date(receipt.acceptedAt).toISOString(),
   };
+}
+
+/**
+ * The state a receipt reports. Promotion in the session's metadata is the
+ * authority for `promoted`; a command the mailbox has since closed without it
+ * reports the honest terminal state, so a caller never reads `accepted` for
+ * input that was dead-lettered, cancelled, or refused.
+ */
+function receiptState(
+  receipt: ApplicationCommandReceipt,
+  deliveryMode: SessionInputDeliveryMode,
+  promotion: SessionInputPromotion | undefined,
+): SessionInputState {
+  if (promotion !== undefined || receipt.state === 'applied') return 'promoted';
+  switch (receipt.state) {
+    case 'dead-lettered':
+      return receipt.failure?.reason === 'deadline-exceeded' ? 'expired' : 'failed';
+    case 'cancelled':
+      return 'canceled';
+    case 'rejected':
+      return 'failed';
+    default:
+      return deliveryMode === 'steer' ? 'accepted' : 'queued';
+  }
 }
 
 /** Non-terminal `ApplicationCommandState`s — mirrors what counts toward a mailbox's own `openCount`. */
@@ -309,7 +358,7 @@ async function reconstructCrossSessionReceipt(
   // that other record's OWN current state is, promoted or not.
   const originalSession = await sessionStore.load(originalSessionId);
   const promotion = originalSession
-    ? readSessionInputPromotion(originalSession.metadata, id)
+    ? readSessionInputPromotion(originalSession.metadata, match.commandId)
     : undefined;
   return buildReceipt(match, decodeSessionInputKind(match.kind), promotion);
 }
@@ -361,9 +410,9 @@ export async function admitSessionInput(
   // reservation defers it), so a REPLAY or CONFLICT receipt describing an
   // EXISTING record must read this session's CURRENT promotion state, not
   // whatever it was when `submitSessionInput` started.
-  async function currentPromotion(): Promise<SessionInputPromotion | undefined> {
+  async function currentPromotion(commandId: string): Promise<SessionInputPromotion | undefined> {
     const current = await sessionStore.load(sessionId);
-    return current ? readSessionInputPromotion(current.metadata, id) : undefined;
+    return current ? readSessionInputPromotion(current.metadata, commandId) : undefined;
   }
 
   const identity = await claimSessionInputIdentity(kv, principal, id, sessionId, nowMs);
@@ -417,7 +466,7 @@ export async function admitSessionInput(
         receipt: buildReceipt(
           admission.receipt,
           decodeSessionInputKind(admission.receipt.kind),
-          await currentPromotion(),
+          await currentPromotion(admission.receipt.commandId),
         ),
       };
     case 'conflict': {
@@ -435,7 +484,7 @@ export async function admitSessionInput(
           originalReceipt: buildReceipt(
             admission.receipt,
             decodeSessionInputKind(admission.receipt.kind),
-            await currentPromotion(),
+            await currentPromotion(admission.receipt.commandId),
           ),
         },
       };

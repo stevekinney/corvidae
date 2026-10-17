@@ -1,34 +1,82 @@
 import {
   createMailboxSessionInputGate,
+  type DecodedSessionInput,
+  type MailboxSessionInputGateTimers,
+  parseSessionInputPayload,
   type SessionInputGate,
   type SessionStore,
 } from '@lostgradient/operative';
-import type { Mailbox } from '@lostgradient/weft';
+import type { ApplicationCommandClaim, Mailbox } from '@lostgradient/weft';
 
 import { decodeSessionInputKind, type PersistedSessionInput } from './session-input-durability';
-import { promoteSessionInput, readSessionInputPromotion } from './session-input-promotion';
+import { claimSessionInputDeliveries, promoteSessionInputs } from './session-input-promotion';
 
-/** What {@link createSessionInputDeliveryGate} reads and writes for one session. */
+/** What {@link createSessionInputDeliveryGate} reads and writes for one run. */
 export interface SessionInputDeliveryOptions {
   readonly sessionId: string;
+  /** The run this gate delivers for, named in the session's delivery records. */
+  readonly runId: string;
+  /** The session incarnation the run started in; input admitted to another one is refused. */
+  readonly incarnation: string;
   /** The session's session-input mailbox, the same instance admission writes to. */
   readonly mailbox: Mailbox;
   readonly sessionStore: SessionStore;
   readonly nowISO: () => string;
+  readonly timers?: MailboxSessionInputGateTimers | undefined;
+  readonly onRenewalError?: ((error: unknown) => void) | undefined;
+  /** Stops the gate keeping its leases alive once it aborts (the bureau shutting down). */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
- * COR-1476 — the {@link SessionInputGate} a Bureau hands each of a session's
- * durable runs, so input admitted by `submitSessionInput` reaches the run at its
- * next step boundary.
+ * Reads one claimed command as a persisted session input, or throws, which the
+ * gate turns into a rejection without retry. Everything is checked, because the
+ * value is plain stored data that an untyped caller, another version, or a
+ * damaged record may have shaped, and a malformed one must be refused here
+ * rather than fail a live run inside a step.
+ */
+export function decodeSessionInputCommand(
+  claim: ApplicationCommandClaim,
+  incarnation: string,
+): DecodedSessionInput {
+  if (claim.payload.form !== 'inline') {
+    throw new TypeError('A session input must carry an inline payload.');
+  }
+  const value: unknown = claim.payload.value;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError('A session input must be stored as an object.');
+  }
+  const persisted = value as Partial<Record<keyof PersistedSessionInput, unknown>>;
+  if (typeof persisted.incarnation !== 'string') {
+    throw new TypeError('A session input must record the session incarnation it was admitted to.');
+  }
+  if (persisted.incarnation !== incarnation) {
+    throw new Error(
+      'This session input was admitted to an earlier incarnation of the session and is not delivered to this one.',
+    );
+  }
+  for (const field of ['expiresAt', 'supersedes'] as const) {
+    if (persisted[field] !== undefined && typeof persisted[field] !== 'string') {
+      throw new TypeError(`A session input's ${field} must be a string when present.`);
+    }
+  }
+  return {
+    payload: parseSessionInputPayload(persisted.payload),
+    deliveryMode: decodeSessionInputKind(claim.receipt.kind),
+  };
+}
+
+/**
+ * COR-1476 — the {@link SessionInputGate} a Bureau hands each durable run of a
+ * session, so input `submitSessionInput` admitted reaches the run at its next
+ * step boundary.
  *
- * Operative's mailbox gate owns the claim and settle protocol. This supplies the
- * two Bureau-specific halves of it: how an admitted command decodes (the
- * `PersistedSessionInput` that `admitSessionInput` stored, and the delivery mode
- * its `kind` encodes), and where promotion lives. Promotion is
- * `promoteSessionInput`'s `sessionInputPromotions` entry in the session's own
- * metadata, so a delivered input's receipt reads `promoted` from the same fact
- * that decides it must not be delivered again.
+ * Operative's mailbox gate owns the claim, lease, and settle protocol. This
+ * supplies the two Bureau-specific halves of it: how an admitted command decodes
+ * ({@link decodeSessionInputCommand}), and where delivery is recorded: the
+ * session's own metadata, keyed by the mailbox command (see
+ * `session-input-promotion.ts`), so the record that decides an input must not be
+ * delivered twice is the same one that makes its receipt read `promoted`.
  *
  * Delivery does not honour a record's `expiresAt` or `supersedes`: neither has a
  * terminal state recorded anywhere yet, so an expired or superseded input is
@@ -37,43 +85,19 @@ export interface SessionInputDeliveryOptions {
 export function createSessionInputDeliveryGate(
   options: SessionInputDeliveryOptions,
 ): SessionInputGate {
-  const { sessionId, mailbox, sessionStore, nowISO } = options;
+  const { sessionId, runId, incarnation, mailbox, sessionStore, nowISO } = options;
   return createMailboxSessionInputGate({
     mailbox,
-    decode(claim) {
-      if (claim.payload.form !== 'inline') {
-        throw new Error('A session input must carry an inline payload.');
-      }
-      const persisted = claim.payload.value as PersistedSessionInput;
-      return {
-        payload: persisted.payload,
-        deliveryMode: decodeSessionInputKind(claim.receipt.kind),
-      };
+    owner: runId,
+    decode: (claim) => decodeSessionInputCommand(claim, incarnation),
+    deliveries: {
+      claim: (owner, commandIds) =>
+        claimSessionInputDeliveries(sessionStore, sessionId, owner, commandIds, nowISO),
+      promote: (deliveries) =>
+        promoteSessionInputs(sessionStore, sessionId, runId, deliveries, nowISO),
     },
-    promotion: {
-      async isPromoted(id) {
-        const session = await sessionStore.load(sessionId);
-        return (
-          session !== undefined && readSessionInputPromotion(session.metadata, id) !== undefined
-        );
-      },
-      async promote(delivery) {
-        const result = await promoteSessionInput(
-          sessionStore,
-          {
-            sessionId,
-            id: delivery.id,
-            conversationMessageId: delivery.conversationMessageId,
-            providerTurn: delivery.providerTurn,
-          },
-          nowISO,
-        );
-        if (!result.committed) {
-          throw new Error(
-            `Cannot promote session input "${delivery.id}": session "${sessionId}" no longer exists.`,
-          );
-        }
-      },
-    },
+    timers: options.timers,
+    onRenewalError: options.onRenewalError,
+    signal: options.signal,
   });
 }

@@ -1,4 +1,4 @@
-import type { GenerateContext, GenerateFunction } from '@lostgradient/operative';
+import { type GenerateContext, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -53,6 +53,7 @@ async function openBureau(generate: GenerateFunction): Promise<Bureau> {
     toolbox: createToolbox([nextTool]),
     storage: { type: 'memory' },
     durableExecution: true,
+    stopWhen: stopWhen.noToolCalls(),
   });
 }
 
@@ -139,6 +140,123 @@ describe('createBureau delivers admitted session input at the next step boundary
     } finally {
       releaseStepZero.resolve();
       releaseStepTwo.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it("answers input sent during a run's final step in that same run, in order", async () => {
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const prompts: string[][] = [];
+    const bureau = await openBureau(async (context: GenerateContext) => {
+      prompts.push(userTexts(context.conversation));
+      if (context.step === 0) {
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+      }
+      // No tool calls: step 0 would end the run.
+      return { content: `answer ${context.step}`, toolCalls: [] };
+    });
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await stepZeroStarted.promise;
+      for (const [id, payload] of [
+        ['input-a', 'sent while the agent was answering'],
+        ['input-b', 'and a second thing'],
+      ] as const) {
+        const admitted = await bureau.submitSessionInput(run.sessionId, {
+          id,
+          principal: 'alice',
+          deliveryMode: 'steer',
+          payload,
+        });
+        expect(admitted.outcome).toBe('admitted');
+      }
+      releaseStepZero.resolve();
+      await bureau.waitForDurableRun(run.id);
+
+      expect(prompts).toEqual([
+        ['First'],
+        ['First', 'sent while the agent was answering', 'and a second thing'],
+      ]);
+    } finally {
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it('does not hand a recreated session the input its deleted incarnation left pending', async () => {
+    const hold = deferred();
+    const prompts: { run: number; texts: string[] }[] = [];
+    let runNumber = 0;
+    const firstStarted = deferred();
+    const bureau = await openBureau(async (context: GenerateContext) => {
+      prompts.push({ run: runNumber, texts: userTexts(context.conversation) });
+      if (runNumber === 1) {
+        firstStarted.resolve();
+        await hold.promise;
+      }
+      return { content: 'done', toolCalls: [] };
+    });
+    try {
+      runNumber = 1;
+      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await firstStarted.promise;
+      const admitted = await bureau.submitSessionInput(first.sessionId, {
+        id: 'input-a',
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: 'meant for the deleted session',
+      });
+      expect(admitted.outcome).toBe('admitted');
+
+      await bureau.deleteSession(first.sessionId);
+      hold.resolve();
+
+      runNumber = 2;
+      const second = await bureau.createRun({
+        message: 'Second',
+        principal: 'alice',
+        sessionId: first.sessionId,
+      });
+      await bureau.waitForDurableRun(second.id);
+
+      const secondRun = prompts.filter(({ run }) => run === 2);
+      expect(secondRun).toEqual([{ run: 2, texts: ['Second'] }]);
+    } finally {
+      hold.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it('answers unsupported-capability, rather than throwing, for a session id too long to address a mailbox', async () => {
+    const started = deferred();
+    const hold = deferred();
+    const bureau = await openBureau(async () => {
+      started.resolve();
+      await hold.promise;
+      return { content: 'done', toolCalls: [] };
+    });
+    try {
+      const longId = `session-${'x'.repeat(300)}`;
+      const run = await bureau.createRun({
+        message: 'Start',
+        principal: 'alice',
+        sessionId: longId,
+      });
+      await started.promise;
+      const outcome = await bureau.submitSessionInput(run.sessionId, {
+        id: 'input-a',
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      expect(outcome).toEqual({
+        outcome: 'unsupported-capability',
+        reason: 'durable-mailbox-unavailable',
+      });
+    } finally {
+      hold.resolve();
       await bureau.dispose();
     }
   });

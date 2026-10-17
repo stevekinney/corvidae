@@ -1,74 +1,63 @@
-import type { JSONValue, SessionInputPromotion, SessionStore } from '@lostgradient/operative';
-import type { Mailbox } from '@lostgradient/weft';
+import type {
+  JSONValue,
+  SessionInputDelivery,
+  SessionInputDeliveryClaim,
+  SessionInputPromotion,
+  SessionStore,
+} from '@lostgradient/operative';
 
 /**
- * COR-435 AC6/AC7 — promotes an admitted session-input (`accepted`/`queued`)
- * to `promoted`: the durable fact that it became a model-visible message,
- * committed atomically, plus the downstream projection that settles the
- * underlying Weft mailbox command.
+ * COR-435 AC6/AC7, COR-1476 — the durable record of which run is delivering
+ * each admitted session input, and of the promotion (`accepted`/`queued` to
+ * `promoted`) that completes it.
+ *
+ * ## One record per mailbox command, in the session's own metadata
+ *
+ * Both facts live in `session.metadata['sessionInputDeliveries']`, keyed by the
+ * mailbox COMMAND's identity, never by the caller's input id. A caller may
+ * legitimately reuse an id once the mailbox has retired the record (the identity
+ * index's TTL and the mailbox's terminal retention are both a day), and a record
+ * keyed by that id would then call a brand new input already delivered.
+ *
+ * An entry is written in two steps, each its own `SessionStore.update`
+ * (optimistic-concurrency read-decide-commit):
+ *
+ * - {@link claimSessionInputDeliveries} records the run that is delivering a
+ *   command, before the run appends the input to its conversation. A claim is
+ *   never overwritten by a different run, so no second run (or a run recovering
+ *   a crashed peer) appends an input another run already claimed, while the
+ *   claiming run's own replay finds its claim and delivers again.
+ * - {@link promoteSessionInputs} stamps the claimed entry with the promotion,
+ *   which is what moves the input's receipt to `promoted`.
  *
  * ## Why not `ctx.memo` (AC6's literal wording)
  *
  * AC6 as filed says "a single dedicated `ctx.memo` step whose entire body is
  * one `conditionalBatch`". That wording was written against the old
- * `agent-bureau` repository. In this repository, `ctx.memo` and
- * `durableActivity()` (`packages/weft/src/core/context/durable-activity.ts`)
- * exist ONLY inside an active workflow generator's execution — confirmed by
- * that module's own `AsyncLocalStorage`-scoped `DurableActivityScope`, which
- * throws `DurableActivityScopeError` outside one. `Bureau.submitSessionInput`
- * (and everything this module is called from) runs OUTSIDE any workflow,
- * exactly like `submitSteeringCommand` today — there is no `ctx` here to
- * call `.memo()` on. That is a structural fact about where this method
- * lives, not an oversight, and the coordinator ruled explicitly: the
- * OBSERVABLE contract (AC7 — one correct outcome per crash window, never a
- * duplicate message, never a second mailbox transition) governs; the named
- * mechanism does not.
+ * `agent-bureau` repository. `ctx.memo` exists only inside an active workflow
+ * generator's execution, and `Bureau.submitSessionInput` runs outside any
+ * workflow. The observable contract (AC7: one correct outcome per crash window,
+ * never a duplicate message) governs; the named mechanism does not. The run
+ * workflow's own checkpointed step memo carries the message, and these writes
+ * are idempotent around it.
  *
- * ## What replaces it: the session outbox (AB-389/390/391)
+ * ## Crash windows
  *
- * `create-bureau.ts` already solves the identical problem — "commit a
- * durable fact atomically with a state transition, then project the
- * derived effect downstream idempotently" — for review-transition audit
- * records (see its AB-391 comment block, "review-transition audit records
- * ride the session outbox"). `SessionStore.update()`'s public
- * `options.outbox` (`@lostgradient/operative`) appends a `SessionOutboxEntry`
- * in the SAME `conditionalBatch` as the session's own metadata commit.
- * `SessionStore` and the session-input `Mailbox` share one underlying
- * `Storage` instance whenever a bureau is durably configured with a single
- * backend (`runtime-composition.ts` ~line 1731: "Keep the raw Storage so
- * the durable engine can share the exact backend with the text-value KV
- * view") — but that shared backend does NOT make Weft's own internal
- * mailbox record reachable from bureau's own `conditionalBatch` calls: its
- * key encoding is private to `packages/weft/src/core/mailbox-internals.ts`
- * and never exported. So "the record's promoted transition" here is
- * BUREAU'S OWN domain state for the record (tracked in
- * `session.metadata['sessionInputPromotions'][id]`), not Weft's — a
- * distinction `session-input-durability.ts`'s `buildReceipt()` already
- * anticipated. The session commit is the atomicity boundary AC7 actually
- * needs; the Weft mailbox's own `applied` transition is a downstream,
- * idempotent bookkeeping step (`projectSessionInputPromotion` below), kept
- * separate on purpose so a repeated call can never double-settle it.
+ * - Before the claim commits: nothing durable happened; the retry claims.
+ * - After the claim, before the step that appends the input is checkpointed: the
+ *   claiming run's replay reads its own claim (`owned`) and appends again. No
+ *   other run can, because the claim names this one.
+ * - After the step is checkpointed, before promotion: the replayed workflow
+ *   skips the step (its memo is cached) and runs the settle memo, which promotes.
+ * - After promotion, before the mailbox command is acknowledged: the next
+ *   boundary leases the command again, sees it `promoted`, and acknowledges it.
  *
- * ## The three crash windows (AC7)
- *
- * - (a) crash before `promoteSessionInput`'s batch commits: nothing durable
- *   happened. A retry calls `promoteSessionInput` again; `SessionStore.update`'s
- *   own optimistic-concurrency read-decide-commit starts fresh and commits
- *   exactly once.
- * - (b) crash between the batch committing and the caller's own bookkeeping
- *   of having called it landing: the caller (not knowing whether its last
- *   call actually landed) calls `promoteSessionInput` again. The updater
- *   reads `session.metadata['sessionInputPromotions'][id]`, finds it
- *   already present, and returns `undefined` (a no-op commit) — per
- *   `SessionStore.update()`'s own contract, a no-op commit appends NO
- *   outbox entries, so nothing replays a second time. This function
- *   returns the EXISTING promotion, reported as success.
- * - (c) crash after both the session commit AND the downstream projection
- *   have landed: calling `promoteSessionInput` again hits the same
- *   already-promoted no-op as (b); calling `projectSessionInputPromotion`
- *   again finds the Weft command already terminal (`mailbox.claim()`
- *   resolves `'empty'`, nothing available) and does nothing. Both are
- *   no-ops — there is nothing to re-enter.
+ * Promotion rides the session outbox (`SessionStore.update()`'s `options.outbox`)
+ * in the same commit as the metadata, the way review-transition audit records do
+ * (AB-391), so a durable consumer can observe it. Entries older than
+ * {@link SESSION_INPUT_DELIVERY_RETENTION_MS} are pruned on every write so the
+ * metadata does not grow without bound; by then the mailbox has retired the
+ * command they describe.
  *
  * @module session-input-promotion
  */
@@ -76,22 +65,29 @@ import type { Mailbox } from '@lostgradient/weft';
 /** `SessionOutboxEntry.namespace` this module's attachments use. Opaque to `SessionStore`. */
 export const SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE = 'session-input-promotion';
 
+/** Key in session metadata holding the per-command delivery records. */
+export const SESSION_INPUT_DELIVERIES_METADATA_KEY = 'sessionInputDeliveries';
+
+/**
+ * How long a delivery record outlives its last write. Longer than the mailbox's
+ * one-day terminal retention, after which the command it describes is gone.
+ */
+export const SESSION_INPUT_DELIVERY_RETENTION_MS = 2 * 86_400_000;
+
 /** The durable fact riding the session outbox alongside the promotion commit. */
 export interface SessionInputPromotionAttachment {
   readonly sessionId: string;
   readonly id: string;
+  readonly commandId: string;
   readonly conversationMessageId: string;
   readonly providerTurn: number;
 }
 
-export type PromoteSessionInputResult =
-  | {
-      readonly committed: true;
-      readonly promotion: SessionInputPromotion;
-      /** `true` when this call found an existing promotion rather than creating one — crash windows (b)/(c). */
-      readonly alreadyPromoted: boolean;
-    }
-  | { readonly committed: false; readonly reason: 'session-not-found' };
+interface SessionInputDeliveryRecord {
+  readonly runId: string;
+  readonly claimedAt: string;
+  readonly promotion?: SessionInputPromotion;
+}
 
 function isPlainRecord(value: JSONValue | undefined): value is Record<string, JSONValue> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -108,154 +104,189 @@ function isSessionInputPromotion(
   );
 }
 
-/**
- * Reads `id`'s {@link SessionInputPromotion} out of a session's own
- * metadata, or `undefined` when `id` has never been promoted (or the
- * session predates this field, or the stored value is malformed —
- * fails closed toward "not promoted" rather than fabricating a promotion).
- *
- * Shared by `session-input-durability.ts` so a replayed or conflicting
- * admission's receipt can report the record's ACTUAL current state rather
- * than guessing `accepted`/`queued` for a record that has since promoted —
- * the same `sessionInputPromotions` map `promoteSessionInput` writes to,
- * read the same way, so the two modules can never disagree about its shape.
- */
-export function readSessionInputPromotion(
-  metadata: Record<string, JSONValue>,
-  id: string,
-): SessionInputPromotion | undefined {
-  const promotions = metadata['sessionInputPromotions'];
-  if (!isPlainRecord(promotions)) return undefined;
-  const candidate = promotions[id];
-  return isSessionInputPromotion(candidate) ? candidate : undefined;
+function readDeliveryRecord(value: JSONValue | undefined): SessionInputDeliveryRecord | undefined {
+  if (
+    !isPlainRecord(value) ||
+    typeof value['runId'] !== 'string' ||
+    typeof value['claimedAt'] !== 'string'
+  ) {
+    return undefined;
+  }
+  const promotion = value['promotion'];
+  return {
+    runId: value['runId'],
+    claimedAt: value['claimedAt'],
+    ...(isSessionInputPromotion(promotion) ? { promotion } : {}),
+  };
+}
+
+function deliveryRecordsOf(metadata: Record<string, JSONValue>): Record<string, JSONValue> {
+  const records = metadata[SESSION_INPUT_DELIVERIES_METADATA_KEY];
+  return isPlainRecord(records) ? records : {};
 }
 
 /**
- * Commits a session-input's `promoted` transition. See the module doc for
- * the full crash-safety argument. Idempotent: a second call for an already-
- * promoted `id` returns the existing promotion and writes nothing new.
+ * Reads a command's {@link SessionInputPromotion} out of a session's own
+ * metadata, or `undefined` when the command has never been promoted (or the
+ * session predates this field, or the stored value is malformed: fails closed
+ * toward "not promoted" rather than fabricating a promotion).
+ *
+ * Shared by `session-input-durability.ts` so a replayed or conflicting
+ * admission's receipt reports the record's ACTUAL current state rather than
+ * guessing `accepted`/`queued` for a command that has since promoted.
  */
-export async function promoteSessionInput(
+export function readSessionInputPromotion(
+  metadata: Record<string, JSONValue>,
+  commandId: string,
+): SessionInputPromotion | undefined {
+  return readDeliveryRecord(deliveryRecordsOf(metadata)[commandId])?.promotion;
+}
+
+/** The records that are still within retention as of `nowMs`. */
+function retainedRecords(
+  records: Record<string, JSONValue>,
+  nowMs: number,
+): Record<string, JSONValue> {
+  const retained: Record<string, JSONValue> = {};
+  for (const [commandId, value] of Object.entries(records)) {
+    const record = readDeliveryRecord(value);
+    const writtenAt = Date.parse(record?.promotion?.promotedAt ?? record?.claimedAt ?? '');
+    if (record === undefined || Number.isNaN(writtenAt)) continue;
+    if (nowMs - writtenAt <= SESSION_INPUT_DELIVERY_RETENTION_MS) retained[commandId] = value;
+  }
+  return retained;
+}
+
+/**
+ * Records `owner` as the run delivering each command in `commandIds`, in one
+ * commit, and reports each command's outcome (see
+ * `SessionInputDeliveryStore.claim`). Throws when the session no longer exists:
+ * a run whose session was deleted has nothing left to deliver into.
+ */
+export async function claimSessionInputDeliveries(
   sessionStore: SessionStore,
-  attachment: SessionInputPromotionAttachment,
+  sessionId: string,
+  owner: string,
+  commandIds: readonly string[],
   nowISO: () => string,
-): Promise<PromoteSessionInputResult> {
-  const { sessionId, id, conversationMessageId, providerTurn } = attachment;
+): Promise<ReadonlyMap<string, SessionInputDeliveryClaim>> {
+  let outcomes = new Map<string, SessionInputDeliveryClaim>();
+  let sessionFound = false;
+  await sessionStore.update(sessionId, (session) => {
+    outcomes = new Map();
+    sessionFound = session !== undefined;
+    if (!session) return undefined;
+    const now = nowISO();
+    const existing = deliveryRecordsOf(session.metadata);
+    const records: Record<string, JSONValue> = { ...existing };
+    let changed = false;
+    for (const commandId of commandIds) {
+      const record = readDeliveryRecord(records[commandId]);
+      if (record === undefined) {
+        records[commandId] = { runId: owner, claimedAt: now } satisfies JSONValue;
+        outcomes.set(commandId, 'claimed');
+        changed = true;
+      } else if (record.promotion !== undefined) {
+        outcomes.set(commandId, 'promoted');
+      } else {
+        outcomes.set(commandId, record.runId === owner ? 'owned' : 'foreign');
+      }
+    }
+    const kept = retainedRecords(records, Date.parse(now));
+    if (Object.keys(kept).length !== Object.keys(records).length) changed = true;
+    if (!changed) return undefined;
+    return {
+      ...session,
+      metadata: { ...session.metadata, [SESSION_INPUT_DELIVERIES_METADATA_KEY]: kept },
+    };
+  });
+  if (!sessionFound) {
+    throw new Error(
+      `Cannot claim session input delivery: session "${sessionId}" no longer exists.`,
+    );
+  }
+  return outcomes;
+}
 
-  let outcome:
-    | { readonly kind: 'promoted-now'; readonly promotion: SessionInputPromotion }
-    | { readonly kind: 'already-promoted'; readonly promotion: SessionInputPromotion }
-    | { readonly kind: 'not-found' }
-    | undefined;
+/**
+ * Commits each delivery's promotion, in one commit with one outbox attachment
+ * per newly promoted command. Idempotent per command: a delivery already
+ * promoted changes nothing and appends nothing. Throws when the session no
+ * longer exists.
+ */
+export async function promoteSessionInputs(
+  sessionStore: SessionStore,
+  sessionId: string,
+  owner: string,
+  deliveries: readonly SessionInputDelivery[],
+  nowISO: () => string,
+): Promise<void> {
+  // `SessionStore.update()` validates `options.outbox` once, before its retry
+  // loop, so the attachments are fixed from a first read. A promotion that lands
+  // in between leaves a harmless extra entry for the drain to retire; the
+  // updater below still promotes each command at most once.
+  const before = await sessionStore.load(sessionId);
+  if (before === undefined) {
+    throw new Error(`Cannot promote session input: session "${sessionId}" no longer exists.`);
+  }
+  const records = deliveryRecordsOf(before.metadata);
+  const attachments: SessionInputPromotionAttachment[] = deliveries
+    .filter((delivery) => readDeliveryRecord(records[delivery.commandId])?.promotion === undefined)
+    .map((delivery) => ({
+      sessionId,
+      id: delivery.id,
+      commandId: delivery.commandId,
+      conversationMessageId: delivery.conversationMessageId,
+      providerTurn: delivery.providerTurn,
+    }));
+  if (attachments.length === 0) return;
 
+  let sessionFound = false;
   await sessionStore.update(
     sessionId,
     (session) => {
-      if (!session) {
-        outcome = { kind: 'not-found' };
-        return undefined;
+      sessionFound = session !== undefined;
+      if (!session) return undefined;
+      const now = nowISO();
+      const current: Record<string, JSONValue> = { ...deliveryRecordsOf(session.metadata) };
+      let changed = false;
+      for (const delivery of deliveries) {
+        const record = readDeliveryRecord(current[delivery.commandId]);
+        if (record?.promotion !== undefined) continue;
+        const promotion: SessionInputPromotion = {
+          promotedAt: now,
+          conversationMessageId: delivery.conversationMessageId,
+          providerTurn: delivery.providerTurn,
+        };
+        current[delivery.commandId] = {
+          runId: record?.runId ?? owner,
+          claimedAt: record?.claimedAt ?? now,
+          promotion: promotion as unknown as JSONValue,
+        };
+        changed = true;
       }
-      const promotions = isPlainRecord(session.metadata['sessionInputPromotions'])
-        ? session.metadata['sessionInputPromotions']
-        : {};
-      const existing = promotions[id];
-      if (isSessionInputPromotion(existing)) {
-        // Already promoted — a no-op commit. `SessionStore.update()` skips
-        // appending outbox entries when the updater returns `undefined`, so
-        // this genuinely writes nothing: no second durable fact, no second
-        // drain trigger.
-        outcome = { kind: 'already-promoted', promotion: existing };
-        return undefined;
-      }
-      const promotion: SessionInputPromotion = {
-        promotedAt: nowISO(),
-        conversationMessageId,
-        providerTurn,
-      };
-      outcome = { kind: 'promoted-now', promotion };
+      if (!changed) return undefined;
       return {
         ...session,
         metadata: {
           ...session.metadata,
-          sessionInputPromotions: {
-            ...promotions,
-            [id]: promotion as unknown as JSONValue,
-          },
+          [SESSION_INPUT_DELIVERIES_METADATA_KEY]: retainedRecords(current, Date.parse(now)),
         },
       };
     },
     {
-      // Ignored by `SessionStore.update()` when the updater above returns
-      // `undefined` (the already-promoted branch) — see that option's own
-      // doc comment. The cast matches `create-bureau.ts`'s existing
-      // `reviewAuditOutboxAttachment` (AB-391): `SessionOutboxEntry.payload`
-      // is `JSONValue`, and a `readonly`-fielded interface has no index
-      // signature TypeScript can match structurally — the value itself is
-      // already plain, JSON-safe data.
-      outbox: [
-        {
-          namespace: SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE,
-          payload: attachment as unknown as JSONValue,
-        },
-      ],
+      // The cast matches `create-bureau.ts`'s existing `reviewAuditOutboxAttachment`
+      // (AB-391): `SessionOutboxEntry.payload` is `JSONValue`, and a
+      // `readonly`-fielded interface has no index signature TypeScript can match
+      // structurally; the value itself is plain, JSON-safe data. Ignored when the
+      // updater returns `undefined` (every delivery was already promoted).
+      outbox: attachments.map((attachment) => ({
+        namespace: SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE,
+        payload: attachment as unknown as JSONValue,
+      })),
     },
   );
-
-  if (outcome === undefined) {
-    // `SessionStore.update()`'s updater always runs at least once before
-    // the call resolves — unreachable in practice, defensive only.
-    throw new Error(
-      `promoteSessionInput: session store update for "${sessionId}" never invoked its updater.`,
-    );
+  if (!sessionFound) {
+    throw new Error(`Cannot promote session input: session "${sessionId}" no longer exists.`);
   }
-  if (outcome.kind === 'not-found') return { committed: false, reason: 'session-not-found' };
-  return {
-    committed: true,
-    promotion: outcome.promotion,
-    alreadyPromoted: outcome.kind === 'already-promoted',
-  };
-}
-
-export type ProjectSessionInputPromotionResult =
-  | { readonly projected: true }
-  | { readonly projected: false; readonly reason: 'nothing-to-claim' | 'not-our-record' };
-
-/**
- * The downstream half of promotion: settles the underlying Weft
- * session-input mailbox command as `applied`, so the mailbox's own backlog
- * accounting reflects that the record is no longer open.
- *
- * Idempotent by construction, not by an explicit check: once the command is
- * terminal, `mailbox.claim()` finds nothing available (`status: 'empty'`)
- * and this is a no-op — the same guarantee crash window (c) relies on. A
- * command that claims but does not match `id` (a different session-input
- * happened to be next in this mailbox's FIFO order) is rejected WITH
- * retry, so its lease is never silently dropped.
- */
-export async function projectSessionInputPromotion(
-  mailbox: Mailbox,
-  id: string,
-): Promise<ProjectSessionInputPromotionResult> {
-  const claimResult = await mailbox.claim();
-  if (claimResult.status !== 'claimed') {
-    return { projected: false, reason: 'nothing-to-claim' };
-  }
-  const { claim } = claimResult;
-  if (claim.receipt.idempotencyKey !== id) {
-    await mailbox.reject({
-      commandId: claim.receipt.commandId,
-      attemptToken: claim.attemptToken,
-      failure: {
-        reason: 'application',
-        message: 'claimed a different session-input than this promotion targeted',
-      },
-      retry: true,
-    });
-    return { projected: false, reason: 'not-our-record' };
-  }
-  await mailbox.acknowledge({
-    commandId: claim.receipt.commandId,
-    attemptToken: claim.attemptToken,
-  });
-  return { projected: true };
 }

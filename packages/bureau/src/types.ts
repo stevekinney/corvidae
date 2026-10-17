@@ -1585,12 +1585,18 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * On a durably-configured Bureau every other authorized, non-terminal
    * request is admitted to the session's durable mailbox (`admitted`,
    * `replayed`, `conflict`, or `backlog-exhausted`). The session's live
-   * durable run delivers the input at its next step boundary, in admission
-   * order and exactly once (including across a restart), appending it to the
-   * conversation before that step generates; the receipt then reads
-   * `promoted`. `steer` and `queue` share that one FIFO path. A Bureau with no
-   * session mailbox, durable storage, or key-value store returns `{ outcome:
-   * 'unsupported-capability', reason: 'durable-mailbox-unavailable' }`.
+   * durable run appends the input to its conversation before its next step
+   * generates (or, for input sent during the last step, in one more step of the
+   * same run), once and in admission order within a run, keyed by the mailbox
+   * command so a reused `id` is a new input; the receipt then reads `promoted`.
+   * A restart loses and repeats nothing, but a lease the crashed process held
+   * delays delivery by up to about 31 seconds. An input still undelivered
+   * after seven days, or whose session is deleted, reads `expired` or
+   * `canceled`. `steer` and `queue` share that one FIFO path; `expiresAt` and
+   * `supersedes` are stored but not yet honored. A Bureau with no session
+   * mailbox, durable storage, or key-value store, or a session id too long to
+   * address a mailbox, returns `{ outcome: 'unsupported-capability', reason:
+   * 'durable-mailbox-unavailable' }`.
    */
   submitSessionInput(
     sessionId: string,

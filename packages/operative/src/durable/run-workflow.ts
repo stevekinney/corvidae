@@ -281,22 +281,6 @@ export function createRunWorkflow(
             snapshot = conversationAfterStep(snapshot, stepResult);
             lastStepSnapshot = snapshot;
 
-            // COR-1476 — the step's result, which already holds the delivered
-            // session inputs as messages, is durable here. Only now is each input
-            // marked promoted and retired from the gate's pending set, so a crash
-            // before this point re-asks the gate and a crash after it replays
-            // this memo. Settling is idempotent per input id; a failure fails
-            // the run rather than risk the same input reaching the model twice.
-            // The memo exists only for a step that delivered something, so a run
-            // that never receives session input records no extra operation.
-            if (stepResult.sessionInputDeliveries !== undefined) {
-              const deliveries = stepResult.sessionInputDeliveries;
-              yield* ctx.memo(`session-input-settle-${stepIndex}`, async () => {
-                await runDepsFrom(ctx.services).options.sessionInput?.settle(deliveries);
-                return { settled: deliveries.length };
-              });
-            }
-
             // Accumulate park requests from this step's memoized result. Last-write-
             // wins across steps, matching the in-process tool semantics (a later
             // `scheduleWakeup`/`requestHumanInput` call overwrites a prior one).
@@ -351,6 +335,32 @@ export function createRunWorkflow(
               ...stepResult.nextAccumulators,
             };
             yield* ctx.run('saveCursor', { runId, cursor });
+
+            // COR-1476 — the step's result, which already holds the delivered
+            // session inputs as messages, is durable, and so is the transcript
+            // and cursor built from it. Only now is each input marked promoted
+            // and retired from the gate's pending set, so a crash before this
+            // point re-asks the gate (whose delivery record lets only this run
+            // re-append) and a crash after it replays this memo. Settling is
+            // idempotent per command; a failure fails the run rather than risk
+            // the same input reaching the model twice. The memo exists only for
+            // a step that delivered something, so a run that never receives
+            // session input records no extra operation. It runs before the
+            // terminal breaks below so an input delivered on a stopping,
+            // aborting, or failing step is still promoted.
+            if (stepResult.sessionInputDeliveries !== undefined) {
+              const deliveries = stepResult.sessionInputDeliveries;
+              yield* ctx.memo(`session-input-settle-${stepIndex}`, async () => {
+                const gate = runDepsFrom(ctx.services).options.sessionInput;
+                if (gate === undefined) {
+                  throw new Error(
+                    `Step ${stepIndex} delivered ${deliveries.length} session input(s), but this run has no session input gate to promote them.`,
+                  );
+                }
+                await gate.settle(deliveries);
+                return { settled: deliveries.length };
+              });
+            }
 
             if (outcome.kind === 'stop') {
               finishReason = stepResult.stopFinishReason ?? 'stop-condition';

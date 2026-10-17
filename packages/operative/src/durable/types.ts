@@ -368,24 +368,24 @@ export interface SessionInputFailure {
  * memo and nothing live crosses a checkpoint.
  */
 export interface ClaimedSessionInput {
-  /** The input's caller-facing identity, unique within its session. */
+  /** The input's caller-facing identity, unique within its session while the mailbox retains it. */
   readonly id: string;
+  /**
+   * The immutable identity of the admitted command. Unlike {@link id}, which a
+   * caller may legitimately reuse once the mailbox has retired the record, this
+   * names exactly one admission, so delivery and promotion are keyed by it.
+   */
+  readonly commandId: string;
   readonly deliveryMode: SessionInputDeliveryMode;
   readonly payload: SessionInputPayload;
-  /**
-   * `true` when an earlier boundary already made this input a model-visible
-   * message and only its settlement was left undone (a crash or an expired
-   * lease between the two). The workflow must not append it again; it only
-   * hands it back to {@link SessionInputGate.settle}.
-   */
-  readonly delivered: boolean;
 }
 
 /** An input a step boundary appended to the conversation, handed to {@link SessionInputGate.settle}. */
 export interface SessionInputDelivery {
   readonly id: string;
-  /** The conversation message the input became. Absent for a settle-only entry. */
-  readonly conversationMessageId?: string | undefined;
+  readonly commandId: string;
+  /** The conversation message the input became. */
+  readonly conversationMessageId: string;
   /** The step index of the provider-turn boundary the input was consumed at. */
   readonly providerTurn: number;
 }
@@ -393,32 +393,38 @@ export interface SessionInputDelivery {
 /**
  * The seam through which a durable run receives session input admitted while it
  * is live (COR-1476). The run workflow consults it at every step boundary,
- * before the step generates: whatever {@link SessionInputGate.claimPending}
- * returns is appended to the conversation as user messages, in the order
- * returned, as part of the same memoized step. Once that step's result is
- * durable the workflow calls {@link SessionInputGate.settle} so the input's
- * receipt reaches `promoted`.
+ * before the step generates, and once more if the step would otherwise end the
+ * run: whatever {@link SessionInputGate.claimPending} returns is appended to the
+ * conversation as user messages, in the order returned, as part of the same
+ * memoized step. Once that step's result is durable the workflow calls
+ * {@link SessionInputGate.settle} so each input's receipt reaches `promoted`.
  *
  * Operative owns the contract and Bureau supplies the implementation over its
  * session-input mailbox, exactly as `SteeringGate` is supplied. Supplied via
  * `RunOptions.sessionInput`; a run without one receives no session input.
  *
- * Exactly-once delivery rests on two facts the implementation must keep:
- * `claimPending` is idempotent across a replay of the same boundary, and
- * `settle` is idempotent per input id.
+ * Exactly-once delivery rests on what the implementation keeps: a durable record
+ * of which run is delivering each command, written before the input is appended
+ * and honored by every other run, and a promotion that is idempotent per command.
  */
 export interface SessionInputGate {
   /**
    * The inputs to deliver at this boundary, in admission order. Never returns
-   * an input out of order: when an earlier input is still leased, it returns
-   * nothing rather than skip it.
+   * an input out of order, and never an input another run is delivering.
    */
   claimPending(): Promise<readonly ClaimedSessionInput[]>;
   /**
    * Records the inputs the boundary delivered (making each receipt
-   * `promoted`) and retires them from the pending set. Idempotent per `id`.
+   * `promoted`) and retires them from the pending set. Idempotent per command.
    */
   settle(deliveries: readonly SessionInputDelivery[]): Promise<void>;
+  /**
+   * Called when the step that received inputs has finished generating, however
+   * it ended, so the gate can stop keeping its claims alive. Optional.
+   */
+  stepEnded?(): void;
+  /** Releases anything the gate holds when its run is abandoned. Optional. */
+  dispose?(): void;
 }
 
 // AB-67 — the runtime steering contract (decision record, ratified

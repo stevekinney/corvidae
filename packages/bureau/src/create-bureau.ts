@@ -1877,36 +1877,63 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!runtime.durable || storage === undefined) return undefined;
     let mailbox = sessionInputMailboxes.get(sessionId);
     if (!mailbox) {
-      mailbox = createSessionInputMailbox(storage, sessionId, sessionInputSessionBacklogLimit);
+      mailbox = createSessionInputMailbox(
+        storage,
+        sessionId,
+        sessionInputSessionBacklogLimit,
+        runtimeServices.clock.now,
+      );
       sessionInputMailboxes.set(sessionId, mailbox);
     }
     return mailbox;
   }
 
   /**
-   * COR-1476 — the gate through which one of this session's durable runs
-   * receives input `submitSessionInput` admitted while it is live. `undefined`
-   * when the bureau has no durable mailbox or session store, in which case
-   * admission itself answers `unsupported-capability` and there is nothing to
-   * deliver.
+   * {@link getSessionInputMailbox}, or `undefined` when Weft refuses a mailbox
+   * for this session id as well (a resource id it cannot address, over 256
+   * bytes). Such a session still runs and steers, but admission has no mailbox
+   * to write to, so `submitSessionInput` answers it `unsupported-capability` and
+   * no input can ever be waiting for its runs.
    */
-  function sessionInputGateFor(sessionId: string): SessionInputGate | undefined {
-    let mailbox: Mailbox | undefined;
+  function tryGetSessionInputMailbox(sessionId: string): Mailbox | undefined {
     try {
-      mailbox = getSessionInputMailbox(sessionId);
+      return getSessionInputMailbox(sessionId);
     } catch {
-      // Weft refuses a mailbox for a resource id it cannot address (over 256
-      // bytes). Such a session can still run, but admission has no mailbox to
-      // write to, so no input can ever be waiting for it: nothing to deliver.
       return undefined;
     }
+  }
+
+  /**
+   * COR-1476 — the gate through which one of this session's durable runs
+   * receives input `submitSessionInput` admitted while it is live. `undefined`
+   * when the bureau has no durable mailbox, no session store, or the session no
+   * longer exists, in which case there is nothing to deliver.
+   */
+  async function sessionInputGateFor(
+    sessionId: string,
+    runId: string,
+  ): Promise<SessionInputGate | undefined> {
+    const mailbox = tryGetSessionInputMailbox(sessionId);
     const gateSessionStore = runtime.sessionStore;
     if (mailbox === undefined || gateSessionStore === undefined) return undefined;
+    const session = await gateSessionStore.load(sessionId);
+    if (session === undefined) return undefined;
     return createSessionInputDeliveryGate({
       sessionId,
+      runId,
+      incarnation: session.incarnation,
       mailbox,
       sessionStore: gateSessionStore,
       nowISO: runtimeServices.clock.nowISO,
+      timers: runtimeServices.timers,
+      signal: backgroundShutdownController.signal,
+      onRenewalError: (error) =>
+        diagnose({
+          level: 'error',
+          scope: 'session-input',
+          message: `[bureau] Could not renew a session-input lease for run "${runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        }),
     });
   }
 
@@ -1914,9 +1941,35 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * Hands a recovered durable run its session's input gate before replay
    * resumes, the way {@link recoverRunSteering} hands it its steering gate.
    */
-  function attachRecoveredSessionInput(sessionId: string, services: DurableRunDeps): void {
-    const gate = sessionInputGateFor(sessionId);
+  async function attachRecoveredSessionInput(
+    sessionId: string,
+    runId: string,
+    services: DurableRunDeps,
+  ): Promise<void> {
+    const gate = await sessionInputGateFor(sessionId, runId);
     if (gate !== undefined) services.options = { ...services.options, sessionInput: gate };
+  }
+
+  /**
+   * Retires the input a deleted session incarnation left pending. The mailbox is
+   * keyed by session id alone and outlives the session, so without this a
+   * session recreated under the same id would find the old incarnation's
+   * commands waiting; delivery also refuses them by incarnation, but a cancelled
+   * command no longer counts against the new session's backlog either.
+   */
+  async function retireSessionInputs(sessionId: string): Promise<void> {
+    const mailbox = tryGetSessionInputMailbox(sessionId);
+    if (mailbox === undefined) return;
+    const pending = await mailbox.list({
+      limit: 1000,
+      states: ['accepted', 'available', 'claimed'],
+    });
+    for (const receipt of pending) {
+      await mailbox.requestCancellation({
+        commandId: receipt.commandId,
+        reason: 'the session was deleted',
+      });
+    }
   }
 
   /**
@@ -4201,7 +4254,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `steering.ts`'s `forRun` doc comment): a pause bound to a DIFFERENT
       // concurrent run on this same session must never block this one.
       const runSteeringGate = steeringGate.forRun(runId);
-      const runSessionInputGate = sessionInputGateFor(sessionId);
+      const runSessionInputGate = await sessionInputGateFor(sessionId, runId);
 
       // COR-690: the last admission check before the run and its toolbox are
       // registered. Everything from here to that registration is synchronous,
@@ -5421,7 +5474,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       info.workflowId,
       services,
     );
-    attachRecoveredSessionInput(info.input.sessionId, services);
+    await attachRecoveredSessionInput(info.input.sessionId, info.workflowId, services);
     const eventSurface = createRecoveredRunEventSurface(
       services,
       info.workflowId,
@@ -5864,7 +5917,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             }
           }
           if (recoveredServices !== undefined) {
-            attachRecoveredSessionInput(ownedSessionId!, recoveredServices);
+            await attachRecoveredSessionInput(ownedSessionId!, handle.id, recoveredServices);
           }
           reattachRecoveredRun(
             handle.id,
@@ -7762,11 +7815,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * the entry claimed-but-unacknowledged for a later drain to retry,
    * exactly the "leave it pending" behavior a failed write always had.
    *
-   * Only ever called for a `REVIEW_AUDIT_OUTBOX_NAMESPACE` entry —
-   * `drainOutboxPass` stops the whole pass at (and never claims) any other
-   * `session.attachment` namespace before reaching this function, so
-   * there is no "unrecognized namespace" branch here to duplicate that
-   * check.
+   * Only ever called for a `REVIEW_AUDIT_OUTBOX_NAMESPACE` or
+   * `SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE` entry — `drainOutboxPass` stops
+   * the whole pass at (and never claims) any other `session.attachment`
+   * namespace before reaching this function, so there is no "unrecognized
+   * namespace" branch here to duplicate that check.
    */
   async function drainOutboxAttachmentEntry(
     entry: Extract<SessionOutboxEntry, { kind: 'session.attachment' }>,
@@ -7788,12 +7841,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return 'continue';
     };
 
-    // COR-1476 — `promoteSessionInput` rides this namespace so its commit is
+    // COR-1476 — `promoteSessionInputs` rides this namespace so its commit is
     // atomic with the session's own metadata. The promotion is complete in that
-    // commit (the receipt reads `promoted` from session metadata, and the
-    // mailbox command is settled by the run that delivered it), so there is
-    // nothing to replay: it is retired here so it never jams the ordinal-ordered
-    // drain behind it.
+    // commit (the receipt reads `promoted` from session metadata), and retiring
+    // the mailbox command is the delivery gate's job at the next step boundary,
+    // not a replay of this entry, so it is acknowledged here to keep it from
+    // jamming the ordinal-ordered drain behind it.
     if (entry.namespace === SESSION_INPUT_PROMOTION_OUTBOX_NAMESPACE) return acknowledge();
 
     // `REVIEW_AUDIT_OUTBOX_NAMESPACE` IS this bureau's own — this code is
@@ -8480,6 +8533,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // write has settled — never before, and never merely because this
       // call returned. The plain `boolean` contract is all this call site
       // needs now.
+      // COR-1476 — before the delete commits, so a session recreated under this
+      // id can never have its own pending input cancelled here. Input admitted
+      // in the gap before the delete is left for delivery to refuse by
+      // incarnation. A failure must not keep the session from being deleted.
+      await retireSessionInputs(id).catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'session-input',
+          message: `[bureau] Could not retire the pending session input of session "${id}" before deleting it: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
       const removedLiveRecord = await sessionStore.delete(id);
       onStoreDeletionCommitted();
       // AB-389 — drain right here, before anything below that can stall
@@ -8691,11 +8756,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *
    * COR-435/COR-1476: on a durably-configured bureau an authorized request to
    * a non-terminal session is admitted to the session's mailbox (`admitted`,
-   * `replayed`, `conflict`, or `backlog-exhausted`), and the session's live
-   * durable run delivers it at its next step boundary, in admission order and
-   * exactly once, which moves its receipt to `promoted`. `steer` and `queue`
-   * share that one FIFO path. A bureau with no durable mailbox answers
-   * `unsupported-capability`.
+   * `replayed`, `conflict`, or `backlog-exhausted`). The session's live durable
+   * run appends it to its conversation before its next step generates (or, for
+   * input sent during the last step, in one more step of the same run), once
+   * and in admission order within a run, keyed by the mailbox command; its
+   * receipt then reads `promoted`. `steer` and `queue` share that one FIFO
+   * path. A bureau with no durable mailbox, or a session id too long to address
+   * one, answers `unsupported-capability`.
    */
   /**
    * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern
@@ -8740,7 +8807,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return { outcome: 'session-terminal', sessionId };
     }
 
-    const sessionMailbox = getSessionInputMailbox(sessionId);
+    // `tryGet...`, not `get...`: a session id Weft cannot address as a mailbox
+    // resource (over 256 bytes) is a deployment limit, so it answers
+    // `unsupported-capability` like a bureau with no mailbox rather than throwing.
+    const sessionMailbox = tryGetSessionInputMailbox(sessionId);
     const storage = runtime.durableStorage;
     const kv = runtime.kv;
     if (sessionMailbox === undefined || storage === undefined || kv === undefined) {
@@ -8753,6 +8823,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (existing) return existing;
 
     const payload: PersistedSessionInput = {
+      incarnation: session.incarnation,
       payload: request.payload,
       ...(request.expiresAt !== undefined ? { expiresAt: request.expiresAt } : {}),
       ...(request.supersedes !== undefined ? { supersedes: request.supersedes } : {}),

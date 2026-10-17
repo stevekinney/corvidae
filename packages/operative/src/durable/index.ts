@@ -78,7 +78,9 @@ export { createMailboxSessionInputGate } from './mailbox-session-input-gate';
 export type {
   DecodedSessionInput,
   MailboxSessionInputGateOptions,
-  SessionInputPromotionStore,
+  MailboxSessionInputGateTimers,
+  SessionInputDeliveryClaim,
+  SessionInputDeliveryStore,
 } from './mailbox-session-input-gate';
 export { readDurableRunResult } from './read-run-result';
 export type { DurableRunReading, ReadDurableRunResultOptions } from './read-run-result';
@@ -100,6 +102,7 @@ export type {
   ScheduledAgentRunInput,
   SchedulingEngine,
 } from './schedule-agent';
+export { parseSessionInputPayload } from './session-input-payload';
 export { createStorageActivities } from './storage-activities';
 export {
   createToolCallLivenessWatchdog,

@@ -154,7 +154,26 @@ export function runStepMemo(
     runState.lastContent = carriedAccumulators.lastContent;
     runState.schemaAttempts = carriedAccumulators.schemaAttempts;
     runState.lastAppliedConfigVersion = carriedAccumulators.lastAppliedConfigVersion;
-    const outcome = await runStep(stepDeps, runState, conversation, stepIndex, deps.emitter);
+    let outcome: Awaited<ReturnType<typeof runStep>>;
+    try {
+      outcome = await runStep(stepDeps, runState, conversation, stepIndex, deps.emitter);
+      // COR-1476 — input admitted while this step generated would otherwise wait
+      // for a boundary that never comes, because the step ends the run. Ask the
+      // gate once more: pending input turns the stop into a continue, as a failed
+      // schema validation does, so the same run answers it, after the reply it
+      // arrived during and in the order admitted.
+      if (outcome.kind === 'stop') {
+        const late = await deliverSessionInputs(deps, conversation, stepIndex);
+        if (late.length > 0) {
+          sessionInputDeliveries.push(...late);
+          const stopped = runState.steps.at(-1);
+          if (stopped !== undefined) stopped.final = false;
+          outcome = { kind: 'continue' };
+        }
+      }
+    } finally {
+      deps.options.sessionInput?.stepEnded?.();
+    }
     deps.onStepToolbox?.(deps.toolbox);
     const pushed: StepResult | undefined = runState.steps.at(-1);
     const stepMetadata = pushed ? { ...pushed.metadata, ...deps.getStepMetadata?.() } : undefined;
@@ -230,11 +249,9 @@ function toMessageContent(payload: SessionInputPayload): string | MultiModalCont
 
 /**
  * COR-1476 — the step boundary's session-input delivery. Asks the run's
- * {@link SessionInputGate} what was admitted and appends each payload to the
- * conversation as a user message, in the order the gate returns them, before
- * the step generates, so the model sees them on this very step. An input the
- * gate reports as already delivered is not appended again; it is only handed
- * back for settlement.
+ * {@link SessionInputGate} what is pending and appends each payload to the
+ * conversation as a user message, in the order the gate returns them, so the
+ * model sees them on the step that follows.
  *
  * Runs inside the step's memo, so the appended messages and the list of what
  * was delivered are checkpointed together: a replay reads the recorded result
@@ -244,15 +261,11 @@ async function deliverSessionInputs(
   deps: DurableRunDeps,
   conversation: Conversation,
   stepIndex: number,
-): Promise<readonly SessionInputDelivery[]> {
+): Promise<SessionInputDelivery[]> {
   const gate = deps.options.sessionInput;
   if (gate === undefined) return [];
   const deliveries: SessionInputDelivery[] = [];
   for (const input of await gate.claimPending()) {
-    if (input.delivered) {
-      deliveries.push({ id: input.id, providerTurn: stepIndex });
-      continue;
-    }
     conversation.appendUserMessage(toMessageContent(input.payload), {
       sessionInputId: input.id,
     });
@@ -260,7 +273,12 @@ async function deliverSessionInputs(
     if (message === undefined) {
       throw new Error(`Session input "${input.id}" was appended but no message was recorded.`);
     }
-    deliveries.push({ id: input.id, conversationMessageId: message.id, providerTurn: stepIndex });
+    deliveries.push({
+      id: input.id,
+      commandId: input.commandId,
+      conversationMessageId: message.id,
+      providerTurn: stepIndex,
+    });
   }
   return deliveries;
 }
