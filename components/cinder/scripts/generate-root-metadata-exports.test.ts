@@ -22,7 +22,7 @@ describe('root metadata export generation', () => {
     expect((contents.match(/export \{ default as .*Schema \}/g) ?? []).length).toBe(201);
     expect((contents.match(/export \{ default as .*Variables \}/g) ?? []).length).toBe(201);
     expect((contents.match(/import .*Constraints from .*\.json/g) ?? []).length).toBe(4);
-    expect((contents.match(/import .*Examples from .*\.json/g) ?? []).length).toBe(170);
+    expect((contents.match(/import .*Examples from .*\.json/g) ?? []).length).toBe(171);
     expect(contents).toContain('schemaFormSchema');
 
     const first = manifest.components.at(0);
