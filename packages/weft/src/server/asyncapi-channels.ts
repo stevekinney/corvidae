@@ -89,13 +89,19 @@ export function buildWebSocketChannel(operation: ErasedOperation): Record<string
 export function buildSseChannel(
   operation: ErasedOperation,
   restBindingPath: string | undefined,
+  /**
+   * Maps the binding path to its wire address. Defaults to the `/api`
+   * external prefix `serve()` mounts; the engine-independent handler has no
+   * front door and passes the path through unchanged.
+   */
+  toWireAddress: (path: string) => string = externalApiPath,
 ): Record<string, unknown> {
   const messageNames = sseMessageNames(operation);
   // Real REST binding paths are served under `/api`; the synthetic
   // unbound-fallback is not a wire endpoint, so it is left unprefixed.
   const address =
     restBindingPath !== undefined
-      ? externalApiPath(restBindingPath)
+      ? toWireAddress(restBindingPath)
       : `/x-weft-unbound/${operation.name.replaceAll('.', '/')}`;
   return {
     address,

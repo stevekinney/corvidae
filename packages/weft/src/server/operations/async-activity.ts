@@ -147,7 +147,7 @@ export const listPendingAsyncActivitiesOperation = defineOperation({
   producibleFaults: ['NotFound', 'InvalidParams'],
   transports: httpAndJsonRpcTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<ListPendingAsyncActivitiesOutput> => {
+  invoke: async ({ input, host: engine }): Promise<ListPendingAsyncActivitiesOutput> => {
     assertOperationEngineMethods(engine, ['listPendingAsyncActivities', 'get']);
     const liveEngine = engine;
     if (
@@ -231,7 +231,7 @@ export const completeAsyncActivityOperation = defineOperation({
   producibleFaults: ['NotFound', 'InvalidParams'],
   transports: httpAndJsonRpcTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<AsyncActivityOutput> => {
+  invoke: async ({ input, host: engine }): Promise<AsyncActivityOutput> => {
     // `engine` is erased to the catalog engine type so adapters can share the
     // registry; in a live server it is always the concrete Engine. Cast matches
     // every other operation in this directory.
@@ -268,7 +268,7 @@ export const failAsyncActivityOperation = defineOperation({
   producibleFaults: ['NotFound', 'InvalidParams'],
   transports: httpAndJsonRpcTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<AsyncActivityOutput> => {
+  invoke: async ({ input, host: engine }): Promise<AsyncActivityOutput> => {
     // See completeAsyncActivityOperation: erased catalog engine, concrete at runtime.
     assertOperationEngineMethods(engine, ['failAsyncActivity']);
     const liveEngine = engine;

@@ -236,7 +236,7 @@ describe('weft.workflows.revisions.install', () => {
       { manifest },
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
       },
@@ -258,7 +258,7 @@ describe('weft.workflows.revisions.install', () => {
     const result = await executeOperation(
       'weft.workflows.revisions.install',
       { manifest },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
 
     expect(result.ok).toBe(true);

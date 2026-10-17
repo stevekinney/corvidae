@@ -28,6 +28,12 @@ type EventEnvelopeSSEStreamOptions<TEnvelope extends ServerSentEventEnvelope> = 
   readonly ready?: Promise<void>;
   readonly heartbeat?: ServerSentEventHeartbeatOptions;
   readonly signal?: AbortSignal;
+  /**
+   * Ends the response cleanly once this many milliseconds have passed, so a
+   * client resumes with `Last-Event-ID`. Armed through the heartbeat's
+   * `schedule`, which keeps one timer seam for tests.
+   */
+  readonly maxDurationMs?: number;
 };
 
 const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 15_000;
@@ -142,6 +148,7 @@ export function createEventEnvelopeSSEStream<TEnvelope extends ServerSentEventEn
     start(controller) {
       let closed = false;
       let clearHeartbeat: (() => void) | null = null;
+      let clearDeadline: (() => void) | null = null;
 
       const closeResources = async (): Promise<void> => {
         if (closed) return;
@@ -149,6 +156,10 @@ export function createEventEnvelopeSSEStream<TEnvelope extends ServerSentEventEn
         if (clearHeartbeat !== null) {
           clearHeartbeat();
           clearHeartbeat = null;
+        }
+        if (clearDeadline !== null) {
+          clearDeadline();
+          clearDeadline = null;
         }
         options.signal?.removeEventListener('abort', onAbort);
         try {
@@ -198,6 +209,21 @@ export function createEventEnvelopeSSEStream<TEnvelope extends ServerSentEventEn
         clearHeartbeat = heartbeat.schedule(() => {
           enqueuePing({ emittedAtMs: heartbeat.now() });
         }, heartbeat.intervalMs);
+      }
+
+      if (options.maxDurationMs !== undefined) {
+        // The scheduler is interval-shaped, so a second tick is possible
+        // before the cleanup cancels it; ending twice is a no-op.
+        clearDeadline = heartbeat.schedule(() => {
+          void (async () => {
+            await closeResources();
+            try {
+              controller.close();
+            } catch {
+              // The stream may already have ended.
+            }
+          })();
+        }, options.maxDurationMs);
       }
 
       void (async () => {

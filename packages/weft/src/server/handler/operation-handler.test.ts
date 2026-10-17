@@ -1,0 +1,632 @@
+import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
+
+import * as weft from '../../index.ts';
+import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { createAuthenticator, signJWT } from '../authentication.ts';
+import { defineOperation } from '../operation-registry.ts';
+import type { ServerContext } from '../runtime/context.ts';
+import { authenticateRequest } from '../runtime/request-gate.ts';
+import {
+  createOperationHandlerAuthenticator,
+  type OperationHandlerAuthenticate,
+} from './operation-handler-authentication.ts';
+import type { OperationHandlerMount } from './operation-handler-mounts.ts';
+import {
+  createTestHost,
+  eventsOperation,
+  jsonRpcRequest,
+  readerContext,
+  scopedEchoOperation,
+  statusOf,
+  strangerContext,
+} from './operation-handler.test-support.ts';
+import { createOperationHandler } from './operation-handler.ts';
+
+const echoOperation = defineOperation({
+  name: 'probe.echo',
+  mcpExposable: false,
+  summary: 'echo',
+  destructive: false,
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.object({ message: z.string() }),
+  access: { kind: 'public' as const },
+  transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject' as const, jsonRpc: 'reject' as const },
+  invoke: async ({ input }) => ({ message: input.message }),
+});
+
+async function jsonOf(response: Response): Promise<Record<string, unknown>> {
+  return (await response.json()) as Record<string, unknown>;
+}
+
+describe('createOperationHandler', () => {
+  it('is exported from the package entry point', () => {
+    expect(weft.createOperationHandler).toBe(createOperationHandler);
+    expect(weft.createOperationHandlerAuthenticator).toBe(createOperationHandlerAuthenticator);
+  });
+
+  it('serves a caller-supplied operation over JSON-RPC HTTP with no Engine constructed', async () => {
+    const handler = createOperationHandler({ operations: [echoOperation], host: {} });
+
+    const response = await handler(jsonRpcRequest('probe.echo', { message: 'hello' }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: 1, result: { message: 'hello' } });
+  });
+
+  it('delivers the supplied host to invoke', async () => {
+    const host = { greeting: 'from the host' };
+    const hostEcho = defineOperation<
+      z.ZodObject<{}>,
+      z.ZodObject<{ greeting: z.ZodString }>,
+      typeof host
+    >({
+      name: 'probe.host',
+      mcpExposable: false,
+      summary: 'host',
+      destructive: false,
+      inputSchema: z.object({}),
+      outputSchema: z.object({ greeting: z.string() }),
+      access: { kind: 'public' },
+      transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+      unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+      invoke: async ({ host: received }) => ({ greeting: received.greeting }),
+    });
+    const handler = createOperationHandler({ operations: [hostEcho], host });
+
+    const body = await jsonOf(await handler(jsonRpcRequest('probe.host', {})));
+
+    expect(body['result']).toEqual({ greeting: 'from the host' });
+  });
+
+  it('answers an unknown path with 404', async () => {
+    const handler = createOperationHandler({ operations: [echoOperation], host: {} });
+
+    for (const path of ['/v1/workflows', '/v1/metrics', '/mcp']) {
+      expect(await statusOf(handler, new Request(`http://localhost${path}`))).toBe(404);
+    }
+  });
+
+  it('refuses a duplicate operation name at construction', () => {
+    expect(() =>
+      createOperationHandler({ operations: [echoOperation, echoOperation], host: {} }),
+    ).toThrow(/duplicate operation name/);
+  });
+
+  it('refuses an invalid maxRequestBodyBytes at construction', () => {
+    expect(() =>
+      createOperationHandler({ operations: [], host: {}, maxRequestBodyBytes: 0 }),
+    ).toThrow(/maxRequestBodyBytes/);
+  });
+
+  it('answers rpc.discover with the document it serves at /openrpc.json', async () => {
+    const handler = createOperationHandler({ operations: [echoOperation], host: {} });
+
+    const discovered = await jsonOf(await handler(jsonRpcRequest('rpc.discover', {})));
+    const served = await jsonOf(await handler(new Request('http://localhost/openrpc.json')));
+
+    expect(discovered['result']).toEqual(served);
+  });
+});
+
+describe('createOperationHandler authentication', () => {
+  it('treats every request as anonymous when authenticate is omitted', async () => {
+    const handler = createOperationHandler({
+      operations: [scopedEchoOperation],
+      host: createTestHost(),
+    });
+
+    const body = await jsonOf(await handler(jsonRpcRequest('probe.scoped', { message: 'x' })));
+
+    expect(body['error']).toBeDefined();
+    expect(body['result']).toBeUndefined();
+  });
+
+  it('runs the operation as the principal authenticate resolved', async () => {
+    const handler = createOperationHandler({
+      operations: [scopedEchoOperation],
+      host: createTestHost(),
+      authenticate: async () => readerContext(),
+    });
+
+    const body = await jsonOf(await handler(jsonRpcRequest('probe.scoped', { message: 'x' })));
+
+    expect(body['result']).toEqual({ message: 'x' });
+  });
+
+  it('denies an admitted caller who lacks the operation scope', async () => {
+    const handler = createOperationHandler({
+      operations: [scopedEchoOperation],
+      host: createTestHost(),
+      authenticate: async () => strangerContext(),
+    });
+
+    const body = await jsonOf(await handler(jsonRpcRequest('probe.scoped', { message: 'x' })));
+
+    expect(body['result']).toBeUndefined();
+    expect(body['error']).toBeDefined();
+  });
+
+  it('returns a Response from authenticate as-is, before any route runs', async () => {
+    let routed = false;
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      authenticate: async () => new Response('nope', { status: 401 }),
+      mounts: [
+        {
+          pathPrefix: '/adapter',
+          fetch: async () => {
+            routed = true;
+            return new Response('adapter');
+          },
+        },
+      ],
+    });
+
+    const jsonRpc = await handler(jsonRpcRequest('probe.echo', { message: 'x' }));
+    const mounted = await handler(new Request('http://localhost/adapter/run'));
+
+    expect(jsonRpc.status).toBe(401);
+    expect(await jsonRpc.text()).toBe('nope');
+    expect(mounted.status).toBe(401);
+    expect(routed).toBe(false);
+  });
+
+  it('skips authenticate for health and the three discovery documents', async () => {
+    let calls = 0;
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      authenticate: async () => {
+        calls += 1;
+        return new Response('nope', { status: 401 });
+      },
+    });
+
+    for (const path of ['/v1/health', '/openapi.json', '/openrpc.json', '/asyncapi.json']) {
+      expect(await statusOf(handler, new Request(`http://localhost${path}`))).toBe(200);
+    }
+    expect(calls).toBe(0);
+  });
+});
+
+const quietAudit = (): void => undefined;
+
+describe('createOperationHandlerAuthenticator', () => {
+  const SECRET = 'operation-handler-secret-at-least-32-chars!';
+
+  it('retains a package scope from a JWT so a scoped operation admits the caller', async () => {
+    const packageScoped = defineOperation<z.ZodObject<{}>, z.ZodObject<{ ok: z.ZodLiteral<true> }>>(
+      {
+        name: 'bureau.tasks.list',
+        mcpExposable: false,
+        summary: 'List tasks',
+        destructive: false,
+        inputSchema: z.object({}),
+        outputSchema: z.object({ ok: z.literal(true) }),
+        access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['bureau.tasks:read'] } },
+        transports: {
+          http: false,
+          jsonRpcHttp: true,
+          jsonRpcWebSocket: false,
+          jsonRpcStdio: false,
+        },
+        unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+        invoke: async () => ({ ok: true as const }),
+      },
+    );
+    const token = await signJWT({ sub: 'user-1', scope: 'bureau.tasks:read' }, SECRET);
+    const call = (handler: ReturnType<typeof createOperationHandler>) =>
+      handler(jsonRpcRequest('bureau.tasks.list', {}, { Authorization: `Bearer ${token}` })).then(
+        jsonOf,
+      );
+
+    const withScope = createOperationHandler({
+      operations: [packageScoped],
+      host: {},
+      authenticate: createOperationHandlerAuthenticator(
+        { jwt: { secret: SECRET }, auditSink: quietAudit },
+        { additionalScopes: ['bureau.tasks:read'] },
+      ),
+    });
+    const withoutScope = createOperationHandler({
+      operations: [packageScoped],
+      host: {},
+      authenticate: createOperationHandlerAuthenticator({
+        jwt: { secret: SECRET },
+        auditSink: quietAudit,
+      }),
+    });
+
+    const admitted = await call(withScope);
+    const refused = await call(withoutScope);
+
+    expect(admitted['result']).toEqual({ ok: true });
+    expect(refused['error']).toBeDefined();
+  });
+
+  it('rejects with the same 401 serve() returns', async () => {
+    const config = { apiKeys: ['the-right-key'], auditSink: quietAudit };
+    const request = new Request('http://localhost/jsonrpc', {
+      headers: { Authorization: 'Bearer the-wrong-key' },
+    });
+    const authenticate: OperationHandlerAuthenticate = createOperationHandlerAuthenticator(config);
+    const serveOutcome = await authenticateRequest(
+      { authenticatorPromise: createAuthenticator(config) } as unknown as ServerContext,
+      request,
+    );
+
+    const response = await authenticate(request);
+
+    expect(response).toBeInstanceOf(Response);
+    const rejected = response as Response;
+    expect(serveOutcome.response).not.toBeNull();
+    expect(rejected.status).toBe(401);
+    expect(rejected.status).toBe(serveOutcome.response?.status ?? 0);
+    expect(rejected.headers.get('WWW-Authenticate')).toBe(
+      serveOutcome.response?.headers.get('WWW-Authenticate') ?? null,
+    );
+    expect(rejected.headers.get('Content-Type')).toBe(
+      serveOutcome.response?.headers.get('Content-Type') ?? null,
+    );
+    expect(await rejected.text()).toBe((await serveOutcome.response?.text()) ?? '');
+  });
+
+  it('admits a valid credential with the context serve() forwards', async () => {
+    const config = {
+      apiKeys: ['the-right-key'],
+      defaultApiKeyScopes: ['events:read' as const],
+      auditSink: quietAudit,
+    };
+    const authenticate = createOperationHandlerAuthenticator(config);
+
+    const admitted = await authenticate(
+      new Request('http://localhost/jsonrpc', {
+        headers: { Authorization: 'Bearer the-right-key' },
+      }),
+    );
+
+    expect(admitted).not.toBeInstanceOf(Response);
+    expect((admitted as { method: string }).method).toBe('api-key');
+  });
+
+  it('surfaces a key that cannot be imported on the first request, not at construction', async () => {
+    const authenticate = createOperationHandlerAuthenticator({
+      jwt: { algorithm: 'RS256', publicKey: 'not a public key' },
+      auditSink: quietAudit,
+    });
+
+    const attempt = authenticate(
+      new Request('http://localhost/jsonrpc', { headers: { Authorization: 'Bearer x.y.z' } }),
+    );
+
+    expect(await throwingRejectionOf(attempt)).toThrow();
+  });
+
+  it('refuses an invalid configuration or scope at construction', () => {
+    expect(() => createOperationHandlerAuthenticator({})).toThrow(/at least one authentication/);
+    expect(() =>
+      createOperationHandlerAuthenticator(
+        { apiKeys: ['k'] },
+        { additionalScopes: ['weft.system:read'] },
+      ),
+    ).toThrow(/additionalScopes/);
+  });
+});
+
+describe('createOperationHandler CORS', () => {
+  const cors = { allowedOrigins: ['https://dashboard.example.com'] };
+
+  it('answers a preflight before authentication runs', async () => {
+    let calls = 0;
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      cors,
+      authenticate: async () => {
+        calls += 1;
+        return new Response('nope', { status: 401 });
+      },
+    });
+
+    const response = await handler(
+      new Request('http://localhost/jsonrpc', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://dashboard.example.com',
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'content-type',
+        },
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://dashboard.example.com',
+    );
+    expect(calls).toBe(0);
+  });
+
+  it('decorates actual responses, including a 401, for an allowed origin only', async () => {
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      cors,
+      authenticate: async () => new Response('nope', { status: 401 }),
+    });
+    const withOrigin = (origin: string) =>
+      new Request('http://localhost/jsonrpc', { method: 'POST', headers: { Origin: origin } });
+
+    const allowed = await handler(withOrigin('https://dashboard.example.com'));
+    const denied = await handler(withOrigin('https://evil.example.com'));
+
+    expect(allowed.status).toBe(401);
+    expect(allowed.headers.get('Access-Control-Allow-Origin')).toBe(
+      'https://dashboard.example.com',
+    );
+    expect(denied.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
+  it('emits no CORS headers when cors is omitted', async () => {
+    const handler = createOperationHandler({ operations: [echoOperation], host: {} });
+
+    const response = await handler(
+      new Request('http://localhost/v1/health', { headers: { Origin: 'https://a.example.com' } }),
+    );
+
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
+
+  it('refuses a wildcard origin with credentials at construction', () => {
+    expect(() =>
+      createOperationHandler({
+        operations: [],
+        host: {},
+        cors: { allowedOrigins: ['*'], credentials: true },
+      }),
+    ).toThrow(/credentials/);
+  });
+
+  it('refuses a wildcard origin under authentication at construction', () => {
+    expect(() =>
+      createOperationHandler({
+        operations: [],
+        host: {},
+        cors: { allowedOrigins: ['*'] },
+        authenticate: async () => readerContext(),
+      }),
+    ).toThrow(/Authorization/);
+  });
+});
+
+describe('createOperationHandler mounts', () => {
+  function mount(
+    pathPrefix: string,
+    extra: Partial<OperationHandlerMount> = {},
+  ): OperationHandlerMount {
+    return { pathPrefix, fetch: async () => new Response('mounted'), ...extra };
+  }
+  const build = (mounts: ReadonlyArray<OperationHandlerMount>) => () =>
+    createOperationHandler({ operations: [echoOperation], host: {}, mounts });
+
+  it('throws when a prefix equals or overlaps another mount at a segment boundary', () => {
+    expect(build([mount('/a2a'), mount('/a2a')])).toThrow(/overlaps the mount/);
+    expect(build([mount('/a2a'), mount('/a2a/v1')])).toThrow(/overlaps the mount/);
+    expect(build([mount('/a2a/v1'), mount('/a2a')])).toThrow(/overlaps the mount/);
+    expect(build([mount('/a2a/')])).not.toThrow();
+  });
+
+  it('does not treat a longer sibling name as an overlap', async () => {
+    expect(build([mount('/a2a'), mount('/a2a-extra')])).not.toThrow();
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      mounts: [mount('/a2a')],
+    });
+
+    const mounted = await handler(new Request('http://localhost/a2a/run'));
+
+    expect(await mounted.text()).toBe('mounted');
+    expect(await statusOf(handler, new Request('http://localhost/a2a-extra'))).toBe(404);
+  });
+
+  it('throws when a prefix overlaps a catalog route', () => {
+    for (const prefix of [
+      '/jsonrpc',
+      '/v1/subscriptions',
+      '/v1/subscriptions/x',
+      '/v1',
+      '/openapi.json',
+    ]) {
+      expect(build([mount(prefix)])).toThrow(/overlaps the catalog route/);
+    }
+  });
+
+  it('throws on a malformed prefix', () => {
+    for (const prefix of ['a2a', '/', '', '/a2a?x=1']) {
+      expect(build([mount(prefix)])).toThrow(/absolute path/);
+    }
+  });
+
+  it('throws when a public path is a catalog route, another mount public path, or under another mount', () => {
+    expect(build([mount('/a2a', { publicPaths: ['/jsonrpc'] })])).toThrow(/catalog route/);
+    expect(build([mount('/a2a', { publicPaths: ['/v1/subscriptions/probe.events'] })])).toThrow(
+      /catalog route/,
+    );
+    expect(
+      build([
+        mount('/a2a', { publicPaths: ['/.well-known/agent-card.json'] }),
+        mount('/ag-ui', { publicPaths: ['/.well-known/agent-card.json'] }),
+      ]),
+    ).toThrow(/belongs to the mount/);
+    expect(build([mount('/a2a'), mount('/ag-ui', { publicPaths: ['/a2a/card.json'] })])).toThrow(
+      /belongs to the mount/,
+    );
+  });
+
+  it('accepts mounts whose public paths belong to no one else', () => {
+    expect(
+      build([
+        mount('/a2a', { publicPaths: ['/.well-known/agent-card.json'] }),
+        mount('/ag-ui', { publicPaths: ['/.well-known/ag-ui.json'] }),
+      ]),
+    ).not.toThrow();
+  });
+
+  it('hands the resolved principal to the mount', async () => {
+    let seen: unknown;
+    const handler = createOperationHandler({
+      operations: [scopedEchoOperation],
+      host: createTestHost(),
+      authenticate: async () => readerContext(),
+      mounts: [
+        mount('/a2a', {
+          fetch: async (_request, context) => {
+            seen = context.principal;
+            return new Response('ok');
+          },
+        }),
+      ],
+    });
+
+    await handler(new Request('http://localhost/a2a/run'));
+
+    expect(seen).toMatchObject({ method: 'api-key', subject: 'reader' });
+  });
+
+  it('runs dispatch and subscribe through the full pipeline, so a missing scope is denied', async () => {
+    const host = createTestHost();
+    const outcomes: Record<string, unknown> = {};
+    const adapter = mount('/adapter', {
+      fetch: async (_request, context) => {
+        outcomes['dispatch'] = await context.dispatch('probe.scoped', { message: 'hi' });
+        outcomes['subscribe'] = await context.subscribe('probe.events', {});
+        return new Response('ok');
+      },
+    });
+    const build = (authContext: ReturnType<typeof readerContext>) =>
+      createOperationHandler({
+        operations: [scopedEchoOperation, eventsOperation],
+        host,
+        authenticate: async () => authContext,
+        mounts: [adapter],
+      });
+
+    await build(readerContext())(new Request('http://localhost/adapter/x'));
+    expect(outcomes['dispatch']).toEqual({ ok: true, value: { message: 'hi' } });
+    expect(outcomes['subscribe']).toMatchObject({ ok: true });
+
+    await build(strangerContext())(new Request('http://localhost/adapter/x'));
+    expect(outcomes['dispatch']).toMatchObject({ ok: false, fault: { code: 'Forbidden' } });
+    expect(outcomes['subscribe']).toMatchObject({ ok: false, fault: { code: 'Forbidden' } });
+  });
+
+  it('skips authenticate for a mount public path and for no other mount path', async () => {
+    let calls = 0;
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      authenticate: async () => {
+        calls += 1;
+        return new Response('nope', { status: 401 });
+      },
+      mounts: [mount('/a2a', { publicPaths: ['/.well-known/agent-card.json'] })],
+    });
+
+    const card = await handler(new Request('http://localhost/.well-known/agent-card.json'));
+    expect(await card.text()).toBe('mounted');
+    expect(calls).toBe(0);
+
+    const rpc = await handler(new Request('http://localhost/a2a/rpc'));
+    expect(rpc.status).toBe(401);
+    expect(calls).toBe(1);
+  });
+
+  it('receives the agent card at /.well-known/agent-card.json unauthenticated', async () => {
+    let principal: unknown;
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      authenticate: async () => new Response('nope', { status: 401 }),
+      mounts: [
+        mount('/a2a', {
+          publicPaths: ['/.well-known/agent-card.json'],
+          fetch: async (request, context) => {
+            principal = context.principal;
+            return new Response(new URL(request.url).pathname);
+          },
+        }),
+      ],
+    });
+
+    const response = await handler(new Request('http://localhost/.well-known/agent-card.json'));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('/.well-known/agent-card.json');
+    expect(principal).toEqual({ method: 'unauthenticated' });
+  });
+
+  it('handles a request in the order preflight, authentication, mounts, catalog, CORS decoration', async () => {
+    const order: string[] = [];
+    const handler = createOperationHandler({
+      operations: [echoOperation],
+      host: {},
+      cors: { allowedOrigins: ['https://app.example.com'] },
+      authenticate: async () => {
+        order.push('authenticate');
+        return readerContext();
+      },
+      mounts: [
+        mount('/a2a', {
+          fetch: async () => {
+            order.push('mount');
+            return new Response('mounted');
+          },
+        }),
+      ],
+    });
+    const origin = { Origin: 'https://app.example.com' };
+
+    const preflight = await handler(
+      new Request('http://localhost/a2a/run', {
+        method: 'OPTIONS',
+        headers: { ...origin, 'Access-Control-Request-Method': 'POST' },
+      }),
+    );
+    expect(order).toEqual([]);
+    expect(preflight.status).toBe(204);
+
+    const mounted = await handler(new Request('http://localhost/a2a/run', { headers: origin }));
+    expect(order).toEqual(['authenticate', 'mount']);
+    expect(mounted.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example.com');
+
+    order.length = 0;
+    const catalog = await handler(jsonRpcRequest('probe.echo', { message: 'x' }, origin));
+    expect(order).toEqual(['authenticate']);
+    expect(catalog.headers.get('Access-Control-Allow-Origin')).toBe('https://app.example.com');
+  });
+
+  it('turns a mount that throws into a 500', async () => {
+    const errors = console.error;
+    console.error = () => undefined;
+    try {
+      const handler = createOperationHandler({
+        operations: [echoOperation],
+        host: {},
+        mounts: [
+          mount('/a2a', {
+            fetch: async () => {
+              throw new Error('boom');
+            },
+          }),
+        ],
+      });
+
+      expect(await statusOf(handler, new Request('http://localhost/a2a/run'))).toBe(500);
+    } finally {
+      console.error = errors;
+    }
+  });
+});

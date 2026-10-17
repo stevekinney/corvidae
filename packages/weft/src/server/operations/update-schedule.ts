@@ -66,7 +66,7 @@ export const updateScheduleOperation = defineOperation({
   producibleFaults: ['NotFound', 'Conflict', 'InvalidParams'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<null> => {
+  invoke: async ({ input, host: engine }): Promise<null> => {
     assertOperationEngineMethods(engine, ['updateSchedule']);
     const typedEngine = engine;
 

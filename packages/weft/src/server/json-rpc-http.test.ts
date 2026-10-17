@@ -45,7 +45,7 @@ function baseContext() {
   ]);
   return {
     registry,
-    engine: fakeEngine,
+    host: fakeEngine,
     principal: anonymousPrincipal(),
   };
 }
@@ -459,7 +459,7 @@ describe('handleJsonRpcHttpRequest — principal pass-through', () => {
       }),
       {
         registry,
-        engine: fakeEngine,
+        host: fakeEngine,
         principal: principalFromApiKey({ subject: 'k', scopes: [] }),
       },
     );

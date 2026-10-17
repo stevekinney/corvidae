@@ -100,7 +100,7 @@ describe('weft.schedules.list', () => {
     const result = await executeOperation(
       'weft.schedules.list',
       { workflowType: 42 },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected invalid workflowType fault');
@@ -186,7 +186,7 @@ describe('weft.schedules.list', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
       },

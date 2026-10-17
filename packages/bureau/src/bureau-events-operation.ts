@@ -79,13 +79,18 @@ export function createBureauEventRegistry(): BureauEventRegistry & {
   };
 }
 
-/** The shape a host passes as the operation's `engine` value. */
-export type BureauEventsOperationEngine = {
-  bureauFeeds: BureauEventRegistry;
-  runtime?: Pick<RuntimeServices, 'identifiers'>;
+/** The shape a host passes as the operation's `host` value. */
+export type BureauEventsOperationHost = {
+  readonly bureauFeeds: BureauEventRegistry;
+  readonly runtime?: Pick<RuntimeServices, 'identifiers'>;
 };
 
-export const bureauEventsSubscriptionOperation = defineOperation({
+export const bureauEventsSubscriptionOperation = defineOperation<
+  typeof bureauEventsSubscriptionInput,
+  typeof bureauEventsSubscriptionEnvelope,
+  typeof bureauEventEnvelopeSchema,
+  BureauEventsOperationHost
+>({
   name: 'bureau.events',
   mcpExposable: false,
   kind: 'subscription',
@@ -100,14 +105,15 @@ export const bureauEventsSubscriptionOperation = defineOperation({
   eventSchema: bureauEventEnvelopeSchema,
   access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['events:read'] } },
   discoverable: true,
-  transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  // WebSocket for a session that holds a socket, and HTTP for a fetch handler
+  // that cannot accept one: `GET /v1/subscriptions/bureau.events` streams the
+  // feed as Server-Sent Events and resumes through `Last-Event-ID`.
+  transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: ({ input, engine }) => {
+  invoke: ({ input, host }) => {
     try {
-      const registry = (engine as BureauEventsOperationEngine).bureauFeeds;
-      const runtime =
-        (engine as BureauEventsOperationEngine).runtime ?? createDefaultRuntimeServices();
-      const bureauFeed = registry.get(input.bureauId);
+      const runtime = host.runtime ?? createDefaultRuntimeServices();
+      const bureauFeed = host.bureauFeeds.get(input.bureauId);
       if (bureauFeed === undefined) {
         throw new Error(`Unknown bureau "${input.bureauId}"`);
       }

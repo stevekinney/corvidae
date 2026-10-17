@@ -32,7 +32,7 @@ export const getStreamChunksOperation = defineOperation({
   access: { kind: 'public' },
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetStreamChunksOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetStreamChunksOutput> => {
     assertOperationEngineMethods(engine, ['getStreamChunks']);
     const e = engine;
 

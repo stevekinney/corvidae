@@ -273,7 +273,7 @@ describe('operation coverage regressions', () => {
   it('rejects invalid filter tags in direct bulk-operation invokes', async () => {
     const engine = createEngine();
     const context = {
-      engine: engine as never,
+      host: engine as never,
       principal: anonymousPrincipal(),
       transport: 'jsonRpcHttp' as const,
     };
@@ -412,7 +412,7 @@ describe('operation coverage regressions', () => {
     expect(
       await getStreamChunksOperation.invoke({
         input: { workflowId: 'wf-stream', key: 'tokens', after: 7 },
-        engine: engine,
+        host: engine,
         principal: anonymousPrincipal(),
         transport: 'jsonRpcHttp',
       }),
@@ -422,7 +422,7 @@ describe('operation coverage regressions', () => {
     expect(
       await streamWorkflowSseOperation.invoke({
         input: { workflowId: 'wf-stream', after: 9 },
-        engine: engine,
+        host: engine,
         principal: anonymousPrincipal(),
         transport: 'jsonRpcHttp',
       }),

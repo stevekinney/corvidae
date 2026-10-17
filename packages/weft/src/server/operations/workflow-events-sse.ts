@@ -96,7 +96,7 @@ export const workflowEventsSseOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: false, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }) => {
+  invoke: async ({ input, host: engine }) => {
     return createWorkflowEventsIterable(input, eventStreamOperationContext(engine));
   },
 });

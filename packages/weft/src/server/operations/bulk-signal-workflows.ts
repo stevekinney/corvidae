@@ -43,7 +43,7 @@ export const bulkSignalWorkflowsOperation = defineOperation({
   access: bulkOperatorAccessPolicy,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }): Promise<BulkSignalWorkflowsOutput> => {
+  invoke: async ({ input, host: engine, principal }): Promise<BulkSignalWorkflowsOutput> => {
     assertOperationEngineMethods(engine, ['signalAll']);
     const e = engine;
 

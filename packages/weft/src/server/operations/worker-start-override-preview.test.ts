@@ -27,7 +27,7 @@ describe('weft.worker.startoverrides.preview operation', () => {
       { workflowId: WORKFLOW_ID },
       {
         principal: principalFromStdioLocal(),
-        engine: {},
+        host: {},
         transport: 'http-rest',
         registry,
       },
@@ -113,7 +113,7 @@ describe('weft.worker.startoverrides.preview operation', () => {
       { workflowId: WORKFLOW_ID, ttlMs: 50 },
       {
         principal: principalFromStdioLocal(),
-        engine: {},
+        host: {},
         transport: 'http-rest',
         registry,
       },
@@ -260,7 +260,7 @@ async function executePreview(storage: MemoryStorage) {
     { workflowId: WORKFLOW_ID },
     {
       principal: principalFromStdioLocal(),
-      engine: {},
+      host: {},
       transport: 'http-rest',
       registry,
     },

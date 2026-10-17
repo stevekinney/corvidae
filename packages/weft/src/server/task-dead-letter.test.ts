@@ -382,7 +382,7 @@ describe('COR-205 dead-letter, hostile decode, purge, and retention', () => {
 
     const result = await clearTaskDeadLetterOperation.invoke({
       input: { operationId: 'op-clear-dl' },
-      engine: engine as never,
+      host: engine as never,
     } as never);
     expect(result).toEqual({ ok: true });
     expect(await storage.get(taskLedgerKey('op-clear-dl'))).toBeNull();

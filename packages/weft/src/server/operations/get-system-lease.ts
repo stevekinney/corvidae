@@ -54,7 +54,7 @@ export const getSystemLeaseOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine }): Promise<GetSystemLeaseOutput> => {
+  invoke: async ({ host: engine }): Promise<GetSystemLeaseOutput> => {
     assertOperationEngineMethods(engine, ['getLeaseHealth']);
     return engine.getLeaseHealth();
   },

@@ -9,7 +9,7 @@ import {
   validateOperationName,
 } from './types.ts';
 
-function objectInputSchema(operation: RegistrableOperation): z.ZodObject {
+function objectInputSchema<Host>(operation: RegistrableOperation<Host>): z.ZodObject {
   if (!(operation.inputSchema instanceof z.ZodObject)) {
     throw new Error(
       `operation "${operation.name}" inputSchema must be a z.ZodObject (got ${operation.inputSchema.constructor.name}); wrappers like .optional() / transforms hide the top-level shape from the unknown-key policy check`,
@@ -18,7 +18,7 @@ function objectInputSchema(operation: RegistrableOperation): z.ZodObject {
   return operation.inputSchema;
 }
 
-function assertSafeDeclaredKeys(operation: RegistrableOperation): void {
+function assertSafeDeclaredKeys<Host>(operation: RegistrableOperation<Host>): void {
   const inputSchema = objectInputSchema(operation);
   const declaredKeys = Object.keys(inputSchema.shape);
   const unsafeDeclared = declaredKeys.filter((key) => UNSAFE_PROTOTYPE_KEYS.has(key));
@@ -40,7 +40,7 @@ function assertSafeDeclaredKeys(operation: RegistrableOperation): void {
  * this assertion a malformed registry would produce a runtime
  * `EngineFailure` only on the first request, not at registry assembly.
  */
-function assertKindAndEventSchemaAgree(operation: RegistrableOperation): void {
+function assertKindAndEventSchemaAgree<Host>(operation: RegistrableOperation<Host>): void {
   const kind = operation.kind ?? 'unary';
   if (kind === 'unary') {
     if (operation.eventSchema !== undefined) {
@@ -68,7 +68,7 @@ function assertKindAndEventSchemaAgree(operation: RegistrableOperation): void {
  * confirmations, and MCP exposure all depend on. Reject at assembly so the
  * error points at the registry, not at the first request.
  */
-function assertDestructiveDeclared(operation: RegistrableOperation): void {
+function assertDestructiveDeclared<Host>(operation: RegistrableOperation<Host>): void {
   if (typeof operation.destructive !== 'boolean') {
     throw new Error(
       `operation "${operation.name}" must declare an explicit boolean "destructive" flag (got ${typeof operation.destructive}). Every operation has to state whether it irreversibly mutates state — there is no implicit default. Mark cancel/purge/bulk-delete/raw-storage-write style operations true and read-only operations false.`,
@@ -76,7 +76,7 @@ function assertDestructiveDeclared(operation: RegistrableOperation): void {
   }
 }
 
-function assertMcpMetadataAgrees(operation: RegistrableOperation): void {
+function assertMcpMetadataAgrees<Host>(operation: RegistrableOperation<Host>): void {
   if (!operation.mcpExposable) return;
   if (operation.mcpTool === undefined) {
     throw new Error(
@@ -85,25 +85,41 @@ function assertMcpMetadataAgrees(operation: RegistrableOperation): void {
   }
 }
 
-function freezeOperation(operation: RegistrableOperation): ErasedOperation {
+/**
+ * The single point where an operation's `Host` is erased. `dispatch` is
+ * contravariant in `Host`, so an operation registered against `BureauHost`
+ * is not assignable to the `unknown`-hosted `ErasedOperation` the pipeline
+ * works with, and no transport can name a host type for a registry that
+ * mixes operations. Erasing here is sound because the host a transport puts
+ * into every `DispatchContext` is the one the registry's operations were
+ * registered against: `createOperationRegistry<Host>` took them as
+ * `RegistrableOperation<Host>`, and the handler that owns the registry is
+ * constructed with that same `Host`.
+ */
+function eraseHost<Host>(operation: RegistrableOperation<Host>): ErasedOperation['dispatch'] {
+  return operation.dispatch as ErasedOperation['dispatch'];
+}
+
+function freezeOperation<Host>(operation: RegistrableOperation<Host>): ErasedOperation {
   const metadata = snapshotOperationMetadata(operation);
+  const dispatch = eraseHost(operation);
   if (operation.kind === 'stream' || operation.kind === 'subscription') {
     return Object.freeze({
       ...metadata,
       kind: operation.kind,
       eventSchema: operation.eventSchema,
-      dispatch: operation.dispatch,
+      dispatch,
     });
   }
-  return Object.freeze({ ...metadata, kind: 'unary', dispatch: operation.dispatch });
+  return Object.freeze({ ...metadata, kind: 'unary', dispatch });
 }
 
 /**
  * Build an immutable registry. Throws on duplicate names, invalid names,
  * non-object input schemas, and unsafe top-level schema keys.
  */
-export function createOperationRegistry(
-  operations: ReadonlyArray<RegistrableOperation>,
+export function createOperationRegistry<Host = unknown>(
+  operations: ReadonlyArray<RegistrableOperation<Host>>,
 ): OperationRegistry {
   const byName = new Map<string, ErasedOperation>();
   for (const operation of operations) {

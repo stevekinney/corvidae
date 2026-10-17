@@ -15,6 +15,7 @@
  */
 
 import type { ConformanceTargetRunner } from '../conformance/targets.ts';
+import type { RegistryAgnosticEngine } from '../core/engine.ts';
 import type { MetricsCollector } from '../observability/metrics.ts';
 import type { Storage } from '../storage/interface.ts';
 import type { WorkerDeploymentCatalog } from '../worker/deployment-routing.ts';
@@ -185,7 +186,7 @@ export type LiveOperationRegistryOptions = {
    * a foreign operation cannot shadow one of Weft's — it fails construction
    * instead, before a port is bound.
    */
-  additionalOperations?: ReadonlyArray<RegistrableOperation>;
+  additionalOperations?: ReadonlyArray<RegistrableOperation<RegistryAgnosticEngine>>;
 };
 
 function buildSystemMetricsOperation(options: LiveOperationRegistryOptions) {
@@ -339,7 +340,7 @@ export function createLiveOperationRegistry(
   options?: LiveOperationRegistryOptions,
 ): OperationRegistry {
   const resolved: LiveOperationRegistryOptions = options ?? {};
-  return createOperationRegistry([
+  return createOperationRegistry<RegistryAgnosticEngine>([
     ...STATIC_OPERATIONS.map((operation) =>
       operation.name === 'weft.workflows.start'
         ? buildStartWorkflowOperationForRegistry(resolved)

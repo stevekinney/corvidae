@@ -143,7 +143,7 @@ export const storageGetOperation = defineOperation({
   discoverable: true,
   transports: httpOnlyStorageTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }) => {
+  invoke: async ({ input, host: engine, principal }) => {
     const storage = resolveAuthorizedStorage<['get']>(engine, principal, 'weft.storage.get', [
       'get',
     ]);
@@ -163,7 +163,7 @@ export const storagePutOperation = defineOperation({
   discoverable: true,
   transports: httpOnlyStorageTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }) => {
+  invoke: async ({ input, host: engine, principal }) => {
     const storage = resolveAuthorizedStorage<['put']>(engine, principal, 'weft.storage.put', [
       'put',
     ]);
@@ -184,7 +184,7 @@ export const storageDeleteOperation = defineOperation({
   discoverable: true,
   transports: httpOnlyStorageTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }) => {
+  invoke: async ({ input, host: engine, principal }) => {
     const storage = resolveAuthorizedStorage<['delete']>(engine, principal, 'weft.storage.delete', [
       'delete',
     ]);
@@ -205,7 +205,7 @@ export const storageScanOperation = defineOperation({
   discoverable: true,
   transports: httpOnlyStorageTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }) => {
+  invoke: async ({ input, host: engine, principal }) => {
     const storage = resolveAuthorizedStorage<['scan']>(engine, principal, 'weft.storage.scan', [
       'scan',
     ]);
@@ -225,7 +225,7 @@ export const storageBatchOperation = defineOperation({
   discoverable: true,
   transports: httpOnlyStorageTransports,
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }) => {
+  invoke: async ({ input, host: engine, principal }) => {
     const storage = resolveAuthorizedStorage<['batch']>(engine, principal, 'weft.storage.batch', [
       'batch',
     ]);
@@ -250,7 +250,7 @@ export const storageConditionalBatchOperation = defineOperation({
   producibleFaults: ['NotImplemented'], // backend reports no conditionalBatch
 
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine, principal }) => {
+  invoke: async ({ input, host: engine, principal }) => {
     const storage = resolveAuthorizedStorage<['capabilities']>(
       engine,
       principal,

@@ -41,7 +41,7 @@ export async function assertOperationRejectsUnauthenticated(
     {},
     {
       principal: { method: 'unauthenticated' },
-      engine: options.engine,
+      host: options.engine,
       transport: 'jsonRpcStdio',
       registry: options.liveRegistry,
     },
@@ -61,7 +61,7 @@ export async function assertOperationRejectsInsufficientScope(
     {},
     {
       principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
-      engine: options.engine,
+      host: options.engine,
       transport: 'jsonRpcStdio',
       registry: options.liveRegistry,
     },

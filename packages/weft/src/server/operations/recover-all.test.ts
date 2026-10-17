@@ -185,7 +185,7 @@ describe('weft.recover.all', () => {
         // to prove the handler does not read it.
         input: { acknowledgeUnknownWorkflowTypes: true } as never,
         principal: { method: 'unauthenticated' },
-        engine,
+        host: engine,
         transport: 'jsonRpcWebSocket',
       });
 

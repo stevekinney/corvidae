@@ -31,7 +31,7 @@ export const listCheckpointsOperation = defineOperation({
   // `shapeSuccess` does `Accept` negotiation (json vs msgpack) on
   // top of it — that representation choice is HTTP-specific and
   // does not belong on the operation's `Output` type.
-  invoke: async ({ input, engine }): Promise<ListCheckpointsOutput> => {
+  invoke: async ({ input, host: engine }): Promise<ListCheckpointsOutput> => {
     assertOperationEngineMethods(engine, ['listCheckpoints']);
     const e = engine;
     return e.listCheckpoints(input.workflowId);

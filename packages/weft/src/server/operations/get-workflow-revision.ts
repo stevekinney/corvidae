@@ -46,7 +46,7 @@ export const getWorkflowRevisionOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetWorkflowRevisionOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetWorkflowRevisionOutput> => {
     assertOperationWorkflowMethods(engine, ['getRevision']);
     const e = engine;
     const name = validateWorkflowNameField(input.name);

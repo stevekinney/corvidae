@@ -57,7 +57,7 @@ describe('operation engine capability boundaries', () => {
         await throwingRejectionOf(
           storageConditionalBatchOperation.invoke({
             input: { conditions: [], operations: [] },
-            engine: {
+            host: {
               storage: {
                 capabilities: () => ({
                   persistence: 'ephemeral',
@@ -104,7 +104,7 @@ describe('operation engine capability boundaries', () => {
       await throwingRejectionOf(
         storageConditionalBatchOperation.invoke({
           input: { conditions: [], operations: [] },
-          engine: { storage },
+          host: { storage },
           principal,
           transport: 'http-rest',
         }),
@@ -130,7 +130,7 @@ describe('operation engine capability boundaries', () => {
       expect(
         await storageGetOperation.invoke({
           input: { key: 'workflow-key' },
-          engine: { storage },
+          host: { storage },
           principal,
           transport: 'http-rest',
         }),

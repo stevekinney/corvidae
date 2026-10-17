@@ -495,7 +495,7 @@ export {
   runEventEnvelopeSchema,
   runEventsSubscriptionOperation,
   type AgentRunEventRegistry,
-  type RunEventsOperationEngine,
+  type RunEventsOperationHost,
   type RunEventsSubscriptionInput,
 } from './run-events-operation';
 export { DEFAULT_MAXIMUM_STEPS } from './run-step';

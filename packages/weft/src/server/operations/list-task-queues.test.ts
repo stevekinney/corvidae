@@ -215,7 +215,7 @@ describe('weft.task.queues.list — operation behavior', () => {
         {},
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createOperationRegistry([operation]),
         },
@@ -240,7 +240,7 @@ describe('weft.task.queues.list — operation behavior', () => {
         {},
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createOperationRegistry([listTaskQueuesOperation]),
         },

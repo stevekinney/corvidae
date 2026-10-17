@@ -26,6 +26,20 @@ import { matchDirectRoute } from './route-matching.ts';
 import type { LiveEventStreamContext } from './sse-route-dispatch.ts';
 
 export { authContextToPrincipal } from './auth-context-principal.ts';
+export {
+  createOperationHandlerAuthenticator,
+  type OperationHandlerAuthenticate,
+  type OperationHandlerAuthenticatorOptions,
+} from './operation-handler-authentication.ts';
+export type {
+  OperationHandlerMount,
+  OperationHandlerMountContext,
+} from './operation-handler-mounts.ts';
+export {
+  createOperationHandler,
+  type OperationHandler,
+  type OperationHandlerOptions,
+} from './operation-handler.ts';
 export { isOperationFaultLike, type HandlerOptions } from './route-dispatch.ts';
 export { extractRouteParameters, getRequiredRouteParameter } from './route-matching.ts';
 

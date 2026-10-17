@@ -40,7 +40,7 @@ export const getScheduleOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetScheduleOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetScheduleOutput> => {
     assertOperationEngineMethods(engine, ['getSchedule']);
     const e = engine;
     const schedule = await e.getSchedule(input.scheduleId);

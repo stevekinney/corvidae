@@ -54,7 +54,7 @@ export const getWorkflowOperation = defineOperation({
   // level keys. Top-level strip applies to the path-param + query-string
   // derived input.
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<WorkflowState> => {
+  invoke: async ({ input, host: engine }): Promise<WorkflowState> => {
     // The catalog stores `engine: unknown` so the pipeline is transport-
     // neutral; per `operation-catalog.ts`'s JSDoc the concrete adapter
     // (here: REST via serve()) is responsible for passing an `Engine`.

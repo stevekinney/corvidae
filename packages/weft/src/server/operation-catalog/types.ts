@@ -164,10 +164,16 @@ export type PipelineTrace = (marker: PipelineTraceMarker) => void;
 /**
  * Context passed to both the `authorize` hook and `invoke`.
  */
-export type OperationContext<Input> = {
+export type OperationContext<Input, Host = unknown> = {
   readonly input: Input;
   readonly principal: Principal;
-  readonly engine: unknown;
+  /**
+   * Whatever the transport host registered these operations against. Weft's
+   * own handlers deliver the `Engine`; another package's handler delivers its
+   * own host object. An operation declares the shape it needs through `Host`,
+   * so a host that cannot supply it is a compile error at registration.
+   */
+  readonly host: Host;
   readonly transport: TransportKind;
 };
 
@@ -175,7 +181,12 @@ export type OperationContext<Input> = {
  * Common operation fields shared by unary, stream, and subscription kinds.
  * The discriminated union below adds `kind` and `eventSchema` per kind.
  */
-export type OperationDefinitionBase<Input, InvokeOutput, SchemaOutput = InvokeOutput> = {
+export type OperationDefinitionBase<
+  Input,
+  InvokeOutput,
+  SchemaOutput = InvokeOutput,
+  Host = unknown,
+> = {
   readonly name: string;
   readonly mcpExposable: boolean;
   readonly mcpTool?: McpToolMetadata;
@@ -220,15 +231,15 @@ export type OperationDefinitionBase<Input, InvokeOutput, SchemaOutput = InvokeOu
   readonly discoverable?: boolean;
   readonly transports: TransportAvailability;
   readonly unknownKeyPolicy: UnknownKeyPolicy;
-  readonly authorize?: (context: OperationContext<Input>) => Promise<AuthorizationDecision>;
+  readonly authorize?: (context: OperationContext<Input, Host>) => Promise<AuthorizationDecision>;
 };
 
 /** Metadata and schema hooks shared by typed authoring and dispatch stages. */
-export type OperationMetadata<Input, SchemaOutput = unknown> = OperationDefinitionBase<
+export type OperationMetadata<
   Input,
-  unknown,
-  SchemaOutput
->;
+  SchemaOutput = unknown,
+  Host = unknown,
+> = OperationDefinitionBase<Input, unknown, SchemaOutput, Host>;
 
 /**
  * Unary (request/response) operation. `kind` may be omitted (defaults to
@@ -241,10 +252,11 @@ export type UnaryOperationDefinition<
   Input,
   InvokeOutput,
   SchemaOutput = InvokeOutput,
-> = OperationDefinitionBase<Input, InvokeOutput, SchemaOutput> & {
+  Host = unknown,
+> = OperationDefinitionBase<Input, InvokeOutput, SchemaOutput, Host> & {
   readonly kind?: 'unary';
   readonly eventSchema?: never;
-  readonly invoke: (context: OperationContext<Input>) => Promise<InvokeOutput>;
+  readonly invoke: (context: OperationContext<Input, Host>) => Promise<InvokeOutput>;
 };
 
 /**
@@ -254,14 +266,20 @@ export type UnaryOperationDefinition<
  * have no contract to validate per-element output against, which would
  * silently leak un-validated data to consumers.
  */
-export type StreamOperationDefinition<Input, InvokeOutput, SchemaOutput, InvokeElement, Element> =
-  OperationDefinitionBase<Input, InvokeOutput, SchemaOutput> & {
-    readonly kind: 'stream';
-    readonly eventSchema: z.ZodType<Element>;
-    readonly invoke: (
-      context: OperationContext<Input>,
-    ) => Promise<InvokeOutput | StreamOperationInvocation<InvokeElement>>;
-  };
+export type StreamOperationDefinition<
+  Input,
+  InvokeOutput,
+  SchemaOutput,
+  InvokeElement,
+  Element,
+  Host = unknown,
+> = OperationDefinitionBase<Input, InvokeOutput, SchemaOutput, Host> & {
+  readonly kind: 'stream';
+  readonly eventSchema: z.ZodType<Element>;
+  readonly invoke: (
+    context: OperationContext<Input, Host>,
+  ) => Promise<InvokeOutput | StreamOperationInvocation<InvokeElement>>;
+};
 
 /**
  * WebSocket subscription operation. `kind: 'subscription'` is required and
@@ -275,11 +293,12 @@ export type SubscriptionOperationDefinition<
   SchemaOutput,
   InvokeElement,
   Element,
-> = OperationDefinitionBase<Input, InvokeOutput, SchemaOutput> & {
+  Host = unknown,
+> = OperationDefinitionBase<Input, InvokeOutput, SchemaOutput, Host> & {
   readonly kind: 'subscription';
   readonly eventSchema: z.ZodType<Element>;
   readonly invoke: (
-    context: OperationContext<Input>,
+    context: OperationContext<Input, Host>,
   ) => Promise<SubscriptionOperationInvocation<InvokeElement, InvokeOutput>>;
 };
 
@@ -297,10 +316,18 @@ export type OperationDefinition<
   SchemaOutput = InvokeOutput,
   InvokeElement = unknown,
   Element = InvokeElement,
+  Host = unknown,
 > =
-  | UnaryOperationDefinition<Input, InvokeOutput, SchemaOutput>
-  | StreamOperationDefinition<Input, InvokeOutput, SchemaOutput, InvokeElement, Element>
-  | SubscriptionOperationDefinition<Input, InvokeOutput, SchemaOutput, InvokeElement, Element>;
+  | UnaryOperationDefinition<Input, InvokeOutput, SchemaOutput, Host>
+  | StreamOperationDefinition<Input, InvokeOutput, SchemaOutput, InvokeElement, Element, Host>
+  | SubscriptionOperationDefinition<
+      Input,
+      InvokeOutput,
+      SchemaOutput,
+      InvokeElement,
+      Element,
+      Host
+    >;
 
 /**
  * An operation with its Input/Output type parameters erased. The dispatcher
@@ -326,7 +353,7 @@ export type OperationRegistry = {
  * error rather than a runtime `EngineFailure` when the pipeline first
  * attempts per-element validation.
  */
-type RegistrableOperationBase = {
+type RegistrableOperationBase<Host> = {
   readonly name: string;
   readonly mcpExposable: boolean;
   readonly mcpTool?: McpToolMetadata;
@@ -348,31 +375,34 @@ type RegistrableOperationBase = {
   readonly unknownKeyPolicy: UnknownKeyPolicy;
   readonly dispatch: (
     rawInput: unknown,
-    context: DispatchContext,
+    context: DispatchContext<Host>,
   ) => Promise<DispatchResult<unknown>>;
 };
 
-type UnaryRegistrableOperation = RegistrableOperationBase & {
+type UnaryRegistrableOperation<Host> = RegistrableOperationBase<Host> & {
   readonly kind?: 'unary';
   readonly eventSchema?: never;
 };
 
-type StreamRegistrableOperation = RegistrableOperationBase & {
+type StreamRegistrableOperation<Host> = RegistrableOperationBase<Host> & {
   readonly kind: 'stream';
   readonly eventSchema: z.ZodType;
 };
 
-type SubscriptionRegistrableOperation = RegistrableOperationBase & {
+type SubscriptionRegistrableOperation<Host> = RegistrableOperationBase<Host> & {
   readonly kind: 'subscription';
   readonly eventSchema: z.ZodType;
 };
 
-export type RegistrableOperation =
-  UnaryRegistrableOperation | StreamRegistrableOperation | SubscriptionRegistrableOperation;
+export type RegistrableOperation<Host = unknown> =
+  | UnaryRegistrableOperation<Host>
+  | StreamRegistrableOperation<Host>
+  | SubscriptionRegistrableOperation<Host>;
 
-export type DispatchContext = {
+export type DispatchContext<Host = unknown> = {
   readonly principal: Principal;
-  readonly engine: unknown;
+  /** See {@link OperationContext.host}. */
+  readonly host: Host;
   readonly transport: TransportKind;
   readonly registry: OperationRegistry;
   readonly pipelineTrace?: PipelineTrace;

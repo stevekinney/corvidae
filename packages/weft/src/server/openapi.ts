@@ -62,6 +62,13 @@ export type OpenApiOptions = {
    * either header-oriented convention.
    */
   supportedSchemes?: ReadonlySet<OpenApiSecuritySchemeName>;
+  /**
+   * The direct routes (health, metrics, discovery documents) the server
+   * serves, named by handler. Defaults to all of them. A handler that serves
+   * fewer passes only those, so the document lists no route the server
+   * would answer with a 404.
+   */
+  directRoutes?: ReadonlyArray<(typeof DIRECT_HTTP_ROUTES)[number]['handler']>;
 };
 
 // ---------------------------------------------------------------------------
@@ -373,8 +380,10 @@ function buildDirectRouteSecurity(route: DirectHttpRouteDefinition): [] | undefi
 function emitDirectRoutes(
   paths: Record<string, Record<string, unknown>>,
   tagSet: Set<string>,
+  served: ReadonlyArray<string> | undefined,
 ): void {
   for (const route of DIRECT_HTTP_ROUTES) {
+    if (served !== undefined && !served.includes(route.handler)) continue;
     const openApiPath = toOpenApiPath(route.path);
     if (!paths[openApiPath]) paths[openApiPath] = {};
 
@@ -434,7 +443,7 @@ function buildOpenApiPaths(
   emitBindings(paths, tagSet, options?.restBindings, registry, schemaHelper);
   // Direct routes are reserved infrastructure endpoints, so they are emitted
   // after bindings and overwrite any conflicting user binding documentation.
-  emitDirectRoutes(paths, tagSet);
+  emitDirectRoutes(paths, tagSet, options?.directRoutes);
 
   const tags = [...tagSet].toSorted().map((name) => ({ name }));
   return { paths, tags };

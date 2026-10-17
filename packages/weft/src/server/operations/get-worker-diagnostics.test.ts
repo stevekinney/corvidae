@@ -200,7 +200,7 @@ describe('weft.workers.diagnostics — operation behavior', () => {
         { workerId: 'worker-1' },
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createOperationRegistry([getWorkerDiagnosticsOperation]),
         },
@@ -236,7 +236,7 @@ describe('weft.workers.diagnostics — operation behavior', () => {
         { workerId: 'worker-1' },
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry,
         },
@@ -264,7 +264,7 @@ describe('weft.workers.diagnostics — operation behavior', () => {
         { workerId: 'worker-1' },
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry,
         },

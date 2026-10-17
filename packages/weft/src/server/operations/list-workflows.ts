@@ -61,7 +61,7 @@ export const listWorkflowsOperation = defineOperation({
   producibleFaults: ['Unprocessable'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<ListWorkflowsOutput> => {
+  invoke: async ({ input, host: engine }): Promise<ListWorkflowsOutput> => {
     assertOperationEngineMethods(engine, ['list']);
     const e = engine;
     const { include, ...filterInput } = input;

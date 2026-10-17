@@ -289,6 +289,14 @@ export const DIRECT_HTTP_ROUTES = [
   },
 ] as const satisfies readonly DirectHttpRouteDefinition[];
 
+/**
+ * Where the engine-independent operation handler serves a catalog
+ * subscription over Server-Sent Events: `GET <prefix>/<operationName>`.
+ * `handleRequest` and `serve()` do not serve it; their SSE routes are
+ * bindings of their own.
+ */
+export const GENERIC_SUBSCRIPTION_ROUTE_PREFIX = '/v1/subscriptions';
+
 // ---------------------------------------------------------------------------
 // Reserved route space
 // ---------------------------------------------------------------------------

@@ -124,7 +124,7 @@ describe('weft.reviews.decision.submit', () => {
         },
         {
           principal: anonymousPrincipal(),
-          engine,
+          host: engine,
           transport: 'jsonRpcHttp',
           registry,
         },
