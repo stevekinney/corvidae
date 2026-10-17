@@ -53,6 +53,7 @@
   import WorkerDetailView from './worker-detail-view.svelte';
   import WorkerListView from './worker-list-view.svelte';
   import WorkersLiveStatus from './workers-live-status.svelte';
+  import { TASK_HEARTBEAT_STALE_AFTER_MS } from './worker-catalog-types.ts';
   import {
     clearDeadLetterMutation,
     drainDeploymentMutation,
@@ -69,7 +70,7 @@
     invalidateWorkerSurfaceQueries,
   } from './workers-data.ts';
 
-  type TaskLedgerDetailModule = typeof import('./task-ledger-detail-view.svelte');
+  type TaskLedgerDetailModule = typeof import('./task-ledger-panel.svelte');
   type DiagnosticsViewModule = typeof import('./diagnostics-view.svelte');
   type QueueDetailViewModule = typeof import('./queue-detail-view.svelte');
   let taskLedgerDetailModule: Promise<TaskLedgerDetailModule> | undefined;
@@ -77,7 +78,7 @@
   let queueDetailViewModule: Promise<QueueDetailViewModule> | undefined;
 
   function loadTaskLedgerDetailView(): Promise<TaskLedgerDetailModule> {
-    taskLedgerDetailModule ??= import('./task-ledger-detail-view.svelte');
+    taskLedgerDetailModule ??= import('./task-ledger-panel.svelte');
     return taskLedgerDetailModule;
   }
 
@@ -429,25 +430,19 @@
             title={FAULT_TREATMENT_TITLE[faultTreatment(diagnosticsErrorValue).kind]}
             description={faultTreatment(diagnosticsErrorValue).message}
           />
-        {:else if selectedTaskId && taskDetailQuery.isPending}
-          <div role="status" aria-busy="true" aria-label="Loading task ledger">
-            <Skeleton height="12rem" />
-          </div>
-        {:else if selectedTaskId && taskDetailQuery.error}
-          <EmptyState
-            title={FAULT_TREATMENT_TITLE[faultTreatment(taskDetailQuery.error).kind]}
-            description={faultTreatment(taskDetailQuery.error).message}
-          />
-        {:else if selectedTaskId && taskDetailQuery.data}
+        {:else if selectedTaskId}
           {#await loadTaskLedgerDetailView()}
             <div role="status" aria-busy="true" aria-label="Loading task ledger view">
               <Skeleton height="12rem" />
             </div>
-          {:then { default: TaskLedgerDetailView }}
-            <TaskLedgerDetailView
+          {:then { default: TaskLedgerPanel }}
+            <TaskLedgerPanel
+              loading={taskDetailQuery.isPending}
+              error={taskDetailQuery.error ?? null}
               task={taskDetailQuery.data}
               now={Date.now()}
               refreshing={taskDetailQuery.isFetching}
+              staleHeartbeatAfterMs={TASK_HEARTBEAT_STALE_AFTER_MS}
             />
           {/await}
         {:else}

@@ -450,8 +450,8 @@
   }
 
   .weft-lineage-continuation__chip--current {
-    border: 1.5px solid var(--cinder-accent);
-    background: color-mix(in oklch, var(--cinder-accent), transparent 92%);
+    border: 1.5px solid var(--cinder-accent-solid);
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
     font-weight: 600;
   }
 

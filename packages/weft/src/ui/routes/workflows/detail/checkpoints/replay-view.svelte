@@ -100,7 +100,7 @@
   .weft-replay-view {
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
-    border-inline-start: 3px solid var(--cinder-info);
+    border-inline-start: 3px solid var(--cinder-status-info-solid);
     border-radius: var(--cinder-radius-lg);
     overflow: hidden;
   }
@@ -110,9 +110,9 @@
     align-items: center;
     gap: 8px;
     padding: 9px 14px;
-    background: var(--cinder-color-warning-bg);
-    color: var(--cinder-color-warning-fg);
-    border-bottom: 1px solid var(--cinder-color-warning-border);
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+    border-bottom: 1px solid var(--cinder-status-warning-border);
     font-size: var(--cinder-text-xs);
     font-weight: 600;
   }

@@ -12,6 +12,10 @@
  * activity's hash differs from the `sha256:` hash the registry's schema pair
  * produces, exactly as `weft worker verify` would report it. That drift is
  * the real state of the fixture, and the spec asserts it.
+ *
+ * The ledger-evidence worker (`ledger-evidence-seed.ts`, COR-124) also
+ * serves `order-processing`, so a registry entry lists two drifting workers;
+ * per-worker assertions are scoped to the fleet worker's own table.
  */
 import type { Locator, Page } from '@playwright/test';
 
@@ -75,11 +79,17 @@ test('operator reads every serving worker’s verification from a registry entry
 }) => {
   const verification = await openRegistryVerification(page);
   await expect(verification).toBeVisible();
-  await expect(verification.getByText('Drift · 1 of 1 worker')).toBeVisible();
+  await expect(verification.getByText('Drift · 2 of 2 workers')).toBeVisible();
   await expect(verification.getByText('checkout-worker-fleet · e2e-build-1')).toBeVisible();
-  await expect(verification.getByText('Missing from worker')).toBeVisible();
+  await expect(verification.getByText('ledger-evidence-fleet · e2e-ledger-build-1')).toBeVisible();
+  const fleetActivities = verification.getByRole('table', {
+    name: 'e2e-fleet-worker-1 order-processing activity verification',
+  });
   await expect(
-    verification.getByRole('row', { name: /^chargeCard Contract hash differs from registry/ }),
+    fleetActivities.getByRole('row', { name: /^sendConfirmationEmail Missing from worker/ }),
+  ).toBeVisible();
+  await expect(
+    fleetActivities.getByRole('row', { name: /^chargeCard Contract hash differs from registry/ }),
   ).toBeVisible();
 
   await checkA11y('system — registry contract verification');
@@ -210,7 +220,7 @@ const SURFACES = [
       return page.getByRole('region', { name: 'Contract verification' });
     },
   },
-  { name: 'registry detail', verdict: 'Drift · 1 of 1 worker', open: openRegistryVerification },
+  { name: 'registry detail', verdict: 'Drift · 2 of 2 workers', open: openRegistryVerification },
 ] as const;
 
 for (const surface of SURFACES) {

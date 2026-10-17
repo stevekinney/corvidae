@@ -95,17 +95,17 @@
   }
 
   .weft-activation-outcome--applied {
-    background: var(--cinder-color-success-bg);
-    border-color: var(--cinder-color-success-border);
+    background: var(--cinder-status-success-background);
+    border-color: var(--cinder-status-success-border);
   }
 
   .weft-activation-outcome--incompatible {
-    background: var(--cinder-color-danger-bg);
-    border-color: var(--cinder-color-danger-border);
+    background: var(--cinder-status-danger-background);
+    border-color: var(--cinder-status-danger-border);
   }
 
   .weft-activation-outcome--stale {
-    background: var(--cinder-color-warning-bg);
-    border-color: var(--cinder-color-warning-border);
+    background: var(--cinder-status-warning-background);
+    border-color: var(--cinder-status-warning-border);
   }
 </style>

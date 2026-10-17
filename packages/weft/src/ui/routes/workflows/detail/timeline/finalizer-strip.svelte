@@ -150,6 +150,6 @@
   .weft-finalizer-strip__error {
     margin: 0;
     font-size: var(--cinder-text-2xs);
-    color: var(--cinder-color-danger-fg);
+    color: var(--cinder-status-danger-text);
   }
 </style>

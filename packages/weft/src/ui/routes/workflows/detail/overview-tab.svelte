@@ -246,7 +246,7 @@
     width: 14px;
     height: 14px;
     border: 2px solid var(--cinder-border-strong);
-    border-top-color: var(--cinder-accent);
+    border-top-color: var(--cinder-accent-solid);
     border-radius: 50%;
     display: inline-block;
     animation: weft-overview-spin 0.7s linear infinite;

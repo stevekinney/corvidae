@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * Worker detail (plan §9.4 T5.2): connection info, activities, drain
-   * banner, drain/resume actions.
+   * banner, drain/resume actions, and the server-reported session
+   * (`weft.workers.diagnostics`, COR-124).
    */
   import { Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
 
@@ -13,6 +14,7 @@
   import WorkerManifestPanel from './worker-manifest-panel.svelte';
   import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
   import { workerHealthPresentation } from './worker-presentation.ts';
+  import WorkerSessionPanel from './worker-session-panel.svelte';
 
   interface WorkerDetailViewProps {
     readonly worker: WorkerSummary;
@@ -23,6 +25,8 @@
     readonly manifestLoading?: boolean;
     readonly manifestRefreshing?: boolean;
     readonly manifestError?: unknown;
+    /** Reference instant for relative times; defaults to render time. */
+    readonly now?: number;
     /** Active registry snapshot for contract verification (COR-162). */
     readonly registry?: RegistrySnapshotSource | undefined;
     readonly registryLoading?: boolean;
@@ -39,6 +43,7 @@
     manifestLoading = false,
     manifestRefreshing = false,
     manifestError = null,
+    now = Date.now(),
     registry = undefined,
     registryLoading = false,
     registryRefreshing = false,
@@ -86,6 +91,13 @@
       accepting no new work.
     </div>
   {/if}
+
+  <WorkerSessionPanel
+    diagnostics={manifestDiagnostics}
+    loading={manifestLoading}
+    error={manifestError}
+    {now}
+  />
 
   <div class="weft-worker-detail__grid">
     <div class="weft-workers-panel">
