@@ -111,13 +111,6 @@ export const SESSION_INPUT_MAXIMUM_ATTEMPTS = 100;
  */
 export const SESSION_INPUT_DELIVERY_RETENTION_MS = 9 * 86_400_000;
 
-/**
- * The cancellation reason for input a stopped run never put in its transcript.
- * The user stopped the run on purpose, so nothing continues it; the input's
- * receipt reads `canceled` and the client can send it again.
- */
-export const SESSION_INPUT_STOPPED_REASON = 'the run was stopped';
-
 /** One session's session-input mailbox — the durable log, FIFO sequencer, and per-session backlog authority. */
 export function createSessionInputMailbox(
   storage: Storage,
@@ -132,8 +125,8 @@ export function createSessionInputMailbox(
     maxBacklog: sessionBacklogLimit,
     commandTimeoutMs: SESSION_INPUT_COMMAND_TIMEOUT_MS,
     maxAttempts: SESSION_INPUT_MAXIMUM_ATTEMPTS,
-    // A released command is due again almost at once: a run that ended hands its
-    // input to the continuation run that starts moments later.
+    // A released command is due again almost at once: a lease a run's gate
+    // returns is claimable by the session's next step boundary.
     retryBackoffMs: 10,
     maxRetryBackoffMs: 1_000,
     ...(now === undefined ? {} : { now }),
@@ -394,6 +387,22 @@ export interface SessionInputAdmissionAttempt {
 }
 
 /**
+ * What one admission attempt reports: `Bureau.submitSessionInput`'s outcomes
+ * once a mailbox is composed (`admitted`, `replayed`, `conflict`,
+ * `backlog-exhausted`), with an `admitted` outcome also naming the mailbox
+ * command it created, which the caller needs to cancel the input it just
+ * admitted when no run is live to deliver it (COR-1476). The command id is
+ * Bureau's own and never reaches the caller-facing outcome.
+ */
+export type SessionInputAdmissionAttemptOutcome =
+  | {
+      readonly outcome: 'admitted';
+      readonly receipt: SessionInputReceipt;
+      readonly commandId: string;
+    }
+  | Exclude<SessionInputAdmissionOutcome, { readonly outcome: 'admitted' }>;
+
+/**
  * Runs one admission attempt against the mailbox-plus-identity-index scheme
  * the module doc describes. Returns exactly the outcomes
  * `Bureau.submitSessionInput` contracts for once a mailbox is composed:
@@ -401,7 +410,7 @@ export interface SessionInputAdmissionAttempt {
  */
 export async function admitSessionInput(
   attempt: SessionInputAdmissionAttempt,
-): Promise<SessionInputAdmissionOutcome> {
+): Promise<SessionInputAdmissionAttemptOutcome> {
   const {
     storage,
     kv,
@@ -471,6 +480,7 @@ export async function admitSessionInput(
       return {
         outcome: 'admitted',
         receipt: buildReceipt(admission.receipt, deliveryMode, undefined),
+        commandId: admission.receipt.commandId,
       };
     case 'duplicate':
       return {
@@ -508,4 +518,29 @@ export async function admitSessionInput(
         limit: admission.capacity.limit,
       };
   }
+}
+
+/**
+ * The receipt of one admitted input as the mailbox and the session's promotion
+ * records describe it now (COR-1476): what `submitSessionInput` returns after
+ * cancelling the input it just admitted, so the caller reads `canceled` rather
+ * than the `accepted` the admission reported a moment earlier.
+ */
+export async function readSessionInputReceipt(
+  kv: ConditionalTextValueStore,
+  sessionMailbox: Mailbox,
+  sessionId: string,
+  commandId: string,
+): Promise<SessionInputReceipt> {
+  const receipt = await sessionMailbox.receipt(commandId);
+  if (receipt === null) {
+    throw new Error(
+      `Session input command "${commandId}" of session "${sessionId}" has no mailbox receipt to read back.`,
+    );
+  }
+  return buildReceipt(
+    receipt,
+    decodeSessionInputKind(receipt.kind),
+    await readSessionInputPromotion(kv, sessionId, commandId),
+  );
 }

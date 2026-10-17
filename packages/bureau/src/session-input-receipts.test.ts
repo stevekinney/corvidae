@@ -12,7 +12,6 @@ import {
   createSessionInputMailbox,
   SESSION_INPUT_COMMAND_TIMEOUT_MS,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
-  SESSION_INPUT_STOPPED_REASON,
 } from './session-input-durability';
 
 /**
@@ -135,7 +134,7 @@ describe('receipts on every way an input can end (COR-1476)', () => {
     expect(await f.replayState()).toBe('failed');
   });
 
-  it('reads canceled when its session is deleted and when its run was stopped', async () => {
+  it('reads canceled when its session is deleted and when its run ended before delivering it', async () => {
     const deleted = fixture();
     await admitSessionInput(deleted.attempt());
     await deleted.mailbox.requestCancellation({
@@ -148,7 +147,7 @@ describe('receipts on every way an input can end (COR-1476)', () => {
     await admitSessionInput(orphaned.attempt());
     await orphaned.mailbox.requestCancellation({
       commandId: await commandIdOf(orphaned.mailbox),
-      reason: SESSION_INPUT_STOPPED_REASON,
+      reason: 'the run ended before the input was delivered',
     });
     expect(await orphaned.replayState()).toBe('canceled');
   });

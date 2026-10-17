@@ -1591,26 +1591,28 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *
    * On a durably-configured Bureau every other authorized, non-terminal
    * request is admitted to the session's durable mailbox (`admitted`,
-   * `replayed`, `conflict`, or `backlog-exhausted`). An admitted input is
-   * answered unless the user stops the run. The session's live durable run
-   * appends it to its conversation before its next step generates; input sent
-   * during the run's last step is answered by one more step of the same run
-   * while it has steps left; and input left after the run's final drain, or
-   * left over by its budget, is answered by a continuation run the session
-   * starts, with no prompt of its own and a fresh budget. An input's user turn
-   * is appended to a transcript at most once, in admission order within a run,
-   * keyed by the mailbox command so a reused `id` is a new input, and is
-   * promoted (its receipt reads `promoted`) only after the step that answers it
-   * succeeds. Stopping the run (`abortRun`, `cancelDurableRun`) starts no
-   * continuation: input already in the transcript reads `promoted`, the rest
-   * reads `canceled`. A restart loses no input, but a lease the crashed process
-   * held delays delivery by up to about 31 seconds. An input still undelivered
-   * after seven days, whose session is deleted, or that two continuations could
-   * not consume reads `expired`, `canceled`, or `failed`. `steer` and `queue`
-   * share that one FIFO path; `expiresAt` and `supersedes` are stored but not
-   * yet honored. A Bureau
-   * with no session mailbox, durable storage, or key-value store, or a session
-   * id too long to address a mailbox, returns `{ outcome: 'unsupported-capability', reason:
+   * `replayed`, `conflict`, or `backlog-exhausted`). Each admitted input ends
+   * with exactly one terminal receipt. It reads `promoted` once a live run's
+   * step boundary appends its user turn to the conversation: before the run's
+   * next step generates, or once more after its last step generated while the
+   * run has a step left. The turn is appended at most once, in admission order
+   * within a run, keyed by the mailbox command so a reused `id` is a new input,
+   * under the input's own `id` as its message id, and the promotion commits in
+   * the write that saves the turn, whatever that step's outcome. It reads
+   * `canceled` when the input was not appended before its run ended, however
+   * it ended (completed, failed, `abortRun`, `cancelDurableRun`, or promoted
+   * but never started), so the client resends it; Bureau never starts a run to
+   * answer input, and the ending run cancels what it never delivered unless
+   * another run of the session is live, whose end does the cancelling. With no
+   * run live or starting when the admission commits, this call cancels the
+   * input itself and returns the re-read receipt. Shutdown releases open input
+   * instead, for the next boot's recovered run to deliver or its sweep to
+   * cancel. An input still undelivered after seven days reads `expired`, one
+   * whose session is deleted reads `canceled`, and one that cannot be decoded
+   * reads `failed`. `steer` and `queue` share that one FIFO path; `expiresAt`
+   * and `supersedes` are stored but not yet honored. A Bureau with no session
+   * mailbox, durable storage, or key-value store, or a session id too long to
+   * address a mailbox, returns `{ outcome: 'unsupported-capability', reason:
    * 'durable-mailbox-unavailable' }`.
    */
   submitSessionInput(
@@ -2129,12 +2131,6 @@ export interface AbortingRun {
 export interface RunSummary {
   id: string;
   sessionId: string;
-  /**
-   * `true` on a continuation run (COR-1476): the run a session starts, with no
-   * prompt of its own, to answer input left after a run's final drain. Absent
-   * on every other run.
-   */
-  continuation?: boolean | undefined;
   status: string;
   steps: number;
   /**

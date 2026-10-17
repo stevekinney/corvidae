@@ -206,8 +206,6 @@ export function findRunAgentName(runState: {
 export interface RunAttribution {
   agentName?: string;
   principal?: string;
-  /** COR-1476 — a continuation run, which answers the session's pending input. */
-  continuation?: boolean;
 }
 
 /**
@@ -235,7 +233,6 @@ export function serializeRunState(
     actionCount: runState.actions.length,
     agentName: attribution?.agentName ?? findRunAgentName(runState),
     principal: attribution?.principal,
-    ...(attribution?.continuation === true ? { continuation: true } : {}),
     startedAt: runState.actions[0]?.timestamp,
   };
 }

@@ -1,6 +1,6 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
-import { Conversation, type MultiModalContent } from 'conversationalist';
+import { Conversation, type MessageInput, type MultiModalContent } from 'conversationalist';
 
 import { toAgentRunError } from '../errors';
 import { buildStepDeps, createRunState } from '../loop';
@@ -94,16 +94,16 @@ export interface DurableStepMemoResult {
   /**
    * COR-1476 — the session inputs this step's boundary received before it
    * generated, in admission order, each already appended to the conversation
-   * above. This step's generation is their answer, so the workflow promotes them
-   * only if the step succeeds. Absent when the run has no
+   * above. The workflow promotes them in the same checkpoint write as this
+   * step's transcript, whatever the step's outcome. Absent when the run has no
    * {@link SessionInputGate} or nothing was pending, so a step that delivers
    * nothing records exactly what it always did.
    */
   sessionInputDeliveries?: readonly SessionInputDelivery[] | undefined;
   /**
    * COR-1476 — the session inputs drained after this step generated, because it
-   * would have ended the run. They are appended, but the NEXT step answers them,
-   * so the workflow carries them until that step succeeds.
+   * would have ended the run. They are appended and promoted with this step's
+   * transcript too; the NEXT step answers them.
    */
   lateSessionInputDeliveries?: readonly SessionInputDelivery[] | undefined;
 }
@@ -121,8 +121,8 @@ export interface RunStepMemoOptions {
   /**
    * COR-1476 — the run's step cap. A step that would end the run asks the
    * session input gate once more only while a step remains for the answer:
-   * input never extends a run past its budget, and what is left waits for the
-   * session's continuation run.
+   * input never extends a run past its budget, and what is left is cancelled
+   * when the run ends, for the client to resend.
    */
   readonly maximumSteps?: number | undefined;
 }
@@ -165,26 +165,6 @@ export function runStepMemo(
     const sessionInputDeliveries = await deliverSessionInputs(deps, conversation, stepIndex);
     const canAnswerLateInput =
       options.maximumSteps === undefined || stepIndex + 1 < options.maximumSteps;
-    // COR-1476 — a continuation run has no prompt of its own, so with nothing
-    // delivered and nothing waiting for an answer there is nothing to generate:
-    // it ends without a model call.
-    if (
-      deps.options.continuation === true &&
-      stepIndex === 0 &&
-      sessionInputDeliveries.length === 0 &&
-      !endsWithUnansweredUserTurn(conversation)
-    ) {
-      const unchanged = snapshotAfterStep(deps, conversation);
-      return {
-        outcome: { kind: 'stop' },
-        stopFinishReason: 'stop-condition',
-        record: null,
-        ...(options.delta === true
-          ? { conversationDelta: diffConversationSnapshot(snapshot, unchanged) }
-          : { conversationSnapshot: unchanged }),
-        nextAccumulators: carriedAccumulators,
-      };
-    }
     const lateSessionInputDeliveries: SessionInputDelivery[] = [];
     const runState = createRunState();
     runState.totalUsage = { ...carriedAccumulators.totalUsage };
@@ -281,21 +261,22 @@ function toMessageContent(payload: SessionInputPayload): string | MultiModalCont
   });
 }
 
-/** Whether the conversation ends with a user turn nothing has answered. */
-function endsWithUnansweredUserTurn(conversation: Conversation): boolean {
-  return conversation.getMessages().at(-1)?.role === 'user';
-}
-
 /**
  * COR-1476 — the step boundary's session-input delivery. Asks the run's
  * {@link SessionInputGate} what is pending and appends each payload to the
  * conversation as a user message, in the order the gate returns them, so the
  * model sees them on the step that follows.
  *
+ * The appended message's id is the input's own `id`, so a client can find its
+ * turn in the run's history by the id it submitted. The one exception is an id
+ * the conversation already holds a message for: a caller may reuse an input id
+ * once the mailbox has retired the earlier record, and a conversation refuses a
+ * duplicate message id, so that turn gets a fresh id rather than failing the
+ * step. Its `sessionInputId` metadata still names the input.
+ *
  * Delivery is idempotent per command: an input whose user turn is already in the
- * conversation (a lease that lapsed under a live step and was claimed again, or a
- * transcript an earlier run saved with the turn but no answer) is not appended a
- * second time; its existing turn is what is promoted once it is answered.
+ * conversation (keyed by its mailbox command, which, unlike the input id, names
+ * exactly one admission) is not appended a second time.
  *
  * Runs inside the step's memo, so the appended messages and the list of what
  * was delivered are checkpointed together: a replay reads the recorded result
@@ -315,15 +296,21 @@ async function deliverSessionInputs(
   }
   const deliveries: SessionInputDelivery[] = [];
   for (const input of await gate.claimPending()) {
-    const existing = conversation
-      .getMessages()
-      .find((message) => message.metadata?.['sessionInputCommandId'] === input.commandId);
+    const messages = conversation.getMessages();
+    const existing = messages.find(
+      (message) => message.metadata?.['sessionInputCommandId'] === input.commandId,
+    );
     let messageId = existing?.id;
     if (messageId === undefined) {
-      conversation.appendUserMessage(toMessageContent(input.payload), {
-        sessionInputId: input.id,
-        sessionInputCommandId: input.commandId,
-      });
+      const metadata = { sessionInputId: input.id, sessionInputCommandId: input.commandId };
+      const idIsFree = !messages.some((message) => message.id === input.id);
+      const turn: MessageInput & { readonly id?: string } = {
+        role: 'user',
+        content: toMessageContent(input.payload),
+        metadata,
+        ...(idIsFree ? { id: input.id } : {}),
+      };
+      conversation.appendMessages(turn);
       messageId = conversation.getMessages().at(-1)?.id;
     }
     if (messageId === undefined) {

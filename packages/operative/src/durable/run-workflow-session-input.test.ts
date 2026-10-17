@@ -779,143 +779,101 @@ function manualTimers() {
   return { timers, tick: () => callback?.(), isRunning: () => callback !== undefined };
 }
 
-describe('promotion waits for the step that answers (COR-1476)', () => {
-  /** A run that has no prompt of its own, started on a transcript an earlier run left. */
-  function startContinuation(engine: TestEngine, services: DurableRunDeps, runId: string) {
-    return engine.start(
-      'agentRun',
-      { runId, sessionId: SESSION_ID, agentName: '' },
-      { id: runId, services },
-    );
-  }
-
-  function continuationServices(
-    generate: GenerateFunction,
-    gate: SessionInputGate,
-    transcript: Conversation,
-  ): DurableRunDeps {
-    const services = makeServices(generate, gate);
-    return {
-      ...services,
-      options: { ...services.options, conversation: transcript, continuation: true },
-    };
-  }
-
-  it('does not promote an input whose answering step failed, and the continuation answers it without appending it twice', async () => {
+describe('promotion commits with the step that appends (COR-1476)', () => {
+  it('leaves an input promoted, under its own id, when the step that appended it fails', async () => {
     const storage = new MemoryStorage();
     const mailbox = newMailbox(storage);
     const store = deliveryStoreOver(storage);
     const command = await admit(mailbox, 'input-a', 'please answer this');
-    const failingGate = gateOver(mailbox, store, 'run-1');
 
     const { engine, checkpointStore } = await buildEngine(storage);
     try {
       const failing = await startRun(
         engine,
-        makeServices(async () => {
-          throw new Error('the model is down');
-        }, failingGate),
+        makeServices(
+          async () => {
+            throw new Error('the model is down');
+          },
+          gateOver(mailbox, store, 'run-1'),
+        ),
         'run-1',
       );
       await failing.result().catch(() => {});
 
-      // The input was appended and saved, but nothing answered it: not promoted.
-      const afterFailure = await store.read(SESSION_ID);
-      expect(afterFailure[command]?.runId).toBe('run-1');
-      expect(afterFailure[command]?.promotion).toBeUndefined();
+      // The boundary appended the turn before the step generated, and the
+      // step's own checkpoint write promoted it: the turn is part of the
+      // conversation however the step ended.
+      const records = await store.read(SESSION_ID);
+      expect(records[command]?.runId).toBe('run-1');
+      expect(records[command]?.promotion?.providerTurn).toBe(0);
       const transcript = await transcriptOf(checkpointStore, 'run-1');
-      expect(sessionInputMessages(transcript).map(({ id }) => id)).toEqual(['input-a']);
-
-      // The failed run ends: its terminal reconcile releases what it held.
-      await failingGate.dispose?.();
-      await store.release(SESSION_ID, 'run-1');
-
-      const prompts: string[][] = [];
-      const continuation = await startContinuation(
-        engine,
-        continuationServices(
-          async (context: GenerateContext) => {
-            prompts.push(userTexts(context.conversation));
-            return { content: 'here is the answer', toolCalls: [] };
-          },
-          gateOver(mailbox, store, 'run-2'),
-          transcript,
-        ),
-        'run-2',
-      );
-      await continuation.result();
-
-      // The turn is in the conversation once, and now it is answered and promoted.
-      expect(prompts).toEqual([['Start', 'please answer this']]);
-      const afterContinuation = await store.read(SESSION_ID);
-      expect(afterContinuation[command]?.runId).toBe('run-2');
-      expect(afterContinuation[command]?.promotion).toBeDefined();
+      expect(sessionInputMessages(transcript)).toEqual([{ id: 'input-a', messageId: 'input-a' }]);
+      expect(records[command]?.promotion?.conversationMessageId).toBe('input-a');
       expect(await openCount(mailbox)).toBe(0);
     } finally {
       engine[Symbol.dispose]();
     }
   });
 
-  it('makes no model call for a continuation whose only input was already promoted', async () => {
+  it('gives a reused input id a fresh message id once the earlier turn is in the transcript', async () => {
     const storage = new MemoryStorage();
     let now = 1_000_000;
     const mailbox = newMailbox(storage, () => now);
     const store = deliveryStoreOver(storage, () => now);
-    const kv = kvOver(storage);
-    await admit(mailbox, 'input-a', 'answered already');
-    const earlier = gateOver(mailbox, store, 'run-1', { timers: manualTimers().timers });
-    const [claimed] = await earlier.claimPending();
-    // Promoted with its answer, then the process died before acknowledging.
-    const key = sessionInputDeliveriesKey(SESSION_ID);
-    await kv.set(
-      key,
-      JSON.stringify(
-        planSessionInputPromotion(parseSessionInputDeliveries(await kv.get(key)), 'run-1', [
-          {
-            id: claimed!.id,
-            commandId: claimed!.commandId,
-            sessionId: SESSION_ID,
-            deliveredAt: new Date(now).toISOString(),
-            conversationMessageId: 'message-a',
-            providerTurn: 0,
-          },
-        ]),
-      ),
-    );
-    now += 33_000;
-    await newMailbox(storage, () => now).runMaintenance();
-    now += 1_000;
+    const first = await admit(mailbox, 'input-a', 'the first time');
+    const prompts: string[][] = [];
+    const generate = async (context: GenerateContext) => {
+      prompts.push(userTexts(context.conversation));
+      return { content: 'answered', toolCalls: [] };
+    };
 
-    const transcript = new Conversation();
-    transcript.appendUserMessage('Start');
-    transcript.appendUserMessage('answered already');
-    transcript.appendAssistantMessage('and here was the answer');
-    let modelCalls = 0;
-    const { engine } = await buildEngine(storage);
+    const { engine, checkpointStore } = await buildEngine(storage);
     try {
-      const run = await startContinuation(
+      const run1 = await startRun(
         engine,
-        continuationServices(
-          async () => {
-            modelCalls += 1;
-            return { content: 'should not happen', toolCalls: [] };
-          },
-          gateOver(mailbox, store, 'run-2', { now: () => now }),
-          transcript,
-        ),
-        'run-2',
+        makeServices(generate, gateOver(mailbox, store, 'run-1', { now: () => now })),
+        'run-1',
       );
-      const result = (await run.result()) as { finishReason: string };
+      await run1.result();
+      const afterFirst = await transcriptOf(checkpointStore, 'run-1');
+      expect(sessionInputMessages(afterFirst)).toEqual([{ id: 'input-a', messageId: 'input-a' }]);
 
-      expect(modelCalls).toBe(0);
-      expect(result.finishReason).toBe('stop-condition');
+      // The mailbox retires its record, and the caller submits a new input under
+      // the same id. Its turn joins a transcript that already holds a message
+      // with that id, so it takes a fresh one rather than failing the step.
+      now += 2 * DAY_MS;
+      await mailbox.runMaintenance();
+      const second = await admit(mailbox, 'input-a', 'the second time');
+      expect(second).not.toBe(first);
+      const services = makeServices(
+        generate,
+        gateOver(mailbox, store, 'run-2', { now: () => now }),
+      );
+      services.options = { ...services.options, conversation: afterFirst };
+      const run2 = await engine.start(
+        'agentRun',
+        { runId: 'run-2', sessionId: SESSION_ID, agentName: '' },
+        { id: 'run-2', services },
+      );
+      await run2.result();
+
+      expect(prompts).toEqual([
+        ['Start', 'the first time'],
+        ['Start', 'the first time', 'the second time'],
+      ]);
+      const delivered = sessionInputMessages(await transcriptOf(checkpointStore, 'run-2'));
+      expect(delivered.map(({ id }) => id)).toEqual(['input-a', 'input-a']);
+      expect(delivered[0]?.messageId).toBe('input-a');
+      expect(delivered[1]?.messageId).not.toBe('input-a');
+      const records = await store.read(SESSION_ID);
+      expect(records[second]?.promotion?.conversationMessageId).toBe(delivered[1]?.messageId);
       expect(await openCount(mailbox)).toBe(0);
     } finally {
       engine[Symbol.dispose]();
     }
   });
 
-  it("answers input drained after a step, and promotes it with the step that answers, at that step's turn", async () => {
+  it("promotes input drained after a step with that step's write, at the answering step's turn", async () => {
     const storage = new MemoryStorage();
     const mailbox = newMailbox(storage);
     const store = deliveryStoreOver(storage);

@@ -224,14 +224,9 @@ import {
   createSessionInputMailbox,
   type PersistedSessionInput,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
-  SESSION_INPUT_STOPPED_REASON,
 } from './session-input-durability';
-import {
-  createSessionInputContinuation,
-  forEachOpenReceipt,
-  type SessionInputRunOutcome,
-} from './session-input-continuation';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
+import { createSessionInputSettlement, forEachOpenReceipt } from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import {
   normalizeRunRequestContext,
@@ -305,6 +300,12 @@ import { streamEventToFrame } from './websocket-frames';
 const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
+/**
+ * COR-1476 — how long a run that has ended waits between attempts to write its
+ * steering `run-ended` entry. The write is retried until it is acknowledged or
+ * the bureau closes, because the run reads the session's mailbox only after it.
+ */
+const SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS = 10;
 /**
  * How long `shutdown({ policy: 'abort' })` waits for the runs it aborted to
  * reach a terminal event before it stops waiting and tears storage down. A
@@ -1926,15 +1927,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * The pending `run-ended` steering write of each run that is ending (COR-1476).
-   * It is the durable not-live write the run's reconcile waits for.
+   * It is the durable not-live write the run's session-input settlement waits
+   * for, and rejects when the write failed, so the settlement retries it.
    */
   const steeringRunEndWrites = new Map<string, Promise<void>>();
 
-  /** The reconciles of runs that have ended and have not finished (COR-1476). */
-  const inFlightSessionInputReconciles = new Set<Promise<void>>();
-
-  /** Runs the user stopped with `abortRun` or `cancelDurableRun`: their session's input is settled, not continued. */
-  const explicitlyStoppedRuns = new Set<string>();
+  /** The session-input settlements of runs that have ended and have not finished (COR-1476). */
+  const inFlightSessionInputSettlements = new Set<Promise<void>>();
 
   /** The gate of each durable run that has one, disposed when the run ends however it ends. */
   const sessionInputGates = new Map<
@@ -2036,100 +2035,66 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * A run has ended, however it ended. Releases what it held, then makes sure a
-   * session that still has open input has a live run to answer it.
-   *
-   * ORDERING (see `session-input-continuation.ts`): the run first becomes not
-   * live to everyone, which is its steering `run-ended` entry plus the engine's
-   * terminal workflow state, and this function waits for that write before it
-   * reads the session's marker and mailbox. `submitSessionInput` commits an
-   * admission before it reads liveness, so one side always sees the other.
+   * COR-1476 — a run has ended, however it ended. It records its steering
+   * `run-ended` entry, the durable not-live write every process honours, and
+   * releases what it held: its gate's leases and its unpromoted claims. Input
+   * still open is left to the sweep.
    */
-  async function reconcileSessionInputsAfterRunEnd(
-    sessionId: string,
-    runId: string,
-    reportedOutcome: SessionInputRunOutcome,
-  ): Promise<void> {
-    const outcome: SessionInputRunOutcome =
-      reportedOutcome === 'aborted' && explicitlyStoppedRuns.delete(runId)
-        ? 'stopped'
-        : reportedOutcome;
-    try {
-      // The durable not-live write, before anything below reads the session.
-      await steeringRunEndWrites.get(runId);
-      steeringRunEndWrites.delete(runId);
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'session-input',
-        message: `[bureau] The end of run "${runId}" could not be recorded before its session input was reconciled: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-    if (outcome === 'stopped') {
-      // Stop means stop: nothing is continued. What the run's transcript holds
-      // is promoted, and the rest is cancelled so the client can resend it.
-      await settleSessionInputsAfterStop(sessionId, runId);
-    } else {
-      await releaseSessionInputs(sessionId, runId);
-    }
-    try {
-      await sessionInputContinuation?.settleEnded(sessionId, { runId, outcome });
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'session-input',
-        message: `[bureau] Could not settle the continuation record of run "${runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-    // Shutdown only releases; a stop starts nothing.
-    if (sessionInputContinuation === undefined || outcome === 'stopped' || isSessionInputClosed()) {
-      return;
-    }
-    try {
-      await sessionInputContinuation.reconcile(sessionId, { runId, outcome });
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'session-input',
-        message: `[bureau] Could not reconcile the pending input of session "${sessionId}" after run "${runId}" ended: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
+  async function settleSessionInputsAfterRunEnd(sessionId: string, runId: string): Promise<void> {
+    await recordRunEnded(sessionId, runId);
+    await releaseSessionInputs(sessionId, runId);
   }
 
-  /** Acknowledges the given commands, which are promoted and need only retiring. */
-  async function retirePromotedCommands(
-    mailbox: Mailbox,
-    commandIds: ReadonlySet<string>,
-  ): Promise<void> {
-    const remaining = new Set(commandIds);
-    for (let attempt = 0; remaining.size > 0 && attempt < commandIds.size + 5; attempt += 1) {
-      let result = await mailbox.claim();
-      if (result.status === 'held') {
-        await mailbox.waitForAvailable({
-          timeoutMs: 1_100,
-          pollIntervalMs: 10,
-          signal: AbortSignal.timeout(1_200),
-        });
-        result = await mailbox.claim();
+  /**
+   * Makes sure `runId`'s steering `run-ended` entry is in the log, retrying the
+   * write until it is acknowledged, and reports whether it is. A run the log
+   * never promoted, or whose session is gone or recreated, was never counted
+   * live from the log, so there is nothing to write and the answer is yes. The
+   * only no is the bureau closing first.
+   */
+  async function recordRunEnded(sessionId: string, runId: string): Promise<boolean> {
+    const pending = steeringRunEndWrites.get(runId);
+    steeringRunEndWrites.delete(runId);
+    if (pending !== undefined) {
+      try {
+        await pending;
+        return true;
+      } catch {
+        // Rejected: retried below until it lands.
       }
-      if (result.status !== 'claimed') return;
-      const { claim } = result;
-      if (remaining.delete(claim.receipt.commandId)) {
-        await mailbox.acknowledge({
-          commandId: claim.receipt.commandId,
-          attemptToken: claim.attemptToken,
+    }
+    const steeringKv = durableSteeringStore();
+    if (steeringKv === undefined) return true;
+    for (let attempt = 1; ; attempt += 1) {
+      if (isSessionInputClosed()) return false;
+      try {
+        const session = await runtime.sessionStore?.load(sessionId);
+        if (session === undefined) return true;
+        const cursor = await enqueueSteering(sessionId, () =>
+          catchUpSteering(steeringKv, sessionId, session.incarnation),
+        );
+        if (cursor.history.runs.get(runId) !== 'promoted') return true;
+        await enqueueSteering(sessionId, () =>
+          appendThenApplySteering(steeringKv, sessionId, session.incarnation, {
+            type: 'run-ended',
+            runId,
+            now: runtimeServices.clock.nowISO(),
+          }),
+        );
+        return true;
+      } catch (error) {
+        // A recreated session's log has no promotion of this run: nothing to log.
+        if (error instanceof BureauError && error.code === 'CONFLICT' && attempt > 1) {
+          const current = await runtime.sessionStore?.load(sessionId).catch(() => undefined);
+          if (current === undefined) return true;
+        }
+        diagnose({
+          level: 'error',
+          scope: 'session-input',
+          message: `[bureau] The end of run "${runId}" in session "${sessionId}" could not be recorded (attempt ${String(attempt)}); retrying before its session input is settled: ${serializeUnknownError(error)}`,
+          cause: error,
         });
-      } else {
-        // Not ours to retire: back to the queue for whoever owns it.
-        await mailbox.reject({
-          commandId: claim.receipt.commandId,
-          attemptToken: claim.attemptToken,
-          failure: { reason: 'application', message: 'not retired by a stop' },
-          retry: true,
-        });
+        await sessionPersistenceSleep(SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS);
       }
     }
   }
@@ -2148,89 +2113,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     });
   }
 
-  /** Whether the bureau is shutting down, when nothing may be started and nothing is a failure. */
+  /** Whether the bureau is shutting down, when open input is released, never cancelled. */
   function isSessionInputClosed(): boolean {
     return runAdmissionClosed || maintenanceAdmissionClosed;
-  }
-
-  /**
-   * The user stopped a run. The session's input is settled, and nothing starts to
-   * answer it:
-   *
-   * - input whose user turn the run's transcript holds is promoted, whether or not
-   *   its answer landed: it is part of the conversation, and the stop ended its
-   *   answer. The next run the user starts answers the dangling turn;
-   * - every other open input is cancelled with `the run was stopped`, so its
-   *   receipt reads `canceled` and the client can resend it.
-   *
-   * With another run still live on the session that run answers the input, so the
-   * stop only releases what the stopped run held.
-   */
-  async function settleSessionInputsAfterStop(sessionId: string, runId: string): Promise<void> {
-    try {
-      const held = sessionInputGates.get(runId);
-      sessionInputGates.delete(runId);
-      await held?.gate.dispose?.();
-      const mailbox = tryGetSessionInputMailbox(sessionId);
-      const session = await runtime.sessionStore?.load(sessionId);
-      if (sessionInputDeliveryStore === undefined || mailbox === undefined) return;
-      if (session === undefined) {
-        await sessionInputDeliveryStore.release(sessionId, runId);
-        return;
-      }
-      const others = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
-      if (others.some((liveRunId) => liveRunId !== runId)) {
-        await sessionInputDeliveryStore.release(sessionId, runId);
-        return;
-      }
-      const transcript = new Conversation(session.conversationHistory).getMessages();
-      const records = await sessionInputDeliveryStore.read(sessionId);
-      const appended = new Map<string, string>();
-      for (const message of transcript) {
-        const commandId = message.metadata?.['sessionInputCommandId'];
-        if (typeof commandId === 'string') appended.set(commandId, message.id);
-      }
-      const cursor = await runtime.durable?.checkpointStore.loadCursor(runId);
-      const promotable = Object.entries(records)
-        .filter(
-          ([commandId, record]) =>
-            record.runId === runId && record.promotion === undefined && appended.has(commandId),
-        )
-        .map(([commandId]) => commandId);
-      if (promotable.length > 0) {
-        const deliveredAt = runtimeServices.clock.nowISO();
-        const promoted = await Promise.all(
-          promotable.map(async (commandId) => {
-            const receipt = await mailbox.receipt(commandId);
-            return {
-              id: receipt?.idempotencyKey ?? commandId,
-              commandId,
-              sessionId,
-              deliveredAt,
-              conversationMessageId: appended.get(commandId)!,
-              providerTurn: cursor?.step ?? 0,
-            };
-          }),
-        );
-        await sessionInputDeliveryStore.promote(sessionId, runId, promoted);
-      }
-      await sessionInputDeliveryStore.release(sessionId, runId);
-      const keep = new Set(promotable);
-      await forEachOpenReceipt(mailbox, async (commandId) => {
-        if (keep.has(commandId)) return;
-        await mailbox.requestCancellation({ commandId, reason: SESSION_INPUT_STOPPED_REASON });
-      });
-      // What the transcript holds is part of the conversation: retire its commands
-      // so no open input is left to start a run for.
-      await retirePromotedCommands(mailbox, keep);
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'session-input',
-        message: `[bureau] Could not settle the session input of stopped run "${runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
   }
 
   /**
@@ -2249,59 +2134,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1476 — keeps a session with open input supplied with a live run: starts a
-   * continuation run, with no prompt, when the last run ended with input still
-   * waiting. See `session-input-continuation.ts`. Absent without a durable mailbox.
+   * COR-1476 — the marker index of sessions that may have open input, and the
+   * sweep that cancels input no run will deliver. See
+   * `session-input-settlement.ts`. Absent without a durable mailbox.
    */
-  const sessionInputContinuation =
+  const sessionInputSettlement =
     runtime.durable !== undefined &&
     runtime.kv !== undefined &&
     sessionInputDeliveryStore !== undefined
-      ? createSessionInputContinuation({
+      ? createSessionInputSettlement({
           kv: runtime.kv,
-          deliveryStore: sessionInputDeliveryStore,
-          nowMs: runtimeServices.clock.now,
-          incarnationOf: async (sessionId) => {
-            const session = await runtime.sessionStore?.load(sessionId);
-            return session?.incarnation;
-          },
-          liveRunIds: async (sessionId, incarnation, excludeRunId) => {
-            const live = await liveSessionRunIdsEverywhere(sessionId, incarnation);
-            return live.filter((runId) => runId !== excludeRunId);
-          },
-          isRunLive: isSessionRunLive,
           mailboxOf: tryGetSessionInputMailbox,
-          newRunId: () => runtimeServices.identifiers.next('run'),
           isClosed: isSessionInputClosed,
-          startContinuation: async (sessionId, runId) => {
-            const session = await runtime.sessionStore?.load(sessionId);
-            if (session === undefined) throw new Error(`Session "${sessionId}" no longer exists.`);
-            const lastRunId = session.metadata['lastRunId'];
-            const principal =
-              typeof lastRunId === 'string'
-                ? resolvePersistedRunOwningPrincipal(session.metadata, lastRunId)
-                : undefined;
-            const requestContext =
-              typeof lastRunId === 'string'
-                ? recoveredRequestContextFromMetadata(
-                    session.metadata,
-                    lastRunId,
-                    sessionId,
-                    session.agentName,
-                    runtimeServices.clock.now,
-                  )
-                : undefined;
-            await createRunFromRequest(
-              {
-                message: '',
-                sessionId,
-                agentName: session.agentName,
-                ...(principal === undefined ? {} : { principal }),
-                ...(requestContext === undefined ? {} : { requestContext }),
-              },
-              { continuation: true, runId },
-            );
-          },
           diagnose: (message, cause) =>
             diagnose({
               level: 'error',
@@ -2894,7 +2738,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const { incarnation } = cursor;
     const appended = enqueueSteering(sessionId, () =>
       appendThenApplySteering(kv, sessionId, incarnation, event),
-    ).catch((error: unknown) => {
+    );
+    appended.catch((error: unknown) => {
       // Not applied locally: the gate must never hold state the log lacks,
       // or later admissions here would decide differently from every other
       // process. Nothing waits on it — an ended run's pause waiters are
@@ -2908,8 +2753,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     });
     // COR-1476 — the `run-ended` entry is the durable write that makes the run
     // not live to every process reading `liveSessionRunIdsEverywhere`. The run's
-    // session-input reconcile awaits it before reading the session's marker and
-    // mailbox, which is the ordering that keeps admitted input from being stranded.
+    // session-input settlement awaits it, and retries it if it rejected, before
+    // it reads the session's mailbox: the ordering that keeps an admitted input
+    // from being left open.
     if (event.type === 'run-ended') steeringRunEndWrites.set(event.runId, appended);
   }
 
@@ -3387,25 +3233,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
 
   /**
-   * Persists a run's terminal session state, then reconciles the session's input
-   * (COR-1476): the reconcile reads the session as the run left it.
+   * Persists a run's terminal session state, then settles the session's input
+   * (COR-1476): the settlement reads the session as the run left it.
    */
   function persistTerminalSession(
     saveSessionUpdate: () => Promise<unknown>,
     context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
   ): void {
-    const reconciling = persistSessionUpdate(saveSessionUpdate, context).then(() =>
-      reconcileSessionInputsAfterRunEnd(context.sessionId, context.runId, context.status),
+    const settling = persistSessionUpdate(saveSessionUpdate, context).then(() =>
+      settleSessionInputsAfterRunEnd(context.sessionId, context.runId),
     );
-    // Tracked, so shutdown lands every reconcile before it tears the stores down.
-    inFlightSessionInputReconciles.add(reconciling);
-    void reconciling.finally(() => inFlightSessionInputReconciles.delete(reconciling));
+    // Tracked, so shutdown lands every settlement before it tears the stores down.
+    inFlightSessionInputSettlements.add(settling);
+    void settling.finally(() => inFlightSessionInputSettlements.delete(settling));
   }
 
-  /** Resolves once every run-end session-input reconcile already started has settled. */
-  async function drainSessionInputReconciles(): Promise<void> {
-    while (inFlightSessionInputReconciles.size > 0) {
-      await Promise.allSettled(inFlightSessionInputReconciles);
+  /** Resolves once every run-end session-input settlement already started has finished. */
+  async function drainSessionInputSettlements(): Promise<void> {
+    while (inFlightSessionInputSettlements.size > 0) {
+      await Promise.allSettled(inFlightSessionInputSettlements);
     }
   }
 
@@ -4231,16 +4077,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * run for its owner. Giving catalog runs their own deletion surface remains
    * its own design problem, outside COR-1302 as it was outside AB-241.
    */
-  async function createRunFromRequest(
-    request: CreateRunRequest,
-    internal?: {
-      /** A continuation run (COR-1476): it has no prompt, and answers the session's pending input. */
-      readonly continuation?: true;
-      readonly runId?: string;
-    },
-  ): Promise<CreatedRunSummary> {
-    const continuation = internal?.continuation === true;
-    if (!continuation) validateCreateRunRequest(request);
+  async function createRunFromRequest(request: CreateRunRequest): Promise<CreatedRunSummary> {
+    validateCreateRunRequest(request);
     assertRunAdmissionOpen('run');
 
     if (!runtime.ready) {
@@ -4249,7 +4087,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
 
     const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
-    const runId = internal?.runId ?? runtimeServices.identifiers.next('run');
+    const runId = runtimeServices.identifiers.next('run');
     const agentName = request.agentName ?? BUREAU_AGENT_NAME;
     const requestContext = normalizeRunRequestContext(
       request.requestContext,
@@ -4356,9 +4194,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
       }
 
-      // A continuation run has no prompt: its first step boundary delivers the
-      // session's pending input as the user turn.
-      if (!continuation) conversation.appendUserMessage(request.message);
+      conversation.appendUserMessage(request.message);
 
       // AB-54 usage analytics: resolve agentName/principal deterministically now
       // (before `store.register`, so it's in place before any listRuns()/getRun()
@@ -4367,7 +4203,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runAttribution.set(runId, {
         agentName,
         ...(request.principal !== undefined ? { principal: request.principal } : {}),
-        ...(continuation ? { continuation: true } : {}),
       });
       const runRuntime = await runtime.createRunRuntime({
         ...request,
@@ -4397,7 +4232,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ...(durableSteeringStore() === undefined
             ? {}
             : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
-          ...(continuation ? {} : { lastUserMessage: request.message }),
+          lastUserMessage: request.message,
           // Always write these keys (null when absent) so a reused session never
           // inherits a stale cap from a previous run. A conditional spread would leave
           // the old value in place when the request omits the field; null is treated as
@@ -4659,7 +4494,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // COR-1476 — input admitted while this run is live, delivered at
             // each of its step boundaries.
             ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
-            ...(continuation ? { continuation: true } : {}),
             // COR-1265 criterion 8 — merged AFTER the trailing registration, so
             // the Bureau tier is complete before it becomes the merge's first
             // argument. A single-tier merge still copies every entry into a fresh
@@ -4728,8 +4562,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           runId,
           now: runtimeServices.clock.nowISO(),
         });
-        // The run never started, so nothing else will dispose its gate.
-        sessionInputGates.delete(runId);
+        // COR-1476 — a run that never starts has ended: it releases its gate
+        // and, with no other run on the session, cancels the input left open.
+        await settleSessionInputsAfterRunEnd(sessionId, runId);
         await markStartFailed(error);
         throw error;
       }
@@ -4770,15 +4605,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       emitLiveFrame({
         type: 'run-envelope',
         runId,
-        frame: createRunStartedFrame(
-          {
-            runId,
-            sessionId,
-            agentName,
-            continuation,
-          },
-          runtimeServices.clock.now,
-        ),
+        frame: createRunStartedFrame({ runId, sessionId, agentName }, runtimeServices.clock.now),
       });
 
       // AB-13 — free this run's concurrency slot while it is parked on a
@@ -5008,11 +4835,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         await activeRun.durablyStarted;
       }
 
-      created = serializeRunState(
-        store.getRun(runId)!,
-        sessionId,
-        continuation ? { continuation: true } : undefined,
-      );
+      created = serializeRunState(store.getRun(runId)!, sessionId);
     } catch (error) {
       // Reached either because the run never got as far as `store.register`
       // (no terminal event to settle through — the original reason this
@@ -6344,9 +6167,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               runId: handle.id,
               cancel: durable.engine.cancel(handle.id).then(async () => {
                 // COR-1476 — a cancelled run owes its session's input the same
-                // reconcile as one that ended on its own.
+                // settlement as one that ended on its own.
                 if (ownedSessionId !== undefined) {
-                  await reconcileSessionInputsAfterRunEnd(ownedSessionId, handle.id, 'aborted');
+                  await settleSessionInputsAfterRunEnd(ownedSessionId, handle.id);
                 }
                 return undefined;
               }),
@@ -6398,11 +6221,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       currentRecoveryPerRunFailures?.push(...(await recoverGoalsAtBoot()));
     }
 
-    // COR-1476 — recovered runs are reattached and visible as live now, so a
-    // session whose input was left with no run (a process that died between a
-    // run's end and its reconcile) gets its continuation.
+    // COR-1476 — recovered runs are reattached and visible as live now, so
+    // input left open with no run at all (a process that died between a run's
+    // end and its settlement) is cancelled, and the rest waits for its run.
     try {
-      await sessionInputContinuation?.sweep();
+      await sessionInputSettlement?.sweep();
     } catch (error) {
       diagnose({
         level: 'error',
@@ -6669,8 +6492,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     if (!abortingRunIds.has(id)) {
       abortingRunIds.set(id, runtimeServices.clock.now());
-      // COR-1476 — the user stopped this run: its session's input is settled, not continued.
-      explicitlyStoppedRuns.add(id);
       runState.activeRun.abort('Aborted via API');
       // Evict the transitional marker once cleanup genuinely settles — never
       // on `abort()` returning, which is synchronous and proves nothing
@@ -6898,7 +6719,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (outcome.status === 'requested') {
       // Read before anything below can end the run's bookkeeping.
       const inputSessionId = sessionInputGates.get(runId)?.sessionId;
-      explicitlyStoppedRuns.add(runId);
       await revokePendingApprovalsForRun(runId, {
         status: 'canceled',
         principal: 'system:run-abort',
@@ -6916,10 +6736,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await runTerminalCheckpointCleanup(runId);
       // COR-772 — only a committed cancellation applies the child policy.
       await childTopology.parentCancelled(runId, 'Cancelled via cancelDurableRun');
-      // COR-1476 — no terminal listener runs for a run without a live
-      // `ActiveRun`, so its session's input is reconciled here.
+      // COR-1476 — the run has ended: its session's input is settled here, so
+      // the caller returns with the cancellation already reflected in every
+      // receipt, and again by its terminal listener, which finds nothing left.
       if (inputSessionId !== undefined) {
-        await reconcileSessionInputsAfterRunEnd(inputSessionId, runId, 'aborted');
+        await settleSessionInputsAfterRunEnd(inputSessionId, runId);
       }
     }
     return outcome;
@@ -8522,10 +8343,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
-      // COR-1476 — the backstop: a session with open input and no live run, one
-      // whose reconcile never ran, gets its continuation here.
+      // COR-1476 — the backstop: input left open with no live run, by a run-end
+      // settlement that never ran, is cancelled here.
       try {
-        await sessionInputContinuation?.sweep();
+        await sessionInputSettlement?.sweep();
       } catch (error: unknown) {
         diagnose({
           level: 'error',
@@ -8749,9 +8570,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cause: error,
           });
         }
-        // COR-1476 — the backstop for a session with open input and no live run.
+        // COR-1476 — the backstop for input left open with no live run.
         try {
-          await sessionInputContinuation?.sweep();
+          await sessionInputSettlement?.sweep();
         } catch (error: unknown) {
           diagnose({
             level: 'error',
@@ -9193,15 +9014,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *
    * COR-435/COR-1476: on a durably-configured bureau an authorized request to
    * a non-terminal session is admitted to the session's mailbox (`admitted`,
-   * `replayed`, `conflict`, or `backlog-exhausted`), and an admitted input is
-   * answered unless the user stops the run: by the live run before its next
-   * step generates, by one more step of that run when it arrived during its
-   * last step, or by a continuation run the session starts (see
-   * `session-input-continuation.ts`). Its user turn is appended at most once,
-   * in admission order within a run, keyed by the mailbox command, and promoted
-   * only after the step that answers it succeeds. `steer` and `queue` share
-   * that one FIFO path. A bureau with no durable mailbox, or a session id too
-   * long to address one, answers `unsupported-capability`.
+   * `replayed`, `conflict`, or `backlog-exhausted`). An admitted input ends
+   * `promoted` once a live run's step boundary appends its user turn (at most
+   * once, in admission order within a run, keyed by the mailbox command, under
+   * the input's own id, and promoted in the write that saves the turn), or
+   * `canceled` when its run ends first, so the client resends it. Bureau never
+   * starts a run to answer input: after the admission commits this method
+   * reads the session's liveness, and with no run live or starting it cancels
+   * the input itself and returns the re-read receipt (see
+   * `session-input-settlement.ts`). `steer` and `queue` share that one FIFO
+   * path. A bureau with no durable mailbox, or a session id too long to
+   * address one, answers `unsupported-capability`.
    */
   /**
    * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern
@@ -9268,13 +9091,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(request.supersedes !== undefined ? { supersedes: request.supersedes } : {}),
     };
 
-    // ORDERING (see `session-input-continuation.ts`): the session's marker is
+    // ORDERING (see `session-input-settlement.ts`): the session's marker is
     // written BEFORE the admission, so admitted input is never missing from the
     // sweep's index; the admission commits BEFORE liveness is read below, and the
     // ending run reads the mailbox only after its own not-live write, so one side
     // always sees the other. A failure writing the marker refuses the admission.
     const admission = (async () => {
-      await sessionInputContinuation?.markOpen(sessionId);
+      await sessionInputSettlement?.markOpen(sessionId);
       return admitSessionInput({
         storage,
         kv,
@@ -9289,37 +9112,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         nowMs: runtimeServices.clock.now(),
       });
     })()
-      .then(async (outcome) => {
-        // COR-1476 — the admission above is committed. Read liveness only now,
-        // and catch up the steering log first, so a run whose `run-ended` entry
-        // another process wrote is not counted live. No live run means the input
-        // would wait for nobody, so the reconcile runs here, whether or not the
-        // session is listed: it re-creates the marker whenever it finds open input.
-        if (
-          outcome.outcome === 'admitted' &&
-          sessionInputContinuation !== undefined &&
-          !isSessionInputClosed()
-        ) {
-          try {
-            const steeringKv = durableSteeringStore();
-            if (steeringKv !== undefined) {
-              await enqueueSteering(sessionId, () =>
-                catchUpSteering(steeringKv, sessionId, session.incarnation),
-              );
-            }
-            const live = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
-            if (live.length === 0) await sessionInputContinuation.reconcile(sessionId);
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'session-input',
-              message: `[bureau] Could not make sure session "${sessionId}" has a run to answer input "${id}": ${serializeUnknownError(error)}`,
-              cause: error,
-            });
-          }
-        }
-        return outcome;
-      })
+      .then((outcome): SessionInputAdmissionOutcome =>
+        outcome.outcome === 'admitted'
+          ? { outcome: 'admitted', receipt: outcome.receipt }
+          : outcome,
+      )
       .finally(() => {
         inFlightSessionInputAdmissions.delete(reservationKey);
       });
@@ -11627,7 +11424,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       await childTopology.drain();
       await sessionPersistence.drain();
-      await drainSessionInputReconciles();
+      await drainSessionInputSettlements();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
         automaticRunOwnershipPruneTimerStarted = false;

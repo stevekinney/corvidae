@@ -23,7 +23,7 @@ import {
 import { conversationAfterStep, runStepMemo } from './run-workflow-step';
 import { isScheduledAgentRunInput, type ScheduledAgentRunInput } from './schedule-agent';
 import { createStorageActivities } from './storage-activities';
-import type { PendingHumanWait, PendingWakeup, RunCursor, SessionInputDelivery } from './types';
+import type { PendingHumanWait, PendingWakeup, RunCursor } from './types';
 /**
  * The durable agent-run workflow.
  *
@@ -231,9 +231,6 @@ export function createRunWorkflow(
         // matches the in-process tool semantics (multiple wakeup calls overwrite).
         let pendingWakeup: PendingWakeup | undefined;
         let pendingHumanWait: PendingHumanWait | undefined;
-        // COR-1476 — session inputs appended to the transcript but not yet
-        // answered by a step that succeeded.
-        let awaitingAnswer: SessionInputDelivery[] = [];
         // AB-44 — F3 signal-payload resume. The signal name a `requestHumanInput`
         // park most recently, successfully waited on and was released for, kept
         // for the FINAL result's `humanWaitSignal` field even after the run
@@ -311,26 +308,20 @@ export function createRunWorkflow(
             // between commits never advances the cursor past un-persisted state. ===
             // A step that recorded a delta saves the same delta: the transcript
             // the run saved last is that delta's base, the previous step's output.
-            // COR-1476 — an input is promoted only once the step that ANSWERS it has
-            // succeeded, and in the SAME atomic write as the transcript holding
-            // that answer, so a cancellation can never leave the two disagreeing.
-            // The inputs this step delivered before it generated are answered by
-            // it; those it drained afterwards, because it would have ended the
-            // run, and those an earlier step left unanswered, wait for the next
-            // step that succeeds. A step that fails or aborts promotes nothing,
-            // and what it held stays delivered but unpromoted.
-            const stepSucceeded =
-              stepResult.outcome.kind !== 'abort' && stepResult.outcome.kind !== 'error';
-            const delivered = stepResult.sessionInputDeliveries ?? [];
-            const drainedLate = stepResult.lateSessionInputDeliveries ?? [];
-            const answered = stepSucceeded ? [...awaitingAnswer, ...delivered] : [];
-            awaitingAnswer = stepSucceeded
-              ? [...drainedLate]
-              : [...awaitingAnswer, ...delivered, ...drainedLate];
+            // COR-1476 — every input this step's boundaries appended, before it
+            // generated and in its late drain, is promoted in the SAME atomic
+            // write as the transcript that holds its turn, whatever the step's
+            // outcome: the turn is part of the conversation the moment it is
+            // durable, so a transcript and its promotions can never disagree, and
+            // a run that ends after this write leaves the input `promoted`.
+            const delivered = [
+              ...(stepResult.sessionInputDeliveries ?? []),
+              ...(stepResult.lateSessionInputDeliveries ?? []),
+            ];
             const promotion =
-              answered.length === 0
+              delivered.length === 0
                 ? undefined
-                : { sessionId: answered[0]!.sessionId, deliveries: answered };
+                : { sessionId: delivered[0]!.sessionId, deliveries: delivered };
             yield* ctx.run(
               'saveConversation',
               stepResult.conversationDelta === undefined
@@ -371,10 +362,10 @@ export function createRunWorkflow(
             // stopping, aborting, or failing step is still retired. The memo exists
             // only for a step that delivered something, so a run that never
             // receives session input records no extra operation.
-            if (answered.length > 0) {
+            if (delivered.length > 0) {
               yield* ctx.memo(`session-input-retire-${stepIndex}`, async () => {
-                await runDepsFrom(ctx.services).options.sessionInput?.settle(answered);
-                return { retired: answered.length };
+                await runDepsFrom(ctx.services).options.sessionInput?.settle(delivered);
+                return { retired: delivered.length };
               });
             }
 
