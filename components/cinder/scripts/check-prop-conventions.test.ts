@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import {
   checkComponentNameForBarePluralShadow,
@@ -782,15 +782,17 @@ describe('cinder script tests keep temporary fixtures out of the source tree', (
 
   test('no script test creates its temporary directory relative to its own location', () => {
     const offenders = readdirSync(import.meta.dir)
-      .filter((name) => name.endsWith('.test.ts') && name !== basename(import.meta.path))
+      .filter((name) => name.endsWith('.test.ts'))
       .filter((name) => anchoredInPackage.test(readFileSync(join(import.meta.dir, name), 'utf8')));
     expect(offenders).toEqual([]);
   });
 
   test('the guard recognises the pattern it forbids', () => {
+    // Built from pieces so this file, which the guard also scans, holds no matching text itself.
+    const call = 'mkdtemp';
     const forbidden = [
-      "mkdtempSync(join(import.meta.dir, '..', 'src'",
-      'mkdtemp(resolve(__dirname,',
+      `${call}Sync(join(import.meta.dir, '..', 'src'`,
+      `${call}(resolve(__dirname,`,
     ];
     for (const sample of forbidden) expect(anchoredInPackage.test(sample)).toBe(true);
     expect(anchoredInPackage.test("mkdtempSync(join(tmpdir(), 'x-'))")).toBe(false);
