@@ -127,7 +127,7 @@ const connect = async (toolbox: Parameters<typeof createMCP>[0], options = {}) =
   const server = await createMCP(toolbox, options);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'toolbox-test-client', version: '0.0.0' });
-  await server.connect(serverTransport);
+  await server.createServer().connect(serverTransport);
   await client.connect(clientTransport);
   return { client, server } satisfies ConnectedMcp;
 };
@@ -743,7 +743,7 @@ describe('createMCP', () => {
     const serverTransport = new StdioServerTransport(clientToServer, serverToClient);
     const clientTransport = new LoopbackTransport(serverToClient, clientToServer);
 
-    await server.connect(serverTransport);
+    await server.createServer().connect(serverTransport);
     await client.connect(clientTransport);
 
     try {
@@ -1372,9 +1372,11 @@ describe('createMCP', () => {
     });
     expect(receivedExecuteOptions).toMatchObject({
       callId: 'single-tool-like-request',
-      signal: controller.signal,
       elicit: expect.any(Function),
+      executionContext: { mcp: { era: 'legacy', requestId: 'single-tool-like-request' } },
     });
+    // The execution owns its signal; the request's signal aborts it while the call is in flight.
+    expect(receivedExecuteOptions?.['signal']).toBeInstanceOf(AbortSignal);
   });
 
   it('returns undefined when MCP content blocks are empty', async () => {
@@ -1454,7 +1456,7 @@ describe('MCP elicitation', () => {
       { capabilities: { elicitation: {} } },
     );
     client.setRequestHandler('elicitation/create', createMcpElicitationHandler(respond));
-    await server.connect(serverTransport);
+    await server.createServer().connect(serverTransport);
     await client.connect(clientTransport);
     return { client, server };
   };
@@ -1564,7 +1566,7 @@ describe('MCP elicitation', () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     // No `capabilities: { elicitation: {} }` — this client cannot answer elicitation requests.
     const client = new Client({ name: 'no-elicitation-client', version: '0.0.0' });
-    await server.connect(serverTransport);
+    await server.createServer().connect(serverTransport);
     await client.connect(clientTransport);
 
     try {

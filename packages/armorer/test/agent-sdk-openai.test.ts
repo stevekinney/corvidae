@@ -1,8 +1,6 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 import { MCPServerStdio, MCPServerStreamableHttp } from '@openai/agents';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -48,11 +46,6 @@ describe('OpenAI Agents SDK MCP integration', () => {
     const mcp = await createMCP(toolbox, {
       serverInfo: { name: 'toolbox-tools', version: '0.1.0' },
     });
-    const runtime = createManualRuntimeServices();
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: () => runtime.identifiers.next('mcp-session'),
-    });
-    await mcp.connect(transport);
 
     const server = new MCPServerStreamableHttp({
       url: 'http://toolbox.local/mcp',
@@ -60,7 +53,7 @@ describe('OpenAI Agents SDK MCP integration', () => {
       cacheToolsList: true,
       fetch: (input: RequestInfo | URL, init?: RequestInit) => {
         const request = input instanceof Request ? input : new Request(input, init);
-        return transport.handleRequest(request);
+        return mcp.fetch(request);
       },
     });
 

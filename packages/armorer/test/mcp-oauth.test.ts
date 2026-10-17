@@ -1,12 +1,11 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { expectPromiseToReject } from '../src/async-assertion-test-helpers';
 
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
-import { createMCP } from '../src/integrations/mcp';
+import { createMCP, type MCPServer } from '../src/integrations/mcp';
 import type { McpOAuthStorageState } from '../src/integrations/mcp/oauth';
 import {
   completeMcpOAuthAuthorization,
@@ -48,6 +47,7 @@ function createMockOAuthMcpServer() {
   const refreshTokens = new Map<string, { clientId: string }>();
   let tokenRequestCount = 0;
   let refreshRequestCount = 0;
+  let mcpEndpoint: Promise<MCPServer> | undefined;
 
   const echoTool = createTool({
     name: 'echo',
@@ -192,13 +192,11 @@ function createMockOAuthMcpServer() {
           });
         }
 
-        const toolbox = createToolbox([echoTool]);
-        const mcpServer = await createMCP(toolbox, {
+        mcpEndpoint ??= createMCP(createToolbox([echoTool]), {
           serverInfo: { name: 'mock-mcp', version: '1.0.0' },
         });
-        const transport = new WebStandardStreamableHTTPServerTransport();
-        await mcpServer.connect(transport);
-        return transport.handleRequest(request);
+        const endpoint = await mcpEndpoint;
+        return endpoint.fetch(request);
       }
 
       return new Response('not found', { status: 404 });
@@ -215,7 +213,11 @@ function createMockOAuthMcpServer() {
     get refreshRequestCount() {
       return refreshRequestCount;
     },
-    stop: () => server.stop(true),
+    stop: async () => {
+      server.stop(true);
+      const endpoint = await mcpEndpoint;
+      await endpoint?.close();
+    },
   };
 }
 
@@ -226,8 +228,8 @@ describe('MCP OAuth client support', () => {
     mockServer = createMockOAuthMcpServer();
   });
 
-  afterEach(() => {
-    mockServer.stop();
+  afterEach(async () => {
+    await mockServer.stop();
   });
 
   it('completes the PKCE authorization-code flow, lists tools, and calls one', async () => {
