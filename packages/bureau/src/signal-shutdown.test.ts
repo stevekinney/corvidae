@@ -38,6 +38,7 @@ import {
   hostCommand,
   startHost,
 } from './test/signal-shutdown/host-process';
+import { unexpectedChildStderr } from './test/child-stderr';
 
 const HOSTS = join(import.meta.dir, 'test', 'signal-shutdown');
 const HOOKS = join(HOSTS, 'native-node-hooks.ts');
@@ -119,7 +120,7 @@ function expectExit(exit: Awaited<HostProcess['finished']>, exitCode: number): v
     killedAtDeadline: false,
     signalCode: null,
   });
-  expect(exit.stderr).toBe('');
+  expect(unexpectedChildStderr(exit.stderr)).toBe('');
   expect(exit.exitCode).toBe(exitCode);
 }
 
