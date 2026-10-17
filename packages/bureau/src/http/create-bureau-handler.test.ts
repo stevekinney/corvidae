@@ -150,7 +150,39 @@ describe('createBureauHandler options', () => {
       };
       expect(() =>
         createBureauHandler(bureau, { unauthenticatedAccess: 'allow', mounts: [mount] }),
-      ).toThrow();
+      ).toThrow(
+        'createOperationHandler: mount pathPrefix "/jsonrpc" overlaps the catalog route "/jsonrpc"',
+      );
+    });
+  });
+
+  it('drops a Bureau scope the handler did not register, and keeps the ones it did', async () => {
+    await withBureau({}, async (bureau) => {
+      const mount: OperationHandlerMount = {
+        pathPrefix: '/adapter',
+        fetch: async (_request, context) =>
+          Response.json({
+            scopes: 'scopes' in context.principal ? [...context.principal.scopes].toSorted() : [],
+          }),
+      };
+      const handler = createBureauHandler(bureau, {
+        authentication: {
+          auditSink: () => undefined,
+          apiKeys: [API_KEY],
+          defaultApiKeyScopes: [
+            'bureau.reviews:read',
+            'bureau.reviews:resolve',
+            'bureau.tasks:read',
+          ],
+        },
+        mounts: [mount],
+      });
+
+      const response = await handler(get('/adapter/scopes', credentials));
+      const body = (await response.json()) as { scopes: string[] };
+
+      expect(body.scopes).toEqual(['bureau.reviews:read', 'bureau.reviews:resolve']);
+      expect(body.scopes).not.toContain('bureau.tasks:read');
     });
   });
 });
@@ -195,6 +227,20 @@ describe('createBureauHandler publish', () => {
         }),
       ).toThrow(/publish must be an array/);
     });
+  });
+});
+
+describe('createBureauHandler bureau id', () => {
+  it('throws when the Bureau id is empty, because its feed could not be addressed', async () => {
+    const bureau = await buildBureau({ id: '' });
+    try {
+      expect(bureau.id).toBe('');
+      expect(() => createBureauHandler(bureau, { unauthenticatedAccess: 'allow' })).toThrow(
+        /empty id/,
+      );
+    } finally {
+      await bureau.dispose();
+    }
   });
 });
 

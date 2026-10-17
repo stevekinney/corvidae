@@ -18,7 +18,7 @@ import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { BureauError } from '../create-bureau.ts';
-import type { Bureau, PendingReview, ResolveReviewInput, ReviewStatus } from '../types.ts';
+import type { Bureau, PendingReview, ReviewStatus } from '../types.ts';
 
 /** What the reviews operations read from the handler's `host`. */
 export type BureauReviewsOperationHost = {
@@ -56,6 +56,10 @@ const toolApprovalReviewSchema = z.object({
     toolName: z.string(),
     arguments: z.unknown(),
     reason: z.string().optional(),
+    /** What the tool is asking to do: an `approval` with its risk and operation, or an `input`. */
+    action: z.looseObject({ type: z.enum(['approval', 'input']) }),
+    /** Which policy tier paused the call; drives the inbox's danger badge. */
+    policyPauseTier: z.enum(['capability', 'registry', 'tool']).optional(),
   }),
 });
 
@@ -100,6 +104,10 @@ export function projectReview(
         toolName: review.approval.toolName,
         arguments: review.approval.arguments,
         ...(review.approval.reason === undefined ? {} : { reason: review.approval.reason }),
+        action: review.approval.action,
+        ...(review.approval.policyPauseTier === undefined
+          ? {}
+          : { policyPauseTier: review.approval.policyPauseTier }),
       },
     };
   }
@@ -112,10 +120,14 @@ export function projectReview(
 }
 
 /**
- * The receipt states `bureau.reviews.resolve` can answer with:
+ * The receipt states `bureau.reviews.resolve` can answer with, from the decision
+ * document's receipt table:
  *
- * - `applied`: an approve or deny took effect.
- * - `rejected`: a reject took effect; its reason is recorded.
+ * - `applied`: the decision took effect. This covers a landed `reject` too; the
+ *   response's `decision` says which of approve, deny, or reject it was.
+ * - `rejected`: the command was refused at admission and nothing was applied. v1
+ *   reports a refusal as a fault, so no response carries it today; the state is
+ *   reserved so a client that models the table does not break when it appears.
  * - `superseded`: the approval was re-gated, so the review stays pending under a
  *   replacement approval and the tool did not run.
  */
@@ -240,10 +252,12 @@ export function reviewerPrincipal(subject: string): string {
   return `api-key:${encodeURIComponent(subject)}`;
 }
 
-function receiptFor(
-  decision: ResolveReviewInput['decision'],
-  result: unknown,
-): z.infer<typeof reviewReceiptSchema> {
+/**
+ * The receipt for a resolution that reached the Bureau. A landed `reject` is
+ * `applied`, not `rejected`: `rejected` means the command was refused and nothing
+ * took effect, and a refusal is a fault in v1.
+ */
+function receiptFor(result: unknown): z.infer<typeof reviewReceiptSchema> {
   // `resumeApproval` re-ran the tool's policy and gated it again: the tool did
   // not run and the review remains pending under a replacement approval.
   if (
@@ -254,7 +268,7 @@ function receiptFor(
   ) {
     return 'superseded';
   }
-  return decision === 'reject' ? 'rejected' : 'applied';
+  return 'applied';
 }
 
 export const reviewsResolveOperation = defineOperation<
@@ -266,23 +280,24 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: false,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review as the authenticated caller; the reviewer is never a payload field. `reject` requires a `reason`. The `receipt` is `applied`, `rejected`, or `superseded`. Requires `bureau.reviews:resolve`.',
+    'Resolves a pending review as the authenticated caller; the reviewer is never a payload field. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers 404 until command receipts exist. Requires `bureau.reviews:resolve`.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,
   outputSchema: reviewsResolveOutput,
-  producibleFaults: ['InvalidParams', 'NotFound', 'Conflict', 'Unauthorized', 'Unprocessable'],
+  producibleFaults: ['InvalidParams', 'NotFound', 'Conflict', 'Forbidden', 'Unprocessable'],
   access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['bureau.reviews:resolve'] } },
   discoverable: true,
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    // The authentication step already refused an anonymous caller. This guards
-    // the one way past it: a credential type v1 does not accept, whose subject
-    // would have no namespace to be recorded under.
+    // The authentication step already refused an anonymous caller with 401. This
+    // guards the one way past it: a caller that is authenticated but that the
+    // deployment cannot attribute (a credential type v1 does not accept, whose
+    // subject has no namespace to be recorded under). That is 403, not 401.
     if (principal.method !== 'api-key' || principal.subject === undefined) {
       const fault: OperationFault = {
-        code: 'Unauthorized',
+        code: 'Forbidden',
         message: 'Resolving a review requires an API-key caller',
         data: { reason: 'unsupported credential' },
       };
@@ -299,7 +314,7 @@ export const reviewsResolveOperation = defineOperation<
         id: result.id,
         kind: result.kind,
         decision: result.decision,
-        receipt: receiptFor(input.decision, result.result),
+        receipt: receiptFor(result.result),
         ...(result.feedback === undefined ? {} : { feedback: result.feedback }),
       };
     } catch (error) {

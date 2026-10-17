@@ -58,8 +58,9 @@ function toolApprovalReview(overrides: Partial<PendingReview> = {}): PendingRevi
       callId: 'call-1',
       toolName: 'send-email',
       arguments: { to: 'someone@example.test' },
-      action: 'write',
+      action: { type: 'input', message: 'Confirm the recipient' },
       reason: 'sends mail',
+      policyPauseTier: 'tool',
       approvalToken: 'secret-signed-token',
       approvalBinding: { secret: 'binding' } as never,
       metadata: { internal: true } as never,
@@ -121,6 +122,8 @@ describe('bureau.reviews.list', () => {
             toolName: 'send-email',
             arguments: { to: 'someone@example.test' },
             reason: 'sends mail',
+            action: { type: 'input', message: 'Confirm the recipient' },
+            policyPauseTier: 'tool',
           },
         },
       ],
@@ -207,7 +210,7 @@ describe('bureau.reviews.resolve', () => {
     expect(record).toEqual([]);
   });
 
-  it('requires a reason to reject, and reports the rejected receipt with it', async () => {
+  it('requires a reason to reject, and reports a landed reject as applied', async () => {
     const record: ResolveReviewInput[] = [];
     const handler = serve(stubHost({}, record));
 
@@ -223,7 +226,7 @@ describe('bureau.reviews.resolve', () => {
     });
 
     expect(missing.error?.data?.httpStatus).toBe(400);
-    expect(given.result).toMatchObject({ decision: 'reject', receipt: 'rejected' });
+    expect(given.result).toMatchObject({ decision: 'reject', receipt: 'applied' });
     expect(record).toHaveLength(1);
     expect(record[0]?.reason).toBe('not this one');
   });
@@ -281,7 +284,7 @@ describe('bureau.reviews.resolve', () => {
     expect(unprocessable.error?.data?.httpStatus).toBe(422);
   });
 
-  it('refuses a caller that is not an API key, even one that holds the scope', async () => {
+  it('answers Forbidden to an authenticated caller it cannot attribute, even one that holds the scope', async () => {
     const record: ResolveReviewInput[] = [];
     const authenticate = async () => ({
       method: 'jwt' as const,
@@ -301,7 +304,7 @@ describe('bureau.reviews.resolve', () => {
       decision: 'approve',
     });
 
-    expect(body.error?.data?.httpStatus).toBe(401);
+    expect(body.error?.data?.httpStatus).toBe(403);
     expect(record).toEqual([]);
   });
 });
@@ -425,7 +428,7 @@ describe('the reviews operations against a real Bureau', () => {
         reason: 'wrong task',
       });
 
-      expect(resolved.result).toMatchObject({ receipt: 'rejected' });
+      expect(resolved.result).toMatchObject({ decision: 'reject', receipt: 'applied' });
       const records = JSON.stringify(await bureau.auditTrail?.query({}));
       expect(records).toContain('api-key:api-key-caller');
     } finally {

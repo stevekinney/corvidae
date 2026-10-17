@@ -77,7 +77,9 @@ export type BureauHandlerOptions = {
    * request without credentials on every route. `'allow'` serves every request
    * as Weft's anonymous caller: `/v1/health` and the discovery documents answer,
    * and every scoped operation answers 401. It cannot be combined with
-   * `authentication`.
+   * `authentication`. `'allow'` has no loopback guard: binding the port, and
+   * keeping an unauthenticated handler off a public interface, belongs to the host
+   * that binds it (COR-1488).
    */
   readonly unauthenticatedAccess?: 'reject' | 'allow';
   /** Protocol adapters, each claiming a path prefix ahead of the catalog. */
@@ -152,6 +154,14 @@ function assertPublish(bureau: BureauHandlerSource, publish: readonly string[] |
   }
 }
 
+function assertBureauId(bureau: BureauHandlerSource): void {
+  // `bureau.events` takes a non-empty `bureauId`, so an empty id would leave the
+  // Bureau's own feed unreachable.
+  if (bureau.id === '') {
+    fail('the Bureau has an empty id, so its event feed could not be addressed by bureauId');
+  }
+}
+
 function assertPersistence(bureau: BureauHandlerSource): void {
   if (bureau.kv !== undefined && !bureau.hasExplicitId) {
     fail(
@@ -189,6 +199,7 @@ export function createBureauHandler(
   const unauthenticatedAccess = resolveUnauthenticatedAccess(options);
   assertAuthentication(options.authentication, unauthenticatedAccess);
   assertPublish(bureau, options.publish);
+  assertBureauId(bureau);
   assertPersistence(bureau);
 
   const host: BureauHandlerHost = {
