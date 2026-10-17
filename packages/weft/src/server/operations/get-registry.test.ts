@@ -358,7 +358,7 @@ describe('GET /v1/registry — authorization', () => {
       {},
       {
         principal: { method: 'unauthenticated' },
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
       },
@@ -378,7 +378,7 @@ describe('GET /v1/registry — authorization', () => {
       {},
       {
         principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
       },
@@ -399,7 +399,7 @@ describe('GET /v1/registry — authorization', () => {
       {},
       {
         principal: principalFromJwtClaims({ sub: 'user', scope: 'system:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
       },
@@ -420,7 +420,7 @@ describe('GET /v1/registry — authorization', () => {
     expect(
       await throwingRejectionOf(
         getRegistryOperation.invoke({
-          engine: {},
+          host: {},
           principal: { method: 'unauthenticated' },
           transport: 'jsonRpcStdio',
           input: {},

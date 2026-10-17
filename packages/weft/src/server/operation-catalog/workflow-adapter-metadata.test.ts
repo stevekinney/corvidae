@@ -65,7 +65,7 @@ describe('catalogWorkflow — registration and metadata', () => {
       { orderId: 'ord_registration', amount: 99 },
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcHttp',
         registry,
       },
@@ -176,7 +176,7 @@ describe('catalogWorkflow — registration and metadata', () => {
         { orderId: 'ord_5', amount: 12 },
         {
           principal: anonymousPrincipal(),
-          engine,
+          host: engine,
           transport: 'jsonRpcHttp',
           registry,
         },

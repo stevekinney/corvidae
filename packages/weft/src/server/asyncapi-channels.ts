@@ -89,13 +89,19 @@ export function buildWebSocketChannel(operation: ErasedOperation): Record<string
 export function buildSseChannel(
   operation: ErasedOperation,
   restBindingPath: string | undefined,
+  /**
+   * Maps the binding path to its wire address. Defaults to the `/api`
+   * external prefix `serve()` mounts; the engine-independent handler has no
+   * front door and passes the path through unchanged.
+   */
+  toWireAddress: (path: string) => string = externalApiPath,
 ): Record<string, unknown> {
   const messageNames = sseMessageNames(operation);
   // Real REST binding paths are served under `/api`; the synthetic
   // unbound-fallback is not a wire endpoint, so it is left unprefixed.
   const address =
     restBindingPath !== undefined
-      ? externalApiPath(restBindingPath)
+      ? toWireAddress(restBindingPath)
       : `/x-weft-unbound/${operation.name.replaceAll('.', '/')}`;
   return {
     address,
@@ -216,6 +222,9 @@ export function buildSseMessages(
           additionalProperties: false,
           properties: {
             emittedAtMs: { type: 'number' },
+            // Present, and always `true`, on the one ping a subscription sends
+            // after the replay of already-recorded events has been delivered.
+            replayComplete: { const: true, type: 'boolean' },
           },
           required: ['emittedAtMs'],
           type: 'object',
@@ -226,7 +235,8 @@ export function buildSseMessages(
             event: 'ping',
           },
         },
-        'x-weft-sse-frame': 'event: ping\\ndata: {"emittedAtMs":<timestamp>}\\n\\n',
+        'x-weft-sse-frame':
+          'event: ping\\ndata: {"emittedAtMs":<timestamp>[,"replayComplete":true]}\\n\\n',
       },
       [eventNames.errorEvent]: {
         name: eventNames.errorEvent,

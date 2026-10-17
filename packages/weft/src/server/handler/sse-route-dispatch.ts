@@ -52,7 +52,7 @@ export async function dispatchServerSentEventsBinding(
 
   const result = await executeOperation(binding.operationName, options.rawInput, {
     principal: principalForServerSentEvents(options),
-    engine: options.liveEventStreamContext ?? {},
+    host: options.liveEventStreamContext ?? {},
     transport: 'http-rest',
     registry,
     ...(options.pipelineTrace === undefined ? {} : { pipelineTrace: options.pipelineTrace }),

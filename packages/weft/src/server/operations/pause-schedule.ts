@@ -29,7 +29,7 @@ export const pauseScheduleOperation = defineOperation({
   producibleFaults: ['NotFound', 'Conflict'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<PauseScheduleOutput> => {
+  invoke: async ({ input, host: engine }): Promise<PauseScheduleOutput> => {
     assertOperationEngineMethods(engine, ['pauseSchedule']);
     const typedEngine = engine;
 

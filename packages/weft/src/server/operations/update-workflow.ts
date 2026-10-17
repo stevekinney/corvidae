@@ -51,7 +51,7 @@ export const updateWorkflowOperation = defineOperation({
   producibleFaults: ['Unprocessable', 'Timeout'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<UpdateWorkflowOutput> => {
+  invoke: async ({ input, host: engine }): Promise<UpdateWorkflowOutput> => {
     assertOperationEngineMethods(engine, ['submitCoordinatedUpdate']);
     const typedEngine = engine;
 

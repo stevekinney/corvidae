@@ -44,7 +44,7 @@ export const streamWorkflowSseOperation = defineOperation({
   // without needing a separate operation.
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<StreamWorkflowSseOutput> => {
+  invoke: async ({ input, host: engine }): Promise<StreamWorkflowSseOutput> => {
     assertOperationEngineMethods(engine, ['get', 'getStreamChunks']);
     const e = engine;
 

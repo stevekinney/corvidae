@@ -138,7 +138,7 @@ export function createStartWorkflowOperation(configuration: StartWorkflowOperati
     producibleFaults: ['Conflict'],
     transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-    invoke: async ({ input, engine }): Promise<StartWorkflowOutput> => {
+    invoke: async ({ input, host: engine }): Promise<StartWorkflowOutput> => {
       const typedEngine = runtimeWorkflowEngine(engine);
 
       // The validator checks `input.type` first and only then calls the

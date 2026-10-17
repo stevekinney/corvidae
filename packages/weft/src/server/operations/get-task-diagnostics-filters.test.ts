@@ -222,7 +222,7 @@ describe('weft.tasks.diagnostics filters', () => {
       {},
       {
         principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: operationRegistry,
       },

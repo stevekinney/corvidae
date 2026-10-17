@@ -282,7 +282,7 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
       {},
       {
         principal: { method: 'unauthenticated' },
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
       },
@@ -302,7 +302,7 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
       {},
       {
         principal: principalFromJwtClaims({ sub: 'user', scope: 'workflows:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
       },
@@ -327,7 +327,7 @@ describe('weft.system.metrics — factory variant (with collector)', () => {
       {},
       {
         principal: principalFromJwtClaims({ sub: 'user', scope: 'system:read' }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry,
       },

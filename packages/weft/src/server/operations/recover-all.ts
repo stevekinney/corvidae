@@ -33,7 +33,7 @@ export const recoverAllOperation = defineOperation({
   producibleFaults: ['Conflict'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine }): Promise<RecoverAllOutput> => {
+  invoke: async ({ host: engine }): Promise<RecoverAllOutput> => {
     assertOperationEngineMethods(engine, ['recoverAll']);
     const typedEngine = engine;
 

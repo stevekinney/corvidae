@@ -1,8 +1,10 @@
+import { z } from 'zod';
 import { Engine } from '../core/engine.ts';
 import { workflow } from '../core/types.ts';
 import { createMetricsCollectorExporter, MetricsCollector } from '../observability/metrics.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import type { HandlerOptions } from './handler.ts';
+
 import {
   serve,
   TaskQueue,
@@ -22,6 +24,7 @@ import {
   type WorkerAdmissionPolicy,
   type WorkerAdmissionRequest,
 } from './index.ts';
+import { defineOperation } from './operation-registry.ts';
 
 const engine = new Engine({ storage: new MemoryStorage() });
 const prometheusExporter = createMetricsCollectorExporter(new MetricsCollector());
@@ -204,3 +207,43 @@ async function verifyConcreteWorkflowRegistryEngineAcceptedByServe(): Promise<vo
   void concreteEngineServer;
 }
 void verifyConcreteWorkflowRegistryEngineAcceptedByServe;
+
+// `serve()` hands each foreign operation its `Engine` as `host`. An operation
+// that needs a capability an engine lacks is a compile error, and one that
+// declares only what an engine has (or nothing) is accepted.
+const needsFeeds = defineOperation<
+  z.ZodObject<{}>,
+  z.ZodObject<{}>,
+  { readonly bureauFeeds: ReadonlyMap<string, never> }
+>({
+  name: 'probe.feeds',
+  mcpExposable: false,
+  summary: 'needs a host the engine is not',
+  destructive: false,
+  inputSchema: z.object({}),
+  outputSchema: z.object({}),
+  access: { kind: 'public' },
+  transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async ({ host }) => {
+    void host.bureauFeeds;
+    return {};
+  },
+});
+const needsNothing = defineOperation({
+  name: 'probe.nothing',
+  mcpExposable: false,
+  summary: 'needs no host',
+  destructive: false,
+  inputSchema: z.object({}),
+  outputSchema: z.object({}),
+  access: { kind: 'public' },
+  transports: { http: false, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async () => ({}),
+});
+const acceptedOperations: ServeOptions = { engine, operations: [needsNothing] };
+void acceptedOperations;
+// @ts-expect-error — an engine has no `bureauFeeds`, so serve() cannot host this operation.
+const rejectedOperations: ServeOptions = { engine, operations: [needsFeeds] };
+void rejectedOperations;

@@ -34,9 +34,9 @@ type PreParseOutcome =
   | { kind: 'failure'; fault: OperationFault };
 
 /** Verify that an operation is available on the current transport. */
-export function checkTransport<Input, SchemaOutput>(
-  operation: OperationMetadata<Input, SchemaOutput>,
-  context: DispatchContext,
+export function checkTransport<Input, SchemaOutput, Host>(
+  operation: OperationMetadata<Input, SchemaOutput, Host>,
+  context: DispatchContext<Host>,
 ): DispatchResult<never> | null {
   if (operation.transports[transportToAvailabilityKey(context.transport)]) return null;
 
@@ -51,9 +51,9 @@ export function checkTransport<Input, SchemaOutput>(
 }
 
 /** Verify the operation's static access policy against the caller principal. */
-export function checkAccess<Input, SchemaOutput>(
-  operation: OperationMetadata<Input, SchemaOutput>,
-  context: DispatchContext,
+export function checkAccess<Input, SchemaOutput, Host>(
+  operation: OperationMetadata<Input, SchemaOutput, Host>,
+  context: DispatchContext<Host>,
 ): DispatchResult<never> | null {
   const access = evaluateAccess(operation.access, context.principal);
   if (access.allowed) return null;
@@ -73,10 +73,10 @@ export function checkAccess<Input, SchemaOutput>(
 }
 
 /** Run the optional parameter-aware authorization hook. */
-export async function checkAuthorization<Input, SchemaOutput>(
-  operation: OperationMetadata<Input, SchemaOutput>,
+export async function checkAuthorization<Input, SchemaOutput, Host>(
+  operation: OperationMetadata<Input, SchemaOutput, Host>,
   input: Input,
-  context: DispatchContext,
+  context: DispatchContext<Host>,
 ): Promise<DispatchResult<never> | null> {
   if (operation.authorize === undefined) return null;
 
@@ -85,7 +85,7 @@ export async function checkAuthorization<Input, SchemaOutput>(
     decision = await operation.authorize({
       input,
       principal: context.principal,
-      engine: context.engine,
+      host: context.host,
       transport: context.transport,
     });
   } catch {
@@ -116,8 +116,8 @@ export async function checkAuthorization<Input, SchemaOutput>(
  * run the schema's `safeParse`, and re-attach passthrough extras onto a
  * prototype-safe null-prototype object.
  */
-export function parseAndApplyUnknownKeyPolicy<Input>(
-  operation: OperationMetadata<Input>,
+export function parseAndApplyUnknownKeyPolicy<Input, Host = unknown>(
+  operation: OperationMetadata<Input, unknown, Host>,
   rawInput: unknown,
   policyKey: keyof UnknownKeyPolicy,
   pipelineTrace?: PipelineTrace,
@@ -153,8 +153,8 @@ export function tracePipeline(
   pipelineTrace(marker);
 }
 
-function readKnownTopLevelKeys<Input, SchemaOutput>(
-  operation: OperationMetadata<Input, SchemaOutput>,
+function readKnownTopLevelKeys<Input, SchemaOutput, Host>(
+  operation: OperationMetadata<Input, SchemaOutput, Host>,
 ): { kind: 'ok'; keys: ReadonlySet<string> } | { kind: 'failure'; fault: OperationFault } {
   try {
     return { kind: 'ok', keys: extractTopLevelObjectKeys(operation.inputSchema) };

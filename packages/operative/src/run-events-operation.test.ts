@@ -6,7 +6,7 @@ import {
   createAgentRunEventRegistry,
   runEventEnvelopeSchema,
   runEventsSubscriptionOperation,
-  type RunEventsOperationEngine,
+  type RunEventsOperationHost,
 } from './run-events-operation.ts';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
@@ -16,27 +16,27 @@ function conversation() {
 
 /**
  * Invokes the operation the way the WebSocket session does: with the registry
- * as the `engine` value. Everything else in the pipeline — validation,
+ * as the `host` value. Everything else in the pipeline — validation,
  * authorization, transport — is Weft's and is tested there.
  */
 async function invoke(
   input: { runId: string; fromCursor?: string; kinds?: string | string[] },
-  engine: RunEventsOperationEngine,
+  host: RunEventsOperationHost,
 ) {
   const definition = runEventsSubscriptionOperation as unknown as {
-    invoke: (args: { input: typeof input; engine: unknown }) => Promise<{
+    invoke: (args: { input: typeof input; host: unknown }) => Promise<{
       envelope: { subscriptionId: string; cursor: string };
       iterable: AsyncIterable<AgentRunEventEnvelope> & { close(): Promise<void> };
       close(): Promise<void>;
     }>;
   };
-  return definition.invoke({ input, engine });
+  return definition.invoke({ input, host });
 }
 
 describe('the operative.runs.events subscription', () => {
-  it('declares itself on the WebSocket transport only', () => {
-    // A run feed is long-lived and resumable, which a single HTTP response
-    // cannot express.
+  it('declares itself on the WebSocket and HTTP transports only', () => {
+    // HTTP carries it as Server-Sent Events that resume through
+    // `Last-Event-ID`; the request/response JSON-RPC transports cannot.
     const declaration = runEventsSubscriptionOperation as unknown as {
       name: string;
       kind: string;
@@ -45,7 +45,7 @@ describe('the operative.runs.events subscription', () => {
     expect(declaration.name).toBe('operative.runs.events');
     expect(declaration.kind).toBe('subscription');
     expect(declaration.transports).toMatchObject({
-      http: false,
+      http: true,
       jsonRpcHttp: false,
       jsonRpcWebSocket: true,
       jsonRpcStdio: false,

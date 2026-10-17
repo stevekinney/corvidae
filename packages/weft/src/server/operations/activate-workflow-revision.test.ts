@@ -202,7 +202,7 @@ describe('weft.workflows.revisions.activate', () => {
     const result = await executeOperation(
       'weft.workflows.revisions.activate',
       { name: 'checkout', revision: active!.revision, expectedGeneration: active!.generation },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
 
     expect(result.ok).toBe(true);

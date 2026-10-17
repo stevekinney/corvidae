@@ -110,7 +110,7 @@ describe('weft.schedules.get', () => {
     const result = await executeOperation(
       'weft.schedules.get',
       { scheduleId: 'apikey-schedule' },
-      { principal, engine, transport: 'jsonRpcStdio', registry: liveRegistry },
+      { principal, host: engine, transport: 'jsonRpcStdio', registry: liveRegistry },
     );
 
     expect(result.ok).toBe(true);
@@ -128,7 +128,7 @@ describe('weft.schedules.get', () => {
       { scheduleId: 'any-schedule' },
       {
         principal: anonymousPrincipal(),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry: liveRegistry,
       },

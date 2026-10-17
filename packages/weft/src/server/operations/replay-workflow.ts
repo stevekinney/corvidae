@@ -55,7 +55,7 @@ export const replayWorkflowOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<ReplayWorkflowOutput> => {
+  invoke: async ({ input, host: engine }): Promise<ReplayWorkflowOutput> => {
     assertOperationEngineMethods(engine, ['get', 'replayTo']);
     const e = engine;
 

@@ -99,7 +99,7 @@ describe('weft.catalog.sources.list — REST GET /v1/catalog/sources', () => {
       { offset: 1 },
       {
         principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry,
       },
@@ -111,7 +111,7 @@ describe('weft.catalog.sources.list — REST GET /v1/catalog/sources', () => {
       { limit: 0 },
       {
         principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-        engine,
+        host: engine,
         transport: 'jsonRpcStdio',
         registry,
       },

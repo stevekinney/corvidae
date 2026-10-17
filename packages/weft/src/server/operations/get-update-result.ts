@@ -24,7 +24,7 @@ export const getUpdateResultOperation = defineOperation({
   access: { kind: 'public' },
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<GetUpdateResultOutput> => {
+  invoke: async ({ input, host: engine }): Promise<GetUpdateResultOutput> => {
     assertOperationEngineMethods(engine, ['getUpdateResult']);
     const e = engine;
     const response = await e.getUpdateResult(input.updateId);

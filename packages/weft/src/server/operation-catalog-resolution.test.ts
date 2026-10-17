@@ -22,7 +22,7 @@ import { describe, expect, it } from 'bun:test';
 import { createOperationRegistry, executeOperation } from './operation-catalog.ts';
 import { anonymousPrincipal } from './principal.ts';
 
-const fakeEngine: Parameters<typeof executeOperation>[2]['engine'] = {};
+const fakeEngine: Parameters<typeof executeOperation>[2]['host'] = {};
 
 describe('executeOperation — step 1: resolve operation', () => {
   it('unknown operation -> MethodNotFound fault', async () => {
@@ -32,7 +32,7 @@ describe('executeOperation — step 1: resolve operation', () => {
       {},
       {
         principal: anonymousPrincipal(),
-        engine: fakeEngine,
+        host: fakeEngine,
         transport: 'http-rest',
         registry,
       },

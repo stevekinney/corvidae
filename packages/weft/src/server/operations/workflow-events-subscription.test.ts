@@ -11,7 +11,7 @@ describe('weft.workflows.events authorization', () => {
     return {
       input,
       principal,
-      engine: {},
+      host: {},
       transport: 'jsonRpcWebSocket' as const,
     };
   }

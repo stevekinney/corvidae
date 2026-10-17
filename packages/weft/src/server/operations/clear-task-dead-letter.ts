@@ -35,7 +35,7 @@ export const clearTaskDeadLetterOperation = defineOperation({
   discoverable: true,
   transports: restOnlyTaskDiagnosticsTransports,
   unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<ClearTaskDeadLetterOutput> => {
+  invoke: async ({ input, host: engine }): Promise<ClearTaskDeadLetterOutput> => {
     const storage = requireOperationStorage(engine, ['get', 'scan']);
     // Acceptance criterion 12: clearing a dead-lettered diagnostic removes
     // its attempt history in the same bounded, atomic operation — the same

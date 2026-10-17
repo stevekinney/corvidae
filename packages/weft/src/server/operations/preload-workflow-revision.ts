@@ -61,7 +61,7 @@ export const preloadWorkflowRevisionOperation = defineOperation({
   discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }): Promise<PreloadWorkflowRevisionOutput> => {
+  invoke: async ({ input, host: engine }): Promise<PreloadWorkflowRevisionOutput> => {
     assertOperationWorkflowMethods(engine, ['preload']);
     const e = engine;
     const name = validateWorkflowNameField(input.name);

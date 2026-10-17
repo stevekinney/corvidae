@@ -161,7 +161,7 @@ describe('weft.workers.rejections — operation behavior', () => {
         {},
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createOperationRegistry([listWorkerRegistrationRejectionsOperation]),
         },
@@ -184,7 +184,7 @@ describe('weft.workers.rejections — operation behavior', () => {
         { limit: 0 },
         {
           principal: principalFromApiKey({ subject: 'test', scopes: ['system:read'] }),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: createOperationRegistry([
             createListWorkerRegistrationRejectionsOperation({ workerRegistry }),

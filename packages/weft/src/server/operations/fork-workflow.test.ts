@@ -103,7 +103,7 @@ describe('weft.workflows.fork', () => {
         { workflowId: 'workflow-123', fromStep: 2, revision: 'a-specific-revision' },
         {
           principal: anonymousPrincipal(),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
         },
@@ -165,7 +165,7 @@ describe('weft.workflows.fork', () => {
         { workflowId: 'workflow-123', revision: 'unresolvable-revision' },
         {
           principal: anonymousPrincipal(),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
         },
@@ -221,7 +221,7 @@ describe('weft.workflows.fork', () => {
         { workflowId: 'workflow-123', revision: 'incompatible-revision' },
         {
           principal: anonymousPrincipal(),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
         },
@@ -272,7 +272,7 @@ describe('weft.workflows.fork', () => {
         { workflowId: 'workflow-123' },
         {
           principal: anonymousPrincipal(),
-          engine,
+          host: engine,
           transport: 'jsonRpcStdio',
           registry: liveRegistry,
         },

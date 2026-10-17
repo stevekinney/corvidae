@@ -22,7 +22,7 @@ export const getRetentionOverviewOperation = defineOperation({
   access: { kind: 'public' },
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ engine }): Promise<GetRetentionOverviewOutput> => {
+  invoke: async ({ host: engine }): Promise<GetRetentionOverviewOutput> => {
     assertOperationEngineMethods(engine, ['getRetentionOverview']);
     const e = engine;
     return e.getRetentionOverview();

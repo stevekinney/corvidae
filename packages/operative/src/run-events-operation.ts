@@ -12,7 +12,9 @@
 
 import {
   createReplayAwareClosableIterable,
+  decodeCursor,
   defineOperation,
+  type OperationFault,
   type ReplayLiveSubscribeOptions,
 } from '@lostgradient/weft';
 import { z } from 'zod';
@@ -48,7 +50,14 @@ const runEventKindSchema = z.enum(PUBLISHED_RUN_EVENT_KINDS);
 const runEventsSubscriptionInput = z.object({
   runId: z.string().min(1),
   kinds: z.union([runEventKindSchema, z.array(runEventKindSchema).min(1)]).optional(),
-  fromCursor: z.string().min(1).optional(),
+  // Checked here, in the schema, so a malformed cursor is `InvalidParams` over
+  // every transport (a WebSocket subscribe, or `Last-Event-ID` on the HTTP
+  // route) instead of an error thrown later from inside the feed.
+  fromCursor: z
+    .string()
+    .min(1)
+    .refine((cursor) => decodeCursor(cursor) !== null, { message: 'Invalid cursor' })
+    .optional(),
 });
 
 const runEventsSubscriptionEnvelope = z.object({
@@ -116,10 +125,15 @@ export function createAgentRunEventRegistry(): AgentRunEventRegistry & {
   };
 }
 
-/** The shape a host passes as the operation's `engine` value. */
-export type RunEventsOperationEngine = { runFeeds: AgentRunEventRegistry };
+/** The shape a host passes as the operation's `host` value. */
+export type RunEventsOperationHost = { readonly runFeeds: AgentRunEventRegistry };
 
-export const runEventsSubscriptionOperation = defineOperation({
+export const runEventsSubscriptionOperation = defineOperation<
+  typeof runEventsSubscriptionInput,
+  typeof runEventsSubscriptionEnvelope,
+  typeof runEventEnvelopeSchema,
+  RunEventsOperationHost
+>({
   name: 'operative.runs.events',
   mcpExposable: false,
   kind: 'subscription',
@@ -134,21 +148,29 @@ export const runEventsSubscriptionOperation = defineOperation({
   eventSchema: runEventEnvelopeSchema,
   access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['events:read'] } },
   discoverable: true,
-  // WebSocket only. A run's event feed is long-lived and resumable, which a
-  // single HTTP response cannot express; a caller wanting a bounded window
-  // should read it through a unary operation instead.
-  transports: { http: false, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+  // WebSocket for a session that holds a socket, and HTTP for a fetch handler
+  // that cannot accept one. A run's event feed is long-lived and resumable;
+  // over HTTP it streams as Server-Sent Events through
+  // `GET /v1/subscriptions/operative.runs.events` and resumes with
+  // `Last-Event-ID`. The handler ends a response after its maximum stream
+  // duration, so a client reconnects with the last cursor it saw.
+  transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, engine }) => {
+  invoke: async ({ input, host }) => {
     // The subscription session passes `{ runFeeds }` as this operation's
-    // engine value, the same way Weft's workflow subscription receives
+    // host value, the same way Weft's workflow subscription receives
     // `{ feed }`.
-    const registry = (engine as RunEventsOperationEngine).runFeeds;
-    const runFeed = registry.get(input.runId);
+    const runFeed = host.runFeeds.get(input.runId);
     if (runFeed === undefined) {
       // An unknown run is a caller error, not a transport failure: the run may
       // have completed and been reaped between listing it and subscribing.
-      throw new Error(`Unknown run "${input.runId}"`);
+      // A typed fault, which the catalog pipeline passes through intact.
+      const notFound: OperationFault = {
+        code: 'NotFound',
+        message: `Unknown run "${input.runId}"`,
+        data: { resource: 'run', identifier: input.runId },
+      };
+      throw notFound;
     }
 
     // Only the session's own signal is needed: `createAgentRunEventFeed`
