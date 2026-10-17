@@ -36,6 +36,8 @@ type FollowUp = {
    * the follow-up's fate; either can arrive first.
    */
   runEnd?: { outcome: RunOutcome; terminalIds: ReadonlySet<string> | undefined };
+  /** The host's receipt was `promoted`: the turn is already in the conversation. */
+  receiptPromoted?: boolean;
   /** Settles the promise the sender is waiting on. */
   settled: PromiseWithResolvers<void>;
 };
@@ -106,7 +108,9 @@ export function createFollowUpQueue({
   const classify = (record: FollowUp): void => {
     if (record.state !== 'acknowledged' || !record.runEnd) return;
     const { outcome, terminalIds } = record.runEnd;
-    if (terminalIds?.has(record.id)) record.state = 'delivered';
+    // A promoted receipt means the host already committed the turn to the
+    // conversation, so it is delivered even when the run sent no history.
+    if (record.receiptPromoted || terminalIds?.has(record.id)) record.state = 'delivered';
     else if (outcome === 'stopped') markFailed(record);
     else record.state = 'cancelled';
   };
@@ -156,9 +160,13 @@ export function createFollowUpQueue({
     }
     record.state = 'handed';
     try {
-      await options.sendRunInput?.(record.conversationId, record.input, record.attachments, {
-        messageId: record.id,
-      });
+      const receipt = await options.sendRunInput?.(
+        record.conversationId,
+        record.input,
+        record.attachments,
+        { messageId: record.id },
+      );
+      if (receipt?.state === 'promoted') record.receiptPromoted = true;
     } catch (error) {
       // After an invalidation nothing the hook says is allowed to land, and
       // the sender is told the input did not complete.
@@ -209,6 +217,10 @@ export function createFollowUpQueue({
 
   const submit = (record: FollowUp): Promise<void> => {
     record.state = 'queued';
+    // A resend belongs to whatever run is in progress now, not to the run that
+    // ended before it; that run's outcome must not classify the new attempt.
+    delete record.runEnd;
+    delete record.receiptPromoted;
     record.epoch = epoch;
     record.settled = Promise.withResolvers<void>();
     const stale = order.indexOf(record);

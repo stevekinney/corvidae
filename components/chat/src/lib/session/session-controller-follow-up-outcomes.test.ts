@@ -195,6 +195,61 @@ describe('a refusal that arrives after the run ended', () => {
   });
 });
 
+describe('resending and receipts', () => {
+  test('a follow-up failed by a stop and retried during a new run is judged by the new run', async () => {
+    const harness = createHarness();
+    const firstRun = harness.startRun();
+    await settle();
+    await harness.controller.adapter.sendRunInput!(
+      'run-input',
+      { role: 'user', content: 'again' },
+      [],
+    );
+    await harness.controller.adapter.stopGenerating?.('anything');
+    await firstRun;
+    await settle();
+    expect(deliveryStatus(harness.conversation(), 'again')).toBe('failed');
+
+    const secondRun = harness.controller.adapter.sendMessage({ role: 'user', content: 'next' }, []);
+    await settle();
+    const failedId = harness.rowNamed('again')!.id;
+    await harness.controller.adapter.retryMessage?.(failedId);
+    await settle();
+
+    // The stop that ended the first run must not fail the new attempt.
+    expect(deliveryStatus(harness.conversation(), 'again')).toBeUndefined();
+    harness.releaseRun();
+    await secondRun;
+  });
+
+  test('a promoted receipt marks the follow-up delivered even when its run sends no history', async () => {
+    const failure = deferred();
+    const harness = createHarness({
+      sendRunInput: async () => ({ state: 'promoted' }),
+      turns: [
+        () =>
+          (async function* (): AsyncGenerator<ChatStreamEvent> {
+            yield { type: 'text', text: 'partial' };
+            await failure.promise;
+          })(),
+      ],
+    });
+    const run = harness.startRun();
+    await settle();
+    await harness.controller.adapter.sendRunInput!(
+      'run-input',
+      { role: 'user', content: 'replayed' },
+      [],
+    );
+    failure.reject(new Error('transport failed'));
+    expect(await throwingRejectionOf(run)).toThrow('transport failed');
+    for (let index = 0; index < 5; index += 1) await settle();
+
+    // Already committed by the host: it is not sent again as a new turn.
+    expect(harness.turns).toHaveLength(1);
+  });
+});
+
 describe('browser-owned runs', () => {
   test('do not offer follow-ups, and a second turn during the run is refused as before', async () => {
     const gate = deferred();

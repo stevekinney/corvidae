@@ -31,6 +31,7 @@ export {
   type ChatSessionRequest,
   type ChatSessionRunInput,
   type ChatSessionRunInputOptions,
+  type ChatSessionRunInputReceipt,
   type ChatSessionTransport,
   type ChatSessionTransportResult,
   type ChatToolActivity,

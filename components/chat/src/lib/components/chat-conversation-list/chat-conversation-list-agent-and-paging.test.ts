@@ -7,7 +7,7 @@ import type { ConversationSummary } from './conversation-summary.ts';
 
 setupHappyDom();
 
-const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
+const { render, fireEvent, cleanup, waitFor } = await import('@testing-library/svelte');
 const { default: ChatConversationList } = await import('./chat-conversation-list.svelte');
 
 type ObserverRecord = { options: IntersectionObserverInit | undefined; targets: Element[] };
@@ -180,16 +180,23 @@ describe('ChatConversationList load more', () => {
     await rerender({ conversations: rows, hasMore: false, onLoadMore: async () => {} });
     await tick();
 
-    expect(container.querySelector('.cinder-load-more')).toBeNull();
+    // LoadMore stays mounted so its live region announces the end of the list.
+    await waitFor(() => {
+      expect(container.querySelector('.cinder-load-more')?.textContent).toContain('End of list');
+    });
     expect(nav.hasAttribute('data-cinder-conversation-list-scrolls')).toBe(true);
   });
 
-  test('renders nothing without hasMore or without onLoadMore', async () => {
+  test('announces the end of the list without hasMore, and renders nothing without onLoadMore', async () => {
     const withoutHasMore = render(ChatConversationList, {
       props: { conversations: rows, onLoadMore: async () => {} },
     });
     await tick();
-    expect(withoutHasMore.container.querySelector('.cinder-load-more')).toBeNull();
+    await waitFor(() => {
+      expect(withoutHasMore.container.querySelector('.cinder-load-more')?.textContent).toContain(
+        'End of list',
+      );
+    });
     cleanup();
 
     const withoutHandler = render(ChatConversationList, {

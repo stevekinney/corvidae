@@ -151,7 +151,7 @@
       {/each}
     </ul>
   {/if}
-  {#if onLoadMore && hasMore && listElement}
+  {#if onLoadMore && listElement}
     <LoadMore {onLoadMore} {hasMore} {loading} root={listElement} {...loadMoreOptions} />
   {/if}
 </nav>

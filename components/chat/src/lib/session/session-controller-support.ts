@@ -176,12 +176,20 @@ export type ChatSessionRunInputOptions = { messageId: string };
  * (a raw adapter used without the controller gets none), while the controller
  * always knows the row it appended.
  */
+/**
+ * What the host may report back once it admitted a follow-up: its receipt. A
+ * `promoted` receipt (the turn is already in the conversation, as when an
+ * input is replayed) marks the follow-up delivered even if its run sends no
+ * terminal history, so it is never resent as a new turn.
+ */
+export type ChatSessionRunInputReceipt = { readonly state: string };
+
 export type ChatSessionRunInput = (
   conversationId: string,
   message: MessageInput,
   attachments: ChatAttachment[],
   options: ChatSessionRunInputOptions,
-) => Promise<void>;
+) => Promise<void | ChatSessionRunInputReceipt>;
 
 export type ChatSessionControllerOptions = {
   transport: ChatSessionTransport;

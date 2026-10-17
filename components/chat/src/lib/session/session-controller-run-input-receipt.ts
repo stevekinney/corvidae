@@ -3,8 +3,9 @@ const ACCEPTED_RECEIPT_STATES: ReadonlySet<string> = new Set(['accepted', 'queue
 
 /**
  * Turns an input's receipt into the acknowledgement `sendRunInput` owes the
- * controller: it returns when the receipt is `accepted`, `queued`, or
- * `promoted`, and throws an error that names the state for any other.
+ * controller: it returns the receipt when its state is `accepted`, `queued`,
+ * or `promoted`, and throws an error that names the state for any other.
+ * Return that receipt from the hook, so a `promoted` one is never resent.
  *
  * Read the receipt the host returns, not the submission outcome. A `replayed`
  * submission of an input that was already cancelled carries a `canceled`
@@ -13,7 +14,10 @@ const ACCEPTED_RECEIPT_STATES: ReadonlySet<string> = new Set(['accepted', 'queue
  * is not enough, because the host cancels input the run ends without
  * delivering.
  */
-export function assertRunInputAccepted(receipt: { readonly state: string }): void {
+export function assertRunInputAccepted<Receipt extends { readonly state: string }>(
+  receipt: Receipt,
+): Receipt {
   if (!ACCEPTED_RECEIPT_STATES.has(receipt.state))
     throw new Error(`Run input was not accepted: its receipt is ${receipt.state}`);
+  return receipt;
 }
