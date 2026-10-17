@@ -194,13 +194,6 @@ describe('Chat focus-ring recipes', () => {
     });
   }
 
-  test('both lightbox exceptions carry the Stylelint allowlist comment', () => {
-    expect(
-      styles.lightbox.match(/stylelint-disable-next-line cinder\/no-focus-visible-colored-outline/g)
-        ?.length,
-    ).toBe(2);
-  });
-
   test('conversation-list button repaints its forced-colors outline', () => {
     const css = load('../components/chat-conversation-list/chat-conversation-list.css');
     const selector =

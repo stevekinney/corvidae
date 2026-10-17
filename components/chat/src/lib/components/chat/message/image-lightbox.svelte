@@ -753,7 +753,6 @@
        accent ring color cannot guarantee contrast. A literal white outline is
        the deliberate high-contrast choice; it is already visible in Windows
        High Contrast Mode, so no forced-colors override is required. */
-    /* stylelint-disable-next-line cinder/no-focus-visible-colored-outline -- white-over-photo contrast, see policy Deviations appendix */
     outline: 2px solid white;
     outline-offset: 2px;
   }
@@ -786,7 +785,6 @@
   .lightbox-nav:focus-visible {
     /* Documented allowlist exception (docs/focus-ring-policy.md § Deviations):
        white-over-photo contrast — same rationale as .lightbox-close above. */
-    /* stylelint-disable-next-line cinder/no-focus-visible-colored-outline -- white-over-photo contrast, see policy Deviations appendix */
     outline: 2px solid white;
     outline-offset: 2px;
   }

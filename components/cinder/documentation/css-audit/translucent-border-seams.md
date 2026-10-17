@@ -80,7 +80,7 @@ An earlier draft of this section claimed the rim "composites against the page ca
 
 ### The `:not(:first-child)` divider family — single edge per seam
 
-`DescriptionList`, `SegmentedControl`, `SourceDiffViewer`, `StatisticGroup`, `Footer`, `Toolbar`, `Feed`, `FeedBoundary`, `FeedEvent`, `RunStepTimeline`, `Timeline`, and the shared `_row-item.css` all draw interior dividers as one edge on one of the two adjacent elements (or as a pseudo-element rail). The `interior-border-weight` stylelint rule is what keeps this the house idiom. None of them stack.
+`DescriptionList`, `SegmentedControl`, `SourceDiffViewer`, `StatisticGroup`, `Footer`, `Toolbar`, `Feed`, `FeedBoundary`, `FeedEvent`, `RunStepTimeline`, `Timeline`, and the shared `_row-item.css` all draw interior dividers as one edge on one of the two adjacent elements (or as a pseudo-element rail). Review keeps this the house idiom. None of them stack.
 
 ## Border tokens used as fills
 

@@ -189,7 +189,7 @@ describe('CodeBlock — static structure', () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     expect(css).toContain('@media (forced-colors: active)');
     // The copy-button forced-colors fallback uses the full outline shorthand (not outline-color)
-    // so the Stylelint rule can detect it as a valid non-transparent outline.
+    // so it overpaints the transparent placeholder outline.
     expect(css).toContain('outline: var(--cinder-ring-width) solid ButtonText;');
     expect(css).toContain('box-shadow: none;');
   });

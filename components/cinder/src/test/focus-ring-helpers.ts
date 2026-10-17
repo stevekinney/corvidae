@@ -1,24 +1,9 @@
 /**
- * Shared helpers for the focus-visible policy enforcement layers.
- *
- * Two callers consume these helpers:
- *
- * 1. `no-focus-visible-colored-outline.mjs` — Stylelint plugin that rejects
- *    colored outline channels in non-forced-colors `:focus-visible` rules.
- * 2. `components/cinder/src/test/focus-ring-recipe.test.ts` — parser-based
- *    regression test that pins the `box-shadow` half of Strategy B on the
- *    specific selectors this task realigned.
- *
- * Both layers walk PostCSS nodes and need to answer "is this rule nested
- * under `@media (forced-colors: active)`?" identically. Keeping the logic in
- * one place means a future change to forced-colors detection (e.g., handling
- * `@supports`-nested fallbacks, or `(prefers-contrast: more)`) propagates to
- * both places without drift.
- *
- * Authored as ESM (.mjs) because the Stylelint plugin is loaded through
- * Node's module resolver, not Bun's, and Stylelint plugins cannot import
- * `.ts` files.
+ * Forced-colors detection for the focus-visible recipe tests: answers whether a PostCSS node
+ * sits under an `@media (forced-colors: active)` fallback.
  */
+
+import type { AtRule, Node } from 'postcss';
 
 /**
  * Matches a single CSS media-query branch that contains the
@@ -32,12 +17,12 @@ export const FORCED_COLORS_FEATURE = /\(\s*forced-colors\s*:\s*active\s*\)/i;
  * outermost first. Non-media at-rules (e.g., `@supports`, `@layer`) are
  * ignored — only media queries are relevant to forced-colors detection.
  */
-export function ancestorMediaQueries(node) {
-  const queries = [];
+export function ancestorMediaQueries(node: Node): string[] {
+  const queries: string[] = [];
   let current = node.parent;
   while (current) {
-    if (current.type === 'atrule' && current.name && current.name.toLowerCase() === 'media') {
-      queries.push(current.params);
+    if (current.type === 'atrule' && (current as AtRule).name.toLowerCase() === 'media') {
+      queries.push((current as AtRule).params);
     }
     current = current.parent;
   }
@@ -56,7 +41,7 @@ export function ancestorMediaQueries(node) {
  * non-forced branch would still apply the rule's declarations to ordinary
  * viewports and let a colored outline slip through.
  */
-export function isUnderForcedColors(node) {
+export function isUnderForcedColors(node: Node): boolean {
   const queries = ancestorMediaQueries(node);
   if (queries.length === 0) return false;
   return queries.some((params) => {
