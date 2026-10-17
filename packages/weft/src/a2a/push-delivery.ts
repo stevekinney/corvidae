@@ -83,7 +83,13 @@ export async function startPushDelivery(options: StartPushDeliveryOptions): Prom
       await outbox.drain({ timeoutMs: 0, signal });
     } catch (error) {
       if (signal.aborted) break;
-      onError(error);
+      // A reporter that throws must not stop delivery; there is nowhere left to
+      // report its own failure to.
+      try {
+        onError(error);
+      } catch {
+        // Deliberately swallowed.
+      }
     }
     await delayUnlessAborted(intervalMs, never, signal);
   }

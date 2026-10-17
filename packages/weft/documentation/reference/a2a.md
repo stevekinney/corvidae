@@ -313,7 +313,7 @@ Pass `sender.pushStore`, not the store itself, to the request handler: its `dele
 `createEgressPolicy({ allowInsecureHttp?, allowlist?, resolveHost? })` returns `{ check(url) }`, which the adapter calls before every request. It rejects:
 
 - a URL whose scheme is not `https`, unless `allowInsecureHttp` is set (then `http` is accepted too; nothing else ever is);
-- a host whose address is in a non-public range: loopback (`127.0.0.0/8`, `::1`), `0.0.0.0/8`, RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`, `fe80::/10`), unique-local (`fc00::/7`), carrier-grade NAT (`100.64.0.0/10`), multicast (`224.0.0.0/4`, `ff00::/8`), reserved (`240.0.0.0/4`), or unspecified (`::`). An IPv6 address that embeds an IPv4 one (IPv4-mapped `::ffff:0:0/96`, IPv4-translated `::ffff:0:0:0/96`, NAT64 `64:ff9b::/96`, or IPv4-compatible `::/96`) is checked as that IPv4 address.
+- a host whose address is in a range the IANA special-purpose address registries mark as not globally reachable, or in multicast: loopback (`127.0.0.0/8`, `::1`), `0.0.0.0/8`, RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local (`169.254.0.0/16`, `fe80::/10`), unique-local (`fc00::/7`), carrier-grade NAT (`100.64.0.0/10`), IETF protocol assignments (`192.0.0.0/24`, `2001::/23`), documentation (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32`, `3fff::/20`), benchmarking (`198.18.0.0/15`), discard-only (`100::/64`), 6to4 (`2002::/16`), SRv6 SIDs (`5f00::/16`), local-use NAT64 (`64:ff9b:1::/48`), multicast (`224.0.0.0/4`, `ff00::/8`), reserved (`240.0.0.0/4`), or unspecified (`::`). Each block is rejected whole, including the few globally reachable addresses the registries carve out of `192.0.0.0/24` and `2001::/23`. An IPv6 address that embeds an IPv4 one (IPv4-mapped `::ffff:0:0/96`, IPv4-translated `::ffff:0:0:0/96`, NAT64 `64:ff9b::/96`, or IPv4-compatible `::/96`) is checked as that IPv4 address.
 
 An IP literal in the URL is checked directly (the URL parser has already normalized forms such as `0x7f.1` and `2130706433` to `127.0.0.1`). A hostname is resolved with `resolveHost`, which defaults to `node:dns` `lookup` where the runtime has it, and is rejected when any one of its addresses is non-public. With no resolver (`resolveHost: null`, or a runtime without `node:dns`), a hostname is rejected. A resolver that fails is not a rejection: the attempt is retried later.
 
@@ -328,7 +328,7 @@ The check cannot pin the connection. `fetch` resolves the name again when it con
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `resolveDestination` | required | `(destinationRef) => url`, called on every attempt. `undefined` means the destination no longer exists. |
-| `resolveCredential` | required | `(credentialRef) => { scheme?, credentials?, notificationToken? }`, or `undefined`, called on every attempt. |
+| `resolveCredential` | required | `(credentialRef) => { scheme?, credentials?, notificationToken? }`, called on every attempt for a delivery with a `credentialRef`. `{}` means no authentication; `undefined` means the credential no longer exists. |
 | `signingSecrets` | unset | A non-empty list of Standard Webhooks secrets (`whsec_` followed by base64). |
 | `egressPolicy` | required | The policy every request passes first. |
 | `timeoutMs` | 10000 | How long one request may take, 10000–30000. Anything else throws at construction. |
@@ -339,7 +339,8 @@ Each delivery is a `POST` of the A2A `StreamResponse` JSON with `Content-Type: a
 
 - `Authorization: <scheme> <credentials>` when the configuration has authentication;
 - `X-A2A-Notification-Token: <token>` when it has a `token`, beside `Authorization` and any signature (the header name `@a2a-js/sdk` 1.3.0's own sender uses; A2A 1.0.1 names none);
-- with `signingSecrets`, `webhook-id` (the delivery's external idempotency key, or its delivery identifier when it has none), `webhook-timestamp`, and `webhook-signature`, with one `v1,` HMAC-SHA256 signature per secret, space-delimited, so a receiver holding any one secret verifies while secrets rotate;
+- `webhook-id`: the delivery's external idempotency key, or its delivery identifier when it has none. It is the receiver's idempotency evidence, so it is sent with or without `signingSecrets`;
+- with `signingSecrets`, `webhook-timestamp` and `webhook-signature`, with one `v1,` HMAC-SHA256 signature per secret, space-delimited, so a receiver holding any one secret verifies while secrets rotate;
 - `traceparent`, when the request that enqueued the delivery carried a valid one.
 
 Redirects are not followed. The outcome the outbox settles on:
@@ -347,9 +348,9 @@ Redirects are not followed. The outcome the outbox settles on:
 | What happened | Outcome |
 | --- | --- |
 | `2xx` | `acknowledged` |
-| Connection refused, a DNS failure, or a destination or credential that could not be resolved, before anything was sent | `retryable` |
+| Connection refused, a DNS failure, or a destination or credential resolver that failed, before anything was sent | `retryable` |
 | `408`, `429`, `5xx` | `retryable`, honoring `Retry-After` in delta-seconds or HTTP-date form, capped at 3600 seconds |
-| `3xx`, any other `4xx`, a URL the egress policy blocks, or a destination that no longer exists | `rejected` |
+| `3xx`, any other `4xx`, a URL the egress policy blocks, or a destination or credential that no longer exists | `rejected` |
 | A timeout, reset, or abort after the request began | `unknown` |
 
 ### Sender
@@ -358,7 +359,7 @@ Redirects are not followed. The outcome the outbox settles on:
 
 For each event with a task, `send` enqueues one delivery per live configuration of that task in the caller's scope:
 
-- The idempotency key is `${configId}:${taskId}:${digest}`, where `digest` is the SHA-256 of the event's [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) serialization, taken when `send` is called. The same event sent twice is one delivery per configuration; distinct events never share a key.
+- The idempotency key is `${tenant}:${owner}:${configId}:${taskId}:${digest}`, each identifier percent-encoded, where `tenant` and `owner` are the caller's scope as the push store keys it and `digest` is the SHA-256 of the event's [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) serialization, taken when `send` is called. The same event sent twice is one delivery per configuration; distinct events never share a key, and neither do two callers whose task and configuration identifiers coincide, since those are unique only within a scope.
 - `unknownOutcomePolicy` is `retry-with-idempotency` and `maxAttempts` is 8, because A2A requires receivers to process notifications idempotently. The `externalIdempotencyKey`, `msg_` and the SHA-256 of the idempotency key, is sent as `webhook-id`, so every attempt of one delivery carries the same `webhook-id`.
 - The enqueueing request's `traceparent` header, when it is a valid W3C trace context, is stored as the delivery's `causation.traceparent`.
 
@@ -372,7 +373,7 @@ The deliveries are found by scanning every record the outbox retains, terminal o
 
 ### Driving delivery
 
-`startPushDelivery({ outbox, intervalMs = 1000, signal, onError? })` calls `outbox.drain()` for everything due, waits `intervalMs`, and repeats until `signal` aborts, resolving once it has stopped. A drain that throws is reported to `onError` (default `console.error`) and the loop continues. Because deliveries are durable, a delivery pending when the process stops is sent by the next process's loop over the same storage.
+`startPushDelivery({ outbox, intervalMs = 1000, signal, onError? })` calls `outbox.drain()` for everything due, waits `intervalMs`, and repeats until `signal` aborts, resolving once it has stopped. A drain that throws is reported to `onError` (default `console.error`) and the loop continues, even when `onError` itself throws. Because deliveries are durable, a delivery pending when the process stops is sent by the next process's loop over the same storage.
 
 ## Not covered
 

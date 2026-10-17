@@ -254,6 +254,29 @@ describe('startPushDelivery', () => {
     expect(drains).toBe(2);
   });
 
+  test('keeps running when the error reporter throws', async () => {
+    const fixture = await createPushFixture();
+    const controller = new AbortController();
+    let drains = 0;
+    fixture.outbox.drain = async () => {
+      drains += 1;
+      if (drains === 3) controller.abort();
+      throw new Error('storage unavailable');
+    };
+    let reports = 0;
+    await startPushDelivery({
+      outbox: fixture.outbox,
+      intervalMs: 1,
+      signal: controller.signal,
+      onError: () => {
+        reports += 1;
+        throw new Error('The log backend is unavailable.');
+      },
+    });
+    expect(reports).toBe(2);
+    expect(drains).toBe(3);
+  });
+
   test('reports to console.error by default', async () => {
     const fixture = await createPushFixture();
     const controller = new AbortController();

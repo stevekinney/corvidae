@@ -76,7 +76,7 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
     await fixture.sender.send(statusEvent(1), alice());
 
     const [receipt] = await fixture.outbox.list();
-    const idempotencyKey = `config-1:task-1:${digestOf(statusEvent(1))}`;
+    const idempotencyKey = `:user%3Aalice:config-1:task-1:${digestOf(statusEvent(1))}`;
     expect(receipt).toMatchObject({
       kind: A2A_PUSH_DELIVERY_KIND,
       payloadMediaType: 'application/a2a+json',
@@ -112,7 +112,7 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
     await fixture.sender.send(statusEvent(1), alice());
 
     const receipts = await fixture.outbox.list();
-    expect(new Set(receipts.map((receipt) => receipt.idempotencyKey?.split(':')[0]))).toEqual(
+    expect(new Set(receipts.map((receipt) => receipt.idempotencyKey?.split(':')[2]))).toEqual(
       new Set(['config-1', 'config-2']),
     );
   });
@@ -204,15 +204,36 @@ describe('createOutboxPushNotificationSender enqueueing', () => {
     );
   });
 
-  test('throws when the idempotency key is already bound to another destination', async () => {
+  test('callers whose task and configuration identifiers coincide get separate deliveries', async () => {
     const fixture = await createPushFixture();
-    await createConfiguration(fixture, { context: callContext({ user: 'alice' }) });
-    await createConfiguration(fixture, { context: callContext({ user: 'bob' }) });
+    const callers = [
+      callContext({ user: 'alice' }),
+      callContext({ user: 'bob' }),
+      callContext({ user: 'alice', tenant: 'tenant-2' }),
+    ];
+    for (const context of callers) await createConfiguration(fixture, { context });
 
-    await fixture.sender.send(statusEvent(1), callContext({ user: 'alice' }));
-    expect(
-      await throwingRejectionOf(fixture.sender.send(statusEvent(1), callContext({ user: 'bob' }))),
-    ).toThrow(/bound to another delivery/);
+    for (const context of callers) await fixture.sender.send(statusEvent(1), context);
+
+    const receipts = await fixture.outbox.list();
+    expect(receipts).toHaveLength(3);
+    expect(new Set(receipts.map((receipt) => receipt.idempotencyKey)).size).toBe(3);
+    expect(new Set(receipts.map((receipt) => receipt.externalIdempotencyKey)).size).toBe(3);
+  });
+
+  test('throws when the idempotency key is already bound to another delivery', async () => {
+    const fixture = await createPushFixture();
+    await createConfiguration(fixture);
+    await fixture.outbox.enqueue({
+      destinationRef: 'another-destination',
+      kind: A2A_PUSH_DELIVERY_KIND,
+      payload: { form: 'inline', value: {} },
+      idempotencyKey: `:user%3Aalice:config-1:task-1:${digestOf(statusEvent(1))}`,
+    });
+
+    expect(await throwingRejectionOf(fixture.sender.send(statusEvent(1), alice()))).toThrow(
+      /bound to another delivery/,
+    );
   });
 
   test('a configuration deleted between loading and enqueueing has its delivery cancelled', async () => {

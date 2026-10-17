@@ -7,9 +7,11 @@
  *
  * The policy requires `https` (unless `allowInsecureHttp` is set), then rejects a
  * host whose address — the literal in the URL, or every address its name resolves
- * to — falls in a loopback, private, link-local, unique-local, carrier-grade NAT,
- * multicast, reserved, or unspecified range, including the IPv6 forms that embed an
- * IPv4 address. An `allowlist` of exact `host:port` pairs bypasses the range check.
+ * to — falls in a range the IANA special-purpose address registries mark as not
+ * globally reachable (loopback, private, link-local, unique-local, carrier-grade NAT,
+ * protocol assignments, documentation, benchmarking, discard, 6to4, SRv6, local-use
+ * NAT64, reserved, unspecified) or in multicast, including the IPv6 forms that embed
+ * an IPv4 address. An `allowlist` of exact `host:port` pairs bypasses the range check.
  *
  * The check cannot pin the connection: `fetch` resolves the name again, so a
  * DNS-rebinding window remains between check and connection. Strict egress needs an
@@ -125,6 +127,12 @@ function range(cidr: string, name: string): AddressRange {
   return { bytes, prefixLength: Number(prefix), name: `${name} (${cidr})` };
 }
 
+/**
+ * Every IPv4 range the IANA IPv4 Special-Purpose Address Registry marks as not
+ * globally reachable, plus multicast. A block is listed whole even where the registry
+ * carves out a few globally reachable addresses (in `192.0.0.0/24`), because none of
+ * them is a webhook receiver.
+ */
 const BLOCKED_IPV4_RANGES: readonly AddressRange[] = [
   range('0.0.0.0/8', 'this network'),
   range('10.0.0.0/8', 'private'),
@@ -132,14 +140,32 @@ const BLOCKED_IPV4_RANGES: readonly AddressRange[] = [
   range('127.0.0.0/8', 'loopback'),
   range('169.254.0.0/16', 'link-local'),
   range('172.16.0.0/12', 'private'),
+  range('192.0.0.0/24', 'IETF protocol assignments'),
+  range('192.0.2.0/24', 'documentation'),
   range('192.168.0.0/16', 'private'),
+  range('198.18.0.0/15', 'benchmarking'),
+  range('198.51.100.0/24', 'documentation'),
+  range('203.0.113.0/24', 'documentation'),
   range('224.0.0.0/4', 'multicast'),
   range('240.0.0.0/4', 'reserved'),
 ];
 
+/**
+ * Every IPv6 range the IANA IPv6 Special-Purpose Address Registry marks as not
+ * globally reachable, plus multicast, listed whole as for IPv4. `2002::/16` (6to4,
+ * deprecated by RFC 7526) carries an IPv4 address in its second and third groups
+ * rather than its last 32 bits, so it is blocked outright.
+ */
 const BLOCKED_IPV6_RANGES: readonly AddressRange[] = [
   range('::/128', 'unspecified'),
   range('::1/128', 'loopback'),
+  range('64:ff9b:1::/48', 'local-use NAT64'),
+  range('100::/64', 'discard-only'),
+  range('2001::/23', 'IETF protocol assignments'),
+  range('2001:db8::/32', 'documentation'),
+  range('2002::/16', '6to4'),
+  range('3fff::/20', 'documentation'),
+  range('5f00::/16', 'SRv6 SIDs'),
   range('fe80::/10', 'link-local'),
   range('fc00::/7', 'unique-local'),
   range('ff00::/8', 'multicast'),

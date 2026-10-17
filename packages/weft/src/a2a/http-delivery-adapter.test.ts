@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 
 import { Webhook } from 'standardwebhooks';
 
@@ -72,7 +72,7 @@ function adapterFor(
 ) {
   return createHttpDeliveryAdapter({
     resolveDestination: () => receiver.url(),
-    resolveCredential: () => options.credential,
+    resolveCredential: () => options.credential ?? {},
     egressPolicy: loopbackPolicy(receiver.host),
     ...options,
   });
@@ -221,12 +221,18 @@ describe('createHttpDeliveryAdapter Standard Webhooks signatures', () => {
     ).toThrow();
   });
 
-  test('without signing secrets, sends no Standard Webhooks headers', async () => {
+  test('without signing secrets, sends webhook-id as idempotency evidence and no signature', async () => {
     const receiver = await startReceiver();
-    await adapterFor(receiver).send(sendRequest());
-    const request = await receiver.nextRequest(0);
-    expect(request.headers['webhook-id']).toBeUndefined();
-    expect(request.headers['webhook-signature']).toBeUndefined();
+    const adapter = adapterFor(receiver);
+    await adapter.send(sendRequest({ delivery: { externalIdempotencyKey: 'msg_stable' } }));
+    await adapter.send(sendRequest());
+    const [keyed, unkeyed] = [await receiver.nextRequest(0), await receiver.nextRequest(1)];
+    expect(keyed.headers['webhook-id']).toBe('msg_stable');
+    expect(unkeyed.headers['webhook-id']).toBe('delivery-1');
+    for (const request of [keyed, unkeyed]) {
+      expect(request.headers['webhook-timestamp']).toBeUndefined();
+      expect(request.headers['webhook-signature']).toBeUndefined();
+    }
   });
 
   test('stamps webhook-timestamp from its clock in seconds', async () => {
@@ -234,7 +240,7 @@ describe('createHttpDeliveryAdapter Standard Webhooks signatures', () => {
     const adapter = createHttpDeliveryAdapterWithRuntime(
       {
         resolveDestination: () => receiver.url(),
-        resolveCredential: () => undefined,
+        resolveCredential: () => ({}),
         signingSecrets: [SECRET_A],
         egressPolicy: loopbackPolicy(receiver.host),
       },
@@ -272,7 +278,7 @@ describe('createHttpDeliveryAdapter egress', () => {
   test('a DNS failure before sending is retryable', async () => {
     const adapter = createHttpDeliveryAdapter({
       resolveDestination: () => 'https://hooks.example.com/hook',
-      resolveCredential: () => undefined,
+      resolveCredential: () => ({}),
       egressPolicy: createEgressPolicy({
         resolveHost: async () => {
           throw new Error('getaddrinfo ENOTFOUND hooks.example.com');
@@ -291,6 +297,15 @@ describe('createHttpDeliveryAdapter egress', () => {
       sendRequest(),
     );
     expect(outcome).toEqual({ status: 'rejected', message: 'The destination no longer exists.' });
+    expect(receiver.requests).toHaveLength(0);
+  });
+
+  test('a named credential that no longer exists is rejected without a request', async () => {
+    const receiver = await startReceiver();
+    const outcome = await adapterFor(receiver, { resolveCredential: () => undefined }).send(
+      sendRequest(),
+    );
+    expect(outcome).toEqual({ status: 'rejected', message: 'The credential no longer exists.' });
     expect(receiver.requests).toHaveLength(0);
   });
 
@@ -331,6 +346,37 @@ describe('createHttpDeliveryAdapter classification', () => {
       status: 'acknowledged',
       evidence: { status: 204 },
     });
+  });
+
+  test('a response is classified by its status even when discarding its body fails', async () => {
+    const erroredBody = () =>
+      new ReadableStream({
+        start(controller) {
+          controller.error(new Error('The body stream broke.'));
+        },
+      });
+    const fetchSpy = spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(erroredBody(), { status: 200 }))
+      .mockResolvedValueOnce(new Response(erroredBody(), { status: 404 }));
+    try {
+      const adapter = createHttpDeliveryAdapter({
+        resolveDestination: () => 'https://hooks.example.com/hook',
+        resolveCredential: () => ({}),
+        egressPolicy: createEgressPolicy({ resolveHost: async () => ['93.184.216.34'] }),
+      });
+      expect(await adapter.send(sendRequest())).toEqual({
+        status: 'acknowledged',
+        evidence: { status: 200 },
+      });
+      expect(await adapter.send(sendRequest())).toEqual({
+        status: 'rejected',
+        message: 'The receiver answered 404.',
+        details: { status: 404 },
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   test('a 3xx is rejected and the redirect is not followed', async () => {
@@ -376,7 +422,7 @@ describe('createHttpDeliveryAdapter classification', () => {
     const adapter = createHttpDeliveryAdapterWithRuntime(
       {
         resolveDestination: () => receiver.url(),
-        resolveCredential: () => undefined,
+        resolveCredential: () => ({}),
         egressPolicy: loopbackPolicy(receiver.host),
       },
       { schedule: manualScheduler().schedule, now: () => now },
@@ -414,7 +460,7 @@ describe('createHttpDeliveryAdapter classification', () => {
     await closed.close();
     const adapter = createHttpDeliveryAdapter({
       resolveDestination: () => url,
-      resolveCredential: () => undefined,
+      resolveCredential: () => ({}),
       egressPolicy: loopbackPolicy(host),
     });
     expect(await adapter.send(sendRequest())).toMatchObject({
@@ -437,7 +483,7 @@ describe('createHttpDeliveryAdapter classification', () => {
     const host = `127.0.0.1:${listener.port}`;
     const adapter = createHttpDeliveryAdapter({
       resolveDestination: () => `http://${host}/hook`,
-      resolveCredential: () => undefined,
+      resolveCredential: () => ({}),
       egressPolicy: loopbackPolicy(host),
     });
     expect(await adapter.send(sendRequest())).toMatchObject({
@@ -453,7 +499,7 @@ describe('createHttpDeliveryAdapter classification', () => {
     const adapter = createHttpDeliveryAdapterWithRuntime(
       {
         resolveDestination: () => receiver.url(),
-        resolveCredential: () => undefined,
+        resolveCredential: () => ({}),
         egressPolicy: loopbackPolicy(receiver.host),
         timeoutMs: 15_000,
       },
@@ -483,7 +529,7 @@ describe('createHttpDeliveryAdapter classification', () => {
     const adapter = createHttpDeliveryAdapterWithRuntime(
       {
         resolveDestination: () => receiver.url(),
-        resolveCredential: () => undefined,
+        resolveCredential: () => ({}),
         egressPolicy: loopbackPolicy(receiver.host),
       },
       { schedule: scheduler.schedule, now: () => Date.now() },
@@ -510,7 +556,7 @@ describe('parseRetryAfter', () => {
 describe('createHttpDeliveryAdapter construction', () => {
   const base: HttpDeliveryAdapterOptions = {
     resolveDestination: () => 'https://hooks.example.com/',
-    resolveCredential: () => undefined,
+    resolveCredential: () => ({}),
     egressPolicy: createEgressPolicy(),
   };
 

@@ -42,7 +42,11 @@ export type HttpDeliveryAdapterOptions = {
    * without a request.
    */
   readonly resolveDestination: (destinationRef: string) => MaybePromise<string | URL | undefined>;
-  /** The credential a delivery's `credentialRef` names, resolved on every attempt. */
+  /**
+   * The credential a delivery's `credentialRef` names, resolved on every attempt.
+   * `undefined` means the credential no longer exists, and the attempt is rejected
+   * without a request; a destination that needs no authentication resolves to `{}`.
+   */
   readonly resolveCredential: (
     credentialRef: string,
   ) => MaybePromise<HttpDeliveryCredential | undefined>;
@@ -222,10 +226,17 @@ async function resolveRequest(
         outcome: { status: 'rejected', message: 'The destination no longer exists.' },
       };
     }
-    credential =
-      request.credentialRef === undefined
-        ? undefined
-        : await options.resolveCredential(request.credentialRef);
+    if (request.credentialRef !== undefined) {
+      credential = await options.resolveCredential(request.credentialRef);
+      // A named credential that is gone means its configuration was deleted after the
+      // destination was read; sending without it would reach a deleted destination.
+      if (credential === undefined) {
+        return {
+          ok: false,
+          outcome: { status: 'rejected', message: 'The credential no longer exists.' },
+        };
+      }
+    }
   } catch (error) {
     return {
       ok: false,
@@ -259,10 +270,12 @@ function buildHeaders(
   }
   const traceparent = request.delivery.causation?.traceparent;
   if (traceparent !== undefined) headers.set('traceparent', traceparent);
+  // The id is the receiver's idempotency evidence, so it is sent with or without a
+  // signature: every attempt of one delivery carries the same one.
+  const id = request.delivery.externalIdempotencyKey ?? request.delivery.deliveryId;
+  headers.set('webhook-id', id);
   if (signature.keys.length > 0) {
-    const id = request.delivery.externalIdempotencyKey ?? request.delivery.deliveryId;
     const timestamp = Math.floor(signature.now / 1000);
-    headers.set('webhook-id', id);
     headers.set('webhook-timestamp', String(timestamp));
     headers.set('webhook-signature', sign(signature.keys, id, timestamp, signature.body));
   }
@@ -305,8 +318,11 @@ export function createHttpDeliveryAdapterWithRuntime(
         redirect: 'manual',
         signal,
       });
-      await response.body?.cancel();
-      return classifyResponse(response, runtime.now());
+      const outcome = classifyResponse(response, runtime.now());
+      // The outcome rests on the status alone; a body that errors while it is
+      // discarded does not change what the receiver answered.
+      await response.body?.cancel().catch(() => undefined);
+      return outcome;
     } catch (error) {
       return classifyFetchError(error, timeout.signal.aborted, request.signal.aborted);
     } finally {
@@ -344,12 +360,12 @@ export function createHttpDeliveryAdapterWithRuntime(
  * `Content-Type: application/a2a+json`, never follows a redirect, and settles as:
  *
  * - `2xx`: `acknowledged`.
- * - Connection refused, DNS failure, or a destination or credential that could not be
- *   resolved, before anything was sent: `retryable`.
+ * - Connection refused, DNS failure, or a destination or credential resolver that
+ *   failed, before anything was sent: `retryable`.
  * - `408`, `429`, `5xx`: `retryable`, honoring `Retry-After` (delta-seconds or an
  *   HTTP-date, capped at 3600 seconds).
- * - `3xx`, any other `4xx`, a destination the egress policy blocks, or one that no
- *   longer exists: `rejected`.
+ * - `3xx`, any other `4xx`, a destination the egress policy blocks, or a destination
+ *   or credential that no longer exists: `rejected`.
  * - A timeout, reset, or abort after the request began: `unknown`.
  *
  * @throws {RangeError} When `timeoutMs` is outside 10000–30000.

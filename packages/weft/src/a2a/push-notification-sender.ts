@@ -57,6 +57,19 @@ function encodeLocator(locator: PushLocator): string {
     .join(':');
 }
 
+/**
+ * The idempotency key of one event for one configuration:
+ * `${tenant}:${owner}:${configId}:${taskId}:${digest}`, each identifier
+ * percent-encoded so no value can reach into another's position. The caller's scope
+ * leads because task and configuration identifiers are unique only within it.
+ */
+function idempotencyKeyOf(locator: PushLocator, digest: string): string {
+  return [locator.tenant, locator.owner, locator.configId, locator.taskId]
+    .map(encodeURIComponent)
+    .concat(digest)
+    .join(':');
+}
+
 function decodeLocator(reference: string): PushLocator | undefined {
   const parts = reference.split(':');
   if (parts.length !== 5 || parts[0] !== LOCATOR_PREFIX) return undefined;
@@ -169,9 +182,11 @@ export type OutboxPushNotificationSender = PushNotificationSender & {
  * configuration of the event's task. Each delivery is the A2A `StreamResponse` JSON,
  * with:
  *
- * - idempotency key `${configId}:${taskId}:${digest}`, where `digest` is the SHA-256
- *   of the event's RFC 8785 serialization, so one event is one delivery per
- *   configuration however often it is sent;
+ * - idempotency key `${tenant}:${owner}:${configId}:${taskId}:${digest}` (each
+ *   identifier percent-encoded), where `digest` is the SHA-256 of the event's RFC 8785
+ *   serialization, so one event is one delivery per configuration however often it is
+ *   sent, and two callers whose task and configuration identifiers coincide never
+ *   share a key;
  * - `externalIdempotencyKey`, sent as `webhook-id`, derived from that key, so every
  *   attempt of one delivery carries the same `webhook-id`;
  * - `unknownOutcomePolicy: 'retry-with-idempotency'` and `maxAttempts: 8`, because
@@ -199,8 +214,9 @@ export function createOutboxPushNotificationSender(
     },
   ): Promise<string | null> {
     const scope = callerScope('', context);
-    const locator = encodeLocator({ tenant: scope.tenant, owner: scope.owner, taskId, configId });
-    const idempotencyKey = `${configId}:${taskId}:${event.digest}`;
+    const located = { tenant: scope.tenant, owner: scope.owner, taskId, configId };
+    const locator = encodeLocator(located);
+    const idempotencyKey = idempotencyKeyOf(located, event.digest);
     const admission = await outbox.enqueue({
       destinationRef: locator,
       credentialRef: locator,
