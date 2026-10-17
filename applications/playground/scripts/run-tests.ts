@@ -47,12 +47,13 @@ const TEST_ENV = {
 const PLAYGROUND_ROOT = resolve(import.meta.dir, '..');
 const TEST_DIRECTORIES = ['scripts', 'src'] as const;
 
-// `--parallel=1` (serial) is required, same as the components package: Bun's
-// parallel runner uses worker processes that race to import the Svelte test
-// stack at module-init and deadlock, and the iframe-driven preview-frame tests
-// hit happy-dom `postMessage` cross-origin errors when multiple windows run
-// concurrently. Serial execution avoids both. Do not strip without re-measuring.
-const SHARED_FLAGS = ['--conditions', 'browser', '--conditions', 'svelte', '--parallel=1'];
+// Four isolated worker processes, matching Cinder, chat, and editor. This was once serial because
+// Bun's parallel workers raced to import the Svelte test stack and the iframe-driven preview-frame
+// tests hit happy-dom `postMessage` cross-origin errors with several windows open. Re-measured on
+// Bun 1.4.2: three consecutive runs at four workers passed every test in about 140 s, against
+// 276 s serially. Re-measure before raising the worker count; ten workers on a ten-core host made
+// Cinder's scroll-settling tests fail.
+const SHARED_FLAGS = ['--conditions', 'browser', '--conditions', 'svelte', '--parallel=4'];
 
 const MOUNT_HEAVY_TEST = 'src/component-page.test.ts';
 
