@@ -93,7 +93,7 @@ On **2026-07-28** the protocol has no server-to-client request channel: a handle
 - Because the execution lives in memory, every round of a flow must reach the same process.
 - A tool can wait for one elicitation at a time.
 
-Accepted form answers are validated against the requested schema in both eras before the tool sees them.
+Accepted form answers are validated against the requested schema in both eras before the tool sees them. The schema is converted as JSON Schema 2020-12, so constraints such as `pattern`, `minimum`, `format` and `enum` are enforced, and a schema that cannot be enforced (a remote `$ref`, for example) rejects the answer instead of letting it through.
 
 ## MCP tasks
 

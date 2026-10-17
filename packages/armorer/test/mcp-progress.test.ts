@@ -134,4 +134,30 @@ describe('createProgressForwarder', () => {
       { progressToken: 'token', progress: 100, total: 100 },
     ]);
   });
+
+  it('starts a new increasing sequence when a round brings a new progress token', () => {
+    const sent: unknown[] = [];
+    const forwarder = createProgressForwarder();
+    const sinkFor = (token: string) => ({
+      token,
+      notify: async (notification: { params?: unknown }) => {
+        sent.push(notification.params);
+      },
+    });
+    forwarder.setSink(sinkFor('first'));
+    forwarder.forward({ percent: 50 });
+    forwarder.setSink(undefined);
+    forwarder.setSink(sinkFor('first'));
+    forwarder.forward({ percent: 50, message: 'same token keeps its order' });
+    forwarder.forward({ message: 'same token: no counter after a percent' });
+    forwarder.setSink(undefined);
+    forwarder.setSink(sinkFor('second'));
+    forwarder.forward({ message: 'resumed' });
+    forwarder.forward({ percent: 50 });
+    expect(sent).toEqual([
+      { progressToken: 'first', progress: 50, total: 100 },
+      { progressToken: 'second', progress: 1, message: 'resumed' },
+      { progressToken: 'second', progress: 50, total: 100 },
+    ]);
+  });
 });

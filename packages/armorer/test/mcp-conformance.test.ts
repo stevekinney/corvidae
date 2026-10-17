@@ -49,12 +49,15 @@ type Observed = { mcp?: MCPRequestExecutionContext; traceContext?: unknown; abor
  * `_meta` rather than an empty root context.
  */
 const EXTRACTED_TRACEPARENT = createContextKey('armorer.test.extracted-traceparent');
+const EXTRACTED_BAGGAGE = createContextKey('armorer.test.extracted-baggage');
 const recordingPropagator: TextMapPropagator = {
   inject() {},
   extract(context, carrier, getter) {
-    return context.setValue(EXTRACTED_TRACEPARENT, getter.get(carrier, 'traceparent'));
+    return context
+      .setValue(EXTRACTED_TRACEPARENT, getter.get(carrier, 'traceparent'))
+      .setValue(EXTRACTED_BAGGAGE, getter.get(carrier, 'baggage'));
   },
-  fields: () => ['traceparent', 'tracestate'],
+  fields: () => ['traceparent', 'tracestate', 'baggage'],
 };
 
 const holdStarted = { resolve: () => {} };
@@ -228,6 +231,28 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
         expect(call?.mcp?.clientInfo).toBeUndefined();
         expect(call?.mcp?.clientCapabilities).toBeUndefined();
       }
+    } finally {
+      propagation.disable();
+      await client.close();
+    }
+  });
+
+  it('extracts baggage into the trace context when the request carries no traceparent', async () => {
+    const observed: Observed[] = [];
+    const mcp = await createEndpoint(observed);
+    const { client } = await connectInProcessClient(mcp, mode);
+    propagation.setGlobalPropagator(recordingPropagator);
+    try {
+      await client.callTool({
+        name: 'sum',
+        arguments: { a: 1, b: 1 },
+        _meta: { baggage: 'tenant=armorer' },
+      });
+      const [call] = observed;
+      expect(call?.mcp?.trace).toEqual({ baggage: 'tenant=armorer' });
+      expect((call?.traceContext as Context | undefined)?.getValue(EXTRACTED_BAGGAGE)).toBe(
+        'tenant=armorer',
+      );
     } finally {
       propagation.disable();
       await client.close();

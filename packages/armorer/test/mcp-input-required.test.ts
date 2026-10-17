@@ -12,6 +12,7 @@ import {
   type CreateMCPOptions,
   type MCPServer,
 } from '../src/integrations/mcp';
+import { fromElicitResult } from '../src/integrations/mcp/elicitation';
 import { fromMcpClientTools } from '../src/integrations/mcp/oauth';
 import type { ToolElicitationRequest, ToolElicitationResult } from '../src/is-tool';
 import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support';
@@ -275,5 +276,41 @@ describe('MCP elicitation on the stateless 2025-11-25 lane', () => {
     clients.push(client);
     const result = await client.callTool({ name: 'purchase', arguments: { amount: 30 } });
     expect(result.content).toEqual([{ type: 'text', text: 'elicitation unavailable' }]);
+  });
+});
+
+describe('fromElicitResult', () => {
+  const form = (schema: Record<string, unknown>): ToolElicitationRequest => ({
+    message: 'confirm',
+    mode: 'form',
+    schema: { type: 'object', properties: schema, required: Object.keys(schema) },
+  });
+
+  it.each([
+    ['pattern', { code: { type: 'string', pattern: '^[A-Z]{3}$' } }, { code: 'abc' }],
+    ['minimum', { count: { type: 'integer', minimum: 1, maximum: 5 } }, { count: 9 }],
+    ['format', { email: { type: 'string', format: 'email' } }, { email: 'not-an-email' }],
+    ['enum', { choice: { type: 'string', enum: ['a', 'b'] } }, { choice: 'z' }],
+  ])('rejects an accepted answer that breaks a %s constraint', (_name, properties, content) => {
+    expect(() => fromElicitResult({ action: 'accept', content }, form(properties))).toThrow(
+      'did not match the requested schema',
+    );
+  });
+
+  it('accepts an answer that meets every constraint', () => {
+    const request = form({
+      code: { type: 'string', pattern: '^[A-Z]{3}$' },
+      count: { type: 'integer', minimum: 1, maximum: 5 },
+    });
+    expect(
+      fromElicitResult({ action: 'accept', content: { code: 'ABC', count: 3 } }, request),
+    ).toEqual({ action: 'accept', content: { code: 'ABC', count: 3 } });
+  });
+
+  it('fails closed on a schema it cannot enforce', () => {
+    const request = form({ code: { $ref: 'https://example.com/schema.json' } });
+    expect(() => fromElicitResult({ action: 'accept', content: { code: 'x' } }, request)).toThrow(
+      'cannot be enforced',
+    );
   });
 });
