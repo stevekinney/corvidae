@@ -575,7 +575,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * also what eventually releases a withdrawn agent's tombstone mount. A
    * running task, and a terminal one not yet older than the window, is never
    * removed. Only tasks in this process's run store are candidates, so a
-   * terminal run from before a restart is not removed. A task is also kept for as long as its run-creation binding
+   * terminal run from before a restart is not removed. The pass runs from
+   * {@link Bureau.runDurableMaintenance} and from the automatic maintenance timer,
+   * which starts only for a durable bureau or one with KV-backed audit
+   * retention; an ephemeral bureau with neither keeps its terminal tasks until
+   * something calls `runDurableMaintenance`. A task is also kept for as long as its run-creation binding
    * ({@link BureauOptions.runCreationTerminalRetentionMs}) is stored, so an
    * exact retry of the request that created it always finds its task.
    * `olderThan` must be a finite, non-negative number; otherwise

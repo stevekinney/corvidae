@@ -196,6 +196,15 @@ export interface DurableEventRecordOptions {
 /** The reserved storage-key prefix for {@link DurableEventRecordOptions.dedupeKey} markers — never a Weft-reserved prefix (see `WEFT_RESERVED_KEY_PREFIXES`). */
 const DEDUPE_MARKER_PREFIX = 'outbox-dedupe:';
 
+/**
+ * COR-1477 — the record that dedupe-marker reconciliation is owed. Written
+ * before retention deletes events and cleared once reconciliation succeeds, so a
+ * crash, or a reconciliation that throws, after `retain()` has committed is
+ * repaired by a later pass even though that pass deletes nothing. Not under
+ * {@link DEDUPE_MARKER_PREFIX}, which reconciliation scans.
+ */
+const DEDUPE_RECONCILIATION_PENDING_KEY = 'outbox-dedupe-reconciliation-pending';
+
 /** How many orphaned dedupe markers one storage batch deletes. */
 const RECONCILE_BATCH_SIZE = 100;
 
@@ -672,6 +681,14 @@ const RESERVED_DURABLE_EVENT_KINDS: ReadonlySet<string> = new Set([
   FRAMES_DROPPED_KIND,
 ]);
 
+/** Thrown by {@link DurableEventHistory.retainBefore} for a cutoff that is not a finite number. */
+export class InvalidRetentionCutoffError extends RangeError {
+  constructor(cutoffMs: number) {
+    super(`Durable event retention cutoff must be a finite number, got ${cutoffMs}.`);
+    this.name = 'InvalidRetentionCutoffError';
+  }
+}
+
 /** Thrown by {@link DurableEventHistory.record} for a reserved synthetic `kind`. */
 export class ReservedDurableEventKindError extends Error {
   readonly kind: string;
@@ -691,20 +708,17 @@ function toGapEnvelope(
   envelope: FleetEventEnvelope,
   owner: DurableEventOwner,
   emittedAtMs: number,
-  deliveredCursor: string | undefined,
+  requestedCursor: string,
 ): DurableEventEnvelope | undefined {
   const payload = envelope.payload;
   if (typeof payload !== 'object' || payload === null) return undefined;
-  const requestedCursor: unknown = Reflect.get(payload, 'requestedCursor');
   const firstRetainedSequence: unknown = Reflect.get(payload, 'firstRetainedSequence');
-  if (typeof requestedCursor !== 'string' || typeof firstRetainedSequence !== 'number') {
-    return undefined;
-  }
+  if (typeof firstRetainedSequence !== 'number') return undefined;
   const gap: DurableHistoryGapPayload = {
-    // A subscription that has been sent something continues after the last
-    // thing it was sent; one that has not continues after its `since`, which is
-    // what Weft's own `requestedCursor` carries.
-    requestedCursor: deliveredCursor ?? requestedCursor,
+    // The caller decides what the subscriber continues after. Weft's own
+    // `requestedCursor` is not used: in the live tail it is the position the
+    // feed has walked to, which counts events this subscriber was never sent.
+    requestedCursor,
     firstRetainedCursor: encodeCursor(firstRetainedSequence),
   };
   return {
@@ -1100,7 +1114,14 @@ export function createDurableEventHistory(
           let mapped: DurableEventEnvelope;
           try {
             if (envelope.kind === 'fleet:gap') {
-              const gap = toGapEnvelope(envelope, owner, runtime.clock.now(), deliveredCursor);
+              // What the subscriber continues after: the last thing it was sent,
+              // else the cursor it started from, else the start of history.
+              const gap = toGapEnvelope(
+                envelope,
+                owner,
+                runtime.clock.now(),
+                deliveredCursor ?? since ?? '-1',
+              );
               if (gap === undefined) {
                 throw new Error(
                   `Durable event history: fleet gap at sequence ${envelope.sequence} does not carry a recognized payload.`,
@@ -1359,6 +1380,10 @@ export function createDurableEventHistory(
   }
 
   async function retainBefore(cutoffMs: number): Promise<number> {
+    // Checked before the feed is touched: `NaN` compares false against every
+    // timestamp, so the scan would find no event at or after the cutoff and the
+    // floor would move past the tail, deleting everything.
+    if (!Number.isFinite(cutoffMs)) throw new InvalidRetentionCutoffError(cutoffMs);
     // Read BEFORE the scan (AB-393's rule for `scanRunOwnerIdsFrom`): an event
     // appended while the scan runs is newer than anything the scan judged, and
     // reading the tail afterwards would carry the boundary past it.
@@ -1381,10 +1406,20 @@ export function createDurableEventHistory(
     // as far as that batch, so repeat until the floor reaches the boundary.
     // Each call that finds records deletes them; one that finds none sets the
     // floor to the boundary, so the loop always terminates.
+    if ((await feed.snapshotRetentionFloor()) < beforeSequence) {
+      // Owed before anything is deleted, so no failure after `retain()` commits
+      // can leave the markers of the removed events behind for good.
+      await storage.put(DEDUPE_RECONCILIATION_PENDING_KEY, encode(true));
+    }
     while ((await feed.snapshotRetentionFloor()) < beforeSequence) {
       deleted += await feed.retain({ beforeSequence });
     }
-    if (deleted > 0) await reconcileDedupeMarkers();
+    // Also reached by a pass that deleted nothing: the record may be the one an
+    // earlier pass left when it crashed or its reconciliation threw.
+    if ((await storage.get(DEDUPE_RECONCILIATION_PENDING_KEY)) !== null) {
+      await reconcileDedupeMarkers();
+      await storage.delete(DEDUPE_RECONCILIATION_PENDING_KEY);
+    }
     return deleted;
   }
 

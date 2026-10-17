@@ -305,6 +305,28 @@ describe('taskRetention', () => {
     });
   });
 
+  it('deletes an errored task once it is older than the window, so retention does not stop at run.error', async () => {
+    const failing: GenerateFunction = async () => {
+      throw new Error('model unavailable');
+    };
+    await withBureau(
+      async ({ bureau, at }) => {
+        const created = await bureau.createRun({ message: 'fails', principal: 'alice' });
+        expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'error')).toBe(true);
+
+        // `run.error` is followed by `run.completed`, which closes the run and
+        // starts its window; poll the passes until it has and the run goes.
+        at(2 * DAY_MS);
+        for (let attempt = 0; attempt < 400 && bureau.getRun(created.id) !== undefined; attempt++) {
+          await bureau.runDurableMaintenance();
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        expect(bureau.getRun(created.id)).toBeUndefined();
+      },
+      { generate: failing, taskRetention: { olderThan: DAY_MS } },
+    );
+  });
+
   it('never deletes a task that has not reached a terminal status', async () => {
     const gate = Promise.withResolvers<void>();
     const hold = { on: false };

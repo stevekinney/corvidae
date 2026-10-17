@@ -43,6 +43,7 @@ import {
   DEFAULT_PAGE_LIMIT,
   DURABLE_HISTORY_GAP_KIND,
   type DurableEventHistory,
+  InvalidRetentionCutoffError,
   ReservedDurableEventKindError,
 } from './durable-event-history';
 import { FRAMES_DROPPED_KIND } from './frames-dropped';
@@ -2094,6 +2095,39 @@ describe('createDurableEventHistory', () => {
       await writer.dispose();
     });
 
+    it('names the since a subscription started from when it has been sent nothing and the floor overtakes it in the live tail (COR-1477)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const writer = createDurableEventHistory(storage, runtime);
+      const mine = { kind: 'run' as const, id: 'mine' };
+      const other = { kind: 'run' as const, id: 'other' };
+      for (let index = 0; index < 10; index += 1) {
+        await writer.record(other, 'step', {}, { emittedAtMs: index });
+      }
+
+      const reader = createDurableEventHistory(storage, runtime);
+      const collector = createCollector();
+      const subscription = reader.subscribeEventHistory(mine, collector.push, { since: '2' });
+      // Its replay walks to sequence 9 and delivers nothing: it is in the live tail.
+      await Promise.resolve();
+      for (let index = 10; index < 20; index += 1) {
+        await writer.record(other, 'step', {}, { emittedAtMs: index });
+      }
+      // The floor passes the tail the subscription has walked.
+      await writer.retainBefore(1_000);
+
+      await collector.waitForCount(1);
+      expect(collector.events.map((event) => event.kind)).toEqual([DURABLE_HISTORY_GAP_KIND]);
+      expect(collector.events[0]?.payload).toEqual({
+        requestedCursor: '2',
+        firstRetainedCursor: '20',
+      });
+
+      subscription.unsubscribe();
+      await reader.dispose();
+      await writer.dispose();
+    });
+
     it('delivers no gap event to an idle subscription drained to the tail when retain() advances the floor (COR-1477)', async () => {
       const storage = await createMemoryStorage();
       const runtime = createManualRuntimeServices();
@@ -2227,6 +2261,64 @@ describe('createDurableEventHistory', () => {
 
       await history.dispose();
     });
+
+    it('reconciles the markers on a later pass when the pass that removed their events failed before reconciling (COR-1477)', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const writer = createDurableEventHistory(storage, runtime);
+      const owner = { kind: 'session' as const, id: 'session-1' };
+      await writer.record(owner, 'session.saved', {}, { dedupeKey: '1', emittedAtMs: 100 });
+      await writer.record(owner, 'session.saved', {}, { dedupeKey: '2', emittedAtMs: 5_000 });
+
+      // The first scan of the markers fails: `retain()` has already committed.
+      let failed = false;
+      const flaky = new Proxy(storage, {
+        get(target, property, receiver) {
+          if (property === 'scan') {
+            return (prefix: string, options?: Parameters<Storage['scan']>[1]) => {
+              if (!failed && prefix.startsWith('outbox-dedupe:')) {
+                failed = true;
+                throw new Error('storage unavailable');
+              }
+              return target.scan(prefix, options);
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      const maintenance = createDurableEventHistory(flaky, runtime);
+
+      const failure = await rejectionOf(maintenance.retainBefore(1_000));
+      expect(failure).toMatchObject({ message: 'storage unavailable' });
+      // The event is gone and its marker is orphaned.
+      expect(await writer.wasRecorded(owner, 'session.saved', '1')).toBe(true);
+
+      // The next pass has nothing left to delete, and still reconciles.
+      expect(await maintenance.retainBefore(1_000)).toBe(0);
+      expect(await writer.wasRecorded(owner, 'session.saved', '1')).toBe(false);
+      expect(await writer.wasRecorded(owner, 'session.saved', '2')).toBe(true);
+
+      await maintenance.dispose();
+      await writer.dispose();
+    });
+
+    it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+      'refuses the non-finite cutoff %p before touching the feed',
+      async (cutoff) => {
+        const storage = await createMemoryStorage();
+        const history = createDurableEventHistory(storage, createManualRuntimeServices());
+        const owner = { kind: 'run' as const, id: 'run-1' };
+        await history.record(owner, 'a', {}, { emittedAtMs: 100 });
+
+        expect(await rejectionOf(history.retainBefore(cutoff))).toBeInstanceOf(
+          InvalidRetentionCutoffError,
+        );
+        const page = await history.page(owner);
+        expect('events' in page && page.events.map((event) => event.kind)).toEqual(['a']);
+        await history.dispose();
+      },
+    );
 
     it('moves the floor past the tail when every retained event is older than the cutoff', async () => {
       const storage = await createMemoryStorage();
