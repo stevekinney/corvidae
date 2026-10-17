@@ -91,15 +91,17 @@ function convertMessage(message: Message): AGUIMessage[] {
   const metadata = toAGUIMetadata(message);
   switch (message.role) {
     case 'system':
-    case 'developer':
+    case 'developer': {
+      const { text, metadata: extra } = toAGUIText(message.content, message.role);
       return [
         {
           id: message.id,
           role: message.role,
-          content: toAGUIText(message.content, message.role),
-          ...metadata,
+          content: text,
+          ...mergeMetadata(metadata.metadata, extra),
         },
       ];
+    }
 
     case 'user':
       return [
@@ -150,12 +152,12 @@ function convertAssistantMessage(message: Message): AGUIMessage[] {
     }
   }
 
-  const content = toAGUIText(text, 'assistant');
+  const { text: content, metadata: extra } = toAGUIText(text, 'assistant');
   const assistant: AssistantMessage = {
     id: message.id,
     role: 'assistant',
     ...(content.length > 0 ? { content } : {}),
-    ...toAGUIMetadata(message),
+    ...mergeMetadata(toAGUIMetadata(message).metadata, extra),
   };
   return [...reasoning, assistant];
 }
@@ -173,6 +175,14 @@ function toAGUIToolCall(message: Message, toolCall: Readonly<MessageToolCall>): 
     },
     ...toAGUIMetadata(message),
   };
+}
+
+function mergeMetadata(
+  metadata: Record<string, unknown> | undefined,
+  extra: Record<string, unknown>,
+): { metadata?: Record<string, unknown> } {
+  const merged = { ...metadata, ...extra };
+  return Object.keys(merged).length > 0 ? { metadata: merged } : {};
 }
 
 function toAGUIMetadata(message: Message): { metadata?: Record<string, unknown> } {

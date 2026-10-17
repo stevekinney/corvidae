@@ -1,5 +1,10 @@
 import type { ContentPart, PartSource } from '@ag-ui/core';
-import type { DocumentContent, ImageContent, MultiModalContent } from '../../multi-modal';
+import type {
+  DocumentContent,
+  ImageContent,
+  MultiModalContent,
+  TextContent,
+} from '../../multi-modal';
 import { toJSONValue } from '../shared';
 import { unsupportedAGUIContent } from './errors';
 
@@ -8,16 +13,27 @@ const UNNAMED_DOCUMENT_NAME = 'document';
 const OCTET_STREAM_MEDIA_TYPE = 'application/octet-stream';
 
 /**
- * Joins the text parts of content into the plain string an AG-UI message
- * carries. Any other part throws, because a text-only AG-UI message cannot hold
- * it: that is an `AGUIMappingError` naming the part rather than a silent drop.
+ * Where a text-only AG-UI message (assistant, system, developer) keeps the text
+ * parts it was written from, whenever one of them carries citations. The
+ * message's own `content` is a plain string, so the parts and their citations
+ * would otherwise be lost; import trusts the entry only if its parts join to
+ * exactly the message's text.
+ */
+export const TEXT_PARTS_METADATA_KEY = 'conversationalist:textParts';
+
+/**
+ * Joins the text parts of content into the plain string a text-only AG-UI
+ * message carries, and returns the metadata entry that keeps the parts when any
+ * of them is cited. Any other part throws, because a text-only AG-UI message
+ * cannot hold it: that is an `AGUIMappingError` naming the part rather than a
+ * silent drop.
  */
 export function toAGUIText(
   content: string | ReadonlyArray<MultiModalContent>,
   role: string,
-): string {
-  if (typeof content === 'string') return content;
-  const texts: string[] = [];
+): { text: string; metadata: Record<string, unknown> } {
+  if (typeof content === 'string') return { text: content, metadata: {} };
+  const parts: TextContent[] = [];
   for (const part of content) {
     if (part.type !== 'text') {
       throw unsupportedAGUIContent(
@@ -25,15 +41,54 @@ export function toAGUIText(
         `${role} messages carry only text in AG-UI, so ${part.type} content has no representation.`,
       );
     }
-    if (part.citations !== undefined) {
-      throw unsupportedAGUIContent(
-        'citations',
-        `${role} messages are plain text in AG-UI, so cited text has nowhere to keep its citations.`,
-      );
-    }
-    texts.push(part.text);
+    parts.push(part);
   }
-  return texts.join('\n\n');
+  return {
+    text: parts.map((part) => part.text).join('\n\n'),
+    metadata: parts.some((part) => part.citations !== undefined)
+      ? { [TEXT_PARTS_METADATA_KEY]: parts }
+      : {},
+  };
+}
+
+/**
+ * The text parts a text-only message was written from, when its metadata still
+ * holds them and they still say what the message says.
+ */
+export function readTextParts(
+  metadata: Record<string, unknown> | undefined,
+  text: string,
+): TextContent[] | undefined {
+  const stored = readMetadataValue(metadata, TEXT_PARTS_METADATA_KEY);
+  if (!Array.isArray(stored)) return undefined;
+  const parts: TextContent[] = [];
+  for (const entry of stored as unknown[]) {
+    const part = readTextPart(entry);
+    if (part === undefined) return undefined;
+    parts.push(part);
+  }
+  return parts.map((part) => part.text).join('\n\n') === text ? parts : undefined;
+}
+
+function readTextPart(entry: unknown): TextContent | undefined {
+  if (readMetadataValue(entry, 'type') !== 'text') return undefined;
+  const text = readMetadataString(entry, 'text');
+  if (text === undefined) return undefined;
+  const citations = readMetadataValue(entry, 'citations');
+  return {
+    type: 'text',
+    text,
+    ...(citations !== undefined ? { citations: toJSONValue(citations) } : {}),
+  };
+}
+
+/** Metadata without the entry that keeps a message's text parts. */
+export function withoutTextParts(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (metadata === undefined) return undefined;
+  const { [TEXT_PARTS_METADATA_KEY]: _parts, ...rest } = metadata;
+  return rest;
 }
 
 /**

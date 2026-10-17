@@ -4,7 +4,7 @@ import { appendMessages, createConversationHistory } from '../../conversation/in
 import type { ThinkingContent } from '../../multi-modal';
 import type { ConversationHistory as Conversation, MessageInput } from '../../types';
 import { parseJSONValue, toJSONValue } from '../shared';
-import { fromAGUIContent } from './content';
+import { fromAGUIContent, readTextParts, withoutTextParts } from './content';
 import { AGUIMappingError } from './errors';
 import { callRowId } from './ids';
 import { fromAGUIToolMessage, withoutEmbeddedResult } from './tool-result';
@@ -42,16 +42,18 @@ function toAssistantInputs(
   const inputs: IdentifiedInput[] = [];
   const text = message.content ?? '';
   const hasContentRow = pendingReasoning.length > 0 || text.length > 0;
+  const parts = readTextParts(message.metadata, text);
 
   if (hasContentRow) {
+    const textParts = parts ?? (text.length > 0 ? [{ type: 'text' as const, text }] : []);
     inputs.push({
       id: message.id,
       role: 'assistant',
       content:
-        pendingReasoning.length > 0
-          ? [...pendingReasoning, ...(text.length > 0 ? [{ type: 'text' as const, text }] : [])]
+        pendingReasoning.length > 0 || parts !== undefined
+          ? [...pendingReasoning, ...textParts]
           : text,
-      ...toMetadata(message.metadata),
+      ...toMetadata(withoutTextParts(message.metadata)),
     });
   }
 
@@ -110,8 +112,8 @@ function toMessageInputs(messages: ReadonlyArray<AGUIMessage>): IdentifiedInput[
         inputs.push({
           id: message.id,
           role: message.role,
-          content: message.content,
-          ...toMetadata(message.metadata),
+          content: readTextParts(message.metadata, message.content) ?? message.content,
+          ...toMetadata(withoutTextParts(message.metadata)),
         });
         break;
       case 'user':
@@ -189,13 +191,22 @@ export function appendAGUIMessages(
  * adds rows and never changes or removes one. This is how a
  * `MESSAGES_SNAPSHOT` of a whole thread meets a conversation that already
  * holds part of it. New rows are appended in the order the messages give them.
+ * A `tool-call` row is also skipped when the conversation already holds a call
+ * with the same `toolCall.id` under another row id, because a call is the same
+ * call whichever message a backend files it under and a conversation cannot
+ * hold one twice.
  */
 export function mergeAGUIMessages(
   conversation: Conversation,
   messages: ReadonlyArray<AGUIMessage>,
 ): Conversation {
+  const heldCalls = new Set(
+    Object.values(conversation.messages).flatMap((row) => (row.toolCall ? [row.toolCall.id] : [])),
+  );
   const inputs = toMessageInputs(messages).filter(
-    (input) => conversation.messages[input.id] === undefined,
+    (input) =>
+      conversation.messages[input.id] === undefined &&
+      (input.toolCall === undefined || !heldCalls.has(input.toolCall.id)),
   );
   if (inputs.length === 0) return conversation;
   return appendMessages(conversation, ...inputs);

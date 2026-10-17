@@ -589,6 +589,20 @@ describe('AG-UI adapter: message identity', () => {
     expect(mergeAGUIMessages(merged, [{ id: 'u2', role: 'user', content: 'again' }])).toBe(merged);
   });
 
+  it('skips a tool call the conversation already holds under another row id', () => {
+    const call = {
+      id: 'c1',
+      type: 'function' as const,
+      function: { name: 'tool', arguments: '{}' },
+    };
+    const base = fromAGUIMessages([{ id: 'c1:message', role: 'assistant', toolCalls: [call] }]);
+    const merged = mergeAGUIMessages(base, [
+      { id: 'm1', role: 'assistant', toolCalls: [call] },
+      { id: 't1', role: 'tool', toolCallId: 'c1', content: 'found' },
+    ]);
+    expect(ids(merged)).toEqual(['c1:message', 't1']);
+  });
+
   it('rejects an append of a message whose id is already there', () => {
     const base = fromAGUIMessages([{ id: 'u1', role: 'user', content: 'first' }]);
     expect(() => appendAGUIMessages(base, [{ id: 'u1', role: 'user', content: 'again' }])).toThrow(
@@ -613,16 +627,62 @@ describe('AG-UI adapter: citations', () => {
     expect(essentials(roundTrip(conversation))).toEqual(essentials(conversation));
   });
 
-  it('rejects cited text where AG-UI holds plain text only', () => {
+  it('carries cited text in a text-only message under a namespaced metadata key, both ways', () => {
+    const content = [
+      { type: 'text' as const, text: 'Quoted', citations },
+      { type: 'text' as const, text: 'Plain' },
+    ];
     for (const role of ['assistant', 'system', 'developer'] as const) {
-      const conversation = build({ role, content: [{ type: 'text', text: 'Quoted', citations }] });
-      try {
-        toAGUIMessages(conversation);
-        throw new Error('expected toAGUIMessages to throw');
-      } catch (error) {
-        expect(error).toBeInstanceOf(AGUIMappingError);
-        expect((error as AGUIMappingError).kind).toBe('citations');
-      }
+      const conversation = build({ role, content, metadata: { source: 'web' } });
+      const messages = toAGUIMessages(conversation);
+      expect(messages[0]).toMatchObject({
+        role,
+        content: 'Quoted\n\nPlain',
+        metadata: { source: 'web', 'conversationalist:textParts': content },
+      });
+      expectValidSnapshot(messages);
+      const restored = roundTrip(conversation);
+      expect(essentials(restored)).toEqual(essentials(conversation));
+      expect(getOrderedMessages(restored)[0]?.metadata).toEqual({ source: 'web' });
     }
+  });
+
+  it('keeps cited assistant text beside reasoning', () => {
+    const conversation = build({
+      role: 'assistant',
+      content: [
+        { type: 'thinking', thinking: 'hmm', signature: 'sig' },
+        { type: 'text', text: 'Quoted', citations },
+      ],
+    });
+    expect(essentials(roundTrip(conversation))).toEqual(essentials(conversation));
+  });
+
+  it('ignores stored parts that no longer say what the message says', () => {
+    const stale: AGUIMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'Edited',
+        metadata: { 'conversationalist:textParts': [{ type: 'text', text: 'Quoted', citations }] },
+      },
+      {
+        id: 'a2',
+        role: 'assistant',
+        content: 'Quoted',
+        metadata: { 'conversationalist:textParts': [{ type: 'text', text: 5 }] },
+      },
+      {
+        id: 'a3',
+        role: 'assistant',
+        content: 'Quoted',
+        metadata: { 'conversationalist:textParts': 'not parts' },
+      },
+    ];
+    expect(getOrderedMessages(fromAGUIMessages(stale)).map((message) => message.content)).toEqual([
+      'Edited',
+      'Quoted',
+      'Quoted',
+    ]);
   });
 });
