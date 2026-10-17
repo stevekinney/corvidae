@@ -81,11 +81,10 @@ const FAULT_DATA_EXTRACTORS: FaultExtractors = {
   SubscriptionOverflow: dataForSubscriptionOverflow,
   InvalidParams: dataForInvalidParams,
   MethodNotFound: (data) => ({ method: data.method }),
-  StaleRevision: (data) =>
-    filterDefined({
-      expectedRevision: data.expectedRevision,
-      currentRevision: data.currentRevision,
-    }),
+  StaleRevision: (data) => ({
+    currentRevision: data.currentRevision,
+    ...(data.expectedRevision === undefined ? {} : { expectedRevision: data.expectedRevision }),
+  }),
   RateLimited: (data) =>
     filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
   Unavailable: (data) =>

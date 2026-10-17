@@ -57,7 +57,7 @@ export const MethodNotFoundDataSchema = z.object({ method: z.string() });
 const RevisionTokenSchema = z.union([z.string(), z.number()]);
 export const StaleRevisionDataSchema = z.object({
   expectedRevision: RevisionTokenSchema.optional(),
-  currentRevision: RevisionTokenSchema.optional(),
+  currentRevision: RevisionTokenSchema,
 });
 export const RateLimitedDataSchema = z.object({ retryAfterSeconds: z.number().optional() });
 export const UnavailableDataSchema = z.object({

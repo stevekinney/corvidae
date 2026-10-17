@@ -44,7 +44,16 @@ A REST fault response carries the status from the table above and a JSON body sh
 - `weftCode`: the fine-grained `WeftErrorCode` of the error class behind the fault, present only when the fault carried one. It is never a `FaultCode`, and the body carries no coarse code at all. The HTTP status is derived from the `FaultCode` but does not identify it: several codes share a status (`NotFound` and `MethodNotFound` are both 404, `NotImplemented`, `UnsupportedTransport`, and `UnsupportedCapability` all 501, `Conflict` and `StaleRevision` both 409, `SubscriptionOverflow` and `EngineFailure` both 500).
 - `data`: an audited, deny-by-default subset of the fault's payload, omitted when no field is safe to expose. `REST_FAULT_DATA_EXTRACTORS` in `operation-fault.ts` lists the exposed fields per fault code.
 
-`RateLimited` and `Unavailable` may carry `retryAfterSeconds`. Over REST it is emitted as the `Retry-After` header, rounded up to whole seconds and omitted when absent, negative, or not finite; the four codes `StaleRevision`, `RateLimited`, `Unavailable`, and `UnsupportedCapability` disclose nothing else in the REST body. Over JSON-RPC the full payload travels in `data` (`expectedRevision` and `currentRevision` for `StaleRevision`, `retryAfterSeconds` for `RateLimited`, `reason` and `retryAfterSeconds` for `Unavailable`, `capability` for `UnsupportedCapability`).
+`StaleRevision`, `RateLimited`, `Unavailable`, and `UnsupportedCapability` carry typed `data` over REST:
+
+| `FaultCode` | REST `data` fields |
+| --- | --- |
+| `StaleRevision` | `currentRevision` (always present), `expectedRevision` (when the caller supplied one) |
+| `RateLimited` | `retryAfterSeconds` (when known) |
+| `Unavailable` | `retryAfterSeconds` (when known) |
+| `UnsupportedCapability` | `capability` |
+
+`currentRevision` is what tells a client to re-read and retry rather than treat the fault as a plain `Conflict`. `retryAfterSeconds` is also emitted as the REST `Retry-After` header, rounded up to whole seconds. A value that is absent, negative, or not finite is dropped from the header, the REST body, and the JSON-RPC payload alike. `Unavailable.reason` is the only field of these four codes sent over JSON-RPC alone; REST omits it as internal detail.
 
 `EngineFailure` is masked: its body is exactly `{ "error": "Internal server error" }` with status 500, regardless of any route override.
 

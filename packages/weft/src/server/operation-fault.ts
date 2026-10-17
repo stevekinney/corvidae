@@ -133,7 +133,9 @@ export type OperationFault =
       message: string;
       data: {
         expectedRevision?: RevisionToken | undefined;
-        currentRevision?: RevisionToken | undefined;
+        // Required: it is what tells a client to re-read and retry, rather than
+        // treat the fault as a plain `Conflict`.
+        currentRevision: RevisionToken;
       };
     }
   // A rate or quota limit was hit. `retryAfterSeconds` is emitted as the REST
@@ -282,11 +284,10 @@ const REST_FAULT_DATA_EXTRACTORS: RestFaultDataExtractors = {
   // Typed data lets a REST client tell "re-read and retry" (`StaleRevision`)
   // from a plain `Conflict`, and learn when to retry. `Unavailable.reason` is
   // internal detail and stays JSON-RPC only.
-  StaleRevision: (data) =>
-    filterDefined({
-      expectedRevision: data.expectedRevision,
-      currentRevision: data.currentRevision,
-    }),
+  StaleRevision: (data) => ({
+    currentRevision: data.currentRevision,
+    ...(data.expectedRevision === undefined ? {} : { expectedRevision: data.expectedRevision }),
+  }),
   RateLimited: (data) =>
     filterDefined({ retryAfterSeconds: usableRetryAfterSeconds(data.retryAfterSeconds) }),
   Unavailable: (data) =>

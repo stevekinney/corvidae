@@ -171,6 +171,21 @@ describe('Retry-After', () => {
     }
   });
 
+  it('always carries currentRevision, the field that tells a client to re-read and retry', async () => {
+    const fault: AddedFault = { ...staleRevision, data: { currentRevision: 9 } };
+    expect(await faultToHttpResponse(fault).json()).toEqual({
+      error: fault.message,
+      data: { currentRevision: 9 },
+    });
+    expect(faultToJsonRpcError(fault).data).toMatchObject({ currentRevision: 9 });
+    // Even a falsy revision survives.
+    const zero: AddedFault = { ...staleRevision, data: { currentRevision: 0 } };
+    expect(await faultToHttpResponse(zero).json()).toEqual({
+      error: zero.message,
+      data: { currentRevision: 0 },
+    });
+  });
+
   it('keeps an undefined delay out of the wire payloads', async () => {
     const fault: AddedFault = { ...rateLimited, data: {} };
     expect(await faultToHttpResponse(fault).json()).toEqual({ error: fault.message });
