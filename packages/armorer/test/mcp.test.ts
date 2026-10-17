@@ -127,7 +127,7 @@ const connect = async (toolbox: Parameters<typeof createMCP>[0], options = {}) =
   const server = await createMCP(toolbox, options);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'toolbox-test-client', version: '0.0.0' });
-  await server.connect(serverTransport);
+  await server.createServer().connect(serverTransport);
   await client.connect(clientTransport);
   return { client, server } satisfies ConnectedMcp;
 };
@@ -743,7 +743,7 @@ describe('createMCP', () => {
     const serverTransport = new StdioServerTransport(clientToServer, serverToClient);
     const clientTransport = new LoopbackTransport(serverToClient, clientToServer);
 
-    await server.connect(serverTransport);
+    await server.createServer().connect(serverTransport);
     await client.connect(clientTransport);
 
     try {
@@ -1339,6 +1339,8 @@ describe('createMCP', () => {
 
   it('supports single tool-like inputs in toMcpTools()', async () => {
     let receivedExecuteOptions: Record<string, unknown> | undefined;
+    let signalAfterRequestAbort: { aborted: boolean; reason: unknown } | undefined;
+    const controller = new AbortController();
     const toolLike = {
       name: 'single-tool-like',
       description: 'single tool-like input',
@@ -1346,6 +1348,10 @@ describe('createMCP', () => {
       tags: [],
       async executeWith(options: Record<string, unknown>) {
         receivedExecuteOptions = options;
+        // Cancelling the MCP request while the call is in flight must abort the execution's signal.
+        controller.abort(new Error('request cancelled'));
+        const signal = options['signal'] as AbortSignal;
+        signalAfterRequestAbort = { aborted: signal.aborted, reason: signal.reason };
         return {
           outcome: 'success',
           toolCallId: 'single-tool-like-call',
@@ -1358,7 +1364,6 @@ describe('createMCP', () => {
 
     const [mcpTool = requiredValue<never>(undefined, 'MCP tool')] = toMcpTools(toolLike);
     expect(mcpTool?.name).toBe('single-tool-like');
-    const controller = new AbortController();
     expect(
       await mcpTool.handler({}, {
         mcpReq: {
@@ -1372,9 +1377,11 @@ describe('createMCP', () => {
     });
     expect(receivedExecuteOptions).toMatchObject({
       callId: 'single-tool-like-request',
-      signal: controller.signal,
       elicit: expect.any(Function),
+      executionContext: { mcp: { era: 'legacy', requestId: 'single-tool-like-request' } },
     });
+    expect(signalAfterRequestAbort?.aborted).toBe(true);
+    expect(signalAfterRequestAbort?.reason).toEqual(new Error('request cancelled'));
   });
 
   it('returns undefined when MCP content blocks are empty', async () => {
@@ -1454,7 +1461,7 @@ describe('MCP elicitation', () => {
       { capabilities: { elicitation: {} } },
     );
     client.setRequestHandler('elicitation/create', createMcpElicitationHandler(respond));
-    await server.connect(serverTransport);
+    await server.createServer().connect(serverTransport);
     await client.connect(clientTransport);
     return { client, server };
   };
@@ -1564,7 +1571,7 @@ describe('MCP elicitation', () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     // No `capabilities: { elicitation: {} }` — this client cannot answer elicitation requests.
     const client = new Client({ name: 'no-elicitation-client', version: '0.0.0' });
-    await server.connect(serverTransport);
+    await server.createServer().connect(serverTransport);
     await client.connect(clientTransport);
 
     try {
