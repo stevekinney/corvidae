@@ -1024,6 +1024,23 @@ export function createDurableEventHistory(
     // state across paginated history reads"); that is now moot for the
     // same reason.
     for await (const envelope of feed.replay(since === undefined ? {} : { fromCursor: since })) {
+      // Retention can advance the floor between the check above and this
+      // replay. The replay then opens with its own `fleet:gap` envelope, which
+      // names no owner and would be skipped below: the reader would get an
+      // ordinary page that silently omits the history in between (COR-1477).
+      if (envelope.kind === 'fleet:gap') {
+        const payload = envelope.payload;
+        const firstRetainedSequence: unknown =
+          typeof payload === 'object' && payload !== null
+            ? Reflect.get(payload, 'firstRetainedSequence')
+            : undefined;
+        if (typeof firstRetainedSequence !== 'number') {
+          throw new Error(
+            `Durable event history: fleet gap at sequence ${envelope.sequence} does not carry a recognized payload.`,
+          );
+        }
+        return { outcome: 'gap', requestedCursor: since ?? '-1', firstRetainedSequence };
+      }
       if (envelope.workflowId !== targetWorkflowId) continue;
       // AB-313 (AC2): decode BEFORE checking `limit` — a corrupt record
       // (unparseable payload, or a recognized-shape record carrying a

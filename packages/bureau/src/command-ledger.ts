@@ -1222,7 +1222,17 @@ export function createRunCreationLedger(
     prune: () => ledger.prune(),
     async boundRunIds() {
       const claims = await ledger.listClaims();
-      return new Set(claims.map((claim) => claim.runId));
+      const runIds = new Set<string>();
+      for (const claim of claims) {
+        // A claim that names no run cannot be ruled out as the binding of a
+        // task, so the whole read fails closed rather than omitting it.
+        const runId: unknown = isRecord(claim) ? claim['runId'] : undefined;
+        if (typeof runId !== 'string' || runId.length === 0) {
+          throw new Error('A run-creation binding has no readable run id.');
+        }
+        runIds.add(runId);
+      }
+      return runIds;
     },
     async begin(input) {
       const identity = runCreationIdentity(input);

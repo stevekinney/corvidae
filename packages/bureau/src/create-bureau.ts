@@ -7385,10 +7385,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * run. The pass runs ahead of the ledger's own sweep, so a binding the sweep
    * deletes releases its task in the next pass, never the same one. An
    * unreadable binding rejects the read, and nothing is deleted this pass.
+   * Resolves how many tasks it removed.
    */
-  async function retainTasks(): Promise<void> {
+  async function retainTasks(): Promise<number> {
     const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
-    if (retention === 'forever') return;
+    if (retention === 'forever') return 0;
     const cutoff = runtimeServices.clock.now() - retention.olderThan;
     const expired: string[] = [];
     for (const [runId, runState] of store.getState().runs) {
@@ -7404,12 +7405,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const settledAt = settledActionTimestamp(runState.actions);
       if (settledAt !== undefined && settledAt < cutoff) expired.push(runId);
     }
-    if (expired.length === 0) return;
+    if (expired.length === 0) return 0;
     const bound = (await runCreationLedger?.boundRunIds()) ?? new Set<string>();
+    let removed = 0;
     for (const runId of expired) {
       if (bound.has(runId)) continue;
       try {
         await deleteRun(runId);
+        removed += 1;
       } catch (error: unknown) {
         // Gone, or running again, since it was chosen: a later pass decides.
         if (error instanceof BureauError && ['NOT_FOUND', 'CONFLICT'].includes(error.code)) {
@@ -7423,6 +7426,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
       }
     }
+    return removed;
   }
 
   /**
@@ -7961,6 +7965,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // skipping the other passes.
     let engineMaintenanceError: Error | undefined;
     let engineMaintenanceFailed = false;
+    // COR-1477 — how many terminal tasks this pass removed.
+    let tasksRemoved = 0;
 
     const pass = (async () => {
       if (hasDurableEngine) {
@@ -8020,7 +8026,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // binding is gone, so a binding the prune below deletes releases its task
       // in the next pass.
       try {
-        await retainTasks();
+        tasksRemoved = await retainTasks();
       } catch (error: unknown) {
         diagnose({
           level: 'error',
@@ -8060,8 +8066,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // engine, or just the KV-backed audit trail) — `undefined` only for the
     // fully ephemeral case (no durable engine AND no audit trail), matching
     // this function's pre-existing "nothing here" contract for a bureau
-    // with no persistence at all.
-    return hasDurableEngine || auditTrailInstance ? true : undefined;
+    // with no persistence at all. COR-1477: a pass that removed terminal tasks
+    // did maintain something, so it reports `true` even there.
+    return hasDurableEngine || auditTrailInstance || tasksRemoved > 0 ? true : undefined;
   }
 
   // AB-363 — Codex review PR #568, "Run ownership pruning in the automatic

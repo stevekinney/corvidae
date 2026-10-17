@@ -1523,6 +1523,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `undefined`. `undefined` is reserved for the fully ephemeral case —
    * no durable engine AND no KV-backed audit trail — where there is
    * nothing at all for this method to do.
+   *
+   * COR-1477: task retention is part of that surface. A pass that removed
+   * terminal tasks past `BureauOptions.taskRetention` resolves `true` even in
+   * a fully ephemeral bureau, because it did maintain something; one that
+   * removed none there still resolves `undefined`.
    */
   runDurableMaintenance(now?: number): Promise<true | undefined>;
 

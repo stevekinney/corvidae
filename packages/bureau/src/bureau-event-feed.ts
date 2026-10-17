@@ -212,6 +212,17 @@ export type BureauEventFeedOptions = {
 };
 
 export function createBureauEventFeed(options: BureauEventFeedOptions): BureauEventFeed {
+  // `NaN` or `Infinity` would make the overflow check (`length >= size`) never
+  // fire, and the live buffer of a slow subscriber would grow without bound.
+  const liveBufferSize = options.liveBufferSize;
+  if (
+    liveBufferSize !== undefined &&
+    !(Number.isSafeInteger(liveBufferSize) && liveBufferSize >= 0)
+  ) {
+    throw new RangeError(
+      `Bureau event feed liveBufferSize must be a non-negative integer, got ${liveBufferSize}.`,
+    );
+  }
   const now = options.now ?? createDefaultRuntimeServices().clock.now;
   const backend: InMemoryReplayLiveBackend<BureauEventEnvelope> =
     createInMemoryReplayLiveBackend<BureauEventEnvelope>(

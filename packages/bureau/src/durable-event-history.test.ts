@@ -2157,6 +2157,36 @@ describe('createDurableEventHistory', () => {
     });
   });
 
+  describe('page() across a retention advance (COR-1477)', () => {
+    it('reports a gap when retention advances between its floor check and its replay, not a page that skips history', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const owner = { kind: 'run' as const, id: 'run-1' };
+      const writer = createDurableEventHistory(storage, runtime);
+      for (let index = 0; index < 4; index += 1) {
+        await writer.record(owner, 'step.completed', { index }, { emittedAtMs: index });
+      }
+
+      // The second watermark read is the replay's: the first is `page()`'s own
+      // floor check, which passes because nothing has been retained yet.
+      const barrier = createReplayGateBarrier(storage, KEYS.fleetEventWatermark(), 2);
+      const reader = createDurableEventHistory(barrier.storage, runtime);
+      const pending = reader.page(owner, { since: '0' });
+      await barrier.waitUntilGated();
+      expect(await writer.retainBefore(3)).toBe(3);
+      barrier.release();
+
+      expect(await pending).toEqual({
+        outcome: 'gap',
+        requestedCursor: '0',
+        firstRetainedSequence: 3,
+      });
+
+      await reader.dispose();
+      await writer.dispose();
+    });
+  });
+
   describe('reserved kinds (COR-1477)', () => {
     it.each([DURABLE_HISTORY_GAP_KIND, FRAMES_DROPPED_KIND])(
       'refuses to record the synthesized kind %s',

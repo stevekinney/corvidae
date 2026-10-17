@@ -431,3 +431,33 @@ function holdableGenerate(hold: { on: boolean }, gate: Promise<void>): GenerateF
   const waits = finishesAfter(gate);
   return async (...input) => (hold.on ? waits(...input) : finishes(...input));
 }
+
+describe('runDurableMaintenance in a fully ephemeral bureau (COR-1477)', () => {
+  it('reports true when task retention removed runs, and undefined when it removed none', async () => {
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    const bureau = await createBureau({
+      agents: {},
+      generate: finishes,
+      toolbox: createToolbox<readonly Tool[]>([]),
+      runtime,
+      taskRetention: { olderThan: DAY_MS },
+    });
+    try {
+      const created = await bureau.createRun({ message: 'work', principal: 'alice' });
+      expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
+
+      // Inside the window: nothing to maintain.
+      expect(await bureau.runDurableMaintenance()).toBeUndefined();
+      expect(bureau.getRun(created.id)).toBeDefined();
+
+      runtime.setTime(ORIGIN_MS + DAY_MS + 1);
+      expect(await bureau.runDurableMaintenance()).toBe(true);
+      expect(bureau.getRun(created.id)).toBeUndefined();
+
+      // Nothing left to remove.
+      expect(await bureau.runDurableMaintenance()).toBeUndefined();
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
