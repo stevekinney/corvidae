@@ -244,7 +244,7 @@ Background and surface tokens for the three core elevations — page background,
 
 `--cinder-polarity-ink` is the ink that contrasts with whatever the theme paints underneath it — black in light mode, white in dark mode. The three scrollbar washes — track, thumb, and thumb-hover — are `color-mix()` values over it, so they re-polarize together when it is overridden at `:root` or in a `[data-theme]` block. The shadow tokens are not derived from it and do not follow: `--cinder-shadow-sm` and its siblings carry independently tuned per-arm alphas that one ink cannot express without changing what they paint. As with `--cinder-border-ink` below, that does not extend to an arbitrary subtree: the washes are declared at `:root`, so their `var()` references resolve there and descendants inherit the resulting values. Retinting one region means redeclaring the washes alongside the ink. It is deliberately a _complete_ color value rather than a bare `0% 0 0` component triplet: a bare triplet assigned to a color property is an invalid declaration, and CSS drops invalid declarations silently, so the mistake renders as "nothing changed" instead of as something you can see. Build your own wash with `color-mix(in oklch, var(--cinder-polarity-ink), transparent 90%)` rather than reaching for `oklch(var(--token) / 0.1)`.
 
-Form controls sit on `--cinder-surface-raised` in both themes. `--cinder-surface` is a page or panel surface and must never be used as an input fill. Interior component dividers use `--cinder-border-muted`; reserve `--cinder-border` for the component's outer edge. Forced-colors styles may restore system-color hairlines where background separation is unavailable.
+Form controls draw with the control frame (`--cinder-control-background`, which is `--cinder-surface-raised`, and `--cinder-control-border`) in both themes. `--cinder-surface` is a page or panel surface and must never be used as an input fill. Interior component dividers use `--cinder-border-muted`; reserve `--cinder-border` for the component's outer edge. Forced-colors styles may restore system-color hairlines where background separation is unavailable.
 
 ## Text colors
 
@@ -296,11 +296,13 @@ Foreground colors keyed to readability against the surface tokens. `--cinder-tex
 
 <!-- END GENERATED TOKEN TABLE -->
 
-`--cinder-toggle-track-off-resting` and `--cinder-toggle-track-off-hover-resting` are the default fill colors for an unchecked Toggle track. In light mode they alias the existing muted and default border tokens. In dark mode they lift to L≈0.45 (rest) and L≈0.52 (hover) so the track has ≥3:1 shape contrast against the dark surface. The `--cinder-toggle-track-off` consumer override hook still takes priority.
+`--cinder-toggle-track-off-resting` and `--cinder-toggle-track-off-hover-resting` are the default fill colors for an unchecked Toggle track. In light mode they alias the control tiers, `--cinder-border-control` and `--cinder-border-control-hover`, because the track is the switch's only visible shape. In dark mode they lift to L≈0.45 (rest) and L≈0.52 (hover) so the track has ≥3:1 shape contrast against the dark surface. The `--cinder-toggle-track-off` consumer override hook still takes priority.
 
 `--cinder-border-faint` is for decorative internal hairlines only. It is intentionally below the 3:1 non-text contrast floor and must not be used to define a control boundary.
 
-The three structural tiers — `--cinder-border-muted`, `--cinder-border`, and `--cinder-border-strong` — are not authored separately. Each is one alpha step over `--cinder-border-ink`: 19%, 48%, and 58% respectively, with the ink carrying the light/dark polarity so the same three percentages serve both arms. Retinting all three at once therefore means overriding one token:
+A neutral border does one of two jobs. A **structural** edge separates regions or outlines a container, and is identified by the content and surface it bounds, so it can be quiet: `--cinder-border-muted` (interior dividers), `--cinder-border` (container outer edges), and `--cinder-border-strong` (emphasized structure, and the secondary Button and button-like chips). A **control** boundary is the only visible outline of something you type into, check, or drag, so it must clear WCAG 1.4.11's 3:1: `--cinder-border-control` and `--cinder-border-control-hover`, which text-entry controls reach through the control frame. [`documentation/css-audit/translucent-border-seams.md`](./css-audit/translucent-border-seams.md) has the full rubric for choosing a tier.
+
+None of the five is authored separately. Each is one alpha step over `--cinder-border-ink`: 10%, 20%, 32%, 48%, and 58%, with the ink carrying the light/dark polarity so the same percentages serve both arms. The generator materializes every theme's copy from the one recipe, so a retune is a single edit to the base token. Retinting all five at once means overriding one token:
 
 ```css
 :root {
@@ -308,26 +310,28 @@ The three structural tiers — `--cinder-border-muted`, `--cinder-border`, and `
 }
 ```
 
-That works at `:root`, and inside a `[data-theme]` block, because those are the places the tiers themselves are declared. It does **not** reach down into an arbitrary subtree: `var()` inside a custom property is substituted where that property is _declared_, so `--cinder-border` computes against `:root`'s ink and descendants inherit the already-resolved value. Setting only the ink on a mid-tree ancestor changes nothing. To retint one branded region, redeclare the tiers alongside it:
+That works at `:root`, and on any `[data-theme]` element, because those are the places the tiers themselves are declared (the generator re-declares every derived token in each theme block, so an ink override on a themed element re-derives all five there). It does **not** reach down into an arbitrary subtree: `var()` inside a custom property is substituted where that property is _declared_, so `--cinder-border` computes against `:root`'s ink and descendants inherit the already-resolved value. Setting only the ink on a mid-tree ancestor changes nothing. To retint one branded region, redeclare the tiers alongside it:
 
 ```css
 .branded-region {
   --cinder-border-ink: oklch(50% 0.12 30);
-  --cinder-border-muted: color-mix(in oklch, var(--cinder-border-ink), transparent 81%);
-  --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 52%);
-  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 42%);
+  --cinder-border-muted: color-mix(in oklch, var(--cinder-border-ink), transparent 90%);
+  --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 80%);
+  --cinder-border-strong: color-mix(in oklch, var(--cinder-border-ink), transparent 68%);
+  --cinder-border-control: color-mix(in oklch, var(--cinder-border-ink), transparent 52%);
+  --cinder-border-control-hover: color-mix(in oklch, var(--cinder-border-ink), transparent 42%);
 }
 ```
 
 This is not new behavior — every derived token in the corpus works this way, `--cinder-accent-border` and `--cinder-surface-hover` included — but the ink makes it easy to assume otherwise.
 
-An alpha border tracks the surface underneath it, and that uniformity is the point. The dark surface ramp spans L 0.11 to 0.28, so a single opaque border used to read 4.80:1 against `surface-inset` and 3.42:1 against `surface-raised` — a 29% spread that two consecutive retunes had to re-chase by eye. The composed tiers hold every tier under a 15% spread in both arms, and `check-token-contrast.test.ts` gates that number along with the per-surface floors.
+An alpha border tracks the surface underneath it, and that uniformity is the point. The dark surface ramp spans L 0.11 to 0.28, so a single opaque border used to read 4.80:1 against `surface-inset` and 3.42:1 against `surface-raised` — a 29% spread that two consecutive retunes had to re-chase by eye. The composed tiers hold every tier under a 15% spread in both arms, and `check-token-contrast-borders.test.ts` gates that number along with the per-surface floors: both control tiers at 3:1 on all four surfaces, and every structural tier below `--cinder-border-control` so the hierarchy cannot invert.
 
 Two consequences worth knowing before you use them. A structural border mixed into another color inherits its transparency, so `color-mix(in oklch, var(--cinder-surface), var(--cinder-border-muted) 10%)` yields a slightly translucent result rather than an opaque one. And two of these borders painted on the same pixel stack their alpha — draw interior dividers as a single edge on one of the two adjacent elements, which is what the `interior-border-weight` stylelint rule already requires. [`documentation/css-audit/translucent-border-seams.md`](./css-audit/translucent-border-seams.md) audits every seam in the repository against that rule.
 
 `--cinder-border-faint` stays opaque, and so do the four hued status borders — `--cinder-status-info-border`, `--cinder-status-success-border`, `--cinder-status-warning-border`, and `--cinder-status-danger-border`. Faint answers to a different, deliberately-below-3:1 floor; a translucent status border would take its hue from whatever surface it happened to sit on, which is the opposite of what a status color is for.
 
-Two neutral borders that wear another name do follow the ink, by aliasing a tier rather than by being derived from it: `--cinder-status-neutral-border` is `--cinder-border`, and `--cinder-border-inverse`'s dark arm is `--cinder-border-strong` (its light arm is `transparent`). Both are neutral structure rather than a hue that needs protecting, so tracking the surface is the right behavior for them.
+Two neutral borders that wear another name do follow the ink, by aliasing a tier rather than by being derived from it: `--cinder-status-neutral-border` is `--cinder-border`, matching the decorative weight of the hued status borders, and `--cinder-border-inverse`'s dark arm is `--cinder-border-strong` (its light arm is `transparent`). Both are neutral structure rather than a hue that needs protecting, so tracking the surface is the right behavior for them.
 
 ## Opacity
 

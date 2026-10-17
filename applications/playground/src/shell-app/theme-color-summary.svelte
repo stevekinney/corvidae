@@ -7,10 +7,11 @@
    * from the authored value in its own space; nothing here converts or clamps the source.
    */
   import { Collapsible } from '@lostgradient/cinder';
+  import { wcagContrast } from 'culori';
   import { untrack } from 'svelte';
 
   import type { CatalogueRow } from './theme-builder-catalogue.ts';
-  import { colorsByMode, effectiveBackground } from './theme-color-editing.ts';
+  import { alphaStepsOf, colorsByMode, effectiveBackground } from './theme-color-editing.ts';
   import {
     authoredText,
     colorAlpha,
@@ -18,6 +19,7 @@
     gamutInfo,
     gamutSummary,
     spaceDefinition,
+    withAlpha,
     type DtcgColor,
   } from './theme-color-model.ts';
   import { contextId, type ThemeEnvelope } from './theme-draft-types.ts';
@@ -40,6 +42,22 @@
   const background = $derived(effectiveBackground(row, envelope, context));
   const modes = $derived(colorsByMode(envelope, row.path));
   const alpha = $derived(colorAlpha(color));
+  // Tokens composed as alpha steps over this one (for `border.ink`, the five border tiers),
+  // drawn live from the color being edited so a change previews every tier it drives.
+  const steps = $derived(
+    alphaStepsOf(envelope, row.path).map((step) => {
+      const painted = withAlpha(color, step.alpha * colorAlpha(color));
+      const composited = background === null ? null : compositeOver(painted, background.color);
+      return {
+        ...step,
+        composited,
+        ratio:
+          composited === null || background === null
+            ? null
+            : wcagContrast(composited, authoredText(background.color)),
+      };
+    }),
+  );
 
   // Dependents trace the whole theme, so they are computed only once the disclosure is open.
   let dependentsOpen = $state(false);
@@ -124,6 +142,39 @@
     </div>
   </section>
 
+  {#if steps.length > 0}
+    <section class="steps" aria-label="Tiers drawn from this color" data-testid="color-alpha-steps">
+      <h3>Tiers drawn from this color</h3>
+      <ul class="steps__list">
+        {#each steps as step (step.path)}
+          <li class="steps__item" data-testid={`alpha-step-${step.path}`}>
+            <span
+              class="steps__sample"
+              role="img"
+              aria-label={`${step.path} over ${background?.path ?? 'the page surface'}`}
+              style:background={background === null
+                ? 'transparent'
+                : authoredText(background.color)}
+            >
+              <span
+                class="steps__edge"
+                data-composited={step.composited}
+                style:border-color={step.composited ?? 'transparent'}
+              ></span>
+            </span>
+            <button type="button" class="link" onclick={() => onFollow(step.path)}
+              >{step.path}</button
+            >
+            <span class="muted">{Math.round(step.alpha * 100)}%</span>
+            {#if step.ratio !== null}
+              <span class="muted" data-testid="alpha-step-ratio">{step.ratio.toFixed(2)}:1</span>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+
   <Collapsible trigger="Dependent roles" bind:open={dependentsOpen}>
     <div data-testid="color-dependents">
       {#if dependents === null}
@@ -179,6 +230,35 @@
   .inline .swatch {
     width: 1.25rem;
     height: 1.25rem;
+  }
+  .steps h3 {
+    margin: 0 0 8px;
+    font-size: var(--cinder-text-sm);
+  }
+  .steps__list {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .steps__item {
+    display: grid;
+    grid-template-columns: 4rem minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--cinder-text-sm);
+  }
+  .steps__sample {
+    display: block;
+    padding: 6px;
+    border-radius: var(--cinder-radius-md);
+  }
+  .steps__edge {
+    display: block;
+    height: 1.25rem;
+    border: 1px solid;
+    border-radius: var(--cinder-radius-sm);
   }
   .facts {
     display: grid;
