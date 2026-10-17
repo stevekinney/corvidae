@@ -110,6 +110,80 @@ describe('createRovingToolbar', () => {
     expect(b.hasAttribute('tabindex')).toBe(false);
   });
 
+  test('a contenteditable item keeps its arrow keys', () => {
+    const { root } = mountToolbar(
+      '<button id="a">A</button><div id="e" contenteditable="true" tabindex="0">abc</div>',
+    );
+    const editor = root.querySelector<HTMLElement>('#e')!;
+    editor.focus();
+
+    keydown(editor, 'ArrowLeft');
+
+    expect(document.activeElement === editor).toBe(true);
+  });
+
+  test('an input without a text selection API keeps its arrow keys', () => {
+    const { root } = mountToolbar(
+      '<button id="a">A</button><input id="n" type="number" value="4" />',
+    );
+    const input = root.querySelector<HTMLInputElement>('#n')!;
+    input.focus();
+
+    keydown(input, 'ArrowLeft');
+
+    expect(document.activeElement === input).toBe(true);
+  });
+
+  test('an item in the first legend of a disabled fieldset stays enabled', () => {
+    const { root } = mountToolbar(
+      '<fieldset disabled><legend><button id="l">L</button></legend><button id="f">F</button></fieldset>',
+    );
+
+    const stops = Array.from(root.querySelectorAll('button')).filter((b) => b.tabIndex === 0);
+    expect(stops.map((b) => b.id)).toEqual(['l']);
+  });
+
+  test('skips controls inside an excluded or hidden ancestor', () => {
+    const { root, controller } = mountToolbar(
+      '<div data-cinder-toolbar-exclude><button id="x">X</button></div><button id="b">B</button>',
+    );
+
+    expect(controller.firstEnabledItem()?.id).toBe('b');
+    expect(root.querySelector<HTMLElement>('#x')!.tabIndex).not.toBe(-1);
+  });
+
+  test('ignores the cross-axis arrow keys for each orientation', () => {
+    const { root } = mountToolbar('<button id="a">A</button><button id="b">B</button>');
+    const a = root.querySelector<HTMLElement>('#a')!;
+    a.focus();
+    keydown(a, 'ArrowDown');
+    expect(document.activeElement === a).toBe(true);
+
+    const vertical = document.createElement('div');
+    vertical.innerHTML = '<button id="v1">V1</button><button id="v2">V2</button>';
+    document.body.append(vertical);
+    const verticalController = createRovingToolbar({
+      root: vertical,
+      orientation: () => 'vertical',
+    });
+    verticalController.sync();
+    verticalController.attach();
+    const first = vertical.querySelector<HTMLElement>('#v1')!;
+    first.focus();
+    keydown(first, 'ArrowRight');
+    expect(document.activeElement === first).toBe(true);
+  });
+
+  test('reports the item holding the Tab stop', () => {
+    const { root, controller } = mountToolbar('<button id="a">A</button><button id="b">B</button>');
+    const a = root.querySelector<HTMLElement>('#a')!;
+    a.focus();
+
+    keydown(a, 'End');
+
+    expect(controller.activeItem()?.id).toBe('b');
+  });
+
   test('observes the attributes that change focusability', () => {
     expect(ROVING_TOOLBAR_MUTATION_OPTIONS.attributeFilter).toEqual(
       expect.arrayContaining(['disabled', 'aria-disabled', 'hidden', 'inert', 'aria-hidden']),
