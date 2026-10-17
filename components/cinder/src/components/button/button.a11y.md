@@ -28,7 +28,7 @@ When `iconOnly={true}`, `children` is also wrapped in an `aria-hidden` span and 
 Button sizes intentionally follow a compact visual ladder:
 
 - `xs`: 24px
-- `sm`: 28px
+- `sm`: 32px, the shared `--cinder-control-height-sm`, so it lines up with toolbar SegmentedControl and Chip
 - `md` (default): 32px
 - `lg`: 36px
 - `xl`: 40px

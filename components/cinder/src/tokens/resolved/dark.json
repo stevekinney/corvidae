@@ -2972,8 +2972,8 @@
     "$type": "dimension"
   },
   "button.height.sm": {
-    "$value": { "value": 1.75, "unit": "rem" },
-    "$description": "Small button height (28px).",
+    "$value": { "value": 2, "unit": "rem" },
+    "$description": "Small button height: `control.height.sm` (32px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-button-height-sm",
@@ -3112,8 +3112,8 @@
     "$type": "dimension"
   },
   "button.padding.y.sm": {
-    "$value": { "value": 0.25, "unit": "rem" },
-    "$description": "Small button vertical padding.",
+    "$value": { "value": 0.375, "unit": "rem" },
+    "$description": "Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-button-padding-y-sm",

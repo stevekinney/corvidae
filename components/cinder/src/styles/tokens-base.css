@@ -496,8 +496,8 @@
   --cinder-button-radius-xl: var(--cinder-radius-md);
   /* Extra-small button height (24px), aliasing the shared control-height tier. */
   --cinder-button-height-xs: var(--cinder-control-height-xs);
-  /* Small button height (28px). */
-  --cinder-button-height-sm: 1.75rem;
+  /* Small button height: `control.height.sm` (32px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. */
+  --cinder-button-height-sm: var(--cinder-control-height-sm);
   /* Medium button height (32px). */
   --cinder-button-height-md: 2rem;
   /* Large button height (36px). */
@@ -516,8 +516,8 @@
   --cinder-button-padding-x-xl: var(--cinder-space-3-5);
   /* Extra-small button vertical padding. */
   --cinder-button-padding-y-xs: var(--cinder-space-0-5);
-  /* Small button vertical padding. */
-  --cinder-button-padding-y-sm: var(--cinder-space-1);
+  /* Small button vertical padding: the same as `md`, since the two share a 32px height and the label centers within it. */
+  --cinder-button-padding-y-sm: var(--cinder-space-1-5);
   /* Medium button vertical padding. */
   --cinder-button-padding-y-md: var(--cinder-space-1-5);
   /* Large button vertical padding. */
