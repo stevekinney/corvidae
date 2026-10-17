@@ -139,7 +139,7 @@ describe('setupServiceWorker', () => {
   });
 
   it('disposes the engine it created when registration fails, but not a caller-supplied one', async () => {
-    const dispose = spyOn(Engine.prototype, Symbol.dispose);
+    const dispose = spyOn(Engine.prototype, Symbol.asyncDispose);
     try {
       await withFakeSelf(createFakeServiceWorkerScope(), async () => {
         await throwingRejectionOf(
@@ -169,6 +169,35 @@ describe('setupServiceWorker', () => {
     } finally {
       dispose.mockRestore();
     }
+  });
+
+  it('keeps the registration error when register leaves a workflow refresh in flight', async () => {
+    const fetchReleased = Promise.withResolvers<void>();
+    const source = {
+      fetch: async () => {
+        await fetchReleased.promise;
+        throw new Error('refresh source offline');
+      },
+      warm: async () => {
+        throw new Error('never warmed');
+      },
+      validateRuntime: () => {},
+    };
+    await withFakeSelf(createFakeServiceWorkerScope(), async () => {
+      const setup = setupServiceWorker({
+        storage: new MemoryStorage(),
+        register: async (engine) => {
+          await engine.workflows.registerRefreshSource('checkout', source);
+          void engine.workflows.refresh('checkout').catch(() => {});
+          throw new Error('register exploded');
+        },
+      });
+      // The refresh is in flight when the failed setup disposes its engine; release it so the
+      // asynchronous disposal can finish.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      fetchReleased.resolve();
+      expect(await throwingRejectionOf(setup)).toThrow('register exploded');
+    });
   });
 
   it('rethrows registration failures and rejects subsequent calls', async () => {

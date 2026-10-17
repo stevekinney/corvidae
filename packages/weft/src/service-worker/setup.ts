@@ -372,13 +372,21 @@ export function setupServiceWorker(
       setupRegistry.set(scope, { status: 'attached', result });
       return result;
     },
-    (error: unknown) => {
+    async (error: unknown) => {
       const wrapped = error instanceof Error ? error : new Error(String(error));
       setupRegistry.set(scope, { status: 'failed', error: wrapped });
       // The failed setup never hands its engine to anyone, and the fallback listeners answer
       // without it, so an engine created here would otherwise keep its cleanup interval alive for
-      // the life of the worker. A caller-supplied engine stays the caller's to dispose.
-      if (options.engine === undefined) engine[Symbol.dispose]();
+      // the life of the worker. A caller-supplied engine stays the caller's to dispose. Disposal is
+      // asynchronous because `register` may leave work in flight (a workflow refresh refuses
+      // synchronous disposal), and a cleanup failure must never replace the registration error.
+      if (options.engine === undefined) {
+        try {
+          await engine[Symbol.asyncDispose]();
+        } catch {
+          // The registration error is the one the caller needs; a failed cleanup must not mask it.
+        }
+      }
       throw wrapped;
     },
   );

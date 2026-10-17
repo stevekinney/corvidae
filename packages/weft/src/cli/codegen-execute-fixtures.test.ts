@@ -471,7 +471,7 @@ describe('executeCodegen end-to-end', () => {
   });
 
   it('keeps the tsc typecheck fixture (weft.generated.d.ts) in sync with expected.d.txt', async () => {
-    // `codegen-typecheck.test.ts` feeds `weft.generated.d.ts` to a real `tsc`
+    // `codegen-typecheck.slow.test.ts` feeds `weft.generated.d.ts` to a real `tsc`
     // subprocess as a structural proof that the generated `.d.ts` actually
     // compiles (in particular the alias-hoisting this batch adds). That file
     // is hand-maintained, independent of this test's `executeCodegen` ->
