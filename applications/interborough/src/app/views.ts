@@ -40,14 +40,30 @@ export type ViewDefinition = {
    * engine's workers page with its task ledger and deployments, has no empty state.
    */
   readonly canBeEmpty: boolean;
+  /**
+   * Whether the location is the view's way of creating its first item, such as the start wizard
+   * on `/runs?view=start`. An empty view offers a link there, so the frame shows the view's own
+   * content for that location instead of the empty state it just came from.
+   */
+  readonly creating?: (search: URLSearchParams) => boolean;
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   chat: { scopes: [], placeholder: true, canBeEmpty: true },
   agents: { scopes: [], placeholder: true, canBeEmpty: true },
   workflows: { scopes: ['workflows:read'], placeholder: true, canBeEmpty: true },
-  runs: { scopes: ['workflows:read'], placeholder: false, canBeEmpty: true },
-  schedules: { scopes: ['schedules:read'], placeholder: false, canBeEmpty: true },
+  runs: {
+    scopes: ['workflows:read'],
+    placeholder: false,
+    canBeEmpty: true,
+    creating: (search) => search.get('view') === 'start',
+  },
+  schedules: {
+    scopes: ['schedules:read'],
+    placeholder: false,
+    canBeEmpty: true,
+    creating: (search) => search.get('create') === '1',
+  },
   inbox: { scopes: ['reviews:read'], placeholder: false, canBeEmpty: true },
   workers: { scopes: ['system:read'], placeholder: false, canBeEmpty: false },
   storage: { scopes: ['storage:admin'], placeholder: false, canBeEmpty: false },

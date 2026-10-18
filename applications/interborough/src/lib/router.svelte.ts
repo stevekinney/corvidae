@@ -10,8 +10,7 @@
  * `window` is read lazily, on the router's first use, never at module
  * evaluation: the router is a module-scope singleton, and a server render
  * or a Node consumer that imports the entry without a DOM must not throw just
- * because this module was evaluated (`documentation/weft-ui-public-surface.md`,
- * open question 4).
+ * because this module was evaluated.
  */
 import { routes, type RouteDefinition } from '../app/routes.ts';
 
@@ -97,7 +96,7 @@ export function matchRoute(
 
 /**
  * The type of {@link router}. Not exported by name: it is public only as the
- * structure `router` exposes (`documentation/weft-ui-public-surface.md`).
+ * structure `router` exposes.
  */
 class DashboardRouter {
   // `undefined` until the router itself observes a location change

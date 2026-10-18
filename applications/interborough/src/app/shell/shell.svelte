@@ -4,10 +4,8 @@
    * final (`../app.svelte` owns the bootstrap/API-key-entry sequence ahead
    * of this). `provideClient()`/`providePrincipalStore()` run here, during
    * this component's own initialization — Svelte only allows `setContext`
-   * during init, which is why the API-key rebuild flow lives one level up.
-   * The app remounts `<Shell>` when the active credential changes (plan §6,
-   * T1.1's `ApiKeyEntry` doc: "the shell owns rebuilding the client … and
-   * re-providing context").
+   * during init, which is why the boot sequence that builds the client lives
+   * one level up in `../app.svelte`.
    *
    * Keyboard (plan §13 T1.6's "⌘K opens palette, Esc closes overlays"):
    * ⌘K is registered by `./command-palette.svelte`; Esc-closes-overlays is

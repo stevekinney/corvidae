@@ -50,30 +50,41 @@ describe('the Interborough host', () => {
     bungalow.close();
   });
 
-  it('keeps tasks and the Bureau identity across a restart, and seeds only once', async () => {
+  it('keeps its runs, its sessions, and its seeded schedule across a restart', async () => {
     const home = await createHome();
 
     const first = await start(home);
-    const bureauId = first.bureau.id;
     const run = first.bureau.run('assistant', 'Remember this run.');
     await run.result();
-    const before = await first.bureau.listDurableRuns();
-    expect(before?.total).toBeGreaterThan(0);
+    const runsBefore = await first.bureau.listDurableRuns();
+    const runIds = runsBefore?.items.map((item) => item.id) ?? [];
+    expect(runIds.length).toBeGreaterThan(0);
     const schedulesBefore = await first.bureau.listSchedules();
+    const scheduleIds = schedulesBefore?.items.map((schedule) => schedule.id) ?? [];
+    expect(scheduleIds).toHaveLength(1);
     await stop(first);
 
     const second = await start(home);
-    expect(second.bureau.id).toBe(bureauId);
+    // Only the database explains these: the host rebuilt the agents, and kept nothing in memory.
     expect(second.bureau.id).toBe(second.deploymentId);
-    const after = await second.bureau.listDurableRuns();
-    expect(after?.items.map((item) => item.id)).toEqual(
-      expect.arrayContaining(before?.items.map((item) => item.id) ?? []),
-    );
-    for (const name of ['assistant', 'tool-runner', 'request-human-input', 'internal']) {
-      expect(second.bureau.agents.has(name)).toBe(true);
+    const runsAfter = await second.bureau.listDurableRuns();
+    expect(runsAfter?.items.map((item) => item.id)).toEqual(expect.arrayContaining(runIds));
+    for (const id of runIds) {
+      const state = await second.bureau.getDurableRun(id);
+      expect(state?.status, id).toBe('completed');
     }
     const schedulesAfter = await second.bureau.listSchedules();
-    expect(schedulesAfter?.total).toBe(schedulesBefore?.total);
-    expect(schedulesBefore?.total).toBe(1);
+    expect(schedulesAfter?.items.map((schedule) => schedule.id)).toEqual(scheduleIds);
+  });
+
+  it('keeps one identity: the Bureau’s id is Bungalow’s deployment id, and survives', async () => {
+    const home = await createHome();
+    const first = await start(home);
+    const identity = first.deploymentId;
+    expect(first.bureau.id).toBe(identity);
+    await stop(first);
+    const second = await start(home);
+    expect(second.deploymentId).toBe(identity);
+    expect(second.bureau.id).toBe(identity);
   });
 });

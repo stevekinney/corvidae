@@ -135,6 +135,54 @@ describe('the seeded schedule and goal', () => {
     expect(secondGoals.map((goal) => goal.goalRunId)).toEqual([SEEDED_GOAL_RUN_IDENTIFIER]);
   });
 
+  test('an edited seeded schedule is still the seeded one after a restart', async () => {
+    const home = await createHome();
+    const first = await start(home);
+    const listing = await first.bureau.listSchedules();
+    const [original] = listing?.items ?? [];
+    if (original === undefined) throw new Error('Expected the seeded schedule.');
+    const response = await fetch(new URL('/jsonrpc', first.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'weft.schedules.update',
+        params: {
+          scheduleId: original.id,
+          cronExpression: '0 8 * * *',
+          description: 'Morning summary',
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+    await first.close();
+    hosts.splice(hosts.indexOf(first), 1);
+
+    const second = await start(home);
+    const afterListing = await second.bureau.listSchedules();
+    const after = afterListing?.items ?? [];
+    expect(after.map((schedule) => [schedule.id, schedule.description])).toEqual([
+      [original.id, 'Morning summary'],
+    ]);
+  });
+
+  test('a seeded schedule an operator deleted stays deleted', async () => {
+    const home = await createHome();
+    const first = await start(home);
+    const listing = await first.bureau.listSchedules();
+    const [original] = listing?.items ?? [];
+    if (original === undefined) throw new Error('Expected the seeded schedule.');
+    await first.bureau.cancelSchedule(original.id);
+    await first.close();
+    hosts.splice(hosts.indexOf(first), 1);
+
+    const second = await start(home);
+    const afterListing = await second.bureau.listSchedules();
+    const after = afterListing?.items ?? [];
+    expect(after.filter((schedule) => schedule.status !== 'cancelled')).toEqual([]);
+  });
+
   test('the goal passes its validator', async () => {
     const host = await start();
     const deadline = Date.now() + 5_000;

@@ -2,7 +2,7 @@
   /**
    * ⌘K search skeleton (plan §13 T1.6): ID-prefix search across workflows /
    * schedules / workers / reviews via each domain's list operation,
-   * navigating to the matching record on select. "Skeleton" per the task
+   * navigating to the selected record (a run, a schedule, a worker) on select; a review has no page of its own, so it opens the inbox. "Skeleton" per the task
    * brief — this is a jump-to-record finder, not the full command surface
    * (actions, recent items) a later pass may add.
    *
@@ -21,7 +21,7 @@
 
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
-  import { searchConsole } from './command-palette-search.ts';
+  import { schedulePath, searchConsole, workerPath } from './command-palette-search.ts';
 
   interface CommandPaletteLauncherProps {
     open: boolean;
@@ -87,8 +87,8 @@
   {#snippet items()}
     {#if workflowResults.length > 0}
       <li role="presentation" class="weft-command-group">
-        <span class="weft-command-group__label">Workflows</span>
-        <ul role="group" aria-label="Workflows">
+        <span class="weft-command-group__label">Runs</span>
+        <ul role="group" aria-label="Runs">
           {#each workflowResults as workflow (workflow.id)}
             <CommandItem
               value={`workflow-${workflow.id}`}
@@ -109,7 +109,7 @@
             <CommandItem
               value={`schedule-${schedule.id}`}
               description={schedule.workflowType}
-              onSelect={() => goTo('/schedules')}
+              onSelect={() => goTo(schedulePath(schedule.id))}
             >
               {schedule.id}
             </CommandItem>
@@ -125,7 +125,7 @@
             <CommandItem
               value={`worker-${worker.id}`}
               description={worker.queue}
-              onSelect={() => goTo('/workers')}
+              onSelect={() => goTo(workerPath(worker.id))}
             >
               {worker.id}
             </CommandItem>
@@ -154,7 +154,7 @@
     <EmptyState
       title={query.length === 0 ? 'Search the console' : 'No matches'}
       description={query.length === 0
-        ? 'Type an id or name to jump to a workflow, schedule, worker, or review.'
+        ? 'Type an id or name to jump to a run, schedule, worker, or review.'
         : `Nothing matched "${query}".`}
     />
   {/snippet}

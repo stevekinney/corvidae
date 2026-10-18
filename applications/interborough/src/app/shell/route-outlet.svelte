@@ -9,15 +9,19 @@
    */
   import type { Component } from 'svelte';
 
-  import { Skeleton, EmptyState } from '@lostgradient/cinder';
+  import { Button, Skeleton, EmptyState } from '@lostgradient/cinder';
+  import { CircleAlert } from '@lucide/svelte';
 
   import { router } from '../../lib/router.svelte.ts';
+  import { ROUTE_LOAD_FAILURE_COPY } from '../copy.ts';
   import FaultBoundary from '../fault-boundary.svelte';
   import ViewFrame from '../view-frame.svelte';
 
   let activeComponent = $state<Component | null>(null);
   let loading = $state(false);
   let notFound = $state(false);
+  /** Set when the matched route's code could not be fetched. */
+  let loadFailed = $state(false);
 
   $effect(() => {
     const match = router.current;
@@ -26,11 +30,13 @@
     if (!definition) {
       activeComponent = null;
       loading = false;
+      loadFailed = false;
       notFound = true;
       return;
     }
 
     notFound = false;
+    loadFailed = false;
     loading = true;
     let cancelled = false;
     definition
@@ -43,7 +49,10 @@
       })
       .catch(() => {
         if (cancelled) return undefined;
+        // The previous route's component must not stay on screen under the new address.
+        activeComponent = null;
         loading = false;
+        loadFailed = true;
         return undefined;
       });
 
@@ -60,6 +69,21 @@
         title="Page not found"
         description="This path isn't one of the console's routes. Use the sidebar or Cmd+K to navigate."
       />
+    {:else if loadFailed}
+      <div class="weft-view" data-state="error" data-view="route">
+        <EmptyState
+          title={ROUTE_LOAD_FAILURE_COPY.title}
+          description={ROUTE_LOAD_FAILURE_COPY.description}
+          headingLevel={1}
+        >
+          {#snippet icon()}<CircleAlert size={28} aria-hidden="true" />{/snippet}
+          {#snippet action()}
+            <Button variant="secondary" onclick={() => window.location.reload()}>
+              {ROUTE_LOAD_FAILURE_COPY.action}
+            </Button>
+          {/snippet}
+        </EmptyState>
+      </div>
     {:else if loading || !activeComponent}
       <div class="weft-shell-outlet__skeleton" role="status" aria-busy="true" aria-label="Loading">
         <Skeleton height="1.5rem" width="40%" />

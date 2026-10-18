@@ -88,3 +88,26 @@ test('the old paths are gone', async ({ request }) => {
   const reviews = await request.get('/reviews');
   expect(reviews.status()).toBe(404);
 });
+
+test('the System view loads its Discovery documents through the relay', async ({ page }) => {
+  const documents = [
+    page.waitForResponse((response) => new URL(response.url()).pathname === '/openapi.json'),
+    page.waitForResponse((response) => new URL(response.url()).pathname === '/openrpc.json'),
+  ];
+  await page.goto('/system?tab=discovery');
+  for (const response of await Promise.all(documents)) expect(response.status()).toBe(200);
+
+  const panel = page.getByRole('tabpanel');
+  await expect(panel.getByText('Loading OpenAPI document')).toHaveCount(0);
+  await expect(panel.getByRole('table').first()).toBeVisible();
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+
+  // The MCP sub-view reads `/.well-known/mcp.json`, which the engine answers only for its own host.
+  const mcp = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/.well-known/mcp.json',
+  );
+  await panel.getByRole('radio', { name: 'MCP' }).click();
+  const mcpResponse = await mcp;
+  expect(mcpResponse.status()).toBe(200);
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+});

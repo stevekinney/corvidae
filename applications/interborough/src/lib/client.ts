@@ -64,25 +64,6 @@ export function createClient(
   });
 }
 
-/**
- * Rebuilds the client with an operator-entered API key layered onto the base
- * runtime config (plan §4, §6 — the `reject`-mode API-key entry flow). The
- * key lives only in the returned `HttpClient`'s in-memory `Authorization`
- * header; this function never writes it anywhere persistent (no
- * `localStorage`, no cookies).
- */
-export function setApiKey(config: WeftUiRuntimeConfig, apiKey: string): HttpClient {
-  const headers = config.headers
-    ? Object.fromEntries(
-        Object.entries(config.headers).filter(([name]) => {
-          const header = name.toLowerCase();
-          return header !== 'authorization' && header !== 'x-api-key';
-        }),
-      )
-    : undefined;
-  return createClient({ ...config, token: apiKey, ...(headers ? { headers } : {}) });
-}
-
 /** Provides the app's `HttpClient` to the component tree via Svelte context. */
 export function provideClient(client: HttpClient): void {
   setContext(CLIENT_CONTEXT_KEY, client);

@@ -52,6 +52,9 @@
 
   const scopeDenied = $derived(!principalStore.hasScope(...definition.scopes));
 
+  // The location can be the view's way of creating its first item (`views.ts`, `creating`).
+  const creating = $derived(definition.creating?.(router.current.search) ?? false);
+
   const probeQuery = createQuery(
     () => ({
       queryKey: queryKeys.view(initial.view, initial.parameters['id'] ?? null),
@@ -59,6 +62,9 @@
       enabled: probe !== undefined && !scopeDenied,
       retry: false,
       staleTime: 5_000,
+      // A probe nobody is watching is dropped, so coming back to the view asks again and never
+      // shows what it found last time.
+      gcTime: 0,
     }),
     undefined,
   );
@@ -71,7 +77,7 @@
 
   const state = $derived.by<'loading' | 'empty' | 'error' | 'forbidden' | 'ready'>(() => {
     if (scopeDenied) return 'forbidden';
-    if (probe === undefined) return 'ready';
+    if (probe === undefined || creating) return 'ready';
     if (probeQuery.isError) return isForbiddenFault(probeQuery.error) ? 'forbidden' : 'error';
     if (probeQuery.isPending) return 'loading';
     return probeQuery.data.empty && copy.empty !== undefined ? 'empty' : 'ready';
@@ -85,6 +91,15 @@
         principalStore.denyScope(...definition.scopes);
       }
     });
+  });
+
+  // Leaving the creation flow (saving, or closing it) is when the probe's answer goes stale: the
+  // first item may exist now.
+  let wasCreating = false;
+  $effect(() => {
+    const now = creating;
+    if (wasCreating && !now && probe !== undefined) void probeQuery.refetch();
+    wasCreating = now;
   });
 
   const forbiddenDescription = $derived(

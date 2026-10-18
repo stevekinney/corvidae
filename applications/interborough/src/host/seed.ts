@@ -46,7 +46,7 @@ export const PUBLISHED_AGENT_NAMES = ['assistant', 'tool-runner', 'request-human
 /** How many times a script repeats before it runs out. */
 const SCRIPT_REPETITIONS = 200;
 
-/** The schedule the seed creates, found again by its description. */
+/** The description the seeded schedule is created with. */
 export const SEEDED_SCHEDULE_DESCRIPTION = 'Daily summary';
 
 /** The goal the seed creates. */
@@ -188,19 +188,32 @@ export function createSeededValidators(): Validator[] {
   ];
 }
 
-/** Create the seeded schedule and goal unless the Bureau already holds them. */
-export async function seedBureau(bureau: Bureau<SeededAgents>): Promise<void> {
-  const schedules = await bureau.listSchedules();
-  const scheduled = schedules?.items.some(
-    (schedule) => schedule.description === SEEDED_SCHEDULE_DESCRIPTION,
-  );
-  if (scheduled === false || scheduled === undefined) {
-    await bureau.createSchedule({
+/** The Bungalow entry that records the seeded schedule's identifier, beside the approval secret. */
+export const SEEDED_SCHEDULE_RECORD_KEY = 'seeded-schedule-id';
+
+/**
+ * Where the seed remembers what it created. A schedule is edited and renamed by operators, so
+ * nothing about it but its identifier says it is the seeded one.
+ */
+export type SeedRecord = {
+  read(key: string): string | undefined;
+  write(key: string, value: string): void;
+};
+
+/**
+ * Create the seeded schedule and goal unless they already exist. The schedule is recognised by the
+ * identifier recorded when it was created, so an operator who renames or edits it, or deletes it,
+ * does not get a second one on the next start. The goal carries its own identifier.
+ */
+export async function seedBureau(bureau: Bureau<SeededAgents>, record: SeedRecord): Promise<void> {
+  if (record.read(SEEDED_SCHEDULE_RECORD_KEY) === undefined) {
+    const created = await bureau.createSchedule({
       description: SEEDED_SCHEDULE_DESCRIPTION,
       agentName: 'assistant',
       input: 'Summarize what happened yesterday.',
       spec: '0 9 * * *',
     });
+    if (created !== undefined) record.write(SEEDED_SCHEDULE_RECORD_KEY, created.id);
   }
   await bureau.goals.create({
     goalRunId: SEEDED_GOAL_RUN_IDENTIFIER,

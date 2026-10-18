@@ -10,7 +10,12 @@ import { join } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
 
-import { assertCleanBuild, replaceDirectory } from './build.ts';
+import {
+  assertCleanBuild,
+  BUILD_ASSET_DIRECTORY,
+  replaceDirectory,
+  retainPreviousAssets,
+} from './build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-'));
 
@@ -121,5 +126,65 @@ describe('assertCleanBuild', () => {
     expect(() => assertCleanBuild(withoutMetafile)).toThrow(
       'Browser compilation did not emit module provenance',
     );
+  });
+});
+
+describe('retainPreviousAssets', () => {
+  /** A `build/` and a `staging/` tree whose `assets/` hold the named files. */
+  function generation(built: string[], staged: string[]): { directory: string; staging: string } {
+    const parent = mkdtempSync(join(scratch, 'retain-'));
+    const directory = join(parent, 'build');
+    const staging = join(parent, 'staging');
+    for (const [root, names] of [
+      [directory, built],
+      [staging, staged],
+    ] as const) {
+      mkdirSync(join(root, BUILD_ASSET_DIRECTORY), { recursive: true });
+      for (const name of names) {
+        writeFileSync(join(root, BUILD_ASSET_DIRECTORY, name), `${root}:${name}`);
+      }
+    }
+    return { directory, staging };
+  }
+
+  function assetNames(root: string): string[] {
+    return readdirSync(join(root, BUILD_ASSET_DIRECTORY)).toSorted();
+  }
+
+  it("keeps the previous build's hashed assets beside the new build's own", async () => {
+    const { directory, staging } = generation(['chunk-old11111.js'], ['chunk-new22222.js']);
+    await retainPreviousAssets(staging, directory);
+    await replaceDirectory(staging, directory);
+    expect(assetNames(directory)).toEqual(['chunk-new22222.js', 'chunk-old11111.js']);
+  });
+
+  it('keeps only one generation: assets the previous build carried over are dropped', async () => {
+    const first = generation(['chunk-first111.js'], ['chunk-second22.js']);
+    await retainPreviousAssets(first.staging, first.directory);
+    await replaceDirectory(first.staging, first.directory);
+    expect(assetNames(first.directory)).toEqual(['chunk-first111.js', 'chunk-second22.js']);
+
+    const third = join(first.directory, '..', 'staging-third');
+    mkdirSync(join(third, BUILD_ASSET_DIRECTORY), { recursive: true });
+    writeFileSync(join(third, BUILD_ASSET_DIRECTORY, 'chunk-third333.js'), 'third');
+    await retainPreviousAssets(third, first.directory);
+    await replaceDirectory(third, first.directory);
+
+    expect(assetNames(first.directory)).toEqual(['chunk-second22.js', 'chunk-third333.js']);
+  });
+
+  it('never overwrites a file the new build emitted under the same name', async () => {
+    const { directory, staging } = generation(['shared-abcd1234.css'], ['shared-abcd1234.css']);
+    await retainPreviousAssets(staging, directory);
+    expect(await Bun.file(join(staging, BUILD_ASSET_DIRECTORY, 'shared-abcd1234.css')).text()).toBe(
+      `${staging}:shared-abcd1234.css`,
+    );
+  });
+
+  it('retains nothing when there was no build before', async () => {
+    const parent = mkdtempSync(join(scratch, 'retain-first-'));
+    const staging = join(parent, 'staging');
+    mkdirSync(staging);
+    expect(await retainPreviousAssets(staging, join(parent, 'build'))).toEqual([]);
   });
 });

@@ -7,19 +7,21 @@
  * when the host's own modules change.
  */
 
-import { watch } from 'node:fs';
+import { unwatchFile, watch, watchFile, type Stats } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { buildApplication } from '../../scripts/build.ts';
 import { startHost } from './host.ts';
+import { createRebuildScheduler } from './rebuild-scheduler.ts';
 
 const packageRoot = join(import.meta.dir, '..', '..');
 const repositoryRoot = join(packageRoot, '..', '..');
 
+const ENTRY_PAGE = join(packageRoot, 'index.html');
+
 /** The sources a browser rebuild depends on: this application's, Cinder's, and Markdown's. */
-const WATCHED_PATHS = [
+const WATCHED_DIRECTORIES = [
   join(packageRoot, 'src'),
-  join(packageRoot, 'index.html'),
   join(repositoryRoot, 'components', 'cinder', 'src'),
   join(repositoryRoot, 'packages', 'markdown', 'src'),
 ];
@@ -32,22 +34,27 @@ const host = await startHost();
 console.info(`Interborough is listening on ${host.url}`);
 console.info(`Its state lives in ${dirname(host.databasePath)}`);
 
-let rebuildTimer: ReturnType<typeof setTimeout> | undefined;
-function scheduleRebuild(): void {
-  if (rebuildTimer !== undefined) clearTimeout(rebuildTimer);
-  rebuildTimer = setTimeout(() => {
-    rebuildTimer = undefined;
-    buildApplication({ development: true }).then(
-      () => console.info('Rebuilt the browser application.'),
-      (error: unknown) => console.error('The browser rebuild failed.', error),
-    );
-  }, REBUILD_DELAY_MILLISECONDS);
-}
+const rebuilds = createRebuildScheduler({
+  build: async () => void (await buildApplication({ development: true })),
+  delayMilliseconds: REBUILD_DELAY_MILLISECONDS,
+  onRebuilt: () => console.info('Rebuilt the browser application.'),
+  onFailure: (error) => console.error('The browser rebuild failed.', error),
+});
 
-const watchers = WATCHED_PATHS.map((path) => watch(path, { recursive: true }, scheduleRebuild));
+const watchers = WATCHED_DIRECTORIES.map((path) =>
+  watch(path, { recursive: true }, () => rebuilds.schedule()),
+);
+
+// An editor's atomic save replaces `index.html`, which a directory-less file watch can miss on
+// macOS, so the entry page is polled by its modification time and inode instead.
+const entryChanged = (current: Stats, previous: Stats): void => {
+  if (current.mtimeMs !== previous.mtimeMs || current.ino !== previous.ino) rebuilds.schedule();
+};
+watchFile(ENTRY_PAGE, { interval: 100 }, entryChanged);
 
 async function shutDown(): Promise<void> {
-  if (rebuildTimer !== undefined) clearTimeout(rebuildTimer);
+  rebuilds.close();
+  unwatchFile(ENTRY_PAGE, entryChanged);
   for (const watcher of watchers) watcher.close();
   await host.close();
   process.exit(0);

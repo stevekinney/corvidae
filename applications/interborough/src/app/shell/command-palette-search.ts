@@ -29,6 +29,16 @@ export interface ConsoleSearchOptions {
   readonly scheduleReadGate: ScopeGate;
 }
 
+/** Where a schedule's own page is: the schedules view, with the schedule selected. */
+export function schedulePath(scheduleId: string): string {
+  return `/schedules?id=${encodeURIComponent(scheduleId)}`;
+}
+
+/** Where a worker's own page is: the workers view, on its list, with the worker selected. */
+export function workerPath(workerId: string): string {
+  return `/workers?tab=list&worker=${encodeURIComponent(workerId)}`;
+}
+
 const WORKFLOW_ID_PREFIX_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 function containsQuery(needle: string, id: string): boolean {

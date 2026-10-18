@@ -25,6 +25,17 @@ export type ViewCopy = {
 export const RETRY_LABEL = 'Try again';
 
 /**
+ * What a route says when its code could not be loaded, such as after a rebuild replaced the files
+ * an open page still points at. No view is involved, so it is not one of the view states.
+ */
+export const ROUTE_LOAD_FAILURE_COPY = {
+  title: 'This page could not be loaded',
+  description:
+    'The application could not fetch the code for this page. It may have been rebuilt since you opened it.',
+  action: 'Reload the page',
+} as const;
+
+/**
  * The words every view's four states use. A view's state title and description live here and
  * nowhere else, so a change to the voice of the product is one edit and a test can name every
  * string a state can show.

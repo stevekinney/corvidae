@@ -101,7 +101,8 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // Re-measured for COR-1488, when the console moved into this application and gained its sidebar,
   // view frame, and placeholder routes, on darwin with the command in `run-coverage.ts`. The areas
   // keep the names they had in the console's own workspace; `src/views` and `src/routes/placeholder`
-  // are new, and the `src` area now holds the entry point and the route table.
+  // are new, and the `src` area now holds the entry point and the route table. `src/lib` then lost
+  // `setApiKey`, ten lines and two functions that were all covered, with the API-key form it served.
   measuredAt: '2026-10-18T04:00:00.000Z',
   overall: { linesFound: 46825, linesHit: 44991, functionsFound: 9179, functionsHit: 8835 },
   areas: {
@@ -109,7 +110,7 @@ const DARWIN_BASELINE: CoverageBaseline = {
     scripts: { linesFound: 879, linesHit: 874, functionsFound: 60, functionsHit: 59 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
     'src/app': { linesFound: 2481, linesHit: 2405, functionsFound: 491, functionsHit: 471 },
-    'src/lib': { linesFound: 1500, linesHit: 1489, functionsFound: 261, functionsHit: 257 },
+    'src/lib': { linesFound: 1490, linesHit: 1479, functionsFound: 259, functionsHit: 255 },
     'src/routes/dashboard': {
       linesFound: 1410,
       linesHit: 1174,
@@ -168,7 +169,7 @@ const LINUX_BASELINE: CoverageBaseline = {
     scripts: { linesFound: 879, linesHit: 874, functionsFound: 60, functionsHit: 59 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
     'src/app': { linesFound: 2481, linesHit: 2405, functionsFound: 491, functionsHit: 471 },
-    'src/lib': { linesFound: 1500, linesHit: 1489, functionsFound: 261, functionsHit: 257 },
+    'src/lib': { linesFound: 1490, linesHit: 1479, functionsFound: 259, functionsHit: 255 },
     'src/routes/dashboard': {
       linesFound: 1410,
       linesHit: 1174,

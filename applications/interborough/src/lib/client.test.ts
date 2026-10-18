@@ -4,7 +4,7 @@
  * parameter rather than reading the ambient `window.location` directly (bare
  * `bun test`/happy-dom, with no navigation, resolves `window.location.origin`
  * to the opaque-origin string `"null"`, not a usable URL). Exercises
- * `createClient()`/`setApiKey()` directly rather than through
+ * `createClient()` directly rather than through
  * `provideClient()`/`getClient()`, which need an active Svelte component
  * context; those two are exercised through the `*.test-harness.svelte`
  * components below — a bare call from this file only reaches Svelte's own
@@ -19,8 +19,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { HttpClient } from '@lostgradient/weft';
 
-import { createClient, getClient, provideClient, setApiKey } from './client.ts';
-import type { WeftUiRuntimeConfig } from './config.ts';
+import { createClient, getClient, provideClient } from './client.ts';
 
 describe('createClient — baseUrl resolution', () => {
   test('an empty baseUrl (same-origin, plan §3.3) resolves to the injected origin', () => {
@@ -84,58 +83,6 @@ describe('createClient — headers', () => {
       headers: { Authorization: 'Bearer from-headers' },
     });
     expect(client.headers['authorization']).toBe('Bearer from-headers');
-  });
-});
-
-describe('setApiKey', () => {
-  const config: WeftUiRuntimeConfig = { baseUrl: 'https://weft.example.com' };
-
-  test('replaces both configured credential headers while preserving routing headers', () => {
-    const configured = {
-      ...config,
-      headers: {
-        'X-API-Key': 'expired-key',
-        AUTHORIZATION: 'Bearer expired-token',
-        'X-Engine-Instance': 'engine-a',
-      },
-    };
-    const client = setApiKey(configured, 'replacement-key');
-    expect(client.headers['authorization']).toBe('Bearer replacement-key');
-    expect(client.headers['x-api-key']).toBeUndefined();
-    expect(client.headers['x-engine-instance']).toBe('engine-a');
-    expect(configured.headers['X-API-Key']).toBe('expired-key');
-  });
-
-  test('rebuilds the client with the entered key as a Bearer Authorization header', () => {
-    const client = setApiKey(config, 'operator-entered-key');
-    expect(client.headers['authorization']).toBe('Bearer operator-entered-key');
-  });
-
-  test('entered key replaces a stale configured Authorization header', () => {
-    const client = setApiKey(
-      { ...config, headers: { Authorization: 'Bearer expired-configured-key', 'X-Trace': 'keep' } },
-      'operator-entered-key',
-    );
-    expect(client.headers['authorization']).toBe('Bearer operator-entered-key');
-    expect(client.headers['x-trace']).toBe('keep');
-  });
-
-  test('preserves the base config baseUrl', () => {
-    const client = setApiKey(config, 'operator-entered-key');
-    expect(client.baseUrl).toBe(config.baseUrl);
-  });
-
-  test('does not mutate the config object passed in', () => {
-    const original = { ...config };
-    setApiKey(config, 'operator-entered-key');
-    expect(config).toEqual(original);
-  });
-
-  test('a fresh call with a different key produces an independent client', () => {
-    const first = setApiKey(config, 'first-key');
-    const second = setApiKey(config, 'second-key');
-    expect(first.headers['authorization']).toBe('Bearer first-key');
-    expect(second.headers['authorization']).toBe('Bearer second-key');
   });
 });
 

@@ -3,25 +3,26 @@
    * App shell entry point (plan §13 T1.6, design `Weft UI.dc.html`),
    * the application's root component.
    * Owns the boot sequence — read runtime config, construct the initial
-   * `HttpClient`, resolve the principal, and either mount `<ApiKeyEntry>`
-   * (reject-mode, no/invalid credential) or the real `<Shell>` (sidebar,
-   * topbar, notification center, route outlet) once both are final.
+   * `HttpClient`, resolve the principal, and mount the real `<Shell>`
+   * (sidebar, topbar, notification center, route outlet). The host answers
+   * every request as the one local caller, so there is no sign-in: a
+   * principal that cannot be resolved, or a credential the engine stops
+   * accepting, shows an error with a reload button instead of a form.
    *
    * `<Shell>` is the component that actually calls `provideClient()` /
-   * `providePrincipalStore()` — see its module doc for why the rebuild-on
-   * -API-key-entry flow has to stay one level above it.
+   * `providePrincipalStore()`.
    */
   import type { HttpClient } from '@lostgradient/weft';
 
   import { Skeleton, setCodeHighlighterContext } from '@lostgradient/cinder';
   import { QueryClientProvider } from '@tanstack/svelte-query';
 
-  import { createClient, setApiKey } from '../lib/client.ts';
+  import { createClient } from '../lib/client.ts';
   import { codeHighlighter } from '../lib/code-highlighter.ts';
   import { readRuntimeConfig, type WeftUiRuntimeConfig } from '../lib/config.ts';
   import { createQueryClient } from '../lib/query.ts';
   import { resolvePrincipal, type Principal } from '../lib/scopes.svelte.ts';
-  import ApiKeyEntry from './auth/api-key-entry.svelte';
+  import BootFailure from './boot-failure.svelte';
   import Shell from './shell/shell.svelte';
   import ToastHost, { provideToastHost } from './toast-host.svelte';
 
@@ -39,7 +40,7 @@
 
   type BootPhase =
     | { readonly status: 'resolving' }
-    | { readonly status: 'needs-api-key' }
+    | { readonly status: 'unidentified' }
     | { readonly status: 'ready'; readonly client: HttpClient; readonly principal: Principal };
 
   let phase = $state<BootPhase>({ status: 'resolving' });
@@ -53,7 +54,7 @@
         if (cancelled) return undefined;
         phase =
           principal === null
-            ? { status: 'needs-api-key' }
+            ? { status: 'unidentified' }
             : { status: 'ready', client: initialClient, principal };
         return undefined;
       },
@@ -78,27 +79,18 @@
     };
   });
 
-  async function onApiKeySubmit(apiKey: string): Promise<void> {
-    const client = setApiKey(config, apiKey);
-    const principal = await resolvePrincipal(client);
-    if (principal === null) {
-      throw new Error('This API key was not accepted.');
-    }
-    phase = { status: 'ready', client, principal };
-  }
-
   function onAuthExpired(expiredClient: HttpClient): void {
     if (phase.status !== 'ready' || phase.client !== expiredClient) return;
     queryClient.clear();
-    phase = { status: 'needs-api-key' };
+    phase = { status: 'unidentified' };
   }
 </script>
 
 <QueryClientProvider client={queryClient}>
   {#if phase.status === 'ready'}
     <Shell client={phase.client} initialPrincipal={phase.principal} {onAuthExpired} />
-  {:else if phase.status === 'needs-api-key'}
-    <ApiKeyEntry onSubmit={onApiKeySubmit} />
+  {:else if phase.status === 'unidentified'}
+    <BootFailure />
   {:else}
     <div
       class="weft-shell-boot-skeleton"

@@ -11,12 +11,16 @@
  * options ({@link browserBuildOptions}) and differs only in `development`, in minification, and
  * in where the files land.
  *
+ * In development the previous build's hashed assets stay for one more generation
+ * ({@link retainPreviousAssets}), so a page loaded before a rebuild can still fetch the chunks it
+ * lazily imports. The production build keeps nothing of the build it replaces.
+ *
  * The output directory is replaced only once a build succeeds: Bun writes into a staging
  * directory beside it, which {@link replaceDirectory} swaps into place, so a failed build or a
  * failed swap leaves the previous build intact and a reader never sees a half-written tree.
  */
 
-import { mkdtemp, rename, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, rename, rm } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -150,6 +154,47 @@ export async function replaceDirectory(
   if (movedAside) await operations.rm(previous, { recursive: true, force: true });
 }
 
+/** Names the assets carried over from the build before, which the next build must not carry again. */
+export const RETAINED_ASSETS_FILE = '.retained-assets.json';
+
+async function readRetainedAssets(directory: string): Promise<ReadonlySet<string>> {
+  const file = Bun.file(join(directory, RETAINED_ASSETS_FILE));
+  if (!(await file.exists())) return new Set();
+  const names: unknown = await file.json();
+  return new Set(Array.isArray(names) ? names.filter((name) => typeof name === 'string') : []);
+}
+
+/**
+ * Copy the assets `directory` serves into `staging` beside the new build's own, and record which
+ * ones they are in {@link RETAINED_ASSETS_FILE}. A page that was open before a rebuild keeps
+ * lazily importing chunks by their old hashed names, and those would be gone once the directory
+ * is swapped. Only the build immediately before is kept: assets that build itself carried over
+ * are listed in its record and are dropped here, so nothing accumulates. A name the new build
+ * also emitted is never overwritten.
+ */
+export async function retainPreviousAssets(staging: string, directory: string): Promise<string[]> {
+  const previousAssets = join(directory, BUILD_ASSET_DIRECTORY);
+  let names: string[];
+  try {
+    names = await readdir(previousAssets);
+  } catch (error) {
+    if (isMissingPath(error)) return [];
+    throw error;
+  }
+  const carriedOver = await readRetainedAssets(directory);
+  await mkdir(join(staging, BUILD_ASSET_DIRECTORY), { recursive: true });
+  const retained: string[] = [];
+  for (const name of names.toSorted()) {
+    if (carriedOver.has(name)) continue;
+    const target = join(staging, BUILD_ASSET_DIRECTORY, name);
+    if (await Bun.file(target).exists()) continue;
+    await cp(join(previousAssets, name), target);
+    retained.push(name);
+  }
+  await Bun.write(join(staging, RETAINED_ASSETS_FILE), JSON.stringify(retained));
+  return retained;
+}
+
 export type ApplicationBuild = {
   /** The directory the application was written to. */
   readonly directory: string;
@@ -185,6 +230,7 @@ export async function buildApplication(
     const files = result.outputs
       .map((output) => relative(staging, output.path).split(sep).join('/'))
       .toSorted();
+    if (development) await retainPreviousAssets(staging, directory);
     await replaceDirectory(staging, directory);
     return { directory, files, metafile };
   } finally {

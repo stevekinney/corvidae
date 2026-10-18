@@ -1,22 +1,10 @@
-/* API-key entry surface (T1.1, plan §6) — full-page auth-required
- * treatment per §10.4's fault-presentation rules. */
-.weft-ui-api-key-entry {
+/* The boot failure shown when the host does not recognize the session. */
+.weft-shell-boot-failure {
   display: flex;
   min-height: 100%;
   align-items: center;
   justify-content: center;
   padding: var(--cinder-space-4, 1rem);
-}
-
-.weft-ui-api-key-entry__card {
-  width: 100%;
-  max-width: 24rem;
-}
-
-.weft-ui-api-key-entry form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--cinder-space-4, 1rem);
 }
 
 /* ---------------------------------------------------------------------- */

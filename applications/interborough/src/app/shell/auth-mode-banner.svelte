@@ -3,8 +3,8 @@
    * Unauthenticated-mode banner (plan §6, §10; design `Weft UI.dc.html`
    * "auth-mode banner"): `warn`/`allow` variants from the scopes module's
    * `PrincipalStore.bannerMode`. `auth-required`/`none` render nothing here
-   * — `auth-required` is handled by mounting `<ApiKeyEntry>` in place of the
-   * shell (`../app.svelte`), and `none` (a normally authenticated principal)
+   * — `auth-required` is handled by `../app.svelte`, which shows its boot
+   * failure in place of the shell, and `none` (a normally authenticated principal)
    * has nothing to announce.
    */
   import { TriangleAlert, X } from '@lucide/svelte';

@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import { createBureau, createBureauHandler, type Bureau } from '@lostgradient/bureau';
+import { stopWhen } from '@lostgradient/operative';
 import {
   BunSQLiteStorage,
   Engine,
@@ -56,6 +57,7 @@ import {
   type WebSocketRelayData,
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
+import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import {
   createSeededAgents,
   createSeededGenerate,
@@ -174,7 +176,7 @@ type PublicRoutes = Bun.Serve.Routes<WebSocketRelayData, string>;
  * The route table for the application: `index.html` for every client route, and the build's
  * assets. The routes are the client router's own patterns, so a route added there is served here.
  */
-function applicationRoutes(buildDirectory: string): PublicRoutes {
+function applicationRoutes(buildDirectory: string, refuse: Guard): PublicRoutes {
   const shell = async (): Promise<Response> => {
     const page = Bun.file(join(buildDirectory, 'index.html'));
     if (!(await page.exists())) return missingBuild();
@@ -183,11 +185,19 @@ function applicationRoutes(buildDirectory: string): PublicRoutes {
     });
   };
   const table: PublicRoutes = {
-    '/assets/*': { GET: (request) => assetResponse(buildDirectory, new URL(request.url).pathname) },
+    '/assets/*': {
+      GET: (request) =>
+        refuse(request) ?? assetResponse(buildDirectory, new URL(request.url).pathname),
+    },
   };
-  for (const route of clientRoutes) table[route.pattern] = { GET: shell };
+  for (const route of clientRoutes) {
+    table[route.pattern] = { GET: (request) => refuse(request) ?? shell() };
+  }
   return table;
 }
+
+/** A request guard: the refusal to send, or `undefined` to let the request through. */
+type Guard = (request: Request) => Response | undefined;
 
 /** Where the engine's private listener is, once it is up. */
 type EngineUpstream = { readonly url: string; readonly key: string };
@@ -205,11 +215,19 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       id: bungalow.deploymentId,
       agents: createSeededAgents(approvalSecret(bungalow)),
       generate: createSeededGenerate(),
+      // A run that makes no tool call is finished. Without this the Bureau's own runs, such as a
+      // schedule's fire, keep asking the model until the step limit.
+      stopWhen: stopWhen.noToolCalls(),
       validators: createSeededValidators(),
       storage,
     });
     held.bureau = bureau;
-    if (options.seed !== false) await seedBureau(bureau);
+    if (options.seed !== false) {
+      await seedBureau(bureau, {
+        read: (key) => bungalow.readSecret(key),
+        write: (key, value) => bungalow.writeSecret(key, value),
+      });
+    }
     const engine = await (options.createConsoleEngine?.(storage) ??
       new Engine({ storage, backgroundTasks: 'manual' }));
     held.engine = engine;
@@ -222,15 +240,20 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const upstream = new Promise<EngineUpstream>((resolve) => {
       engineUpstream = resolve;
     });
+    // Every route, the relay, and every WebSocket upgrade go through one guard (`request-guard.ts`).
+    let listening: Bun.Server<WebSocketRelayData> | undefined;
+    const refuse = createRequestGuard(() => listening?.port ?? 0);
     const publicServer = Bun.serve<WebSocketRelayData>({
       hostname: LOOPBACK,
       port: options.port ?? resolvePort(environment),
       routes: {
-        ...applicationRoutes(options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY),
+        ...applicationRoutes(options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY, refuse),
         [`${BUREAU_PATH_PREFIX}/*`]: (request: Request) =>
-          bureauHandler(withoutBureauPrefix(request)),
+          refuse(request) ?? bureauHandler(withoutBureauPrefix(request)),
       },
       async fetch(request, listener) {
+        const refusal = refuse(request);
+        if (refusal !== undefined) return refusal;
         if (!isEngineRequestPath(new URL(request.url).pathname)) {
           return new Response('Not found', { status: 404 });
         }
@@ -245,6 +268,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       websocket: webSocketRelayHandlers,
     });
     held.publicServer = publicServer;
+    listening = publicServer;
     const publicPort = publicServer.port;
     if (publicPort === undefined) throw new Error('The public listener has no port.');
 
@@ -254,7 +278,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       hostname: LOOPBACK,
       port: 0,
       auth: createLocalAuthentication(key),
-      trustedHosts: [`${LOOPBACK}:${publicPort}`, `localhost:${publicPort}`],
+      // Discovery documents name absolute URLs, and they must name the origin a browser used, not
+      // the private listener the relay forwards to.
+      publicOrigin: `http://${LOOPBACK}:${publicPort}`,
+      trustedHosts: allowedHosts(publicPort),
       ...options.engineServer,
     });
     held.server = server;
