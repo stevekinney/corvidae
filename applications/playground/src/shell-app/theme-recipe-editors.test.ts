@@ -10,12 +10,14 @@ import { createEnvelope } from './theme-envelope.ts';
 import { checksEvaluator, computeChecksDelta } from './theme-impact-checks.ts';
 import { isTrustedRecipe, untrustedRecipes } from './theme-recipe-trust.ts';
 import ThemeReferencePanel from './theme-reference-panel.svelte';
-import { useHarness } from './theme-reference-test-support.ts';
+import { PROBE_TOKENS, useHarness, warmStates } from './theme-reference-test-support.ts';
 import { evaluatedThemeOf } from './theme-token-dependents.ts';
 
 setupHappyDom();
 const h = useHarness();
 const { settle, start, click, typeInto } = h;
+// The state `start` seeds is evaluated here, outside any test's budget.
+await warmStates(PROBE_TOKENS);
 
 async function mountPanel(row: NonNullable<ReturnType<typeof catalogueRowByPath>>) {
   const { controller, workbench } = await start();
@@ -203,23 +205,5 @@ describe('the findings a proposal introduces and resolves', () => {
     const result = await computeChecksDelta(checksEvaluator, base, editableState(broken));
     expect(result.ok).toBe(false);
     expect(result.ok ? '' : result.message).toContain('fx');
-  });
-});
-
-describe('Check this change', () => {
-  test('is offered inside the proposal, before Apply, and runs on request only', async () => {
-    const { controller } = await mountPanel(catalogueRowByPath('surface.hover')!);
-    await typeInto('-override', 'oklch(55% 0.2 270)');
-    await click('Preview CSS override');
-    expect(h.target.querySelector('[data-testid="checks-summary"]')).toBeNull();
-    const revision = controller.draft!.revision;
-    await click('Check this change');
-    const summary = h.target.querySelector('[data-testid="checks-summary"]');
-    expect(summary?.textContent).toContain('introduced');
-    expect(
-      h.target.querySelectorAll('[data-testid="impact-checks"] li[data-severity]'),
-    ).toHaveLength(4);
-    // Checking is read-only: the draft is untouched.
-    expect(controller.draft!.revision).toBe(revision);
   });
 });

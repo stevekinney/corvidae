@@ -11,28 +11,16 @@ import { test as bunTest, describe, mock } from 'bun:test';
 import { cinderThemeBase } from './theme-builder-base.ts';
 import { ThemeBuilderController } from './theme-builder-controller.svelte.ts';
 import type { ReportRecord } from './theme-check-types.ts';
-import type { ThemeEvaluation, ThemeEvaluator } from './theme-draft-evaluation.ts';
-import type { JsonValue, ThemeContextId, ThemeEnvelope } from './theme-draft-types.ts';
+import type { ThemeEvaluator } from './theme-draft-evaluation.ts';
+import type { JsonValue, ThemeEnvelope } from './theme-draft-types.ts';
 import { createEnvelope } from './theme-envelope.ts';
 import { setNode } from './theme-override-tree.ts';
+import { createMemoEvaluator } from './theme-reference-test-support.ts';
 import { reportForEnvelope } from './theme-remediation-check.ts';
-import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
 
-const real = createRuntimeEvaluator();
-const remembered = new Map<string, Promise<ThemeEvaluation>>();
-
-/** The real runtime evaluator, remembered by the content of the editable state. */
-export const memoEvaluator: ThemeEvaluator = {
-  evaluate(source, revision, context: ThemeContextId) {
-    const key = JSON.stringify([source.overrides, source.cssOverrides, context]);
-    const known = remembered.get(key);
-    if (known !== undefined) return known.then((value) => ({ ...value, revision }));
-    const pending = real.evaluate(source, revision, context);
-    remembered.set(key, pending);
-    return pending;
-  },
-};
+/** The real runtime evaluator, remembered by what an evaluation reads (see `createMemoEvaluator`). */
+export const memoEvaluator: ThemeEvaluator = createMemoEvaluator();
 
 // Snapshot of the real exports, taken before the memo is installed: `mock.module` also rewrites
 // the live bindings of an already imported namespace, so spreading the namespace inside the
