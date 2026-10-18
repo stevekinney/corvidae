@@ -222,8 +222,12 @@ import {
   ownerOrLocal,
   principalDefect,
   RECOVERY_ACTOR,
-  SCHEDULER_ACTOR,
 } from './owner-of-record';
+import {
+  attributeScheduledFire,
+  recordScheduleFired,
+  releaseScheduledFire,
+} from './scheduled-fire-record';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
@@ -1561,9 +1565,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // before this fix — every scheduled fire's terminal event forwards
   // synchronously, from inside `scheduleFireEvents`' own dispatch).
   runtime.scheduleFireEvents.addEventListener(ScheduleCompletedEvent.type, (event) => {
+    releaseScheduledFire(runAttribution, firedRunIds, event.runId);
     emitter.dispatch(new ScheduleCompletedEvent(event.scheduleId, event.runId));
   });
   runtime.scheduleFireEvents.addEventListener(ScheduleFailedEvent.type, (event) => {
+    releaseScheduledFire(runAttribution, firedRunIds, event.runId);
     emitter.dispatch(new ScheduleFailedEvent(event.scheduleId, event.runId));
   });
   // COR-660 — the per-tick observation pair, forwarded the same way and for
@@ -1827,6 +1833,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // attribution deliberately outlives that release, since `eventHistory`'s
   // principal gate reads it.
   const runAttribution = new Map<string, RunAttribution>();
+  /**
+   * COR-718 — the runs of schedule fires whose attribution this Bureau holds. A fire's
+   * entry is released when the fire settles, so a recurring schedule does not grow
+   * `runAttribution` by one entry per tick; its owner is then read durably through
+   * the schedule (see `runOwner`).
+   */
+  const firedRunIds = new Set<string>();
   /**
    * COR-1380 — the session incarnation each run was saved into at dispatch,
    * or recovered against. A run-ownership restore writes only into that
@@ -6104,7 +6117,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return ownerOrLocal(attribution?.principal ?? catalogRun?.handle.snapshot().owner);
     }
     const child = await childTopologyStore.get(runId);
-    return child === undefined ? undefined : ownerOrLocal(child.principal);
+    if (child !== undefined) return ownerOrLocal(child.principal);
+    // A schedule fire's attribution is released when the fire settles. Its owner is
+    // then the one its workflow was started with, which is the schedule's: the
+    // engine keeps the fire's `ScheduledAgentRunInput`, `principal` included.
+    if (!runtime.durable) return undefined;
+    const fire = await runtime.durable.engine.get(runId);
+    return fire !== null && isScheduledAgentRunInput(fire.input)
+      ? ownerOrLocal(fire.input.principal)
+      : undefined;
   }
 
   /** COR-718 — the owner a schedule recorded in its `ScheduledAgentRunInput.principal`. */
@@ -11633,10 +11654,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function ownerReadableBy(owner: DurableEventOwner, principal: string): Promise<boolean> {
     switch (owner.kind) {
-      case 'run': {
-        const attribution = runAttribution.get(owner.id);
-        return attribution !== undefined && ownerOrLocal(attribution.principal) === principal;
-      }
+      case 'run':
+        // Read the way `getOwner` reads it, and closed for a run that no longer exists.
+        return (await runOwner(owner.id)) === principal;
       case 'goal':
         return (await goalsComposition.goals.get(owner.id, { principal })) !== undefined;
       case 'session': {
@@ -12547,28 +12567,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   // COR-718: a schedule fire's run is owned by its schedule's owner, and the scheduler is
   // only the actor on the `schedule.fired` entry. The fire's services are rebuilt on
-  // recovery, so the entry is written only when the trail holds none for this run.
+  // recovery, so the entry is written through an atomic key and is written once.
   scheduledFireHandler.resolve(async (fire) => {
-    runAttribution.set(fire.runId, {
-      ...runAttribution.get(fire.runId),
-      agentName: fire.agentName,
-      principal: fire.owner,
-    });
+    attributeScheduledFire(runAttribution, firedRunIds, fire);
     const trail = auditTrailInstance;
     if (trail === undefined) return;
     try {
-      const recorded = await trail.query({ runId: fire.runId, type: 'schedule.fired', limit: 1 });
-      if (recorded.length > 0) return;
-      await trail.record({
-        runId: fire.runId,
-        type: 'schedule.fired',
-        detail: {
-          scheduleId: fire.scheduleId ?? null,
-          sessionId: fire.sessionId,
-          agentName: fire.agentName,
-        },
-        principal: SCHEDULER_ACTOR,
-      });
+      await recordScheduleFired(trail, fire);
     } catch (error) {
       diagnose({
         level: 'error',
