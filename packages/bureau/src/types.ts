@@ -2047,9 +2047,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   history is keyed by id alone and a deleted session has no owner left to
    *   compare. For a session id that has since been recreated, a caller that
    *   states a principal must own the live session and sees only the events
-   *   after the latest `session.deleted` marker, which are the live
-   *   session's own, whatever `since` and `limit` it passes. While a deletion's marker is still pending in the session outbox, the
-   *   id reads as `not-found` to such a caller.
+   *   recorded for the live session's incarnation, whatever `since` and
+   *   `limit` it passes; an event recorded for no incarnation is never shown
+   *   to such a caller.
    */
   eventHistory(
     owner: DurableEventOwner,

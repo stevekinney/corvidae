@@ -1258,6 +1258,13 @@ export type RuntimeCompositionDependencies = {
    */
   createSessionStore?: typeof createSessionStore;
   /**
+   * COR-718 — `CreateSessionStoreOptions.beforeCleanup` for the session store this
+   * composition builds: told which sessions `cleanup()` is about to expire, before
+   * they are removed, and able to keep them by rejecting. `createBureau` records
+   * each one's owner for its deletion's audit entry.
+   */
+  beforeSessionCleanup?: ((sessions: readonly AgentSession[]) => Promise<void>) | undefined;
+  /**
    * COR-851 — the durable `goalRun` workflow, registered on the durable engine
    * beside `agentRun`. `createBureau` supplies it; the engine is built before
    * the goal store and the agent catalog exist, so the workflow's ports are
@@ -2309,7 +2316,10 @@ async function buildRuntimeComposition(
   // runtime every other subsystem this composition builds already uses,
   // breaking determinism for manual-runtime tests and fault-replay runs.
   const sessionStore = kv
-    ? (dependencies.createSessionStore ?? createSessionStore)(kv, { runtime: runtimeServices })
+    ? (dependencies.createSessionStore ?? createSessionStore)(kv, {
+        runtime: runtimeServices,
+        beforeCleanup: dependencies.beforeSessionCleanup,
+      })
     : undefined;
   const baseToolbox: BureauToolbox = options.toolbox ?? createToolbox([], { context: {} });
   const hasSkillTools = options.skills !== undefined && options.skills.includeTools !== false;

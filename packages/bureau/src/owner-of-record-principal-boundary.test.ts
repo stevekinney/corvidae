@@ -142,3 +142,124 @@ describe('a principal that is not text (COR-718)', () => {
     },
   );
 });
+
+/**
+ * The `system:` namespace belongs to Bureau's service principals and `anonymous:`
+ * to callers with no credential, so a caller may not own as either; the one
+ * exception is the exact `anonymous:local`, which the local handler flow states
+ * explicitly for every uncredentialed caller.
+ */
+const RESERVED = [
+  ['a service principal', 'system:scheduler'],
+  ['an anonymous principal other than the local one', 'anonymous:other'],
+] as const;
+
+describe('a principal in a reserved namespace (COR-718)', () => {
+  it.each(RESERVED)(
+    'is refused by createRun, which persists nothing (%s)',
+    async (_label, principal) => {
+      const bureau = await openDurableBureau();
+      try {
+        const refusal = await rejectionOf(
+          bureau.createRun({ message: 'x', sessionId: 'reserved', principal }),
+        );
+
+        expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
+        expect(bureau.listRuns()).toEqual([]);
+        expect(await bureau.getSession('reserved')).toBeUndefined();
+      } finally {
+        await bureau.dispose();
+      }
+    },
+  );
+
+  it.each(RESERVED)(
+    'is refused by createSchedule, which registers nothing (%s)',
+    async (_label, principal) => {
+      const bureau = await openDurableBureau();
+      try {
+        const refusal = await rejectionOf(
+          bureau.createSchedule({ agentName: 'worker', input: 'tick', spec: '1h', principal }),
+        );
+
+        expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
+        const listed = await bureau.listSchedules();
+        expect(listed?.items ?? []).toHaveLength(0);
+      } finally {
+        await bureau.dispose();
+      }
+    },
+  );
+
+  it.each(RESERVED)(
+    'is refused by goals.create, which stores no goal (%s)',
+    async (_label, principal) => {
+      const bureau = await openDurableBureau();
+      try {
+        const outcome = await bureau.goals.create(
+          goalRequest({ goalRunId: 'g-reserved', principal }),
+        );
+
+        expect(outcome).toMatchObject({ outcome: 'rejected', code: 'invalid-configuration' });
+        expect(await bureau.goals.get('g-reserved')).toBeUndefined();
+      } finally {
+        await bureau.dispose();
+      }
+    },
+  );
+
+  it.each(RESERVED)('is refused by bureau.run (%s)', async (_label, principal) => {
+    const bureau = await createBureau({
+      agents: { worker: createAgent({ name: 'worker', generate }) },
+    });
+    try {
+      expect(() => bureau.run('worker', 'work', { principal })).toThrow(/reserved/);
+      expect(bureau.listRuns()).toEqual([]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it.each(RESERVED)(
+    'is refused by children.dispatch, which records no child (%s)',
+    async (_label, principal) => {
+      const bureau = await createBureau({
+        agents: { worker: createAgent({ name: 'worker', generate }) },
+        generate: () => new Promise<never>(() => {}),
+      });
+      try {
+        const parent = await bureau.createRun({ message: 'plan' });
+        const refusal = await rejectionOf(
+          bureau.children.dispatch({
+            parentRunId: parent.id,
+            agentName: 'worker',
+            input: 'x',
+            principal,
+          }),
+        );
+
+        expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
+        expect(await bureau.children.list(parent.id)).toEqual([]);
+      } finally {
+        await bureau.dispose();
+      }
+    },
+  );
+
+  it('still lets the exact local owner create and read a run, as the local handler flow does', async () => {
+    const bureau = await openDurableBureau();
+    try {
+      const run = await bureau.createRun({
+        message: 'x',
+        sessionId: 'local',
+        principal: 'anonymous:local',
+      });
+
+      expect(bureau.getRun(run.id)?.principal).toBe('anonymous:local');
+      expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
+      expect(await bureau.getOwner({ kind: 'session', id: 'local' })).toBe('anonymous:local');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});

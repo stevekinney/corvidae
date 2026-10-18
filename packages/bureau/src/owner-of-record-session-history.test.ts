@@ -2,7 +2,7 @@
  * COR-718 — a deleted session's durable history. History is keyed by session id
  * alone, so a caller that states a principal is held to the live session's owner:
  * a deleted session reads as not found, and a recreated id shows only the events
- * after its latest deletion marker, which are the current incarnation's.
+ * recorded for the live session's own incarnation.
  */
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -85,7 +85,7 @@ describe('the history of a deleted session (COR-718)', () => {
     }
   });
 
-  it('shows a recreated id only the events after its latest deletion marker', async () => {
+  it('shows a recreated id only the events of its live incarnation', async () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'reused');
@@ -114,7 +114,7 @@ describe('the history of a deleted session (COR-718)', () => {
     }
   });
 
-  it('pages a recreated id from its marker even when the page limit is small', async () => {
+  it('pages a recreated id’s live incarnation even when the page limit is small', async () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'paged');
@@ -305,15 +305,16 @@ describe('the history of a deleted session (COR-718)', () => {
     }
   });
 
-  it('treats a session whose deletion is still pending in the outbox as not found, for a page and a subscription', async () => {
+  it('shows the next owner only its own incarnation while the former incarnation’s deletion is still pending in the outbox', async () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'pending');
       const former = eventsOf(await read(bureau, 'pending'));
       const lastFormerSequence = Math.max(...sequences(former));
 
-      // The deletion commits, and its drain is held before it can claim the entry, so the
-      // `session.deleted` marker is not yet in the history.
+      // The deletion commits, and its drain is held before it can claim the entry, so no
+      // `session.deleted` event is in the history yet. The incarnation each event was
+      // recorded for is what separates the two owners, not a marker between them.
       const store = bureau.sessionStore!;
       const outbox = store.outbox;
       const originalClaim = outbox.claim.bind(outbox);
@@ -367,8 +368,24 @@ describe('the history of a deleted session (COR-718)', () => {
         );
         witness.unsubscribe();
 
-        expect(page).toEqual({ outcome: 'not-found' });
+        // Bob's own commits queue in the outbox behind the held deletion, so his page is
+        // empty for now; what matters is that nothing of Alice's is on it.
+        expect(eventsOf(page).filter((event) => event.sequence <= lastFormerSequence)).toEqual([]);
         expect(received.filter((event) => event.sequence <= lastFormerSequence)).toEqual([]);
+
+        // Once the drain proceeds, Bob's events land, and they are all he gets.
+        holding = false;
+        releaseClaim.resolve();
+        await deletion;
+        const own = eventsOf(await read(bureau, 'pending', { principal: BOB }));
+        expect(own.length).toBeGreaterThan(0);
+        expect(own.filter((event) => event.sequence <= lastFormerSequence)).toEqual([]);
+        await waitForCondition(
+          () => received.length >= own.length,
+          "Bob's own events never arrived",
+        );
+        expect(received.filter((event) => event.sequence <= lastFormerSequence)).toEqual([]);
+        expect(sequences(received).slice(0, own.length)).toEqual(sequences(own));
       } finally {
         subscription.unsubscribe();
         holding = false;

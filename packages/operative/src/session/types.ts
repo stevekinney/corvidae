@@ -257,7 +257,15 @@ export interface SessionStore {
   /** Merge metadata into an existing session without overwriting the conversation. */
   updateMetadata(id: string, metadata: Record<string, JSONValue>): Promise<void>;
 
-  /** Delete sessions older than the specified threshold. Returns the number deleted. */
+  /**
+   * Delete sessions older than the specified threshold. Returns the number deleted.
+   *
+   * COR-718 — an expiry is a deletion: the removing batch also appends one
+   * `session.deleted` outbox entry per expired session, carrying that session's
+   * incarnation, so a drain records the same durable deletion fact it records
+   * for `delete()`. `CreateSessionStoreOptions.beforeCleanup` is told which
+   * sessions are expiring before the batch commits.
+   */
   cleanup(options: SessionCleanupOptions): Promise<number>;
 
   /**

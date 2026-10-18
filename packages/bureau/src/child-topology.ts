@@ -113,7 +113,7 @@ import type {
   BureauChildTerminalStatus,
   ChildTopologyStore,
 } from './child-topology-store';
-import { ownerOrLocal } from './owner-of-record';
+import { ownerOrLocal, principalDefect } from './owner-of-record';
 import { principalAllows } from './principal-allows';
 import { reservedWorkflowIdentifierReason } from './reserved-identifiers';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
@@ -1165,6 +1165,10 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     requireString(request.agentName, 'agentName');
     if (request.childRunId !== undefined) requireString(request.childRunId, 'childRunId');
     if (request.principal !== undefined) requireString(request.principal, 'principal');
+    // COR-718 — the same boundary every owner-deriving entry point applies: a
+    // caller may not act as one of Bureau's own principals.
+    const principalReason = principalDefect(request.principal);
+    if (principalReason !== undefined) throw dependencies.createBadRequest(principalReason);
     if (
       request.parentCancellation !== undefined &&
       !PARENT_CANCELLATIONS.includes(request.parentCancellation)

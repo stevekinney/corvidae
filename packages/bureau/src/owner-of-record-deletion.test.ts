@@ -4,6 +4,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
+import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 
@@ -109,6 +110,34 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
         const remaining = await bureau.kv?.list(SIDE_RECORD_PREFIX);
         return remaining?.length === 0;
       }, 'the side record outlived the audit entry');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('deletes nothing when the owner cannot be recorded first, so the caller can retry', async () => {
+    const bureau = await openBureau();
+    try {
+      await createdSession(bureau, 'api-key:alice', 'retained-session');
+      const kv = bureau.kv!;
+      const originalSet = kv.set.bind(kv);
+      kv.set = async (key: string, value: string) => {
+        if (key.startsWith(SIDE_RECORD_PREFIX)) throw new Error('injected: owner store down');
+        return originalSet(key, value);
+      };
+
+      const refusal = await rejectionOf(bureau.deleteSession('retained-session'));
+      expect(String(refusal)).toContain('injected');
+      expect(await bureau.getSession('retained-session')).toBeDefined();
+      const pending = await bureau.sessionStore!.outbox.pending();
+      expect(pending.filter((entry) => entry.kind === 'session.deleted')).toEqual([]);
+      expect(await bureau.auditTrail?.query({ runId: 'session:retained-session' })).toEqual([]);
+
+      kv.set = originalSet;
+      await bureau.deleteSession('retained-session');
+      await bureau.runDurableMaintenance();
+      const [entry] = await deletionEntries(bureau, 'retained-session', 1);
+      expect(entry?.detail).toMatchObject({ owner: 'api-key:alice' });
     } finally {
       await bureau.dispose();
     }

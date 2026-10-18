@@ -223,7 +223,6 @@ import {
   principalDefect,
   RECOVERY_ACTOR,
 } from './owner-of-record';
-import { createDeletionFloor } from './deletion-floor';
 import {
   attributeScheduledFire,
   recordScheduleFired,
@@ -1537,6 +1536,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // attribution map and the audit trail that record its owner, so the hook waits for both.
   const scheduledFireHandler =
     Promise.withResolvers<(fire: ScheduledFireNotice) => Promise<void>>();
+  // COR-718: the session store exists before the audit trail that consumes the owner
+  // record an expiring session needs, so the hook waits for the recorder the same way.
+  const sessionCleanupHandler =
+    Promise.withResolvers<(sessions: readonly AgentSession[]) => Promise<void>>();
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
     {
@@ -1545,6 +1548,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       onScheduledFire: async (fire) => {
         const handler = await scheduledFireHandler.promise;
         await handler(fire);
+      },
+      beforeSessionCleanup: async (sessions) => {
+        const handler = await sessionCleanupHandler.promise;
+        await handler(sessions);
       },
       onRecoveredWorkflow: async (info) => {
         const handler = await recoveredWorkflowHandler.promise;
@@ -6139,7 +6146,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       typeof state === 'object' && state !== null
         ? (state as { input?: unknown }).input
         : undefined;
-    return ownerOrLocal(isScheduledAgentRunInput(input) ? input.principal : undefined);
+    // Only an agent schedule has an owner; the local default applies to one that
+    // names no principal, never to some other workflow's schedule on the same engine.
+    return isScheduledAgentRunInput(input) ? ownerOrLocal(input.principal) : undefined;
   }
 
   async function sessionOwner(sessionId: string): Promise<string | undefined> {
@@ -8503,12 +8512,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * the event, and removes it once the audit entry is verified and the outbox
    * entry acknowledged.
    *
-   * It is written only when an audit trail exists to consume it. A crash between
-   * this write and the store delete, between the acknowledgement and the removal,
-   * or a process that wrote the record and then lost the delete to another
-   * process, leaves one small orphan record. That is accepted, because the record
-   * is only ever read for its own session id and incarnation. The `v1` prefix is
-   * where a future boot sweep would look for them.
+   * It is written only when an audit trail exists to consume it, and a deletion,
+   * by `deleteSession` or by the store's own `cleanup()`, does not go ahead when
+   * it cannot be written: the audit entry would then have no owner, and nothing
+   * could supply one afterwards. A crash between this write and the store delete,
+   * between the acknowledgement and the removal, or a process that wrote the
+   * record and then lost the delete to another process, leaves one small orphan
+   * record. That is accepted, because the record is only ever read for its own
+   * session id and incarnation. The `v1` prefix is where a future boot sweep
+   * would look for them.
    */
   const SESSION_DELETION_OWNER_PREFIX = 'session-deletion-owner:v1:';
 
@@ -8536,12 +8548,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     try {
       await kvStore.set(key, owner);
     } catch (error: unknown) {
-      diagnose({
-        level: 'error',
-        scope: 'durable-maintenance',
-        message: `[bureau] Could not record the owner of session "${session.id}" before deleting it; its deletion entry will have none: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
+      // The deletion does not go ahead without its owner: once the session is gone,
+      // nothing can supply the owner its audit entry needs, in this process or any
+      // other, so the caller is told and the session is left for it to retry.
+      sessionDeletionOwners.delete(key);
+      throw new Error(
+        `Could not record the owner of session "${session.id}" before deleting it; the session was not deleted: ${serializeUnknownError(error)}`,
+        { cause: error },
+      );
     }
   }
 
@@ -11631,19 +11645,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let durableEventProducerInstance: DurableEventProducer | undefined;
 
   /**
-   * COR-718 — whether a deletion of session `sessionId` has committed but not yet been
-   * drained: its outbox entry is still pending, so the `session.deleted` marker it
-   * will write is not in the durable history yet. Read before the marker is looked
-   * up, because an entry that has been acknowledged was recorded first.
-   */
-  async function hasPendingSessionDeletion(sessionId: string): Promise<boolean> {
-    const pending = (await runtime.sessionStore?.outbox.pending()) ?? [];
-    return pending.some(
-      (entry) => entry.kind === 'session.deleted' && entry.sessionId === sessionId,
-    );
-  }
-
-  /**
    * Whether `principal` may read `owner`'s durable history right now: the one
    * rule `eventHistory()` and `subscribeEventHistory()` both apply, so a feed
    * that cannot be paged by a stranger cannot be tailed by one either.
@@ -11707,40 +11708,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     subscribeOptions: DurableEventHistorySubscribeOptions | undefined,
   ): Subscription {
     let delivery: Promise<void> = Promise.resolve();
-    // COR-718 — a session id's history holds every incarnation of the id, each ended
-    // by a `session.deleted` marker, and the live session's owner is not an earlier
-    // incarnation's owner. For a session, each event is therefore judged against the
-    // session that is live when it is judged: it must exist and be the subscriber's,
-    // no deletion of the id may still be pending (its marker is not yet in the
-    // history), and the event must come after the latest marker. That marker is read
-    // for the live incarnation and read again whenever the live incarnation changes,
-    // and a marker the stream itself delivers raises it.
-    const floor = createDeletionFloor(async () => {
-      const marker = await history.latestDeletionMarker(owner);
-      return marker?.sequence ?? -1;
-    });
-    const deliver = async (event: DurableEventEnvelope): Promise<void> => {
+    // COR-718 — a session id's history holds every incarnation of the id, and the
+    // live session's owner is not an earlier incarnation's owner. Each event of a
+    // session is therefore judged against the session that is live when it is
+    // judged: it must exist and be the subscriber's, and the event must have been
+    // recorded for that very incarnation. An event recorded for none is never
+    // delivered to a principal. Nothing else separates the incarnations: not a
+    // marker between them, which an expiry never writes, and not the state of the
+    // outbox.
+    const deliver = async (event: DurableEventEnvelope, incarnation: string | undefined) => {
       if (owner.kind === 'session') {
-        let floorSequence: number;
         try {
           const live = await runtime.sessionStore?.load(owner.id);
           if (!live || !isSessionHistoryReadAuthorized(live.metadata, principal)) return;
-          if (await hasPendingSessionDeletion(owner.id)) return;
-          floorSequence = await floor.floorFor(live.incarnation);
+          if (incarnation === undefined || incarnation !== live.incarnation) return;
         } catch (error) {
-          // Only the event in hand is lost: the floor caches nothing on failure, so the
-          // next event looks it up afresh.
+          // Only the event in hand is lost; the next event loads the session afresh.
           diagnose({
             level: 'error',
             scope: 'durable-event-history',
-            message: `[bureau] Could not read the deletion floor of session:${owner.id} for a subscriber; its event "${event.kind}" was not delivered: ${serializeUnknownError(error)}`,
+            message: `[bureau] Could not load session:${owner.id} for a subscriber; its event "${event.kind}" was not delivered: ${serializeUnknownError(error)}`,
             cause: error,
           });
-          return;
-        }
-        if (event.sequence <= floorSequence) return;
-        if (event.kind === 'session.deleted') {
-          floor.raise(event.sequence);
           return;
         }
       }
@@ -11771,8 +11760,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
     const inner = history.subscribeEventHistory(
       owner,
-      (event) => {
-        delivery = delivery.then(() => deliver(event));
+      (event, incarnation) => {
+        delivery = delivery.then(() => deliver(event, incarnation));
       },
       subscribeOptions,
     );
@@ -11972,9 +11961,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (!preSession || !isSessionHistoryReadAuthorized(preSession.metadata, principal)) {
         return { outcome: 'not-found' };
       }
-      // A deletion that has committed but whose marker is not yet in the history leaves
-      // the history behind the store: nothing in it says where the live session begins.
-      if (await hasPendingSessionDeletion(owner.id)) return { outcome: 'not-found' };
       readIncarnation = preSession.incarnation;
     }
 
@@ -11996,7 +11982,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // first — so this is always defined whenever `history` is.
     await durableEventProducerInstance?.waitForActiveWrites(owner);
 
-    const page = await history.page(owner, requestOptions);
+    // COR-718 — a principal-stated read of a session keeps only the events recorded
+    // for the live incarnation (`readIncarnation`); every other incarnation's events,
+    // and any recorded for none, are left out by the store, whatever `since` and
+    // `limit` the caller passes.
+    const page = await history.page(
+      owner,
+      readIncarnation === undefined
+        ? requestOptions
+        : { ...requestOptions, incarnation: readIncarnation },
+    );
     if ('outcome' in page) {
       // AB-372 (Codex review finding, PR #580, "Reauthorize the session
       // before returning a post-wait gap"): the pre-page check above ran
@@ -12019,26 +12014,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return page; // a DurableEventGap
     }
 
-    // COR-718 — a principal-stated read of a session sees the live session's own
-    // incarnation only. The id's history also holds every earlier incarnation's
-    // events, each ended by a `session.deleted` marker, and the live session's owner
-    // is not those incarnations' owner. So the page starts after the latest marker,
-    // however the caller's `since` and `limit` fall around it, and the live session
-    // is read again once the page is in hand, because the id can be deleted or
-    // recreated while the page is read.
+    // COR-718 — the page holds the live incarnation's events only (see the read
+    // above). The live session is read again once the page is in hand, because the
+    // id can be deleted or recreated while the page is read: the session must still
+    // be there, still the same incarnation, and still the caller's.
     if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
-      let marker = page.events.findLast((event) => event.kind === 'session.deleted');
-      if (!(requestOptions?.since === undefined && !page.hasMore)) {
-        const latest = await history.latestDeletionMarker(owner);
-        if (latest !== undefined && (marker === undefined || latest.sequence > marker.sequence)) {
-          marker = latest;
-        }
-      }
-      const first = page.events[0];
-      const current =
-        marker !== undefined && first !== undefined && first.sequence <= marker.sequence
-          ? await history.page(owner, { ...requestOptions, since: marker.cursor })
-          : page;
       const liveSession = await runtime.sessionStore.load(owner.id);
       if (
         !liveSession ||
@@ -12047,7 +12027,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ) {
         return { outcome: 'not-found' };
       }
-      return current;
+      return page;
     }
 
     // AB-385 — evidence-based, independent of `options.since`/`options.limit`.
@@ -12606,6 +12586,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runtimeServices,
     );
   }
+
+  // COR-718: an expiry is a deletion, so each expiring session's owner is recorded for
+  // its deletion's audit entry the way `deleteSession` records it, before the store
+  // removes anything; a session whose owner cannot be recorded is kept.
+  sessionCleanupHandler.resolve(async (sessions) => {
+    for (const session of sessions) await recordSessionDeletionOwner(session);
+  });
 
   // COR-718: a schedule fire's run is owned by its schedule's owner, and the scheduler is
   // only the actor on the `schedule.fired` entry. The fire's services are rebuilt on

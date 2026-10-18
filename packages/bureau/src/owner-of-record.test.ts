@@ -48,6 +48,24 @@ describe('owner of record', () => {
     }
   });
 
+  it('refuses a principal in a reserved namespace, except the exact local owner', () => {
+    expect(principalDefect('system:scheduler')).toMatch(/reserved/);
+    expect(principalDefect('system:', 'options.principal')).toMatch(
+      /^"options\.principal" .*reserved/,
+    );
+    expect(principalDefect('anonymous:other')).toMatch(/reserved/);
+    expect(principalDefect('anonymous:')).toMatch(/reserved/);
+    expect(principalDefect('anonymous:local')).toBeUndefined();
+    // Only the namespace is reserved, not a subject that merely starts with its name.
+    expect(principalDefect('systems')).toBeUndefined();
+    expect(principalDefect('api-key:system%3Ascheduler')).toBeUndefined();
+    const refuse = (message: string): never => {
+      throw new Error(message);
+    };
+    expect(() => ownerFromPrincipal('system:recovery', refuse)).toThrow(/reserved/);
+    expect(ownerFromPrincipal('anonymous:local', refuse)).toBe('anonymous:local');
+  });
+
   it('derives an owner from a caller-supplied principal, and refuses what is not text', () => {
     const refuse = (message: string): never => {
       throw new Error(message);

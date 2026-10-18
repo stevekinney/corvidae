@@ -436,7 +436,10 @@ function assertSupportedOverlapPolicy(
  * An idempotent registration is the same schedule only if it names the same owner:
  * a retry under another `principal` must not be handed the first owner's schedule.
  * The stored input is read through the engine's storage; an engine that cannot be
- * read is not compared.
+ * read is not compared. Checked before the schedule is compared for compatibility,
+ * and worded as a schedule that is not there, so a non-owner learns nothing about
+ * another principal's schedule: not its overlap policy, its spec, or that it was
+ * cancelled (COR-718).
  */
 async function assertSameScheduleOwner(
   engine: SchedulingEngine,
@@ -448,7 +451,7 @@ async function assertSameScheduleOwner(
   const state = decode(bytes) as { input?: { principal?: unknown } } | null;
   const stored = state?.input?.principal;
   if (stored !== principal) {
-    throw new Error(`Schedule ${scheduleId} already exists with a different principal.`);
+    throw new Error(`Schedule ${scheduleId} was not found.`);
   }
 }
 
@@ -582,6 +585,7 @@ export async function createAgentSchedule(
   if (id !== undefined && idempotent === true) {
     const existingSchedule = await engine.getSchedule(scheduleId);
     if (existingSchedule) {
+      await assertSameScheduleOwner(engine, scheduleId, principal);
       assertCompatibleAgentSchedule(
         existingSchedule,
         scheduleId,
@@ -590,7 +594,6 @@ export async function createAgentSchedule(
         overlap,
         description,
       );
-      await assertSameScheduleOwner(engine, scheduleId, principal);
       return scheduleHandleFromEngine(engine, scheduleId, emitter);
     }
   }
@@ -602,6 +605,7 @@ export async function createAgentSchedule(
     if (id !== undefined && idempotent === true) {
       const existingSchedule = await engine.getSchedule(scheduleId);
       if (existingSchedule) {
+        await assertSameScheduleOwner(engine, scheduleId, principal);
         assertCompatibleAgentSchedule(
           existingSchedule,
           scheduleId,
@@ -610,7 +614,6 @@ export async function createAgentSchedule(
           overlap,
           description,
         );
-        await assertSameScheduleOwner(engine, scheduleId, principal);
         return scheduleHandleFromEngine(engine, scheduleId, emitter);
       }
     }

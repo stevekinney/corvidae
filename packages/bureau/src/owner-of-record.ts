@@ -40,16 +40,25 @@ export function ownerOrLocal(principal: string | undefined): string {
 
 /**
  * Why `principal`, as a caller supplied it, cannot become an owner, or `undefined`
- * when it can: a principal is text, or absent. This is the one definition of that
- * rule. Every entry point that derives an owner from a caller-supplied principal
- * applies it before it persists anything, either through
- * {@link ownerFromPrincipal} or, where the entry point answers with an outcome
- * instead of throwing (`bureau.goals.create`), by reporting this reason.
+ * when it can: a principal is text, or absent, and it is not one of Bureau's own.
+ * The `system:` namespace is reserved for the service principals, which are only
+ * ever actors, and `anonymous:` for callers with no credential; the one value a
+ * caller may state there is the exact {@link ANONYMOUS_LOCAL_OWNER}, which the
+ * local handler flow states for every uncredentialed caller. Anything else in
+ * either namespace would let a caller share a service identity, the scheduler's
+ * memory principal included. This is the one definition of that rule. Every
+ * entry point that derives an owner from a caller-supplied principal applies it
+ * before it persists anything, either through {@link ownerFromPrincipal} or,
+ * where the entry point answers with an outcome instead of throwing
+ * (`bureau.goals.create`), by reporting this reason.
  */
 export function principalDefect(principal: unknown, name = 'principal'): string | undefined {
-  return principal === undefined || typeof principal === 'string'
-    ? undefined
-    : `"${name}" must be a string`;
+  if (principal === undefined) return undefined;
+  if (typeof principal !== 'string') return `"${name}" must be a string`;
+  if (principal !== ANONYMOUS_LOCAL_OWNER && isReservedOwnerSubject(principal)) {
+    return `"${name}" is in a namespace reserved for Bureau's own principals`;
+  }
+  return undefined;
 }
 
 /**

@@ -628,10 +628,63 @@ describe('createAgentSchedule', () => {
       } catch (error) {
         refusal = error;
       }
-      expect(String(refusal)).toContain('different principal');
+      // Worded as a schedule that is not there, so the retrying principal learns
+      // nothing about whose it is.
+      expect(String(refusal)).toContain('was not found');
+      expect(String(refusal)).not.toMatch(/owner|another principal|different principal/i);
       // The owner's own retry is still the same schedule.
       const own = await retry('api-key:alice');
       expect(own.id).toBe('schedule-self-run-step');
+    },
+  );
+
+  it.each([
+    ['the existing-schedule path', false],
+    ['the duplicate-id race path', true],
+  ])(
+    'checks the owner before compatibility on %s, so a non-owner learns nothing about the schedule',
+    async (_label, rejectSchedule) => {
+      // A cancelled schedule with another interval: the owner would be told both, a
+      // non-owner neither.
+      const existingSummary: ScheduleSummary = {
+        ...mockSummary,
+        id: 'schedule-self-run-step',
+        intervalMs: 60_000,
+        status: 'cancelled',
+      };
+      const engine = makeSchedulingEngine({
+        summaries: [existingSummary],
+        scheduleId: 'schedule-self-run-step',
+        storedInput: { agentName: 'researcher', input: 'hello', principal: 'api-key:alice' },
+        rejectSchedule,
+      });
+      const retry = (principal: string) =>
+        createAgentSchedule({
+          engine,
+          agentName: 'researcher',
+          spec: { every: '1h' },
+          input: 'hello',
+          id: 'schedule-self-run-step',
+          idempotent: true,
+          principal,
+        });
+
+      let asStranger: unknown;
+      try {
+        await retry('api-key:bob');
+      } catch (error) {
+        asStranger = error;
+      }
+      let asOwner: unknown;
+      try {
+        await retry('api-key:alice');
+      } catch (error) {
+        asOwner = error;
+      }
+
+      expect(String(asStranger)).toContain('was not found');
+      expect(String(asStranger)).not.toMatch(/cancelled|interval|overlap|description/i);
+      expect(String(asOwner)).toContain('cancelled');
     },
   );
 
