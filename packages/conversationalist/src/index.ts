@@ -22,6 +22,7 @@ export {
   mergeAGUIMessages,
 } from './adapters/ag-ui/inbound';
 export { toAGUIMessages } from './adapters/ag-ui/outbound';
+export { toAGUIToolMessage } from './adapters/ag-ui/tool-result';
 export type * from './adapters/ag-ui/types';
 export { anthropicConversationAdapter } from './adapters/anthropic';
 export { appendAnthropicMessages, fromAnthropicMessages } from './adapters/anthropic/inbound';

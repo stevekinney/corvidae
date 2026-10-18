@@ -15,6 +15,7 @@
     "test:slow": "bun test .slow.test.ts"
   },
   "dependencies": {
+    "@ag-ui/core": "catalog:",
     "@lostgradient/cryptography": "workspace:*",
     "@lostgradient/lifecycle": "workspace:*",
     "@lostgradient/memory": "workspace:*",
@@ -27,6 +28,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@ag-ui/client": "catalog:",
     "@lostgradient/typescript": "workspace:*",
     "@lostgradient/testing": "workspace:*",
     "@types/bun": "catalog:",

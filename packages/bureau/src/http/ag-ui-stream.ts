@@ -1,0 +1,578 @@
+/**
+ * One AG-UI stream over one native run.
+ *
+ * A stream is a subscriber, never a consumer: it listens to Bureau's live frames
+ * with a listener of its own, reads the run's recorded history without
+ * advancing anything, and when the client goes away, or the stream reaches its
+ * maximum duration, or it falls too far behind, the stream ends and the native
+ * run does not notice. Several streams, native observers, and telemetry can
+ * watch one run at once.
+ *
+ * What a stream opens with depends on how it was reached. A stream that starts or
+ * continues a run replays the run's events from the beginning, because its
+ * client holds none of them; one that attaches opens with the conversation as a
+ * `MESSAGES_SNAPSHOT` and replays only the step still in flight, because
+ * everything earlier is in the snapshot. Either way the snapshot and the live
+ * tail meet without a gap: the stream subscribes first, buffers what arrives,
+ * reads the recorded history, and drops the buffered events the history already
+ * held, by the store's own sequence number.
+ *
+ * @module ag-ui-stream
+ */
+
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  type Event,
+  EventType,
+  type Interrupt,
+  type RunFinishedOutcome,
+  type TokenUsage,
+} from '@ag-ui/core';
+import { type ConversationHistory, type Message, toAGUIToolMessage } from 'conversationalist';
+
+import type { Bureau, PendingReview, RunDetail, ServerFrame } from '../types.ts';
+import { toInterrupt } from './ag-ui-interrupts.ts';
+import { snapshotMessages } from './ag-ui-messages.ts';
+import { type NativeTerminal, RECORDED, RunProjector, stepName } from './ag-ui-projection.ts';
+import { type AgUiSink, createAgUiSink } from './ag-ui-sink.ts';
+import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
+
+/** What a stream reads from the Bureau. */
+export type AgUiStreamBureau = Pick<
+  Bureau,
+  | 'getRun'
+  | 'getSession'
+  | 'subscribeLiveFrames'
+  | 'subscribeRunSnapshot'
+  | 'listPendingReviews'
+  | 'eventHistory'
+>;
+
+export type AgUiStreamEnvironment = {
+  readonly bureau: AgUiStreamBureau;
+  readonly runtime: Pick<RuntimeServices, 'clock' | 'timers'>;
+  readonly maxStreamDurationMs: number;
+  readonly liveBufferSize: number;
+};
+
+export type OpenRunStream = {
+  readonly threadId: string;
+  /** The `runId` the AG-UI run carries: the client's on start and resume, the native one on attach. */
+  readonly runId: string;
+  readonly nativeRunId: string;
+  readonly parentRunId?: string | undefined;
+  /** Replay the run from its first event, or only the step in flight behind a snapshot. */
+  readonly replay: 'beginning' | 'open-step';
+  readonly messagesSnapshot: boolean;
+  /**
+   * Replay of a call the run already settled, ahead of the live tail: a resume
+   * after a tool approval replays the approved call before the executed result.
+   */
+  readonly preludeEvents?: (() => Event[]) | undefined;
+};
+
+/** The message a mount-minted `RUN_ERROR` carries, by code. */
+export function errorEvent(
+  code: string,
+  message: string,
+  context: EventStamp,
+  label: {
+    readonly durable: boolean;
+    readonly cursor?: string | undefined;
+    readonly tripwire?: true | undefined;
+  } = {
+    durable: false,
+  },
+): Event {
+  return stamp({ type: EventType.RUN_ERROR, message, code }, context, label);
+}
+
+type ReadHistory = {
+  readonly fence: string | undefined;
+  readonly lastCursorByKind: ReadonlyMap<string, string>;
+};
+
+async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Promise<ReadHistory> {
+  const lastCursorByKind = new Map<string, string>();
+  let fence: string | undefined;
+  let since: string | undefined;
+  for (;;) {
+    const page = await bureau.eventHistory(
+      { kind: 'run', id: nativeRunId },
+      since === undefined ? {} : { since },
+    );
+    if (!('events' in page)) break;
+    for (const event of page.events) {
+      lastCursorByKind.set(event.kind, event.cursor);
+      fence = event.cursor;
+    }
+    if (!page.hasMore || page.nextCursor === undefined) break;
+    since = page.nextCursor;
+  }
+  return { fence, lastCursorByKind };
+}
+
+function usageOf(detail: unknown): TokenUsage[] {
+  const usage = (detail as { usage?: Record<string, unknown> } | undefined)?.usage ?? {};
+  const count = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  const prompt = count(usage['prompt']);
+  const completion = count(usage['completion']);
+  const total = count(usage['total']);
+  const entry: TokenUsage = {
+    ...(prompt === undefined ? {} : { inputTokens: prompt }),
+    ...(completion === undefined ? {} : { outputTokens: completion }),
+    ...(total === undefined ? {} : { totalTokens: total }),
+  };
+  return [entry];
+}
+
+/**
+ * The code and message a failed run's terminal record carries. The record holds
+ * the error serialized to a string (name, message, kind, code, and a cause that
+ * can hold a provider's response); only the code and message are read, so
+ * nothing else reaches the wire.
+ */
+function errorOf(detail: unknown): { code: string; message: string } {
+  let error = (detail as { error?: unknown } | undefined)?.error;
+  if (typeof error === 'string') {
+    try {
+      error = JSON.parse(error) as unknown;
+    } catch {
+      // Not JSON: the string is the message.
+    }
+  }
+  const record =
+    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
+  const message =
+    typeof record['message'] === 'string'
+      ? record['message']
+      : typeof error === 'string'
+        ? error
+        : 'The run failed';
+  return {
+    code:
+      typeof record['code'] === 'string' && record['code'].length > 0
+        ? record['code']
+        : 'RUN_FAILED',
+    message,
+  };
+}
+
+function pendingFor(bureau: AgUiStreamBureau, nativeRunId: string): PendingReview[] {
+  return bureau.listPendingReviews().filter((review) => review.runId === nativeRunId);
+}
+
+/** The call a `tool-call` row announces, as the assistant message it belongs to is named. */
+function parentOfCallRow(rowId: string, callId: string): string {
+  const suffix = `:call:${callId}`;
+  return rowId.endsWith(suffix) && rowId.length > suffix.length
+    ? rowId.slice(0, -suffix.length)
+    : rowId;
+}
+
+/**
+ * The events that show a tool call the conversation already holds, and the
+ * result row it is waiting under: what a client needs to draw the approval card
+ * for a call it did not watch run.
+ */
+export function replayCall(
+  history: ConversationHistory | undefined,
+  callId: string,
+  context: EventStamp,
+): Event[] {
+  const rows: Message[] =
+    history === undefined ? [] : history.ids.map((id) => history.messages[id]!);
+  const callRow = rows.find((row) => row.toolCall?.id === callId);
+  if (callRow?.toolCall === undefined) return [];
+  const call = callRow.toolCall;
+  const resultRow = rows.find((row) => row.toolResult?.callId === callId);
+  const live = <TEvent extends Event>(event: TEvent): TEvent =>
+    stamp(event, context, { durable: false });
+  const args = typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments);
+  const events: Event[] = [
+    live({
+      type: EventType.TOOL_CALL_START,
+      toolCallId: callId,
+      toolCallName: call.name,
+      parentMessageId: parentOfCallRow(callRow.id, callId),
+    }),
+    live({ type: EventType.TOOL_CALL_ARGS, toolCallId: callId, delta: args }),
+    live({ type: EventType.TOOL_CALL_END, toolCallId: callId }),
+  ];
+  if (resultRow?.toolResult !== undefined) {
+    events.push(
+      live({
+        type: EventType.TOOL_CALL_RESULT,
+        messageId: resultRow.id,
+        toolCallId: callId,
+        content: toAGUIToolMessage(resultRow.id, resultRow.toolResult, {}).content,
+        role: 'tool',
+      }),
+    );
+  }
+  return events;
+}
+
+/**
+ * Opens the stream and returns its response. The response is a live stream: it
+ * has not finished when this returns, and finishes when the run does or the
+ * stream is ended some other way.
+ */
+export function openRunStream(
+  environment: AgUiStreamEnvironment,
+  request: OpenRunStream,
+): Response {
+  const { bureau, runtime } = environment;
+  const stampContext: EventStamp = {
+    nativeRunId: request.nativeRunId,
+    sessionId: request.threadId,
+    now: () => runtime.clock.now(),
+  };
+  const projector = new RunProjector(request.nativeRunId, stampContext);
+
+  let sink: AgUiSink;
+  let ended = false;
+  let unsubscribeFrames: (() => void) | undefined;
+  let unsubscribeSnapshots: (() => void) | undefined;
+  const buffer: ServerFrame[] = [];
+  let highestSequence = -1;
+  let opened = false;
+  let lastState = '';
+  let lastRevision = 0;
+  let tail: Promise<void> = Promise.resolve();
+
+  const dispose = (): void => {
+    ended = true;
+    unsubscribeFrames?.();
+    unsubscribeFrames = undefined;
+    unsubscribeSnapshots?.();
+    unsubscribeSnapshots = undefined;
+    buffer.length = 0;
+  };
+
+  const enqueue = (task: () => Promise<void>): void => {
+    const runTask = async (): Promise<void> => {
+      if (ended) return;
+      try {
+        await task();
+      } catch (error) {
+        fail('RUN_FAILED', error instanceof Error ? error.message : 'The stream failed');
+      }
+    };
+    tail = tail.then(runTask);
+  };
+
+  const fail = (code: AgUiErrorCode, message: string): void => {
+    if (ended) return;
+    const event = errorEvent(code, message, stampContext);
+    dispose();
+    sink.finish(event);
+  };
+
+  sink = createAgUiSink({
+    timers: runtime.timers,
+    maxStreamDurationMs: environment.maxStreamDurationMs,
+    liveBufferSize: environment.liveBufferSize,
+    onDeadline: () => {
+      fail('STREAM_DEADLINE', 'The stream reached its maximum duration; attach again.');
+    },
+    onClosed: dispose,
+  });
+
+  const writeEvents = (events: ReadonlyArray<Event>): void => {
+    for (const event of events) {
+      if (ended) return;
+      if (opened ? !sink.writeLive(event) : (sink.writeOpening(event), false)) {
+        fail('STREAM_OVERFLOW', 'The stream fell too far behind; attach again.');
+        return;
+      }
+    }
+  };
+
+  const stateSnapshot = (snapshot: {
+    revision: number;
+    status: string;
+    assessment: string;
+  }): Event => {
+    lastRevision = Math.max(lastRevision, snapshot.revision);
+    return stamp(
+      {
+        type: EventType.STATE_SNAPSHOT,
+        snapshot: {
+          revision: lastRevision,
+          status: snapshot.status,
+          assessment: snapshot.assessment,
+          pendingInterruptIds: pendingFor(bureau, request.nativeRunId).map((review) => review.id),
+        },
+      },
+      stampContext,
+      { durable: false },
+    );
+  };
+
+  const stateKey = (snapshot: { status: string; assessment: string }): string =>
+    JSON.stringify([
+      snapshot.status,
+      snapshot.assessment,
+      pendingFor(bureau, request.nativeRunId).map((review) => review.id),
+    ]);
+
+  const finishAs = async (terminal: NativeTerminal): Promise<void> => {
+    const closing = projector.closeOpen();
+    const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
+    const kind =
+      terminal.outcome === 'completed'
+        ? RECORDED.runCompleted
+        : terminal.outcome === 'error'
+          ? RECORDED.runError
+          : RECORDED.runAborted;
+    const label = {
+      durable: true,
+      ...(history?.lastCursorByKind.get(kind) === undefined
+        ? {}
+        : { cursor: history.lastCursorByKind.get(kind) }),
+      ...(terminal.tripwire ? { tripwire: true as const } : {}),
+    };
+    writeEvents(closing);
+    if (ended) return;
+    const { threadId, runId } = request;
+    let last: Event;
+    if (terminal.outcome === 'error') {
+      const { code, message } = errorOf(terminal.detail);
+      last = errorEvent(code, message, stampContext, label);
+    } else if (terminal.outcome === 'aborted') {
+      last = stamp(
+        {
+          type: EventType.RUN_FINISHED,
+          threadId,
+          runId,
+          outcome: { type: 'cancelled' },
+        },
+        stampContext,
+        label,
+      );
+    } else {
+      const interrupts = pendingFor(bureau, request.nativeRunId).map(toInterrupt);
+      const outcome: RunFinishedOutcome =
+        interrupts.length > 0 ? { type: 'interrupt', interrupts } : { type: 'success' };
+      last = stamp(
+        {
+          type: EventType.RUN_FINISHED,
+          threadId,
+          runId,
+          outcome,
+          usage: usageOf(terminal.detail),
+        },
+        stampContext,
+        label,
+      );
+    }
+    dispose();
+    sink.finish(last, label.cursor);
+  };
+
+  const interruptNow = (interrupts: Interrupt[]): void => {
+    writeEvents(projector.closeOpen());
+    if (ended) return;
+    const last = stamp(
+      {
+        type: EventType.RUN_FINISHED,
+        threadId: request.threadId,
+        runId: request.runId,
+        outcome: { type: 'interrupt', interrupts },
+      },
+      stampContext,
+      { durable: false },
+    );
+    dispose();
+    sink.finish(last);
+  };
+
+  /** Applies one projection. Returns whether the stream is over. */
+  const apply = async (projection: ReturnType<RunProjector['handleRecorded']>): Promise<void> => {
+    writeEvents(projection.events);
+    if (ended) return;
+    if (projection.terminal !== undefined) {
+      await finishAs(projection.terminal);
+      return;
+    }
+    if (projection.parked === true) {
+      const parked = pendingFor(bureau, request.nativeRunId).filter(
+        (review) => review.kind === 'human-wait',
+      );
+      if (parked.length > 0) interruptNow(parked.map(toInterrupt));
+    }
+  };
+
+  const processFrame = async (frame: ServerFrame): Promise<void> => {
+    if (frame.type === 'event') {
+      if (frame.sequence <= highestSequence) return;
+      highestSequence = frame.sequence;
+      await apply(projector.handleRecorded(frame.event, frame.detail));
+      return;
+    }
+    if (frame.type === 'stream:text-delta') {
+      await apply(projector.handleTextDelta(frame.content, frame.accumulated));
+    }
+  };
+
+  const drain = async (): Promise<void> => {
+    for (;;) {
+      if (ended) return;
+      const frame = buffer.shift();
+      if (frame === undefined) return;
+      await processFrame(frame);
+    }
+  };
+
+  // The stream listens before it reads anything, so nothing falls between the
+  // recorded history and the live tail; the buffered frames the history already
+  // held are dropped by sequence.
+  unsubscribeFrames = bureau.subscribeLiveFrames((frame) => {
+    const relevant =
+      (frame.type === 'event' || frame.type === 'stream:text-delta') &&
+      frame.runId === request.nativeRunId;
+    if (!relevant || ended) return;
+    buffer.push(frame);
+    if (opened) enqueue(drain);
+  });
+
+  const open = async (): Promise<void> => {
+    const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
+    const session = await bureau.getSession(request.threadId);
+    const detail: RunDetail | undefined = bureau.getRun(request.nativeRunId);
+    const conversation: ConversationHistory | undefined =
+      detail?.transcript ?? session?.conversationHistory;
+    const fence = history?.fence;
+    const liveness = detail?.liveness;
+    // A run Bureau no longer holds (recovered after a restart, or removed by
+    // retention) has no liveness to read: it is reported as it was left.
+    const synthesized = { revision: lastRevision, status: 'terminal', assessment: 'terminal' };
+    const snapshot = liveness ?? synthesized;
+
+    writeEvents([
+      stamp(
+        {
+          type: EventType.RUN_STARTED,
+          threadId: request.threadId,
+          runId: request.runId,
+          ...(request.parentRunId === undefined ? {} : { parentRunId: request.parentRunId }),
+        },
+        stampContext,
+        { durable: false },
+      ),
+    ]);
+    if (request.messagesSnapshot) {
+      writeEvents([
+        stamp(
+          {
+            type: EventType.MESSAGES_SNAPSHOT,
+            messages: conversation === undefined ? [] : snapshotMessages(conversation),
+          },
+          stampContext,
+          { durable: false, ...(fence === undefined ? {} : { cursor: fence }) },
+        ),
+      ]);
+    }
+    writeEvents([stateSnapshot(snapshot)]);
+    lastState = stateKey(snapshot);
+    writeEvents(request.preludeEvents?.() ?? []);
+
+    // Replay what the client has not seen, through the same projection the live
+    // tail uses, so a replayed step and a live one cannot differ.
+    const recorded = detail?.events ?? [];
+    let from = 0;
+    if (request.replay === 'open-step') {
+      from = recorded.length;
+      let openAt: number | undefined;
+      for (const [index, event] of recorded.entries()) {
+        if (event.event === RECORDED.stepStarted) openAt = index;
+        if (event.event === RECORDED.stepCompleted) openAt = undefined;
+      }
+      if (openAt !== undefined) from = openAt;
+    }
+    let ending: NativeTerminal | undefined;
+    for (const event of recorded.slice(from)) {
+      highestSequence = Math.max(highestSequence, event.sequence);
+      const projection = projector.handleRecorded(event.event, event.detail);
+      writeEvents(projection.events);
+      if (ended) return;
+      if (projection.terminal !== undefined) ending = projection.terminal;
+      else if (projection.parked === true) {
+        const parked = pendingFor(bureau, request.nativeRunId).filter(
+          (review) => review.kind === 'human-wait',
+        );
+        if (parked.length > 0) {
+          interruptNow(parked.map(toInterrupt));
+          return;
+        }
+      }
+    }
+    for (const event of recorded) highestSequence = Math.max(highestSequence, event.sequence);
+
+    // A run parked on a human wait has finished its step natively (the park is
+    // taken when the loop ends), so a stream that opens on it has no park event
+    // left to replay; the pending review is what says the run is waiting.
+    if (ending === undefined && detail !== undefined && detail.status === 'running') {
+      const waiting = pendingFor(bureau, request.nativeRunId).filter(
+        (review) => review.kind === 'human-wait',
+      );
+      if (waiting.length > 0) {
+        interruptNow(waiting.map(toInterrupt));
+        return;
+      }
+    }
+
+    opened = true;
+    if (ending !== undefined) {
+      await finishAs(ending);
+      return;
+    }
+    if (detail === undefined || (detail.status !== 'running' && detail.status !== 'aborting')) {
+      // A settled run with an approval pending: its call is replayed, and the
+      // interrupt that is still waiting on it ends the AG-UI run.
+      const pending = pendingFor(bureau, request.nativeRunId);
+      if (pending.length > 0 && request.replay === 'open-step') {
+        for (const review of pending) {
+          if (review.kind === 'tool-approval') {
+            writeEvents(replayCall(conversation, review.approval.callId, stampContext));
+          }
+        }
+        interruptNow(pending.map(toInterrupt));
+        return;
+      }
+      await finishAs({
+        outcome:
+          detail?.status === 'error'
+            ? 'error'
+            : detail?.status === 'aborted'
+              ? 'aborted'
+              : 'completed',
+        detail: { error: detail?.error, usage: detail?.usage },
+        tripwire: false,
+      });
+      return;
+    }
+
+    try {
+      const subscription = bureau.subscribeRunSnapshot(request.nativeRunId, (next) => {
+        enqueue(async () => {
+          const key = stateKey(next);
+          if (key === lastState) return;
+          lastState = key;
+          writeEvents([stateSnapshot(next)]);
+        });
+      });
+      unsubscribeSnapshots = () => subscription.unsubscribe();
+    } catch {
+      // A run Bureau no longer holds has no liveness to follow.
+    }
+    await drain();
+  };
+
+  enqueue(open);
+  return sink.response;
+}
+
+export { stepName };

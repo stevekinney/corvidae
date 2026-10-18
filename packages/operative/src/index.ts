@@ -502,6 +502,11 @@ export {
 export { DEFAULT_MAXIMUM_STEPS } from './run-step';
 export * from './scheduler/index';
 
+export {
+  assistantMessageIdentifier,
+  toolCallMessageIdentifiers,
+  toolResultMessageIdentifier,
+} from './message-identifiers';
 export * from './session/index';
 export { MissingRunOptionsError } from './session/session-handle-types';
 export * from './store';
