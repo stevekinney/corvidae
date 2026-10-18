@@ -13,6 +13,7 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
+import { createFleetEventFeed, resolveStorage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -180,11 +181,13 @@ describe('the history of a deleted session (COR-718)', () => {
     }
   });
 
-  it('delivers nothing to a subscription on a session that does not exist', async () => {
+  it('delivers nothing to a subscription on a session that does not exist, once its chain has drained', async () => {
     const { bureau, directory } = await openBureau();
     try {
       await settled(bureau, ALICE, 'gone');
       await bureau.deleteSession('gone');
+      const former = eventsOf(await read(bureau, 'gone'));
+      const lastFormerSequence = Math.max(...sequences(former));
 
       const received: DurableEventEnvelope[] = [];
       const subscription = bureau.subscribeEventHistory(
@@ -195,18 +198,259 @@ describe('the history of a deleted session (COR-718)', () => {
         { principal: BOB },
       );
       try {
-        // A trusted subscription proves the replay has finished.
-        const trusted: DurableEventEnvelope[] = [];
+        // Bob's own session on a different id: its events prove his chain is live and in
+        // order, so everything of Alice's queued ahead of them has been judged by now.
+        const witnessReceived: DurableEventEnvelope[] = [];
         const witness = bureau.subscribeEventHistory({ kind: 'session', id: 'gone' }, (event) => {
-          trusted.push(event);
+          witnessReceived.push(event);
         });
-        await waitForCondition(() => trusted.length > 0, 'the trusted replay never arrived');
+        await waitForCondition(
+          () => witnessReceived.length >= former.length,
+          'the trusted replay never arrived',
+        );
         witness.unsubscribe();
-        await bureau.runDurableMaintenance();
+        // Recreate the id under Bob: his chain now sees Alice's backlog and then his own.
+        await settled(bureau, BOB, 'gone');
+        await waitForCondition(() => received.length > 0, "Bob's own events never arrived");
 
-        expect(received).toEqual([]);
+        expect(received.filter((event) => event.sequence <= lastFormerSequence)).toEqual([]);
       } finally {
         subscription.unsubscribe();
+      }
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a principal-stated read whose cursor is below the retention floor as not found, never as a gap', async () => {
+    const { bureau, directory } = await openBureau();
+    try {
+      await settled(bureau, ALICE, 'retained');
+      await bureau.deleteSession('retained');
+      const former = eventsOf(await read(bureau, 'retained'));
+      const adminStorage = await resolveStorage({
+        type: 'sqlite',
+        path: join(directory, 'bureau.sqlite'),
+      });
+      const adminFeed = createFleetEventFeed(adminStorage);
+      try {
+        await adminFeed.retain({ beforeSequence: Math.max(...sequences(former)) + 1 });
+      } finally {
+        adminFeed.dispose();
+        adminStorage[Symbol.dispose]();
+      }
+
+      const asBob = await read(bureau, 'retained', { principal: BOB, since: '0' });
+      const asTrusted = await read(bureau, 'retained', { since: '0' });
+
+      expect(asBob).toEqual({ outcome: 'not-found' });
+      expect(asTrusted).toMatchObject({ outcome: 'gap' });
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('never delivers a backlog queued under the former owner when the id is deleted and recreated mid-authorization', async () => {
+    const { bureau, directory } = await openBureau();
+    try {
+      await settled(bureau, ALICE, 'raced');
+      const lastFormerSequence = Math.max(...sequences(eventsOf(await read(bureau, 'raced'))));
+
+      // Hold the first authorization of the subscription on the session load, so Alice's
+      // first queued event is still being judged while the id is deleted and recreated.
+      const store = bureau.sessionStore!;
+      const originalLoad = store.load.bind(store);
+      const reached = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let held = false;
+      (store as { load: typeof store.load }).load = (async (id: string) => {
+        if (!held && id === 'raced') {
+          held = true;
+          reached.resolve();
+          await release.promise;
+        }
+        return originalLoad(id);
+      }) as typeof store.load;
+
+      const received: DurableEventEnvelope[] = [];
+      const subscription = bureau.subscribeEventHistory(
+        { kind: 'session', id: 'raced' },
+        (event) => {
+          received.push(event);
+        },
+        { principal: BOB },
+      );
+      try {
+        await reached.promise;
+        await bureau.deleteSession('raced');
+        await settled(bureau, BOB, 'raced');
+        const ownEvents = eventsOf(await read(bureau, 'raced', { principal: BOB }));
+        release.resolve();
+        await waitForCondition(
+          () => received.length >= ownEvents.length,
+          "Bob's own events never arrived",
+        );
+
+        expect(received.filter((event) => event.sequence <= lastFormerSequence)).toEqual([]);
+        expect(sequences(received)).toEqual(sequences(ownEvents));
+      } finally {
+        release.resolve();
+        subscription.unsubscribe();
+      }
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('treats a session whose deletion is still pending in the outbox as not found, for a page and a subscription', async () => {
+    const { bureau, directory } = await openBureau();
+    try {
+      await settled(bureau, ALICE, 'pending');
+      const former = eventsOf(await read(bureau, 'pending'));
+      const lastFormerSequence = Math.max(...sequences(former));
+
+      // The deletion commits, and its drain is held before it can claim the entry, so the
+      // `session.deleted` marker is not yet in the history.
+      const store = bureau.sessionStore!;
+      const outbox = store.outbox;
+      const originalClaim = outbox.claim.bind(outbox);
+      const claimReached = Promise.withResolvers<void>();
+      const releaseClaim = Promise.withResolvers<void>();
+      let holding = true;
+      (outbox as { claim: typeof outbox.claim }).claim = (async (
+        ...args: Parameters<typeof outbox.claim>
+      ) => {
+        if (holding) {
+          claimReached.resolve();
+          await releaseClaim.promise;
+        }
+        return originalClaim(...args);
+      }) as typeof outbox.claim;
+
+      const deletion = bureau.deleteSession('pending');
+      await claimReached.promise;
+      expect(await store.load('pending')).toBeUndefined();
+      const run = await bureau.createRun({
+        message: 'hello',
+        sessionId: 'pending',
+        principal: BOB,
+      });
+      await waitForCondition(
+        () => bureau.getRun(run.id)?.status !== 'running',
+        `run ${run.id} never settled`,
+      );
+
+      const page = await read(bureau, 'pending', { principal: BOB });
+      const received: DurableEventEnvelope[] = [];
+      const subscription = bureau.subscribeEventHistory(
+        { kind: 'session', id: 'pending' },
+        (event) => {
+          received.push(event);
+        },
+        { principal: BOB },
+      );
+      try {
+        // A trusted subscription is the proof that the replay has had time to be judged.
+        const witnessed: DurableEventEnvelope[] = [];
+        const witness = bureau.subscribeEventHistory(
+          { kind: 'session', id: 'pending' },
+          (event) => {
+            witnessed.push(event);
+          },
+        );
+        await waitForCondition(
+          () => witnessed.length >= former.length,
+          'the trusted replay never arrived',
+        );
+        witness.unsubscribe();
+
+        expect(page).toEqual({ outcome: 'not-found' });
+        expect(received.filter((event) => event.sequence <= lastFormerSequence)).toEqual([]);
+      } finally {
+        subscription.unsubscribe();
+        holding = false;
+        releaseClaim.resolve();
+        await deletion;
+      }
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a page read whose session was deleted and recreated while the page was read', async () => {
+    const { bureau, directory } = await openBureau();
+    try {
+      await settled(bureau, BOB, 'swapped');
+      const store = bureau.sessionStore!;
+      const originalLoad = store.load.bind(store);
+      const reachedPostLoad = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let calls = 0;
+      (store as { load: typeof store.load }).load = (async (id: string) => {
+        if (id === 'swapped') {
+          calls += 1;
+          // The first loads authorize the read; the last one, after the page is in hand, is held.
+          if (calls === 2) {
+            reachedPostLoad.resolve();
+            await release.promise;
+          }
+        }
+        return originalLoad(id);
+      }) as typeof store.load;
+
+      const pending = read(bureau, 'swapped', { principal: BOB });
+      await reachedPostLoad.promise;
+      await bureau.deleteSession('swapped');
+      await settled(bureau, BOB, 'swapped');
+      release.resolve();
+
+      expect(await pending).toEqual({ outcome: 'not-found' });
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('delivers nothing to a stranger subscribed to a live session, and everything to its owner', async () => {
+    const { bureau, directory } = await openBureau();
+    try {
+      await settled(bureau, ALICE, 'live');
+      const wanted = eventsOf(await read(bureau, 'live', { principal: ALICE }));
+
+      const strangers: DurableEventEnvelope[] = [];
+      const owners: DurableEventEnvelope[] = [];
+      const asBob = bureau.subscribeEventHistory(
+        { kind: 'session', id: 'live' },
+        (event) => {
+          strangers.push(event);
+        },
+        { principal: BOB },
+      );
+      const asAlice = bureau.subscribeEventHistory(
+        { kind: 'session', id: 'live' },
+        (event) => {
+          owners.push(event);
+        },
+        { principal: ALICE },
+      );
+      try {
+        // Alice's subscription was opened after Bob's, so once it has replayed everything,
+        // Bob's chain has judged every one of the same events.
+        await waitForCondition(
+          () => owners.length >= wanted.length,
+          "the owner's replay never arrived",
+        );
+        await settled(bureau, ALICE, 'live');
+
+        expect(sequences(owners).slice(0, wanted.length)).toEqual(sequences(wanted));
+        expect(strangers).toEqual([]);
+      } finally {
+        asBob.unsubscribe();
+        asAlice.unsubscribe();
       }
     } finally {
       await bureau.dispose();

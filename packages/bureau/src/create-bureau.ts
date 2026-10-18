@@ -223,6 +223,7 @@ import {
   principalDefect,
   RECOVERY_ACTOR,
 } from './owner-of-record';
+import { createDeletionFloor } from './deletion-floor';
 import {
   attributeScheduledFire,
   recordScheduleFired,
@@ -11630,6 +11631,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let durableEventProducerInstance: DurableEventProducer | undefined;
 
   /**
+   * COR-718 — whether a deletion of session `sessionId` has committed but not yet been
+   * drained: its outbox entry is still pending, so the `session.deleted` marker it
+   * will write is not in the durable history yet. Read before the marker is looked
+   * up, because an entry that has been acknowledged was recorded first.
+   */
+  async function hasPendingSessionDeletion(sessionId: string): Promise<boolean> {
+    const pending = (await runtime.sessionStore?.outbox.pending()) ?? [];
+    return pending.some(
+      (entry) => entry.kind === 'session.deleted' && entry.sessionId === sessionId,
+    );
+  }
+
+  /**
    * Whether `principal` may read `owner`'s durable history right now: the one
    * rule `eventHistory()` and `subscribeEventHistory()` both apply, so a feed
    * that cannot be paged by a stranger cannot be tailed by one either.
@@ -11695,27 +11709,46 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let delivery: Promise<void> = Promise.resolve();
     // COR-718 — a session id's history holds every incarnation of the id, each ended
     // by a `session.deleted` marker, and the live session's owner is not an earlier
-    // incarnation's owner. Only events after the latest marker are the live
-    // session's, so everything at or before it is dropped. The marker is found once,
-    // when the first event arrives, and then raised by every marker the stream
-    // itself delivers, which it does in order.
-    let floor: Promise<number> | undefined;
+    // incarnation's owner. For a session, each event is therefore judged against the
+    // session that is live when it is judged: it must exist and be the subscriber's,
+    // no deletion of the id may still be pending (its marker is not yet in the
+    // history), and the event must come after the latest marker. That marker is read
+    // for the live incarnation and read again whenever the live incarnation changes,
+    // and a marker the stream itself delivers raises it.
+    const floor = createDeletionFloor(async () => {
+      const marker = await history.latestDeletionMarker(owner);
+      return marker?.sequence ?? -1;
+    });
     const deliver = async (event: DurableEventEnvelope): Promise<void> => {
       if (owner.kind === 'session') {
-        floor ??= history
-          .latestDeletionMarker(owner)
-          .then((marker) => marker?.sequence ?? -1)
-          .catch(() => Number.POSITIVE_INFINITY);
-        const settledFloor = await floor;
-        if (event.sequence <= settledFloor) return;
+        let floorSequence: number;
+        try {
+          const live = await runtime.sessionStore?.load(owner.id);
+          if (!live || !isSessionHistoryReadAuthorized(live.metadata, principal)) return;
+          if (await hasPendingSessionDeletion(owner.id)) return;
+          floorSequence = await floor.floorFor(live.incarnation);
+        } catch (error) {
+          // Only the event in hand is lost: the floor caches nothing on failure, so the
+          // next event looks it up afresh.
+          diagnose({
+            level: 'error',
+            scope: 'durable-event-history',
+            message: `[bureau] Could not read the deletion floor of session:${owner.id} for a subscriber; its event "${event.kind}" was not delivered: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return;
+        }
+        if (event.sequence <= floorSequence) return;
         if (event.kind === 'session.deleted') {
-          floor = Promise.resolve(event.sequence);
+          floor.raise(event.sequence);
           return;
         }
       }
-      let readable = false;
+      // A session was judged above, against the session live at the time. The other kinds
+      // are judged by their owner of record.
+      let readable = owner.kind === 'session';
       try {
-        readable = await ownerReadableBy(owner, principal);
+        if (owner.kind !== 'session') readable = await ownerReadableBy(owner, principal);
       } catch (error) {
         diagnose({
           level: 'error',
@@ -11929,6 +11962,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // recorded authority names; a session with no recorded authority is
     // still open, and malformed authority metadata fails closed, per
     // `isSessionHistoryReadAuthorized`'s own documented rule.
+    let readIncarnation: string | undefined;
     if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
       const preSession = await runtime.sessionStore.load(owner.id);
       // COR-718: a caller that states a principal reads only a live session it owns.
@@ -11938,6 +11972,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (!preSession || !isSessionHistoryReadAuthorized(preSession.metadata, principal)) {
         return { outcome: 'not-found' };
       }
+      // A deletion that has committed but whose marker is not yet in the history leaves
+      // the history behind the store: nothing in it says where the live session begins.
+      if (await hasPendingSessionDeletion(owner.id)) return { outcome: 'not-found' };
+      readIncarnation = preSession.incarnation;
     }
 
     // AB-372 (Codex review finding, PR #580, "Wait for the deletion
@@ -12002,7 +12040,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? await history.page(owner, { ...requestOptions, since: marker.cursor })
           : page;
       const liveSession = await runtime.sessionStore.load(owner.id);
-      if (!liveSession || !isSessionHistoryReadAuthorized(liveSession.metadata, principal)) {
+      if (
+        !liveSession ||
+        liveSession.incarnation !== readIncarnation ||
+        !isSessionHistoryReadAuthorized(liveSession.metadata, principal)
+      ) {
         return { outcome: 'not-found' };
       }
       return current;
