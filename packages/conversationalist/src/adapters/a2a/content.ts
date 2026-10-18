@@ -1,3 +1,4 @@
+import { baseMimeType } from '../../media-types';
 import type { MediaContent, MultiModalContent, TextContent } from '../../multi-modal';
 import type { JSONValue } from '../../types';
 import {
@@ -223,7 +224,7 @@ function fromA2ADataPart(part: A2ADataPart): MediaContent {
 function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): MediaContent {
   const mediaType = nonEmpty(part.mediaType);
   const name = nonEmpty(part.filename);
-  const family = mediaType?.split('/')[0];
+  const family = mediaType === undefined ? undefined : baseMimeType(mediaType).split('/')[0];
   // The media type decides the modality; a filename never changes it.
   const modality =
     family === 'image' || family === 'audio' || family === 'video' ? family : 'document';
@@ -231,10 +232,12 @@ function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): MediaContent {
     ...createMediaPart(
       modality,
       part.raw === undefined
-        ? sourceFromUrl(part.url, (url) =>
-            unsupportedA2AContent('part', `its URL "${url}" is not an http, https, or data URL.`),
+        ? sourceFromUrl(part.url, (url, reason) =>
+            unsupportedA2AContent('part', `its URL "${url}" cannot be a media source: ${reason}.`),
           )
-        : inlineBase64Source(part.raw),
+        : inlineBase64Source(part.raw, (reason) =>
+            unsupportedA2AContent('part', `its raw bytes are not base64 that decodes: ${reason}.`),
+          ),
       { mimeType: mediaType, name },
     ),
     ...fromA2AMetadata(part.metadata),

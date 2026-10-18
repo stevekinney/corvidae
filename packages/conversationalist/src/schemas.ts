@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { isDecodableBase64, mimeTypeFitsModality } from './media-types';
+import { isDecodableBase64, isWellFormedDataUrl, mimeTypeFitsModality } from './media-types';
 import type { ContentSource, Modality, MultiModalContent } from './multi-modal';
 import type {
   ConversationHistory as Conversation,
@@ -118,23 +118,6 @@ export const contentSourceSchema = z.discriminatedUnion('kind', [
     revision: z.number().int().min(0).exactOptional(),
   }),
 ]) satisfies z.ZodType<ContentSource>;
-
-/** A data URL whose payload decodes: valid base64 after `;base64`, a valid URI component otherwise. */
-function isWellFormedDataUrl(url: string): boolean {
-  const comma = url.indexOf(',');
-  if (comma === -1) return false;
-  const payload = url.slice(comma + 1);
-  if (payload === '') return false;
-  if (url.slice('data:'.length, comma).split(';').includes('base64')) {
-    return isDecodableBase64(payload);
-  }
-  try {
-    decodeURIComponent(payload);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /** Refines a media variant so a declared media type fits the modality it is declared on. */
 function mediaTypeFitsModality(modality: Exclude<Modality, 'text'>) {

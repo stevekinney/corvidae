@@ -12,6 +12,7 @@ import {
   UnsupportedContentError,
   type UnsupportedContentReason,
 } from '../errors';
+import { BASE64_REQUIREMENT, baseMimeType, dataUrlDefect, isDecodableBase64 } from '../media-types';
 import type {
   ContentPartLineage,
   ContentSource,
@@ -205,8 +206,19 @@ export function encodeUtf8Base64(text: string): string {
   return btoa(binary);
 }
 
-/** Builds the `inline` source a provider's base64 block maps back to. */
-export function inlineBase64Source(data: string): Extract<ContentSource, { kind: 'inline' }> {
+/**
+ * Builds the `inline` source a provider's base64 block maps back to. Third-party
+ * bytes are checked here, at the mapping boundary: base64 that would not decode
+ * is refused with the adapter's own mapping error, which names what base64
+ * requires, rather than stored as a source the content schema refuses later
+ * with a generic message.
+ */
+export function inlineBase64Source(
+  data: string,
+  invalid: (reason: string) => Error = (reason) =>
+    new ConversationalistError('error:validation', `Cannot map inline bytes: ${reason}.`),
+): Extract<ContentSource, { kind: 'inline' }> {
+  if (!isDecodableBase64(data)) throw invalid(`the ${BASE64_REQUIREMENT}`);
   return { kind: 'inline', data, encoding: 'base64' };
 }
 
@@ -214,20 +226,22 @@ export function inlineBase64Source(data: string): Extract<ContentSource, { kind:
  * Maps a URL a provider reports (or a caller passes) to its `ContentSource`:
  * `data:` becomes `data-url`, `http:` and `https:` become `remote-url`. Any
  * other scheme (`s3:`, `gs:`, `file:`) is not a URL a `remote-url` source can
- * hold, so it is refused with `invalid(url)` rather than stored as a source the
+ * hold, and a data URL whose payload does not decode names no bytes, so both
+ * are refused with `invalid(url, reason)` rather than stored as a source the
  * content schema would later reject. Adapters pass their own mapping error.
  */
 export function sourceFromUrl(
   url: string,
-  invalid: (url: string) => Error = (rejected) =>
-    new ConversationalistError(
-      'error:validation',
-      `Cannot map the URL "${rejected}": only http, https, and data URLs are media sources.`,
-    ),
+  invalid: (url: string, reason: string) => Error = (rejected, reason) =>
+    new ConversationalistError('error:validation', `Cannot map the URL "${rejected}": ${reason}.`),
 ): ContentSource {
-  if (url.startsWith('data:')) return { kind: 'data-url', url };
+  if (url.startsWith('data:')) {
+    const defect = dataUrlDefect(url);
+    if (defect !== undefined) throw invalid(url, defect);
+    return { kind: 'data-url', url };
+  }
   if (/^https?:\/\//i.test(url)) return { kind: 'remote-url', url };
-  throw invalid(url);
+  throw invalid(url, 'only http, https, and data URLs are media sources');
 }
 
 /**
@@ -238,9 +252,10 @@ export function modalityFromMimeType(
   mimeType: string | undefined,
 ): Exclude<Modality, 'text'> | undefined {
   if (mimeType === undefined) return undefined;
-  const family = mimeType.split('/')[0]?.toLowerCase();
+  const base = baseMimeType(mimeType);
+  const family = base.split('/')[0];
   if (family === 'image' || family === 'audio' || family === 'video') return family;
-  if (mimeType.toLowerCase() === 'application/pdf' || family === 'text') return 'document';
+  if (base === 'application/pdf' || family === 'text') return 'document';
   return 'file';
 }
 

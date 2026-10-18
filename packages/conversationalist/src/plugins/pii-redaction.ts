@@ -117,8 +117,13 @@ function redactMediaFields(
     );
   }
   if (body.status === 'text' && body.body.withText !== undefined) {
-    const withBody = body.body.withText(redact(body.body.text));
-    redacted = { ...redacted, source: withBody.source };
+    // Only a changed body is re-encoded: putting an unchanged one back would
+    // alter bytes that had nothing to redact (a byte-order mark, the
+    // percent-encoding of a data URL).
+    const text = redact(body.body.text);
+    if (text !== body.body.text) {
+      redacted = { ...redacted, source: body.body.withText(text).source };
+    }
   }
   return redacted;
 }

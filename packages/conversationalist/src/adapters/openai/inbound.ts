@@ -52,7 +52,7 @@ function toConversationPart(part: OpenAIContentPart): MultiModalContent {
   }
   return createMediaPart(
     modalityFromMimeType(parsed.mimeType) === 'document' ? 'document' : 'file',
-    { kind: 'data-url', url: fileData },
+    sourceFromUrl(fileData),
     { ...name, ...(parsed.mimeType !== undefined ? { mimeType: parsed.mimeType } : {}) },
   );
 }

@@ -1,3 +1,4 @@
+import { baseMimeType } from '../../media-types';
 import { isMediaContent, type MediaContent, type MultiModalContent } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type { Message, ToolCall, ToolResult } from '../../types';
@@ -93,7 +94,7 @@ function toAnthropicMedia(
     recordLineage(context, partIndex, part, effective, {
       to: 'inline',
       transform: 'passthrough',
-      ...(effective.mimeType !== undefined && effective.mimeType !== 'text/plain'
+      ...(effective.mimeType !== undefined && baseMimeType(effective.mimeType) !== 'text/plain'
         ? { originalMimeType: effective.mimeType }
         : {}),
     });
@@ -107,11 +108,13 @@ function toAnthropicMedia(
   if (payload === undefined || (source.kind === 'inline' && source.encoding === 'utf8')) {
     return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
   }
-  const mimeType = payload.mimeType ?? effective.mimeType;
-  if (mimeType === undefined) {
+  const declaredMimeType = payload.mimeType ?? effective.mimeType;
+  if (declaredMimeType === undefined) {
     return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
   }
-  if (part.type === 'document' && mimeType.toLowerCase().startsWith('text/')) {
+  // The wire carries the base type; a parameter (`;version=1.7`) is not a type.
+  const mimeType = baseMimeType(declaredMimeType);
+  if (part.type === 'document' && mimeType.startsWith('text/')) {
     // A base64 document source accepts only application/pdf. Text bytes go as a
     // text source, so a text document that arrived as base64 or a data URL is
     // decoded here, or rejected before the client call when it is not UTF-8.
@@ -122,7 +125,7 @@ function toAnthropicMedia(
     recordLineage(context, partIndex, part, effective, {
       to: 'inline',
       transform: payload.kind === 'data-url' ? 'data-url-split' : 'inline-base64',
-      ...(mimeType !== 'text/plain' ? { originalMimeType: mimeType } : {}),
+      ...(declaredMimeType !== 'text/plain' ? { originalMimeType: declaredMimeType } : {}),
     });
     return {
       type: 'document',

@@ -1,4 +1,5 @@
 import { assertConversationSafe } from '../../conversation/validation';
+import { baseMimeType } from '../../media-types';
 import type { ContentPartLineage, MediaContent, MultiModalContent } from '../../multi-modal';
 import { isMediaContent } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
@@ -100,7 +101,7 @@ function toOpenAIMediaPart(
       if (payload === undefined || mimeType === undefined) {
         return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
       }
-      const rebuilt = `data:${mimeType};base64,${payload.data}`;
+      const rebuilt = `data:${baseMimeType(mimeType)};base64,${payload.data}`;
       const unchanged = rebuilt === source.url;
       recordLineage(context, partIndex, part, effective, {
         to: 'data-url',
@@ -120,7 +121,7 @@ function toOpenAIMediaPart(
       });
       return {
         type: 'image_url',
-        image_url: { url: `data:${mimeType};base64,${payload.data}` },
+        image_url: { url: `data:${baseMimeType(mimeType)};base64,${payload.data}` },
       };
     }
     return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
@@ -155,10 +156,10 @@ function toOpenAIMediaPart(
     if (mimeType === undefined) {
       return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
     }
-    if (mimeType.toLowerCase() !== 'application/pdf') {
+    if (baseMimeType(mimeType) !== 'application/pdf') {
       return rejectPart(context, partIndex, part, 'mime-family-not-accepted', source.kind);
     }
-    const rebuilt = `data:${mimeType};base64,${payload.data}`;
+    const rebuilt = `data:${baseMimeType(mimeType)};base64,${payload.data}`;
     recordLineage(context, partIndex, part, effective, {
       to: 'data-url',
       transform:

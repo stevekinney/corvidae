@@ -3,6 +3,7 @@ import type {
   MessageParam,
   TextBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
+import { baseMimeType } from '../../media-types';
 import type { ContentPartLineage } from '../../multi-modal';
 import type { ConversationHistory as Conversation } from '../../types';
 import { toAnthropicMessages } from './outbound';
@@ -133,7 +134,7 @@ function toSdkDocumentBlock(
       ...(cacheControl ? { cache_control: cacheControl } : {}),
     };
   if (block.source.type === 'base64') {
-    if (block.source.media_type !== 'application/pdf')
+    if (baseMimeType(block.source.media_type) !== 'application/pdf')
       throw new TypeError(
         `Anthropic SDK documents require application/pdf, got ${block.source.media_type}.`,
       );
