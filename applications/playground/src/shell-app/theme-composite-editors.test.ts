@@ -18,7 +18,7 @@ import {
 import { editableState, type JsonObject, type JsonValue } from './theme-draft-types.ts';
 import { jsonEquals } from './theme-override-tree.ts';
 import { fixtureEnvelope, SOURCE_TOKENS } from './theme-reference-fixtures.ts';
-import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
+import { memoEvaluator as evaluator, warmStates } from './theme-reference-test-support.ts';
 import { sourceTokenRow } from './theme-source-token-row.ts';
 import { editorForToken } from './theme-token-editors.ts';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
@@ -173,7 +173,8 @@ describe('the registry', () => {
 
 // --- the mounted editor ---------------------------------------------------------------------
 
-const evaluator = createRuntimeEvaluator();
+// The states the controllers below start over are evaluated here, outside any test's budget.
+await warmStates(SOURCE_TOKENS);
 let mounted: ReturnType<typeof mount> | null = null;
 let target: HTMLElement;
 
