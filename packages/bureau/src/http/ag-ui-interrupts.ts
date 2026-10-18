@@ -21,7 +21,8 @@ import { BUREAU_METADATA_KEY } from './ag-ui-vocabulary.ts';
  * review kinds. `arguments` applies to a tool approval that is approved and
  * overrides the call's arguments; `answer` applies to a human wait that is
  * approved and is delivered as the signal's payload; `reason` is required, and
- * non-blank, to `reject`.
+ * must hold a character other than whitespace, to `reject`, which is the rule the
+ * resume boundary enforces.
  */
 export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -33,6 +34,13 @@ export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
   },
   required: ['decision'],
   additionalProperties: false,
+  anyOf: [
+    { properties: { decision: { enum: ['approve', 'deny'] } } },
+    {
+      properties: { decision: { const: 'reject' }, reason: { type: 'string', pattern: '\\S' } },
+      required: ['reason'],
+    },
+  ],
 };
 
 /** The answer to one interrupt, as the `payload` of a `resolved` resume entry. */
@@ -88,10 +96,19 @@ export function toInterrupt(review: PendingReview): Interrupt {
   };
 }
 
-/** The ids a resume must cover for the reviews pending on `runId`, as `id@round`, sorted. */
+/**
+ * The key that identifies a set of interrupts in the command ledger: the sorted
+ * `[id, round]` pairs, serialized as JSON. A join with delimiters would not be
+ * injective (an id may contain the delimiter), and the key is persisted, so its
+ * encoding is part of the stored contract. A human wait has no rounds, so its
+ * round is 0.
+ */
 export function interruptKey(reviews: ReadonlyArray<PendingReview>): string {
-  return reviews
-    .map((review) => `${review.id}@${review.kind === 'tool-approval' ? review.round : 0}`)
-    .toSorted()
-    .join(',');
+  const pairs = reviews
+    .map((review): [string, number] => [
+      review.id,
+      review.kind === 'tool-approval' ? review.round : 0,
+    ])
+    .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+  return JSON.stringify(pairs);
 }

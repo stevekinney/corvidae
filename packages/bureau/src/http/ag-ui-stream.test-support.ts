@@ -19,6 +19,9 @@ export function parseAgUiFrames(body: string): ReceivedFrame[] {
       if (line.startsWith('id: ')) id = line.slice(4);
       else if (line.startsWith('data: ')) data.push(line.slice(6));
     }
+    // A block with no data line is an SSE comment (the keep-alive), which
+    // clients ignore.
+    if (data.length === 0) continue;
     const parsed = EventSchemas.safeParse(JSON.parse(data.join('\n')));
     if (!parsed.success) {
       throw new Error(`Not an AG-UI event: ${parsed.error.message}\n${data.join('\n')}`);

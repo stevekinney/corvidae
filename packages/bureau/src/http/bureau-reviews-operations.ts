@@ -180,7 +180,7 @@ export function projectReview(
     return {
       ...common,
       kind: 'tool-approval',
-      round: review.round,
+      round: review.round ?? 0,
       approval: {
         callId: review.approval.callId,
         toolName: review.approval.toolName,

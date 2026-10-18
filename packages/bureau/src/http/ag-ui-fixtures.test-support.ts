@@ -31,6 +31,13 @@ export type Harness = {
   readonly bureau: Bureau;
   readonly handler: Handler;
   readonly generate: ScriptedGenerate;
+  /** A second handler, with a mount of its own, over the same Bureau: what another process would serve. */
+  remount(agUi?: AgUiOptions): Handler;
+  /**
+   * Closes this Bureau and opens another over the same storage, running `script`: a
+   * process restart. The returned harness owns the storage from here on.
+   */
+  restart(script: readonly ScriptedGenerateStep[]): Promise<Harness>;
   dispose(): Promise<void>;
 };
 
@@ -74,12 +81,14 @@ export function as(key: string): Record<string, string> {
   return { 'X-API-Key': key };
 }
 
-export async function openHarness(options: HarnessOptions): Promise<Harness> {
+/** What `openHarness` keeps so a restarted Bureau opens over the same storage. */
+type StorageFixture = ReturnType<typeof createSqliteStorageFixture>;
+
+async function build(
+  options: HarnessOptions,
+  fixture: StorageFixture | undefined,
+): Promise<Harness> {
   const generate = createScriptedGenerate(options.script);
-  const fixture =
-    options.storage === 'sqlite'
-      ? createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() })
-      : undefined;
   const bureau = await createBureau({
     id: 'ag-ui-fixture',
     agents: { [AGENT]: createAgent({ generate, name: AGENT }) },
@@ -91,22 +100,39 @@ export async function openHarness(options: HarnessOptions): Promise<Harness> {
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     stopWhen: options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
   });
-  const handler = createBureauHandler(bureau, {
-    ...(options.authentication === undefined
-      ? { unauthenticatedAccess: 'allow' as const }
-      : { authentication: options.authentication }),
-    publish: [AGENT],
-    agUi: options.agUi ?? {},
-  });
+  const mount = (agUi: AgUiOptions | undefined): Handler =>
+    createBureauHandler(bureau, {
+      ...(options.authentication === undefined
+        ? { unauthenticatedAccess: 'allow' as const }
+        : { authentication: options.authentication }),
+      publish: [AGENT],
+      agUi: agUi ?? {},
+    });
+  let restarted = false;
   return {
     bureau: bureau as unknown as Bureau,
-    handler,
+    handler: mount(options.agUi),
     generate,
+    remount: (agUi) => mount(agUi ?? options.agUi),
+    async restart(script) {
+      restarted = true;
+      await bureau.dispose();
+      return build({ ...options, script }, fixture);
+    },
     async dispose() {
+      if (restarted) return;
       await bureau.dispose();
       await fixture?.dispose();
     },
   };
+}
+
+export async function openHarness(options: HarnessOptions): Promise<Harness> {
+  const fixture =
+    options.storage === 'sqlite'
+      ? createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() })
+      : undefined;
+  return build(options, fixture);
 }
 
 export function runAgentInput(overrides: Partial<RunAgentInput> = {}): RunAgentInput {

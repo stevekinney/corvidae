@@ -733,7 +733,20 @@ class BureauError extends Error {
   }
 }
 
-export { BureauError };
+/**
+ * `resolveReview` resolved a tool approval, and the tool ran or was refused, but
+ * the outcome could not be written into the session's conversation. The review is
+ * resolved and will not be offered again; the conversation still shows it as
+ * pending until a later write replaces the row.
+ */
+class ApprovalOutcomeNotWrittenError extends BureauError {
+  constructor(message: string) {
+    super(message, 'CONFLICT');
+    this.name = 'ApprovalOutcomeNotWrittenError';
+  }
+}
+
+export { ApprovalOutcomeNotWrittenError, BureauError };
 
 /**
  * Thrown by `createSchedule` when a schedule registers successfully against
@@ -11041,15 +11054,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *
    * The tool has already run (or been refused) by now, so a failure here cannot
    * undo the resolution: it is retried like every other post-resolution write,
-   * then diagnosed. A Bureau with no session store has no conversation to write.
+   * then returned for `resolveReview` to throw once the decision is recorded.
+   * Reporting success would let the next run start from the stale
+   * `action_required` row and ask for the approval again. A Bureau with no
+   * session store has no conversation to write.
+   *
+   * A run that is still going when its approval is resolved (one without
+   * `stopWhen: pendingApproval()`) can write its own copy of the conversation
+   * over this one at its terminal save, so a host serving approvals configures it.
    */
   async function writeApprovalOutcomeToSession(
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     input: ResolveReviewInput,
     result: unknown,
-  ): Promise<void> {
+  ): Promise<ApprovalOutcomeNotWrittenError | undefined> {
     const sessionStore = runtime.sessionStore;
-    if (!sessionStore) return;
+    if (!sessionStore) return undefined;
     const callId = review.approval.callId;
     const refusal = input.decision === 'reject' ? 'Tool call rejected' : 'Tool call denied';
     const message = input.reason === undefined ? refusal : `${refusal}: ${input.reason}`;
@@ -11085,7 +11105,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   ),
                 },
           );
-          return;
+          return undefined;
         } catch (error) {
           lastError = error;
           if (attempt < SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS) {
@@ -11101,6 +11121,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       scope: 'session-persistence',
       message: `[bureau] Could not write the outcome of review "${review.id}" into session "${review.sessionId}": ${serializeUnknownError(lastError)}. The conversation still shows the approval as pending.`,
     });
+    return new ApprovalOutcomeNotWrittenError(
+      `Review "${review.id}" was resolved, but its outcome was not written into the conversation of session "${review.sessionId}" (${serializeUnknownError(lastError)}); the conversation still shows the approval as pending`,
+    );
   }
 
   async function resolveReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
@@ -11519,13 +11542,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     // COR-855: the outcome the run's conversation has to show before the next
     // run starts from it. A resolution the policy gated again executed nothing.
-    if (review.kind === 'tool-approval' && !keepPending) {
-      await writeApprovalOutcomeToSession(review, input, result);
-    }
+    const outcomeNotWritten =
+      review.kind === 'tool-approval' && !keepPending
+        ? await writeApprovalOutcomeToSession(review, input, result)
+        : undefined;
 
     await recordReviewDecision(review, input.decision, input.principal, input.reason, {
       auditAlreadyAppended,
     });
+
+    if (outcomeNotWritten !== undefined) throw outcomeNotWritten;
 
     return {
       id: review.id,

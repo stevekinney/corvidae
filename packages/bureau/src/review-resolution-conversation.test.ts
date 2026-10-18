@@ -12,7 +12,7 @@
 import { stopWhen, type Toolbox, waitForRunState } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import type { Message } from 'conversationalist';
 import { z } from 'zod';
 
@@ -74,7 +74,7 @@ async function settle(bureau: Bureau, runId: string): Promise<void> {
 }
 
 /** A Bureau whose first run asks to charge a card and stops at the approval. */
-async function parkedBureau(toolbox: Toolbox) {
+async function parkedBureau(toolbox: Toolbox, diagnostics: string[] = []) {
   let generations = 0;
   const seenByGenerate: Array<ReadonlyArray<Message>> = [];
   const bureau = await createBureau({
@@ -92,6 +92,8 @@ async function parkedBureau(toolbox: Toolbox) {
     toolbox,
     stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
     persistence: textValueStore(new MemoryStorage()),
+    sessionPersistenceRetryDelayMilliseconds: 0,
+    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
   });
   const run = await bureau.createRun({ message: 'Charge the customer' });
   await settle(bureau, run.id);
@@ -232,6 +234,59 @@ describe('resolveReview writes the outcome of a tool approval into the session',
       expect(afterSecond[0]).toMatchObject({ kind: 'tool-approval', round: 2 });
       const stored = await bureau.getSession(review.sessionId);
       expect(stored?.metadata['pendingApprovalRounds']).toEqual({ [review.id]: 2 });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('when the outcome cannot be written into the session', () => {
+  /** Makes every session update that changes the conversation fail; the resolution's own writes pass. */
+  function failConversationWrites(bureau: Bureau) {
+    const store = bureau.sessionStore!;
+    const update = store.update.bind(store);
+    return spyOn(store, 'update').mockImplementation((id, updater, options) =>
+      update(
+        id,
+        async (session) => {
+          const next = await updater(session);
+          if (
+            session !== undefined &&
+            next !== undefined &&
+            next.conversationHistory !== session.conversationHistory
+          ) {
+            throw new Error('disk full');
+          }
+          return next;
+        },
+        options,
+      ),
+    );
+  }
+
+  it('does not report success: the resolution rejects, naming what is left undone', async () => {
+    const charges: number[] = [];
+    const diagnostics: string[] = [];
+    const { bureau, run, review } = await parkedBureau(approvalToolbox(charges), diagnostics);
+    try {
+      const failing = failConversationWrites(bureau);
+
+      const error = await bureau
+        .resolveReview({ id: review.id, decision: 'approve', principal: 'alice' })
+        .then(
+          () => undefined,
+          (rejection: unknown) => rejection,
+        );
+      failing.mockRestore();
+
+      expect(error).toBeInstanceOf(BureauError);
+      expect((error as BureauError).message).toContain('not written into the conversation');
+      expect(diagnostics).toHaveLength(1);
+      // The tool ran and the review is resolved: the failure is about the conversation only.
+      expect(charges).toEqual([500]);
+      expect(bureau.listPendingReviews()).toHaveLength(0);
+      const row = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
+      expect(row.toolResult?.outcome).toBe('action_required');
     } finally {
       await bureau.dispose();
     }

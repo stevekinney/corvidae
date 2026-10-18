@@ -14,6 +14,7 @@ import { waitForCondition } from '../test';
 import type { PendingReview, ResolveReviewInput, ReviewStatus } from '../types.ts';
 import {
   type BureauReviewsOperationHost,
+  bureauReviewSchema,
   bureauReviewsOperations,
   projectReview,
 } from './bureau-reviews-operations.ts';
@@ -420,6 +421,18 @@ describe('bureau.reviews.resolve', () => {
 });
 
 describe('projectReview', () => {
+  it('reads the round of a review rebuilt from an audit record that predates rounds as 0', () => {
+    const { round: _round, ...recorded } = toolApprovalReview() as Extract<
+      PendingReview,
+      { kind: 'tool-approval' }
+    >;
+
+    const projected = projectReview({ ...recorded, status: 'approved' } as never);
+
+    expect(projected).toMatchObject({ kind: 'tool-approval', round: 0 });
+    expect(bureauReviewSchema.safeParse(projected).success).toBe(true);
+  });
+
   it('carries the supersession round of a tool approval', () => {
     const projected = projectReview({
       ...(toolApprovalReview() as Extract<PendingReview, { kind: 'tool-approval' }>),
