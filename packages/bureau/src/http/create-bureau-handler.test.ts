@@ -1,5 +1,5 @@
 import { createAgent, createMockGenerate, type GenerateFunction } from '@lostgradient/operative';
-import type { OperationHandlerMount } from '@lostgradient/weft';
+import { type OperationHandlerMount, principalFromApiKey } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';
@@ -11,10 +11,16 @@ import { createBureauHandler } from './create-bureau-handler.ts';
 const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
 const API_KEY = 'handler-test-key';
 const credentials = { 'X-API-Key': API_KEY };
+/** The scopes of `events:read` and every Bureau scope, for the one key the tests present. */
+function resolveKey(
+  scopes: readonly Parameters<typeof principalFromApiKey>[0]['scopes'][number][],
+) {
+  return async (key: string) =>
+    key === API_KEY ? principalFromApiKey({ subject: 'tester', scopes: [...scopes] }) : null;
+}
 const allScopes = {
   auditSink: () => undefined,
-  apiKeys: [API_KEY],
-  defaultApiKeyScopes: ['events:read' as const, ...BUREAU_SCOPES],
+  resolveApiKeyPrincipal: resolveKey(['events:read', ...BUREAU_SCOPES]),
 };
 
 async function buildBureau(options: { id?: string; agents?: string[]; persist?: boolean } = {}) {
@@ -103,6 +109,27 @@ describe('createBureauHandler options', () => {
     });
   });
 
+  it('throws when authentication configures static API keys alone', async () => {
+    await withBureau({}, (bureau) => {
+      expect(() => createBureauHandler(bureau, { authentication: { apiKeys: [API_KEY] } })).toThrow(
+        /resolveApiKeyPrincipal/,
+      );
+    });
+  });
+
+  it('throws when authentication configures static API keys beside resolveApiKeyPrincipal', async () => {
+    await withBureau({}, (bureau) => {
+      expect(() =>
+        createBureauHandler(bureau, {
+          authentication: {
+            apiKeys: [API_KEY],
+            resolveApiKeyPrincipal: async () => null,
+          },
+        }),
+      ).toThrow(/resolveApiKeyPrincipal/);
+    });
+  });
+
   it('throws when authentication configures jwt', async () => {
     await withBureau({}, (bureau) => {
       expect(() =>
@@ -138,7 +165,7 @@ describe('createBureauHandler options', () => {
       const response = await handler(get('/adapter/ping', credentials));
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toEqual({ method: 'api-key', subject: 'api-key-caller' });
+      expect(await response.json()).toEqual({ method: 'api-key', subject: 'tester' });
     });
   });
 
@@ -168,12 +195,11 @@ describe('createBureauHandler options', () => {
       const handler = createBureauHandler(bureau, {
         authentication: {
           auditSink: () => undefined,
-          apiKeys: [API_KEY],
-          defaultApiKeyScopes: [
+          resolveApiKeyPrincipal: resolveKey([
             'bureau.reviews:read',
             'bureau.reviews:resolve',
-            'bureau.tasks:read',
-          ],
+            'bureau.deliveries:read',
+          ]),
         },
         mounts: [mount],
       });
@@ -182,7 +208,7 @@ describe('createBureauHandler options', () => {
       const body = (await response.json()) as { scopes: string[] };
 
       expect(body.scopes).toEqual(['bureau.reviews:read', 'bureau.reviews:resolve']);
-      expect(body.scopes).not.toContain('bureau.tasks:read');
+      expect(body.scopes).not.toContain('bureau.deliveries:read');
     });
   });
 });
@@ -285,7 +311,7 @@ describe('createBureauHandler authentication matrix', () => {
     });
   });
 
-  it('serves the anonymous caller under allow: health and documents answer, scoped operations are 401', async () => {
+  it('serves the local caller under allow: health, documents, and every operation answer', async () => {
     await withBureau({}, async (bureau) => {
       const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
 
@@ -293,13 +319,14 @@ describe('createBureauHandler authentication matrix', () => {
       for (const document of ['/openapi.json', '/openrpc.json', '/asyncapi.json']) {
         expect(await statusOf(handler, get(document))).toBe(200);
       }
-      expect(await rpcStatus(handler, jsonRpc('bureau.reviews.list', {}))).toBe(401);
+      expect(await rpcStatus(handler, jsonRpc('bureau.reviews.list', {}))).toBeUndefined();
       const feed = await handler(
         get(`/v1/subscriptions/bureau.events?bureauId=${bureau.id}`, {
           Accept: 'text/event-stream',
         }),
       );
-      expect(feed.status).toBe(401);
+      expect(feed.status).toBe(200);
+      await feed.body?.cancel();
     });
   });
 
@@ -325,31 +352,31 @@ describe('createBureauHandler authentication matrix', () => {
     });
   });
 
-  it('answers 403, not 401, for an authenticated caller that lacks the scope', async () => {
+  it('answers 403, not 401, for an authenticated caller that lacks bureau.events:observe-all', async () => {
     await withBureau({}, async (bureau) => {
       const handler = createBureauHandler(bureau, {
         authentication: {
-          apiKeys: [API_KEY],
-          defaultApiKeyScopes: ['bureau.reviews:read'],
+          resolveApiKeyPrincipal: resolveKey(['events:read', 'bureau.tasks:read']),
           auditSink: () => undefined,
         },
       });
 
-      const status = await rpcStatus(
-        handler,
-        jsonRpc('bureau.reviews.resolve', { id: 'x', decision: 'approve' }, credentials),
+      const feed = await handler(
+        get(`/v1/subscriptions/bureau.events?bureauId=${bureau.id}`, {
+          ...credentials,
+          Accept: 'text/event-stream',
+        }),
       );
 
-      expect(status).toBe(403);
+      expect(feed.status).toBe(403);
     });
   });
 
-  it('keeps the Bureau scopes a credential claims, and drops the ones it does not', async () => {
+  it('keeps the Bureau scopes a credential claims, and drops the ones it does not register', async () => {
     await withBureau({}, async (bureau) => {
       const handler = createBureauHandler(bureau, {
         authentication: {
-          apiKeys: [API_KEY],
-          defaultApiKeyScopes: ['bureau.reviews:read', 'bureau.tasks:read'],
+          resolveApiKeyPrincipal: resolveKey(['bureau.reviews:read', 'bureau.deliveries:read']),
           auditSink: () => undefined,
         },
       });
@@ -514,7 +541,19 @@ describe('createBureauHandler under Bun.serve', () => {
 });
 
 describe('the Bureau scope list', () => {
-  it('is seeded with the two review scopes', () => {
-    expect([...BUREAU_SCOPES]).toEqual(['bureau.reviews:read', 'bureau.reviews:resolve']);
+  it('registers the operator scopes, and not the delivery scopes', () => {
+    expect([...BUREAU_SCOPES]).toEqual([
+      'bureau.tasks:read',
+      'bureau.tasks:write',
+      'bureau.reviews:read',
+      'bureau.reviews:resolve',
+      'bureau.audit:read',
+      'bureau.schedules:read',
+      'bureau.schedules:write',
+      'bureau.goals:read',
+      'bureau.goals:write',
+      'bureau.contexts:write',
+      'bureau.events:observe-all',
+    ]);
   });
 });
