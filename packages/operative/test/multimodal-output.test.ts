@@ -13,23 +13,25 @@ import {
 } from '../src/errors';
 import type { ReplayDataDroppedEvent } from '../src/events';
 import type { OperativeHookMap } from '../src/hooks';
+import { createAnthropicProvider, createAnthropicProviderStream } from '../src/providers/anthropic';
 import {
   ProviderContractError,
   ProviderError,
   shouldRetryProviderError,
 } from '../src/providers/errors';
-import { createAnthropicProvider, createAnthropicProviderStream } from '../src/providers/anthropic';
+import { createGeminiProvider, createGeminiProviderStream } from '../src/providers/gemini';
+import { createGeminiPartMapper } from '../src/providers/gemini-parts';
+import { createOpenAIProvider, createOpenAIProviderStream } from '../src/providers/openai';
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
-} from '../src/providers/test/mock-clients';
-import { withStreaming } from '../src/streaming';
-import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
-import { createOpenAIProvider, createOpenAIProviderStream } from '../src/providers/openai';
-import {
+  createMockGeminiModel,
+  createMockGeminiStreamingModel,
   createMockOpenAIClient,
   createMockOpenAIStreamingClient,
 } from '../src/providers/test/mock-clients';
+import { withStreaming } from '../src/streaming';
+import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
 import type { LivePartEvent } from '../src/streaming/types';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
@@ -661,7 +663,8 @@ async function runAnthropic(mode: AnthropicMode, firstBlocks: readonly RecordedA
       replies.map((content) => anthropicStreamEventsFor(content)),
     );
     const streaming = createAnthropicProviderStream({ model: 'claude-sonnet-4-6', client });
-    generate = mode === 'withStreaming' ? withStreaming(streaming) : withEnhancedStreaming(streaming);
+    generate =
+      mode === 'withStreaming' ? withStreaming(streaming) : withEnhancedStreaming(streaming);
     requests = client._calls;
   }
   const result = await run(baseOptions(generate));
@@ -686,32 +689,37 @@ describe.each(ANTHROPIC_MODES)('Anthropic replay blocks survive the loop (%s)', 
     ['every server-tool block type and container_upload', [...serverToolBlocks, toolUseBlock]],
   ];
 
-  it.each(scenarios)('keeps %s: parts in provider order, in the row, and byte-identical on the next request', async (_name, blocks) => {
-    const { result, requests } = await runAnthropic(mode, blocks);
+  it.each(scenarios)(
+    'keeps %s: parts in provider order, in the row, and byte-identical on the next request',
+    async (_name, blocks) => {
+      const { result, requests } = await runAnthropic(mode, blocks);
 
-    const expectedParts = blocks.filter((block) => block['type'] !== 'tool_use');
-    expect(result.finishReason).toBe('stop-condition');
-    expect(result.steps[0]?.parts).toEqual(expectedParts as never);
-    const text = expectedParts
-      .filter((block) => block['type'] === 'text')
-      .map((block) => block['text'])
-      .join('');
-    expect(result.steps[0]?.content).toBe(text);
+      const expectedParts = blocks.filter((block) => block['type'] !== 'tool_use');
+      expect(result.finishReason).toBe('stop-condition');
+      expect(result.steps[0]?.parts).toEqual(expectedParts as never);
+      const text = expectedParts
+        .filter((block) => block['type'] === 'text')
+        .map((block) => block['text'])
+        .join('');
+      expect(result.steps[0]?.content).toBe(text);
 
-    const [row] = result.conversation.getMessages().filter((m) => m.role === 'assistant');
-    expect(row?.id).toBe(result.steps[0]?.messageId);
-    expect(row?.content).toEqual(
-      expectedParts.length === 1 && expectedParts[0]?.['type'] === 'text' && !('citations' in expectedParts[0])
-        ? (expectedParts[0]['text'] as string)
-        : (expectedParts as never),
-    );
+      const [row] = result.conversation.getMessages().filter((m) => m.role === 'assistant');
+      expect(row?.id).toBe(result.steps[0]?.messageId);
+      expect(row?.content).toEqual(
+        expectedParts.length === 1 &&
+          expectedParts[0]?.['type'] === 'text' &&
+          !('citations' in expectedParts[0])
+          ? (expectedParts[0]['text'] as string)
+          : (expectedParts as never),
+      );
 
-    if (blocks.some((block) => block['type'] === 'tool_use')) {
-      // The request that carries the tool result holds each block exactly as the API returned it,
-      // with thinking before tool_use in the same assistant turn.
-      expect(JSON.stringify(assistantTurn(requests[1]))).toBe(JSON.stringify(blocks));
-    }
-  });
+      if (blocks.some((block) => block['type'] === 'tool_use')) {
+        // The request that carries the tool result holds each block exactly as the API returned it,
+        // with thinking before tool_use in the same assistant turn.
+        expect(JSON.stringify(assistantTurn(requests[1]))).toBe(JSON.stringify(blocks));
+      }
+    },
+  );
 
   it('keeps the usage the response reported', async () => {
     const { result } = await runAnthropic(mode, [thinkingBlock, toolUseBlock]);
@@ -719,7 +727,9 @@ describe.each(ANTHROPIC_MODES)('Anthropic replay blocks survive the loop (%s)', 
   });
 });
 
-function adapterContext(streaming?: StreamingHandle): GenerateContext & { streaming: StreamingHandle } {
+function adapterContext(
+  streaming?: StreamingHandle,
+): GenerateContext & { streaming: StreamingHandle } {
   return {
     conversation: new Conversation(),
     step: 0,
@@ -729,7 +739,11 @@ function adapterContext(streaming?: StreamingHandle): GenerateContext & { stream
 }
 
 /** A streaming handle that records every part event the adapter reports. */
-function recordingHandle(): { handle: StreamingHandle; events: LivePartEvent[]; updates: string[] } {
+function recordingHandle(): {
+  handle: StreamingHandle;
+  events: LivePartEvent[];
+  updates: string[];
+} {
   const events: LivePartEvent[] = [];
   const updates: string[] = [];
   return {
@@ -747,7 +761,10 @@ type OpenAIMessage = NonNullable<
   Parameters<typeof createMockOpenAIClient>[0][number]['choices'][number]
 >['message'];
 
-function completion(message: OpenAIMessage, usage = { prompt_tokens: 9, completion_tokens: 4, total_tokens: 13 }) {
+function completion(
+  message: OpenAIMessage,
+  usage = { prompt_tokens: 9, completion_tokens: 4, total_tokens: 13 },
+) {
   return { choices: [{ message, finish_reason: 'stop' }], usage };
 }
 
@@ -769,7 +786,10 @@ function chunksFor(message: Record<string, unknown>) {
   return chunks;
 }
 
-async function openAIResponse(mode: 'non-streaming' | 'streaming', message: Record<string, unknown>) {
+async function openAIResponse(
+  mode: 'non-streaming' | 'streaming',
+  message: Record<string, unknown>,
+) {
   if (mode === 'non-streaming') {
     const client = createMockOpenAIClient([completion(message as never)]);
     return createOpenAIProvider({ model: 'gpt-4o', client })(adapterContext());
@@ -794,7 +814,12 @@ describe.each([['non-streaming'], ['streaming']] as const)('OpenAI output mappin
     const response = await openAIResponse(mode, {
       content: null,
       tool_calls: [
-        { index: 0, id: 'call-9', type: 'function', function: { name: 'get_weather', arguments: '{"location":"Paris"}' } },
+        {
+          index: 0,
+          id: 'call-9',
+          type: 'function',
+          function: { name: 'get_weather', arguments: '{"location":"Paris"}' },
+        },
       ],
     });
     expect(response.parts).toEqual([]);
@@ -806,17 +831,26 @@ describe.each([['non-streaming'], ['streaming']] as const)('OpenAI output mappin
     const response = await openAIResponse(mode, {
       content: 'Partial',
       refusal: 'I cannot help with that.',
-      ...(mode === 'non-streaming' ? { annotations: [{ type: 'url_citation', url: 'https://x.test' }] } : {}),
+      ...(mode === 'non-streaming'
+        ? { annotations: [{ type: 'url_citation', url: 'https://x.test' }] }
+        : {}),
     });
     expect(response.metadata?.['refusal']).toBe('I cannot help with that.');
     if (mode === 'non-streaming') {
-      expect(response.metadata?.['annotations']).toEqual([{ type: 'url_citation', url: 'https://x.test' }]);
+      expect(response.metadata?.['annotations']).toEqual([
+        { type: 'url_citation', url: 'https://x.test' },
+      ]);
     }
   });
 
   it('keeps a field the SDK does not declare in metadata, leniently', async () => {
-    const response = await openAIResponse(mode, { content: 'Hi', reasoning_content: 'thinking aloud' });
-    expect(response.metadata?.['providerExtensions']).toEqual({ reasoning_content: 'thinking aloud' });
+    const response = await openAIResponse(mode, {
+      content: 'Hi',
+      reasoning_content: 'thinking aloud',
+    });
+    expect(response.metadata?.['providerExtensions']).toEqual({
+      reasoning_content: 'thinking aloud',
+    });
     expect(response.parts).toEqual([textPart('Hi')]);
   });
 
@@ -828,7 +862,11 @@ describe.each([['non-streaming'], ['streaming']] as const)('OpenAI output mappin
       const error = await rejectionOf(openAIResponse(mode, { content: 'Hi', [field]: value }));
       expect(error).toBeInstanceOf(ProviderContractError);
       const contract = error as ProviderContractError;
-      expect(contract).toMatchObject({ provider: 'openai', blockType: field, reason: 'unlisted-block' });
+      expect(contract).toMatchObject({
+        provider: 'openai',
+        blockType: field,
+        reason: 'unlisted-block',
+      });
       expect(contract.usage).toMatchObject({ prompt: 9, completion: 4 });
       expect(contract.retryable).toBe(false);
     }
@@ -837,22 +875,37 @@ describe.each([['non-streaming'], ['streaming']] as const)('OpenAI output mappin
 
 describe('OpenAI streaming reports text as a part', () => {
   it('starts, streams deltas with rising sequences, and completes one text part', async () => {
-    const client = createMockOpenAIStreamingClient([chunksFor({ content: 'Hello there' }) as never]);
+    const client = createMockOpenAIStreamingClient([
+      chunksFor({ content: 'Hello there' }) as never,
+    ]);
     const recorder = recordingHandle();
 
     const response = await createOpenAIProviderStream({ model: 'gpt-4o', client })(
       adapterContext(recorder.handle),
     );
 
-    expect(recorder.events.map((event) => event.type)).toEqual(['start', 'delta', 'delta', 'complete']);
-    expect(recorder.events.filter((event) => event.type === 'delta').map((event) => event.sequence)).toEqual([1, 2]);
-    expect(recorder.events.at(-1)).toEqual({ type: 'complete', partIndex: 0, part: textPart('Hello there') });
+    expect(recorder.events.map((event) => event.type)).toEqual([
+      'start',
+      'delta',
+      'delta',
+      'complete',
+    ]);
+    expect(
+      recorder.events.filter((event) => event.type === 'delta').map((event) => event.sequence),
+    ).toEqual([1, 2]);
+    expect(recorder.events.at(-1)).toEqual({
+      type: 'complete',
+      partIndex: 0,
+      part: textPart('Hello there'),
+    });
     expect(recorder.updates).toEqual([]);
     expect(response.parts).toEqual([textPart('Hello there')]);
   });
 
   it('falls back to update for a handle that cannot report parts', async () => {
-    const client = createMockOpenAIStreamingClient([chunksFor({ content: 'Hello there' }) as never]);
+    const client = createMockOpenAIStreamingClient([
+      chunksFor({ content: 'Hello there' }) as never,
+    ]);
     const updates: string[] = [];
     const response = await createOpenAIProviderStream({ model: 'gpt-4o', client })(
       adapterContext({ messageId: 'row', update: (content) => updates.push(content) }),
@@ -862,3 +915,176 @@ describe('OpenAI streaming reports text as a part', () => {
   });
 });
 
+type GeminiPart = Record<string, unknown>;
+
+async function geminiResponse(
+  mode: 'non-streaming' | 'streaming',
+  parts: GeminiPart[],
+  recorder = recordingHandle(),
+) {
+  const usageMetadata = { promptTokenCount: 8, candidatesTokenCount: 3, totalTokenCount: 11 };
+  if (mode === 'non-streaming') {
+    const client = createMockGeminiModel([
+      { candidates: [{ content: { parts } }], usageMetadata } as never,
+    ]);
+    return createGeminiProvider({ model: 'gemini-2.5-flash', client })(adapterContext());
+  }
+  // One part per chunk: the stream delivers what the single response would have.
+  const chunks = parts.map((part, index) => ({
+    candidates: [{ content: { parts: [part] } }],
+    ...(index === parts.length - 1 ? { usageMetadata } : {}),
+  }));
+  const client = createMockGeminiStreamingModel([chunks as never]);
+  return createGeminiProviderStream({ model: 'gemini-2.5-flash', client })(
+    adapterContext(recorder.handle),
+  );
+}
+
+const UNLISTED_GEMINI_PAYLOADS = [
+  'fileData',
+  'executableCode',
+  'codeExecutionResult',
+  'functionResponse',
+  'toolCall',
+  'toolResponse',
+  'audioTranscription',
+] as const;
+
+describe.each([['non-streaming'], ['streaming']] as const)('Gemini output mapping (%s)', (mode) => {
+  it('coalesces adjacent text parts into one text part, the same in both modes', async () => {
+    const response = await geminiResponse(mode, [{ text: 'Hel' }, { text: 'lo' }]);
+    expect(response.parts).toEqual([textPart('Hello')]);
+    expect(response.content).toBe('Hello');
+  });
+
+  it('never folds thought-summary text into the answer, and says what it dropped', async () => {
+    const response = await geminiResponse(mode, [
+      { text: 'Weighing options', thought: true },
+      { text: 'Answer' },
+    ]);
+    expect(response.content).toBe('Answer');
+    expect(response.parts).toEqual([textPart('Answer')]);
+    expect(response.metadata?.['geminiThoughtSummaries']).toEqual(['Weighing options']);
+    expect(response.metadata?.['replayDataDropped']).toEqual([
+      { provider: 'gemini', providerPartIndex: 0, field: 'thought' },
+    ]);
+  });
+
+  it('returns normally, naming the dropped data, for a part that carries a thoughtSignature', async () => {
+    const response = await geminiResponse(mode, [
+      { text: 'Checking' },
+      {
+        functionCall: { name: 'get_weather', args: { location: 'Paris' } },
+        thoughtSignature: 'c2ln',
+      },
+    ]);
+    expect(response.toolCalls).toHaveLength(1);
+    expect(response.parts).toEqual([textPart('Checking')]);
+    expect(response.metadata?.['replayDataDropped']).toEqual([
+      { provider: 'gemini', providerPartIndex: 1, field: 'thoughtSignature' },
+    ]);
+  });
+
+  it('carries neither the signal nor thought metadata when nothing was dropped', async () => {
+    const response = await geminiResponse(mode, [{ text: 'Plain' }]);
+    expect(response.metadata).not.toHaveProperty('replayDataDropped');
+    expect(response.metadata).not.toHaveProperty('geminiThoughtSummaries');
+  });
+
+  it('treats a modifier-only part as control, not output', async () => {
+    const response = await geminiResponse(mode, [{ text: 'Hi' }, { videoMetadata: { fps: 2 } }]);
+    expect(response.parts).toEqual([textPart('Hi')]);
+  });
+
+  it.each(UNLISTED_GEMINI_PAYLOADS.map((payload) => [payload] as const))(
+    'refuses a %s part with the typed contract error',
+    async (payload) => {
+      const error = await rejectionOf(
+        geminiResponse(mode, [{ text: 'Hi' }, { [payload]: { anything: true } }]),
+      );
+      expect(error).toBeInstanceOf(ProviderContractError);
+      expect(error).toMatchObject({
+        provider: 'gemini',
+        blockType: payload,
+        partIndex: 1,
+        reason: 'unlisted-block',
+        retryable: false,
+      });
+      expect((error as ProviderContractError).usage).toMatchObject({ prompt: 8, completion: 3 });
+    },
+  );
+
+  it('refuses a key it does not know, next to a payload, naming that key', async () => {
+    const error = await rejectionOf(geminiResponse(mode, [{ text: 'Hi', surprise: 1 }]));
+    expect(error).toMatchObject({ blockType: 'surprise', partIndex: 0 });
+  });
+
+  it('refuses generated media whose modality the selected backend does not advertise', async () => {
+    const error = await rejectionOf(
+      geminiResponse(mode, [{ inlineData: { mimeType: 'image/png', data: 'AAAA' } }]),
+    );
+    expect(error).toBeInstanceOf(ProviderContractError);
+    expect(error).toMatchObject({
+      provider: 'gemini',
+      reason: 'unadvertised-modality',
+      blockType: 'image',
+      partIndex: 0,
+    });
+  });
+});
+
+describe('Gemini part mapper with a backend that advertises image output', () => {
+  const advertising = {
+    text: { input: true, output: true, sourceForms: [] },
+    image: { input: true, output: true, sourceForms: [] },
+    audio: { input: true, output: false, sourceForms: [] },
+    video: { input: true, output: false, sourceForms: [] },
+    document: { input: true, output: false, sourceForms: [] },
+    file: { input: false, output: false, sourceForms: [] },
+  } as const;
+
+  it('maps inlineData to a media part with an inline base64 source and reports it live', () => {
+    const events: LivePartEvent[] = [];
+    const mapper = createGeminiPartMapper({
+      modalities: advertising,
+      emit: (event) => events.push(event),
+    });
+
+    mapper.push({ text: 'Here you go' }, 0);
+    mapper.push({ inlineData: { mimeType: 'image/png', data: 'QUJD' } }, 1);
+    const mapped = mapper.finish();
+
+    expect(mapped.violation).toBeUndefined();
+    expect(mapped.parts).toEqual([
+      textPart('Here you go'),
+      {
+        type: 'image',
+        mimeType: 'image/png',
+        source: { kind: 'inline', data: 'QUJD', encoding: 'base64' },
+      },
+    ]);
+    expect(events.map((event) => [event.type, event.partIndex])).toEqual([
+      ['start', 0],
+      ['delta', 0],
+      ['complete', 0],
+      ['start', 1],
+      ['complete', 1],
+    ]);
+  });
+
+  it('refuses audio when only image is advertised, and an inlineData with no media type', () => {
+    const audio = createGeminiPartMapper({ modalities: advertising });
+    audio.push({ inlineData: { mimeType: 'audio/wav', data: 'AAAA' } }, 0);
+    expect(audio.finish().violation).toMatchObject({
+      reason: 'unadvertised-modality',
+      blockType: 'audio',
+    });
+
+    const untyped = createGeminiPartMapper({ modalities: advertising });
+    untyped.push({ inlineData: { data: 'AAAA' } }, 0);
+    expect(untyped.finish().violation).toMatchObject({
+      reason: 'unlisted-block',
+      blockType: 'inlineData',
+    });
+  });
+});

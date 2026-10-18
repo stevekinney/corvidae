@@ -540,6 +540,24 @@ export interface GeminiGenerateContentResult {
           parts?: Array<{
             text?: string;
             functionCall?: { name?: string; args?: Record<string, unknown> };
+            /** True for a thought-summary text part; never answer text. */
+            thought?: boolean;
+            /** Opaque replay data Gemini 2.5 attaches to a part; it has no content representation. */
+            thoughtSignature?: string;
+            /** Inline media output (image, audio, video, document), base64. */
+            inlineData?: { mimeType?: string; data?: string };
+            /** Every other `Part` field `@google/genai` declares, kept opaque so it is detected. */
+            fileData?: unknown;
+            executableCode?: unknown;
+            codeExecutionResult?: unknown;
+            functionResponse?: unknown;
+            toolCall?: unknown;
+            toolResponse?: unknown;
+            audioTranscription?: unknown;
+            videoMetadata?: unknown;
+            partMetadata?: unknown;
+            mediaResolution?: unknown;
+            mediaProcessing?: unknown;
           }>;
         };
       }>

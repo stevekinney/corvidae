@@ -1056,6 +1056,7 @@ describe('Gemini provider coverage', () => {
       }),
     ).toEqual({
       content: '',
+      parts: [],
       toolCalls: [],
       usage: undefined,
       metadata: { effectiveModel: 'gemini-pro', effectiveEffort: 'none' },
