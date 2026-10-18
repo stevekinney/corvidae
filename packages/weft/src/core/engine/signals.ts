@@ -22,7 +22,11 @@ type TrackedWaiterKeys = string | Set<string>;
 export type SignalCallbacks = {
   loadWorkflowState: (workflowId: string) => Promise<WorkflowState | null | undefined>;
   dispatchEvent: (event: Event) => boolean;
-  broadcast: (message: { type: 'signal:received'; workflowId: string; signalName: string }) => void;
+  broadcast: (message: {
+    type: 'signal:received' | 'signal:waiting';
+    workflowId: string;
+    signalName: string;
+  }) => void;
   getComposedInterceptor: () => ComposedWorkflowInterceptor | null | undefined;
   resumeParkedInlineWorkflow: (workflowId: string) => Promise<void>;
 };

@@ -76,6 +76,14 @@ export const WORKFLOW_RECORD_KEYS_CORE = {
     `ev:${encodeStorageKeyComponent(workflowId)}:${String(sequence).padStart(10, '0')}`,
   eventHead: (workflowId: string) => `ev:${encodeStorageKeyComponent(workflowId)}:head`,
   eventWatermark: (workflowId: string) => `ev:${encodeStorageKeyComponent(workflowId)}:watermark`,
+  // The `serve()` watch stream's per-workflow event copies. They need a
+  // keyspace of their own: the engine's hash-chained event log owns every
+  // `ev:<workflowId>:<sequence>` key, and a watch copy written there replaced
+  // the log record at the same sequence, losing the checkpoint replay payload
+  // a recovery reads back (COR-1472).
+  watchEventPrefix: (workflowId: string) => `watch-event:${encodeStorageKeyComponent(workflowId)}:`,
+  watchEvent: (workflowId: string, sequence: number) =>
+    `watch-event:${encodeStorageKeyComponent(workflowId)}:${String(sequence).padStart(10, '0')}`,
   fleetEventPrefix: () => 'fleet-event:',
   fleetEvent: (sequence: number) => `fleet-event:${String(sequence).padStart(10, '0')}`,
   fleetEventTail: () => 'fleet-event-tail',

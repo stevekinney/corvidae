@@ -459,6 +459,7 @@ function workflowPurgePrefixes(workflowId: string): string[] {
     // `onTerminalConflict: 'start-new'` restart — read the prior run's timeline.
     `wf:${encodedWorkflowId}:timeline:`,
     `ev:${encodedWorkflowId}:`,
+    KEYS.watchEventPrefix(workflowId),
     `sig:${encodedWorkflowId}:`,
     `review:${encodedWorkflowId}:`,
     `offload:${encodedWorkflowId}:`,

@@ -6,6 +6,7 @@ import { buildIndexOperations } from '../../search-attributes.ts';
 import type { SearchAttributeValue, WorkflowState } from '../../types.ts';
 import { buildRetainedTerminalSearchAttributes } from '../attributes-tags.ts';
 import type { EngineInternals } from '../internals.ts';
+import { withoutSignalWaits } from '../signal-wait-state.ts';
 
 /** The engine ID a terminal write stamps as `terminalCommittedBy`, only under `workflow-lease`. */
 export function terminalCommitterStamp(
@@ -23,7 +24,7 @@ export function buildCompletedWorkflowState(
   terminalCleanupToken: string | undefined,
 ): WorkflowState {
   return {
-    ...state,
+    ...withoutSignalWaits(state),
     status: 'completed' as const,
     result,
     updatedAt: now,

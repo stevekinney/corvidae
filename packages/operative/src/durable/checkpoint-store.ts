@@ -1,7 +1,27 @@
-import type { TextValueStore } from '@lostgradient/weft';
+import type { ConditionalTextValueStore, TextValueStore } from '@lostgradient/weft';
 import type { ConversationSnapshot } from 'conversationalist';
 
-import type { RunCheckpoint, RunCursor, StepRecord } from './types';
+import {
+  parseSessionInputDeliveries,
+  planSessionInputPromotion,
+  sessionInputDeliveriesKey,
+} from './session-input-delivery-store';
+import type { RunCheckpoint, RunCursor, SessionInputDelivery, StepRecord } from './types';
+
+/**
+ * Session inputs a step delivered, to be promoted in the same atomic write as
+ * the transcript that holds them (COR-1476).
+ */
+export interface SessionInputPromotionWrite {
+  readonly sessionId: string;
+  readonly deliveries: readonly SessionInputDelivery[];
+}
+
+const PROMOTION_MAXIMUM_ATTEMPTS = 20;
+
+function isConditional(store: TextValueStore): store is ConditionalTextValueStore {
+  return typeof (store as Partial<ConditionalTextValueStore>).conditionalBatch === 'function';
+}
 
 /**
  * A run id is caller-chosen (a child run, a goal's attempt), and the key
@@ -105,7 +125,17 @@ export interface CheckpointReadOptions {
 export interface CheckpointStore {
   saveCursor(runId: string, cursor: RunCursor): Promise<void>;
   loadCursor(runId: string, options?: CheckpointReadOptions): Promise<RunCursor | null>;
-  saveConversation(runId: string, snapshot: ConversationSnapshot): Promise<void>;
+  /**
+   * Saves the transcript. With `promotion`, the session inputs the transcript
+   * now holds are promoted in the same atomic write, so the transcript and the
+   * promotion can never disagree. It throws, writing nothing, when a delivery is
+   * not owned by `runId`, and needs a store that supports conditional writes.
+   */
+  saveConversation(
+    runId: string,
+    snapshot: ConversationSnapshot,
+    promotion?: SessionInputPromotionWrite,
+  ): Promise<void>;
   loadConversation(
     runId: string,
     options?: CheckpointReadOptions,
@@ -201,8 +231,41 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
         : null;
     },
 
-    async saveConversation(runId, snapshot) {
-      await store.set(keys.transcript(runId), JSON.stringify(snapshot));
+    async saveConversation(runId, snapshot, promotion) {
+      if (promotion === undefined) {
+        await store.set(keys.transcript(runId), JSON.stringify(snapshot));
+        return;
+      }
+      if (!isConditional(store)) {
+        throw new Error(
+          'Promoting session input with the transcript needs a checkpoint store over a conditional text-value store.',
+        );
+      }
+      const transcriptKey = keys.transcript(runId);
+      const deliveriesKey = sessionInputDeliveriesKey(promotion.sessionId);
+      for (let attempt = 0; attempt < PROMOTION_MAXIMUM_ATTEMPTS; attempt += 1) {
+        const rawTranscript = await store.get(transcriptKey);
+        const rawDeliveries = await store.get(deliveriesKey);
+        const promoted = planSessionInputPromotion(
+          parseSessionInputDeliveries(rawDeliveries),
+          runId,
+          promotion.deliveries,
+        );
+        const committed = await store.conditionalBatch(
+          [
+            { key: transcriptKey, expectedValue: rawTranscript },
+            { key: deliveriesKey, expectedValue: rawDeliveries },
+          ],
+          [
+            { type: 'set', key: transcriptKey, value: JSON.stringify(snapshot) },
+            { type: 'set', key: deliveriesKey, value: JSON.stringify(promoted) },
+          ],
+        );
+        if (committed) return;
+      }
+      throw new Error(
+        `Run "${runId}" could not commit its transcript with its session input promotion: the records kept changing.`,
+      );
     },
 
     async loadConversation(runId, options) {

@@ -229,11 +229,11 @@ export function wireEventBroadcasting(
     if (existing) return existing;
 
     const promise = (async () => {
-      const prefix = KEYS.eventPrefix(workflowId);
+      const prefix = KEYS.watchEventPrefix(workflowId);
       let highestSequence = -1;
 
       for await (const [key] of engine.storage.scan(prefix, { reverse: true, limit: 1 })) {
-        // Key format: ev:{workflowId}:{zero-padded sequence}
+        // Key format: watch-event:{workflowId}:{zero-padded sequence}
         const parts = key.split(':');
         const sequencePart = parts[parts.length - 1];
         if (sequencePart !== undefined) {
@@ -357,7 +357,7 @@ export function wireEventBroadcasting(
       sequence,
       cursor: String(sequence),
     });
-    const storageKey = KEYS.event(workflowId, sequence);
+    const storageKey = KEYS.watchEvent(workflowId, sequence);
     const encoded = encode(JSON.parse(watchMessage));
 
     await withRetry(
