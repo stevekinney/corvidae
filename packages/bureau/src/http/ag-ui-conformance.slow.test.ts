@@ -7,8 +7,11 @@
  * (`connectAgent` throws), so the attach, reconnect and cancel fixtures read the
  * stream with a raw `fetch` and run the client's own pipeline over it
  * (`runHttpRequest`, `transformHttpEventStream`, `verifyEvents`), which is
- * what rejects an out-of-order stream. Every event any fixture receives is parsed
- * with `@ag-ui/core`'s `EventSchemas`; one failure fails the suite.
+ * what rejects an out-of-order stream. Every event a fixture receives is parsed
+ * with `@ag-ui/core`'s `EventSchemas`, whichever way it was read (the observed
+ * `fetch` of `HttpAgent`, a raw POST, or the client's pipeline); an event the
+ * schema refuses fails the fixture that read it, and a transport failure of a
+ * stream the fixture itself abandoned does not.
  *
  * Runs are scripted (no model). The suite is in the slow lane because the real
  * client and real sockets put several fixtures near the per-test time limit on a
@@ -29,6 +32,7 @@ import {
   type Message,
   type RunAgentInput,
 } from '@ag-ui/core';
+import { EventSchemas } from '@ag-ui/core/schemas';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
 import { agUiConversationAdapter } from 'conversationalist';
@@ -54,9 +58,13 @@ function serve(harness: Harness): Served {
   return { base: `http://localhost:${server.port}`, stop: () => void server.stop(true) };
 }
 
-/** A `fetch` for `HttpAgent` that also parses, with the pinned schema, every stream it carries. */
+/**
+ * A `fetch` for `HttpAgent` that also parses, with the pinned schema, every stream
+ * it carries. A body the schema refuses fails `frames()`; a stream the fixture
+ * abandoned (an aborted fetch) has no body to parse and is skipped.
+ */
 function observed() {
-  const parsing: Promise<ReceivedFrame[]>[] = [];
+  const parsing: Promise<{ frames: ReceivedFrame[]; refused?: unknown }>[] = [];
   const fetchFn: HttpAgentFetchFn = async (url, init) => {
     const response = await fetch(url, init);
     if (response.ok && response.headers.get('content-type')?.includes('text/event-stream')) {
@@ -64,8 +72,16 @@ function observed() {
         response
           .clone()
           .text()
-          .then(parseAgUiFrames)
-          .catch(() => []),
+          .then(
+            (body) => {
+              try {
+                return { frames: parseAgUiFrames(body) };
+              } catch (refused) {
+                return { frames: [], refused };
+              }
+            },
+            () => ({ frames: [] }),
+          ),
       );
     }
     return response;
@@ -74,7 +90,9 @@ function observed() {
     fetch: fetchFn,
     async frames(): Promise<ReceivedFrame[]> {
       const parsed = await Promise.all(parsing);
-      return parsed.flat();
+      const refused = parsed.find((entry) => entry.refused !== undefined);
+      if (refused !== undefined) throw refused.refused;
+      return parsed.flatMap((entry) => entry.frames);
     },
   };
 }
@@ -113,6 +131,12 @@ function follow(source$: {
     const received: BaseEvent[] = [];
     source$.subscribe({
       next: (event) => {
+        // The client's pipeline has accepted the event; the pinned schema must as well.
+        const parsed = EventSchemas.safeParse(event);
+        if (!parsed.success) {
+          reject(new Error(`Not an AG-UI event: ${parsed.error.message}`));
+          return;
+        }
         received.push(event);
         opened();
       },
@@ -758,8 +782,20 @@ describe('slow consumer', () => {
         const steadyFrames = parseAgUiFrames(await steadyText);
         const stalledFrames = parseAgUiFrames(await stalled.text());
 
+        const deltasOf = (frames: ReadonlyArray<ReceivedFrame>) =>
+          frames
+            .map((frame) => frame.event)
+            .filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT)
+            .map((event) => (event as unknown as { delta: string }).delta);
         expect(fastFrames.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
         expect(steadyFrames.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
+        // The second reader that kept up saw exactly what the first did.
+        expect(deltasOf(fastFrames)).toEqual(['Done.']);
+        expect(deltasOf(steadyFrames)).toEqual(deltasOf(fastFrames));
+        // The stalled one was closed rather than thinned: it holds no delta the others lack.
+        expect(deltasOf(stalledFrames).every((delta) => deltasOf(fastFrames).includes(delta))).toBe(
+          true,
+        );
         expect(stalledFrames.at(-1)!.event).toMatchObject({
           type: EventType.RUN_ERROR,
           code: 'STREAM_OVERFLOW',
@@ -773,7 +809,16 @@ describe('cleanup', () => {
   it('leaves no listener, snapshot subscription, or timer once every stream has ended', async () => {
     const runtime = createManualRuntimeServices();
     await withServed(
-      { script: [lookupOnce, say('Found it.')], toolbox: lookupToolbox(), agUi: { runtime } },
+      {
+        script: [
+          lookupOnce,
+          say('Found it.'),
+          { kind: 'block', barrier: 'hold' },
+          say('Finished after its client left.'),
+        ],
+        toolbox: lookupToolbox(),
+        agUi: { runtime },
+      },
       async ({ harness, served }) => {
         let frameListeners = 0;
         let snapshotSubscriptions = 0;
@@ -802,14 +847,29 @@ describe('cleanup', () => {
         };
 
         await agentFor(served, observed()).runAgent({ runId: 'run-a' });
+        expect(frameListeners).toBe(0);
+
+        // A client that goes away once the server has its stream open: the run keeps
+        // going, and the stream's listener and subscription go.
         const abandoned = agentFor(served, observed(), { threadId: 'thread-2' });
         const aborted = abandoned.runAgent({ runId: 'run-b' }).then(
           () => undefined,
           () => undefined,
         );
+        await harness.generate.reached('hold');
+        const abandonedRunId = harness.bureau
+          .listRuns()
+          .find((run) => run.sessionId === 'thread-2')!.id;
+        await waitForCondition(() => frameListeners === 1, 'the server never opened the stream');
         abandoned.abortRun();
         await aborted;
         await waitForCondition(() => frameListeners === 0, 'a frame listener is still attached');
+        expect(harness.bureau.getRun(abandonedRunId)?.status).toBe('running');
+        harness.generate.release('hold');
+        await waitForCondition(
+          () => harness.bureau.getRun(abandonedRunId)?.status === 'completed',
+          'the abandoned run never finished',
+        );
 
         expect(frameListeners).toBe(0);
         expect(snapshotSubscriptions).toBe(0);
