@@ -17,8 +17,10 @@ import {
   type EvidenceProjectionCommit,
   EvidenceProjectionCommitError,
   type EvidenceProjectionCommitResult,
+  type EvidenceProjectionRawReads,
   type EvidenceProjectionStorage,
   ProjectionRevisionConflictError,
+  RAW_READS,
 } from './evidence-projection-storage';
 import {
   decodeEvidenceRecord,
@@ -868,8 +870,31 @@ export function createEvidenceProjectionStoreCore(options: {
     return history;
   }
 
+  const rawReads: EvidenceProjectionRawReads = {
+    async evidence(tenantId, id) {
+      const stored = await readStoredEvidence(tenantId, id);
+      return { key: keys.evidence(tenantId, id), raw: stored?.raw, record: stored?.record };
+    },
+    async evidenceSupersession(tenantId, id) {
+      const key = keys.supersession(tenantId, id);
+      const raw = await reader.get(key);
+      if (raw === null) return { key, raw: undefined, record: undefined };
+      return { key, raw, record: decodeEvidenceSupersession(parseJson(raw, 'evidence')) };
+    },
+    async projection(tenantId, namespace, id) {
+      const key = keys.current(tenantId, namespace, id);
+      const stored = await readStoredProjection(key, { tenantId, namespace, id });
+      return { key, raw: stored?.raw, record: stored?.record };
+    },
+    async projectionRevision(tenantId, namespace, id, revision) {
+      const key = keys.history(tenantId, namespace, id, revision);
+      const stored = await readStoredProjection(key, { tenantId, namespace, id, revision });
+      return { key, raw: stored?.raw, record: stored?.record };
+    },
+  };
+
   return {
-    keys,
+    [RAW_READS]: rawReads,
     commit: executeCommit,
     getReceipt,
     getEmbeddingProfile,

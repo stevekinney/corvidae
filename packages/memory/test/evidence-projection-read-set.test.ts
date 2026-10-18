@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { createEvidenceProjectionKeys } from '../src/evidence-projection-keys';
 import {
   EvidenceProjectionBatchLimitError,
   EvidenceProjectionCommitError,
@@ -16,6 +17,7 @@ import { recordBatches, TRANSITION_BACKENDS } from './transition-backends';
  * a condition of the batch. The store never interprets them.
  */
 
+const keys = createEvidenceProjectionKeys();
 const e1 = makeInlineEvidence('e1');
 const e2 = makeInlineEvidence('e2');
 
@@ -26,8 +28,8 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       const storage = makeBackend(recorder.wrapApply);
       await storage.commit({ tenantId: TENANT, evidence: [e1] });
       recorder.batches.length = 0;
-      const seen = storage.keys.evidence(TENANT, 'e1');
-      const absent = storage.keys.evidence(TENANT, 'ghost');
+      const seen = keys.evidence(TENANT, 'e1');
+      const absent = keys.evidence(TENANT, 'ghost');
       await storage.commit({
         tenantId: TENANT,
         evidence: [e2],
@@ -49,7 +51,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
         storage.commit({
           tenantId: TENANT,
           evidence: [e2],
-          readSet: [{ key: storage.keys.evidence(TENANT, 'e1'), value: new Uint8Array([1, 2, 3]) }],
+          readSet: [{ key: keys.evidence(TENANT, 'e1'), value: new Uint8Array([1, 2, 3]) }],
         }),
       );
       expect(error).toBeInstanceOf(ProjectionRevisionConflictError);
@@ -63,7 +65,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
         storage.commit({
           tenantId: TENANT,
           evidence: [e2],
-          readSet: [{ key: storage.keys.evidence(TENANT, 'e1'), value: undefined }],
+          readSet: [{ key: keys.evidence(TENANT, 'e1'), value: undefined }],
         }),
       );
       expect(error).toBeInstanceOf(ProjectionRevisionConflictError);
@@ -83,7 +85,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
     it('counts the read set toward the batch cap', async () => {
       const storage = makeBackend();
       const readSet = Array.from({ length: MAX_COMMIT_BATCH_OPERATIONS }, (_, index) => ({
-        key: storage.keys.evidence(TENANT, `unread-${index}`),
+        key: keys.evidence(TENANT, `unread-${index}`),
         value: undefined,
       }));
       const error = await rejectionOf(

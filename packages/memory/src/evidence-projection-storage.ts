@@ -1,4 +1,3 @@
-import type { EvidenceProjectionKeys } from './evidence-projection-keys';
 import type {
   EmbeddingProfile,
   EvidenceProjectionRecord,
@@ -87,12 +86,45 @@ export interface EvidenceProjectionCommitResult {
  * one opaque receipt put, which the store writes in the same batch and never
  * reads.
  */
+/**
+ * One stored record as the store returned it: the key it lives under, the exact
+ * bytes read there (`undefined` when the key is absent), and the record they
+ * decode to. A caller that binds its reads to a commit records `key` and `raw`,
+ * never a re-encoding of `record`: bytes a store holds that decode validly but
+ * are not the canonical encoding must still match themselves.
+ */
+export interface RawRead<Record> {
+  readonly key: string;
+  readonly raw: Uint8Array | undefined;
+  readonly record: Record | undefined;
+}
+
+/** The reads whose bytes a commit's `readSet` is made of. */
+export interface EvidenceProjectionRawReads {
+  evidence(tenantId: string, id: string): Promise<RawRead<EvidenceRecord>>;
+  evidenceSupersession(tenantId: string, id: string): Promise<RawRead<EvidenceSupersession>>;
+  projection(
+    tenantId: string,
+    namespace: string,
+    id: string,
+  ): Promise<RawRead<EvidenceProjectionRecord>>;
+  projectionRevision(
+    tenantId: string,
+    namespace: string,
+    id: string,
+    revision: number,
+  ): Promise<RawRead<EvidenceProjectionRecord>>;
+}
+
+/**
+ * The key of the raw-read path. It is internal to this package: the transition
+ * engine reaches it to record what it read, and nothing else should. It keeps
+ * the key layout out of the storage contract.
+ */
+export const RAW_READS = Symbol('EvidenceProjectionRawReads');
+
 export interface EvidenceProjectionStorage {
-  /**
-   * The key layout this storage writes under. A caller that binds its reads to a
-   * commit through `readSet` names the keys it read with it; nothing else should.
-   */
-  readonly keys: EvidenceProjectionKeys;
+  readonly [RAW_READS]: EvidenceProjectionRawReads;
   init(): Promise<void>;
   close(): Promise<void>;
   /** Applies everything in one atomic batch, or nothing. */

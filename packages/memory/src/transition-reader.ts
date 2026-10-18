@@ -1,14 +1,11 @@
+import type { EmbeddingProfile, EvidenceProjectionRecord } from './evidence-projection-schema';
 import {
-  encodeEvidenceProjectionRecord,
-  type EmbeddingProfile,
-  type EvidenceProjectionRecord,
-} from './evidence-projection-schema';
-import type { EvidenceProjectionStorage } from './evidence-projection-storage';
-import {
-  encodeEvidenceRecord,
-  encodeEvidenceSupersession,
-  type EvidenceRecord,
-} from './evidence-schema';
+  type EvidenceProjectionRawReads,
+  type EvidenceProjectionStorage,
+  RAW_READS,
+  type RawRead,
+} from './evidence-projection-storage';
+import type { EvidenceRecord } from './evidence-schema';
 
 /** One key a submission read, and the raw bytes it saw there (`undefined` when it was absent). */
 export interface TransitionRead {
@@ -65,19 +62,12 @@ function memoize<Value>(
 }
 
 export function createTransitionReader(
-  storage: Pick<
-    EvidenceProjectionStorage,
-    | 'keys'
-    | 'getEvidence'
-    | 'getEvidenceSupersession'
-    | 'getProjection'
-    | 'getProjectionRevision'
-    | 'listProjections'
-    | 'getEmbeddingProfile'
-  >,
+  storage: Pick<EvidenceProjectionStorage, 'listProjections' | 'getEmbeddingProfile'> & {
+    readonly [RAW_READS]: EvidenceProjectionRawReads;
+  },
   tenantId: string,
 ): TransitionReader {
-  const { keys } = storage;
+  const raw = storage[RAW_READS];
   const evidence = new Map<string, Promise<EvidenceRecord | undefined>>();
   const superseded = new Map<string, Promise<boolean>>();
   const projections = new Map<string, Promise<EvidenceProjectionRecord | undefined>>();
@@ -86,44 +76,29 @@ export function createTransitionReader(
   const profiles = new Map<string, Promise<EmbeddingProfile | undefined>>();
   const reads = new Map<string, Uint8Array | undefined>();
   const address = (...parts: Array<string | number>): string => JSON.stringify(parts);
-  const record = (key: string, bytes: Uint8Array | undefined): void => {
-    if (!reads.has(key)) reads.set(key, bytes);
+  /** Records the key and the exact bytes the store returned, and hands back the decoded record. */
+  const observe = <Record>(read: RawRead<Record>): Record | undefined => {
+    if (!reads.has(read.key)) reads.set(read.key, read.raw);
+    return read.record;
   };
   return {
-    evidence: (id) =>
-      memoize(evidence, id, async () => {
-        const found = await storage.getEvidence(tenantId, id);
-        record(keys.evidence(tenantId, id), found && encodeEvidenceRecord(found));
-        return found;
-      }),
+    evidence: (id) => memoize(evidence, id, async () => observe(await raw.evidence(tenantId, id))),
     isSuperseded: (id) =>
-      memoize(superseded, id, async () => {
-        const marker = await storage.getEvidenceSupersession(tenantId, id);
-        record(keys.supersession(tenantId, id), marker && encodeEvidenceSupersession(marker));
-        return marker !== undefined;
-      }),
+      memoize(
+        superseded,
+        id,
+        async () => observe(await raw.evidenceSupersession(tenantId, id)) !== undefined,
+      ),
     projection: (namespace, id) =>
-      memoize(projections, address(namespace, id), async () => {
-        const found = await storage.getProjection(tenantId, namespace, id);
-        record(
-          keys.current(tenantId, namespace, id),
-          found && encodeEvidenceProjectionRecord(found),
-        );
-        return found;
-      }),
+      memoize(projections, address(namespace, id), async () =>
+        observe(await raw.projection(tenantId, namespace, id)),
+      ),
     projectionRevision: (namespace, id, revision) =>
-      memoize(revisions, address(namespace, id, revision), async () => {
-        const found = await storage.getProjectionRevision(tenantId, namespace, id, revision);
-        record(
-          keys.history(tenantId, namespace, id, revision),
-          found && encodeEvidenceProjectionRecord(found),
-        );
-        return found;
-      }),
+      memoize(revisions, address(namespace, id, revision), async () =>
+        observe(await raw.projectionRevision(tenantId, namespace, id, revision)),
+      ),
     embeddingProfile: (namespace) =>
-      memoize(profiles, namespace, async () => {
-        return storage.getEmbeddingProfile(tenantId, namespace);
-      }),
+      memoize(profiles, namespace, () => storage.getEmbeddingProfile(tenantId, namespace)),
     recallable: (namespace) =>
       memoize(recallable, namespace, () =>
         storage.listProjections({ tenantId, namespace, status: ['active', 'demoted'] }),
