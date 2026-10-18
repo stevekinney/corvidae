@@ -1,0 +1,48 @@
+{
+  "name": "@lostgradient/interborough",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/host/dev.ts",
+    "build": "NODE_ENV=production bun scripts/build.ts",
+    "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src fixtures scripts tests playwright.config.ts",
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src fixtures scripts tests playwright.config.ts",
+    "test": "bun ../../scripts/bun-test-junit.ts --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' src/host && bun ../../scripts/bun-test-junit.ts --report-name=ui --config=./bunfig.ui.toml --conditions browser --conditions svelte --path-ignore-patterns='**/*.slow.test.ts' --path-ignore-patterns='src/host/**' --path-ignore-patterns='tests/e2e/**' src fixtures scripts tests",
+    "test:slow": "bun test .slow.test.ts",
+    "test:browser": "bun --bun playwright test --config playwright.config.ts",
+    "test:coverage": "bun scripts/check-coverage-cli.ts",
+    "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings"
+  },
+  "dependencies": {
+    "@lostgradient/bungalow": "workspace:*",
+    "@lostgradient/bureau": "workspace:*",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/markdown": "workspace:*",
+    "@lostgradient/operative": "workspace:*",
+    "@lostgradient/testing": "workspace:*",
+    "@lostgradient/weft": "workspace:*",
+    "@lucide/svelte": "catalog:",
+    "@shikijs/langs": "catalog:",
+    "@shikijs/themes": "catalog:",
+    "@tanstack/svelte-query": "catalog:",
+    "armorer": "workspace:*",
+    "cron-parser": "catalog:",
+    "svelte": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "catalog:",
+    "@lostgradient/typescript": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/svelte": "catalog:",
+    "@types/bun": "catalog:",
+    "fake-indexeddb": "catalog:",
+    "happy-dom": "catalog:",
+    "oxlint": "catalog:",
+    "oxlint-tsgolint": "catalog:",
+    "svelte-check": "catalog:",
+    "typescript": "catalog:"
+  }
+}

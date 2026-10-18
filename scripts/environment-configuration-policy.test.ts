@@ -1,7 +1,4 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   boundaryKind,
@@ -69,30 +66,15 @@ test('the executable repository has no unregistered environment reads', async ()
   expect(await scanEnvironmentConfigurationPolicy(root)).toEqual([]);
 });
 
-test("skips Weft's generated dashboard but not other directories of that name", async () => {
-  const root = await mkdtemp(join(tmpdir(), 'environment-policy-'));
-  try {
-    const read = 'export const mode = process.env.NODE_ENV;\n';
-    await Bun.write(join(root, 'packages/weft/dashboard/assets/index-abc12345.js'), read);
-    await Bun.write(join(root, 'packages/example/src/dashboard/consumer.ts'), read);
-    const violations = await scanEnvironmentConfigurationPolicy(root);
-    expect(violations.map((violation) => violation.file)).toEqual([
-      'packages/example/src/dashboard/consumer.ts',
-    ]);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
 test('registers runtime and script boundaries separately', () => {
   expect(boundaryKind('packages/operative/src/environment-configuration.ts')).toBe('runtime');
   expect(boundaryKind('applications/playground/src/environment-configuration.ts')).toBe('runtime');
-  expect(boundaryKind('packages/weft/scripts/ui-browser/environment-configuration.ts')).toBe(
+  expect(boundaryKind('applications/interborough/src/host/environment-configuration.ts')).toBe(
+    'runtime',
+  );
+  expect(boundaryKind('applications/interborough/scripts/environment-configuration.ts')).toBe(
     'script',
   );
-  // Weft's byte-identical copy of `@lostgradient/testing`'s module, for the Svelte compile plugin
-  // the UI's test preload and browser host import (scripts/check-test-support-copies.ts).
-  expect(boundaryKind('packages/weft/scripts/lib/environment-configuration.ts')).toBe('script');
   expect(boundaryKind('scripts/environment-configuration.ts')).toBe('script');
   expect(
     boundaryKind('packages/bureau/src/test/signal-shutdown/environment-configuration.ts'),

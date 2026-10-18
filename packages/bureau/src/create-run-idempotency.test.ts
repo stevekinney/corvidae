@@ -7,10 +7,11 @@
  * every ledgered scenario here runs a durable bureau over SQLite.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type GenerateFunction, waitForCondition } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction, waitForCondition } from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitions } from './agent-catalog';
 import { BureauLedgerConflictError } from './command-ledger';
 import { BureauError, createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
@@ -40,7 +41,10 @@ const REQUEST = {
   runCreationRequestId: 'request-1',
 } as const;
 
-type ExtraOptions = Pick<BureauOptions, 'flowControl' | 'maximumSteps' | 'systemPrompt'>;
+type ExtraOptions = Pick<BureauOptions, 'flowControl' | 'maximumSteps' | 'systemPrompt'> & {
+  /** What the `researcher` catalog agent declares for itself. */
+  readonly researcher?: { readonly instructions?: string; readonly maximumSteps?: number };
+};
 
 /**
  * Runs `body` against a durable bureau over a fresh SQLite file whose runs
@@ -53,9 +57,17 @@ async function withDurableBureau(
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = createSqliteStorageFixture({ runtime });
   const held = heldGenerate();
-  const bureau = await createBureau({
-    ...extra,
-    agents: {},
+  const { researcher, ...bureauOptions } = extra;
+  const bureau = await createBureau<AgentDefinitions>({
+    ...bureauOptions,
+    // `researcher` is the second agent the tests that name one dispatch to.
+    agents: {
+      researcher: createAgent({
+        generate: held.generate,
+        toolbox: createToolbox<readonly Tool[]>([]),
+        ...researcher,
+      }),
+    },
     generate: held.generate,
     toolbox: createToolbox<readonly Tool[]>([]),
     runtime,
@@ -130,6 +142,37 @@ describe('createRun with a run-creation request id', () => {
         expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
       },
       { systemPrompt: 'You keep the books.', maximumSteps: 7 },
+    );
+  });
+
+  it('reads a named run’s defaults from the agent, so the digest holds the values that win', async () => {
+    await withDurableBureau(
+      async (bureau) => {
+        const named = { ...REQUEST, agentName: 'researcher' };
+        const first = await bureau.createRun(named);
+
+        // Spelling out what the agent declares is the same command: the agent's values beat the
+        // Bureau's defaults, so they are what the digest holds.
+        const retry = await bureau.createRun({
+          ...named,
+          systemPrompt: 'You are the researcher.',
+          maximumSteps: 4,
+        });
+        expect(retry.id).toBe(first.id);
+
+        // The Bureau's own defaults lost, so spelling them out is a different command.
+        const bureauPrompt = await rejectionOf(
+          bureau.createRun({ ...named, systemPrompt: 'You keep the books.' }),
+        );
+        expect(bureauPrompt).toBeInstanceOf(BureauLedgerConflictError);
+        const bureauSteps = await rejectionOf(bureau.createRun({ ...named, maximumSteps: 7 }));
+        expect(bureauSteps).toBeInstanceOf(BureauLedgerConflictError);
+      },
+      {
+        systemPrompt: 'You keep the books.',
+        maximumSteps: 7,
+        researcher: { instructions: 'You are the researcher.', maximumSteps: 4 },
+      },
     );
   });
 
@@ -295,5 +338,109 @@ describe('createRun with a run-creation request id', () => {
       },
       { flowControl: { concurrency: { limit: 1, key: () => 'all-runs' } } },
     );
+  });
+});
+
+describe('createRun on a session bound to an agent (COR-1577)', () => {
+  const SESSION_REQUEST = {
+    message: 'Carry on.',
+    principal: 'alice',
+    sessionId: 'bound',
+    runCreationRequestId: 'request-1',
+  } as const;
+
+  /** Binds `bound` to `researcher` with a first run, and lets that run finish. */
+  async function bindSession(bureau: Bureau, release: () => void): Promise<string> {
+    const creator = await bureau.createRun({
+      message: 'Start.',
+      principal: 'alice',
+      agentName: 'researcher',
+      sessionId: 'bound',
+    });
+    release();
+    await waitForCondition(
+      () => bureau.getRun(creator.id)?.status === 'completed',
+      'the session-creating run did not complete',
+    );
+    return creator.id;
+  }
+
+  async function runIds(bureau: Bureau): Promise<string[]> {
+    return bureau
+      .listRuns()
+      .map((run) => run.id)
+      .toSorted();
+  }
+
+  it('treats a retry that spells the inherited agent as the same command as one that omitted it', async () => {
+    await withDurableBureau(async (bureau, release) => {
+      const creatorId = await bindSession(bureau, release);
+
+      const omitted = await bureau.createRun(SESSION_REQUEST);
+      const spelled = await bureau.createRun({ ...SESSION_REQUEST, agentName: 'researcher' });
+
+      expect(spelled.id).toBe(omitted.id);
+      expect(spelled.receipt).toEqual(omitted.receipt);
+      expect(await runIds(bureau)).toEqual([creatorId, omitted.id].toSorted());
+    });
+  });
+
+  it('treats a retry that omits the agent as the same command as one that spelled it', async () => {
+    await withDurableBureau(async (bureau, release) => {
+      const creatorId = await bindSession(bureau, release);
+
+      const spelled = await bureau.createRun({ ...SESSION_REQUEST, agentName: 'researcher' });
+      const omitted = await bureau.createRun(SESSION_REQUEST);
+
+      expect(omitted.id).toBe(spelled.id);
+      expect(omitted.receipt).toEqual(spelled.receipt);
+      expect(await runIds(bureau)).toEqual([creatorId, spelled.id].toSorted());
+    });
+  });
+
+  it('locates the one receipt by the session, by the spelled agent, or by both', async () => {
+    await withDurableBureau(async (bureau, release) => {
+      await bindSession(bureau, release);
+      const omitted = await bureau.createRun(SESSION_REQUEST);
+      const key = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
+
+      const bySession = await bureau.locateRunCreationReceipt({ ...key, sessionId: 'bound' });
+      const byAgent = await bureau.locateRunCreationReceipt({ ...key, agentName: 'researcher' });
+      const byBoth = await bureau.locateRunCreationReceipt({
+        ...key,
+        agentName: 'researcher',
+        sessionId: 'bound',
+      });
+      // With neither, the request is looked up under the default agent, which it was not run as.
+      const byNeither = await bureau.locateRunCreationReceipt(key);
+
+      for (const located of [bySession, byAgent, byBoth]) {
+        expect(located.status === 'recorded' && located.receipt.runId).toBe(omitted.id);
+      }
+      expect(byNeither.status).toBe('not-found');
+    });
+  });
+
+  it('locates a session that does not exist under the agent the request stated, and refuses a contradiction', async () => {
+    await withDurableBureau(async (bureau, release) => {
+      await bindSession(bureau, release);
+      const omitted = await bureau.createRun(SESSION_REQUEST);
+      const key = { principal: 'alice', runCreationRequestId: 'request-1' } as const;
+
+      // No such session: the stated agent alone keys the request, as it does for a new session.
+      const unknownSession = await bureau.locateRunCreationReceipt({
+        ...key,
+        agentName: 'researcher',
+        sessionId: 'no-such-session',
+      });
+      // A session bound to `researcher` cannot be asked about as `bureau`, as a run cannot name it.
+      const contradiction = await rejectionOf(
+        bureau.locateRunCreationReceipt({ ...key, agentName: 'bureau', sessionId: 'bound' }),
+      );
+
+      expect(unknownSession.status === 'recorded' && unknownSession.receipt.runId).toBe(omitted.id);
+      expect(contradiction).toBeInstanceOf(BureauError);
+      expect((contradiction as BureauError).code).toBe('BAD_REQUEST');
+    });
   });
 });

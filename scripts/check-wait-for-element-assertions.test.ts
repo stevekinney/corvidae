@@ -109,7 +109,7 @@ describe('test file discovery', () => {
     const directory = mkdtempSync(join(tmpdir(), 'wait-for-scan-'));
     try {
       for (const path of [
-        'packages/weft/src/ui/routes/list.test.ts',
+        'applications/interborough/src/routes/list.test.ts',
         'components/chat/scripts/tool.test.ts',
         'components/chat/src/helper.ts',
         'components/chat/node_modules/dependency/index.test.ts',
@@ -123,8 +123,8 @@ describe('test file discovery', () => {
       const paths: string[] = [];
       collectTestFiles(directory, paths);
       expect(paths.map((path) => relative(directory, path)).toSorted()).toEqual([
+        'applications/interborough/src/routes/list.test.ts',
         'components/chat/scripts/tool.test.ts',
-        'packages/weft/src/ui/routes/list.test.ts',
       ]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
