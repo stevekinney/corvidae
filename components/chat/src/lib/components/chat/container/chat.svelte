@@ -1071,8 +1071,9 @@
     const origin = conversationId;
     quotes.removeAll(carried.map((quote) => quote.id));
     handleSubmit({ ...message, content }, attachments, (succeeded) => {
-      // Quotes belong to the conversation they were taken from.
-      if (succeeded || conversationId !== origin) return;
+      // Quotes belong to the conversation they were taken from, and are not
+      // brought back once the host has turned quoting off.
+      if (succeeded || conversationId !== origin || !allowQuote) return;
       const dropped = quotes.restore(carried);
       if (dropped > 0) {
         announcements.announce(

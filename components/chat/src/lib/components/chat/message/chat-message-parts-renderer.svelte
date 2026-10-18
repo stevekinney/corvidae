@@ -152,10 +152,13 @@
         />
       {/each}
     </div>
-  {:else if unit.part.type === 'markdown' && quoteSource !== undefined}
+  {:else if unit.part.type === 'markdown'}
     <!-- The marker lives on a container this renderer owns, so a host's
          `messagePart` override of the markdown body is quotable just like the
-         default. `display: contents` keeps the wrapper out of the layout. -->
+         default. The wrapper is always rendered, with the attribute omitted
+         while the message is not quotable, so the markdown body keeps its
+         element when a streaming reply gets its first text or quoting is
+         toggled. `display: contents` keeps the wrapper out of the layout. -->
     <div class="chat-quote-source" data-quote-source={quoteSource}>
       {@render renderPart(unit.part)}
     </div>

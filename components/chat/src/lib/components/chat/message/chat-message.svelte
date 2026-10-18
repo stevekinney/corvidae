@@ -174,7 +174,8 @@
   }: ChatMessageProps = $props();
 
   // Quote state. The rendered text of an assistant message is quotable; the
-  // markdown body marks itself with `data-quote-source` when `onQuote` is set.
+  // parts renderer's wrapper around the markdown body carries
+  // `data-quote-source` when `onQuote` is set.
   let articleElement = $state<HTMLElement | null>(null);
   const canQuote = $derived(
     message.role === 'assistant' && onQuote !== undefined && getMessageText(message).trim() !== '',

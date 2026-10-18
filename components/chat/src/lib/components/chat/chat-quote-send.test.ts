@@ -16,6 +16,8 @@
  *   8. A failed send puts its quotes back ahead of any added since, without
  *      duplicates, within the cap of 10, and says when some were dropped.
  *   9. Quotes with an attachment and no typed text send no trailing separator.
+ *  10. A send that fails after the host turned quoting off brings no chips back.
+ *  11. A synchronous throw from `onSubmit` puts the carried quotes back.
  */
 
 /// <reference lib="dom" />
@@ -536,5 +538,58 @@ describe('Chat sending quoted excerpts', () => {
     await settle();
 
     expect(sent).toEqual(['> Quoted with a file.']);
+  });
+
+  test('brings no chips back when a send fails after the host turned quoting off', async () => {
+    let fail: (error: Error) => void = () => {};
+    const sent: string[] = [];
+    const adapter: ChatAdapter = {
+      sendMessage: (message) => {
+        sent.push(message.content as string);
+        return new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        });
+      },
+    };
+    const conversation = conversationOf('restore-quote-off', ['Carried quote.']);
+    const props = { id: 'chat-send-restore-quote-off', adapter, onAdapterError: () => undefined };
+    const { container, rerender } = render(Chat, { ...props, conversation });
+    await quote(container, 0);
+    await send(container, 'Go');
+    await rerender({ ...props, conversation, capabilities: { quote: false } });
+    await settle();
+
+    fail(new Error('offline'));
+    await settle();
+    expect(quoteChips(container)).toHaveLength(0);
+
+    await send(container, 'Again');
+    await settle();
+    expect(sent).toEqual(['> Carried quote.\n\nGo', 'Again']);
+  });
+
+  test('puts the quotes back when onSubmit throws synchronously', async () => {
+    // The throw escapes the form's submit handler; happy-dom reports it as a
+    // window `error` event, which the listener keeps from failing the run.
+    const preventReport = (event: Event): void => {
+      event.preventDefault();
+    };
+    window.addEventListener('error', preventReport);
+    try {
+      const { container } = render(Chat, {
+        id: 'chat-send-on-submit-throws',
+        conversation: conversationOf('on-submit-throws', ['Thrown quote.']),
+        onSubmit: () => {
+          throw new Error('host refused');
+        },
+      });
+      await quote(container, 0);
+      await send(container, 'Go');
+      await settle();
+
+      expect(chipTexts(container)).toEqual(['Thrown quote.']);
+    } finally {
+      window.removeEventListener('error', preventReport);
+    }
   });
 });
