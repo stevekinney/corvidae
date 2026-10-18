@@ -3165,6 +3165,96 @@ test.describe('chat harness — accessibility', () => {
   });
 });
 
+test.describe('chat harness — quoted replies', () => {
+  const QUOTE_POPOVER = '[role="toolbar"][aria-label="Quote selection"]';
+
+  /** Selects `text` inside the nth assistant message's rendered content, as a drag would. */
+  async function selectInAssistantMessage(page: Page, index: number, text: string): Promise<void> {
+    await page.evaluate(
+      ({ index: messageIndex, text: wanted }) => {
+        const sources = document.querySelectorAll(
+          '#harness-chat [data-message-role="assistant"] [data-quote-source]',
+        );
+        const walker = document.createTreeWalker(sources[messageIndex]!, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+          const start = node.textContent?.indexOf(wanted) ?? -1;
+          if (start === -1) continue;
+          const range = document.createRange();
+          range.setStart(node, start);
+          range.setEnd(node, start + wanted.length);
+          const selection = window.getSelection()!;
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return;
+        }
+        throw new Error(`"${wanted}" is not in assistant message ${messageIndex}`);
+      },
+      { index, text },
+    );
+  }
+
+  test('quoting from the keyboard and from a selection builds a quoted reply with no axe violations', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      await harness.locator('[data-testid="seed-thread"]').click();
+      const chat = harness.locator('#harness-chat');
+      // The row's actions sit beside its article, so the wrapper is the scope.
+      const lastAssistant = chat.locator('.chat-message-wrapper[data-role="assistant"]').last();
+      await expect(lastAssistant).toContainText('Detailed answer number 12');
+
+      // Keyboard path: focus the message's Quote action and activate it.
+      const quoteMessage = lastAssistant.getByRole('button', { name: 'Quote message' });
+      await quoteMessage.focus();
+      await page.keyboard.press('Enter');
+      const chips = chat.getByRole('list', { name: 'Quoted excerpts' }).getByRole('listitem');
+      await expect(chips).toHaveCount(1);
+      await expect(chips.first()).toContainText('Detailed answer number 12');
+
+      // Selection path: a partial selection in the first assistant message
+      // offers Quote in a popover.
+      await selectInAssistantMessage(page, 0, 'first item');
+      const popover = page.locator(QUOTE_POPOVER);
+      await expect(popover.getByRole('button', { name: 'Quote' })).toBeVisible();
+
+      // Audit the chip row and the open popover together.
+      const buckets = await runAxe(
+        page,
+        { slug: 'chat', theme: 'dark', viewport: 'desktop', fixture: 'private-harness' },
+        { include: [`${HARNESS} #harness-chat`, QUOTE_POPOVER] },
+      );
+      expect(buckets.critical, JSON.stringify(buckets.critical, null, 2)).toHaveLength(0);
+      expect(buckets.serious, JSON.stringify(buckets.serious, null, 2)).toHaveLength(0);
+
+      await popover.getByRole('button', { name: 'Quote' }).click();
+      await expect(chips).toHaveCount(2);
+      await expect(chips.nth(1)).toContainText('first item');
+      await expect(popover.getByRole('button', { name: 'Quote' })).toBeHidden();
+
+      // Send: the reply carries both quotes as block quotes, and the chips go.
+      await chat.getByRole('textbox', { name: 'Message' }).fill('Why is that?');
+      await page.keyboard.press('Enter');
+      const reply = chat.locator('[data-message-role="user"]').last();
+      await expect(reply.locator('blockquote')).toHaveCount(2);
+      await expect(reply.locator('blockquote').first()).toContainText('Detailed answer number 12');
+      await expect(reply.locator('blockquote').nth(1)).toContainText('first item');
+      await expect(reply).toContainText('Why is that?');
+      await expect(chat.getByRole('list', { name: 'Quoted excerpts' })).toHaveCount(0);
+
+      const afterSend = await runAxe(
+        page,
+        { slug: 'chat', theme: 'dark', viewport: 'desktop', fixture: 'private-harness' },
+        { include: `${HARNESS} #harness-chat` },
+      );
+      expect(afterSend.critical, JSON.stringify(afterSend.critical, null, 2)).toHaveLength(0);
+      expect(afterSend.serious, JSON.stringify(afterSend.serious, null, 2)).toHaveLength(0);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
 test.describe('chat conversation list — accessibility', () => {
   for (const colorScheme of ['light', 'dark'] as const) {
     test(`the agent label, activity indicators, and load-more control have no serious axe violations (${colorScheme})`, async ({

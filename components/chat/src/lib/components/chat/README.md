@@ -283,6 +283,31 @@ Chat's outer layout element is `height: 100%`. When no ancestor on the chain res
 </style>
 ```
 
+## Quoting agent messages
+
+A reader can reply to part of an agent message, or to several parts at once. Quoting needs no props and no adapter support: the quotes travel as Markdown in the message itself, so the model sees them, and a reloaded transcript shows them.
+
+- Selecting text inside one assistant message's content opens a Quote popover (Cinder's `SelectionPopover`). A selection that spans messages, or reaches outside assistant content, opens nothing.
+- Every assistant message also has a Quote message action in its action row. It quotes the current selection when that selection lies inside the message, and otherwise the message's whole rendered text, so quoting works from the keyboard.
+- Each quote appears as a chip above the composer showing its first 80 characters, with a Remove button. Chips keep the order they were added in, and quoting the same text twice adds it once.
+- A reply carries at most 10 quotes. At 10, both Quote actions are disabled and the chip row says why. A quote longer than 4,000 characters is cut to 3,999 characters plus an ellipsis. Surrounding whitespace is trimmed from every quote.
+
+A quote is the selected text exactly as the browser reports it (`Selection.toString()`), not a link back to the message it came from, and Chat sends no quote metadata. Sending puts the quotes at the top of the message as Markdown block quotes: every line is prefixed with `> `, quotes are separated by one blank line, and one more blank line precedes the typed text.
+
+```md
+> alpha is the first item we track.
+
+> It was added before every other item. That is why it leads.
+
+Why does order matter here?
+```
+
+The composed text goes through `ChatAdapter.sendMessage` (or `onSubmit`), or through `sendRunInput` when a run is active, exactly as a plain reply would. `ChatSubmitEvent.message.content` and the adapter's `message.content` already hold the composed text. The composer still needs typed text to send, so quotes alone cannot be sent.
+
+Chat clears the chips once the send is accepted. A send the adapter rejects keeps them, so the reader can retry without quoting again, and a quote added while a send was in flight is not cleared by it. `onSubmit` is not awaited, so a rejected promise from it counts as accepted. Changing the conversation clears the chips.
+
+Quoting covers assistant messages only. User messages and tool output offer no Quote action, and a selection inside them opens no popover. The "Quoting agent messages" example shows the flow.
+
 ## Composer actions
 
 `composerActions` is an optional snippet rendered in the composer footer, beside Send, so a host can put its own controls next to the composer; the usual case is a model picker built from Cinder's `Select` (or `Combobox`). Chat does not ship a picker: the host owns the value and what it means.

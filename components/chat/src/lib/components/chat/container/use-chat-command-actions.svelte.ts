@@ -145,22 +145,31 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     command: ChatCommand,
     runAdapterMethod: (adapter: ChatAdapter) => Promise<void> | undefined,
     callback: (() => void | Promise<void>) | undefined,
+    onOutcome?: (succeeded: boolean) => void,
   ): Promise<void> | void {
     const adapter = options.getAdapter();
     if (adapter) {
       try {
         const run = runAdapterMethod(adapter);
         if (run !== undefined) {
-          return run.catch((error: unknown) => {
-            options.getOnAdapterError()?.({ command, error });
-          });
+          return run.then(
+            () => onOutcome?.(true),
+            (error: unknown) => {
+              options.getOnAdapterError()?.({ command, error });
+              onOutcome?.(false);
+            },
+          );
         }
       } catch (error) {
         options.getOnAdapterError()?.({ command, error });
+        onOutcome?.(false);
         return;
       }
     }
+    // `onSubmit`-style callbacks are not awaited, so handing one the work is all
+    // that can be reported: a synchronous throw leaves `onOutcome` unheard.
     void callback?.();
+    onOutcome?.(true);
   }
 
   $effect(() => {
@@ -224,7 +233,16 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     });
   }
 
-  function handleSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
+  /**
+   * Hands a composed message to the adapter (or `onSubmit`). `onOutcome`, when
+   * given, hears once whether the hand-off worked: after the adapter's promise
+   * settles, so a caller can keep what it was holding when the send fails.
+   */
+  function handleSubmit(
+    message: MessageInput,
+    attachments: ChatAttachment[],
+    onOutcome?: (succeeded: boolean) => void,
+  ): void {
     options.invalidateHistory();
     const editing = editingMessageIds.size > 0;
     const runInput = options.getAdapter()?.sendRunInput;
@@ -242,6 +260,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
           'sendRunInput',
           (adapter) => adapter.sendRunInput?.(conversationId, message, attachments),
           undefined,
+          onOutcome,
         );
       } else {
         const previous = runInputQueue;
@@ -252,6 +271,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
               ? previous.then(() => adapter.sendRunInput?.(conversationId, message, attachments))
               : undefined,
           undefined,
+          onOutcome,
         );
         // `dispatchCommand` reports a failure and settles, so the queue moves on.
         runInputQueue = Promise.resolve(flight);
@@ -261,6 +281,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
         'sendMessage',
         (adapter) => Promise.resolve(adapter.sendMessage(message, attachments)),
         () => options.getOnSubmit()?.({ message, attachments }),
+        onOutcome,
       );
     }
     options.afterSubmit(editing);

@@ -20,6 +20,7 @@
     messageId,
     messagePart,
     markdownNode,
+    quoteSource,
     expanded = false,
     onToggle,
     onApprovalResolve,
@@ -81,7 +82,7 @@
 -->
 {#snippet renderDefault(part: BodyMessagePart)}
   {#if part.type === 'markdown'}
-    <MarkdownPart {part} {markdownNode} />
+    <MarkdownPart {part} {markdownNode} {quoteSource} />
   {:else if part.type === 'tool-call'}
     <ToolCallPart {part} {messageId} {expanded} {onToggle} activityActive={toolActivityActive} />
   {:else if part.type === 'tool-result'}
