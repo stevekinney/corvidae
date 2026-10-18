@@ -262,3 +262,21 @@ export function storageFailingWith(
 ): EvidenceProjectionStorage {
   return { ...storage, commit: () => Promise.reject(error) };
 }
+
+/**
+ * Parks `parties` callers, each at its own gate. `whenAllArrived` resolves once
+ * every one is parked, and `release(index)` lets one go, so a test decides which
+ * submission reaches the store first instead of leaving it to scheduling.
+ */
+export function createOrderedGates(parties: number) {
+  const arrivals = Array.from({ length: parties }, () => Promise.withResolvers<void>());
+  const gates = Array.from({ length: parties }, () => Promise.withResolvers<void>());
+  return {
+    hold: (index: number) => async (): Promise<void> => {
+      arrivals[index]!.resolve();
+      await gates[index]!.promise;
+    },
+    whenAllArrived: Promise.all(arrivals.map((arrival) => arrival.promise)).then(() => undefined),
+    release: (index: number): void => gates[index]!.resolve(),
+  };
+}

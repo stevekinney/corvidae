@@ -50,16 +50,25 @@ export function recordBatches(): BatchRecorder {
 /**
  * Fails the batch the store is about to apply, or has just applied. `before`
  * throws without calling the inner `apply`; `after` applies and then throws.
- * Each fault fires once, on the first batch, so a retry commits normally.
+ * Each fault fires once, on the first batch after `skip` ones (a seed commit,
+ * say), so a retry commits normally.
  */
-export function failFirstBatch(mode: 'before' | 'after'): {
+export function failFirstBatch(
+  mode: 'before' | 'after',
+  options: { readonly skip?: number } = {},
+): {
   readonly wrapApply: WrapApply;
   readonly batches: PlannedBatch[];
 } {
   const batches: PlannedBatch[] = [];
+  let skip = options.skip ?? 0;
   let failed = false;
   const wrapApply: WrapApply = (apply: ApplyPlannedBatch) => async (batch) => {
     batches.push(batch);
+    if (skip > 0) {
+      skip -= 1;
+      return apply(batch);
+    }
     if (failed) return apply(batch);
     failed = true;
     if (mode === 'before') throw new Error('injected fault before the batch applied');
