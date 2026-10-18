@@ -12,6 +12,7 @@ import {
 import type { AnyToolbox, ToolboxEventMap } from 'armorer';
 import { Conversation, isConversation } from 'conversationalist';
 
+import { snapshotPayload } from './agent-input';
 import { createClosedAcknowledgement } from './closed-acknowledgement';
 import type { DurableActiveRunContext } from './durable/active-run-adapter';
 import { createDurableActiveRun } from './durable/active-run-create';
@@ -245,7 +246,8 @@ export function createActiveRun(
         // back to '' inside createDurableActiveRun if undefined here.
         agentName: options.agentName,
         options: { ...options, runtime },
-        prompt: durable.prompt,
+        // Copied now, like the tags: the caller owns this array and the start runs later.
+        prompt: durable.prompt === undefined ? undefined : snapshotPayload(durable.prompt),
         ...(dependencies?.clock ? { livenessClock: dependencies.clock } : {}),
         ...(dependencies?.owner !== undefined ? { livenessOwner: dependencies.owner } : {}),
         ...(durable.emitter

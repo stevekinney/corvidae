@@ -9,7 +9,7 @@
  * read the same text.
  */
 import { encodeUtf8Base64, parseDataUrl, type ResolvedMediaSource } from './adapters/media';
-import { isTextualMimeType } from './media-types';
+import { isTextualMimeType, splitDataUrl } from './media-types';
 import type { ContentSource, MediaContent } from './multi-modal';
 
 /** A part's text body, and how to put a replacement back in the form it was stored in. */
@@ -118,8 +118,7 @@ function textBody(
 
 /** Rebuilds a data URL around `text`, keeping the header and the encoding it declared. */
 function rebuildDataUrl(url: string, text: string): string {
-  const comma = url.indexOf(',');
-  const header = url.slice(0, comma);
-  const isBase64 = header.split(';').includes('base64');
-  return `${header},${isBase64 ? encodeUtf8Base64(text) : encodeURIComponent(text)}`;
+  const split = splitDataUrl(url);
+  if (split === undefined) return url;
+  return `data:${split.header},${split.isBase64 ? encodeUtf8Base64(text) : encodeURIComponent(text)}`;
 }

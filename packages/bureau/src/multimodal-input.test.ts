@@ -11,7 +11,7 @@ import {
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
+import { decode, MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
@@ -171,6 +171,67 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
   });
 });
 
+describe('bureau.run takes its input as it was when called (COR-716)', () => {
+  for (const durable of [false, true]) {
+    it(`${durable ? 'durable' : 'direct'}: a caller editing its array after the call does not reach the run`, async () => {
+      const seen: GenerateContext[] = [];
+      const bureau = await createBureau({
+        agents: { echo: createAgent({ generate: recordingGenerate(seen) }) },
+        ...(durable ? { storage: { type: 'memory' as const }, durableExecution: true } : {}),
+      });
+      cleanups.push(async () => {
+        await bureau.dispose();
+      });
+      const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
+
+      const run = bureau.run('echo', parts);
+      parts[0]!.text = 'mutated';
+      parts.push({ type: 'text', text: 'appended' });
+      await run.result();
+
+      const user = seen[0]?.conversation.getMessages().find((message) => message.role === 'user');
+      expect(user?.content).toEqual([{ type: 'text', text: 'as submitted' }]);
+    });
+  }
+});
+
+describe('a durable catalog run records its input as submitted (COR-716)', () => {
+  it('writes the recovery record from the validated copy, not the caller’s edited array', async () => {
+    const storage = new MemoryStorage();
+    const gate = deferred();
+    const started = deferred();
+    const bureau = await createBureau({
+      agents: {
+        echo: createAgent({
+          generate: withBackendDescriptors(async () => {
+            started.resolve();
+            await gate.promise;
+            return { content: 'ok', toolCalls: [] };
+          }, anthropicDescriptors),
+        }),
+      },
+      storage,
+      durableExecution: true,
+    });
+    cleanups.push(async () => {
+      gate.resolve();
+      await bureau.dispose();
+    });
+    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
+
+    const run = bureau.run('echo', parts);
+    parts[0]!.text = 'mutated';
+    await started.promise;
+
+    const stored = await storage.get(`bureau-catalog-run:${run.id}`);
+    expect(stored).not.toBeNull();
+    const record = decode(stored!) as { input: unknown };
+    expect(record.input).toEqual([{ type: 'text', text: 'as submitted' }]);
+    gate.resolve();
+    await run.result();
+  });
+});
+
 describe('session input carrying a managed asset (COR-716)', () => {
   it('resolves the asset at the step boundary that delivers it, as the run owner', async () => {
     const seen: GenerateContext[] = [];
@@ -233,6 +294,56 @@ describe('session input carrying a managed asset (COR-716)', () => {
         }),
       ],
     ]);
+  });
+
+  it('delivers the payload as it was submitted, not as the caller edits its array afterward', async () => {
+    const seen: GenerateContext[] = [];
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const bureau = await createBureau({
+      agents: {},
+      generate: withBackendDescriptors(async (context: GenerateContext) => {
+        seen.push(context);
+        if (context.step === 0) {
+          stepZeroStarted.resolve();
+          await releaseStepZero.promise;
+          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+        }
+        return { content: 'done', toolCalls: [] };
+      }, anthropicDescriptors),
+      toolbox: createToolbox([nextTool()]),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    cleanups.push(async () => {
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    });
+    const run = await bureau.createRun({ message: 'Start', principal: alice.id });
+    await stepZeroStarted.promise;
+    const payload: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
+
+    const pending = bureau.submitSessionInput(run.sessionId, {
+      id: 'input-snapshot',
+      principal: alice.id,
+      deliveryMode: 'steer',
+      payload,
+    });
+    // The caller keeps its array and edits it as soon as the call returns.
+    payload[0]!.text = 'mutated';
+    payload.push({ type: 'text', text: 'appended' });
+    const admitted = await pending;
+    expect(admitted.outcome).toBe('admitted');
+
+    releaseStepZero.resolve();
+    await bureau.waitForDurableRun(run.id);
+
+    const step = seen.find((context) => context.step === 1)!;
+    const delivered = step.conversation
+      .getMessages()
+      .find((message) => Array.isArray(message.content));
+    expect(delivered?.content).toEqual([{ type: 'text', text: 'as submitted' }]);
   });
 
   it('refuses a malformed payload at the door instead of storing input no run could read', async () => {

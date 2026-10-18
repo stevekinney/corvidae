@@ -115,6 +115,24 @@ describe('provider document conversion', () => {
     },
   );
 
+  it('sends a base64 structured-text document to Anthropic as a text source, by the shared table', () => {
+    let conversation = createConversationHistory();
+    conversation = appendMessages(conversation, {
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          mimeType: 'application/json',
+          source: { kind: 'inline', data: btoa('{"a":1}'), encoding: 'base64' },
+        },
+      ],
+    });
+
+    expect(toAnthropicMessages(conversation).messages[0]?.content).toEqual([
+      { type: 'document', source: { type: 'text', media_type: 'text/plain', data: '{"a":1}' } },
+    ]);
+  });
+
   it('rejects a text document whose bytes are not UTF-8 before the client call', () => {
     let conversation = createConversationHistory();
     conversation = appendMessages(conversation, {

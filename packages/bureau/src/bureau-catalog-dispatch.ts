@@ -19,6 +19,7 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   readGenerationProfile,
   resolvesOwnGuardrails,
+  snapshotAgentInput,
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
@@ -818,7 +819,7 @@ export function createCatalogDispatcher({
 
   function runAgent(
     name: string,
-    input: AgentInput,
+    callerInput: AgentInput,
     runOptions?: BureauRunOptions,
   ): AgentRun<unknown, boolean> {
     if (getShutdownPromise()) {
@@ -828,7 +829,11 @@ export function createCatalogDispatcher({
     if (!agent) {
       throw createBureauError(`Unknown agent "${name}"`, 'NOT_FOUND');
     }
-    validateAgentRunInput(input);
+    validateAgentRunInput(callerInput);
+    // The caller owns its input and may edit it as soon as this call returns, but the
+    // run resolves and persists its recovery record across awaits. Copy what was
+    // validated, now, and use the copy everywhere below.
+    const input = snapshotAgentInput(callerInput);
 
     const prepared = prepareCatalogRunContext(name, runOptions);
     const principal = prepared.principal;

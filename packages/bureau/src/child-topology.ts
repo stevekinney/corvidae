@@ -101,6 +101,7 @@ import {
   isDelegationGrant,
   revokeDelegationGrant,
   signDelegationGrant,
+  snapshotAgentInput,
   type UnsignedDelegationGrant,
   verifyDelegationGrant,
 } from '@lostgradient/operative';
@@ -1185,9 +1186,16 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   }
 
   async function dispatch(
-    request: BureauChildDispatchRequest,
+    rawRequest: BureauChildDispatchRequest,
   ): Promise<BureauChildDispatchOutcome> {
-    validateDispatch(request);
+    validateDispatch(rawRequest);
+    // The caller owns its input and may edit it as soon as this call yields; the grant,
+    // its digest, and the child's recovery record are all written across awaits. Copy
+    // what was validated, now, and use the copy for all of them.
+    const request: BureauChildDispatchRequest = {
+      ...rawRequest,
+      input: snapshotAgentInput(rawRequest.input),
+    };
     // A goal's ids are its own (see `reserved-identifiers.ts`): a child that
     // took one would be purged under the goal's audit trail or squat its run.
     const reserved =

@@ -1,4 +1,4 @@
-import { baseMimeType } from '../../media-types';
+import { baseMimeType, isTextualMimeType } from '../../media-types';
 import { isMediaContent, type MediaContent, type MultiModalContent } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type { Message, ToolCall, ToolResult } from '../../types';
@@ -114,7 +114,7 @@ function toAnthropicMedia(
   }
   // The wire carries the base type; a parameter (`;version=1.7`) is not a type.
   const mimeType = baseMimeType(declaredMimeType);
-  if (part.type === 'document' && mimeType.startsWith('text/')) {
+  if (part.type === 'document' && isTextualMimeType(mimeType)) {
     // A base64 document source accepts only application/pdf. Text bytes go as a
     // text source, so a text document that arrived as base64 or a data URL is
     // decoded here, or rejected before the client call when it is not UTF-8.

@@ -267,6 +267,29 @@ describe('createAgentSchedule', () => {
     expect(engine.calls).toHaveLength(1);
   });
 
+  it('persists the validated input, not the caller’s array as it is when the engine is reached', async () => {
+    for (const idempotent of [false, true]) {
+      // With no schedule yet, the idempotent path awaits `getSchedule` before it registers.
+      const engine = makeSchedulingEngine({ summaries: [] });
+      const input: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'summarize' }];
+
+      const registered = createAgentSchedule({
+        engine,
+        agentName: 'researcher',
+        spec: { cron: '0 9 * * *' },
+        input,
+        ...(idempotent ? { id: 'nightly', idempotent: true } : {}),
+      });
+      // The caller keeps its array and edits it as soon as the call returns.
+      input[0]!.text = 'mutated';
+      input.push({ type: 'text', text: 'appended' });
+      await registered;
+
+      const persisted = (engine.calls[0]!.input as ScheduledAgentRunInput).input;
+      expect(persisted).toEqual([{ type: 'text', text: 'summarize' }]);
+    }
+  });
+
   it('threads description, session, overlap, and stable id through to the engine', async () => {
     const engine = makeSchedulingEngine({ scheduleId: 'daily-digest-sched' });
 

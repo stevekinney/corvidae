@@ -12,7 +12,14 @@ import {
   UnsupportedContentError,
   type UnsupportedContentReason,
 } from '../errors';
-import { BASE64_REQUIREMENT, baseMimeType, dataUrlDefect, isDecodableBase64 } from '../media-types';
+import {
+  BASE64_REQUIREMENT,
+  baseMimeType,
+  dataUrlDefect,
+  isDecodableBase64,
+  isDocumentMimeType,
+  splitDataUrl,
+} from '../media-types';
 import type {
   ContentPartLineage,
   ContentSource,
@@ -179,22 +186,19 @@ export function toBase64Payload(source: ContentSource): Base64Payload | undefine
   return undefined;
 }
 
-/** Parses `data:[<mediatype>][;base64],<data>`; returns base64 bytes and the media type. */
+/**
+ * Parses `data:[<mediatype>][;base64],<data>` through {@link splitDataUrl}; returns
+ * base64 bytes and the (lower-cased) media type. The base64 flag is read without
+ * regard to case, and a percent-encoded payload is re-encoded as base64.
+ */
 export function parseDataUrl(
   url: string,
 ): { data: string; mimeType: string | undefined } | undefined {
-  if (!url.startsWith('data:')) return undefined;
-  const comma = url.indexOf(',');
-  if (comma === -1) return undefined;
-  const header = url.slice('data:'.length, comma);
-  const payload = url.slice(comma + 1);
-  const segments = header.split(';');
-  const isBase64 = segments.includes('base64');
-  const mime = segments[0] === undefined || segments[0] === '' ? undefined : segments[0];
-  if (payload === '') return undefined;
-  if (isBase64) return { data: payload, mimeType: mime };
+  const split = splitDataUrl(url);
+  if (split === undefined || split.payload === '') return undefined;
+  if (split.isBase64) return { data: split.payload, mimeType: split.mimeType };
   try {
-    return { data: encodeUtf8Base64(decodeURIComponent(payload)), mimeType: mime };
+    return { data: encodeUtf8Base64(decodeURIComponent(split.payload)), mimeType: split.mimeType };
   } catch {
     return undefined;
   }
@@ -235,7 +239,7 @@ export function sourceFromUrl(
   invalid: (url: string, reason: string) => Error = (rejected, reason) =>
     new ConversationalistError('error:validation', `Cannot map the URL "${rejected}": ${reason}.`),
 ): ContentSource {
-  if (url.startsWith('data:')) {
+  if (url.slice(0, 'data:'.length).toLowerCase() === 'data:') {
     const defect = dataUrlDefect(url);
     if (defect !== undefined) throw invalid(url, defect);
     return { kind: 'data-url', url };
@@ -245,8 +249,12 @@ export function sourceFromUrl(
 }
 
 /**
- * The modality a media type belongs to. `application/pdf` and `text/*` are
- * documents; any other `application/*` is a generic file.
+ * The modality a media type belongs to, by the same table the schema checks a
+ * declared type against: `image/*`, `audio/*`, and `video/*` are those modalities;
+ * a document type (PDF, `text/*`, structured text, RTF, and the office formats,
+ * see {@link isDocumentMimeType}) is a document; any other type is a generic file.
+ * Every inbound adapter classifies through this, so what one provider sends in is
+ * what its own exporter accepts back out.
  */
 export function modalityFromMimeType(
   mimeType: string | undefined,
@@ -255,8 +263,7 @@ export function modalityFromMimeType(
   const base = baseMimeType(mimeType);
   const family = base.split('/')[0];
   if (family === 'image' || family === 'audio' || family === 'video') return family;
-  if (base === 'application/pdf' || family === 'text') return 'document';
-  return 'file';
+  return isDocumentMimeType(base) ? 'document' : 'file';
 }
 
 /** Builds a media part with only the optional fields that are present. */

@@ -72,6 +72,8 @@ export {
   assertAgentInput,
   isConversationInput,
   payloadText,
+  snapshotAgentInput,
+  snapshotPayload,
 } from './agent-input';
 export {
   AGENT_POLICY_HOOK_SOURCE,

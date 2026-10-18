@@ -1,10 +1,10 @@
-import { baseMimeType } from '../../media-types';
 import type { MediaContent, MultiModalContent, TextContent } from '../../multi-modal';
 import type { JSONValue } from '../../types';
 import {
   createMediaPart,
   encodeUtf8Base64,
   inlineBase64Source,
+  modalityFromMimeType,
   parseDataUrl,
   sourceFromUrl,
 } from '../media';
@@ -224,10 +224,11 @@ function fromA2ADataPart(part: A2ADataPart): MediaContent {
 function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): MediaContent {
   const mediaType = nonEmpty(part.mediaType);
   const name = nonEmpty(part.filename);
-  const family = mediaType === undefined ? undefined : baseMimeType(mediaType).split('/')[0];
-  // The media type decides the modality; a filename never changes it.
-  const modality =
-    family === 'image' || family === 'audio' || family === 'video' ? family : 'document';
+  // The media type decides the modality, through the shared table; a filename never
+  // changes it. A2A has no generic-file part, so a type the table does not place (or
+  // none) is a document.
+  const classified = modalityFromMimeType(mediaType);
+  const modality = classified === undefined || classified === 'file' ? 'document' : classified;
   return {
     ...createMediaPart(
       modality,

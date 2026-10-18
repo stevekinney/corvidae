@@ -9,6 +9,7 @@ import {
   type AgentRun,
   type ChildSignalPort,
   defineChildSignals,
+  digestDelegationArtifact,
   type DelegationGrant,
   revokeDelegationGrant,
   verifyDelegationGrant,
@@ -1768,6 +1769,25 @@ describe('delegation grants', () => {
     expect(first.artifactDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(same.artifactDigest).toBe(first.artifactDigest);
     expect(other.artifactDigest).not.toBe(first.artifactDigest);
+  });
+
+  it('binds the grant to the input as submitted, not as the caller edits its array afterward', async () => {
+    const fixture = createFixture({ delegation });
+    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'read this' }];
+    const expected = digestDelegationArtifact(structuredClone(parts));
+
+    const pending = fixture.topology.children.dispatch({
+      parentRunId: 'parent-1',
+      agentName: 'worker',
+      input: parts,
+      childRunId: 'child-a',
+      authority: { budget: { concurrentChildren: 1 } },
+    });
+    parts[0]!.text = 'mutated';
+    await pending;
+
+    const grant = await grantOf(fixture, 'child-a');
+    expect(grant.artifactDigest).toBe(expected);
   });
 
   it('attenuates a nested grant from its parent’s and reserves its budget in the ledger', async () => {

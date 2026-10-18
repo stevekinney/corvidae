@@ -98,20 +98,56 @@ export function isDecodableBase64(data: string): boolean {
   }
 }
 
+/** A data URL split into its header tokens and payload. */
+export interface SplitDataUrl {
+  /** The header between `data:` and the comma, exactly as written. */
+  readonly header: string;
+  /** The media type, lower-cased, or `undefined` when the header names none. */
+  readonly mimeType: string | undefined;
+  /** Whether the header carries the `base64` flag. */
+  readonly isBase64: boolean;
+  /** Everything after the first comma, exactly as written. */
+  readonly payload: string;
+}
+
+/**
+ * The one place a data URL is split (RFC 2397). The scheme, the media type, and the
+ * `base64` flag are all case-insensitive, so `DATA:`, `TEXT/PLAIN`, and `;BASE64` read
+ * the same as their lower-case forms. Validation, the exporters, the body reader, and
+ * the PII rewrite all go through it, so none can read a header differently from another
+ * (a `;BASE64` payload read as percent-encoded text would send the bytes of the base64
+ * string itself). `undefined` when `url` is not a data URL or has no comma.
+ */
+export function splitDataUrl(url: string): SplitDataUrl | undefined {
+  if (url.slice(0, 'data:'.length).toLowerCase() !== 'data:') return undefined;
+  const comma = url.indexOf(',');
+  if (comma === -1) return undefined;
+  const header = url.slice('data:'.length, comma);
+  const [first = '', ...rest] = header.split(';');
+  // A first token without a slash is a parameter (`data:;base64,...`), not a media type.
+  const firstIsMediaType = first.includes('/');
+  const parameters = firstIsMediaType ? rest : [first, ...rest];
+  return {
+    header,
+    mimeType: firstIsMediaType ? first.trim().toLowerCase() : undefined,
+    isBase64: parameters.some((parameter) => parameter.trim().toLowerCase() === 'base64'),
+    payload: url.slice(comma + 1),
+  };
+}
+
 /**
  * Why a data URL's payload cannot be decoded, or `undefined` when it decodes:
- * valid base64 after `;base64`, a valid URI component otherwise.
+ * valid base64 after `;base64` (in any case), a valid URI component otherwise.
  */
 export function dataUrlDefect(url: string): string | undefined {
-  const comma = url.indexOf(',');
-  if (comma === -1) return 'a data URL needs a comma before its payload';
-  const payload = url.slice(comma + 1);
-  if (payload === '') return 'a data URL needs a payload';
-  if (url.slice('data:'.length, comma).split(';').includes('base64')) {
-    return isDecodableBase64(payload) ? undefined : `its ${BASE64_REQUIREMENT}`;
+  const split = splitDataUrl(url);
+  if (split === undefined) return 'a data URL needs a comma before its payload';
+  if (split.payload === '') return 'a data URL needs a payload';
+  if (split.isBase64) {
+    return isDecodableBase64(split.payload) ? undefined : `its ${BASE64_REQUIREMENT}`;
   }
   try {
-    decodeURIComponent(payload);
+    decodeURIComponent(split.payload);
     return undefined;
   } catch {
     return 'its payload is not a valid URI component';

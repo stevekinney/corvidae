@@ -191,6 +191,34 @@ describe('createRun with durable routing', () => {
     }
   });
 
+  it('seeds the run with the prompt as it was when the run was created, not as the caller edits it', async () => {
+    const context = await buildContext();
+    const seen: unknown[] = [];
+    const prompt: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'as submitted' }];
+    try {
+      const pending = createActiveRun(
+        runOptions(async ({ conversation }) => {
+          seen.push(
+            conversation
+              .getMessages()
+              .filter((message) => message.role === 'user')
+              .map((message) => message.content),
+          );
+          return { content: 'done', toolCalls: [] };
+        }),
+        { ...context, runId: 'run-prompt-snapshot', prompt },
+      );
+      // The caller keeps its array and edits it as soon as the call returns.
+      prompt[0]!.text = 'mutated';
+      prompt.push({ type: 'text', text: 'appended' });
+      await pending.result;
+
+      expect(seen).toEqual([[[{ type: 'text', text: 'as submitted' }]]]);
+    } finally {
+      context.engine[Symbol.dispose]();
+    }
+  });
+
   it('runs through the durable routing overload of run()', async () => {
     const context = await buildContext();
     try {

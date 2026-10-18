@@ -10,6 +10,7 @@ import type {
 } from '@lostgradient/weft';
 import { decode, KEYS, parseDuration, ScheduleHandle } from '@lostgradient/weft';
 
+import { snapshotPayload } from '../agent-input';
 import type { ClosedFunction } from '../closed-acknowledgement';
 import { createClosedAcknowledgement } from '../closed-acknowledgement';
 import {
@@ -530,7 +531,7 @@ export async function createAgentSchedule(
     engine,
     agentName,
     spec,
-    input,
+    input: callerInput,
     description,
     session,
     overlap,
@@ -545,11 +546,14 @@ export async function createAgentSchedule(
   assertSupportedOverlapPolicy(overlap);
   // Every fire reads this input back, so one that cannot be read is refused now
   // rather than failing each fire later.
-  if (!isSessionInputPayload(input)) {
+  if (!isSessionInputPayload(callerInput)) {
     throw new InvalidScheduleError(
       'schedule input must be text, or a non-empty list of valid user text and media parts',
     );
   }
+  // The caller owns its array and may edit it as soon as this call yields. Copy what was
+  // validated, synchronously and before the first await, and persist the copy.
+  const input = snapshotPayload(callerInput);
   if (session !== undefined && session.trim().length === 0) {
     throw new InvalidScheduleError('schedule session must be a non-empty string');
   }

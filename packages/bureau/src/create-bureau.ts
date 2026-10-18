@@ -82,6 +82,7 @@ import {
   type SessionSummary,
   SteeringAcceptedEvent,
   SteeringAppliedEvent,
+  snapshotPayload,
   type SteeringRequestedValue,
   type StepRecord,
   type Store,
@@ -9595,7 +9596,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   async function submitSessionInput(
     sessionId: string,
-    request: SessionInputAdmissionRequest,
+    callerRequest: SessionInputAdmissionRequest,
   ): Promise<SessionInputAdmissionOutcome> {
     // Unlike signalSession/updateSession/querySession, this does NOT throw
     // BureauError('NOT_CONFIGURED') when no session store is composed: an
@@ -9609,12 +9610,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-716: a payload no run could read is refused here, at the contract's own door,
     // rather than admitted and then rejected without retry when a step boundary decodes it.
     try {
-      parseSessionInputPayload(request.payload);
+      parseSessionInputPayload(callerRequest.payload);
     } catch (error) {
       toBadRequest(
         `"payload" is invalid: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    // The caller owns its payload and may edit it as soon as this call yields, but the
+    // admission awaits the session, its liveness, and the mailbox before it persists.
+    // Copy what was validated, now, and admit the copy.
+    const request: SessionInputAdmissionRequest = {
+      ...callerRequest,
+      payload: snapshotPayload(callerRequest.payload),
+    };
     const sessionStoreForInput = runtime.sessionStore;
     const session = sessionStoreForInput ? await sessionStoreForInput.load(sessionId) : undefined;
     // `session` truthy implies `sessionStoreForInput` was truthy above, but
