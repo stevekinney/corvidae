@@ -8,7 +8,13 @@
  * message has nothing to scan, so every one of those fields is listed here, in
  * order, and a detector sees each as its own input.
  */
-import type { JSONValue, MediaContent, Message, MultiModalContent } from 'conversationalist';
+import type {
+  ContentSource,
+  JSONValue,
+  MediaContent,
+  Message,
+  MultiModalContent,
+} from 'conversationalist';
 import { isMediaContent } from 'conversationalist';
 
 /** One piece of text a detector inspects, and how a sanitized value would replace it. */
@@ -71,9 +77,12 @@ export function inspectContent(content: Message['content']): InspectableContent 
         isMediaContent(current) ? { ...current, [key]: text } : current,
       );
     }
-    if (part.source.kind === 'remote-url') {
+    // Locators name where bytes live; a detector reads them, but a sanitized
+    // value cannot replace one, so they are not replaceable.
+    const locator = sourceLocator(part.source);
+    if (locator !== undefined) {
       add(
-        { label: `${part.type}.url`, text: part.source.url, replaceable: false },
+        { label: `${part.type}.${locator.label}`, text: locator.text, replaceable: false },
         (current) => current,
       );
     }
@@ -102,6 +111,25 @@ export function inspectContent(content: Message['content']): InspectableContent 
       return rebuilt;
     },
   };
+}
+
+function sourceLocator(source: ContentSource): { label: string; text: string } | undefined {
+  switch (source.kind) {
+    case 'remote-url':
+      return { label: 'url', text: source.url };
+    case 'mcp-resource':
+      return { label: 'uri', text: source.uri };
+    case 'local-file':
+      return { label: 'path', text: source.path };
+    case 'a2a-reference':
+      return { label: 'agentCardUrl', text: source.agentCardUrl };
+    case 'provider-file':
+      return { label: 'providerFileId', text: source.providerFileId };
+    default:
+      // Bytes (`inline`, `data-url`) and opaque ids (`upload`, `managed-asset`)
+      // carry nothing a text detector can usefully read.
+      return undefined;
+  }
 }
 
 function collectMetadataStrings(

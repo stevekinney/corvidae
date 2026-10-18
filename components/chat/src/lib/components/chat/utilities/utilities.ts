@@ -6,6 +6,7 @@
  */
 
 import type { ChatArtifact, ResolvedChatArtifact } from '../artifact/artifact-viewer.types.ts';
+import { mediaDisplayUrl, renderMediaPlaceholder } from '../builders.ts';
 import type { Message, MultiModalContent, ToolResult } from '../conversation-model.ts';
 import type {
   ChatMessagePart,
@@ -258,6 +259,15 @@ function getServerContentText(part: MultiModalContent): string | undefined {
       return [`Server tool result: ${part.tool_use_id}`, formatJSONValue(part.content)].join('\n');
     case 'container_upload':
       return `Container upload: ${part.file_id}`;
+    case 'image':
+      // An image with a loadable address renders as an attachment; one without
+      // is described in the body so the message is never an empty row.
+      return mediaDisplayUrl(part) === undefined ? renderMediaPlaceholder(part) : undefined;
+    case 'audio':
+    case 'video':
+    case 'document':
+    case 'file':
+      return renderMediaPlaceholder(part);
     default:
       return undefined;
   }
@@ -313,7 +323,7 @@ function deriveImageParts(message: Message): ImageMessagePart[] {
 
   const parts: ImageMessagePart[] = [];
   message.content.forEach((segment, index) => {
-    if (segment.type === 'image') {
+    if (segment.type === 'image' && mediaDisplayUrl(segment) !== undefined) {
       parts.push({
         type: 'image',
         key: `${message.id}:image:${index}`,

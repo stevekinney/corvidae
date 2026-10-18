@@ -135,6 +135,55 @@ describe('deriveMessageParts — markdown body', () => {
   });
 });
 
+describe('deriveMessageParts — media with nothing to display', () => {
+  it('renders a placeholder for audio, video, documents, and files instead of an empty row', () => {
+    const content: MultiModalContent[] = [
+      { type: 'audio', name: 'memo.mp3', source: { kind: 'managed-asset', assetId: 'a1' } },
+      {
+        type: 'document',
+        name: 'spec.pdf',
+        mimeType: 'application/pdf',
+        source: { kind: 'inline', data: 'QUJD', encoding: 'base64' },
+      },
+    ];
+    const parts = deriveMessageParts(message({ role: 'user', content }));
+    expect(parts).toEqual([
+      {
+        type: 'markdown',
+        key: 'm1:body',
+        content:
+          '[Audio: memo.mp3; managed asset a1]\n[Document: spec.pdf (application/pdf); base64 data omitted]',
+        streaming: false,
+        expanded: true,
+      },
+    ]);
+  });
+
+  it('renders an image that has no loadable address as a placeholder, not as an empty attachment', () => {
+    const content: MultiModalContent[] = [
+      { type: 'text', text: 'see' },
+      { type: 'image', name: 'chart', source: { kind: 'managed-asset', assetId: 'a2' } },
+    ];
+    const parts = deriveMessageParts(message({ role: 'user', content }));
+    expect(parts.map((part) => part.type)).toEqual(['markdown']);
+    expect(parts[0]).toMatchObject({ content: 'see\n[Image: chart; managed asset a2]' });
+  });
+
+  it('keeps an image that has a loadable address as an image part with no placeholder text', () => {
+    const content: MultiModalContent[] = [
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/a.png' } },
+      {
+        type: 'image',
+        mimeType: 'image/png',
+        source: { kind: 'inline', data: 'QUJD', encoding: 'base64' },
+      },
+    ];
+    const parts = deriveMessageParts(message({ role: 'user', content }));
+    expect(parts.map((part) => part.type)).toEqual(['markdown', 'image', 'image']);
+    expect(parts[0]).toMatchObject({ content: '' });
+  });
+});
+
 describe('deriveMessageParts — images', () => {
   it('emits one image part per image, after the markdown body, keyed by content index', () => {
     const content: MultiModalContent[] = [

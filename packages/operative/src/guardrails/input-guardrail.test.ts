@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test';
-import type { MultiModalContent } from 'conversationalist';
+import type { ContentSource, MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
@@ -405,6 +405,37 @@ describe('createInputGuardrail: media parts cannot bypass inspection (COR-716)',
       const result = await hook(contextWith([part]));
 
       expect(result?.content).toContain('blocked');
+    },
+  );
+
+  it.each([
+    ['mcp-resource uri', { kind: 'mcp-resource', serverId: 's', uri: 'resource://attack' }],
+    ['local-file path', { kind: 'local-file', path: '/tmp/attack.png' }],
+    [
+      'a2a-reference agent card URL',
+      {
+        kind: 'a2a-reference',
+        agentCardUrl: 'https://attack.example/card',
+        taskId: 't',
+        artifactId: 'a',
+      },
+    ],
+    [
+      'provider-file id',
+      { kind: 'provider-file', provider: 'openai', providerFileId: 'file-attack' },
+    ],
+  ] satisfies Array<[string, ContentSource]>)(
+    'blocks a message whose %s trips a detector, and never sanitizes a locator',
+    async (_label, source) => {
+      const part: MultiModalContent = { type: 'document', source };
+      const block = createInputGuardrail({ detectors: [keywordDetector] });
+      expect((await block(contextWith([part])))?.content).toContain('blocked');
+
+      const sanitize = createInputGuardrail({ detectors: [keywordDetector], action: 'sanitize' });
+      const context = contextWith([part]);
+      const result = await sanitize(context);
+      expect(result?.content).toContain('blocked');
+      expect(lastUserContent(context.conversation)).toEqual([part]);
     },
   );
 
