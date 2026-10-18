@@ -68,12 +68,14 @@ import { STATIC_REST_BINDINGS } from './operations/static-rest-bindings.ts';
 import {
   createPreviewWorkerDeploymentRoutingOperation,
   createPromoteWorkerDeploymentOperation,
+  createRemoveWorkerDeploymentVersionOperation,
   createRollbackWorkerDeploymentOperation,
   createSetWorkerDeploymentRoutingOperation,
   createWorkerDeploymentDiagnosticsOperation,
   workerDeploymentDiagnosticsRestBinding,
   workerDeploymentPreviewRestBinding,
   workerDeploymentPromoteRestBinding,
+  workerDeploymentRemoveRestBinding,
   workerDeploymentRollbackRestBinding,
   workerDeploymentRoutingRestBinding,
 } from './operations/worker-deployment-routing.ts';
@@ -142,6 +144,7 @@ export function createLiveRestBindings(): ReadonlyArray<UnknownRestBinding> {
     workerDeploymentPromoteRestBinding,
     workerDeploymentRollbackRestBinding,
     workerDeploymentPreviewRestBinding,
+    workerDeploymentRemoveRestBinding,
     listConformanceTargetsRestBinding,
     runConformanceReportRestBinding,
   ];
@@ -221,6 +224,9 @@ function buildDrainDeploymentOperationForRegistry(options: LiveOperationRegistry
   if (options.workerRegistry === undefined) return drainDeploymentOperation;
   return createDrainDeploymentOperation({
     workerRegistry: options.workerRegistry,
+    ...(options.workerDeploymentCatalog === undefined
+      ? {}
+      : { catalog: options.workerDeploymentCatalog }),
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
   });
 }
@@ -301,6 +307,9 @@ function buildWorkerDeploymentRoutingOperations(options: LiveOperationRegistryOp
     catalog === undefined
       ? createPreviewWorkerDeploymentRoutingOperation()
       : createPreviewWorkerDeploymentRoutingOperation({ catalog }),
+    catalog === undefined
+      ? createRemoveWorkerDeploymentVersionOperation()
+      : createRemoveWorkerDeploymentVersionOperation({ catalog }),
   ];
 }
 

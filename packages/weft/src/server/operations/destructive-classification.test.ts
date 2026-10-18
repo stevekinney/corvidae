@@ -51,6 +51,7 @@ const EXPECTED_DESTRUCTIVE: Readonly<Record<string, boolean>> = {
   'weft.worker.deployments.setrouting': true,
   'weft.worker.deployments.promote': true,
   'weft.worker.deployments.rollback': true,
+  'weft.worker.deployments.remove': true,
   'weft.worker.deployments.diagnostics': false,
   'weft.worker.deployments.preview': false,
   'weft.worker.startoverrides.preview': false,

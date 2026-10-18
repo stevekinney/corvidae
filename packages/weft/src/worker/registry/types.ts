@@ -119,6 +119,8 @@ export type WorkerDrainMutationResult =
   | {
       target: 'deployment';
       deploymentName: string;
+      /** Present when the drain or resume named one build rather than the whole deployment. */
+      buildId?: string | undefined;
       affectedWorkers: number;
       inFlight: number;
       health: WorkerHealth;

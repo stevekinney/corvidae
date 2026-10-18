@@ -656,7 +656,7 @@ The JSON-RPC operation name is `weft.workers.resume`.
 
 ### `POST /api/v1/worker-deployments/:deploymentName/drain`
 
-Marks every current and future worker that reports `deploymentName` as draining. Requires `system:admin`. The optional JSON request body may include a non-empty `reason`.
+Marks every current and future worker that reports `deploymentName` as draining. Requires `system:admin`. The optional JSON request body may include a non-empty `reason`, and a non-empty `buildId` that narrows the drain to that one build of the deployment: only workers reporting that exact `(deploymentName, buildId)` pair stop receiving new tasks, and the deployment's other builds stay routable. A build the deployment catalog has not accepted, or has removed, is answered `404`, and nothing is marked.
 
 Response:
 
@@ -664,6 +664,7 @@ Response:
 type DeploymentDrainResponse = {
   target: 'deployment';
   deploymentName: string;
+  buildId?: string; // present when the request named a build
   affectedWorkers: number;
   inFlight: number;
   health: WorkerHealth;
@@ -674,7 +675,7 @@ The JSON-RPC operation name is `weft.worker.deployments.drain`.
 
 ### `DELETE /api/v1/worker-deployments/:deploymentName/drain`
 
-Clears the deployment-level drain marker. Requires `system:admin`. Any worker-specific drain markers remain in effect.
+Clears the deployment-level drain marker. Requires `system:admin`. Any worker-specific drain markers remain in effect. Pass `?buildId=<id>` to clear one build's marker instead; a deployment-wide marker or a worker-specific marker that still applies keeps its workers drained, and clearing a build with no marker succeeds and changes nothing.
 
 The JSON-RPC operation name is `weft.worker.deployments.resume`.
 
@@ -861,7 +862,17 @@ Queues are sorted by `queue` ascending.
 
 Deployment versions remain reachable while their execution-reference count is non-zero. Calling `markDraining` with references present leaves the version ready; after references are released it may transition to draining. Diagnostic failures distinguish revision incompatibility from unavailable capacity so an unavailable build does not hide runnable work on another version. The catalog is durable, but connected worker sessions and in-flight leases remain live registry state and must be recovered through the normal task-ledger recovery path.
 
-The operational surface is scoped to `system:admin` for mutations and `system:read` for diagnostics. Use `POST /v1/worker-deployments/preview` to validate both target builds before changing state, then `POST /v1/worker-deployments/routing` to advance the conditional generation. `POST /v1/worker-deployments/promote` moves a validated build to current traffic; `POST /v1/worker-deployments/rollback` does the same for a previously registered build. `GET /v1/worker-deployments/diagnostics` returns bounded version records and the selected routing pointer. The equivalent JSON-RPC operation names are `weft.worker.deployments.preview`, `weft.worker.deployments.setrouting`, `weft.worker.deployments.promote`, `weft.worker.deployments.rollback`, and `weft.worker.deployments.diagnostics`.
+The operational surface is scoped to `system:admin` for mutations and `system:read` for diagnostics. Use `POST /v1/worker-deployments/preview` to validate both target builds before changing state; it returns `currentGeneration`, the pointer's generation as it stands (`0` before the first change), to pass as `expectedGeneration`. Then `POST /v1/worker-deployments/routing` advances the conditional generation. `POST /v1/worker-deployments/promote` moves a validated build to current traffic; `POST /v1/worker-deployments/rollback` does the same for a previously registered build; both accept the same optional `expectedGeneration`, and without it they apply against the generation current at the time of the call. `POST /v1/worker-deployments/remove` marks a build removed. `GET /v1/worker-deployments/diagnostics` returns bounded version records and the selected routing pointer. The equivalent JSON-RPC operation names are `weft.worker.deployments.preview`, `weft.worker.deployments.setrouting`, `weft.worker.deployments.promote`, `weft.worker.deployments.rollback`, `weft.worker.deployments.remove`, and `weft.worker.deployments.diagnostics`.
+
+These operations answer with typed faults a client can branch on, not message text:
+
+| Fault | When | Data |
+| --- | --- | --- |
+| `Conflict` | The routing pointer is no longer at `expectedGeneration`, or it or a target build changed between the read and the write. | `reason: "stale-generation"` and `currentGeneration` (JSON-RPC; REST discloses `currentGeneration`). Retry with that generation. |
+| `Conflict` | A target build exists but is not `ready` (for example, draining). | `reason: "version-not-ready"` (JSON-RPC). |
+| `Conflict` | `remove` names a build that execution references still hold. | `reason: "version-referenced"` (JSON-RPC). The build is left as it was. |
+| `NotFound` | A named build does not exist or has been removed. | `resource: "workerDeploymentVersion"`, `identifier: "<deployment>/<build>"`. |
+| `InvalidParams` | The ramping build equals the current build. | `issues: []`. |
 
 ```bash
 curl -sS -X POST http://127.0.0.1:7233/v1/worker-deployments/preview \

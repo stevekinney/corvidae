@@ -29,8 +29,9 @@ export type SharedActivityContractHashArti_d7d91df4 = {
   readonly deploymentName?: string;
   readonly workflowRevision?: string;
 };
-export type SharedAffectedWorkersDeploymen_e4c61ae8 = {
+export type SharedAffectedWorkersBuildIdDe_a9c15090 = {
   readonly affectedWorkers: number;
+  readonly buildId?: string;
   readonly deploymentName: string;
   readonly health: 'active' | 'draining' | 'drained';
   readonly inFlight: number;
@@ -170,6 +171,11 @@ export type SharedBackoffMultiplierInitial_64d024ea = {
   readonly maxAttempts: number;
   readonly maxBackoff: number | string;
   readonly nonRetryableErrors?: ReadonlyArray<string>;
+};
+export type SharedBuildIdDeploymentNameExp_c4b280cb = {
+  readonly buildId: string;
+  readonly deploymentName: string;
+  readonly expectedGeneration?: number;
 };
 export type SharedCurrentBuildIdDeployment_a9512ca3 = {
   readonly currentBuildId: string;

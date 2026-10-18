@@ -6,10 +6,12 @@ import {
   type DeploymentConsistencyResult,
 } from './registry/deployment-consistency.ts';
 import {
+  buildDrainKey,
   createDrainRecord,
   isWorkerDraining,
   workerHealth,
   type DrainRecord,
+  type DrainStates,
 } from './registry/drain.ts';
 import { FairShareCounters } from './registry/fair-share.ts';
 import {
@@ -99,6 +101,7 @@ export class WorkerRegistry {
   #workers: Map<string, WorkerInfo>;
   #inFlightTasks: Map<string, InFlightTask>;
   #deploymentDrainStates: Map<string, DrainRecord>;
+  #buildDrainStates: Map<string, DrainRecord>;
   #policy: RoutingPolicy;
   /** Keyed by `${queue}::${activity}` — independent cursors per (queue, activity) pair. */
   #roundRobinCursor: Map<string, number>;
@@ -113,6 +116,7 @@ export class WorkerRegistry {
     this.#workers = new Map();
     this.#inFlightTasks = new Map();
     this.#deploymentDrainStates = new Map();
+    this.#buildDrainStates = new Map();
     this.#policy = options?.policy ?? 'least-loaded';
     this.#roundRobinCursor = new Map();
     this.#fairShareCounts = new FairShareCounters();
@@ -317,7 +321,7 @@ export class WorkerRegistry {
   ): boolean {
     if (excludeWorkerIds?.has(worker.id)) return false;
     if (!matchesWorkerCapabilities(worker, activityName, queue)) return false;
-    if (isWorkerDraining(worker, this.#deploymentDrainStates)) return false;
+    if (isWorkerDraining(worker, this.#drainStates)) return false;
     if (
       executionRequirement !== undefined &&
       !workerMatchesRequirement(worker, executionRequirement, activityName)
@@ -527,7 +531,7 @@ export class WorkerRegistry {
       workerId,
       affectedWorkers: 1,
       inFlight: worker.inFlight,
-      health: workerHealth(worker, this.#deploymentDrainStates),
+      health: workerHealth(worker, this.#drainStates),
     };
   }
 
@@ -544,7 +548,7 @@ export class WorkerRegistry {
       workerId,
       affectedWorkers: 1,
       inFlight: worker.inFlight,
-      health: workerHealth(worker, this.#deploymentDrainStates),
+      health: workerHealth(worker, this.#drainStates),
     };
   }
 
@@ -562,6 +566,33 @@ export class WorkerRegistry {
   clearDeploymentDrain(deploymentName: string): WorkerDrainMutationResult {
     this.#deploymentDrainStates.delete(deploymentName);
     return this.#deploymentDrainResult(deploymentName);
+  }
+
+  /**
+   * Mark every current and future worker of one build as draining, leaving the
+   * deployment's other builds routable. A deployment-level marker still covers
+   * the build too, so draining a build never overrides a wider drain.
+   */
+  markBuildDraining(
+    deploymentName: string,
+    buildId: string,
+    options?: WorkerDrainOptions,
+  ): WorkerDrainMutationResult {
+    this.#buildDrainStates.set(buildDrainKey(deploymentName, buildId), createDrainRecord(options));
+    return this.#buildDrainResult(deploymentName, buildId);
+  }
+
+  /**
+   * Clear one build's drain marker. A deployment-level or worker-level marker
+   * that still applies keeps the affected workers drained.
+   */
+  clearBuildDrain(deploymentName: string, buildId: string): WorkerDrainMutationResult {
+    this.#buildDrainStates.delete(buildDrainKey(deploymentName, buildId));
+    return this.#buildDrainResult(deploymentName, buildId);
+  }
+
+  get #drainStates(): DrainStates {
+    return { deployments: this.#deploymentDrainStates, builds: this.#buildDrainStates };
   }
 
   /**
@@ -588,7 +619,7 @@ export class WorkerRegistry {
       lastHeartbeat: worker.lastHeartbeat,
       startedAt: worker.startedAt,
       capabilities: worker.capabilities,
-      health: workerHealth(worker, this.#deploymentDrainStates),
+      health: workerHealth(worker, this.#drainStates),
       deploymentName: worker.deploymentName,
       buildId: worker.buildId,
       runtimeVersion: worker.runtimeVersion,
@@ -602,7 +633,12 @@ export class WorkerRegistry {
    */
   getDeploymentSummaries(_now: number): WorkerDeploymentSummary[] {
     const snapshots = this.#workerSnapshots();
-    return projectDeploymentSummaries(snapshots, (name) => this.#deploymentDrainStates.has(name));
+    return projectDeploymentSummaries(
+      snapshots,
+      (name, buildId) =>
+        this.#deploymentDrainStates.has(name) ||
+        (buildId !== undefined && this.#buildDrainStates.has(buildDrainKey(name, buildId))),
+    );
   }
 
   /** Get worker count. */
@@ -610,12 +646,30 @@ export class WorkerRegistry {
     return this.#workers.size;
   }
 
+  #buildDrainResult(deploymentName: string, buildId: string): WorkerDrainMutationResult {
+    const workers = [...this.#workers.values()].filter(
+      (worker) => worker.deploymentName === deploymentName && worker.buildId === buildId,
+    );
+    const healthValues = workers.map((worker) => workerHealth(worker, this.#drainStates));
+    const drainActive =
+      this.#deploymentDrainStates.has(deploymentName) ||
+      this.#buildDrainStates.has(buildDrainKey(deploymentName, buildId));
+    return {
+      target: 'deployment',
+      deploymentName,
+      buildId,
+      affectedWorkers: workers.length,
+      inFlight: workers.reduce((total, worker) => total + worker.inFlight, 0),
+      health: deploymentHealth(healthValues, drainActive),
+    };
+  }
+
   #deploymentDrainResult(deploymentName: string): WorkerDrainMutationResult {
     const workers = [...this.#workers.values()].filter(
       (worker) => worker.deploymentName === deploymentName,
     );
     const inFlight = workers.reduce((total, worker) => total + worker.inFlight, 0);
-    const healthValues = workers.map((worker) => workerHealth(worker, this.#deploymentDrainStates));
+    const healthValues = workers.map((worker) => workerHealth(worker, this.#drainStates));
     return {
       target: 'deployment',
       deploymentName,
