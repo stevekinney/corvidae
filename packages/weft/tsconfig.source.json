@@ -11,9 +11,6 @@
   "include": ["src", "scripts", "package.json"],
   "exclude": [
     "node_modules",
-    "src/ui/**",
-    "scripts/ui-browser/**",
-    "scripts/ui-coverage/**",
     "**/*.test.ts",
     "**/*.bench.ts",
     "src/cli/__fixtures__/**",

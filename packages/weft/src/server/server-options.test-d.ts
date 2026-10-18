@@ -61,13 +61,6 @@ const invalidRoutesServeOptions: ServeOptions = {
 };
 void invalidRoutesServeOptions;
 
-const removedDashboardServeOptions: ServeOptions = {
-  engine,
-  // @ts-expect-error `dashboard` is no longer a server option; dashboard() mounts the dashboard.
-  dashboard: new Response('<html></html>'),
-};
-void removedDashboardServeOptions;
-
 // @ts-expect-error `metricsCollector` is no longer a public server option.
 const rejectedServeOptions: ServeOptions = { engine, metricsCollector: new MetricsCollector() };
 void rejectedServeOptions;

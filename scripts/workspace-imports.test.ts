@@ -66,16 +66,6 @@ const formerPackageNames = [
   '@lostgradient/skills',
 ];
 
-/**
- * Weft's UI (`packages/weft/src/ui`) reaches the engine through `@lostgradient/weft`, the public
- * entry any other consumer uses, so the engine never learns the UI exists and the dashboard build
- * can keep the engine external. It is the one source tree allowed to import its own package's
- * barrel; the engine's side of that boundary is `packages/weft/tests/ui-boundary.test.ts`.
- */
-function importsOwnBarrelByDesign(directory: string, file: string): boolean {
-  return directory === 'packages/weft' && file.startsWith('src/ui/');
-}
-
 function isFormerPackageName(name: string): boolean {
   return (
     name.startsWith('@repo/') ||
@@ -288,7 +278,6 @@ describe('workspace imports', () => {
           ).toBe(true);
           if (
             file.startsWith('src/') &&
-            !importsOwnBarrelByDesign(directory, file) &&
             !/(^|\/)(?:test|tests|fixtures|__fixtures__|__test-helpers__)\/|(?:\.|-)(?:test|spec|fixture)(?:\.|-)/.test(
               file,
             )

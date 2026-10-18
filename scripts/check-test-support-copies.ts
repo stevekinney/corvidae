@@ -3,16 +3,13 @@
  *
  * Nothing under `packages/weft` may import `@lostgradient/testing`: the mirror drops that private
  * development dependency for every target except Cinder, so the import would not resolve in the
- * Weft repository. The UI's test preload (`packages/weft/src/ui/tests/setup.ts`), its browser host
- * (`packages/weft/scripts/ui-browser/`), and the dashboard build compile Svelte with the plugin
- * instead, so `testing/testing/src/svelte-plugin.ts` and the `./environment-configuration.ts` it
- * imports are copied into `packages/weft/scripts/lib/`. That pair was the only vendoring the owner
- * allowed for the move (Weft UI project rulings, COR-1455).
+ * Weft repository.
  *
- * The hang guard (`testing/testing/src/hang-guard.ts`, COR-1541) is copied for the same reason,
- * and once more to `scripts/hang-guard.ts`: every test file starts its processes through it, the
- * Weft mirror cannot resolve the package, and the root package may not depend on a workspace,
- * because turbo folds every workspace the root depends on into the global hash.
+ * The hang guard (`testing/testing/src/hang-guard.ts`, COR-1541) is copied for that reason into
+ * `packages/weft/scripts/lib/hang-guard.ts`, and once more to `scripts/hang-guard.ts`: every test
+ * file starts its processes through it, the Weft mirror cannot resolve the package, and the root
+ * package may not depend on a workspace, because turbo folds every workspace the root depends on
+ * into the global hash.
  *
  * This check, run from the root `lint:root` script, fails when a copy is missing or differs from
  * its source.
@@ -24,14 +21,6 @@ const root = join(import.meta.dir, '..');
 
 /** Each copy and the file it must equal, both relative to the repository root. */
 export const TEST_SUPPORT_COPIES = [
-  {
-    source: 'testing/testing/src/svelte-plugin.ts',
-    copy: 'packages/weft/scripts/lib/svelte-plugin.ts',
-  },
-  {
-    source: 'testing/testing/src/environment-configuration.ts',
-    copy: 'packages/weft/scripts/lib/environment-configuration.ts',
-  },
   { source: 'testing/testing/src/hang-guard.ts', copy: 'packages/weft/scripts/lib/hang-guard.ts' },
   { source: 'testing/testing/src/hang-guard.ts', copy: 'scripts/hang-guard.ts' },
 ] as const;

@@ -17,6 +17,7 @@ export const environmentBoundaries = [
   {
     kind: 'runtime',
     paths: new Set([
+      'applications/interborough/src/host/environment-configuration.ts',
       'applications/playground/src/environment-configuration.ts',
       'applications/terminal-example/src/server/environment-configuration.ts',
       'packages/bungalow/src/environment-configuration.ts',
@@ -30,6 +31,7 @@ export const environmentBoundaries = [
   {
     kind: 'script',
     paths: new Set([
+      'applications/interborough/scripts/environment-configuration.ts',
       'applications/playground/scripts/environment-configuration.ts',
       'applications/terminal-example/tests/environment-configuration.ts',
       'components/cinder/scripts/environment-configuration.ts',
@@ -37,8 +39,6 @@ export const environmentBoundaries = [
       'scripts/environment-configuration.ts',
       'packages/bureau/src/test/signal-shutdown/environment-configuration.ts',
       'packages/weft/examples/environment-configuration.ts',
-      'packages/weft/scripts/lib/environment-configuration.ts',
-      'packages/weft/scripts/ui-browser/environment-configuration.ts',
       'packages/weft/src/cli/__fixtures__/environment-configuration.ts',
       'packages/weft/scripts/benchmarks/environment-configuration.ts',
     ]),
@@ -52,12 +52,6 @@ const environmentGlobals = new Set(['process', 'Bun']);
 const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.svelte']);
 const ignoredPathSegment =
   /^(?:node_modules|dist|build|coverage|\.turbo|\.svelte-kit|\.playwright|\.bun)$/;
-/**
- * Generated output whose directory name is too ordinary to ignore everywhere. Weft's prebuilt
- * dashboard (`packages/weft/scripts/build-dashboard.ts`) bundles third-party code that reads its
- * own environment; the directory is ignored by version control and never executed from here.
- */
-const ignoredRepositoryPaths = ['packages/weft/dashboard/'];
 
 type EnvironmentReference = { readonly node: ts.Node; readonly key: string | undefined };
 
@@ -498,9 +492,6 @@ async function collectSourceFiles(directory: string): Promise<string[]> {
     (file) =>
       sourceExtensions.has(file.slice(file.lastIndexOf('.'))) &&
       !file.split('/').some((segment) => ignoredPathSegment.test(segment)) &&
-      !ignoredRepositoryPaths.some((path) =>
-        relative(directory, file).replaceAll('\\', '/').startsWith(path),
-      ) &&
       !file.includes('/scripts/environment-configuration-policy'),
   );
 }

@@ -1,8 +1,0 @@
-{
-  "extends": "@lostgradient/typescript/browser.json",
-  "compilerOptions": {
-    "types": ["bun"]
-  },
-  "include": ["src/ui", "scripts/ui-browser", "scripts/ui-coverage"],
-  "exclude": ["node_modules", "coverage"]
-}
