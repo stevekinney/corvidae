@@ -229,7 +229,7 @@ describe('the revision of the state a stream reports', () => {
         const observers: Array<(snapshot: never) => void> = [];
         const subscribe = bureau.subscribeRunSnapshot.bind(bureau);
         bureau.subscribeRunSnapshot = (runId, observer, options) => {
-          observers.push(observer as never);
+          observers.push(observer);
           return subscribe(runId, observer, options);
         };
         const starter = new FrameReader(await handler(startRequest(runAgentInput())));

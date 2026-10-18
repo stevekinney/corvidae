@@ -194,18 +194,21 @@ export function createAgUiMount(
    * the same storage is a separate admission domain, and the Bureau does not
    * arbitrate between them (see the module doc).
    */
-  const admissions = new Map<string, Promise<unknown>>();
-  function admit<T>(threadId: string, decide: () => Promise<T>): Promise<T> {
-    const turn = (admissions.get(threadId) ?? Promise.resolve()).then(decide, decide);
-    const settled = turn.then(
-      () => undefined,
-      () => undefined,
-    );
-    admissions.set(threadId, settled);
-    void settled.then(() => {
-      if (admissions.get(threadId) === settled) admissions.delete(threadId);
+  const admissions = new Map<string, Promise<void>>();
+  async function admit<T>(threadId: string, decide: () => Promise<T>): Promise<T> {
+    const previous = admissions.get(threadId) ?? Promise.resolve();
+    let finished!: () => void;
+    const current = new Promise<void>((resolve) => {
+      finished = resolve;
     });
-    return turn;
+    admissions.set(threadId, current);
+    await previous;
+    try {
+      return await decide();
+    } finally {
+      finished();
+      if (admissions.get(threadId) === current) admissions.delete(threadId);
+    }
   }
 
   /** The thread's most recent root run when it is one a client can attach to. */
