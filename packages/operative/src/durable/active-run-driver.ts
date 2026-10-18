@@ -1,3 +1,4 @@
+import type { GeneratedMediaAdmission } from '../generated-media';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { isWeftErrorLike } from '@lostgradient/weft';
 import type { AnyToolbox } from 'armorer';
@@ -48,6 +49,8 @@ export async function driveDurableRun(
   onStepToolbox: ((toolbox: AnyToolbox) => void) | undefined,
   runtime: RuntimeServices,
   hookTracker: (promise: Promise<unknown>) => void,
+  // COR-713: receives every generated-media admission a step starts, so `closed()` can wait.
+  admissionTracker: (admission: GeneratedMediaAdmission) => void,
   // AB-361: settles `ActiveRun.durablyStarted` — see that field's doc
   // comment and `createDurableActiveRun`'s own comment on these callbacks
   // for the call sites that reach them. Split resolve/reject (AB-361
@@ -181,6 +184,7 @@ export async function driveDurableRun(
     toolbox: options.toolbox,
     emitter,
     onStepToolbox,
+    admissionTracker,
   };
   // AB-361 review (copilot PRRT_kwDORvupsc6gWb3a, codex P2 PRRT_kwDORvupsc6gWc39):
   // both `onServices` (a caller-supplied callback — genuinely reachable

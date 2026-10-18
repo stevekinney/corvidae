@@ -48,6 +48,8 @@ describe('buildTerminalReportFromCompletedEvent / buildTerminalReportFromAborted
     expect(report.effectiveModel).toBe('claude-sonnet-5');
     expect(report.effectiveEffort).toBe('medium');
     expect(report.transcript?.ids.length).toBeGreaterThan(0);
+    // COR-713: the report carries the run-wide parts.
+    expect(report.parts).toEqual([{ type: 'text', text: 'Done.' }]);
 
     const roundTripped: unknown = JSON.parse(JSON.stringify(report));
     expect(roundTripped).toEqual(JSON.parse(JSON.stringify(report)));
@@ -63,6 +65,7 @@ describe('buildTerminalReportFromCompletedEvent / buildTerminalReportFromAborted
     const report = buildTerminalReportFromCompletedEvent('run-budget-1', {
       finishReason: 'budget-exceeded',
       usage: { prompt: 3, completion: 1, total: 4 },
+      parts: [],
       steps: [],
       conversation,
       error: new Error('budget exceeded'),

@@ -106,13 +106,15 @@ import {
   verifyDelegationGrant,
 } from '@lostgradient/operative';
 import type { WorkflowState } from '@lostgradient/weft';
+import type { MultiModalContent } from 'conversationalist';
 
-import type {
-  BureauChildOutcome,
-  BureauChildParentCancellation,
-  BureauChildRecord,
-  BureauChildTerminalStatus,
-  ChildTopologyStore,
+import {
+  type BureauChildOutcome,
+  type BureauChildParentCancellation,
+  type BureauChildRecord,
+  type BureauChildTerminalStatus,
+  CHILD_RECORD_SCHEMA_VERSION,
+  type ChildTopologyStore,
 } from './child-topology-store';
 import { ownerOrLocal, principalDefect } from './owner-of-record';
 import { principalAllows } from './principal-allows';
@@ -413,6 +415,9 @@ function settlementFromWorkflowResult(result: unknown): Settlement | undefined {
     outcome: withoutUndefined({
       finishReason,
       content: optionalString(candidate['content']),
+      parts: Array.isArray(candidate['parts'])
+        ? (candidate['parts'] as readonly MultiModalContent[])
+        : undefined,
       reason: optionalString(candidate['errorMessage']) ?? optionalString(candidate['abortReason']),
     }),
   };
@@ -429,7 +434,12 @@ function settlementFromWorkflowState(state: WorkflowState): Settlement {
 }
 
 function settlementFromRunResult(
-  result: { finishReason: string; content: string; error?: unknown },
+  result: {
+    finishReason: string;
+    content: string;
+    parts?: readonly MultiModalContent[] | undefined;
+    error?: unknown;
+  },
   cancelReason: string | undefined,
 ): Settlement {
   const status = statusForFinishReason(result.finishReason);
@@ -444,6 +454,7 @@ function settlementFromRunResult(
     outcome: withoutUndefined({
       finishReason: result.finishReason,
       content: result.content,
+      parts: result.parts,
       reason,
     }),
   };
@@ -1314,7 +1325,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
 
     const now = runtime.clock.now();
     const record: BureauChildRecord = withoutUndefined({
-      schemaVersion: 1 as const,
+      schemaVersion: CHILD_RECORD_SCHEMA_VERSION,
       parentRunId: request.parentRunId,
       childRunId,
       parentAgentName: parent.agentName,

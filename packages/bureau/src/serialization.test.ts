@@ -135,4 +135,24 @@ describe('serializeRunDetail', () => {
       values: [['count', 2]],
     });
   });
+
+  it('projects each step parts and committed row id into the step detail (COR-713)', () => {
+    const thinking = { type: 'thinking' as const, thinking: 'Plan.', signature: 'sig-1' };
+    const runState: RunState = {
+      id: 'run-parts',
+      status: 'completed',
+      steps: [{ ...makeStep(0), content: '', parts: [thinking], messageId: 'row-7' }],
+      usage: { prompt: 1, completion: 1, total: 2 },
+      finishReason: 'stop-condition',
+      error: undefined,
+      snapshots: [],
+      actions: [],
+      activeRun: stubActiveRunWithSnapshot(),
+    };
+
+    const detail = serializeRunDetail(runState, 'session-1');
+
+    expect(detail.stepDetails[0]?.parts).toEqual([thinking]);
+    expect(detail.stepDetails[0]?.messageId).toBe('row-7');
+  });
 });

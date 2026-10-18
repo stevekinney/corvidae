@@ -1,6 +1,16 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import type { ConversationHistory, JSONValue, TokenUsage } from 'conversationalist';
-import { conversationSchema, jsonValueSchema, tokenUsageSchema } from 'conversationalist';
+import type {
+  ConversationHistory,
+  JSONValue,
+  MultiModalContent,
+  TokenUsage,
+} from 'conversationalist';
+import {
+  conversationSchema,
+  jsonValueSchema,
+  multiModalContentSchema,
+  tokenUsageSchema,
+} from 'conversationalist';
 import { z } from 'zod';
 
 import type { CostEstimate } from './cost-estimation';
@@ -26,7 +36,7 @@ function unreachable(value: never): never {
  * reading frames over a pipe or WebSocket) should branch on `schemaVersion`
  * rather than assume the current shape.
  */
-export const RUN_ENVELOPE_SCHEMA_VERSION = 3 as const;
+export const RUN_ENVELOPE_SCHEMA_VERSION = 4 as const;
 
 export class UnsupportedRunResultVersionError extends Error {
   readonly version: unknown;
@@ -218,6 +228,11 @@ export interface RunReport {
   costEstimate?: CostEstimate | undefined;
   effectiveModel?: string | undefined;
   effectiveEffort?: string | undefined;
+  /**
+   * The run-wide output parts (every step's parts in step order, then an `onMaximumSteps`
+   * replacement row's). Generated media is a managed-asset reference, never inline bytes.
+   */
+  parts: readonly MultiModalContent[];
   output?: JSONValue | undefined;
   error?: string | undefined;
   transcript?: ConversationHistory | undefined;
@@ -239,6 +254,7 @@ export const runReportSchema = z
     costEstimate: costEstimateSchema.optional(),
     effectiveModel: z.string().optional(),
     effectiveEffort: z.string().optional(),
+    parts: z.array(multiModalContentSchema).readonly(),
     output: jsonValueSchema.optional(),
     error: z.string().optional(),
     transcript: conversationSchema.optional(),
@@ -269,6 +285,10 @@ const assistantFinalFrameSchema = frameBaseSchema.extend({
   type: z.literal('assistant-final'),
   step: z.number().int().min(0),
   content: z.string(),
+  /** The step's settled output parts; generated media is a managed-asset reference. */
+  parts: z.array(multiModalContentSchema),
+  /** The id of the assistant row the step committed, when it committed one. */
+  messageId: z.string().optional(),
 });
 
 const toolPreFrameSchema = frameBaseSchema.extend({
@@ -449,7 +469,13 @@ export function createAssistantChunkFrame(
 }
 
 export function createAssistantFinalFrame(
-  input: { runId: string; step: number; content: string },
+  input: {
+    runId: string;
+    step: number;
+    content: string;
+    parts: readonly MultiModalContent[];
+    messageId?: string | undefined;
+  },
   clock?: () => number,
 ): AssistantFinalFrame {
   return {
@@ -458,6 +484,8 @@ export function createAssistantFinalFrame(
     runId: input.runId,
     step: input.step,
     content: input.content,
+    parts: [...input.parts],
+    ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
     timestamp: now(clock),
   };
 }
@@ -639,6 +667,8 @@ export interface BuildRunReportInput {
   costEstimate?: CostEstimate | undefined;
   effectiveModel?: string | undefined;
   effectiveEffort?: string | undefined;
+  /** The run-wide parts; see {@link RunReport.parts}. */
+  parts: readonly MultiModalContent[];
   output?: unknown;
   error?: unknown;
   transcript?: ConversationHistory | undefined;
@@ -660,6 +690,7 @@ export function buildRunReport(input: BuildRunReportInput): RunReport {
     costEstimate: input.costEstimate,
     effectiveModel: input.effectiveModel,
     effectiveEffort: input.effectiveEffort,
+    parts: input.parts,
     output:
       input.status === 'succeeded' && input.finishReason === 'stop-condition'
         ? toJsonSafeOrUndefined(input.output)

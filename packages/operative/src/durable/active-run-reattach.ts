@@ -1,3 +1,4 @@
+import type { AdmissionTracker } from '../admission-tracker';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
@@ -40,6 +41,11 @@ export function reattachDurableActiveRun(
      * Reattach owns it and runs it when the recovered run completes.
      */
     stopToolboxForward?: (() => void) | undefined;
+    /**
+     * COR-713: the admissions the recovered run's steps start (see
+     * `RecoveredRunEventSurface.admissions`); `closed()` waits for them.
+     */
+    admissions?: AdmissionTracker | undefined;
     abort?: ((reason?: string) => void) | undefined;
     /** Test-only clock seam for this run's watchdogs (AB-214/obs-01). */
     livenessClock?: StallWatchdogClock | undefined;
@@ -224,7 +230,10 @@ export function reattachDurableActiveRun(
       // AB-304: matching `createDurableActiveRun`'s identical ordering — a
       // registered child's own `closed()` must settle before the terminal
       // fold runs, not merely its `result()`.
-      await (childRegistry?.awaitChildrenClosed() ?? Promise.resolve());
+      await Promise.all([
+        childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
+        reattach.admissions?.settle(),
+      ]);
       return foldTerminalCleanup(RECOVERED_UNKNOWN_EFFECT_OUTCOME, terminalCleanupStep);
     }
     // Wait for the SAME cancel attempt abort() fired (never rejects: it is
@@ -241,7 +250,10 @@ export function reattachDurableActiveRun(
         return { status: 'unresolved', reason: 'persistence-failed' };
       }
       // AB-304: same children-closed fold-in as the uncancelled branch above.
-      await (childRegistry?.awaitChildrenClosed() ?? Promise.resolve());
+      await Promise.all([
+        childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
+        reattach.admissions?.settle(),
+      ]);
       return foldTerminalCleanup(RECOVERED_UNKNOWN_EFFECT_OUTCOME, terminalCleanupStep);
     } catch (error) {
       return { status: 'unresolved', reason: 'persistence-failed', error };
@@ -265,7 +277,8 @@ export function reattachDurableActiveRun(
     // a registered child still disqualifies the fast path the same way it
     // does for a fresh run — its own `closed()` can be pending even once its
     // `result()` has resolved.
-    hasInFlightWork: () => (childRegistry?.children().length ?? 0) > 0,
+    hasInFlightWork: () =>
+      (childRegistry?.children().length ?? 0) > 0 || (reattach.admissions?.started() ?? 0) > 0,
     resolveOutcome: resolveReattachOutcome,
   });
 

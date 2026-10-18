@@ -13,6 +13,7 @@ import type {
   AgentSession,
   CheckpointStore,
   ContentSourceResolver,
+  GeneratedMediaAdmitter,
   DurableRunDeps,
   GenerateFunction,
   GuardrailHooks,
@@ -1379,6 +1380,14 @@ export type RuntimeCompositionDependencies = {
    * composition, and a run resolves it only when it starts.
    */
   contentSourceResolverFor?: (principalId: string | undefined) => ContentSourceResolver | undefined;
+  /**
+   * COR-713: the media-admission port of a run's owning principal, built from the asset service
+   * like {@link RuntimeCompositionDependencies.contentSourceResolverFor}. Without an asset service
+   * a run has no port, and a generated media part fails typed at its admission point.
+   */
+  generatedMediaAdmitterFor?: (
+    principalId: string | undefined,
+  ) => GeneratedMediaAdmitter | undefined;
 };
 
 /** What {@link RuntimeCompositionDependencies.onScheduledFire} is told about one fire. */
@@ -1397,7 +1406,10 @@ const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
 };
 
 /** The run options through which Bureau governs the media a run carries (COR-716). */
-export type MediaRunOptions = Pick<RunOptions, 'contentSourceResolver' | 'assetSafety'>;
+export type MediaRunOptions = Pick<
+  RunOptions,
+  'contentSourceResolver' | 'assetSafety' | 'generatedMediaAdmitter'
+>;
 
 /**
  * The media options Bureau contributes to a run that already has its own: whichever of
@@ -1412,6 +1424,9 @@ export function unsetMediaOptions(run: MediaRunOptions, bureau: MediaRunOptions)
     ...(run.assetSafety === undefined && bureau.assetSafety !== undefined
       ? { assetSafety: bureau.assetSafety }
       : {}),
+    ...(run.generatedMediaAdmitter === undefined && bureau.generatedMediaAdmitter !== undefined
+      ? { generatedMediaAdmitter: bureau.generatedMediaAdmitter }
+      : {}),
   };
 }
 
@@ -1424,10 +1439,11 @@ export function sessionRunMediaOptions(
   bureau: MediaRunOptions,
 ): MediaRunOptions {
   if (sessionAgent === undefined) return bureau;
-  const { contentSourceResolver, assetSafety } = sessionAgent.options;
+  const { contentSourceResolver, assetSafety, generatedMediaAdmitter } = sessionAgent.options;
   return {
     ...(contentSourceResolver === undefined ? {} : { contentSourceResolver }),
     ...(assetSafety === undefined ? {} : { assetSafety }),
+    ...(generatedMediaAdmitter === undefined ? {} : { generatedMediaAdmitter }),
     ...unsetMediaOptions(sessionAgent.options, bureau),
   };
 }
@@ -2625,9 +2641,11 @@ async function buildRuntimeComposition(
   /** {@link RuntimeComposition.mediaOptionsFor}. */
   function mediaOptionsFor(principalId: string | undefined): MediaRunOptions {
     const resolver = dependencies.contentSourceResolverFor?.(principalId);
+    const admitter = dependencies.generatedMediaAdmitterFor?.(principalId);
     const assetSafety = resolveGuardrailsConfiguration()?.input?.assetSafety;
     return {
       ...(resolver === undefined ? {} : { contentSourceResolver: resolver }),
+      ...(admitter === undefined ? {} : { generatedMediaAdmitter: admitter }),
       ...(assetSafety === undefined ? {} : { assetSafety }),
     };
   }

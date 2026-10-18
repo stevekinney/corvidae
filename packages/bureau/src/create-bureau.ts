@@ -131,6 +131,7 @@ import { shutdownThenRethrow } from './composition-failure';
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
 import { createAssetService } from './assets/asset-service';
 import { createAssetContentSourceResolver } from './assets/content-source-resolver';
+import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
 import type { AssetService } from './assets/types';
 import {
   AUDIT_SCHEDULE_OWNER_PREFIX,
@@ -1626,6 +1627,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         assetServiceHolder.current === undefined
           ? undefined
           : createAssetContentSourceResolver(assetServiceHolder.current, ownerOrLocal(principalId)),
+      generatedMediaAdmitterFor: (principalId) =>
+        assetServiceHolder.current === undefined
+          ? undefined
+          : createAssetGeneratedMediaAdmitter(
+              assetServiceHolder.current,
+              ownerOrLocal(principalId),
+            ),
       goalWorkflow: goalWorkflowHost.workflow,
       goalAttemptFence: goalAttemptFenceHost.fence,
       onScheduledFire: async (fire) => {
@@ -5550,6 +5558,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? {
               emitter: eventSurface.emitter,
               stopToolboxForward: eventSurface.stopToolboxForward,
+              admissions: eventSurface.admissions,
               abort: eventSurface.abort,
             }
           : {}),

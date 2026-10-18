@@ -31,6 +31,7 @@
 
 import { type DelegationGrant, isDelegationGrant } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import { type MultiModalContent, multiModalContentSchema } from 'conversationalist';
 
 // ---------------------------------------------------------------------------
 // Record shapes
@@ -65,13 +66,37 @@ export interface BureauChildOutcome {
   readonly finishReason?: string | undefined;
   /** The child's final text, when it produced a result. */
   readonly content?: string | undefined;
+  /**
+   * The child's run-wide output parts (COR-713), when it produced a result; generated media is a
+   * managed-asset reference, never inline bytes.
+   */
+  readonly parts?: readonly MultiModalContent[] | undefined;
   /** Why the child ended without a clean result (an error, an abort reason, recovery). */
   readonly reason?: string | undefined;
 }
 
+/**
+ * The persisted child record's schema version. Version 2 (COR-713) adds `outcome.parts`; a
+ * version 1 record fails with {@link UnsupportedChildRecordVersionError}.
+ */
+export const CHILD_RECORD_SCHEMA_VERSION = 2 as const;
+
+/** Raised when a stored child record is at a schema version this build does not read. */
+export class UnsupportedChildRecordVersionError extends Error {
+  readonly version: number;
+
+  constructor(version: number) {
+    super(
+      `Unsupported child topology record schema version ${version}: this build reads version ${CHILD_RECORD_SCHEMA_VERSION}.`,
+    );
+    this.name = 'UnsupportedChildRecordVersionError';
+    this.version = version;
+  }
+}
+
 /** The durable description of one parent-child relationship. */
 export interface BureauChildRecord {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: typeof CHILD_RECORD_SCHEMA_VERSION;
   readonly parentRunId: string;
   readonly childRunId: string;
   readonly parentAgentName: string;
@@ -189,6 +214,11 @@ function isOutcome(value: unknown): value is BureauChildOutcome {
     isRecord(value) &&
     isOptional(value['finishReason'], 'string') &&
     isOptional(value['content'], 'string') &&
+    (value['parts'] === undefined ||
+      (Array.isArray(value['parts']) &&
+        (value['parts'] as unknown[]).every(
+          (part) => multiModalContentSchema.safeParse(part).success,
+        ))) &&
     isOptional(value['reason'], 'string')
   );
 }
@@ -198,7 +228,7 @@ function isChildRecord(value: unknown): value is BureauChildRecord {
   const revision = value['revision'];
   const recoveries = value['recoveries'];
   return (
-    value['schemaVersion'] === 1 &&
+    value['schemaVersion'] === CHILD_RECORD_SCHEMA_VERSION &&
     ['parentRunId', 'childRunId', 'parentAgentName', 'childAgentName'].every(
       (field) => typeof value[field] === 'string',
     ) &&
@@ -302,6 +332,13 @@ export function createChildTopologyStore(
     const raw = await kv.get(key);
     if (raw === null) return undefined;
     const parsed = parseJson(raw);
+    // COR-713: a record written at an older schema version is not corrupt and is not read as
+    // current; it fails explicitly, so an operator sees the version rather than a vanished child.
+    if (isRecord(parsed) && typeof parsed['schemaVersion'] === 'number') {
+      if (parsed['schemaVersion'] !== CHILD_RECORD_SCHEMA_VERSION) {
+        throw new UnsupportedChildRecordVersionError(parsed['schemaVersion']);
+      }
+    }
     if (!isChildRecord(parsed)) {
       onCorrupt(key);
       return { raw, record: undefined };

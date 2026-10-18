@@ -34,9 +34,21 @@ export function createScriptedMediaAdmitter(
   options: {
     mode?: ScriptedAdmissionMode;
     rejectionCode?: string;
+    /** A port that does not honor the request signal: an abort leaves the admission pending. */
+    ignoreAbort?: boolean;
+    /** What each admission's `closed()` answers once it has settled; defaults to `completed`. */
+    closedOutcome?: CleanupAcknowledgement;
+    /** Called as each admission is accepted, so a test can wait for it without a timer. */
+    onAdmit?: (record: ScriptedAdmissionRecord) => void;
   } = {},
 ): ScriptedMediaAdmitter {
-  const { mode = 'available', rejectionCode = 'per-part-limit-exceeded' } = options;
+  const {
+    mode = 'available',
+    rejectionCode = 'per-part-limit-exceeded',
+    ignoreAbort = false,
+    closedOutcome = { status: 'completed' },
+    onAdmit,
+  } = options;
   const admissions: ScriptedAdmissionRecord[] = [];
 
   const port: GeneratedMediaAdmitter = {
@@ -62,8 +74,10 @@ export function createScriptedMediaAdmitter(
         },
       };
       admissions.push(record);
+      onAdmit?.(record);
 
       const abort = (reason = 'aborted'): void => {
+        if (ignoreAbort) return;
         record.aborted = true;
         record.settle({ outcome: 'aborted', reason });
       };
@@ -94,7 +108,7 @@ export function createScriptedMediaAdmitter(
             : undefined;
           const outcome = await (abandoned ? Promise.race([settled, abandoned]) : settled);
           if (outcome === 'timed-out') return { status: 'unresolved', reason: 'timed-out' };
-          return { status: 'completed' };
+          return closedOutcome;
         },
       };
     },

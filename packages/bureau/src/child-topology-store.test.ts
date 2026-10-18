@@ -18,6 +18,7 @@ import {
   DELEGATION_GRANT_KEY_PREFIX,
   DELEGATION_LEDGER_KEY_PREFIX,
   type DelegationLedgerEntry,
+  UnsupportedChildRecordVersionError,
 } from './child-topology-store';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
@@ -27,7 +28,7 @@ function createKv() {
 
 function childRecord(overrides: Partial<BureauChildRecord> = {}): BureauChildRecord {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     parentRunId: 'parent-1',
     childRunId: 'child-1',
     parentAgentName: 'planner',
@@ -232,6 +233,8 @@ describe('createChildTopologyStore — child records', () => {
     ['an outcome with a numeric reason', { outcome: { reason: 7 } }],
     ['an outcome with a numeric finish reason', { outcome: { finishReason: 7 } }],
     ['an outcome with numeric content', { outcome: { content: 7 } }],
+    ['an outcome whose parts are not an array', { outcome: { parts: 'done' } }],
+    ['an outcome with a malformed part', { outcome: { parts: [{ type: 'hologram' }] } }],
     ['a non-string parent agent', { parentAgentName: 7 }],
     ['a non-number createdAt', { createdAt: '0' }],
   ])('treats a stored record with %s as unreadable', async (_label, patch) => {
@@ -241,6 +244,39 @@ describe('createChildTopologyStore — child records', () => {
     await kv.set(`${CHILD_RECORD_KEY_PREFIX}child-1`, JSON.stringify(value));
 
     expect(await store.get('child-1')).toBeUndefined();
+  });
+
+  it('round-trips an outcome with its parts and asset references', async () => {
+    const store = createChildTopologyStore(createKv());
+    const parts = [
+      { type: 'thinking' as const, thinking: 'Plan.', signature: 'sig-1' },
+      {
+        type: 'image' as const,
+        mimeType: 'image/png',
+        source: { kind: 'managed-asset' as const, assetId: 'asset-1', revision: 2 },
+      },
+      { type: 'text' as const, text: 'done' },
+    ];
+    const settled = childRecord({
+      status: 'completed',
+      settledAt: 30,
+      outcome: { finishReason: 'stop-condition', content: 'done', parts },
+    });
+    await store.register(settled);
+
+    expect(await store.get('child-1')).toEqual(settled);
+  });
+
+  it('fails a record stored at schema version 1 with the explicit unsupported-version error', async () => {
+    const kv = createKv();
+    const store = createChildTopologyStore(kv);
+    await kv.set(
+      `${CHILD_RECORD_KEY_PREFIX}child-1`,
+      JSON.stringify({ ...childRecord(), schemaVersion: 1 }),
+    );
+
+    const error = await throwingRejectionOf(store.get('child-1'));
+    expect(error).toThrow(UnsupportedChildRecordVersionError);
   });
 
   it('reads back a record carrying every optional field', async () => {

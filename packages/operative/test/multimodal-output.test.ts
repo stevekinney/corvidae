@@ -512,3 +512,103 @@ describe('the non-fatal replay-data signal', () => {
     ).toEqual([]);
   });
 });
+
+describe('cleanup waits for generated-media admissions', () => {
+  const imageResponse: GenerateResponse = { content: '', parts: [inlineImage], toolCalls: [] };
+
+  function admissionSignal(): { promise: Promise<void>; resolve: () => void } {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+
+  it('holds the terminal result until the admission settles', async () => {
+    const admitted = admissionSignal();
+    const admitter = createScriptedMediaAdmitter({ mode: 'manual', onAdmit: admitted.resolve });
+    const run_ = createActiveRun(
+      baseOptions(createMockGenerate([imageResponse]), { generatedMediaAdmitter: admitter.port }),
+    );
+    let resultSettled = false;
+    void run_.result.then(() => {
+      resultSettled = true;
+    });
+
+    await admitted.promise;
+    await Promise.resolve();
+    expect(resultSettled).toBe(false);
+
+    const [record] = admitter.admissions;
+    record?.settle({ outcome: 'available', source: record.source, mimeType: 'image/png' });
+    const result = await run_.result;
+
+    expect(result.finishReason).toBe('stop-condition');
+    expect(result.parts).toMatchObject([{ source: { kind: 'managed-asset' } }]);
+    expect(await run_.closed()).toEqual({ status: 'completed' });
+  });
+
+  it('returns completed from closed() after a failed admission', async () => {
+    const admitter = createScriptedMediaAdmitter({ mode: 'reject' });
+    const run_ = createActiveRun(
+      baseOptions(createMockGenerate([imageResponse]), { generatedMediaAdmitter: admitter.port }),
+    );
+    const result = await run_.result;
+
+    expect(result.finishReason).toBe('error');
+    expect(await run_.closed()).toEqual({ status: 'completed' });
+    expect(admitter.admissions[0]?.settlement?.outcome).toBe('rejected');
+  });
+
+  it('aborts a pending admission on cancellation and leaves none pending once closed() resolves', async () => {
+    const admitted = admissionSignal();
+    const admitter = createScriptedMediaAdmitter({ mode: 'manual', onAdmit: admitted.resolve });
+    const run_ = createActiveRun(
+      baseOptions(createMockGenerate([imageResponse]), { generatedMediaAdmitter: admitter.port }),
+    );
+
+    await admitted.promise;
+    run_.abort('stop');
+    const result = await run_.result;
+    const acknowledgement = await run_.closed({ signal: new AbortController().signal });
+
+    expect(result.finishReason).toBe('aborted');
+    expect(admitter.admissions[0]?.aborted).toBe(true);
+    expect(admitter.admissions[0]?.settlement?.outcome).toBe('aborted');
+    expect(acknowledgement).toEqual({ status: 'completed' });
+  });
+
+  it('returns unresolved with unknown-effect when an admission outcome cannot be confirmed', async () => {
+    const admitter = createScriptedMediaAdmitter({
+      closedOutcome: { status: 'unresolved', reason: 'persistence-failed' },
+    });
+    const run_ = createActiveRun(
+      baseOptions(createMockGenerate([imageResponse]), { generatedMediaAdmitter: admitter.port }),
+    );
+    await run_.result;
+
+    expect(await run_.closed()).toEqual({ status: 'unresolved', reason: 'unknown-effect' });
+  });
+
+  it('returns unresolved with timed-out when the caller signal aborts before the admission settles', async () => {
+    const admitted = admissionSignal();
+    const admitter = createScriptedMediaAdmitter({
+      mode: 'manual',
+      ignoreAbort: true,
+      onAdmit: admitted.resolve,
+    });
+    const run_ = createActiveRun(
+      baseOptions(createMockGenerate([imageResponse]), { generatedMediaAdmitter: admitter.port }),
+    );
+
+    await admitted.promise;
+    run_.abort('stop');
+    const caller = new AbortController();
+    const closing = run_.closed({ signal: caller.signal });
+    caller.abort();
+
+    expect(await closing).toEqual({ status: 'unresolved', reason: 'timed-out' });
+    expect(admitter.admissions[0]?.settlement).toBeUndefined();
+  });
+});
+
