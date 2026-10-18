@@ -1,6 +1,8 @@
 import type { ConditionalTextValueStore, Mailbox } from '@lostgradient/weft';
 import { encodeStorageKeyComponent } from '@lostgradient/weft';
 
+import { walkSessionInputMailbox } from './session-input-durability';
+
 /**
  * COR-1476 — what becomes of session input that no run delivered. Bureau never
  * starts a run to answer input: an input a live run's step boundary appends to
@@ -64,7 +66,11 @@ export const OPEN_SESSION_INPUT_STATES = [
  * is cancelled outright, and a claimed one moves to `cancellation-requested`,
  * which no request changes again, so a page of those would never shrink.
  */
-const CANCELLABLE_SESSION_INPUT_STATES = ['accepted', 'available', 'claimed'] as const;
+const CANCELLABLE_SESSION_INPUT_STATES: ReadonlySet<string> = new Set([
+  'accepted',
+  'available',
+  'claimed',
+]);
 
 const CAS_ATTEMPTS = 20;
 
@@ -129,34 +135,24 @@ function parseMarker(raw: string | null): MarkerRecord | undefined {
 
 /**
  * Applies `action` to every cancellable open receipt of a mailbox, in admission
- * order and in bounded batches, until none is listed or a batch makes no
- * progress. A backlog deeper than one batch is handled in full: `list` cannot
- * be paged, so each batch is re-listed after the last one's commands left the
- * listed states. Commands already in `cancellation-requested` are not listed,
- * because nothing here can move them, so a backlog whose head is a page of
- * them still reaches what waits behind it. A listing walks at most a fixed
- * number of index entries (`Mailbox`'s scan ceiling), so an empty page is not
- * proof that nothing is open: that decision belongs to the mailbox's exhaustive
- * open count, which the marker removal reads, and a command the listing could
- * not reach stays open, with its marker, for a later pass.
+ * order. The walk reads every record the mailbox holds, resumed page by page,
+ * because a single listing examines a bounded number of index entries and a
+ * session keeps its terminal records for the identity's lifetime: an open
+ * command behind more retained entries than one listing reaches would
+ * otherwise never be reached by this pass and would wait for its own deadline
+ * instead. Commands already in `cancellation-requested` are skipped, because
+ * nothing here can move them. Emptiness is still never decided here: that is
+ * the mailbox's exhaustive open count, which the marker removal reads.
  */
 export async function forEachOpenReceipt(
   mailbox: Mailbox,
   action: (commandId: string) => Promise<unknown>,
 ): Promise<void> {
-  const handled = new Set<string>();
-  for (;;) {
-    const batch = await mailbox.list({
-      states: CANCELLABLE_SESSION_INPUT_STATES,
-      limit: SESSION_INPUT_BACKLOG_BATCH,
-    });
-    const fresh = batch.filter((receipt) => !handled.has(receipt.commandId));
-    if (fresh.length === 0) return;
-    for (const receipt of fresh) {
-      handled.add(receipt.commandId);
-      await action(receipt.commandId);
-    }
-  }
+  await walkSessionInputMailbox(mailbox, async (receipt) => {
+    if (!CANCELLABLE_SESSION_INPUT_STATES.has(receipt.state)) return undefined;
+    await action(receipt.commandId);
+    return undefined;
+  });
 }
 
 /**

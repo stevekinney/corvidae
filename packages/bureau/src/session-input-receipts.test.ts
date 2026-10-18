@@ -140,19 +140,19 @@ describe('the identity index (COR-1476)', () => {
     const reached = deferred();
     const held = deferred();
     let holds = 1;
-    // The first attempt's principal-count read (`mailbox.list`) is held once,
-    // after its pending identity claim committed; the retry, in another
-    // process, runs meanwhile.
+    // The first attempt's principal-count read (the mailbox's open count) is
+    // held once, after its pending identity claim committed; the retry, in
+    // another process, runs meanwhile.
     const holding = new Proxy(f.first, {
       get(target, property, receiver) {
-        if (property === 'list') {
-          return async (options?: Parameters<Mailbox['list']>[0]) => {
+        if (property === 'capacity') {
+          return async () => {
             if (holds > 0) {
               holds -= 1;
               reached.resolve();
               await held.promise;
             }
-            return target.list(options);
+            return target.capacity();
           };
         }
         const value: unknown = Reflect.get(target, property, receiver);
@@ -230,6 +230,57 @@ describe('the identity index (COR-1476)', () => {
     if (resend.outcome === 'conflict') expect(resend.conflict.reason).toBe('session-mismatch');
     const replay = await admitSessionInput(f.attempt('session-second', f.second));
     expect(replay.outcome).toBe('replayed');
+  });
+
+  it('still finds a live id behind a thousand retained terminal records: conflict elsewhere, replay at home', async () => {
+    const now = START;
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const first = createSessionInputMailbox(storage, 'volume-first', 5000, () => now);
+    const second = createSessionInputMailbox(storage, 'volume-second', 5000, () => now);
+    const attempt = (sessionId: string, mailbox: Mailbox, id: string, limit: number) => ({
+      storage,
+      kv,
+      sessionMailbox: mailbox,
+      sessionId,
+      id,
+      principal: 'alice',
+      deliveryMode: 'steer' as const,
+      payload: { incarnation: 'incarnation-1', payload: 'hello' },
+      principalBacklogLimit: limit,
+      sessionBacklogLimitForCrossSessionRead: 5000,
+      nowMs: now,
+    });
+    // A thousand earlier inputs of the session, delivered and retained.
+    for (let index = 0; index < 1000; index += 1) {
+      const admission = await first.admit({
+        caller: 'alice',
+        target: 'volume-first',
+        kind: 'session-input:steer',
+        payload: { form: 'inline', value: { incarnation: 'incarnation-1', payload: 'x' } },
+        idempotencyKey: `input-${index}`,
+      });
+      if (admission.status !== 'admitted') throw new Error(`${index}: ${admission.status}`);
+      const claimed = await first.claim();
+      if (claimed.status !== 'claimed') throw new Error('expected a claim');
+      await first.acknowledge({
+        commandId: claimed.claim.receipt.commandId,
+        attemptToken: claimed.claim.attemptToken,
+      });
+    }
+    const newest = await admitSessionInput(attempt('volume-first', first, 'input-1000', 5000));
+    expect(newest.outcome).toBe('admitted');
+
+    // The newest id, live in volume-first, is submitted to another session, and
+    // replayed at home by a principal now at its limit.
+    const elsewhere = await admitSessionInput(attempt('volume-second', second, 'input-1000', 5000));
+    expect(elsewhere.outcome).toBe('conflict');
+    if (elsewhere.outcome === 'conflict') {
+      expect(elsewhere.conflict.reason).toBe('session-mismatch');
+    }
+    const replay = await admitSessionInput(attempt('volume-first', first, 'input-1000', 1));
+    expect(replay.outcome).toBe('replayed');
+    expect(await second.list({ limit: 10 })).toEqual([]);
   });
 
   it('outlasts an open command: the same id reaches another session as a conflict a day later', async () => {

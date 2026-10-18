@@ -53,9 +53,13 @@ import {
  *   lines ~1731-1743, "Keep the raw Storage so the durable engine can share
  *   the exact backend with the text-value KV view"). One key per
  *   `(principal, id)`, compare-and-swapped via `kv.conditionalBatch`, holding
- *   the session the id belongs to and whether that session's mailbox has
- *   admitted it (`pending` from the claim until the mailbox commit,
- *   `admitted` after). The rules the index keeps, and why:
+ *   the session the id belongs to and, as information for a reader, whether
+ *   that session's mailbox had admitted it when the value was written
+ *   (`pending` from the claim until the mailbox commit, `admitted` after).
+ *   The field decides nothing on its own: every decision below reads the
+ *   mailbox for the record, and the fence against a concurrent writer is the
+ *   compare-and-swap's expected value, the exact bytes the attempt read. The
+ *   rules the index keeps, and why:
  *
  *   - An identity is never deleted. A refusal (either backlog) or a thrown
  *     admission leaves its `pending` claim in place, because another process
@@ -72,6 +76,17 @@ import {
  *     its own record: it cancels the command it just admitted and answers
  *     with that receipt (`canceled`), so one id is never live in two
  *     sessions; its caller resends, and the resend reads the conflict.
+ *   - The index and the mailbox are two stores with no transaction across
+ *     them, and that leaves one window the rules above do not close: an
+ *     attempt that found no record in the owning session and is about to take
+ *     the claim over, against an owner that has just committed its record and
+ *     is about to swap its identity to `admitted`. The takeover wins the swap,
+ *     the owner then cancels its command, but a run of the owning session can
+ *     claim that command in between, so for a moment one id is live in two
+ *     sessions and the owner's caller may read `promoted` rather than
+ *     `canceled`. Closing it needs an admission that writes the record and the
+ *     identity in one transaction, which is Weft's to offer; until then it is
+ *     disclosed here and bounded to that one interleaving.
  *   - `admitted` with no record is unreachable while
  *     `SESSION_INPUT_TERMINAL_RETENTION_MS` is at least
  *     `SESSION_INPUT_IDENTITY_TTL_MS`: the mailbox keeps a terminal record
@@ -252,13 +267,50 @@ type SessionInputIdentityClaim =
       readonly record: ApplicationCommandReceipt;
     };
 
-/** The mailbox record admitted under `id`, if the mailbox still holds one. */
+/**
+ * The mailbox record admitted under `id`, if the mailbox still holds one. A
+ * direct lookup through the id's binding: a listing examines a bounded number
+ * of index entries, and a session keeps its terminal records for the
+ * identity's lifetime, so a live command can sit behind more retained entries
+ * than one listing reaches, and a listing that did not reach it would have
+ * read as "no record" and let the id into a second session.
+ */
 async function findSessionInputRecord(
   mailbox: Mailbox,
   id: string,
 ): Promise<ApplicationCommandReceipt | undefined> {
-  const receipts = await mailbox.list({ limit: 1000 });
-  return receipts.find((receipt) => receipt.idempotencyKey === id);
+  return (await mailbox.receiptByIdempotencyKey(id)) ?? undefined;
+}
+
+/** One page of a session-input mailbox walk. */
+export const SESSION_INPUT_MAILBOX_WALK_PAGE = 100;
+
+/**
+ * Visits every receipt the mailbox holds, in admission order, until `visit`
+ * returns `false`. Unfiltered pages resumed by `afterSequence`, so the walk is
+ * exhaustive where a single listing is bounded: this is the only way the
+ * session-input code reads a set out of a mailbox, because a bounded listing
+ * must never decide that something is absent, that a set is empty, or that a
+ * limit is not yet reached. A retention sweep deleting an entry between the
+ * index scan and the record read shortens one page, not the walk, which only
+ * stops at an empty page.
+ */
+export async function walkSessionInputMailbox(
+  mailbox: Mailbox,
+  visit: (receipt: ApplicationCommandReceipt) => boolean | undefined | Promise<boolean | undefined>,
+): Promise<void> {
+  let afterSequence: number | undefined;
+  for (;;) {
+    const page = await mailbox.list({
+      limit: SESSION_INPUT_MAILBOX_WALK_PAGE,
+      ...(afterSequence === undefined ? {} : { afterSequence }),
+    });
+    if (page.length === 0) return;
+    for (const receipt of page) {
+      if ((await visit(receipt)) === false) return;
+    }
+    afterSequence = page.at(-1)!.sequence;
+  }
 }
 
 async function resolveSessionInputIdentity(
@@ -432,11 +484,21 @@ function receiptState(
 }
 
 /** Non-terminal `ApplicationCommandState`s — mirrors what counts toward a mailbox's own `openCount`. */
-const OPEN_STATES = ['accepted', 'available', 'claimed', 'cancellation-requested'] as const;
+const OPEN_STATES: ReadonlySet<string> = new Set([
+  'accepted',
+  'available',
+  'claimed',
+  'cancellation-requested',
+]);
 
 /**
- * How many of a session mailbox's currently-open (non-terminal) commands
- * were submitted by `principal`.
+ * Whether `principal` has `limit` or more open (non-terminal) commands in a
+ * session mailbox.
+ *
+ * The mailbox's own open count is exhaustive, so a session with fewer open
+ * commands than the limit answers without a walk. Otherwise the walk reads
+ * every record, stopping once it has seen as many open commands as that
+ * count, which bounds it to the open set rather than to one listing.
  *
  * A manual, best-effort count — Weft has no native per-caller sub-quota
  * within one mailbox, so unlike the native per-session `maxBacklog` check
@@ -449,9 +511,22 @@ const OPEN_STATES = ['accepted', 'available', 'claimed', 'cancellation-requested
  * which is not a correctness violation — a stronger guarantee would need
  * Weft to expose a native per-caller counter, which it does not today.
  */
-async function countOpenCommandsForPrincipal(mailbox: Mailbox, principal: string): Promise<number> {
-  const receipts = await mailbox.list({ limit: 1000, states: OPEN_STATES });
-  return receipts.filter((receipt) => receipt.caller === principal).length;
+async function principalAtBacklogLimit(
+  mailbox: Mailbox,
+  principal: string,
+  limit: number,
+): Promise<boolean> {
+  const { open } = await mailbox.capacity();
+  if (open < limit) return false;
+  let openSeen = 0;
+  let ownedByPrincipal = 0;
+  await walkSessionInputMailbox(mailbox, (receipt) => {
+    if (!OPEN_STATES.has(receipt.state)) return undefined;
+    openSeen += 1;
+    if (receipt.caller === principal) ownedByPrincipal += 1;
+    return ownedByPrincipal < limit && openSeen < open;
+  });
+  return ownedByPrincipal >= limit;
 }
 
 /** Input to {@link admitSessionInput}, gathering everything the admission decision needs. */
@@ -547,11 +622,11 @@ export async function admitSessionInput(
   // runs before the mailbox's own `admit()` call below, which is the one that
   // could create a record. A refusal leaves the pending claim in place (see
   // the module doc): the retry runs this check again.
-  if (claim.kind === 'fresh') {
-    const openForPrincipal = await countOpenCommandsForPrincipal(sessionMailbox, principal);
-    if (openForPrincipal >= principalBacklogLimit) {
-      return { outcome: 'backlog-exhausted', scope: 'principal', limit: principalBacklogLimit };
-    }
+  if (
+    claim.kind === 'fresh' &&
+    (await principalAtBacklogLimit(sessionMailbox, principal, principalBacklogLimit))
+  ) {
+    return { outcome: 'backlog-exhausted', scope: 'principal', limit: principalBacklogLimit };
   }
 
   const admission = await sessionMailbox.admit({

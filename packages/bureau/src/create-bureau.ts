@@ -2091,8 +2091,35 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         }),
     });
-    sessionInputGates.set(runId, { gate, sessionId });
-    return gate;
+    // Bound at every boundary too, not only at creation: a session deleted and
+    // recreated while the run is live would otherwise hand this gate the new
+    // incarnation's input, which it cannot deliver and would refuse for good.
+    // Finding its session gone, the gate releases what it holds and delivers
+    // nothing further. An input admitted to the new incarnation between this
+    // read and the claim behind it is still refused by delivery's incarnation
+    // check: that window is one boundary wide and is disclosed here.
+    let retired = false;
+    const bound: SessionInputGate = {
+      async claimPending() {
+        if (retired) return [];
+        const current = await gateSessionStore.load(sessionId);
+        if (current?.incarnation !== session.incarnation) {
+          retired = true;
+          diagnose({
+            level: 'warn',
+            scope: 'session-input',
+            message: `[bureau] The session "${sessionId}" run "${runId}" started in has been ${current === undefined ? 'deleted' : 'recreated'}; the run receives no further session input.`,
+          });
+          await gate.dispose?.();
+          return [];
+        }
+        return gate.claimPending();
+      },
+      settle: (deliveries) => gate.settle(deliveries),
+      dispose: () => gate.dispose?.() ?? Promise.resolve(),
+    };
+    sessionInputGates.set(runId, { gate: bound, sessionId });
+    return bound;
   }
 
   /**
@@ -2182,6 +2209,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const session = await runtime.sessionStore?.load(sessionId);
       // Deleting the session retired its input; the sweep drops the marker.
       if (session === undefined) return;
+      // A session recreated under the same id since the run started holds
+      // input for its own runs: the cancel pass is bound to the incarnation
+      // the run started in, like its gate and its terminal save, and leaves a
+      // recreated session's input to the sweep or to that session's runs.
+      const started = runSessionIncarnations.get(runId);
+      if (started !== undefined && started !== session.incarnation) return;
       const steeringKv = durableSteeringStore();
       if (steeringKv !== undefined) {
         await enqueueSteering(sessionId, () =>

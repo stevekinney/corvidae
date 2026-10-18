@@ -14,6 +14,16 @@ export type { SessionInputDeliveryClaim } from './session-input-delivery-store';
 /** The most inputs one step boundary claims, so a deep backlog is delivered over several steps. */
 export const MAILBOX_SESSION_INPUT_BATCH_LIMIT = 100;
 
+/** The states in which a command is leased by some gate. */
+const LEASED_COMMAND_STATES: ReadonlySet<string> = new Set(['claimed', 'cancellation-requested']);
+/** The states the mailbox counts as open: not yet terminal. */
+const OPEN_COMMAND_STATES: ReadonlySet<string> = new Set([
+  'accepted',
+  'available',
+  'claimed',
+  'cancellation-requested',
+]);
+
 /** How often a gate renews the leases it holds, a third of the mailbox's default 30 second visibility timeout. */
 export const MAILBOX_SESSION_INPUT_RENEWAL_INTERVAL_MS = 10_000;
 
@@ -267,6 +277,37 @@ export function createMailboxSessionInputGate(
 
   options.signal?.addEventListener('abort', onAbort, { once: true });
 
+  /**
+   * Whether any command another gate leased is outstanding. Read by walking
+   * every record the mailbox holds, resumed page by page, never by one bounded
+   * listing: a listing examines a fixed number of index entries, and a lease
+   * behind more retained records than that would read as absent, letting this
+   * gate deliver a later command first. The walk stops once it has seen as many
+   * open commands as the mailbox's exhaustive open count: what lies beyond was
+   * admitted after that count was read, so it is newer than anything this call
+   * could claim.
+   */
+  async function leasedElsewhere(): Promise<boolean> {
+    const { open } = await mailbox.capacity();
+    if (open === 0) return false;
+    let openSeen = 0;
+    let afterSequence: number | undefined;
+    for (;;) {
+      const page = await mailbox.list({
+        limit: MAILBOX_SESSION_INPUT_BATCH_LIMIT,
+        ...(afterSequence === undefined ? {} : { afterSequence }),
+      });
+      if (page.length === 0) return false;
+      for (const receipt of page) {
+        if (!OPEN_COMMAND_STATES.has(receipt.state)) continue;
+        if (LEASED_COMMAND_STATES.has(receipt.state) && !leases.has(receipt.commandId)) return true;
+        openSeen += 1;
+        if (openSeen >= open) return false;
+      }
+      afterSequence = page.at(-1)!.sequence;
+    }
+  }
+
   /** A claim acquired while the gate was being disposed: nothing is left to hold it. */
   async function releaseIfDisposed(claims: readonly ApplicationCommandClaim[]): Promise<boolean> {
     if (!disposed) return false;
@@ -284,11 +325,7 @@ export function createMailboxSessionInputGate(
       await retireAwaiting();
       // Leases this gate itself holds (an earlier ask in the same step) are not
       // in the way: they precede whatever is claimed now. Anyone else's are.
-      const leased = await mailbox.list({
-        states: ['claimed', 'cancellation-requested'],
-        limit: MAILBOX_SESSION_INPUT_BATCH_LIMIT,
-      });
-      if (leased.some((receipt) => !leases.has(receipt.commandId))) return [];
+      if (await leasedElsewhere()) return [];
 
       const claims: ApplicationCommandClaim[] = [];
       while (claims.length < MAILBOX_SESSION_INPUT_BATCH_LIMIT) {

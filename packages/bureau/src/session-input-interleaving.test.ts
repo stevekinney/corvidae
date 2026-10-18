@@ -241,3 +241,61 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
     }
   });
 });
+
+describe("a run's end against a session recreated while it ran (COR-1476)", () => {
+  it("leaves the recreated incarnation's open input alone: its cancel pass is bound to the incarnation it started in", async () => {
+    const SESSION = 'session-recreated-at-end';
+    const run1Started = deferred();
+    const release1 = deferred();
+    const a = await openProcess(async () => {
+      run1Started.resolve();
+      await release1.promise;
+      return { content: 'done', toolCalls: [] };
+    });
+    const b = await openProcess(async () => ({ content: 'done', toolCalls: [] }));
+    try {
+      const first = await a.bureau.createRun({
+        message: 'First',
+        principal: 'alice',
+        sessionId: SESSION,
+      });
+      await run1Started.promise;
+
+      // Process B deletes and recreates the session; its run ends at once, and
+      // input for the new incarnation is admitted directly to the mailbox, with
+      // no run live to deliver it yet.
+      await b.bureau.deleteSession(SESSION);
+      const second = await b.bureau.createRun({
+        message: 'Second',
+        principal: 'alice',
+        sessionId: SESSION,
+      });
+      await b.bureau.waitForDurableRun(second.id);
+      const recreated = await b.bureau.getSession(SESSION);
+      const admission = await createSessionInputMailbox(b.real, SESSION, 100).admit({
+        caller: 'alice',
+        target: SESSION,
+        kind: 'session-input:steer',
+        payload: {
+          form: 'inline',
+          value: { incarnation: recreated?.incarnation ?? '', payload: 'for the new session' },
+        },
+        idempotencyKey: 'input-new',
+      });
+      if (admission.status !== 'admitted') throw new Error(admission.status);
+
+      // Run 1 ends. Its settlement finds a session it did not start in and
+      // cancels nothing; the new incarnation's input is the sweep's or its own
+      // run's to settle.
+      release1.resolve();
+      await a.bureau.waitForDurableRun(first.id);
+      // Disposal drains the run-end settlement.
+      await a.bureau.dispose();
+      expect(await mailboxState(b.real, SESSION)).toBe('available');
+    } finally {
+      release1.resolve();
+      await a.bureau.dispose();
+      await b.bureau.dispose();
+    }
+  });
+});
