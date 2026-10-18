@@ -1,7 +1,8 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
-import { Conversation } from 'conversationalist';
+import { Conversation, withMessageId } from 'conversationalist';
 
+import { signalMessageIdentifier } from '../message-identifiers';
 import type { FinishReason } from '../types';
 import {
   buildSignalContinuationInput,
@@ -115,7 +116,16 @@ export function* runWorkflowPark(
       const resumedConversation = Conversation.from(state.snapshot, {
         runtime: runDepsFrom(ctx.services).options.runtime ?? createDefaultRuntimeServices(),
       });
-      resumedConversation.appendUserMessage(renderedMessage);
+      const id = signalMessageIdentifier(
+        resumedConversation.getMessages({ includeHidden: true }).map((row) => row.id),
+        state.runId,
+        signalName,
+      );
+      if (id === undefined) resumedConversation.appendUserMessage(renderedMessage);
+      else
+        resumedConversation.appendMessages(
+          withMessageId({ role: 'user', content: renderedMessage }, id),
+        );
       return resumedConversation.snapshot();
     })();
     yield* ctx.run('saveConversation', { runId: state.runId, snapshot: state.snapshot });

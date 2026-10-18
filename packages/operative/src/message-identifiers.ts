@@ -12,7 +12,11 @@
  *   message. A step with no text row gives its first call the step's own id
  *   instead, which is how the same mapping reads an assistant message that has
  *   calls and no text;
- * - the `tool-result` row for call `c` of step `n` is `<runId>:step:<n>:result:<c>`.
+ * - the `tool-result` row for call `c` of step `n` is `<runId>:step:<n>:result:<c>`;
+ * - the `user` row a delivered human-wait signal appends is
+ *   `<runId>:signal:<signalName>:<n>`, `n` counting the rows that signal has already
+ *   appended to this run, so a client that watched the run resume shows the
+ *   answer under the id a later snapshot holds it by.
  *
  * A run without an id (a bare `executeLoop` call) mints ids as it always did.
  *
@@ -94,4 +98,20 @@ export function assistantRowIdentifierForAttempt(
   if (held !== rows.length - 1) return undefined;
   conversation.rewindBeforeMessage(id);
   return id;
+}
+
+/**
+ * The id of the row the next delivery of `signalName` appends to a conversation
+ * holding `rowIdentifiers`, or `undefined` for a run with no id. Counts the rows
+ * this run's earlier deliveries of the same signal left, so a run that waits on
+ * one signal twice names both answers.
+ */
+export function signalMessageIdentifier(
+  rowIdentifiers: ReadonlyArray<string>,
+  runId: string | undefined,
+  signalName: string,
+): string | undefined {
+  if (runId === undefined) return undefined;
+  const prefix = `${runId}:signal:${signalName}:`;
+  return `${prefix}${rowIdentifiers.filter((id) => id.startsWith(prefix)).length}`;
 }

@@ -192,6 +192,7 @@ import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
 import { recoveryEntryFailure } from './goal-recovery';
 import type { BureauGoals } from './goal-types';
+import { humanWaitDenialPayload } from './human-wait-signal';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
@@ -11442,10 +11443,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // `review.signalName` or the parked run stays `running` forever
         // (the exact defect this record fixes). Both sentinels are
         // delivered on the identical channel `approve` already uses.
-        const denialPayload: Record<string, unknown> =
-          input.decision === 'reject'
-            ? { __abRejected: true, reason: input.reason }
-            : { __abDenied: true, ...(input.reason !== undefined ? { reason: input.reason } : {}) };
+        const denialPayload = humanWaitDenialPayload(input.decision, input.reason);
         await bureau.signalSession(review.sessionId, review.signalName, denialPayload);
       }
     } catch (error) {

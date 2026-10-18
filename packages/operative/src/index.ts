@@ -504,6 +504,7 @@ export * from './scheduler/index';
 
 export {
   assistantMessageIdentifier,
+  signalMessageIdentifier,
   toolCallMessageIdentifiers,
   toolResultMessageIdentifier,
 } from './message-identifiers';

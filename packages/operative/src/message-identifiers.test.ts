@@ -9,6 +9,7 @@ import type { OperativeHookMap } from './hooks';
 import { executeLoop } from './loop';
 import {
   assistantMessageIdentifier,
+  signalMessageIdentifier,
   toolCallMessageIdentifiers,
   toolResultMessageIdentifier,
 } from './message-identifiers';
@@ -25,6 +26,28 @@ const lookup = createTool({
 function rowIds(conversation: Conversation): string[] {
   return conversation.getMessages({ includeHidden: true }).map((message) => message.id);
 }
+
+describe('signalMessageIdentifier', () => {
+  it('names each delivery of a signal by how many its run has already appended', () => {
+    expect(signalMessageIdentifier(['user-1'], 'run-1', 'human-response')).toBe(
+      'run-1:signal:human-response:0',
+    );
+    expect(
+      signalMessageIdentifier(
+        ['user-1', 'run-1:signal:human-response:0', 'run-1:signal:approval:0'],
+        'run-1',
+        'human-response',
+      ),
+    ).toBe('run-1:signal:human-response:1');
+  });
+
+  it('does not count another run’s rows, and names nothing for a run with no id', () => {
+    expect(
+      signalMessageIdentifier(['run-2:signal:human-response:0'], 'run-1', 'human-response'),
+    ).toBe('run-1:signal:human-response:0');
+    expect(signalMessageIdentifier([], undefined, 'human-response')).toBeUndefined();
+  });
+});
 
 describe('message identifiers', () => {
   it('derives the assistant and tool-result ids from the run id and step', () => {
