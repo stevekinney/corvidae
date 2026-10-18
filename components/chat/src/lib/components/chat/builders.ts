@@ -24,6 +24,7 @@ export {
   isStreamingMessage,
   isTokenUsage,
   isToolResult,
+  mediaDisplayUrl,
   prependMessages,
 } from 'conversationalist';
 

@@ -209,7 +209,9 @@ describe('chat render rows', () => {
     const imageCall = message({
       id: 'image-call',
       role: 'tool-call',
-      content: [{ type: 'image', url: 'https://example.test/result.png' }],
+      content: [
+        { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/result.png' } },
+      ],
       toolCall: { id: 'image', name: 'screenshot', arguments: {} },
     });
     const textCall = message({

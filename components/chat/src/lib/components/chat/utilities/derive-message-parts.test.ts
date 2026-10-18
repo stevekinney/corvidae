@@ -139,23 +139,27 @@ describe('deriveMessageParts — images', () => {
   it('emits one image part per image, after the markdown body, keyed by content index', () => {
     const content: MultiModalContent[] = [
       { type: 'text', text: 'caption' },
-      { type: 'image', url: 'https://example.test/a.png' },
-      { type: 'image', url: 'https://example.test/b.png', text: 'b' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/a.png' } },
+      {
+        type: 'image',
+        source: { kind: 'remote-url', url: 'https://example.test/b.png' },
+        alt: 'b',
+      },
     ];
     const parts = deriveMessageParts(message({ role: 'user', content }));
     expect(parts.map((part) => part.type)).toEqual(['markdown', 'image', 'image']);
     expect(parts[1]).toEqual({
       type: 'image',
       key: 'm1:image:1',
-      image: { type: 'image', url: 'https://example.test/a.png' },
+      image: { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/a.png' } },
     });
     expect(parts[2]).toMatchObject({ key: 'm1:image:2' });
   });
 
   it('gives two images with identical urls distinct keys (index-based identity)', () => {
     const content: MultiModalContent[] = [
-      { type: 'image', url: 'https://example.test/dup.png' },
-      { type: 'image', url: 'https://example.test/dup.png' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/dup.png' } },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/dup.png' } },
     ];
     const parts = deriveMessageParts(message({ role: 'user', content }));
     const imageKeys = parts.filter((part) => part.type === 'image').map((part) => part.key);
@@ -280,7 +284,7 @@ describe('deriveMessageParts — context parts', () => {
   it('emits suggestions after the markdown body and before images', () => {
     const content: MultiModalContent[] = [
       { type: 'text', text: 'choose one' },
-      { type: 'image', url: 'https://example.test/suggestion.png' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/suggestion.png' } },
     ];
     const parts = deriveMessageParts(message({ id: 'suggest', role: 'assistant', content }), {
       suggestions: ['Retry', 'Open details'],
@@ -376,7 +380,7 @@ describe('deriveMessageParts — tool-call body', () => {
   it('appends image parts after the tool-call part (attachments render for tool roles too)', () => {
     const content: MultiModalContent[] = [
       { type: 'text', text: 'see image' },
-      { type: 'image', url: 'https://example.test/tool.png' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/tool.png' } },
     ];
     const parts = deriveMessageParts(message({ id: 'tc', role: 'tool-call', toolCall, content }), {
       toolCallPair: { call: toolCall },

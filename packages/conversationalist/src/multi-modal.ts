@@ -83,6 +83,20 @@ export function contentSourceDisplayUrl(source: ContentSource): string | undefin
   return source.kind === 'data-url' || source.kind === 'remote-url' ? source.url : undefined;
 }
 
+/**
+ * The URL a UI may load a media part from: its {@link contentSourceDisplayUrl}
+ * or, for inline base64 bytes with a declared media type, the equivalent data
+ * URL. `undefined` when the part carries no address a browser can load.
+ */
+export function mediaDisplayUrl(part: MediaContent): string | undefined {
+  const url = contentSourceDisplayUrl(part.source);
+  if (url !== undefined) return url;
+  const { source } = part;
+  return source.kind === 'inline' && source.encoding === 'base64' && part.mimeType !== undefined
+    ? `data:${part.mimeType};base64,${source.data}`
+    : undefined;
+}
+
 /** Whether a content part is a media part (image, audio, video, document, or file). */
 export function isMediaContent(part: MultiModalContent): part is MediaContent {
   return (

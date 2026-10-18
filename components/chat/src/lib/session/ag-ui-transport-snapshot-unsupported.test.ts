@@ -169,7 +169,7 @@ describe('AG-UI MESSAGES_SNAPSHOT', () => {
         {
           id: 'u1',
           role: 'user',
-          content: [{ type: 'audio', source: { type: 'url', value: 'https://example.com/a.mp3' } }],
+          content: [{ type: 'audio', source: { type: 'file', value: 'file-without-provider' } }],
         },
       ]),
       runFinished,

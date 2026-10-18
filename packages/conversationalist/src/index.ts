@@ -246,6 +246,7 @@ export {
   copyContent,
   copyMultiModalContent,
   isMediaContent,
+  mediaDisplayUrl,
   renderMediaPlaceholder,
 } from './multi-modal';
 export type {

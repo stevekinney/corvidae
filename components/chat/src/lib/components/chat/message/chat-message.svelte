@@ -108,6 +108,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
+  import { mediaDisplayUrl } from '../builders.ts';
   import {
     deriveMessageParts,
     getMessageRoleLabel,
@@ -317,16 +318,16 @@
     const attachmentChips = imageParts
       .map(
         (part, index) =>
-          `<span data-cinder-chat-attachment data-url="${escapeClipboardHtmlAttribute(part.image.url)}">${escapeHtml(part.image.text || `Image attachment ${index + 1}`)}</span>`,
+          `<span data-cinder-chat-attachment data-url="${escapeClipboardHtmlAttribute(mediaDisplayUrl(part.image) ?? '')}">${escapeHtml(part.image.alt || `Image attachment ${index + 1}`)}</span>`,
       )
       .join('');
     return `${body}${attachmentChips}`;
   });
   const copyValue = $derived(
-    textContent || imageParts.map((part) => part.image.text || 'Image attachment').join('\n'),
+    textContent || imageParts.map((part) => part.image.alt || 'Image attachment').join('\n'),
   );
   const copyImage = $derived.by(() => {
-    return imageParts[0]?.image.url;
+    return imageParts[0] === undefined ? undefined : mediaDisplayUrl(imageParts[0].image);
   });
 
   // Content truncation threshold (characters)

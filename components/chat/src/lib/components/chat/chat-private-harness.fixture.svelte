@@ -468,10 +468,32 @@
     historyPage = 0;
   }
 
-  type HarnessImageContent = Extract<MultiModalContent, { type: 'image' }> & {
+  /**
+   * What a Playwright test hands the append hook: an image addressed by URL,
+   * with optional intrinsic dimensions. The harness turns it into the
+   * `ImageContent` a transcript holds (a `source`, `alt`, and `metadata`).
+   */
+  type HarnessImageInput = {
+    type: 'image';
+    url: string;
+    mimeType?: string;
+    text?: string;
     width?: number;
     height?: number;
   };
+  function toImageContent(input: HarnessImageInput): Extract<MultiModalContent, { type: 'image' }> {
+    return {
+      type: 'image',
+      source: input.url.startsWith('data:')
+        ? { kind: 'data-url', url: input.url }
+        : { kind: 'remote-url', url: input.url },
+      ...(input.mimeType === undefined ? {} : { mimeType: input.mimeType }),
+      ...(input.text === undefined ? {} : { alt: input.text }),
+      ...(input.width !== undefined && input.height !== undefined
+        ? { metadata: { width: input.width, height: input.height } }
+        : {}),
+    };
+  }
   type ToolScenario =
     | 'pending'
     | 'text-success'
@@ -482,7 +504,7 @@
     | 'grouped-navigation';
 
   type ChatHarnessWindow = Window & {
-    corvidaeChatHarnessAppendImages?: (images: HarnessImageContent[]) => void;
+    corvidaeChatHarnessAppendImages?: (images: HarnessImageInput[]) => void;
     corvidaeChatHarnessAppendToolScenario?: (scenario: ToolScenario) => void;
     corvidaeChatHarnessSetCustomMessageSnippets?: (enabled: boolean) => void;
     corvidaeChatHarnessUseAdapter?: () => void;
@@ -510,14 +532,16 @@
     },
   };
 
-  function createSubmittedImageContent(attachment: { file: File }): HarnessImageContent {
+  function createSubmittedImageContent(attachment: {
+    file: File;
+  }): Extract<MultiModalContent, { type: 'image' }> {
     const url = URL.createObjectURL(attachment.file);
     submittedImageUrls.add(url);
     return {
       type: 'image',
-      url,
+      source: { kind: 'remote-url', url },
       mimeType: attachment.file.type,
-      text: attachment.file.name,
+      alt: attachment.file.name,
     };
   }
 
@@ -707,7 +731,7 @@
     harnessWindow.corvidaeChatHarnessAppendImages = (images) => {
       conversation = appendMessages(conversation, {
         role: 'user',
-        content: images,
+        content: images.map(toImageContent),
       });
     };
     harnessWindow.corvidaeChatHarnessAppendToolScenario = appendToolScenario;

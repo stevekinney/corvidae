@@ -282,6 +282,7 @@ export function isChatAgentRunErrorCode(value: unknown): value is ChatAgentRunEr
     value === 'INVALID_AGENT_HANDLE' ||
     value === 'INVALID_OUTPUT' ||
     value === 'MAXIMUM_STEPS' ||
+    value === 'MEDIA_NOT_ADMITTED' ||
     value === 'NON_JSON_OUTPUT' ||
     value === 'OUTPUT_SCHEMA_CONVERSION_FAILED' ||
     value === 'SELECTION_REVALIDATION_FAILED' ||
