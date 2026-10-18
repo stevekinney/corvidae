@@ -11,6 +11,12 @@ export interface EvidenceProjectionCommit {
   readonly evidence?: readonly EvidenceRecord[];
   /** One new revision per (namespace, id); revision 1 creates. */
   readonly projections?: readonly EvidenceProjectionRecord[];
+  /**
+   * An opaque record written in the same batch, conditioned on `key` being
+   * absent. The store never reads or decodes it; the transition engine writes
+   * its receipt here so a transition is applied with its receipt or not at all.
+   */
+  readonly receipt?: { readonly key: string; readonly value: Uint8Array };
 }
 
 export interface EvidenceProjectionCommitResult {
@@ -46,14 +52,18 @@ export interface EvidenceProjectionCommitResult {
  * A backend whose `Storage` cannot do compare-and-swap fails loudly at the first
  * commit instead of losing a write.
  *
- * This contract writes no receipt, emits no event, and takes no operation id;
- * those belong to the transition engine layered over it.
+ * This contract interprets no receipt, emits no event, and takes no operation
+ * id; those belong to the transition engine layered over it. A commit may carry
+ * one opaque receipt put, which the store writes in the same batch and never
+ * reads.
  */
 export interface EvidenceProjectionStorage {
   init(): Promise<void>;
   close(): Promise<void>;
   /** Applies everything in one atomic batch, or nothing. */
   commit(commit: EvidenceProjectionCommit): Promise<EvidenceProjectionCommitResult>;
+  /** The bytes under a commit's receipt key, or `null`. The store attaches no meaning to them. */
+  getReceipt(key: string): Promise<Uint8Array | null>;
   /** `commit({ tenantId: record.tenantId, evidence: [record] })`, returning that record's outcome. */
   appendEvidence(record: EvidenceRecord): Promise<'appended' | 'duplicate'>;
   /** `commit({ tenantId: record.tenantId, projections: [record] })`, returning that record's outcome. */
@@ -136,7 +146,8 @@ export type EvidenceProjectionCommitErrorCode =
   | 'evidence-not-found'
   | 'evidence-superseded'
   | 'projection-not-found'
-  | 'projection-terminal';
+  | 'projection-terminal'
+  | 'receipt-exists';
 
 export class EvidenceProjectionCommitError extends Error {
   constructor(

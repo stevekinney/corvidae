@@ -208,14 +208,22 @@ class BatchPlan {
   }
 }
 
+/**
+ * Wraps the backend's `apply`, so a test can fail, count, or park a batch at
+ * the store's one write boundary. Production code never sets it.
+ */
+export type WrapApply = (apply: ApplyPlannedBatch) => ApplyPlannedBatch;
+
 export type EvidenceProjectionStoreCore = Omit<EvidenceProjectionStorage, 'init' | 'close'>;
 
 export function createEvidenceProjectionStoreCore(options: {
   readonly reader: KeyValueReader;
   readonly apply: ApplyPlannedBatch;
   readonly keys: EvidenceProjectionKeys;
+  readonly wrapApply?: WrapApply;
 }): EvidenceProjectionStoreCore {
-  const { reader, apply, keys } = options;
+  const { reader, keys } = options;
+  const apply = options.wrapApply?.(options.apply) ?? options.apply;
 
   async function scan(prefix: string): Promise<string[]> {
     const found: string[] = [];
@@ -486,6 +494,10 @@ export function createEvidenceProjectionStoreCore(options: {
       throw new EvidenceProjectionCommitError('invalid-commit', message);
     };
     if (evidence.length === 0 && projections.length === 0) invalid('The commit is empty.');
+    const { receipt } = commit;
+    if (receipt !== undefined && (receipt.key.length === 0 || receipt.value.length === 0)) {
+      invalid('The commit receipt needs a non-empty key and value.');
+    }
     const evidenceIds = new Set(evidence.map((record) => record.id));
     if (evidenceIds.size !== evidence.length) invalid('The commit repeats an evidence id.');
     const addresses = projections.map((record) => JSON.stringify([record.namespace, record.id]));
@@ -511,6 +523,18 @@ export function createEvidenceProjectionStoreCore(options: {
     const builder = new BatchPlan();
     const planned = await planEvidence(builder, request.tenantId, evidence);
     const projectionOutcomes = await planProjections(builder, projections, planned.appended);
+    const { receipt } = request;
+    if (receipt !== undefined) {
+      // Refusing here, not losing the batch, keeps a lost receipt race from burning every attempt.
+      if ((await reader.get(receipt.key)) !== null) {
+        throw new EvidenceProjectionCommitError(
+          'receipt-exists',
+          `A receipt is already stored under "${receipt.key}".`,
+        );
+      }
+      builder.require(receipt.key, null);
+      builder.put(receipt.key, receipt.value);
+    }
     return {
       batch: builder.toBatch(),
       result: { evidence: planned.outcomes, projections: projectionOutcomes },
@@ -535,6 +559,10 @@ export function createEvidenceProjectionStoreCore(options: {
       projections.map((record) => record.id),
       'The commit lost its compare-and-swap; nothing was written.',
     );
+  }
+
+  async function getReceipt(key: string): Promise<Uint8Array | null> {
+    return reader.get(key);
   }
 
   async function getEvidence(tenantId: string, id: string): Promise<EvidenceRecord | undefined> {
@@ -649,6 +677,7 @@ export function createEvidenceProjectionStoreCore(options: {
 
   return {
     commit: executeCommit,
+    getReceipt,
     async appendEvidence(record) {
       const result = await executeCommit({ tenantId: record.tenantId, evidence: [record] });
       return result.evidence[0]!.outcome;
