@@ -201,10 +201,16 @@ export async function executeGeneration(
         // would short-circuit optional-call semantics and never evaluate
         // the argument (never fire the hook at all) when hookTracker is
         // undefined.
+        // COR-716: a snapshot copy, not the live conversation. The hook runs
+        // after the binding derivation and before the call, and it is
+        // read-only by contract; handing it the live object would open a
+        // mutation window no derivation covers. Writes land in the copy and
+        // never reach the request.
+        const inputSnapshot = new Conversation(generateContext.conversation.current);
         const onLLMInputHookPromise = runHookSilently(hooks, 'onLLMInput', {
-          conversation: generateContext.conversation,
+          conversation: inputSnapshot,
           step: generateContext.step,
-          messageCount: generateContext.conversation.getMessages().length,
+          messageCount: inputSnapshot.getMessages().length,
         });
         hookTracker?.(onLLMInputHookPromise);
 

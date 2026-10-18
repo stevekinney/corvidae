@@ -246,6 +246,7 @@ export type { MediaBody, MediaBodyReading } from './media-body';
 export {
   baseMimeType,
   isDecodableBase64,
+  isDocumentMimeType,
   isTextualMimeType,
   mimeTypeFitsModality,
 } from './media-types';

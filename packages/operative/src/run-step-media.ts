@@ -30,8 +30,14 @@
  *    `evaluateInputMedia`, the evaluator selection uses. The request is admitted
  *    when at least one backend takes every part; dispatch (routing, fallover,
  *    fallback) is then limited to those backends, through `generateAdmitsMedia`.
+ *    When the generate function's descriptor union is incomplete (a dispatcher
+ *    keeps a candidate with no descriptor), the described rows do not say what
+ *    every reachable backend takes, so admission refuses nothing on eligibility
+ *    grounds and leaves that to dispatch.
  * 5. **Cost.** Each part is costed by the run's `MediaCostEstimator`, which
- *    defaults to the catalog estimator over the admitting backends.
+ *    defaults to the catalog estimator over the admitting backends. Under an
+ *    incomplete union with no custom estimator, a part the described rows
+ *    cannot price is `no-estimator`: nothing can cost it.
  *
  * Any part that is not `estimated` fails the step with a
  * {@link MediaAdmissionError}, before any provider call. A conversation with no
@@ -58,7 +64,10 @@ import { createCatalogMediaCostEstimator, sourceByteLength } from './context/med
 import type { MediaCostEstimator, MediaCostOutcome, UnadmittedMediaCost } from './context/types';
 import { MediaAdmissionError } from './errors';
 import { RunErrorEvent } from './events';
-import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
+import {
+  isDescriptorUnionIncomplete,
+  readBackendDescriptors,
+} from './providers/backend-descriptor-attachment';
 import type { BackendDescriptor } from './providers/model-catalog';
 import {
   evaluateInputMedia,
@@ -262,6 +271,9 @@ export function createStepMediaAdmission(input: {
 }): StepMediaAdmission {
   const { deps, step, emitter } = input;
   const descriptors = readBackendDescriptors(deps.generate);
+  // An opaque candidate behind a dispatcher: the rows above are not everything
+  // the call can reach, so eligibility is dispatch's question, not admission's.
+  const unionIncomplete = isDescriptorUnionIncomplete(descriptors);
   const memo = new Map<string, MemoizedResolution>();
 
   async function resolve(located: LocatedMedia): Promise<Resolution> {
@@ -346,15 +358,24 @@ export function createStepMediaAdmission(input: {
     const requirements = locateInputMedia(conversation, resolvedSources).map(
       ({ requirement }) => requirement,
     );
-    const admitting = descriptors.filter(
-      (descriptor) => evaluateInputMedia(descriptor, requirements).eligible,
+    const admitting = unionIncomplete
+      ? descriptors
+      : descriptors.filter((descriptor) => evaluateInputMedia(descriptor, requirements).eligible);
+    const noBackendAdmits = !unionIncomplete && descriptors.length > 0 && admitting.length === 0;
+    const catalogEstimate = createCatalogMediaCostEstimator(
+      admitting.length > 0 ? admitting : descriptors,
+      { resolvedSources },
     );
-    const noBackendAdmits = descriptors.length > 0 && admitting.length === 0;
-    const estimate =
+    const estimate: MediaCostEstimator =
       deps.mediaCostEstimator ??
-      createCatalogMediaCostEstimator(admitting.length > 0 ? admitting : descriptors, {
-        resolvedSources,
-      });
+      (unionIncomplete
+        ? (part, position) => {
+            const outcome = catalogEstimate(part, position);
+            return outcome.outcome === 'estimated'
+              ? outcome
+              : { ...position, modality: part.type, outcome: 'unbounded', reason: 'no-estimator' };
+          }
+        : catalogEstimate);
     // When no backend takes the whole request, blame the parts that single it
     // out, not the set; see `refusalsWhenNoBackendAdmits`.
     const blamed = noBackendAdmits

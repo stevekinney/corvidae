@@ -21,7 +21,7 @@ import type {
   MimeFamily,
   ResolvedMediaSources,
 } from 'conversationalist';
-import { baseMimeType, parseDataUrl } from 'conversationalist';
+import { baseMimeType, isDocumentMimeType, parseDataUrl } from 'conversationalist';
 
 import type { BackendDescriptor } from '../providers/model-catalog';
 import type { MediaCostEstimator, MediaCostOutcome, MediaPartPosition } from './types';
@@ -45,7 +45,10 @@ const MINIMUM_MEDIA_TOKENS = 1;
 
 /**
  * The MIME family a media type belongs to, or `undefined` when none is declared.
- * Read from the base type, so a parameter or the type's case never changes it.
+ * Read from the base type, so a parameter or the type's case never changes it,
+ * and from the shared document table, so every type the schema accepts as a
+ * document (PDF, structured text, the office containers) is in the `document`
+ * family a descriptor advertises.
  */
 export function mimeFamilyOf(mimeType: string | undefined): MimeFamily | undefined {
   if (mimeType === undefined) return undefined;
@@ -60,7 +63,7 @@ export function mimeFamilyOf(mimeType: string | undefined): MimeFamily | undefin
     case 'model':
       return family;
     default:
-      return base === 'application/pdf' ? 'document' : 'application';
+      return isDocumentMimeType(base) ? 'document' : 'application';
   }
 }
 

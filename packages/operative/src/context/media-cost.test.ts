@@ -265,3 +265,19 @@ describe('mimeFamilyOf reads the base media type (COR-716)', () => {
     expect(mimeFamilyOf('Text/Plain; charset=utf-8')).toBe('text');
   });
 });
+
+describe('mimeFamilyOf reads the shared document table (COR-716)', () => {
+  it('puts the structured-text and office document types in the document family', () => {
+    for (const mimeType of [
+      'application/json',
+      'application/xml',
+      'application/rtf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]) {
+      expect(mimeFamilyOf(mimeType)).toBe('document');
+    }
+    expect(mimeFamilyOf('application/octet-stream')).toBe('application');
+    expect(mimeFamilyOf('text/csv')).toBe('text');
+  });
+});

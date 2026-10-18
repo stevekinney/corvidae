@@ -1,4 +1,6 @@
 import {
+  isDescriptorUnionIncomplete,
+  markDescriptorUnionIncomplete,
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../backend-descriptor-attachment.ts';
@@ -69,8 +71,13 @@ function unionDescriptors(
   routeMap: ReadonlyMap<string, RoutingOptions['routes'][number]>,
 ): readonly BackendDescriptor[] {
   const byKey = new Map<string, BackendDescriptor>();
+  let incomplete = false;
   for (const route of routeMap.values()) {
-    for (const descriptor of readBackendDescriptors(route.generate)) {
+    const descriptors = readBackendDescriptors(route.generate);
+    // COR-716: an opaque route (no descriptor), or one whose own union is
+    // incomplete, leaves this union not describing every reachable backend.
+    if (descriptors.length === 0 || isDescriptorUnionIncomplete(descriptors)) incomplete = true;
+    for (const descriptor of descriptors) {
       const key = tripleKey(descriptor);
       const existing = byKey.get(key);
       if (!existing || conservativeOrder(descriptor, existing) < 0) {
@@ -78,9 +85,10 @@ function unionDescriptors(
       }
     }
   }
-  return [...byKey.entries()]
+  const union = [...byKey.entries()]
     .toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([, descriptor]) => descriptor);
+  return incomplete ? markDescriptorUnionIncomplete(union) : union;
 }
 
 /**

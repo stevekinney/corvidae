@@ -43,7 +43,8 @@ export function isTextualMimeType(mimeType: string | undefined): boolean {
   );
 }
 
-function isDocumentMimeType(base: string): boolean {
+/** Whether a base media type is a document type: PDF, text, structured text, or an office container. */
+export function isDocumentMimeType(base: string): boolean {
   return (
     DOCUMENT_MIME_TYPES.has(base) ||
     base.startsWith('application/vnd.openxmlformats-officedocument.') ||

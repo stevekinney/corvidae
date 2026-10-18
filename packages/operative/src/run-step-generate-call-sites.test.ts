@@ -5,7 +5,9 @@
  * admission and the mutated-retry derivation live), and the two
  * `onMaximumSteps` tails derive `resolvedSources` before handing the handler
  * its context. A new path to `generate` must either go through one of these or
- * be added here with its own derivation.
+ * be added here with its own derivation. Counts are exact, so a new reference
+ * in an already-allowed file fails too, and a destructured alias
+ * (`const { generate } = deps`) is caught as well.
  */
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -34,17 +36,42 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return files;
 }
 
+/** Every reference to the run's generate function in one source file. */
+function referencesToDepsGenerate(text: string): {
+  readonly references: number;
+  readonly invocations: number;
+  readonly destructured: number;
+} {
+  return {
+    references: text.match(/\bdeps\.generate\b/g)?.length ?? 0,
+    // `deps.generate(` is a direct call; the sanctioned uses pass or read it.
+    invocations: text.match(/\bdeps\.generate\s*\(/g)?.length ?? 0,
+    // `const { generate } = deps`, `{ generate: g } = deps`, and `({ generate }: StepDeps)`.
+    destructured:
+      (text.match(/\{[^}]*\bgenerate\b[^}]*\}\s*=\s*(?:deps|input\.deps)\b/g)?.length ?? 0) +
+      (text.match(/\{[^}]*\bgenerate\b[^}]*\}\s*:\s*StepDeps\b/g)?.length ?? 0),
+  };
+}
+
 describe('every path to the run’s generate passes media admission (COR-716)', () => {
-  it('the step loop reaches deps.generate only through callGenerateWithRetry', async () => {
-    const callers = new Map<string, number>();
+  it('the step loop references deps.generate exactly where admission does, and never calls it directly', async () => {
+    const seen = new Map<string, ReturnType<typeof referencesToDepsGenerate>>();
     for (const file of await sourceFiles(SOURCE_ROOT)) {
       const text = await readFile(file, 'utf8');
-      const matches = text.match(/deps\.generate\b/g);
-      if (matches) callers.set(file.slice(SOURCE_ROOT.length + 1), matches.length);
+      const counts = referencesToDepsGenerate(text);
+      if (counts.references > 0 || counts.destructured > 0) {
+        seen.set(file.slice(SOURCE_ROOT.length + 1), counts);
+      }
     }
-    // `run-step-media.ts` reads the attached descriptors; `run-step-generation.ts`
-    // passes the function to `callGenerateWithRetry` (once per trace branch).
-    expect([...callers.keys()].toSorted()).toEqual(['run-step-generation.ts', 'run-step-media.ts']);
+    // `run-step-media.ts` reads the attached descriptors once;
+    // `run-step-generation.ts` passes the function to `callGenerateWithRetry`
+    // once per trace branch. Nothing calls it, and nothing aliases it.
+    expect(
+      Object.fromEntries([...seen.entries()].toSorted(([a], [b]) => a.localeCompare(b))),
+    ).toEqual({
+      'run-step-generation.ts': { references: 2, invocations: 0, destructured: 0 },
+      'run-step-media.ts': { references: 1, invocations: 0, destructured: 0 },
+    });
     const generation = await readFile(join(SOURCE_ROOT, 'run-step-generation.ts'), 'utf8');
     expect(generation.match(/callGenerateWithRetry\(\s*deps\.generate,/g)).toHaveLength(2);
     expect(generation.match(/admitMutated,/g)).toHaveLength(2);
@@ -57,7 +84,8 @@ describe('every path to the run’s generate passes media admission (COR-716)', 
     ] as const) {
       const text = await readFile(join(SOURCE_ROOT, file), 'utf8');
       expect(text).toMatch(invocation);
-      expect(text).toContain('createStepMediaAdmission(');
+      expect(text.match(/createStepMediaAdmission\(/g)).toHaveLength(1);
+      expect(text).toMatch(/\}\)\.derive\(conversation\)/);
     }
   });
 });

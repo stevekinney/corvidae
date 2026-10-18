@@ -8,14 +8,19 @@
  * the whole request.
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
+import { Engine, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
-import { Conversation } from 'conversationalist';
+import { Conversation, createConversationHistory } from 'conversationalist';
 
 import type { MediaCostEstimator } from '../src/context/types';
 import { createEarlyStoppingHandler } from '../src/create-early-stopping-handler';
 import { createActiveRun } from '../src/create-run';
+import { createCheckpointStore } from '../src/durable/checkpoint-store';
+import { createRunWorkflow } from '../src/durable/run-workflow';
+import { createStorageActivities } from '../src/durable/storage-activities';
+import type { DurableRunDeps } from '../src/durable/types';
 import { MediaAdmissionError } from '../src/errors';
 import { createFallbackGenerate } from '../src/generate-middleware';
 import type { OperativeHookMap } from '../src/hooks';
@@ -401,5 +406,204 @@ describe('dispatch is limited to the backends that admit the whole request (COR-
     expect((result.error as MediaAdmissionError).outcomes.map((outcome) => outcome.reason)).toEqual(
       ['no-backend-admits-media', 'no-backend-admits-media'],
     );
+  });
+});
+
+describe('an opaque candidate keeps the request reachable (COR-716)', () => {
+  const catalog = createModelCatalog();
+  const openai = catalog.descriptors.find(
+    (row) => row.provider === 'openai' && row.model === 'gpt-4o',
+  )!;
+  const audio: MediaContent = {
+    type: 'audio',
+    mimeType: 'audio/mpeg',
+    source: { kind: 'inline', data: 'QUJD', encoding: 'base64' },
+  };
+
+  function described(name: string, descriptor: BackendDescriptor, calls: string[]) {
+    return withBackendDescriptors(async () => {
+      calls.push(name);
+      return { content: `${name}-response`, toolCalls: [] };
+    }, [descriptor]);
+  }
+
+  /** A generator with no descriptors: nothing says it cannot take the audio. */
+  function opaque(calls: string[]): GenerateFunction {
+    return async () => {
+      calls.push('opaque');
+      return { content: 'opaque-response', toolCalls: [] };
+    };
+  }
+
+  async function runAudio(generate: GenerateFunction) {
+    const conversation = new Conversation();
+    conversation.appendUserMessage([audio]);
+    return createActiveRun({
+      generate,
+      toolbox: createToolbox([]),
+      conversation,
+      stopWhen: () => true,
+      mediaCostEstimator: estimate,
+    }).result;
+  }
+
+  it('routing: audio OpenAI cannot take reaches the opaque route', async () => {
+    const calls: string[] = [];
+    const result = await runAudio(
+      createRoutingGenerate({
+        routes: [
+          { name: 'openai', generate: described('openai', openai, calls) },
+          { name: 'opaque', generate: opaque(calls) },
+        ],
+        strategy: () => ({ route: 'openai', reason: 'preferred' }),
+        fallback: 'opaque',
+      }),
+    );
+    expect(result.error).toBeUndefined();
+    expect(calls).toEqual(['opaque']);
+  });
+
+  it('fallover: audio OpenAI cannot take reaches the opaque provider', async () => {
+    const calls: string[] = [];
+    const result = await runAudio(
+      createFalloverGenerate({
+        providers: [
+          { name: 'openai', generate: described('openai', openai, calls) },
+          { name: 'opaque', generate: opaque(calls) },
+        ],
+      }),
+    );
+    expect(result.error).toBeUndefined();
+    expect(calls).toEqual(['opaque']);
+  });
+
+  it('fallback: audio OpenAI cannot take reaches the opaque provider', async () => {
+    const calls: string[] = [];
+    const result = await runAudio(
+      createFallbackGenerate({ providers: [described('openai', openai, calls), opaque(calls)] }),
+    );
+    expect(result.error).toBeUndefined();
+    expect(calls).toEqual(['opaque']);
+  });
+});
+
+describe('the MIME family comes from the shared document table (COR-716)', () => {
+  it('admits an application/json document on a backend that accepts documents', async () => {
+    const anthropic = createModelCatalog().descriptors.find((row) => row.provider === 'anthropic')!;
+    const calls: string[] = [];
+    const conversation = new Conversation();
+    conversation.appendUserMessage([
+      {
+        type: 'document',
+        mimeType: 'application/json',
+        source: { kind: 'inline', data: 'e30=', encoding: 'base64' },
+      },
+    ]);
+    const result = await createActiveRun({
+      generate: withBackendDescriptors(async () => {
+        calls.push('anthropic');
+        return { content: 'ok', toolCalls: [] };
+      }, [anthropic]),
+      toolbox: createToolbox([]),
+      conversation,
+      stopWhen: () => true,
+    }).result;
+    expect(result.error).toBeUndefined();
+    expect(calls).toEqual(['anthropic']);
+  });
+});
+
+describe('the durable onMaximumSteps tail derives the media it hands the handler (COR-716)', () => {
+  async function runDurably(services: DurableRunDeps, prompt: MediaContent[]) {
+    const storage = new MemoryStorage();
+    const checkpointStore = createCheckpointStore(
+      textValueStore(storage, { disposeUnderlyingStorage: false }),
+    );
+    const activities = createStorageActivities(checkpointStore);
+    const engine = await Engine.create({
+      storage,
+      recover: false,
+      workflows: { agentRun: createRunWorkflow(checkpointStore, {}) },
+      activities: {
+        saveCursor: activities.saveCursor,
+        saveConversation: activities.saveConversation,
+        recordStep: activities.recordStep,
+      },
+    });
+    try {
+      const handle = await engine.start(
+        'agentRun',
+        { runId: 'early-stop', sessionId: 'early-stop', agentName: '', prompt, maximumSteps: 1 },
+        { id: 'early-stop', services },
+      );
+      return await handle.result();
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  }
+
+  it('hands the early-stopping call the resolved media under createRunWorkflow', async () => {
+    const summaries: GenerateContext[] = [];
+    const toolbox = createToolbox([]);
+    const result = await runDurably(
+      {
+        toolbox,
+        options: {
+          generate: recording([], 'still working'),
+          toolbox,
+          conversation: createConversationHistory(),
+          stopWhen: () => false,
+          mediaCostEstimator: estimate,
+          contentSourceResolver: resolver,
+          onMaximumSteps: createEarlyStoppingHandler(recording(summaries, 'summary')),
+        },
+      },
+      [managed('clean')],
+    );
+
+    expect(result.finishReason).toBe('maximum-steps');
+    expect(result.content).toBe('summary');
+    expect(summaries).toHaveLength(1);
+    const assetMessage = summaries[0]!.conversation
+      .getMessages()
+      .find((message) => message.role === 'user' && typeof message.content !== 'string');
+    expect(summaries[0]!.resolvedSources?.get(`${assetMessage!.id}:0`)).toMatchObject({
+      outcome: 'resolved',
+    });
+  });
+
+  it('refuses a flagged asset before the early-stopping call under createRunWorkflow', async () => {
+    const summaries: GenerateContext[] = [];
+    const toolbox = createToolbox([]);
+    const result = await runDurably(
+      {
+        toolbox,
+        options: {
+          generate: recording([], 'still working'),
+          toolbox,
+          conversation: createConversationHistory(),
+          stopWhen: () => false,
+          mediaCostEstimator: estimate,
+          // Clean while the step ran, flagged by the time the run ends.
+          contentSourceResolver: (() => {
+            let calls = 0;
+            const verdictResolver: ContentSourceResolver = async (part, position) => {
+              calls += 1;
+              const verdict = await resolver(part, position);
+              return verdict.outcome === 'resolved' && calls > 1
+                ? { ...verdict, safety: 'flagged' }
+                : verdict;
+            };
+            return verdictResolver;
+          })(),
+          onMaximumSteps: createEarlyStoppingHandler(recording(summaries, 'summary')),
+        },
+      },
+      [managed('later-flagged')],
+    );
+
+    expect(summaries).toHaveLength(0);
+    expect(result.finishReason).toBe('error');
+    expect(result.errorMessage).toContain('cannot be admitted');
   });
 });
