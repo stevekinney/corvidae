@@ -162,4 +162,63 @@ describe('createAssetContentSourceResolver', () => {
       source: { kind: 'remote-url', url: 'https://cdn.example.com/a.png' },
     });
   });
+
+  describe('cancellation', () => {
+    /** An asset service whose reads never settle on their own. */
+    function stalledService() {
+      let resolveCalls = 0;
+      let inspectCalls = 0;
+      const never = () => new Promise<never>(() => {});
+      const service = {
+        resolve: () => {
+          resolveCalls += 1;
+          return never();
+        },
+        inspect: () => {
+          inspectCalls += 1;
+          return never();
+        },
+      } as unknown as Parameters<typeof createAssetContentSourceResolver>[0];
+      return { service, calls: () => ({ resolveCalls, inspectCalls }) };
+    }
+
+    const part: MediaContent = {
+      type: 'image',
+      source: { kind: 'managed-asset', assetId: 'asset-1' },
+    };
+
+    it('releases a stalled read the moment the run’s signal aborts', async () => {
+      const { service } = stalledService();
+      const controller = new AbortController();
+      const pending = createAssetContentSourceResolver(service, 'alice')(part, {
+        ...position,
+        signal: controller.signal,
+      });
+      const outcome = pending.then(
+        () => 'settled',
+        (error: unknown) => error,
+      );
+
+      controller.abort(new Error('cancelled'));
+
+      expect(await outcome).toMatchObject({ message: 'cancelled' });
+    });
+
+    it('reads nothing when the signal was already aborted', async () => {
+      const { service, calls } = stalledService();
+      const controller = new AbortController();
+      controller.abort(new Error('cancelled'));
+
+      const outcome = await createAssetContentSourceResolver(service, 'alice')(part, {
+        ...position,
+        signal: controller.signal,
+      }).then(
+        () => 'settled',
+        (error: unknown) => error,
+      );
+
+      expect(outcome).toMatchObject({ message: 'cancelled' });
+      expect(calls()).toEqual({ resolveCalls: 0, inspectCalls: 0 });
+    });
+  });
 });

@@ -528,6 +528,7 @@ export type {
   CleanupAcknowledgement,
   CleanupAcknowledgementReason,
   ClosedOptions,
+  ContentSourceResolutionContext,
   ContentSourceResolver,
   ContextManagementOptions,
   Conversation,

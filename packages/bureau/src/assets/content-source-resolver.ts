@@ -34,8 +34,11 @@ export function createAssetContentSourceResolver(
   assets: AssetService,
   principalId: string,
 ): ContentSourceResolver {
-  return async (part) => {
+  return async (part, position) => {
     const { source } = part;
+    const { signal } = position;
+    // Reads nothing for a run that has already ended.
+    signal?.throwIfAborted();
     if (source.kind !== 'managed-asset') {
       return { outcome: 'unavailable', reason: 'source-kind-not-supported' };
     }
@@ -44,8 +47,8 @@ export function createAssetContentSourceResolver(
       ...(source.revision !== undefined ? { revision: source.revision } : {}),
     };
     try {
-      const resolved = await assets.resolve(reference, { id: principalId });
-      const safety = await readSafety(assets, source.assetId, principalId);
+      const resolved = await untilAborted(assets.resolve(reference, { id: principalId }), signal);
+      const safety = await untilAborted(readSafety(assets, source.assetId, principalId), signal);
       const { descriptor } = resolved;
       const facts = {
         ...(descriptor.mediaType !== undefined ? { mimeType: descriptor.mediaType } : {}),
@@ -99,4 +102,27 @@ function unavailableReason(error: unknown): string | undefined {
   if (error instanceof AssetUnavailableError) return 'asset-unavailable';
   if (error instanceof AssetIntegrityError) return 'asset-integrity-failed';
   return undefined;
+}
+
+/**
+ * `promise`'s result, or the signal's reason the moment it aborts. The asset service takes
+ * no signal, so a stalled storage read is abandoned rather than awaited: the run is released
+ * at once and the read's own outcome is ignored.
+ */
+async function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return promise;
+  let onAbort!: () => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    const value = await Promise.race([promise, aborted]);
+    // Checked immediately after the read: a read that finished as the run was cancelled
+    // is not used.
+    signal.throwIfAborted();
+    return value;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
 }

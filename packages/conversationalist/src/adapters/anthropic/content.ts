@@ -108,7 +108,7 @@ function toAnthropicMedia(
   if (payload === undefined || (source.kind === 'inline' && source.encoding === 'utf8')) {
     return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
   }
-  const declaredMimeType = payload.mimeType ?? effective.mimeType;
+  const declaredMimeType = effective.mimeType;
   if (declaredMimeType === undefined) {
     return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
   }

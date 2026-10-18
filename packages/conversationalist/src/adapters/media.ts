@@ -109,6 +109,24 @@ export interface EffectiveSource {
   readonly resolved: boolean;
 }
 
+/**
+ * The one precedence rule for the media type that names a part's bytes: the resolver's
+ * type, then the type the data URL itself declares, then the part's stored `mimeType`.
+ * The first two describe the bytes being sent; the stored type is only a label that can
+ * go stale. Every exporter, provider and protocol alike, reads the type through this.
+ */
+export function effectiveMimeType(
+  source: ContentSource,
+  resolvedMimeType: string | undefined,
+  storedMimeType: string | undefined,
+): string | undefined {
+  return (
+    resolvedMimeType ??
+    (source.kind === 'data-url' ? parseDataUrl(source.url)?.mimeType : undefined) ??
+    storedMimeType
+  );
+}
+
 export function effectiveSource(
   context: MediaExportContext,
   partIndex: number,
@@ -118,11 +136,15 @@ export function effectiveSource(
   if (resolved !== undefined) {
     return {
       source: resolved.source,
-      mimeType: resolved.mimeType ?? part.mimeType,
+      mimeType: effectiveMimeType(resolved.source, resolved.mimeType, part.mimeType),
       resolved: true,
     };
   }
-  return { source: part.source, mimeType: part.mimeType, resolved: false };
+  return {
+    source: part.source,
+    mimeType: effectiveMimeType(part.source, undefined, part.mimeType),
+    resolved: false,
+  };
 }
 
 /** Records the lineage entry for one delivered media part. */

@@ -75,6 +75,7 @@ import {
   locateInputMedia,
 } from './providers/selection';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
+import { explicitAbortReason } from './run-step-utilities';
 
 /** The source kinds a provider adapter can carry without a resolver. */
 const WIRE_SOURCE_KINDS: ReadonlySet<ContentSource['kind']> = new Set([
@@ -93,8 +94,11 @@ export interface StepMedia {
   readonly estimate: MediaCostEstimator;
 }
 
-/** The step outcome a failed derivation becomes: always an error, never a skip. */
-export type MediaRefusal = Extract<StepOutcome, { kind: 'error' }>;
+/**
+ * The step outcome a failed derivation becomes: an error, or an abort when the run
+ * was cancelled while its media resolved. Never a skip.
+ */
+export type MediaRefusal = Extract<StepOutcome, { kind: 'error' | 'abort' }>;
 
 /**
  * One step's admission. `derive` and `admit` compute the same thing; `derive`
@@ -104,7 +108,7 @@ export type MediaRefusal = Extract<StepOutcome, { kind: 'error' }>;
 export interface StepMediaAdmission {
   /** Derives the media admission for `conversation` as it is now; throws on refusal. */
   derive(conversation: Conversation): Promise<StepMedia>;
-  /** Like `derive`, but reports a refusal as the step's error outcome. */
+  /** Like `derive`, but reports a refusal as the step's error outcome (or its abort). */
   admit(conversation: Conversation): Promise<StepMedia | MediaRefusal>;
 }
 
@@ -156,6 +160,33 @@ type Resolution =
 interface MemoizedResolution {
   readonly identity: string;
   readonly resolution: Resolution;
+}
+
+/**
+ * Settles with `promise`, or rejects with the signal's reason the moment it aborts,
+ * whichever comes first. A read that ignores its signal is abandoned, not awaited, so
+ * cancelling a run cannot be held up by a resolver.
+ */
+async function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (signal === undefined) return promise;
+  if (signal.aborted) {
+    promise.catch(() => {});
+    signal.throwIfAborted();
+  }
+  let onAbort!: () => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    const value = await Promise.race([promise, aborted]);
+    // Checked immediately after the resolution: a read that finished as the run was
+    // cancelled is not admitted.
+    signal.throwIfAborted();
+    return value;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
 }
 
 function unsupported(
@@ -280,12 +311,20 @@ export function createStepMediaAdmission(input: {
     const { part, messageId, partIndex } = located;
     const key = `${messageId}:${partIndex}`;
     // A non-wire part never carries bytes, so its JSON is small and names it exactly.
-    const identity = JSON.stringify(part);
+    // Keyed by where the part sits and the source's own JSON, never by its descriptive
+    // fields: a guardrail that sanitizes a caption, alt text, or metadata changes the
+    // part but not its source, and must not cause the source to be read a second time
+    // (a file or resource can change between reads, sending bytes nothing inspected).
+    // The source of a non-wire part names bytes without carrying them, so it is small.
+    const identity = JSON.stringify(part.source);
     const remembered = memo.get(key);
     if (remembered !== undefined && remembered.identity === identity) return remembered.resolution;
     const resolver = deps.contentSourceResolver;
+    const signal = deps.signal;
     const result =
-      resolver === undefined ? undefined : await resolver(part, { messageId, partIndex });
+      resolver === undefined
+        ? undefined
+        : await untilAborted(resolver(part, { messageId, partIndex, signal }), signal);
     const resolution: Resolution =
       result?.outcome === 'resolved'
         ? { outcome: 'resolved', source: result }
@@ -411,6 +450,11 @@ export function createStepMediaAdmission(input: {
       try {
         return await derive(conversation);
       } catch (error) {
+        // A cancellation during resolution ends the run as aborted (COR-104), not as a
+        // policy error.
+        if (deps.signal?.aborted) {
+          return { kind: 'abort', reason: explicitAbortReason(deps.signal) };
+        }
         emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
         return { kind: 'error', error, errorKind: 'policy' };
       }

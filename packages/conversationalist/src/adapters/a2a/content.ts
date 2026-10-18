@@ -2,6 +2,7 @@ import type { MediaContent, MultiModalContent, TextContent } from '../../multi-m
 import type { JSONValue } from '../../types';
 import {
   createMediaPart,
+  effectiveMimeType,
   encodeUtf8Base64,
   inlineBase64Source,
   modalityFromMimeType,
@@ -167,7 +168,7 @@ function toA2AMediaPart(content: MediaContent): A2APart {
   if (bytes === undefined) {
     throw unsupportedA2AContent(content.type, 'its data URL carries no bytes.');
   }
-  const mediaType = content.mimeType ?? ('mimeType' in bytes ? bytes.mimeType : undefined);
+  const mediaType = effectiveMimeType(source, undefined, content.mimeType);
   const json =
     mediaType !== undefined && content.type === 'document'
       ? decodeCanonicalJSON(bytes.data)

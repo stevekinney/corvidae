@@ -8,6 +8,7 @@ import {
 import type { JSONValue } from '../../types';
 import {
   createMediaPart,
+  effectiveMimeType,
   encodeUtf8Base64,
   inlineBase64Source,
   parseDataUrl,
@@ -152,19 +153,15 @@ function toAGUIMediaPart(
 
 function toAGUIPartSource(part: MediaContent): PartSource {
   const { source } = part;
-  const mimeType = part.mimeType;
+  const mimeType = effectiveMimeType(source, undefined, part.mimeType);
   switch (source.kind) {
     case 'inline':
     case 'data-url': {
       const data =
         source.kind === 'inline'
-          ? {
-              value: source.encoding === 'base64' ? source.data : encodeUtf8Base64(source.data),
-              mimeType,
-            }
+          ? { value: source.encoding === 'base64' ? source.data : encodeUtf8Base64(source.data) }
           : parseDataUrl(source.url);
-      const resolvedMimeType = mimeType ?? data?.mimeType;
-      if (data === undefined || resolvedMimeType === undefined) {
+      if (data === undefined || mimeType === undefined) {
         throw unsupportedAGUIContent(
           part.type,
           'an AG-UI data source requires bytes and a media type.',
@@ -173,7 +170,7 @@ function toAGUIPartSource(part: MediaContent): PartSource {
       return {
         type: 'data',
         value: 'value' in data ? data.value : data.data,
-        mimeType: resolvedMimeType,
+        mimeType,
       };
     }
     case 'remote-url':

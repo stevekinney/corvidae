@@ -257,6 +257,19 @@ export interface GenerateContext {
 }
 
 /**
+ * Where a part sits, and the run's cancellation. A resolver reads bytes (a file, a
+ * resource, an artifact), so it must stop when the run does: `signal` is the run's own
+ * `AbortSignal`, passed on every call. A resolver that honors it releases its read at
+ * once; one that does not is still abandoned, because admission stops waiting for it the
+ * moment the signal aborts and the run ends as aborted.
+ */
+export interface ContentSourceResolutionContext {
+  readonly messageId: string;
+  readonly partIndex: number;
+  readonly signal?: AbortSignal | undefined;
+}
+
+/**
  * Projects a media part whose source no provider accepts directly (a managed
  * asset, an upload, a local file, an MCP resource, an A2A reference) to a form
  * one does. Bureau supplies it from its asset service; Operative cannot import
@@ -266,7 +279,7 @@ export interface GenerateContext {
  */
 export type ContentSourceResolver = (
   part: MediaContent,
-  position: { readonly messageId: string; readonly partIndex: number },
+  position: ContentSourceResolutionContext,
 ) => Promise<ResolvedMediaSource | { readonly outcome: 'unavailable'; readonly reason: string }>;
 
 /**

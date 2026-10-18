@@ -239,4 +239,70 @@ describe('a flagged asset never reaches generate (COR-716)', () => {
       expect(result.content).toContain('blocked');
     }
   });
+
+  it('sends the bytes the guardrail inspected when it sanitizes a descriptive field, resolving once', async () => {
+    const seen: GenerateContext[] = [];
+    const answers = ['QUJD', 'REVG'];
+    let calls = 0;
+    const resolver: ContentSourceResolver = async () => ({
+      outcome: 'resolved',
+      // A source that changes between reads: only the first is what the guardrail saw.
+      source: { kind: 'inline', data: answers[Math.min(calls++, 1)]!, encoding: 'base64' },
+      byteLength: 3,
+      safety: 'clean',
+    });
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on(
+      'prepareStep',
+      createInputGuardrail({
+        action: 'sanitize',
+        detectors: [
+          {
+            name: 'keyword',
+            detect: async (input: string) =>
+              input.includes('attack')
+                ? {
+                    triggered: true,
+                    confidence: 1,
+                    category: 'keyword',
+                    sanitized: input.replaceAll('attack', '[removed]'),
+                  }
+                : { triggered: false, confidence: 0, category: 'keyword' },
+          },
+        ],
+      }),
+    );
+    const conversation = new Conversation();
+    conversation.appendUserMessage([
+      {
+        type: 'image',
+        mimeType: 'image/png',
+        caption: 'please attack',
+        source: { kind: 'managed-asset', assetId: 'asset-1', revision: 1 },
+      },
+    ]);
+
+    await createActiveRun({
+      generate: async (context) => {
+        seen.push(context);
+        return { content: 'ok', toolCalls: [] };
+      },
+      toolbox: createToolbox([]),
+      conversation,
+      stopWhen: () => true,
+      mediaCostEstimator: estimate,
+      contentSourceResolver: resolver,
+      hooks,
+    }).result;
+
+    expect(calls).toBe(1);
+    const context = seen[0]!;
+    const user = context.conversation.getMessages().find((message) => message.role === 'user');
+    // The caption was sanitized, so the part the model sees is not the one that was resolved...
+    expect(user?.content).toMatchObject([{ caption: 'please [removed]' }]);
+    // ...yet the bytes are the ones the guardrail inspected.
+    expect(context.resolvedSources?.get(`${user!.id}:0`)).toMatchObject({
+      source: { data: 'QUJD' },
+    });
+  });
 });

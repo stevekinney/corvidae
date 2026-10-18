@@ -97,7 +97,7 @@ function toOpenAIMediaPart(
       // A base64 data URL goes through untouched; any other encoding is rebuilt
       // as one, and lineage says so.
       const payload = toBase64Payload(source);
-      const mimeType = payload?.mimeType ?? effective.mimeType;
+      const mimeType = effective.mimeType;
       if (payload === undefined || mimeType === undefined) {
         return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
       }
@@ -111,7 +111,7 @@ function toOpenAIMediaPart(
     }
     if (source.kind === 'inline') {
       const payload = toBase64Payload(source);
-      const mimeType = payload?.mimeType ?? effective.mimeType;
+      const mimeType = effective.mimeType;
       if (payload === undefined || mimeType === undefined) {
         return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
       }
@@ -152,7 +152,7 @@ function toOpenAIMediaPart(
     if (payload === undefined) {
       return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
     }
-    const mimeType = payload.mimeType ?? effective.mimeType;
+    const mimeType = effective.mimeType;
     if (mimeType === undefined) {
       return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
     }

@@ -135,7 +135,7 @@ function toGeminiMediaPart(
   if (payload === undefined) {
     return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
   }
-  const mimeType = payload.mimeType ?? effective.mimeType;
+  const mimeType = effective.mimeType;
   if (mimeType === undefined) {
     return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
   }
