@@ -265,14 +265,14 @@ describe('the history of a deleted session (COR-718)', () => {
       const reached = Promise.withResolvers<void>();
       const release = Promise.withResolvers<void>();
       let held = false;
-      (store as { load: typeof store.load }).load = (async (id: string) => {
+      store.load = async (id: string) => {
         if (!held && id === 'raced') {
           held = true;
           reached.resolve();
           await release.promise;
         }
         return originalLoad(id);
-      }) as typeof store.load;
+      };
 
       const received: DurableEventEnvelope[] = [];
       const subscription = bureau.subscribeEventHistory(
@@ -320,7 +320,7 @@ describe('the history of a deleted session (COR-718)', () => {
       const claimReached = Promise.withResolvers<void>();
       const releaseClaim = Promise.withResolvers<void>();
       let holding = true;
-      (outbox as { claim: typeof outbox.claim }).claim = (async (
+      (outbox as { claim: typeof outbox.claim }).claim = async (
         ...args: Parameters<typeof outbox.claim>
       ) => {
         if (holding) {
@@ -328,7 +328,7 @@ describe('the history of a deleted session (COR-718)', () => {
           await releaseClaim.promise;
         }
         return originalClaim(...args);
-      }) as typeof outbox.claim;
+      };
 
       const deletion = bureau.deleteSession('pending');
       await claimReached.promise;
@@ -390,7 +390,7 @@ describe('the history of a deleted session (COR-718)', () => {
       const reachedPostLoad = Promise.withResolvers<void>();
       const release = Promise.withResolvers<void>();
       let calls = 0;
-      (store as { load: typeof store.load }).load = (async (id: string) => {
+      store.load = async (id: string) => {
         if (id === 'swapped') {
           calls += 1;
           // The first loads authorize the read; the last one, after the page is in hand, is held.
@@ -400,7 +400,7 @@ describe('the history of a deleted session (COR-718)', () => {
           }
         }
         return originalLoad(id);
-      }) as typeof store.load;
+      };
 
       const pending = read(bureau, 'swapped', { principal: BOB });
       await reachedPostLoad.promise;
