@@ -57,7 +57,11 @@ export interface EntityIndex extends IndexSummary {
 }
 
 export type GraphEdgeKind =
-  'lineage' | 'evidence-supersession' | 'projection-supersession' | 'covers';
+  | 'lineage'
+  | 'evidence-supersession'
+  | 'projection-supersession'
+  | 'projection-demotion'
+  | 'covers';
 
 /** A node is `evidence:<id>` or `projection:<id>`, so the two id spaces never collide. */
 export interface GraphEdge {
@@ -86,6 +90,38 @@ export interface BuildDerivedIndexesInput {
   readonly authority: MemoryAuthority;
 }
 
+/** Why a set of embeddings cannot share one vector index. */
+export class EmbeddingMismatchError extends Error {
+  readonly code = 'embedding-mismatch';
+
+  constructor(
+    readonly reason: 'model' | 'dimension',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'EmbeddingMismatchError';
+  }
+}
+
+/** The evidence, marker, and projection reads kept straddling a concurrent commit. */
+export class DerivedIndexConsistencyError extends Error {
+  readonly code = 'inconsistent-read';
+
+  constructor(readonly attempts: number) {
+    super(
+      `Evidence and projections changed during ${attempts} consecutive reads; the indexes were not built.`,
+    );
+    this.name = 'DerivedIndexConsistencyError';
+  }
+}
+
+/**
+ * The weight a `demoted` projection's lexical and vector scores are multiplied
+ * by: a demoted projection stays recallable, at lower weight than an
+ * equivalent active one.
+ */
+export const DEMOTED_SCORE_WEIGHT = 0.5;
+
 function compareText(left: string, right: string): number {
   if (left < right) return -1;
   return left > right ? 1 : 0;
@@ -103,10 +139,12 @@ function assertSourceDigests(
   evidence: readonly EvidenceRecord[],
   projections: readonly EvidenceProjectionRecord[],
 ): void {
-  const digests = new Map(evidence.map((record) => [record.id, record.digest]));
+  const digests = new Map(evidence.map((record) => [tenantQualified(record), record.digest]));
   for (const projection of projections) {
     for (const source of projection.sources) {
-      const stored = digests.get(source.evidenceId);
+      const stored = digests.get(
+        tenantQualified({ tenantId: projection.tenantId, id: source.evidenceId }),
+      );
       if (stored !== undefined && stored !== source.digest) {
         throw new MemoryEvidenceValidationError(
           'digest-mismatch',
@@ -116,6 +154,11 @@ function assertSourceDigests(
       }
     }
   }
+}
+
+/** Evidence ids repeat across tenants, so every lookup by id is qualified by its tenant. */
+function tenantQualified(record: { tenantId: string; id: string }): string {
+  return `${record.tenantId}\0${record.id}`;
 }
 
 function admitEvidence(input: BuildDerivedIndexesInput): EvidenceRecord[] {
@@ -141,10 +184,16 @@ function admitEvidence(input: BuildDerivedIndexesInput): EvidenceRecord[] {
 function admitProjections(
   projections: readonly EvidenceProjectionRecord[],
   admittedEvidence: ReadonlySet<string>,
+  tenantId: string,
 ): EvidenceProjectionRecord[] {
   return projections
+    .filter((record) => record.tenantId === tenantId)
     .filter((record) => record.status === 'active' || record.status === 'demoted')
-    .filter((record) => record.sources.every((source) => admittedEvidence.has(source.evidenceId)))
+    .filter((record) =>
+      record.sources.every((source) =>
+        admittedEvidence.has(tenantQualified({ tenantId: record.tenantId, id: source.evidenceId })),
+      ),
+    )
     .toSorted(compareProjections);
 }
 
@@ -162,6 +211,12 @@ function fingerprintOf(
     ]),
   };
   return `sha256:${sha256HexSync(JSON.stringify(input))}`;
+}
+
+/** Demoted projections stay recallable at lower weight; a negative score is pushed further down. */
+function weighted(score: number, status: EvidenceProjectionRecord['status']): number {
+  if (status !== 'demoted') return score;
+  return score >= 0 ? score * DEMOTED_SCORE_WEIGHT : score / DEMOTED_SCORE_WEIGHT;
 }
 
 function byScoreThenId(left: ProjectionHit, right: ProjectionHit): number {
@@ -182,7 +237,11 @@ function buildLexical(
       for (const [index, score] of scores) {
         const record = projections[index];
         if (record !== undefined && score > 0) {
-          hits.push({ id: record.id, revision: record.revision, score });
+          hits.push({
+            id: record.id,
+            revision: record.revision,
+            score: weighted(score, record.status),
+          });
         }
       }
       return hits.toSorted(byScoreThenId).slice(0, options.limit);
@@ -198,10 +257,18 @@ function buildVector(
     record.embedding === undefined ? [] : [{ record, embedding: record.embedding }],
   );
   const model = embedded[0]?.embedding.model;
+  const dimension = embedded[0]?.embedding.vector.length;
   for (const entry of embedded) {
     if (entry.embedding.model !== model) {
-      throw new Error(
+      throw new EmbeddingMismatchError(
+        'model',
         `Projections in one namespace mix embedding models "${model}" and "${entry.embedding.model}"; rebuild them with one model.`,
+      );
+    }
+    if (entry.embedding.vector.length !== dimension) {
+      throw new EmbeddingMismatchError(
+        'dimension',
+        `Projection "${entry.record.id}" has a ${entry.embedding.vector.length}-dimensional embedding where the others have ${dimension}; rebuild them with one model.`,
       );
     }
   }
@@ -213,7 +280,7 @@ function buildVector(
       const hits = embedded.map((entry): ProjectionHit => ({
         id: entry.record.id,
         revision: entry.record.revision,
-        score: cosineSimilarity(vector, entry.embedding.vector),
+        score: weighted(cosineSimilarity(vector, entry.embedding.vector), entry.record.status),
       }));
       const kept =
         options.threshold === undefined
@@ -311,7 +378,7 @@ function edgesOf(
       edges.push({
         from,
         to: projectionNode(transition.demotedBy.id),
-        kind: 'projection-supersession',
+        kind: 'projection-demotion',
       });
     }
     if (record.kind === 'summary') {
@@ -361,7 +428,8 @@ export function buildDerivedIndexes(input: BuildDerivedIndexesInput): DerivedInd
   const evidence = admitEvidence(input);
   const projections = admitProjections(
     input.projections,
-    new Set(evidence.map((record) => record.id)),
+    new Set(evidence.map(tenantQualified)),
+    input.authority.tenantId,
   );
   const inputFingerprint = fingerprintOf(evidence, projections);
   return {
@@ -374,7 +442,48 @@ export function buildDerivedIndexes(input: BuildDerivedIndexesInput): DerivedInd
   };
 }
 
-/** Reads the tenant's evidence and one namespace's projections from storage, then builds. */
+/** A read set is taken at most this many times, each time twice, before giving up. */
+const MAXIMUM_READ_ATTEMPTS = 3;
+
+interface StorageRead {
+  readonly evidence: EvidenceRecord[];
+  readonly supersessions: ReadonlyMap<string, EvidenceSupersession>;
+  readonly projections: EvidenceProjectionRecord[];
+}
+
+/** The three reads in a fixed order: evidence first, then markers, then projections. */
+async function readOnce(
+  storage: EvidenceProjectionStorage,
+  tenantId: string,
+  namespace: string,
+): Promise<StorageRead> {
+  const evidence = await storage.listEvidence({ tenantId, includeSuperseded: true });
+  const supersessions = await storage.listEvidenceSupersessions({ tenantId });
+  const projections = await storage.listProjections({ tenantId, namespace });
+  return { evidence, supersessions, projections };
+}
+
+function signatureOf(read: StorageRead): string {
+  return JSON.stringify([
+    read.evidence.map((record) => `${record.id}\0${record.digest}`).toSorted(compareText),
+    [...read.supersessions.keys()].toSorted(compareText),
+    read.projections.map((record) => `${record.id}@${record.revision}`).toSorted(compareText),
+  ]);
+}
+
+/**
+ * Reads the tenant's evidence and one namespace's projections from storage,
+ * then builds.
+ *
+ * The three reads are not one snapshot, and a correction commits evidence, a
+ * marker, and projections atomically: a read that straddled it could see the
+ * old evidence with the new projections, and drop both the old projection and
+ * its replacement. Evidence and markers only ever grow, and a correction always
+ * adds evidence, so reading twice and comparing detects any commit that landed
+ * between the first read's evidence and the end of the pass. The read is
+ * repeated until two passes agree, up to three attempts, then fails with
+ * {@link DerivedIndexConsistencyError}. This adds no persisted state.
+ */
 export async function rebuildDerivedIndexes(options: {
   readonly storage: EvidenceProjectionStorage;
   readonly tenantId: string;
@@ -382,10 +491,12 @@ export async function rebuildDerivedIndexes(options: {
   readonly authority: MemoryAuthority;
 }): Promise<DerivedIndexes> {
   const { storage, tenantId, namespace, authority } = options;
-  const [evidence, supersessions, projections] = await Promise.all([
-    storage.listEvidence({ tenantId, includeSuperseded: true }),
-    storage.listEvidenceSupersessions({ tenantId }),
-    storage.listProjections({ tenantId, namespace }),
-  ]);
-  return buildDerivedIndexes({ evidence, supersessions, projections, authority });
+  for (let attempt = 1; attempt <= MAXIMUM_READ_ATTEMPTS; attempt++) {
+    const first = await readOnce(storage, tenantId, namespace);
+    const second = await readOnce(storage, tenantId, namespace);
+    if (signatureOf(first) === signatureOf(second)) {
+      return buildDerivedIndexes({ ...second, authority });
+    }
+  }
+  throw new DerivedIndexConsistencyError(MAXIMUM_READ_ATTEMPTS);
 }

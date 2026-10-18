@@ -112,7 +112,11 @@ const episodePayload = z
     occurredFrom: epochMilliseconds,
     occurredTo: epochMilliseconds.optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) => payload.occurredTo === undefined || payload.occurredTo >= payload.occurredFrom,
+    'an episode does not end before it begins',
+  );
 const procedurePayload = z.object({ title: nonEmpty, steps: z.array(nonEmpty).min(1) }).strict();
 const preferencePayload = z.object({ subject: nonEmpty, statement: nonEmpty }).strict();
 const summaryPayload = z
@@ -127,7 +131,11 @@ const chunkPayload = z
     heading: nonEmpty.optional(),
     steps: z.array(transformationStepSchema).min(1),
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) => payload.endLine >= payload.startLine,
+    'a chunk does not end before it begins',
+  );
 
 const STATUS_OF_TRANSITION: Readonly<
   Record<(typeof PROJECTION_TRANSITION_KINDS)[number], ProjectionStatus>
@@ -164,6 +172,10 @@ export const evidenceProjectionRecordSchema = z
     (record) =>
       new Set(record.sources.map((source) => source.evidenceId)).size === record.sources.length,
     'sources are distinct',
+  )
+  .refine(
+    (record) => record.kind !== 'chunk' || record.sources.length === 1,
+    'a chunk projects exactly one source',
   )
   .refine(
     (record) =>

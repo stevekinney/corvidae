@@ -1,11 +1,12 @@
-import { MemoryStorage, WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import {
+  encodeStorageKeyComponent,
+  MAX_BATCH_OPERATIONS,
+  MemoryStorage,
+  WEFT_RESERVED_KEY_PREFIXES,
+} from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import {
-  createWeftEvidenceProjectionStorage,
-  DEFAULT_EVIDENCE_KEY_PREFIX,
-  DEFAULT_PROJECTION_KEY_PREFIX,
-} from '../src/create-weft-evidence-projection-storage';
+import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';
 import { assertDisjointKeyPrefixes } from '../src/create-weft-evidence-projection-storage-helpers';
 import { DEFAULT_MEMORY_KEY_PREFIX } from '../src/create-weft-memory-record-storage';
 import {
@@ -13,8 +14,13 @@ import {
   type DerivedIndexes,
   rebuildDerivedIndexes,
 } from '../src/derived-indexes';
-import { createEvidenceProjectionKeys } from '../src/evidence-projection-keys';
+import {
+  createEvidenceProjectionKeys,
+  DEFAULT_EVIDENCE_KEY_PREFIX,
+  DEFAULT_PROJECTION_KEY_PREFIX,
+} from '../src/evidence-projection-keys';
 import type { EvidenceProjectionRecord } from '../src/evidence-projection-schema';
+import { MAX_COMMIT_BATCH_OPERATIONS } from '../src/evidence-projection-store-core';
 import { digestOfText } from '../src/evidence-schema';
 import {
   FIXED_AT,
@@ -117,14 +123,37 @@ describe('key families', () => {
     ).toBe(true);
   });
 
-  it('percent-encodes components so a hostile id cannot reach another tenant or family', async () => {
+  it('[item 13] percent-encodes a tenant so one holding the key delimiters cannot reach another', async () => {
     const underlying = new MemoryStorage();
     const storage = createWeftEvidenceProjectionStorage(underlying);
-    const hostile = makeInlineEvidence('e1:x:e2', { tenantId: 'tenant-a' });
+    const hostile = makeInlineEvidence('w', { tenantId: `${TENANT}:e:z` });
     await storage.appendEvidence(hostile);
-    expect(await storage.getEvidence(TENANT, 'e1:x:e2')).toEqual(hostile);
-    expect(await storage.getEvidence(TENANT, 'e1')).toBeUndefined();
+    expect(await storage.getEvidence(`${TENANT}:e:z`, 'w')).toEqual(hostile);
+    expect(await storage.getEvidence(TENANT, 'z')).toBeUndefined();
+    expect(await storage.listEvidence({ tenantId: TENANT })).toEqual([]);
     expect(await storage.listEvidenceSupersessions({ tenantId: TENANT })).toEqual(new Map());
+  });
+
+  it('[item 10] builds keys exactly as Weft encodes a storage key component', () => {
+    const keys = createEvidenceProjectionKeys();
+    const hostile = 'a:b/c d%e?f#g\u00e9\u{1f600}';
+    const tenant = `${TENANT}:e:z`;
+    expect(keys.evidence(tenant, hostile)).toBe(
+      `${DEFAULT_EVIDENCE_KEY_PREFIX}t:${encodeStorageKeyComponent(tenant)}:e:${encodeStorageKeyComponent(hostile)}`,
+    );
+    expect(keys.supersession(tenant, hostile)).toBe(
+      `${DEFAULT_EVIDENCE_KEY_PREFIX}t:${encodeStorageKeyComponent(tenant)}:x:${encodeStorageKeyComponent(hostile)}`,
+    );
+    expect(keys.current(tenant, hostile, hostile)).toBe(
+      `${DEFAULT_PROJECTION_KEY_PREFIX}t:${encodeStorageKeyComponent(tenant)}:n:${encodeStorageKeyComponent(hostile)}:c:${encodeStorageKeyComponent(hostile)}`,
+    );
+    expect(keys.history(tenant, hostile, hostile, 3)).toBe(
+      `${DEFAULT_PROJECTION_KEY_PREFIX}t:${encodeStorageKeyComponent(tenant)}:n:${encodeStorageKeyComponent(hostile)}:h:${encodeStorageKeyComponent(hostile)}:0000000003`,
+    );
+  });
+
+  it("[item 19] mirrors Weft's batch cap", () => {
+    expect(MAX_COMMIT_BATCH_OPERATIONS).toBe(MAX_BATCH_OPERATIONS);
   });
 
   it('orders history numerically past revision 9', async () => {

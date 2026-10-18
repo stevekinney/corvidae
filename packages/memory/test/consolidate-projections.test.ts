@@ -134,7 +134,7 @@ for (const [label, makeBackend] of BACKENDS) {
       ]);
     });
 
-    it('demotes without claiming to have replaced the candidates', async () => {
+    it('[item 5] demotes without claiming to have replaced the candidates', async () => {
       const storage = await seeded(makeBackend);
       const { summary } = await consolidate(storage, 'demote');
 
@@ -159,8 +159,13 @@ for (const [label, makeBackend] of BACKENDS) {
       expect(indexes.graph.query({ from: 'projection:f1' })).toContainEqual({
         from: 'projection:f1',
         to: 'projection:s1',
-        kind: 'projection-supersession',
+        kind: 'projection-demotion',
       });
+      // [item 5] A demotion is not a supersession: no edge of that kind is emitted for it.
+      const everyEdge = ['projection:f1', 'projection:f2', 'projection:s1'].flatMap((from) =>
+        indexes.graph.query({ from }),
+      );
+      expect(everyEdge.map((edge) => edge.kind)).not.toContain('projection-supersession');
       expect(
         indexes.graph
           .query({ from: 'projection:s1' })

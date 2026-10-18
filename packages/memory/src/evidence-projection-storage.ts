@@ -109,8 +109,10 @@ export class EvidenceImmutableError extends Error {
 
 /**
  * A projection's revision is not the stored current revision plus one, or the
- * commit lost its compare-and-swap. `namespace` is `undefined` when the commit
- * wrote no projection, and `ids` is empty then.
+ * commit lost its compare-and-swap. `namespace` is the one namespace every
+ * named projection shares, and `undefined` when the commit wrote no projection
+ * (`ids` is empty then) or when the named projections span more than one
+ * namespace (read `ids` and the commit to tell them apart).
  */
 export class ProjectionRevisionConflictError extends Error {
   readonly code = 'revision-conflict';
@@ -143,6 +145,26 @@ export class EvidenceProjectionCommitError extends Error {
   ) {
     super(message);
     this.name = 'EvidenceProjectionCommitError';
+  }
+}
+
+/**
+ * A commit needs more conditions or operations than one conditional batch may
+ * hold. Both backends refuse it with this error before applying anything, so
+ * they honor one contract; the cap mirrors Weft's `MAX_BATCH_OPERATIONS`.
+ */
+export class EvidenceProjectionBatchLimitError extends Error {
+  readonly code = 'batch-limit';
+
+  constructor(
+    readonly target: 'conditions' | 'operations',
+    readonly count: number,
+    readonly cap: number,
+  ) {
+    super(
+      `The commit needs ${count} ${target}, past the batch cap of ${cap}; nothing was written.`,
+    );
+    this.name = 'EvidenceProjectionBatchLimitError';
   }
 }
 

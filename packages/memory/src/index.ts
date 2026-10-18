@@ -263,6 +263,45 @@ export { MemoryGovernancePolicyError } from './governance/policy';
 export { decideMemoryAccess } from './governance/predicate';
 export { collectionNamespace } from './governance/record-governance';
 // Derived record kinds and the governance metadata key are public constants.
+export { consolidateProjections } from './consolidate-projections';
+export { createInMemoryEvidenceProjectionStorage } from './create-in-memory-evidence-projection-storage';
+export { createWeftEvidenceProjectionStorage } from './create-weft-evidence-projection-storage';
+export {
+  DEMOTED_SCORE_WEIGHT,
+  DerivedIndexConsistencyError,
+  EmbeddingMismatchError,
+  buildDerivedIndexes,
+  rebuildDerivedIndexes,
+} from './derived-indexes';
+export {
+  MAX_PROJECTION_REVISION,
+  PROJECTION_KINDS,
+  PROJECTION_SCHEMA_VERSION,
+  PROJECTION_STATUSES,
+  PROJECTION_TRANSITION_KINDS,
+  TRANSFORMATION_STEPS,
+  decodeEvidenceProjectionRecord,
+  encodeEvidenceProjectionRecord,
+  evidenceProjectionRecordSchema,
+  projectionText,
+} from './evidence-projection-schema';
+export {
+  EvidenceImmutableError,
+  EvidenceProjectionBatchLimitError,
+  EvidenceProjectionCapacityError,
+  EvidenceProjectionCommitError,
+  ProjectionRevisionConflictError,
+} from './evidence-projection-storage';
+export {
+  EVIDENCE_KINDS,
+  EVIDENCE_SCHEMA_VERSION,
+  MEMORY_CLASSIFICATIONS,
+  MemoryEvidenceValidationError,
+  decodeEvidenceRecord,
+  digestOfText,
+  encodeEvidenceRecord,
+  evidenceRecordSchema,
+} from './evidence-schema';
 export {
   DERIVED_RECORD_KINDS,
   MEMORY_GOVERNANCE_METADATA_KEY,
@@ -297,38 +336,6 @@ export {
 } from './identity';
 export { CHUNK_INDEX_KEY, ingest } from './ingest';
 // The source-document key is public for ingestion metadata.
-export { consolidateProjections } from './consolidate-projections';
-export { createInMemoryEvidenceProjectionStorage } from './create-in-memory-evidence-projection-storage';
-export { createWeftEvidenceProjectionStorage } from './create-weft-evidence-projection-storage';
-export { buildDerivedIndexes, rebuildDerivedIndexes } from './derived-indexes';
-export {
-  MAX_PROJECTION_REVISION,
-  PROJECTION_KINDS,
-  PROJECTION_SCHEMA_VERSION,
-  PROJECTION_STATUSES,
-  PROJECTION_TRANSITION_KINDS,
-  TRANSFORMATION_STEPS,
-  decodeEvidenceProjectionRecord,
-  encodeEvidenceProjectionRecord,
-  evidenceProjectionRecordSchema,
-  projectionText,
-} from './evidence-projection-schema';
-export {
-  EvidenceImmutableError,
-  EvidenceProjectionCapacityError,
-  EvidenceProjectionCommitError,
-  ProjectionRevisionConflictError,
-} from './evidence-projection-storage';
-export {
-  EVIDENCE_KINDS,
-  EVIDENCE_SCHEMA_VERSION,
-  MEMORY_CLASSIFICATIONS,
-  MemoryEvidenceValidationError,
-  decodeEvidenceRecord,
-  digestOfText,
-  encodeEvidenceRecord,
-  evidenceRecordSchema,
-} from './evidence-schema';
 export { SOURCE_DOCUMENT_KEY } from './ingest';
 export { applyMaximalMarginalRelevance } from './maximal-marginal-relevance';
 export { MemoryRecordVersionConflictError } from './memory-record-storage';

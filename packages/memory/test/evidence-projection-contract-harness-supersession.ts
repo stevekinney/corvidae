@@ -149,22 +149,65 @@ export function registerSupersessionContractTests(options: {
       expect(await storage.listProjectionHistory(TENANT, NAMESPACE, 'p2')).toHaveLength(1);
     });
 
-    it('never stores a projection of evidence a concurrent correction superseded', async () => {
+    it('refuses a projection of evidence a concurrent correction superseded first', async () => {
+      const original = makeInlineEvidence('e1');
+      await storage.appendEvidence(original);
+      const [correction, projection] = await Promise.allSettled([
+        storage.commit({
+          tenantId: TENANT,
+          evidence: [makeInlineEvidence('e2', { supersedes: ['e1'] })],
+        }),
+        storage.commit({ tenantId: TENANT, projections: [makeFact('p1', [original])] }),
+      ]);
+      // The correction never conditions on dependents, so it always lands. The projection must
+      // lose the race: its "marker absent" condition on the source is what makes it fail.
+      expect(correction.status).toBe('fulfilled');
+      expect(projection.status).toBe('rejected');
+      expect(
+        ((projection as PromiseRejectedResult).reason as EvidenceProjectionCommitError).code,
+      ).toBe('evidence-superseded');
+      expect(await storage.getProjection(TENANT, NAMESPACE, 'p1')).toBeUndefined();
+    });
+
+    it('lets exactly one of two concurrent successors supersede one predecessor', async () => {
+      await storage.appendEvidence(makeInlineEvidence('e1'));
+      const outcomes = await Promise.allSettled([
+        storage.appendEvidence(makeInlineEvidence('e2', { supersedes: ['e1'] })),
+        storage.appendEvidence(makeInlineEvidence('e3', { supersedes: ['e1'] })),
+      ]);
+      const rejected = outcomes.filter((outcome) => outcome.status === 'rejected');
+      expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+      const reason = rejected[0]?.reason as EvidenceProjectionCommitError | undefined;
+      expect(reason?.code).toBe('evidence-superseded');
+    });
+
+    it('[item 1] refuses a projection created from evidence the same commit supersedes', async () => {
       const original = makeInlineEvidence('e1');
       await storage.appendEvidence(original);
       const correction = makeInlineEvidence('e2', { supersedes: ['e1'] });
-      const [correctionOutcome, projectionOutcome] = await Promise.allSettled([
-        storage.commit({ tenantId: TENANT, evidence: [correction] }),
-        storage.commit({ tenantId: TENANT, projections: [makeFact('p1', [original])] }),
-      ]);
-      expect(correctionOutcome.status).toBe('fulfilled');
-      const stored = (await storage.getProjection(TENANT, NAMESPACE, 'p1')) !== undefined;
-      expect(stored).toBe(projectionOutcome.status === 'fulfilled');
-      if (projectionOutcome.status === 'rejected') {
-        expect((projectionOutcome.reason as EvidenceProjectionCommitError).code).toBe(
-          'evidence-superseded',
-        );
-      }
+      const error = await rejectionOf(
+        storage.commit({
+          tenantId: TENANT,
+          evidence: [correction],
+          projections: [makeFact('p1', [original])],
+        }),
+      );
+      expect(error).toBeInstanceOf(EvidenceProjectionCommitError);
+      expect((error as EvidenceProjectionCommitError).code).toBe('evidence-superseded');
+      expect(await storage.getProjection(TENANT, NAMESPACE, 'p1')).toBeUndefined();
+      expect(await storage.getEvidence(TENANT, 'e2')).toBeUndefined();
+      expect(await storage.getEvidenceSupersession(TENANT, 'e1')).toBeUndefined();
+    });
+
+    it('[item 1] still allows a projection of the correcting evidence in the same commit', async () => {
+      await storage.appendEvidence(makeInlineEvidence('e1'));
+      const correction = makeInlineEvidence('e2', { supersedes: ['e1'] });
+      const result = await storage.commit({
+        tenantId: TENANT,
+        evidence: [correction],
+        projections: [makeFact('p1', [correction])],
+      });
+      expect(result.projections).toEqual([{ id: 'p1', revision: 1, outcome: 'written' }]);
     });
   });
 }

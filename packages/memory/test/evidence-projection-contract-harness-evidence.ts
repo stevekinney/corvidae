@@ -58,6 +58,20 @@ export function registerEvidenceContractTests(options: {
       expect(await storage.getEvidence(TENANT, 'e1')).toBeUndefined();
     });
 
+    it('lets exactly one of two concurrent appends of one id with different bytes win', async () => {
+      const first = makeInlineEvidence('e1', { text: 'First.' });
+      const second = makeInlineEvidence('e1', { text: 'Second.' });
+      const outcomes = await Promise.allSettled([
+        storage.appendEvidence(first),
+        storage.appendEvidence(second),
+      ]);
+      expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+      const rejected = outcomes.filter((outcome) => outcome.status === 'rejected');
+      expect(rejected[0]?.reason).toBeInstanceOf(EvidenceImmutableError);
+      const winner = outcomes[0]?.status === 'fulfilled' ? first : second;
+      expect(await storage.getEvidence(TENANT, 'e1')).toEqual(winner);
+    });
+
     it('lists evidence by owner', async () => {
       await storage.appendEvidence(makeInlineEvidence('e1'));
       await storage.appendEvidence(makeInlineEvidence('e2', { ownerId: 'owner-2' }));

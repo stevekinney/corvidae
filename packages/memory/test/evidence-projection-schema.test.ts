@@ -48,7 +48,6 @@ describe('projection schema rejection', () => {
     expect(codeOf(valid({ confidence: 1.5 }))).toBe('malformed');
     expect(codeOf(valid({ status: 'gone' }))).toBe('malformed');
     expect(codeOf(valid({ kind: 'index' }))).toBe('malformed');
-    expect(codeOf(valid({ revision: MAX_PROJECTION_REVISION + 1 }))).toBe('malformed');
     expect(codeOf(null)).toBe('malformed');
     expect(codeOf([])).toBe('malformed');
   });
@@ -160,5 +159,149 @@ describe('projection invariants', () => {
     };
     expect(projectionText(procedure as typeof base)).toBe('Brew\nboil\nsteep');
     expect(nextRevision(base, {}).revision).toBe(2);
+  });
+});
+
+const REBUILT = (revision: number) => ({
+  revision,
+  transition: { kind: 'rebuilt', at: FIXED_AT, rebuiltFromRevision: 1 },
+});
+
+describe('projection bounds and ranges', () => {
+  it('[item 14] bounds the revision, with every other rule satisfied', () => {
+    expect(
+      decodeEvidenceProjectionRecord(valid(REBUILT(MAX_PROJECTION_REVISION)), { tenantId: TENANT })
+        .revision,
+    ).toBe(MAX_PROJECTION_REVISION);
+    expect(codeOf(valid(REBUILT(MAX_PROJECTION_REVISION + 1)))).toBe('malformed');
+  });
+
+  it('[item 8] rejects an episode that ends before it begins', () => {
+    const episode = (occurredTo: number | undefined) =>
+      valid({
+        kind: 'episode',
+        payload: {
+          summary: 'An episode.',
+          occurredFrom: FIXED_AT + 10,
+          ...(occurredTo === undefined ? {} : { occurredTo }),
+        },
+      });
+    expect(codeOf(episode(FIXED_AT + 9))).toBe('malformed');
+    expect(decodeEvidenceProjectionRecord(episode(FIXED_AT + 10), { tenantId: TENANT }).kind).toBe(
+      'episode',
+    );
+    expect(decodeEvidenceProjectionRecord(episode(undefined), { tenantId: TENANT }).kind).toBe(
+      'episode',
+    );
+  });
+
+  it('[item 8] rejects a chunk whose last line precedes its first', () => {
+    const chunk = (startLine: number, endLine: number) =>
+      valid({
+        kind: 'chunk',
+        payload: {
+          text: 'Chunk text.',
+          ordinal: 0,
+          startLine,
+          endLine,
+          steps: [
+            {
+              step: 'chunk',
+              producer: { kind: 'service', id: 'chunker' },
+              inputDigest: evidence.digest,
+              outputDigest: evidence.digest,
+            },
+          ],
+        },
+      });
+    expect(codeOf(chunk(5, 4))).toBe('malformed');
+    expect(decodeEvidenceProjectionRecord(chunk(4, 4), { tenantId: TENANT }).kind).toBe('chunk');
+  });
+
+  it('[item 9] rejects a chunk with more than one source', () => {
+    const other = makeInlineEvidence('e2');
+    const chunk = (sources: unknown[]) =>
+      valid({
+        kind: 'chunk',
+        sources,
+        payload: {
+          text: 'Chunk text.',
+          ordinal: 0,
+          startLine: 0,
+          endLine: 1,
+          steps: [
+            {
+              step: 'chunk',
+              producer: { kind: 'service', id: 'chunker' },
+              inputDigest: evidence.digest,
+              outputDigest: evidence.digest,
+            },
+          ],
+        },
+      });
+    const one = { evidenceId: 'e1', digest: evidence.digest };
+    const two = { evidenceId: 'e2', digest: other.digest };
+    expect(codeOf(chunk([one, two]))).toBe('malformed');
+    expect(decodeEvidenceProjectionRecord(chunk([one]), { tenantId: TENANT }).kind).toBe('chunk');
+  });
+});
+
+describe('every projection kind decodes', () => {
+  const payloads: Record<string, unknown> = {
+    fact: { statement: 'A fact.', entities: [] },
+    episode: { summary: 'An episode.', occurredFrom: FIXED_AT },
+    procedure: { title: 'Brew', steps: ['boil', 'steep'] },
+    preference: { subject: 'Ana', statement: 'likes tea' },
+    summary: { text: 'A summary.', covers: [{ id: 'p0', revision: 1 }] },
+    chunk: {
+      text: 'A chunk.',
+      ordinal: 0,
+      startLine: 0,
+      endLine: 0,
+      steps: [
+        {
+          step: 'chunk',
+          producer: { kind: 'service', id: 'chunker' },
+          inputDigest: evidence.digest,
+          outputDigest: evidence.digest,
+        },
+      ],
+    },
+  };
+
+  it('[item 15] decodes one valid record of each persisted kind', () => {
+    expect(Object.keys(payloads)).toEqual([...PROJECTION_KINDS]);
+    for (const kind of PROJECTION_KINDS) {
+      const decoded = decodeEvidenceProjectionRecord(valid({ kind, payload: payloads[kind] }), {
+        tenantId: TENANT,
+      });
+      expect(decoded.kind).toBe(kind);
+    }
+  });
+
+  it('[item 15] renders the procedure lexical surface from a decoded record', () => {
+    const procedure = decodeEvidenceProjectionRecord(
+      valid({ kind: 'procedure', payload: payloads['procedure'] }),
+      { tenantId: TENANT },
+    );
+    expect(projectionText(procedure)).toBe('Brew\nboil\nsteep');
+  });
+});
+
+describe('encoders parse their input', () => {
+  it('[item 16] refuses an invalid projection instead of writing it', () => {
+    const invalid = {
+      ...decodeEvidenceProjectionRecord(valid(), { tenantId: TENANT }),
+      confidence: 7,
+    };
+    expect(() => encodeEvidenceProjectionRecord(invalid)).toThrow();
+  });
+
+  it('[item 16] encodes a caller object with reordered keys to the canonical bytes', () => {
+    const record = decodeEvidenceProjectionRecord(valid(), { tenantId: TENANT });
+    const reordered = Object.fromEntries(Object.entries(record).toReversed()) as typeof record;
+    expect(encodeEvidenceProjectionRecord(reordered)).toEqual(
+      encodeEvidenceProjectionRecord(record),
+    );
   });
 });

@@ -186,3 +186,17 @@ describe('evidence schema shape', () => {
     ).toThrow(MemoryEvidenceValidationError);
   });
 });
+
+describe('evidence encoder parses its input', () => {
+  it('[item 16] refuses an invalid record instead of writing it', () => {
+    const record = decodeEvidenceRecord(validEvidence(), { tenantId: TENANT });
+    expect(() => encodeEvidenceRecord({ ...record, trustTier: 'bogus' } as never)).toThrow();
+    expect(() => encodeEvidenceRecord({ ...record, extra: 1 } as never)).toThrow();
+  });
+
+  it('[item 16] encodes a caller object with reordered keys to the canonical bytes', () => {
+    const record = decodeEvidenceRecord(validEvidence(), { tenantId: TENANT });
+    const reordered = Object.fromEntries(Object.entries(record).toReversed()) as typeof record;
+    expect(encodeEvidenceRecord(reordered)).toEqual(encodeEvidenceRecord(record));
+  });
+});

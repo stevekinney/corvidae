@@ -55,6 +55,15 @@ export function registerTenantIsolationContractTests(options: {
       expect(indexes.lexical.query('Statement', { limit: 5 })).toHaveLength(1);
     });
 
+    it('keeps a tenant whose id contains the key delimiters out of another tenant', async () => {
+      await storage.appendEvidence(makeInlineEvidence('w', { tenantId: `${TENANT}:e:z` }));
+      await storage.appendEvidence(makeInlineEvidence('w', { tenantId: `${TENANT}:x:z` }));
+      expect(await storage.listEvidence({ tenantId: TENANT })).toEqual([]);
+      expect(await storage.listEvidenceSupersessions({ tenantId: TENANT })).toEqual(new Map());
+      expect(await storage.getEvidence(TENANT, 'z')).toBeUndefined();
+      expect(await storage.listEvidence({ tenantId: `${TENANT}:e:z` })).toHaveLength(1);
+    });
+
     it('does not see another tenant through a read', async () => {
       await storage.appendEvidence(makeInlineEvidence('e1'));
       expect(await storage.getEvidence(OTHER_TENANT, 'e1')).toBeUndefined();

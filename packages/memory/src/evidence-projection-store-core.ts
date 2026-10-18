@@ -8,6 +8,7 @@ import {
 } from './evidence-projection-schema';
 import {
   EvidenceImmutableError,
+  EvidenceProjectionBatchLimitError,
   type EvidenceProjectionCommit,
   EvidenceProjectionCommitError,
   type EvidenceProjectionCommitResult,
@@ -59,6 +60,13 @@ export interface PlannedBatch {
 
 /** Applies the batch only if every condition still holds. Resolves to whether it did. */
 export type ApplyPlannedBatch = (batch: PlannedBatch) => Promise<boolean>;
+
+/**
+ * Most conditions, and most operations, one commit's batch may hold. It mirrors
+ * Weft's `MAX_BATCH_OPERATIONS`; a Weft-only test asserts the two are equal, so
+ * the in-memory backend refuses exactly what the Weft-backed one would.
+ */
+export const MAX_COMMIT_BATCH_OPERATIONS = 10_000;
 
 /** A commit is re-read and re-planned at most this many times when its batch is lost. */
 const MAXIMUM_COMMIT_ATTEMPTS = 3;
@@ -114,6 +122,60 @@ function chunkChainBroken(record: EvidenceProjectionRecord, evidenceDigest: stri
 
 function digestMismatch(detail: string): never {
   throw new MemoryEvidenceValidationError('digest-mismatch', 'projection', detail);
+}
+
+function addressOf(record: { namespace: string; id: string; revision: number }): string {
+  return `${record.namespace}\0${record.id}\0${record.revision}`;
+}
+
+/**
+ * A reference to a projection revision this commit also writes is not checked
+ * against storage, so it must not be able to point back at itself: a revision
+ * that supersedes or covers itself, directly or through other new revisions, is
+ * refused. References to stored revisions cannot close a loop, since stored
+ * revisions are immutable and cannot refer to a revision written later.
+ */
+function assertNoReferenceCycle(projections: readonly EvidenceProjectionRecord[]): void {
+  const edges = new Map<string, string[]>();
+  for (const record of projections) {
+    edges.set(
+      addressOf(record),
+      referencesOf(record).map((reference) =>
+        addressOf({ ...reference, namespace: record.namespace }),
+      ),
+    );
+  }
+  const finished = new Set<string>();
+  const visit = (address: string, path: ReadonlySet<string>): void => {
+    if (finished.has(address)) return;
+    if (path.has(address)) {
+      throw new EvidenceProjectionCommitError(
+        'invalid-commit',
+        'The commit contains a projection revision that refers to itself, directly or through others.',
+      );
+    }
+    const next = new Set(path).add(address);
+    for (const target of edges.get(address) ?? []) if (edges.has(target)) visit(target, next);
+    finished.add(address);
+  };
+  for (const address of edges.keys()) visit(address, new Set());
+}
+
+function assertWithinBatchCap(batch: PlannedBatch): void {
+  if (batch.conditions.length > MAX_COMMIT_BATCH_OPERATIONS) {
+    throw new EvidenceProjectionBatchLimitError(
+      'conditions',
+      batch.conditions.length,
+      MAX_COMMIT_BATCH_OPERATIONS,
+    );
+  }
+  if (batch.operations.length > MAX_COMMIT_BATCH_OPERATIONS) {
+    throw new EvidenceProjectionBatchLimitError(
+      'operations',
+      batch.operations.length,
+      MAX_COMMIT_BATCH_OPERATIONS,
+    );
+  }
 }
 
 /** Accumulates the conditions and puts of one commit while it is being planned. */
@@ -253,10 +315,19 @@ export function createEvidenceProjectionStoreCore(options: {
     builder: BatchPlan,
     record: EvidenceProjectionRecord,
     appended: ReadonlyMap<string, EvidenceRecord>,
+    supersededNow: ReadonlySet<string>,
   ): Promise<void> {
     const { tenantId } = record;
     const chunkSource = record.sources[0];
     for (const source of record.sources) {
+      // Evidence this very commit supersedes has no marker yet, so the read below would not see
+      // it; a projection resting on it would be active the moment it is written.
+      if (supersededNow.has(source.evidenceId)) {
+        throw new EvidenceProjectionCommitError(
+          'evidence-superseded',
+          `Projection ${projectionLabel(record)} is built from evidence "${source.evidenceId}", which this commit supersedes.`,
+        );
+      }
       const inCommit = appended.get(source.evidenceId);
       let evidenceDigest: string;
       if (inCommit === undefined) {
@@ -357,6 +428,9 @@ export function createEvidenceProjectionStoreCore(options: {
     const inCommit = new Set(
       projections.map((record) => `${record.namespace}\0${record.id}\0${record.revision}`),
     );
+    const supersededNow = new Set(
+      [...appended.values()].flatMap((record) => record.supersedes ?? []),
+    );
     const outcomes: Array<EvidenceProjectionCommitResult['projections'][number]> = [];
     for (const record of projections) {
       const { tenantId, namespace, id } = record;
@@ -381,7 +455,7 @@ export function createEvidenceProjectionStoreCore(options: {
         builder.require(currentKey, stored.raw);
       }
       if (record.transition.kind === 'created' || record.transition.kind === 'rebuilt') {
-        await planSources(builder, record, appended);
+        await planSources(builder, record, appended, supersededNow);
       }
       await planReferences(record, inCommit);
       const historyKey = keys.history(tenantId, namespace, id, record.revision);
@@ -422,6 +496,7 @@ export function createEvidenceProjectionStoreCore(options: {
     if (predecessors.some((predecessor) => evidenceIds.has(predecessor))) {
       invalid('The commit supersedes evidence it also appends.');
     }
+    assertNoReferenceCycle(projections);
     return { evidence, projections };
   }
 
@@ -445,12 +520,15 @@ export function createEvidenceProjectionStoreCore(options: {
     for (let attempt = 1; attempt <= MAXIMUM_COMMIT_ATTEMPTS; attempt++) {
       const { batch, result } = await planCommit(request);
       if (batch.operations.length === 0) return result;
+      assertWithinBatchCap(batch);
       if (await apply(batch)) return result;
     }
     const projections = request.projections ?? [];
+    const namespaces = new Set(projections.map((record) => record.namespace));
     throw new ProjectionRevisionConflictError(
       request.tenantId,
-      projections[0]?.namespace,
+      // One namespace when every lost projection shares it; none when they span several.
+      namespaces.size === 1 ? [...namespaces][0] : undefined,
       projections.map((record) => record.id),
       'The commit lost its compare-and-swap; nothing was written.',
     );

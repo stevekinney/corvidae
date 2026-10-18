@@ -5,7 +5,10 @@ import { createInMemoryEvidenceProjectionStorage } from '../src/create-in-memory
 import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';
 import {
   buildDerivedIndexes,
+  DEMOTED_SCORE_WEIGHT,
+  DerivedIndexConsistencyError,
   type DerivedIndexes,
+  EmbeddingMismatchError,
   rebuildDerivedIndexes,
 } from '../src/derived-indexes';
 import { createEvidenceProjectionKeys } from '../src/evidence-projection-keys';
@@ -20,6 +23,9 @@ import {
   makeFact,
   makeInlineEvidence,
   NAMESPACE,
+  nextRevision,
+  OTHER_TENANT,
+  supersededRevision,
   TENANT,
 } from './evidence-projection-fixtures';
 
@@ -261,5 +267,237 @@ describe('buildDerivedIndexes', () => {
     expect(error).toBeInstanceOf(MemoryEvidenceValidationError);
     expect((error as MemoryEvidenceValidationError).code).toBe('digest-mismatch');
     expect((error as MemoryEvidenceValidationError).record).toBe('projection');
+  });
+});
+
+describe('tenant-qualified admission', () => {
+  it("[item 2] does not admit another tenant's projection that shares an evidence id and digest", () => {
+    const foreign = makeFact('f-foreign', [e1], { tenantId: OTHER_TENANT });
+    const indexes = buildDerivedIndexes({
+      evidence: [e1],
+      supersessions: new Map(),
+      projections: [foreign],
+      authority: makeAuthority(),
+    });
+    expect(indexes.temporal.query({ asOf: FIXED_AT + 1 })).toEqual([]);
+    expect(indexes.lexical.entryCount).toBe(0);
+    expect(indexes.graph.entryCount).toBe(0);
+  });
+
+  it('[item 2] does not confuse same-id evidence of two tenants when checking digests', () => {
+    const theirs = makeInlineEvidence('e1', { tenantId: OTHER_TENANT, text: 'Their text.' });
+    const mine = makeFact('f-mine', [e1]);
+    expect(() =>
+      buildDerivedIndexes({
+        evidence: [e1, theirs],
+        supersessions: new Map(),
+        projections: [mine],
+        authority: makeAuthority(),
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('embedding consistency', () => {
+  it('[item 4] refuses embeddings of different lengths under one model', () => {
+    const short = makeFact('short', [e1], { embedding: embedded([1, 0]) });
+    let failure: unknown;
+    try {
+      buildDerivedIndexes({
+        evidence: [e1],
+        supersessions: new Map(),
+        projections: [f1, short],
+        authority: makeAuthority(),
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(EmbeddingMismatchError);
+    expect((failure as EmbeddingMismatchError).reason).toBe('dimension');
+  });
+
+  it('[item 4] keeps refusing mixed models with the same typed error', () => {
+    const other = makeFact('other', [e1], {
+      embedding: { model: 'another-model', vector: [1, 0, 0] },
+    });
+    let failure: unknown;
+    try {
+      buildDerivedIndexes({
+        evidence: [e1],
+        supersessions: new Map(),
+        projections: [f1, other],
+        authority: makeAuthority(),
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(EmbeddingMismatchError);
+    expect((failure as EmbeddingMismatchError).reason).toBe('model');
+  });
+});
+
+describe('demotion', () => {
+  const statement = { statement: 'Ana prefers green tea', entities: [] };
+  const active = makeFact('b-active', [e1], { payload: statement, embedding: embedded([1, 0, 0]) });
+  const demotedBase = makeFact('a-demoted', [e1], {
+    payload: statement,
+    embedding: embedded([1, 0, 0]),
+  });
+  const demoted = nextRevision(demotedBase, {
+    status: 'demoted',
+    transition: { kind: 'demoted', at: FIXED_AT + 5, demotedBy: { id: 's9', revision: 1 } },
+  });
+  const indexes = buildDerivedIndexes({
+    evidence: [e1],
+    supersessions: new Map(),
+    projections: [demoted, active],
+    authority: makeAuthority(),
+  });
+
+  it('[item 6] ranks a demoted projection below an equivalent active one in the lexical index', () => {
+    const hits = indexes.lexical.query('green tea', { limit: 10 });
+    expect(hits.map((hit) => hit.id)).toEqual(['b-active', 'a-demoted']);
+    expect(hits[1]!.score).toBeLessThan(hits[0]!.score);
+    expect(hits[1]!.score).toBeCloseTo(hits[0]!.score * DEMOTED_SCORE_WEIGHT, 10);
+  });
+
+  it('[item 6] ranks a demoted projection below an equivalent active one in the vector index', () => {
+    const hits = indexes.vector.query([1, 0, 0], { limit: 10 });
+    expect(hits.map((hit) => hit.id)).toEqual(['b-active', 'a-demoted']);
+    expect(hits[1]!.score).toBeCloseTo(hits[0]!.score * DEMOTED_SCORE_WEIGHT, 10);
+  });
+
+  it('[item 6] applies the threshold to the weighted score', () => {
+    const hits = indexes.vector.query([1, 0, 0], { limit: 10, threshold: 0.9 });
+    expect(hits.map((hit) => hit.id)).toEqual(['b-active']);
+  });
+
+  it('[item 6] keeps the order of a negative score when it is weighted', () => {
+    const opposed = buildDerivedIndexes({
+      evidence: [e1],
+      supersessions: new Map(),
+      projections: [
+        makeFact('b-active', [e1], { embedding: embedded([-1, 0, 0]) }),
+        nextRevision(makeFact('a-demoted', [e1], { embedding: embedded([-1, 0, 0]) }), {
+          status: 'demoted',
+          transition: { kind: 'demoted', at: FIXED_AT + 5, demotedBy: { id: 's9', revision: 1 } },
+        }),
+      ],
+      authority: makeAuthority(),
+    });
+    expect(opposed.vector.query([1, 0, 0], { limit: 10 }).map((hit) => hit.id)).toEqual([
+      'b-active',
+      'a-demoted',
+    ]);
+  });
+
+  it('[item 5] records a demotion as a demotion edge, never as a supersession', () => {
+    expect(indexes.graph.query({ from: 'projection:a-demoted' })).toContainEqual({
+      from: 'projection:a-demoted',
+      to: 'projection:s9',
+      kind: 'projection-demotion',
+    });
+    const kinds = indexes.graph.query({ from: 'projection:a-demoted' }).map((edge) => edge.kind);
+    expect(kinds).not.toContain('projection-supersession');
+  });
+});
+
+describe('fingerprint inputs', () => {
+  it("[item 21] changes with a projection's status alone", () => {
+    const build = (status: 'active' | 'demoted') =>
+      buildDerivedIndexes({
+        evidence: [e1],
+        supersessions: new Map(),
+        // The status is the only field that differs; the builder does not re-validate records.
+        projections: [{ ...f1, status }],
+        authority: makeAuthority(),
+      }).inputFingerprint;
+    expect(build('demoted')).not.toBe(build('active'));
+  });
+});
+
+describe('one consistent read', () => {
+  const original = makeInlineEvidence('e1', { text: 'The user lives in Boston.' });
+  const correction = makeInlineEvidence('e2', {
+    text: 'The user lives in Denver.',
+    kind: 'operator',
+    supersedes: ['e1'],
+  });
+  const stale = makeFact('p1', [original], {
+    payload: { statement: 'The user lives in Boston.', entities: ['Boston'] },
+  });
+  const corrected = makeFact('p2', [correction], {
+    transition: { kind: 'created', at: FIXED_AT + 10, supersedes: [{ id: 'p1', revision: 1 }] },
+    payload: { statement: 'The user lives in Denver.', entities: ['Denver'] },
+  });
+
+  /**
+   * Wraps a store so `inject` runs once the evidence read has returned, and the
+   * marker and projection reads wait for it: the three reads straddle it.
+   */
+  function straddling(
+    inner: EvidenceProjectionStorage,
+    inject: () => Promise<void>,
+  ): EvidenceProjectionStorage {
+    let release!: () => void;
+    const injected = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let fired = false;
+    return {
+      ...inner,
+      async listEvidence(filter) {
+        const read = await inner.listEvidence(filter);
+        if (!fired) {
+          fired = true;
+          await inject();
+        }
+        release();
+        return read;
+      },
+      async listEvidenceSupersessions(filter) {
+        await injected;
+        return inner.listEvidenceSupersessions(filter);
+      },
+      async listProjections(filter) {
+        await injected;
+        return inner.listProjections(filter);
+      },
+    };
+  }
+
+  for (const [label, makeBackend] of BACKENDS) {
+    it(`[item 7] does not drop both projections when a correction lands between the reads (${label})`, async () => {
+      const inner = makeBackend();
+      await inner.commit({ tenantId: TENANT, evidence: [original], projections: [stale] });
+      const storage = straddling(inner, async () => {
+        await inner.commit({
+          tenantId: TENANT,
+          evidence: [correction],
+          projections: [corrected, supersededRevision(stale, { id: 'p2', revision: 1 })],
+        });
+      });
+      const indexes = await rebuild(storage);
+      expect(indexes.lexical.query('Denver', { limit: 5 }).map((hit) => hit.id)).toEqual(['p2']);
+      expect(indexes.lexical.query('Boston', { limit: 5 })).toEqual([]);
+    });
+  }
+
+  it('[item 7] gives up with a typed error when every read set differs from the last', async () => {
+    const inner = createInMemoryEvidenceProjectionStorage();
+    await inner.appendEvidence(original);
+    let counter = 0;
+    const churning: EvidenceProjectionStorage = {
+      ...inner,
+      async listEvidence(filter) {
+        const read = await inner.listEvidence(filter);
+        counter += 1;
+        await inner.appendEvidence(makeInlineEvidence(`churn-${counter}`));
+        return read;
+      },
+    };
+    const error = await rejectionOf(rebuild(churning));
+    expect(error).toBeInstanceOf(DerivedIndexConsistencyError);
+    expect((error as DerivedIndexConsistencyError).attempts).toBe(3);
   });
 });

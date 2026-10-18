@@ -6,6 +6,7 @@ import type {
   TransformationStep,
 } from '../src/evidence-projection-schema';
 import {
+  EvidenceProjectionBatchLimitError,
   EvidenceProjectionCommitError,
   type EvidenceProjectionStorage,
   ProjectionRevisionConflictError,
@@ -405,6 +406,99 @@ export function registerProjectionContractTests(options: {
     it('excludes a projection whose source evidence was superseded after it was written', async () => {
       await storage.appendEvidence(makeInlineEvidence('e2', { supersedes: ['e1'] }));
       expect(await searchableIds('owner-1')).toEqual([]);
+    });
+  });
+
+  describe('references among the projections of one commit', () => {
+    async function invalidCommit(projections: EvidenceProjectionRecord[]): Promise<void> {
+      const error = await rejection(
+        storage.commit({ tenantId: TENANT, projections }),
+        EvidenceProjectionCommitError,
+      );
+      expect(error.code).toBe('invalid-commit');
+      for (const record of projections) {
+        expect(await storage.getProjection(TENANT, NAMESPACE, record.id)).toBeUndefined();
+      }
+    }
+
+    it('[item 3] refuses a new projection that supersedes itself', async () => {
+      await invalidCommit([
+        makeFact('self', [evidence], {
+          transition: { kind: 'created', at: FIXED_AT, supersedes: [{ id: 'self', revision: 1 }] },
+        }),
+      ]);
+    });
+
+    it('[item 3] refuses a new summary that covers itself', async () => {
+      await invalidCommit([
+        {
+          ...makeFact('loop', [evidence]),
+          kind: 'summary',
+          payload: { text: 'Covers itself', covers: [{ id: 'loop', revision: 1 }] },
+        },
+      ]);
+    });
+
+    it('[item 3] refuses two new projections that reference each other', async () => {
+      const referring = (id: string, other: string): EvidenceProjectionRecord =>
+        makeFact(id, [evidence], {
+          transition: { kind: 'created', at: FIXED_AT, supersedes: [{ id: other, revision: 1 }] },
+        });
+      await invalidCommit([referring('a', 'b'), referring('b', 'a')]);
+    });
+
+    it('[item 3] still accepts references that point at another projection of the commit', async () => {
+      const summary: EvidenceProjectionRecord = {
+        ...makeFact('s2', [evidence]),
+        kind: 'summary',
+        payload: { text: 'Covers p1', covers: [{ id: 'p1', revision: 1 }] },
+      };
+      const retired = supersededRevision(p1, { id: 's2', revision: 1 });
+      const result = await storage.commit({ tenantId: TENANT, projections: [summary, retired] });
+      expect(result.projections.map((entry) => entry.outcome)).toEqual(['written', 'written']);
+    });
+  });
+
+  describe('batch size', () => {
+    it('[item 19] refuses a commit past the batch cap with the same typed error and writes nothing', async () => {
+      const projections = Array.from({ length: 5001 }, (_, index) =>
+        makeFact(`bulk-${index}`, [evidence]),
+      );
+      const error = await rejection(
+        storage.commit({ tenantId: TENANT, projections }),
+        EvidenceProjectionBatchLimitError,
+      );
+      expect(error.cap).toBe(10_000);
+      expect(error.count).toBeGreaterThan(10_000);
+      expect(await storage.getProjection(TENANT, NAMESPACE, 'bulk-0')).toBeUndefined();
+    });
+
+    it('[item 19] accepts a commit just inside the cap', async () => {
+      const projections = Array.from({ length: 4000 }, (_, index) =>
+        makeFact(`bulk-${index}`, [evidence]),
+      );
+      const result = await storage.commit({ tenantId: TENANT, projections });
+      expect(result.projections).toHaveLength(4000);
+    });
+  });
+
+  describe('identical writers', () => {
+    it('reports the loser of two identical concurrent commits as a duplicate', async () => {
+      const fresh = makeInlineEvidence('e-twin');
+      const request = {
+        tenantId: TENANT,
+        evidence: [fresh],
+        projections: [makeFact('twin', [fresh])],
+      };
+      const [left, right] = await Promise.all([storage.commit(request), storage.commit(request)]);
+      const outcomes = [left, right].map((result) => [
+        ...result.evidence.map((entry) => entry.outcome),
+        ...result.projections.map((entry) => entry.outcome),
+      ]);
+      expect(outcomes.toSorted((left, right) => left.join().localeCompare(right.join()))).toEqual([
+        ['appended', 'written'],
+        ['duplicate', 'duplicate'],
+      ]);
     });
   });
 

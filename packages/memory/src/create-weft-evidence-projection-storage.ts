@@ -10,8 +10,6 @@ import {
 import type { EvidenceProjectionStorage } from './evidence-projection-storage';
 import { createEvidenceProjectionStoreCore } from './evidence-projection-store-core';
 
-export { DEFAULT_EVIDENCE_KEY_PREFIX, DEFAULT_PROJECTION_KEY_PREFIX };
-
 export interface CreateWeftEvidenceProjectionStorageOptions {
   /** Key prefix of the evidence family. Must be disjoint from every other prefix in use. */
   evidenceKeyPrefix?: string;
