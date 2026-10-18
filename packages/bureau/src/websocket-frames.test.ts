@@ -134,4 +134,47 @@ describe('streamEventToFrame', () => {
       expect(streamEventToFrame('run-8', event)).toBeUndefined();
     }
   });
+
+  it('does not relay the part events (COR-713): projecting parts to a wire is COR-1547 and COR-788', () => {
+    const partEvents: StreamEvent[] = [
+      { type: 'stream:part-start', messageId: 'row-1', partIndex: 0, kind: 'image' },
+      {
+        type: 'stream:part-delta',
+        messageId: 'row-1',
+        partIndex: 0,
+        sequence: 1,
+        delta: { kind: 'text', text: 'a' },
+      },
+      {
+        type: 'stream:part-progress',
+        messageId: 'row-1',
+        partIndex: 1,
+        sequence: 1,
+        receivedBytes: 4,
+      },
+      {
+        type: 'stream:part-complete',
+        messageId: 'row-1',
+        partIndex: 0,
+        part: { type: 'text', text: 'a' },
+      },
+      {
+        type: 'stream:part-asset-linked',
+        messageId: 'row-1',
+        partIndex: 1,
+        source: { kind: 'managed-asset', assetId: 'asset-1' },
+      },
+      {
+        type: 'stream:part-asset-available',
+        messageId: 'row-1',
+        partIndex: 1,
+        source: { kind: 'managed-asset', assetId: 'asset-1' },
+      },
+      { type: 'stream:part-failed', messageId: 'row-1', partIndex: 1, error: new Error('x') },
+    ];
+
+    for (const event of partEvents) {
+      expect(streamEventToFrame('run-9', event)).toBeUndefined();
+    }
+  });
 });

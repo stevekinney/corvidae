@@ -66,6 +66,8 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
   const stepZero = {
     step: 0,
     content: 'A step 0',
+    parts: [{ type: 'text', text: 'A step 0' }],
+    messageId: expect.any(String),
     toolCalls: [{ id: toolCallId, name: 'next', arguments: {} }],
     results: [
       {
@@ -83,12 +85,19 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
   const stepOne = {
     step: 1,
     content: 'B recovered step 1',
+    parts: [{ type: 'text', text: 'B recovered step 1' }],
+    messageId: expect.any(String),
     toolCalls: [],
     results: [],
     metadata: { __bureauActiveSkills: { version: 2, entries: [] } },
     final: true,
   };
   const usage = { prompt: 0, completion: 0, total: 0 };
+  // COR-713: the run-wide parts, step by step, in the event's payload and in its result.
+  const parts = [
+    { type: 'text', text: 'A step 0' },
+    { type: 'text', text: 'B recovered step 1' },
+  ];
   return {
     events: [
       {
@@ -103,11 +112,13 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
           result: {
             steps: [stepZero, stepOne],
             content: 'B recovered step 1',
+            parts,
             usage,
             finishReason: 'stop-condition',
           },
           steps: [stepZero, stepOne],
           content: 'B recovered step 1',
+          parts,
           usage,
           finishReason: 'stop-condition',
         },
